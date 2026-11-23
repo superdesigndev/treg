@@ -12,7 +12,7 @@ export default { setup: useDashboard }
                (money.md §Referrals) — so it is a form, not a self-serve toggle, and it shows to
                everyone, team or not, so a partner without a team yet can still apply. -->
           <h1>{{refTab==='partner' ? 'Affiliate partner' : 'Refer a friend'}}</h1>
-          <p class="sub" v-if="refTab==='partner'">Revenue share, paid in cash. By invitation.</p>
+          <p class="sub" v-if="refTab==='partner'">Revenue share, paid in cash. Reviewed applications.</p>
           <p class="sub" v-else :style="ref.loaded ? null : {visibility:'hidden'}">They get {{money(ref.terms.referred_micro)}} when they add
             {{money(ref.terms.min_topup_micro)}}. You get {{money(ref.terms.referrer_micro)}},
             {{ref.terms.hold_days}} days later.</p>
@@ -26,13 +26,16 @@ export default { setup: useDashboard }
               <p class="sub" style="margin:6px 0 0">People who send real volume: an audience, a newsletter,
                 a community, or a team that builds on treg for clients.</p>
               <div class="lbl" style="margin-top:16px">What you earn</div>
-              <p class="sub" style="margin:6px 0 0">A share of what your referrals top up, paid to you in
-                cash monthly. Not credit, and no {{ref.cap.standard_limit ?? ref.cap.limit}}-referral cap.</p>
+              <p class="sub" style="margin:6px 0 0">20% of every top-up your referrals make in their first
+                6 months, paid in cash once you reach $100. Not credit, and no {{ref.cap.standard_limit ?? ref.cap.limit}}-referral cap.</p>
               <div class="lbl" style="margin-top:16px">How to get in</div>
-              <p class="sub" style="margin:6px 0 14px">Invite only. Tell us about your audience and how
-                you'd send people to treg, and we'll get back to you.</p>
-              <a class="btn primary sm" href="https://forms.gle/5N3DyVPrNJkrGuxF6" target="_blank"
+              <p class="sub" style="margin:6px 0 14px">Apply with your channels and your audience. We review
+                every application ourselves.</p>
+              <a class="btn primary sm" href="https://partners.dub.co/treg/apply" target="_blank"
                  rel="noopener" @click="track('affiliate_apply_clicked')" style="text-decoration:none">Apply to be an affiliate partner</a>
+              <p class="sub" style="margin:12px 0 0">Already a partner?
+                <a href="https://partners.dub.co" target="_blank" rel="noopener"
+                   @click="track('affiliate_login_clicked')">Log in to see your link and earnings</a>.</p>
             </div>
             <p class="sub" style="margin:12px 0 0">Just want to tell a friend? The
               <a href="#" @click.prevent="refTab='friend'">refer-a-friend</a> program pays

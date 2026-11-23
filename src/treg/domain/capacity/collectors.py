@@ -839,6 +839,23 @@ async def _hlrlookup(c, key):
     return {"value": float(balance), "unit": "credits", "note": ""}
 
 
+async def _forager(c, key):
+    # Free: GET /api/users/current/ spends nothing, needs no account id in the path and answers 403
+    # for a bad key. The key's one account carries the plan's credit balance.
+    d = await _get(c, "https://api-v2.forager.ai/api/users/current/", headers={"X-API-KEY": key})
+    accounts = d.get("accounts") if isinstance(d, dict) else None
+    sub = (accounts[0] or {}).get("subscription") if isinstance(accounts, list) and accounts else None
+    try:
+        balance = Decimal(str(sub.get("credits_balance"))) if isinstance(sub, dict) else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite():
+        raise ValueError("Forager returned no credit balance")
+    tier = (sub.get("subscription_tier") or {}).get("name", "?")
+    return {"value": float(balance), "unit": "credits",
+            "note": f"plan {tier}, subscription {'active' if sub.get('is_active') else 'inactive'}"}
+
+
 async def _predictleads(c, key):
     # The platform slot holds base64("api_key:api_token") for HTTP Basic — pass it straight through.
     d = await _get(c, "https://predictleads.com/api/v3/api_subscription",
@@ -1038,13 +1055,17 @@ async def _jobspipe(c, key):
     return {"value": credits, "unit": "credits", "note": "spendable credits from the free export estimate"}
 
 
-async def _besthumanizer(c, key):
-    # GET /api/me is free and answers the words left this month (401 for a bad key).
-    d = await _get(c, "https://besthumanizer.app/api/me", headers={"Authorization": f"Bearer {key}"})
-    words = d.get("words_remaining") if isinstance(d, dict) else None
-    if type(words) is not int or words < 0:
-        raise ValueError("BestHumanizer returned no valid word balance")
-    return {"value": words, "unit": "words", "note": f"of {d.get('monthly_grant')} a month, plan {d.get('plan')}"}
+async def _mapsdata(c, key):
+    # GET /usage is MapsData's free registry probe. `scraping_credits` is the spendable balance and
+    # null means the account has no credit cap; `can_submit` goes false once it reaches zero.
+    d = await _get(c, "https://mapsdata.ai/api/v1/usage", headers={"Authorization": f"Bearer {key}"})
+    credits = d.get("scraping_credits") if isinstance(d, dict) else None
+    if credits is not None and (type(credits) is not int or credits < 0):
+        raise ValueError("MapsData returned no valid credit balance")
+    state = "allowed" if d.get("can_submit") is True else "blocked" if d.get("can_submit") is False else "unknown"
+    cap = "no credit cap" if credits is None else "spendable Scraping Credits"
+    return {"value": credits, "unit": "credits",
+            "note": f"{cap}; plan {d.get('plan_tier') or 'unknown'}; submissions {state}"}
 
 
 async def _enrichlayer(c, key):
@@ -1132,7 +1153,7 @@ BALANCE_ROUTES = {
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,
     "jobspipe": _jobspipe,
-    "besthumanizer": _besthumanizer,
+    "mapsdata": _mapsdata,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,
@@ -1164,6 +1185,7 @@ BALANCE_ROUTES = {
     "predictleads": _predictleads,
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
+    "forager": _forager,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
@@ -1276,7 +1298,7 @@ NO_BALANCE_API = {
 
 # platform_key_* slots that are the SECOND half of a provider's credential pair, not a provider of
 # their own (see OAuthProvider.platform_extra_setting) — they must not become report rows.
-AUX_SLOTS = {"tomba_secret", "hlrlookup_secret"}
+AUX_SLOTS = {"tomba_secret", "hlrlookup_secret", "forager_account"}
 
 # Vendors that keep answering calls past a zero balance and bill the overage. A reading below
 # `EMPTY_BELOW` from one of them is `_overdrawn`, never exact: exact, it would refuse calls the

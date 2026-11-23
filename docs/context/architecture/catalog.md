@@ -604,6 +604,7 @@ async:
     #     fetch_param: {in: pathParams, name: video_id, value_from: id}
     ttl_note: 9h
   interval: 10
+  # optional: pending_response: {status: 404, path: error_code, equals: result_pending}
 ```
 
 Validation of the effective descriptor: dotted paths; non-empty `success`; `failure` may be empty
@@ -613,6 +614,9 @@ has exactly one of `endpoint` or `url_from`, result exactly one of `path` or `fe
 fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `param` is exactly
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
 the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
+An optional `pending_response` matches one non-2xx HTTP status and one JSON error value. The CLI
+and worker treat only that exact envelope as progress; other non-2xx responses remain errors and
+never serve as settlement evidence.
 An async endpoint must use `per_success` or `per_call`. Status values compare after string coercion;
 a missing or unknown value means still in progress in the CLI awaiter, `/tasks/` and the worker (a
 waiter warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles

@@ -71,6 +71,11 @@ class ReportedCharge(Model):
     unit: str
 
 
+class NonDeferredCharge(Model):
+    path: Annotated[str, Field(min_length=1)]
+    value: Annotated[Number, Field(gt=0)]
+
+
 class Presence(Model):
     field: str
     row: str | None = None
@@ -108,6 +113,7 @@ class Cost(Model):
         | SettleCount | None = None
     usage: Usage | None = None
     reported_charge: ReportedCharge | None = None
+    non_deferred_charge: NonDeferredCharge | None = None
     worst_case: Number | None = None
     presence: Presence | None = None
     modifiers: dict[str, Modifier] | None = None

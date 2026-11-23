@@ -982,6 +982,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "rea_marketing_skill_md",
+    "path": "/skills/rea-marketing/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "ai_ugc_video_skill_md",
     "path": "/skills/ai-ugc-video/SKILL.md"
   },
@@ -1191,6 +1200,15 @@
     ],
     "name": "rea_growth_page",
     "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_marketing_page",
+    "path": "/rea-marketing"
   },
   {
     "kind": "APIRoute",
@@ -1675,6 +1693,15 @@
     ],
     "name": "oauth_grant_set_team",
     "path": "/oauth/grants/{family_id}/team"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vendor_console_me",
+    "path": "/vendor-console/me"
   },
   {
     "kind": "APIRoute",

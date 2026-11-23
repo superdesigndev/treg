@@ -33,7 +33,9 @@ from ..models import User
 from .auth_helpers import (
     _is_https, _remember_oauth_return, _same_origin, require_managed_cli, trusted_public_base,
 )
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import (
+    REFERRAL_COOKIE, _client_country, _remember_partner_code, _take_affiliate_click, _take_partner_code,
+)
 
 app = APIRouter()
 email_router = app
@@ -569,12 +571,14 @@ async def auth_cli_approve(
 
 
 @app.get("/login", include_in_schema=False)
-async def login_page(request: Request, cli: str = "", ad: str = "", treg_session: str = Cookie(default="")):
+async def login_page(request: Request, cli: str = "", ad: str = "", ref: str = "",
+                     treg_session: str = Cookie(default="")):
     """The universal sign-in page `treg login` opens: reuses an existing dashboard session with one
     click ("Continue as …"), else offers every configured door — GitHub, Google, email one-time code.
     The email door is always present, so login works even with no OAuth app configured.
 
-    `ad` is the short install link's code (`architecture/ads-conversions.md`, "Capture")."""
+    `ad` is the short install link's code (`architecture/ads-conversions.md`, "Capture"). `ref` is
+    the partner code from `treg login --ref`, parked so the team made from this sign-in carries it."""
     if not cli:
         resp = RedirectResponse("/app" + ("?" + request.url.query if request.url.query else ""),
                                 status_code=302)  # preserve incoming attribution for the SPA
@@ -586,6 +590,7 @@ async def login_page(request: Request, cli: str = "", ad: str = "", treg_session
         resp = HTMLResponse(_login_page_html(
             cli, session_email=session_email,
             github=bool(s.github_client_id), google=bool(s.google_client_id)))
+    _remember_partner_code(resp, request, ref)
     restored, max_age = await signup.redeem_ad_link(ad)
     if restored and not request.cookies.get("treg_ad"):
         resp.set_cookie("treg_ad", restored, max_age=max_age, path="/", samesite="lax",
@@ -1047,6 +1052,37 @@ def _sheets_consent_page(*, user_email: str, teams: list, hidden: dict) -> HTMLR
         f"</div></div></body></html>")
 
 
+def _vendor_console_consent_page(*, user_email: str, teams: list, new_team: str,
+                                 hidden: dict) -> HTMLResponse:
+    """The consent page of the vendor console. No team picker: it reads who signed in and which
+    teams they belong to, and the vendor picks the team inside the console."""
+    import html as _h
+    fields = "".join(
+        f'<input type="hidden" name="{_h.escape(k)}" value="{_h.escape(str(v))}"/>'
+        for k, v in hidden.items())
+    teams_line = (f"Your teams: {', '.join(_h.escape(t['slug']) for t in teams)}." if teams else
+                  f"Continuing creates your team, <b>{_h.escape(new_team)}</b>. "
+                  "You can rename it in the dashboard.")
+    return HTMLResponse(
+        f"{_AUTH_HEAD.replace('</style>', _CONSENT_CSS + '</style>')}"
+        f'<body><div class="wrap"><div class="card consent">'
+        f'{_BRAND}'
+        f"<h1>Sign in to the treg vendor console</h1>"
+        f'<p class="who">Signed in as {_h.escape(user_email)}</p>'
+        f'<ul class="grants">'
+        f"<li>See your email address</li>"
+        f"<li>See your teams and your role in each (so you can apply for one of them)</li>"
+        f"</ul>"
+        f'<form method="post" action="/oauth/authorize">{fields}'
+        f'<input type="hidden" name="org_id" value="0"/>'
+        f'<div class="row">'
+        f'<button type="submit" name="decision" value="deny">Cancel</button>'
+        f'<button type="submit" name="decision" value="allow" class="primary">Continue</button>'
+        f"</div></form>"
+        f'<p class="fine">It cannot call tools, spend a balance or see your keys. {teams_line}</p>'
+        f"</div></div></body></html>")
+
+
 _wrong_resource = auth_use_cases._wrong_resource
 _effective_mcp_resource = auth_use_cases._effective_mcp_resource
 _same_mcp_resource = auth_use_cases._same_mcp_resource
@@ -1134,6 +1170,9 @@ async def oauth_authorize(
         }
     if view.client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_consent_page(user_email=view.user_email, teams=view.teams, hidden=hidden)
+    if view.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        return _vendor_console_consent_page(user_email=view.user_email, teams=view.teams,
+                                            new_team=view.new_team, hidden=hidden)
     return _consent_page(client_name=view.client_name, client_uri=view.client_uri,
                          user_email=view.user_email, teams=view.teams, hidden=hidden,
                          unverified=(view.client_kind == "dcr"), scope=view.scope,
@@ -1177,6 +1216,8 @@ async def oauth_authorize_approve(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
+            ref_code=_take_partner_code(request), client_country=_client_country(request),
         )
     except auth_use_cases.OAuthServerError as exc:
         return _oauth_server_failure(exc, redirect_uri, state)
@@ -1345,6 +1386,18 @@ async def oauth_grant_set_team(family_id: str, body: GrantTeamIn,
         )
     except auth_use_cases.OAuthGrantError as exc:
         raise HTTPException(status_code=404, detail=exc.detail) from exc
+
+
+@app.get("/vendor-console/me", include_in_schema=False)
+async def vendor_console_me(authorization: str = Header(default="")) -> JSONResponse:
+    """Who signed in to the vendor console, and their teams. Only a vendor console token works
+    here, and it works nowhere else."""
+    bearer = authorization[7:].strip() if authorization[:7].lower() == "bearer " else ""
+    identity = await auth_use_cases.vendor_console_identity(bearer)
+    if identity is None:
+        raise HTTPException(status_code=401, detail="invalid or expired access token",
+                            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'})
+    return JSONResponse(identity, headers={"Cache-Control": "no-store"})
 
 
 app = APIRouter()

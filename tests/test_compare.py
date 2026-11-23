@@ -22,7 +22,7 @@ from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import adapter_accepts, canonical_identity
 from treg.infra import kv
 from treg.infra.db import session_maker
-from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CapabilityPin,
+from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CallReview, CapabilityPin,
                          DenyRule, Membership, Org)
 from treg.timeutil import utcnow_naive
 
@@ -89,9 +89,18 @@ async def _org_id(clients) -> int:
 async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict | None = None,
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
-                       marked: bool = True, cached: bool = False) -> str:
+                       marked: bool = True, cached: bool = False, reviewing: bool = True) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
-    and the call path's eligibility marker, as a real sampled routed call leaves them."""
+    and the call path's eligibility marker, as a real sampled routed call leaves them. `reviewing`
+    gives the team one recent review, which a team needs to be compared at all."""
+    if reviewing:
+        async with session_maker() as db:
+            if not (await db.execute(
+                    select(CallReview).where(CallReview.org_id == org_id))).first():
+                db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev",
+                                  call_id=f"reviewed-{org_id}", endpoint_id="tavily.web.search",
+                                  usefulness="useful", invited=True, client="mcp"))
+                await db.commit()
     cat = catalog_store.load()
     eid = next(e["id"] for e in cat.for_capability(capability)
                if e["provider"] == a and e["id"] in cat.adapters)
@@ -118,8 +127,9 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                                    body=json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()))
             child.archive_key_hash, child.archive_content_hash = key.key_hash, f"body-{ref}"
         await db.commit()
-    if marked:
-        await kv.store().set_flag(compare.marker_key(ref), compare.MARKER_TTL_S)
+    if marked:  # the marker holds the input the caller sent, as the call path writes it
+        await kv.store().set_text(compare.marker_key(ref), json.dumps(given or {"q": q}),
+                                  compare.MARKER_TTL_S)
     return ref
 
 
@@ -216,8 +226,7 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
                                   "capability_pin", "not_in_pair", "own_key", "not_archived",
                                   "too_old", "no_marker", "store_down", "suspended", "paused",
-                                  "flow_unavailable", "flow_raises", "flow_invalid",
-                                  "expression_field"])
+                                  "flow_unavailable", "flow_raises", "flow_invalid"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
     _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR)
     sent = _relay_b(monkeypatch)
@@ -241,8 +250,8 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
         await db.commit()
     if case == "store_down":
         async def unknown(key):
-            return False  # what `has_flag` answers when the store cannot
-        monkeypatch.setattr(kv.store(), "has_flag", unknown)
+            return None  # what `get_text` answers when the store cannot
+        monkeypatch.setattr(kv.store(), "get_text", unknown)
     late = ("suspended", "paused", "flow_unavailable", "flow_raises", "flow_invalid")
     if case in late:
         # Revoked after the run picked the call, before it is sent: checked again right then.
@@ -272,11 +281,20 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
             monkeypatch.setattr(kv.store(), "read_org_flow_control", read)
     await _routed_call(org_id, f"never {case}", tier="credential" if case == "own_key" else "platform",
                        archived=case != "not_archived", minutes_ago=600 if case == "too_old" else 5,
-                       marked=case != "no_marker",
-                       # `max_results` comes from `limit` by expression: a request it cannot be read back from
-                       given={"q": "never expression", "limit": 5} if case == "expression_field" else None)
+                       marked=case != "no_marker")
     result = await _collect()
     assert sent == [] and await _rows() == [], result
+    # A candidate that reached `_one` is counted under the reason it stopped at.
+    expected = {"not_in_pair": "b_unavailable", "own_key": "a_not_on_treg_key",
+                "not_archived": "a_not_archived", "no_marker": "no_marker",
+                "store_down": "no_marker", "suspended": "team_no_longer_eligible",
+                "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
+                "flow_raises": "team_no_longer_eligible", "flow_invalid": "team_no_longer_eligible",
+                }.get(case)
+    if expected:
+        assert result["skip_reasons"] == {expected: 1}, result
+    else:
+        assert result["skip_reasons"] == {}, result
     if case in late:
         assert nonlocal_state, "the call got as far as the last check"
 
@@ -347,7 +365,10 @@ async def test_b_is_skipped_without_its_key_paused_or_exhausted(clients, search_
     assert sent == [] and await _rows() == []
 
 
-async def test_b_need_not_be_routable(clients, search_on, monkeypatch):
+async def test_a_judge_only_adapter_never_builds_b(clients, search_on, monkeypatch):
+    """A `route: false` adapter only judges its endpoint's own answers; the router never sends the
+    request it would build (cloro's Google organic one has no `gl`, which cloro requires), so it is
+    never B."""
     import dataclasses
 
     cat = catalog_store.load()
@@ -356,9 +377,139 @@ async def test_b_need_not_be_routable(clients, search_on, monkeypatch):
     _compare_on(monkeypatch)
     sent = _relay_b(monkeypatch)
     await _routed_call(await _org_id(clients), "exa is not routed")
-    await _collect()
-    assert [c["tool"].name for c in sent] == ["exa.web.search"]
-    assert (await _rows())[0].status == "ready"
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"b_unavailable": 1}
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CLORO", "PLATFORM-CLORO")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "cloro")
+    get_settings.cache_clear()
+    contract = cat.contracts["google.serp.organic"]
+    identity, _ = canonical_identity(contract, {"q": "espresso grinders"})
+    assert cat.adapters["cloro.google.serp.organic"].route is False
+    assert compare._b_target(contract, identity, "cloro") is None
+
+
+# B's request is the router's: the same canonical identity sent as a routed call on treg's key and
+# asked of B by the run reach the vendor as the same bytes (credentials masked).
+B_ENDPOINTS = [
+    ("keenable", "keenable.web.fetch", "web.extract", {"url": "https://docs.example.com/guide"}),
+    ("dataforseo", "dataforseo.google.serp.organic", "google.serp.organic", {"q": "espresso grinders"}),
+    ("crawl4ai", "crawl4ai.web.search", "web.search", {"q": "espresso grinders"}),
+    ("parallel", "parallel.web.search", "web.search", {"q": "espresso grinders"}),
+    ("exa", "exa.web.search", "web.search", {"q": "espresso grinders"}),
+    ("anyapi", "anyapi.google.serp.organic", "google.serp.organic", {"q": "espresso grinders"}),
+]
+_SECRET_HEADERS = {"authorization", "x-api-key"}
+
+
+def _on_the_wire(request: httpx.Request, content: bytes) -> dict:
+    return {"method": request.method, "url": str(request.url), "body": content.decode(),
+            "headers": sorted((k, "***" if k in _SECRET_HEADERS else v)
+                              for k, v in request.headers.multi_items())}
+
+
+def _vendor(seen: list, answer: bytes = b"{}"):
+    async def vendor(request: httpx.Request) -> httpx.Response:
+        seen.append(_on_the_wire(request, await request.aread()))
+        return httpx.Response(200, headers={"content-type": "application/json"},
+                              stream=httpx.ByteStream(answer))
+    return httpx.AsyncClient(transport=httpx.MockTransport(vendor))
+
+
+def _platform(monkeypatch, *providers):
+    for p in providers:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper()}", f"PLATFORM-{p.upper()}")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(providers))
+    monkeypatch.setenv("TREG_CLIENT_ID_SECRET", "client-id-secret")
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", False)
+
+
+@pytest.mark.parametrize("provider,endpoint,capability,given", B_ENDPOINTS)
+async def test_b_sends_what_the_router_sends(clients, monkeypatch, provider, endpoint, capability, given):
+    from treg.infra.upstream.relay import relay as real_relay
+
+    _platform(monkeypatch, provider)
+    seen = []
+    async with _vendor(seen) as vendor:
+        async def relay(request, url, tool, secrets, client, **kw):
+            return await real_relay(request, url, tool, secrets, vendor, **kw)
+        monkeypatch.setattr(call_service, "relay", relay)
+        monkeypatch.setattr(compare, "relay", relay)
+        org_id = await _org_id(clients)
+        contract = catalog_store.load().contracts[capability]
+        identity, _ = canonical_identity(contract, given)
+        target = compare._b_target(contract, identity, provider)
+        assert target is not None and target.ep["id"] == endpoint
+        assert (await compare._ask_b(target, vendor, org_id))[0] == 200
+        routed = await clients.post(f"/call/treg.{capability}", json=given,
+                                    headers={"X-Treg-Route-Prefer": endpoint})
+    assert routed.status_code == 200, routed.text
+    assert routed.json()["_treg"]["tried"][0]["endpoint_id"] == endpoint
+    b, child = seen[:2]
+    assert b == child
+    # What the run once sent differently: Python's `False` in the query, no client header, no ceiling.
+    if provider == "keenable":
+        assert "live=false" in b["url"]
+    if provider == "crawl4ai":
+        assert dict(b["headers"])["x-c4-client"].startswith("t_")
+    if provider == "anyapi":
+        assert "max_cost_usd=" in b["url"]
+
+
+def _example(endpoint_id: str) -> bytes:
+    return catalog_store.example_path(endpoint_id).read_bytes()
+
+
+# A configured pair's A and B, each answering with its captured example: stored `ready`.
+READY_PAIRS = [
+    ("google.serp.organic", "anyapi", "dataforseo", {"q": "espresso grinders"}),
+    ("web.extract", "crawl4ai", "keenable", {"url": "https://docs.example.com/guide"}),
+    ("web.search", "exa", "crawl4ai", {"q": "espresso grinders"}),
+    ("web.search", "crawl4ai", "exa", {"q": "espresso grinders"}),
+    ("web.search", "tinyfish", "parallel", {"q": "espresso grinders"}),
+]
+
+
+@pytest.mark.parametrize("capability,a,b,given", READY_PAIRS)
+async def test_a_vendor_example_answer_is_stored_ready(clients, monkeypatch, capability, a, b, given):
+    _platform(monkeypatch, a, b)
+    _compare_on(monkeypatch, pairs={capability: [[a, b]]})
+    cat = catalog_store.load()
+    a_endpoint = next(e["id"] for e in cat.for_capability(capability)
+                      if e["provider"] == a and e["id"] in cat.adapters)
+    b_endpoint = next(e["id"] for e in cat.for_capability(capability)
+                      if e["provider"] == b and e["id"] in cat.adapters)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, given.get("q", ""), a=a, capability=capability, given=given,
+                       answer=json.loads(_example(a_endpoint)))
+    seen = []
+    async with _vendor(seen, _example(b_endpoint)) as vendor:
+        result = await compare.collect(client=vendor)
+    assert (result["called"], result["ready"]) == (1, 1), result
+    row, = await _rows()
+    assert (row.status, row.b_endpoint) == ("ready", b_endpoint)
+    assert json.loads(row.b_body) and json.loads(row.a_body)
+
+
+async def test_an_off_question_answer_is_failed_as_the_router_reads_it(clients, monkeypatch, caplog):
+    """A `site:` question answered with no row on that site is the router's miss (`question_miss`),
+    so the pair fails even on a 200: why a DataForSEO answer to such a question was never a hit."""
+    _platform(monkeypatch, "anyapi", "dataforseo")
+    _compare_on(monkeypatch, pairs={"google.serp.organic": [["anyapi", "dataforseo"]]})
+    org_id = await _org_id(clients)
+    given = {"q": "espresso grinders site:nowhere.example"}
+    a_answer = json.loads(_example("anyapi.google.serp.organic"))
+    for row in a_answer["output"]["data"]["results"]:
+        row["url"] = "https://nowhere.example/grinders"
+    await _routed_call(org_id, given["q"], a="anyapi", capability="google.serp.organic", given=given,
+                       answer=a_answer)
+    caplog.set_level("INFO", logger="treg.application.compare")
+    async with _vendor([], _example("dataforseo.google.serp.organic")) as vendor:
+        result = await compare.collect(client=vendor)
+    assert (result["called"], result["failed"]) == (1, 1), result
+    assert (await _rows())[0].status == "failed"
+    assert "status 200, read as miss (question_miss)" in caplog.text
 
 
 async def test_a_team_deleted_during_the_run_gets_no_row(clients, search_on, monkeypatch):
@@ -486,7 +637,7 @@ async def test_a_waiting_pair_invites_a_client_that_shows_compare(clients, monke
     await kv.store().set_flag(compare.ready_key(org_id), 60)
     shown = await clients.get("/call/example.search", headers={"X-Treg-Hints": "review,mark,feedback,compare"})
     assert shown.headers["X-Treg-Hint"] == "compare"
-    assert shown.headers["X-Treg-Hint-Text"] == hints.COMPARE_HINT
+    assert shown.headers["X-Treg-Hint-Text"] == hints.COMPARE_CLI_HINT
     # A CLI says nothing (legacy kinds) or names its kinds without compare: never invited.
     assert (await clients.get("/call/example.search")).headers.get("X-Treg-Hint") is None
     assert (await clients.get("/call/example.search", headers={"X-Treg-Hints": "review,mark,feedback"})
@@ -514,17 +665,120 @@ async def test_team_mcp_renders_the_compare_hint_and_the_directory_never_asks(cl
         _compare_on(monkeypatch)
         monkeypatch.setattr(hints, "sampled", lambda kind, ref: False)
         monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data":{"items":[]}}'))
-        await kv.store().set_flag(compare.ready_key(await _org_id(clients)), 60)
+        org_id = await _org_id(clients)
+        await kv.store().set_flag(compare.ready_key(org_id), 60)
+        cid = await _seed(org_id, first="b", call_ref="inline-pair")
         args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"}}
         async with paired_mcp_session() as client:
             team = await _call_tool(client, "call", {**args, "idempotency_key": "compare-team"},
                                     clients.headers["X-Treg-Token"], path="/mcp/")
             directory = await _call_tool(client, "catalog_call_read", {**args, "idempotency_key": "compare-v2"},
                                          clients.headers["X-Treg-Token"])
-        assert team["hint"] == hints.COMPARE_HINT
-        assert "hint" not in directory
+        # The team MCP carries the pair itself, blinded, and names the comparison to answer.
+        assert team["compare"] == {"comparison_id": cid, "capability": "web.search", "input": '{"q":"x"}',
+                                   "answer_1": '"answer B"', "answer_2": '"answer A"'}
+        assert team["hint"] == hints.compare_inline_hint(cid)
+        assert "cut when stored" not in team["hint"]
+        assert "hint" not in directory and "compare" not in directory
     finally:
         get_settings.cache_clear()
+
+
+async def test_team_mcp_without_a_waiting_pair_carries_no_invitation(clients, monkeypatch):
+    """The flag can outlive its pair (decided elsewhere, or aged out): then no hint and no pair."""
+    from test_marketplace_call import _fake_relay
+    from test_mcp_directory import _call_tool, paired_mcp_session
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "SYNTHETIC-PLATFORM-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
+    get_settings.cache_clear()
+    try:
+        _compare_on(monkeypatch)
+        monkeypatch.setattr(hints, "sampled", lambda kind, ref: False)
+        monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data":{"items":[]}}'))
+        await kv.store().set_flag(compare.ready_key(await _org_id(clients)), 60)
+        args = {"endpoint_id": "tikhub.tiktok.video.comments", "params": {"aweme_id": "7"},
+                "idempotency_key": "compare-none"}
+        async with paired_mcp_session() as client:
+            team = await _call_tool(client, "call", args, clients.headers["X-Treg-Token"], path="/mcp/")
+        assert "compare" not in team and "hint" not in team
+    finally:
+        get_settings.cache_clear()
+
+
+def test_an_inline_answer_keeps_its_first_rows_and_cuts_long_text():
+
+    rows = [{"title": f"t{i}", "snippet": "s" * 1000} for i in range(12)]
+    text, cut = compare.compact_answer(json.dumps({"results": rows, "total": 12}))
+    shown = json.loads(text)
+    assert cut is True
+    assert [r["title"] for r in shown["results"]] == ["t0", "t1", "t2", "t3", "t4"]
+    assert len(shown["results"][0]["snippet"]) == compare.INLINE_FIELD_CHARS + 1
+    assert shown["total"] == 12
+    assert compare.compact_answer('{"results": [{"title": "short"}]}') == ('{"results":[{"title":"short"}]}', False)
+    long_text = "not json " * 1000
+    assert compare.compact_answer(long_text) == (long_text[:compare.INLINE_ANSWER_CHARS], True)
+    assert compare.compact_answer(None) == ("", False)
+
+
+async def test_an_inline_pair_keeps_its_truncation_and_says_when_the_input_was_cut(clients, monkeypatch):
+    """A stored cut (`truncated_parts`) travels with the pair, and an incomplete input changes the
+    hint, so the agent does not judge a filter it cannot see."""
+    from treg import mcp as mcp_module
+
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    cid = await _seed(org_id, first="a", call_ref="cut-pair", truncated="input,b")
+    pair = await mcp_module._inline_comparison(clients.headers["X-Treg-Token"])
+    assert pair["comparison_id"] == cid
+    assert sorted(pair["truncated_parts"]) == ["answer_2", "input"]
+    hint = hints.compare_inline_hint(cid, input_cut="input" in pair["truncated_parts"])
+    assert "cut when stored" in hint
+
+
+async def test_an_identity_token_reads_its_pair_through_the_team_the_call_resolved(clients, monkeypatch):
+    """A `treg login` identity token names no team: the inline read and the compare tool carry the
+    team `_resolve_org` found, as the call itself does, or the API answers 400 and drops the pair."""
+    from conftest import verified_signup
+    from test_mcp import _call_tool, mcp_session
+
+    from treg import mcp as mcp_module
+
+    _compare_on(monkeypatch)
+    token = (await verified_signup(clients, json={"email": "identity-compare@superdesign.dev"})).json()["token"]
+    team = (await clients.get("/orgs", headers={"X-Treg-Token": token})).json()[0]
+    cid = await _seed(team["org_id"], first="a", call_ref="identity-pair")
+    assert (await mcp_module._inline_comparison(token, team["slug"]))["comparison_id"] == cid
+    # The slug is what the read asks with: a team this person is not in finds nothing.
+    assert await mcp_module._inline_comparison(token, "not-their-team") is None
+    async with mcp_session(clients) as c:
+        shown = await _call_tool(c, "compare", {}, token)
+        sent = await _call_tool(c, "compare", {"comparison_id": cid, "choice": "1"}, token)
+    assert shown["comparison_id"] == cid and sent["status"] == "received"
+
+
+async def test_a_slow_comparison_read_never_holds_the_call(clients, monkeypatch):
+    """The call has answered and been charged: a hung read is dropped after its short limit."""
+    import asyncio
+
+    from treg import mcp as mcp_module
+
+    monkeypatch.setattr(mcp_module, "INLINE_READ_TIMEOUT_S", 0.05)
+    cancelled = []
+
+    async def hang(*_a, **_k):
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    monkeypatch.setattr(compare, "next_for", hang)
+    _compare_on(monkeypatch)
+    await _seed(await _org_id(clients), first="a", call_ref="slow-pair")
+    # A wall-clock bound flakes on a slow runner; the hung read being cancelled is the behavior.
+    assert await asyncio.wait_for(mcp_module._inline_comparison(clients.headers["X-Treg-Token"]), 30) is None
+    assert cancelled == [True]
 
 
 # The API and the MCP tool
@@ -695,8 +949,217 @@ async def test_a_routed_call_is_marked_only_without_route_headers(clients, searc
                                   headers={header: value} if header else {})
     assert response.status_code == 200, response.text
     assert "compare" not in response.text
-    marked = await kv.store().has_flag(compare.marker_key(response.headers["X-Treg-Call-Id"]))
-    assert marked is (header is None)
+    marker = await kv.store().get_text(compare.marker_key(response.headers["X-Treg-Call-Id"]))
+    if header is None:  # the marker holds the input the caller sent, nothing else
+        assert json.loads(marker) == {"q": "marked None"}
+    else:
+        assert marker is None
+
+
+async def test_a_team_that_never_reviews_is_not_compared(clients, search_on, monkeypatch):
+    """Its agents would leave the pair unjudged: no call is made and it is not counted eligible."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "never reviews", reviewing=False)
+    result = await _collect()
+    assert (result["eligible"], result["called"], sent) == (0, 0, []), result
+
+
+@pytest.mark.parametrize("hints_sent,compared", [
+    ("review,mark,feedback,compare", True),   # a release that shows compare
+    ("review,mark,feedback", False),          # an older release under the same agent name
+    (None, False),                            # the Python CLI
+])
+async def test_a_cli_team_is_compared_only_once_a_client_showing_compare_answered(
+        clients, search_on, monkeypatch, hints_sent, compared):
+    """A CLI reports only the agent it runs under, so what counts is whether the client that
+    answered the invitation declared it shows compare."""
+    from treg.application import review_targets
+
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    monkeypatch.setattr(review_targets, "sampled", lambda *_: True)
+    org_id = await _org_id(clients)
+    reviewed = await _routed_call(org_id, "reviewed on the CLI", reviewing=False, marked=False)
+    headers = {"X-Treg-Client": "claude-code", **({"X-Treg-Hints": hints_sent} if hints_sent else {})}
+    got = await clients.post("/reviews", json={"call_id": reviewed, "usefulness": "useful"}, headers=headers)
+    assert got.status_code == 201, got.text
+    await _routed_call(org_id, "answers on the CLI", reviewing=False)
+    result = await _collect()
+    assert result["called"] == (1 if compared else 0), result
+    assert bool(sent) is compared
+
+
+async def test_a_declared_answer_counts_only_inside_the_current_window(clients, search_on, monkeypatch):
+    """The note holds when a client that shows compare last answered, so shortening
+    `compare_answer_days` drops a team whose only such answer is older than the new window."""
+    _compare_on(monkeypatch, compare_answer_days=1)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev", call_id="reviewed",
+                          endpoint_id="tavily.web.search", usefulness="useful", invited=True,
+                          client="claude-code"))  # today, from an older CLI
+        await db.commit()
+    await kv.store().set_text(compare.answering_key(org_id),
+                              (utcnow_naive() - timedelta(days=4)).isoformat(), 7 * 86400)
+    await _routed_call(org_id, "answers on an old CLI", reviewing=False)
+    assert (await _collect())["eligible"] == 0
+    assert sent == []
+
+
+async def test_a_compact_pair_carries_the_cli_words(clients, monkeypatch):
+    """What a CLI prints beside a call: the compacted pair and the words asking for its verdict."""
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    cid = await _seed(org_id, first="a", call_ref="cli-pair")
+    got = await clients.get("/comparisons/next", params={"compact": "true"})
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert body["comparison_id"] == cid and body["answer_1"] == '"answer A"'
+    assert body["how_to_vote"] == hints.compare_cli_hint(cid)
+    assert f"treg compare {cid} 1|2|tie|both_bad" in body["how_to_vote"]
+    assert "provider" not in got.text and "truncated" not in body
+    assert "how_to_vote" not in (await clients.get("/comparisons/next")).json()
+
+
+@pytest.mark.parametrize("client,invited,days_ago,compared", [
+    ("mcp", True, 1, True),         # answered an invitation on the team MCP
+    ("mcp-prior", True, 1, True),   # a verdict riding on the next MCP call
+    ("mcp", False, 1, False),       # reviewed unasked: says nothing about reading hints
+    ("claude-code", True, 1, False),  # a CLI answer that never declared it shows compare
+    ("mcp", True, 10, False),       # answered, but not in the last week
+])
+async def test_only_a_team_answering_mcp_invitations_is_compared(clients, search_on, monkeypatch,
+                                                                 client, invited, days_ago, compared):
+    """Only the team MCP shows a compare invitation, so a team is compared only when its agent
+    answered a review invitation there recently; a pipeline that never reads hints is skipped."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        db.add(CallReview(org_id=org_id, user_email="tim@superdesign.dev", call_id="reviewed",
+                          endpoint_id="tavily.web.search", usefulness="useful", invited=invited,
+                          client=client, created_at=utcnow_naive() - timedelta(days=days_ago)))
+        await db.commit()
+    await _routed_call(org_id, "answers invitations", reviewing=False)
+    result = await _collect()
+    assert result["eligible"] == (1 if compared else 0), result
+    assert bool(sent) is compared
+
+
+async def test_a_busy_team_elsewhere_never_hides_an_eligible_teams_call(clients, search_on,
+                                                                       monkeypatch):
+    """The scan reads eligible teams' calls only: newer calls from a team that is never compared,
+    however many, cannot push an eligible team's marked call out of the per-capability read."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    monkeypatch.setattr(compare, "SCAN_PER_CAPABILITY", 2)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "earlier and marked", minutes_ago=50)
+    async with session_maker() as db:
+        for i in range(5):
+            db.add(CallRecord(org_id=org_id + 1000, user_email="pipeline@example.com",
+                              tool_name="treg.web.search", method="POST", path="/x", status_code=200,
+                              endpoint_id="treg.web.search", provider="treg", credential_tier="routed",
+                              call_ref=f"busy-{i}", created_at=utcnow_naive() - timedelta(minutes=i)))
+        await db.commit()
+    result = await _collect()
+    assert (result["read"], result["eligible"]) == (1, 1), result
+    assert len(sent) == 1
+
+
+async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch, caplog):
+    """The call path says why calls were or were not marked, by client, in one periodic line."""
+    import logging
+
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 3600)
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+    mcp = [(b"x-treg-client", b"mcp")]
+    await compare.mark_eligible("m1", "web.search", mcp, {"identity": {"q": "a"}})
+    await compare.mark_eligible("m2", "web.search", mcp + [(b"X-Treg-Route-Max-Cost", b"1")],
+                                {"identity": {"q": "b"}})
+    await compare.mark_eligible("m3", "web.search", [], {"identity": {"q": "c"}, "cursor": "p2"})
+    await compare.mark_eligible("m4", "people.email.find", mcp, {"identity": {"q": "d"}})
+    await compare.mark_eligible("m5", "web.search", mcp, {"identity": {"q": "e"}}, archive_opted_out=True)
+    assert compare._mark_counts == {"marked/mcp": 1, "route_header/mcp": 1, "page_continuation/-": 1,
+                                    "not_paired/mcp": 1, "archive_off/mcp": 1}
+    monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 0)
+    with caplog.at_level(logging.INFO, logger=compare.__name__):
+        await compare.mark_eligible("m6", "web.search", mcp, {"identity": {"q": "f"}})
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("compare markers"))
+    assert '"marked/mcp": 2' in line and "q" not in line.replace("compare markers", "")
+    assert compare._mark_counts == {}
+
+
+async def test_a_rejected_marker_write_is_counted_as_store_failed(monkeypatch):
+    """The store answers False when it cannot write; that call is never counted as marked."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 3600)
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+
+    async def refuse(*_):
+        return False
+
+    monkeypatch.setattr(kv.store(), "set_text", refuse)
+    await compare.mark_eligible("lost", "web.search", [(b"x-treg-client", b"mcp")],
+                                {"identity": {"q": "a"}})
+    assert compare._mark_counts == {"store_failed/mcp": 1}
+
+
+async def test_a_run_names_the_client_of_each_unmarked_call(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "never marked", marked=False)
+    result = await _collect()
+    assert result["skip_reasons"] == {"no_marker": 1}
+    assert sum(result["no_marker_by_client"].values()) == 1
+
+
+async def test_a_page_continuation_gets_no_marker(monkeypatch):
+    """A continuation resumes a later page; B would be asked page one, so it is never marked."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+    await compare.mark_eligible("page-two", "web.search", [],
+                                {"identity": {"q": "paged"}, "cursor": "c2"})
+    await compare.mark_eligible("page-one", "web.search", [], {"identity": {"q": "paged"}})
+    assert await kv.store().get_text(compare.marker_key("page-two")) is None
+    assert json.loads(await kv.store().get_text(compare.marker_key("page-one"))) == {"q": "paged"}
+
+
+async def test_an_archive_opted_out_team_gets_no_marker(clients, search_on, monkeypatch):
+    """Its input never sits in the store, even for the marker's two hours."""
+    from test_routing import _relay_by_provider
+
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        org.archive_opt_out_at = utcnow_naive()
+        await db.commit()
+    response = await clients.post("/call/treg.web.search", json={"q": "opted out"})
+    assert response.status_code == 200, response.text
+    assert await kv.store().get_text(compare.marker_key(response.headers["X-Treg-Call-Id"])) is None
+
+
+async def test_an_input_set_by_expression_is_asked_whole(clients, search_on, monkeypatch):
+    """`max_results` comes from `limit` by expression, so A's request cannot be read back; the
+    marker carries the input, and B is asked the question the caller sent, `limit` included."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "with a limit", given={"q": "with a limit", "limit": 5})
+    result = await _collect()
+    assert (result["called"], result["ready"]) == (1, 1), result
+    call, = sent
+    assert call["body"]["query"] == "with a limit" and call["body"].get("numResults") == 5, call["body"]
 
 
 async def test_the_marker_is_off_with_the_feature_and_follows_the_sample(clients, search_on, monkeypatch):
@@ -751,7 +1214,7 @@ async def test_a_json_credential_vendor_through_the_real_relay(monkeypatch, fake
         target = compare._b_target(contract, identity, "adyntel")
         assert target is not None and target.ep["id"] == "adyntel.meta-ads.library.advertiser"
         async with httpx.AsyncClient(transport=httpx.MockTransport(vendor)) as client:
-            status, raw = await compare._ask_b(target, client)
+            status, raw = await compare._ask_b(target, client, 1)
         assert status == 200
         (request, content), = seen
         assert request.url.host == "api.adyntel.com"

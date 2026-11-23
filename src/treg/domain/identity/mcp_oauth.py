@@ -62,13 +62,32 @@ M365_CLIENT_ID = "treg-m365-copilot"
 M365_REDIRECT_URI = "https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect"
 
 
+# The vendor console (a separate service where API vendors apply to be listed): a first-party
+# CONFIDENTIAL client that only learns who signed in. Its token has its own resource and scope, is
+# accepted only by `GET /vendor-console/me`, and comes without a refresh token, because the console
+# reads the identity once and keeps its own session.
+VENDOR_CONSOLE_CLIENT_ID = "treg-vendor-console"
+VENDOR_CONSOLE_SCOPE = "treg:identity"
+
+
 def client_secret_matches(client_id: str, presented: str) -> bool | None:
     """None when `client_id` is a public client (PKCE alone binds its code); otherwise whether the
     presented secret is that confidential client's."""
-    if client_id != M365_CLIENT_ID:
+    if client_id == M365_CLIENT_ID:
+        expected = get_settings().m365_client_secret
+    elif client_id == VENDOR_CONSOLE_CLIENT_ID:
+        expected = get_settings().vendor_console_client_secret
+    else:
         return None
-    expected = get_settings().m365_client_secret
     return bool(expected) and hmac.compare_digest(presented.encode(), expected.encode())
+
+
+def vendor_console_resource_url() -> str:
+    return get_settings().public_url.rstrip("/") + "/vendor-console"
+
+
+def is_vendor_console_resource(resource: str) -> bool:
+    return bool(resource) and resource.rstrip("/") == vendor_console_resource_url()
 
 
 def sheets_resource_url() -> str:

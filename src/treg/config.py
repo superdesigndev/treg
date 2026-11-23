@@ -207,6 +207,11 @@ class Settings(BaseSettings):
     # A team holding this many comparisons of one capability and pair in the window is not sampled.
     compare_team_cap: int = Field(default=10, ge=1)
     compare_window_days: int = Field(default=14, ge=1)
+    # A team is compared only if its agent answered a review invitation this recently, on a surface
+    # that shows a compare invitation (application/compare._answering_teams). Shortening it acts at
+    # once; lengthening it reaches CLI answers noted in the last `ANSWERING_NOTE_DAYS` (30), and
+    # beyond that only answers made after the change.
+    compare_answer_days: int = Field(default=7, ge=1)
     compare_max_answer_bytes: int = Field(default=65536, ge=1024)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
@@ -289,6 +294,13 @@ class Settings(BaseSettings):
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
+    # Above 0: a refill brings the counter up to what the team took from it over this many
+    # seconds instead, never below the chunk (money.md "Allowance"). 0 = always the chunk.
+    money_allowance_refill_window_s: int = Field(default=0, ge=0, le=3600)
+    # The most a refill sized to the team's spend brings the counter up to, in micro-USD.
+    money_allowance_refill_max_micro: int = Field(default=50_000_000, ge=1, le=1_000_000_000)
+    # And never more than this share of the team's balance, in percent.
+    money_allowance_refill_balance_percent: int = Field(default=25, ge=1, le=100)
     # How long after a refill the counter admits calls. A hold not refilled for this long plus
     # the hold lifetime has nobody spending from it and is closed.
     money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
@@ -572,6 +584,8 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
+    platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
@@ -600,6 +614,7 @@ class Settings(BaseSettings):
     platform_key_spidercloud: str = ""   # Bearer; PAYG USD balance, only priced routes may use shared key
     platform_key_perplexity: str = ""    # Bearer; prepaid USD credits, no documented balance API
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
+    platform_key_mapsdata: str = ""   # Bearer key (mdk_live_…); scrapes settle from the finished job's email_count
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
     # Fish API-credit lookups need the workspace selector to read the shared workspace wallet.
@@ -711,6 +726,10 @@ class Settings(BaseSettings):
     typesafe_url: str = "https://api.typesafe.ai/v1/systemone"
     # Past this the search answers from the baseline alone; the row records `judge_error=timeout`.
     typesafe_timeout_s: float = 2.5
+    # Review judging (application.review_judge): reviews per Jev request, and how long one request may
+    # take. It runs from a cron, so its wait is not a caller's.
+    review_judge_batch: int = Field(default=25, ge=1, le=100)
+    review_judge_timeout_s: float = 60.0
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
@@ -810,8 +829,8 @@ class Settings(BaseSettings):
     autotopup_default_amount_usd: int = 20
     # Hard guardrails on the off-session charge — the difference between "convenient" and "a runaway
     # agent bills a card all night". Cap is per calendar month, cooldown is between attempts, and
-    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap's
-    # default is `billing.TOPUP_MAX_USD` (see money.md).
+    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap
+    # is the team's own choice and has no default (see money.md).
     # The wait after a FAILED charge. After a successful one the wait is one hour divided by the
     # team's `autotopup_max_per_hour` (default below), so a team that spends more than its refill
     # per hour is not left empty for the rest of the hour.
@@ -911,6 +930,18 @@ class Settings(BaseSettings):
     archive_prune_batch: int = 500             # bodies stripped per pass, the load bound
     archive_prune_keep_versions: int = 2       # newest N bodies kept on servable keys
     archive_prune_min_age_days: int = 7        # servable bodies younger than this are never touched
+    # Row retention (`treg-worker archive retain`, application/archive_retention.py): deletes whole
+    # keys nobody asked for in `archive_retention_days`, with their snapshots, marks and orphaned
+    # objects. Off by default; the command's `--dry-run` counts what it would delete either way.
+    archive_retention_enabled: bool = False
+    archive_retention_days: int = 30
+    archive_retention_batch: int = 1000        # key ids per batch (an id range, not a row count)
+    archive_retention_pause_s: float = 2.0     # sleep between batches
+    archive_retention_max_seconds: int = 600   # time budget per run; the next run resumes
+    archive_retention_max_keys: int = 200_000  # keys deleted per run at most; the next run resumes
+    # A pending object is deleted only once recorded this long ago: longer than a recorder's
+    # check-that-the-object-exists to commit window and its upload budget.
+    archive_retention_object_grace_s: int = 900
 
     # The tool hub (docs/context/architecture/hub.md): tools a maker publishes, made of other tools.
     hub_enabled: bool = False
@@ -938,6 +969,11 @@ class Settings(BaseSettings):
     # same value entered in that agent's Microsoft OAuth registration. Empty = the client does not
     # exist.
     m365_client_secret: str = ""
+    # The vendor console's OAuth client (`treg-vendor-console`): a separate service where API vendors
+    # sign in with their treg account to apply for a listing. Its secret, and its one redirect URI
+    # (matched exactly). Either empty = the client does not exist.
+    vendor_console_client_secret: str = ""
+    vendor_console_redirect_uri: str = ""
 
     # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
     # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.
@@ -1227,6 +1263,22 @@ class Settings(BaseSettings):
     # the Ads account has accepted the Customer Data Terms and enabled Enhanced conversions for
     # leads; until then Google rejects the identifiers and the rows would dead-letter.
     ads_conv_user_data: bool = False
+
+    # Dub Partners, the affiliate program (docs/context/architecture/affiliates.md). The workspace API
+    # key: a `dub_test_` key from the staging workspace in test environments, a `dub_` key in
+    # production. Empty = the whole feature is OFF: no click cookie, no lead upload, no Stripe
+    # metadata, and the friend referral behaves as before.
+    dub_api_key: str = Field(default="", repr=False)
+    # The lead event name Dub records at team creation. Dub deduplicates leads on
+    # (customerExternalId, eventName), so changing it after launch re-opens every team to a lead.
+    dub_lead_event: str = "Sign up"
+    # The program's referral-link domain on Dub (the short-link host partners share). A partner code
+    # given with `treg login --ref`/`treg org create --ref` is the key of a link on this domain. Empty
+    # = code-only leads wait in the outbox, retrying, until it is set.
+    dub_link_domain: str = ""
+    # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
+    # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
+    dub_default_country: str = "US"
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""

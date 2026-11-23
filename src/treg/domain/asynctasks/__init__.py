@@ -71,6 +71,12 @@ def classify_terminal(descriptor: dict, response: object) -> str:
     return "progress"
 
 
+def is_pending_response(descriptor: dict, status_code: int, response: object) -> bool:
+    rule = descriptor.get("pending_response") or {}
+    return (status_code == rule.get("status")
+            and str(json_path(response, str(rule.get("path") or ""))) == str(rule.get("equals")))
+
+
 def finished_on_submission(descriptor: dict | None, document: object) -> bool:
     """The submission already carries the finished answer: the descriptor allows it
     (`terminal_on_submission`) and the submission's own status is a success word. Such a call is

@@ -57,6 +57,12 @@
       "category": "productivity"
     },
     {
+      "name": "rea-marketing",
+      "source": "./plugins/workflows/rea-marketing",
+      "description": "\"Use when the user wants to reverse engineer a brand's holiday marketing (Black Friday, Christmas, Singles' Day…): what ran on each channel, when, at what estimated budget, and whether it worked in sales.\"",
+      "category": "productivity"
+    },
+    {
       "name": "recruit",
       "source": "./plugins/workflows/recruit",
       "description": "Use when the user wants candidates for a role; they paste a LinkedIn job post (or a job description) and want the people who fit it, ranked, with a reason for each and a personal email and phone to reach them. Also for \"source candidates\", \"find people for this job\", \"build a shortlist\", or turning a job post into a contactable candidate list.",

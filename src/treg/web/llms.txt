@@ -43,7 +43,8 @@ holds those accounts and bills a fraction of a cent per call.
 
   Handed a token? `curl -fsSL {BASE}/install.sh | sh -s -- --token <token>` does all of it without a
   browser. `treg login --email you@company.com` signs in with an emailed code; an invited person runs
-  `treg accept`. Asked to share the human's own keys and skills with the team? `treg scan` shows what
+  `treg accept`. Given an affiliate partner's code, the binary CLI takes `--ref <code>` on `treg login` (or
+  `sh -s -- --ref <code>` on the installer) so the new team is credited to that partner; the Python CLI has no `--ref`. Asked to share the human's own keys and skills with the team? `treg scan` shows what
   would be registered and sends nothing; register only what they approve with
   `treg upload --select <names>`.
 - **Sandboxed agent** (a cloud container with restricted egress): try the installer. If `{BASE}` is

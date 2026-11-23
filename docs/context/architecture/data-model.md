@@ -31,6 +31,7 @@ sources:
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
+  - src/treg/alembic/versions/0122_archive_retention_cursor.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
@@ -139,7 +140,9 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `ArenaVerificationSnapshot` | `application.arena_verification_insights.publish_snapshot` |
 | `RankingsSnapshot` | `application.rankings.refresh`, replacing the row whole |
 | `AdClickStash` | `application.signup.stash_ad_click` |
-| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py` ([archive](archive.md)) |
+| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py`; deletes through `governance.teams` for erasure and row retention ([archive](archive.md)) |
+| `ArchiveRetentionCursor` | `application/archive_retention.py` (`treg-worker archive retain`) |
+| `ArchiveObjectPending` | `application/archive_retention.py` (`treg-worker archive retain`); the recorder only reads it `FOR SHARE` |
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |
@@ -184,6 +187,16 @@ Rollups and analytics tables are optional read models: they never determine a mo
   can lag while reads still enforce expiry.
 - **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
   check-then-insert; rows are written synchronously in the firing transaction, unlike audit.
+- **`AffiliateLead`**: one per team (unique `org_id`), staged in the team-creation transaction; it is
+  both the Dub lead outbox and the record that the team is affiliate-attributed
+  ([affiliates](affiliates.md)). A check constraint keeps exactly one source: `click_id` (a link
+  click) or `partner_code` (a typed code, with the `country` Dub requires for it). Only a
+  `verified_at` row attributes; `stripe_synced_at` records that an existing Stripe customer was
+  brought in line. No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateClaim`**: the person a partner brought, by `promo_inbox`, staged with the lead. No
+  `org_id` and no foreign key: like `SignupPromoClaim` it outlives the team and the user, so a deleted
+  team never makes its creator attributable again. Not unique, so a racing second team leaves a second
+  row rather than failing the signup.
 - **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
   delete. `delete_project` sweeps rules naming the project.
 - **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer
@@ -330,7 +343,8 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
 - `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
   `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
-  `archive.bytes_on_file` confirms and whose own sha256 matches. The row keeps `archive_key_hash` /
+  `archive.bytes_on_file` confirms and whose own sha256 matches; after hashing it holds those keys `FOR SHARE SKIP
+  LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
   `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
   closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
 

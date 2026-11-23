@@ -37,7 +37,9 @@ Everything else in this file is guidance; these are the contract, and they win o
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
-   token with the app secret, replacing any caller value), the transport headers listed in
+   token with the app secret, replacing any caller value; a credential half the provider reads
+   from the URL path, such as an account id bound to the key, fills only its own `{name}` path
+   segment), the transport headers listed in
    `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned
    agents, per-pin re-scoping of the caller's `Idempotency-Key`, treg's own `User-Agent` in place
    of the caller's, and, where the provider file names a `client_header`, treg's opaque per-team code

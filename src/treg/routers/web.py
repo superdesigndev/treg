@@ -36,7 +36,7 @@ from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platfor
                       _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _same_origin, _take_oauth_return
-from .signup_cookies import _remember_referral
+from .signup_cookies import _remember_affiliate_click, _remember_referral
 
 
 def _dashboard_index() -> Path:
@@ -3342,6 +3342,9 @@ def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
     return resume
 
 
+_SHARE_LINK_PARAMS = frozenset({"ref", "via", "dub_id", "gclid", "gbraid", "wbraid", "fbclid", "msclkid"})
+
+
 @app.get("/", include_in_schema=False)
 async def landing(request: Request, treg_session: str = Cookie(default=""),
                   db: AsyncSession = Depends(get_session)):
@@ -3352,13 +3355,15 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
     """
     page = _WEB_DIR / "landing.html"
     ref = referrals.normalize_code(request.query_params.get("ref", ""))
-    # An influencer's short link appends utm_* to the ref; those must not push it to the SPA, which
-    # never parks the code.
-    ref_only = all(k == "ref" or k.startswith("utm_") for k in request.query_params.keys())
+    dub_click = bool(request.query_params.get("dub_id"))
+    # Share links carry tracking-only parameters the SPA never reads: an influencer's short link
+    # appends utm_* to the ref, and Dub's partner redirect appends `via` (the partner's link key)
+    # and `dub_id` (the click), plus any ad-click ids the original link carried.
+    ref_only = all(k in _SHARE_LINK_PARAMS or k.startswith("utm_") for k in request.query_params.keys())
     sso_error = request.query_params.get("sso_error", "")
     sso_result = (sso_error in {"domain", "failed", "expired", "link"} and
                   set(request.query_params.keys()) <= {"sso_error", "team"})
-    if page.exists() and (not request.query_params or (ref and ref_only) or sso_result):
+    if page.exists() and (not request.query_params or ((ref or dub_click) and ref_only) or sso_result):
         signed_in = bool(treg_session and await _user_from_session(treg_session, db))
         # The email-code door signs in on the page that opened it and reloads there, and the
         # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
@@ -3377,6 +3382,7 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
         resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
         if ref:
             _remember_referral(resp, request, ref)
+        _remember_affiliate_click(resp, request)
         return resp
     return await dashboard(request, treg_session, db)
 
@@ -3424,6 +3430,7 @@ async def dashboard(
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    _remember_affiliate_click(resp, request)
     if owner is not None:
         resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
                         httponly=True, samesite="lax",
@@ -3572,6 +3579,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/rea-marketing", "rea-marketing.html", "0.8"),
     ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
@@ -3926,6 +3934,15 @@ async def rea_growth_skill_md():
     return _serve_md("skills/rea-growth/SKILL.md")
 
 
+@app.get("/skills/rea-marketing/SKILL.md", include_in_schema=False)
+async def rea_marketing_skill_md():
+    """The rea-marketing skill: the /rea-marketing flow (a brand's holiday marketing per channel and
+    week, estimated spend and sales, a verdict, the plays to copy) as a file an agent can follow.
+    Opt-in like rea-growth: kept out of the well-known index, so `treg skill bootstrap` (install.sh)
+    never installs it unasked."""
+    return _serve_md("skills/rea-marketing/SKILL.md")
+
+
 @app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
 async def ai_ugc_video_skill_md():
     """The ai-ugc-video skill: the /aigc flow (viral reference, locked assets, voices, shoot plan,
@@ -4171,6 +4188,15 @@ async def rea_growth_page(request: Request):
     openings) and returns plays marked seen or inferred, each with the ask that runs it. Served
     like /aeo: canonical, in the sitemap, no-cache, relative asset paths."""
     return _static_page("rea-growth.html", request)
+
+
+@app.get("/rea-marketing", include_in_schema=False)
+async def rea_marketing_page(request: Request):
+    """REA for marketing: take apart a brand's seasonal campaign. The agent pulls its ads, creator
+    posts, own social, offers and prices through treg week by week, estimates spend and sales,
+    grades whether it worked and returns plays to copy; DJI's Black Friday is the example. Served
+    like /rea-growth: canonical, in the sitemap, no-cache, relative asset paths."""
+    return _static_page("rea-marketing.html", request)
 
 
 @app.get("/social", include_in_schema=False)

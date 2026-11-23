@@ -61,6 +61,11 @@ _TABLE: list[Signature] = [
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
+    # MapsData (dashboard API error codes): a scrape submitted with no Scraping Credits left is a 402
+    # {"error": {"code": "lead_limit_reached", ...}}; an unpaid renewal pauses submissions with a
+    # 402 org_past_due until it is paid.
+    Signature("mapsdata", 402, r"lead_limit_reached", "balance", tripwire=True),
+    Signature("mapsdata", 402, r"org_past_due", "balance", tripwire=True),
     Signature("leadocean", 429, r"fair-use pace reached", "quota"),
     # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
@@ -80,11 +85,9 @@ _TABLE: list[Signature] = [
     Signature("jobspipe", 402, r"monthly request quota exceeded", "balance", tripwire=True),
     Signature("jobspipe", 402, r"need the \w+ package or above", "unknown"),
     Signature("jobspipe", 429, r"rate limit exceeded", "burst"),
-    # BestHumanizer: a rewrite larger than the month's words left is a 402 {"error": "insufficient words",
-    # "need": N, "have": M, ...} (observed 2026-11-19); nothing is debited. Only "have": 0 is a spent
-    # balance; with words left a shorter draft still runs, so that 402 does not lock.
-    Signature("besthumanizer", 402, r'insufficient words.*"have"\s*:\s*0\s*[,}]', "balance"),
-    Signature("besthumanizer", 402, r"insufficient words", "unknown"),
+    # Forager: its per-key throttle is a 429 {"detail": "Request was throttled. Expected available in 1
+    # second."} with Retry-After.
+    Signature("forager", 429, r"request was throttled", "burst"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),

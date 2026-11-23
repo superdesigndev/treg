@@ -145,8 +145,29 @@ return {1, 0}
 # the low mark to below it asks at once as well, however the counter got back above (an add, or
 # a call giving its money back): the pause is for a counter that stays low. An add that brought
 # money ends the pause too: the refill worked.
+#
+# Each add also notes what the counter held right after it (`filled`) and when, by the store's
+# clock (`filled_at`): what it is down by since, over how long, is how fast the team spends from
+# it. A refill sized to that reads it with the counter, in the one script it runs before its
+# transaction anyway, and nothing on a call's way reads it. A drain and a take-back remove money
+# nobody spent, so they drop the note; so does everything that drops what a counter offers.
 _ALLOWANCE_ASK_AGAIN_MS = 2000
-_ALLOWANCE_TAKE = """
+# Redis and Valkey: `run_id` is new for every start of the server process, a promoted replica
+# has its own, and INFO may be called from a script. A hash names the run that built it.
+_ALLOWANCE_RUN = """
+local run = string.match(redis.call('INFO', 'server'), 'run_id:(%w+)')
+if not run then return redis.error_reply('allowance: the store reports no run_id') end
+if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('HGET', KEYS[1], 'run') ~= run then
+    if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then
+        redis.call('HDEL', KEYS[1], 'avail', 'epoch', 'until', 'asked', 'asked_for', 'filled',
+                   'filled_at')
+        redis.call('HSET', KEYS[1], 'run', run)
+    else
+        redis.call('DEL', KEYS[1])
+    end
+end
+"""
+_ALLOWANCE_TAKE = _ALLOWANCE_RUN + """
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail'))
 if not avail or avail < tonumber(ARGV[1]) then return 0 end
 if (redis.call('HGET', KEYS[1], 'frozen') or '0') ~= (redis.call('HGET', KEYS[1], 'thawed') or '0')
@@ -171,7 +192,7 @@ if near or avail < low then
 end
 return epoch
 """
-_ALLOWANCE_GIVE_BACK = """
+_ALLOWANCE_GIVE_BACK = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 return 1
@@ -189,10 +210,11 @@ return 1
 _ALLOWANCE_COUNTS = """
 local function counts(base)
     if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then return end
-    redis.call('HSET', KEYS[1], 'frozen', base, 'thawed', base)
+    redis.call('HSET', KEYS[1], 'frozen', base, 'thawed', base, 'run', run)
 end
 """
-_ALLOWANCE_ADD = _ALLOWANCE_COUNTS + """
+_ALLOWANCE_ADD = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
+if ARGV[7] ~= run then return -1 end
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return -1 end
 counts(ARGV[6])
@@ -200,13 +222,17 @@ if stored ~= ARGV[1] then
     local frozen = redis.call('HGET', KEYS[1], 'frozen')
     local thawed = redis.call('HGET', KEYS[1], 'thawed')
     redis.call('DEL', KEYS[1])
-    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
+    redis.call('HSET', KEYS[1], 'epoch', ARGV[1], 'avail', '0', 'frozen', frozen, 'thawed', thawed,
+               'run', run)
 end
 local avail = redis.call('HINCRBY', KEYS[1], 'avail', ARGV[2])
 if tonumber(ARGV[2]) > 0 then redis.call('HDEL', KEYS[1], 'asked') end
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end
+local t = redis.call('TIME')
+redis.call('HSET', KEYS[1], 'filled', string.format('%.0f', avail),
+           'filled_at', string.format('%.0f', t[1] * 1000 + math.floor(t[2] / 1000)))
 local seen = tonumber(ARGV[5])
 if seen > tonumber(redis.call('HGET', KEYS[1], 'thawed'))
     and seen <= tonumber(redis.call('HGET', KEYS[1], 'frozen')) then
@@ -217,35 +243,55 @@ return avail
 """
 # Takes what is there when the counter holds less than asked: the caller found the counter
 # above its hold.
-_ALLOWANCE_TAKE_UP_TO = """
+_ALLOWANCE_TAKE_UP_TO = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
 local taken = math.min(avail, tonumber(ARGV[2]))
-if taken > 0 then redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken)) end
+if taken > 0 then
+    redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken))
+    redis.call('HDEL', KEYS[1], 'filled', 'filled_at')
+end
 return taken
 """
-_ALLOWANCE_STATE = """
+_ALLOWANCE_STATE = _ALLOWANCE_RUN + """
 return {tonumber(redis.call('HGET', KEYS[1], 'avail') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
         tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
-        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0')}
+        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0'), run}
 """
 # Only the counter of the caller's epoch: the figure returned is taken out of that hold, and a
 # caller that arrives late must not empty the counter of a later one. The hash stays, emptied,
 # so its epoch keeps fencing writers that arrive later. It is frozen
 # too: what calls in flight give back afterwards is not offered until a refill has looked at it.
-_ALLOWANCE_DROP = """
+_ALLOWANCE_DROP = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = redis.call('HGET', KEYS[1], 'avail')
 if not avail then return 0 end
 redis.call('HSET', KEYS[1], 'avail', '0')
 redis.call('HINCRBY', KEYS[1], 'frozen', 1)
+redis.call('HDEL', KEYS[1], 'filled', 'filled_at')
 return tonumber(avail)
+"""
+# The state, and with it what the counter is down by since the last add and how many ms ago that
+# add was by the store's clock: 0 and 0 when there is no note to read, or no counter on offer.
+_ALLOWANCE_STATE_AND_PACE = _ALLOWANCE_RUN + """
+local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
+local filled = redis.call('HGET', KEYS[1], 'filled')
+local at = redis.call('HGET', KEYS[1], 'filled_at')
+local spent, since = 0, 0
+if filled and at and redis.call('HEXISTS', KEYS[1], 'epoch') == 1 then
+    local t = redis.call('TIME')
+    spent = math.max(0, tonumber(filled) - avail)
+    since = math.max(0, t[1] * 1000 + math.floor(t[2] / 1000) - tonumber(at))
+end
+return {avail, tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0'), run, spent, since}
 """
 # With no hash yet, the freeze is kept in one that holds only the counts, for ARGV[1]: an add on
 # its way from a transaction that did not see this freeze builds the counter on top of it, and
 # cannot thaw it.
-_ALLOWANCE_FREEZE = _ALLOWANCE_COUNTS + """
+_ALLOWANCE_FREEZE = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
 local fresh = redis.call('EXISTS', KEYS[1]) == 0
 counts(ARGV[2])
 local frozen = redis.call('HINCRBY', KEYS[1], 'frozen', 1)
@@ -253,7 +299,7 @@ if fresh then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
 return frozen
 """
 # ARGV[2] is the next epoch, computed by the caller: a script cannot print one exactly.
-_ALLOWANCE_RETIRE = _ALLOWANCE_COUNTS + """
+_ALLOWANCE_RETIRE = _ALLOWANCE_RUN + _ALLOWANCE_COUNTS + """
 local stored = redis.call('HGET', KEYS[1], 'epoch')
 if stored and tonumber(stored) > tonumber(ARGV[1]) then return 0 end
 local avail = 0
@@ -262,7 +308,8 @@ counts(ARGV[4])
 local frozen = redis.call('HGET', KEYS[1], 'frozen')
 local thawed = redis.call('HGET', KEYS[1], 'thawed')
 redis.call('DEL', KEYS[1])
-redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen, 'thawed', thawed)
+redis.call('HSET', KEYS[1], 'epoch', ARGV[2], 'avail', '0', 'frozen', frozen, 'thawed', thawed,
+           'run', run)
 redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return avail
 """
@@ -431,15 +478,17 @@ class Store(Protocol):
         store cannot answer."""
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int,
-                            seen_frozen: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int, seen_frozen: int,
+                            run: str) -> int | Literal["stale"] | None:
         """Add to a team's counter after the same amount was committed to its hold. Takes are
         admitted until `until_ms` (epoch milliseconds; an earlier value than the one stored
         changes nothing), and the counter expires after `ttl_ms`. An amount of 0 only renews
         both. `seen_frozen` is the freeze count the caller read before its database transaction:
         the counter is thawed up to it and no further, so a freeze that landed since stays in
         force; a count that is not one of this counter's own thaws nothing. A counter of an older epoch is replaced, not added to. "stale" when the stored
-        epoch is newer: this writer's hold has been closed since, and nothing is added.
+        epoch is newer: this writer's hold has been closed since, and nothing is added. "stale"
+        too when the store is no longer in `run`, the run `allowance_state` reported before the
+        caller's transaction: freezes sent since that reading may be gone with the restart.
         Otherwise what is now available; None when the store cannot answer."""
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
@@ -448,11 +497,20 @@ class Store(Protocol):
         for `ttl_ms`, and the counter an add then builds starts frozen. Returns the new count;
         None when the store cannot answer."""
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
-        """(available, freezes, freezes thawed, epoch) of a team's counter, zeros when absent.
-        A reading, already old when it returns: size a refill with it, for the hold of that
-        epoch only, and hand its freeze count to `allowance_add`; never admit a call on it.
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
+        """(available, freezes, freezes thawed, epoch) of a team's counter, zeros when absent,
+        and the run of the store's server. A reading, already old when it returns: size a
+        refill with it, for the hold of that epoch only, and hand its freeze count and run to
+        `allowance_add`; never admit a call on it.
         None when the store cannot answer."""
+
+    async def allowance_state_and_pace(
+            self, org_id: int) -> tuple[int, int, int, int, str, int, int] | None:
+        """`allowance_state`, read in the same atomic step as what the counter is down by since
+        the last add and how many ms ago that was, by the store's clock: what the team spent from
+        it net of give-backs, and over how long. Both 0 when the counter offers nothing or a
+        drain, a take-back or a restart has dropped the reading. For a refill sized to the
+        team's spend, in place of `allowance_state`. None when the store cannot answer."""
 
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
         """Empty a team's counter of this epoch and return what it held (0 when absent or of
@@ -482,6 +540,15 @@ class Store(Protocol):
     async def clear_flag(self, key: str) -> None:
         """Clear a flag. Best-effort: a fault leaves it to expire."""
 
+    async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
+        """Keep a short text value for `ttl_s`; False when the store cannot answer."""
+
+    async def get_text(self, key: str) -> str | None:
+        """The text value, or None when it is missing, expired or the store cannot answer."""
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        """`get_text` of each key, in one round trip; all None when the store cannot answer."""
+
     async def aclose(self) -> None: ...
 
 
@@ -492,6 +559,7 @@ class LocalStore:
         self._windows: dict[str, tuple[float, int]] = {}
         self._health: dict[tuple[str, int], tuple[float, list[int]]] = {}
         self._values: dict[str, tuple[float, int]] = {}
+        self._texts: dict[str, tuple[float, str]] = {}
 
     def _live_value(self, key: str) -> int | None:
         expires, value = self._values.get(key, (0.0, 0))
@@ -514,6 +582,22 @@ class LocalStore:
 
     async def clear_flag(self, key: str) -> None:
         self._values.pop(key, None)
+
+    async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
+        now = time.monotonic()
+        if key not in self._texts and len(self._texts) >= _LOCAL_MAX_KEYS:
+            self._texts = {k: v for k, v in self._texts.items() if v[0] > now}
+            if len(self._texts) >= _LOCAL_MAX_KEYS:
+                self._texts.clear()
+        self._texts[key] = (now + ttl_s, value)
+        return True
+
+    async def get_text(self, key: str) -> str | None:
+        expires, value = self._texts.get(key, (0.0, ""))
+        return value if expires > time.monotonic() else None
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        return [await self.get_text(key) for key in keys]
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -612,14 +696,18 @@ class LocalStore:
         return None
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int,
-                            seen_frozen: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int, seen_frozen: int,
+                            run: str) -> int | Literal["stale"] | None:
         return None
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return None
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
+        return None
+
+    async def allowance_state_and_pace(
+            self, org_id: int) -> tuple[int, int, int, int, str, int, int] | None:
         return None
 
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
@@ -673,6 +761,37 @@ class RedisStore:
                 await self._client.delete(key)
         except Exception as exc:  # noqa: BLE001 - the flag expires on its own
             _note_fault(exc)
+
+    async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.set(key, value, ex=ttl_s)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            _note_fault(exc)
+            return False
+
+    async def get_text(self, key: str) -> str | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                value = await self._client.get(key)
+        except Exception as exc:  # noqa: BLE001 - an unread value is a missing one
+            _note_fault(exc)
+            return None
+        if value is None:
+            return None
+        return value.decode() if isinstance(value, bytes) else str(value)
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        if not keys:
+            return []
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                values = await self._client.mget(keys)
+        except Exception as exc:  # noqa: BLE001 - unread values are missing ones
+            _note_fault(exc)
+            return [None] * len(keys)
+        return [None if v is None else v.decode() if isinstance(v, bytes) else str(v) for v in values]
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:
@@ -755,9 +874,14 @@ class RedisStore:
             return RateWindowResult("unavailable")
         return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
 
-    async def _allowance_eval(self, script: str, org_id: int, *args: int) -> int | None:
+    async def _allowance_eval(self, script: str, org_id: int, *args: int,
+                              run: str | None = None) -> int | None:
         if any(type(value) is not int or value < 0 for value in (org_id, *args)):
             raise ValueError("allowance counter arguments are non-negative integers")
+        if run is not None:
+            if type(run) is not str or not run.isalnum():
+                raise ValueError("a store run is the identifier `allowance_state` reported")
+            args = (*args, run)
         try:
             async with asyncio.timeout(_TIMEOUT_S):
                 return int(await self._client.eval(script, 1, _allowance_key(org_id), *args))
@@ -780,22 +904,36 @@ class RedisStore:
         return None if result is None else bool(result)
 
     async def allowance_add(self, org_id: int, epoch: int, amount_micro: int, *,
-                            until_ms: int, ttl_ms: int,
-                            seen_frozen: int) -> int | Literal["stale"] | None:
+                            until_ms: int, ttl_ms: int, seen_frozen: int,
+                            run: str) -> int | Literal["stale"] | None:
         result = await self._allowance_eval(
             _ALLOWANCE_ADD, org_id, epoch, amount_micro, until_ms, ttl_ms, seen_frozen,
-            _new_counts())
+            _new_counts(), run=run)
         return "stale" if result == -1 else result
 
     async def allowance_freeze(self, org_id: int, *, ttl_ms: int = 86_400_000) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_FREEZE, org_id, ttl_ms, _new_counts())
 
-    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int] | None:
+    async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
         try:
             async with asyncio.timeout(_TIMEOUT_S):
-                avail, frozen, thawed, epoch = await self._client.eval(
+                avail, frozen, thawed, epoch, run = await self._client.eval(
                     _ALLOWANCE_STATE, 1, _allowance_key(org_id))
-            return int(avail), int(frozen), int(thawed), int(epoch)
+            return (int(avail), int(frozen), int(thawed), int(epoch),
+                    run.decode() if isinstance(run, bytes) else str(run))
+        except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
+            _note_fault(exc)
+            return None
+
+    async def allowance_state_and_pace(
+            self, org_id: int) -> tuple[int, int, int, int, str, int, int] | None:
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                avail, frozen, thawed, epoch, run, spent, since_ms = await self._client.eval(
+                    _ALLOWANCE_STATE_AND_PACE, 1, _allowance_key(org_id))
+            return (int(avail), int(frozen), int(thawed), int(epoch),
+                    run.decode() if isinstance(run, bytes) else str(run), int(spent),
+                    int(since_ms))
         except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
             _note_fault(exc)
             return None

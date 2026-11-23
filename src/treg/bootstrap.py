@@ -191,6 +191,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/doomscroll/SKILL.md', ('GET',), 'doomscroll_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
+    ('/skills/rea-marketing/SKILL.md', ('GET',), 'rea_marketing_skill_md'),
     ('/skills/ai-ugc-video/SKILL.md', ('GET',), 'ai_ugc_video_skill_md'),
     ('/feedback.md', ('GET',), 'feedback_md'),
     ('/favicon.ico', ('GET',), 'favicon'),
@@ -221,6 +222,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/aeo', ('GET',), 'aeo_page'),
     ('/rea-growth', ('GET',), 'rea_growth_page'),
     ('/rea-growth.md', ('GET',), 'rea_growth_md'),
+    ('/rea-marketing', ('GET',), 'rea_marketing_page'),
     ('/social', ('GET',), 'social_search_page'),
     ('/showcase', ('GET',), 'showcase_page'),
     ('/showcase/leaderboard', ('GET',), 'showcase_leaderboard'),
@@ -292,6 +294,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
+    ('/vendor-console/me', ('GET',), 'vendor_console_me'),
     ('/orgs', ('GET',), 'list_orgs'),
     ('/home', ('GET',), 'home'),
     ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
@@ -472,9 +475,11 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
     # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
-    "all": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
+    "all": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+           "treg.application.allowance_sweep.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker", "treg.application.allowance_sweep.worker"),
+    "control": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+               "treg.application.allowance_sweep.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -841,6 +846,12 @@ def _lifespan(role: AppRole):
                 if ROLE_BACKGROUND_TASKS[role] and adsconv.enabled()
                 else None
             )
+            from .application import affiliates
+            affiliate_task = (
+                asyncio.create_task(affiliates.worker(app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and affiliates.enabled()
+                else None
+            )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
             # Idle allowance holds go back to the balance (money.md "Allowance"). Runs wherever
             # background work runs, listed teams or not: a hold outlives its team's listing.
@@ -907,7 +918,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
+                        gauge_task, ads_task, affiliate_task, archive_task, prune_task, find_task, rate_task,
                         allowance_task,
                     ) if task is not None]
                     for task in workers:

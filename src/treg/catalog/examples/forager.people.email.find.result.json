@@ -1,0 +1,21 @@
+{
+  "job_id": "00000000-0000-4000-8000-000000000000",
+  "status": "completed",
+  "emails": [
+    {
+      "email": "jane.doe@example.com",
+      "validation_status": "valid"
+    }
+  ],
+  "error_code": null,
+  "person_id": null,
+  "submitted_lookup": {
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "domain": "example.com",
+    "linkedin_public_identifier": ""
+  },
+  "date_created": "2026-11-23T09:05:01.000000Z",
+  "date_completed": "2026-11-23T09:05:03.000000Z",
+  "result": "found"
+}
