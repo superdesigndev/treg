@@ -1,11 +1,18 @@
 /* Original Treg implementation of a travelling glyph field + cursor trail.
    One GPU point draw, no textures/video, no full-screen per-pixel trail loop. */
 (()=>{
+// A CPU-emulated GPU (no hardware, a VM, remote desktop) runs these shaders on the main thread: the
+// page drops to a few frames a second. The static look is the better page there.
+function softwareGL(gl){
+ const info=gl.getExtension('WEBGL_debug_renderer_info');
+ return /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render/i.test(gl.getParameter(info?info.UNMASKED_RENDERER_WEBGL:gl.RENDERER));
+}
+window.tregSoftwareGL=softwareGL;
 function mountField(hero,closing=false,benefits=false){
  if(!hero)return;
  const canvas=document.createElement('canvas');canvas.className=benefits?'benefit-particles':closing?'ending-particles':'hero-particles';canvas.setAttribute('aria-hidden','true');hero.prepend(canvas);
- const gl=canvas.getContext('webgl',{alpha:true,antialias:false,depth:false,stencil:false,premultipliedAlpha:true,powerPreference:'low-power'});
- if(!gl){canvas.remove();return;}
+ const gl=canvas.getContext('webgl',{alpha:true,antialias:false,depth:false,stencil:false,premultipliedAlpha:true,powerPreference:'low-power',failIfMajorPerformanceCaveat:true});
+ if(!gl||softwareGL(gl)){gl?.getExtension('WEBGL_lose_context')?.loseContext();canvas.remove();return;}
  const vertex=`
  precision highp float;
  attribute vec3 aPoint;

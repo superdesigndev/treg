@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test'
 
 test('landing email sign-in reaches the dashboard', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  // Building the 3D hero holds a GPU-less runner's main thread for seconds; sign-in does not need it.
-  await page.route('https://cdn.jsdelivr.net/npm/**', route => route.abort('failed'))
   await page.goto('/')
   await page.getByRole('link', { name: 'Sign in', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Sign in', exact: true })

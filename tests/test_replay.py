@@ -6,6 +6,7 @@ import json
 import socket
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from treg.application.call import resolve as call_resolve
@@ -18,6 +19,7 @@ from treg.application.replay import __main__ as replay_cli
 from treg.application.replay import differ, engine, fixtures, records
 from treg.config import get_settings
 from treg.domain import money as ledger
+from treg.domain.catalog import store as catalog_store
 
 PER_CALL = {"id": "acme.lookup", "provider": "acme",
             "cost": {"type": "per_call", "value": 0.01, "currency": "USD", "confidence": "documented"}}
@@ -99,6 +101,19 @@ async def test_platform_settle_hands_a_routed_child_the_decision():
     assert (charged, observed) == (expected.charged_micro, expected.observed_micro)
     assert [(p.billable, p.actual_micro) for p in pending] == [(expected.billable, expected.actual_micro)]
     assert mk.call_id is None
+
+
+def test_replay_charges_email_without_pending_phone_job_and_releases_no_email_stub():
+    endpoint = catalog_store.load().by_id["apollo.people.phone.find"]
+    mk = engine.platform_call(endpoint, QueryValues(()), b"", set(), routed_child=False)
+    for person, expected in (
+        ({"id": "example-person-id", "email": "person@example.com"}, 26_000),
+        ({"id": "unmatched-stub", "match_confidence": "none"}, 0),
+    ):
+        raw = json.dumps({"person": person, "phone_enrichment": {"status": "not_attempted"}}).encode()
+        replayed = engine._settle(mk, 200, raw, httpx.Headers())
+        assert replayed["deferred"] is False
+        assert replayed["actual_micro"] == expected
 
 
 # ---- child_outcome ---------------------------------------------------------------------------

@@ -1,0 +1,6 @@
+{
+ "found": true,
+ "email": "jane.doe@example.com",
+ "status": "verified",
+ "match_confidence": 0.97
+}

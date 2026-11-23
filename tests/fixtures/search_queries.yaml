@@ -51,6 +51,8 @@ cases:
   - {q: "stock price history", word_top5: 'stocks\.eod\.history|\.prices$'}
   - {q: "job postings of a company", word_top5: 'companies\.jobs'}
   - {q: "reverse phone lookup", word_top5: 'reverse-phone|people\.profile\.from_phone'}
+  - {q: "phone number belongs to this person", word_first: 'people\.contact\.verify'}
+  - {q: "verify phone linkedin profile", word_first: 'people\.contact\.verify'}
   - {q: "meta ad library", word_top5: 'meta-ads\.library'}
   - {q: "crypto price", word_top5: 'crypto\.price'}
   # ---- a provider-like word that is not a provider request -----------------------------------------

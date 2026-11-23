@@ -15,6 +15,7 @@ never rolled up per provider.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -42,12 +43,13 @@ class Review:
     reason: str | None
     client: str
     created_at: datetime
+    person_p: float | None = None   # Jev's probability the reason names a person; None = not judged
 
 
 async def since(db: AsyncSession, start: datetime) -> list[Review]:
     rows = await db.execute(select(
         CallReview.endpoint_id, CallReview.org_id, CallReview.usefulness, CallReview.reason,
-        CallReview.client, CallReview.created_at,
+        CallReview.client, CallReview.created_at, CallReview.person_p,
     ).where(CallReview.created_at >= start, CallReview.usefulness.in_(VERDICTS)))
     return [Review(*row) for row in rows]
 
@@ -56,10 +58,44 @@ def team_band(n: int) -> int:
     return max((b for b in TEAM_BANDS if b <= n), default=0)
 
 
+# Contact data an agent copied from its result into a reason. The review tool asks agents to leave
+# private data out; a reason that still carries an email address, a phone number or a personal
+# profile link is never published.
+_EMAIL = re.compile(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+")
+# Separators include every Unicode dash (non-breaking hyphen, en dash, minus sign, ...), slashes and
+# colons, so a date-time stays one run for `_DATETIME` to judge whole.
+_PHONE = re.compile(r"\+?\d[\d\s().:/\-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]{6,}\d")
+_PHONE_DIGITS = 9
+# A reason is quoted only once Jev (`application.review_judge`) has judged it this unlikely to name
+# or identify a person. Patterns catch contact data; only a reader catches a name.
+PERSON_P_MAX = 0.1
+# A run of digits that is wholly real dates and clock times (`2026-11-22 14:00`,
+# `01.11.2026 – 22.11.2026`) is not a phone number. A run with any digit left over is judged whole,
+# so a number grouped like a date (`2012.03.04.56`) is still a phone.
+_MONTH, _DAY = r"(?:0?[1-9]|1[0-2])", r"(?:0?[1-9]|[12]\d|3[01])"
+_DATETIME = re.compile(
+    rf"(?<!\d)(?:(?:19|20)\d\d([-/.]){_MONTH}\1{_DAY}"
+    rf"|{_DAY}([-/.]){_MONTH}\2(?:19|20)\d\d|{_MONTH}([-/.]){_DAY}\3(?:19|20)\d\d"
+    r"|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?)(?!\d)")
+# A person's LinkedIn page: public profile, old public profile, Sales Navigator lead or Recruiter.
+_PROFILE = re.compile(r"linkedin\.com/(?:in|pub|sales/lead|sales/people|talent/profile)/", re.IGNORECASE)
+def carries_contact_data(reason: str) -> bool:
+    return bool(_EMAIL.search(reason) or _PROFILE.search(reason) or any(
+        _is_phone(m.group()) for m in _PHONE.finditer(reason)))
+
+
+def _is_phone(run: str) -> bool:
+    if not any(c.isdigit() for c in _DATETIME.sub("", run)):
+        return False
+    return sum(c.isdigit() for c in run) >= _PHONE_DIGITS
+
+
 def quotable(reason: str | None) -> bool:
-    """A reason long enough to say something about the endpoint. Quoted as written: the review tool
-    tells agents reasons may be quoted without naming the team, and to leave private data out."""
-    return len((reason or "").strip()) >= MIN_REASON_CHARS
+    """A reason long enough to say something about the endpoint, and carrying no contact data.
+    Quoted as written: the review tool tells agents reasons may be quoted without naming the team,
+    and to leave private data out."""
+    text = (reason or "").strip()
+    return len(text) >= MIN_REASON_CHARS and not carries_contact_data(text)
 
 
 def _quotas(share: dict[str, float], slots: int) -> dict[str, int]:
@@ -90,10 +126,15 @@ def _quote(r: Review) -> dict:
             "month": r.created_at.strftime("%Y-%m")}
 
 
+def cleared(r: Review) -> bool:
+    """Quotable, and judged not to name a person. An unjudged reason waits for its judgement."""
+    return quotable(r.reason) and r.person_p is not None and r.person_p < PERSON_P_MAX
+
+
 def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int = SAMPLES) -> dict[str, dict]:
     """Per endpoint id: `{teams, share, samples}` from `min_teams` teams, `teams` banded. Below
     that the `share` is withheld (`teams` is then the band below the first, 0) and the row exists
-    only when there is a quotable reason to show."""
+    only when there is a reason `cleared` to quote."""
     by_endpoint: dict[str, dict[int, list[Review]]] = {}
     for r in reviews:
         by_endpoint.setdefault(r.endpoint_id, {}).setdefault(r.org_id, []).append(r)
@@ -104,7 +145,7 @@ def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int
         for rows in teams.values():
             for r in rows:
                 votes[r.usefulness] += 1 / len(rows)
-            quoted = [r for r in rows if quotable(r.reason)]
+            quoted = [r for r in rows if cleared(r)]
             if quoted:  # one quote per team at most: its latest
                 candidates.append(max(quoted, key=lambda r: r.created_at))
         share = {v: votes[v] / len(teams) for v in VERDICTS}

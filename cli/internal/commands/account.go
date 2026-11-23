@@ -149,15 +149,25 @@ func (e *Env) kv(k, v string) {
 }
 
 func loginCmd(env *Env) *cobra.Command {
-	var token, email string
+	var token, email, ref string
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Sign in. Opens the browser sign-in page; --email for a terminal-only code; --token for agents/CI.",
 		Example: "  treg login                                     # browser (reuses a dashboard session, or GitHub/Google/email)\n" +
 			"  treg login --email you@company.com             # emailed 6-digit code\n" +
-			"  treg login --token <per-org-token>             # non-interactive (agents/CI)",
+			"  treg login --token <per-org-token>             # non-interactive (agents/CI)\n" +
+			"  treg login --ref jane                          # an affiliate partner's code for your new team",
 		Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			code, err := refFlag(ref, cmd.Flags().Changed("ref"))
+			if err != nil {
+				return err
+			}
+			if code != "" {
+				if err := rememberRef(code); err != nil {
+					return err
+				}
+			}
 			if token != "" {
 				return env.loginWithToken(token)
 			}
@@ -172,6 +182,8 @@ func loginCmd(env *Env) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&token, "token", "", "a per-org token (agents/CI) instead of the browser/email flow")
 	cmd.Flags().StringVar(&email, "email", "", "sign in with a one-time code emailed to this address")
+	cmd.Flags().StringVar(&ref, "ref", "", "an affiliate partner's code for the team you create next; "+
+		"also read from TREG_REF")
 	return cmd
 }
 
@@ -199,6 +211,7 @@ func (e *Env) loginWithToken(token string) error {
 		return err
 	}
 	e.pickActiveOrg(true)
+	settleRef(cfg)
 	if cfg.ActiveOrg != "" {
 		outln("✓ Token saved. Active org: " + cfg.ActiveOrg)
 	} else {
@@ -250,6 +263,7 @@ func (e *Env) loginWithEmail(email string) (bool, error) {
 	}
 	e.pickActiveOrg(false)
 	e.pinTokenToActiveOrg(verify.Cookies)
+	settleRef(cfg)
 	outln(loggedIn(cfg.Email, cfg.ActiveOrg))
 	return true, nil
 }
@@ -297,6 +311,9 @@ func (e *Env) loginInBrowser() error {
 	if ad != "" {
 		loginURL += "&ad=" + ad
 	}
+	if ref := pendingRef(); ref != "" {
+		loginURL += "&ref=" + ref
+	}
 	outf("Opening your browser to sign in…\nIf it doesn't open, visit:\n  %s\n\n", loginURL)
 	if code != "" {
 		p := e.Colors()
@@ -332,6 +349,7 @@ func (e *Env) loginInBrowser() error {
 		} else {
 			e.pinTokenToActiveOrg(nil)
 		}
+		settleRef(cfg)
 		outln(loggedIn(cfg.Email, cfg.ActiveOrg))
 		return nil
 	}

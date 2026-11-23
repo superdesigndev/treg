@@ -4,6 +4,7 @@
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
     treg-worker idempotency prune [--dry-run]       # expired completed replay answers
+    treg-worker archive retain [--dry-run]           # delete archive questions no one asked for in N days
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker agentpay reconcile [--limit 50]      # resolve agent payments whose settlement went unanswered
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
@@ -16,6 +17,7 @@
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
+    treg-worker reviews judge [--max-seconds 600]    # Jev: new review reasons' privacy and codes (hourly)
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
@@ -386,6 +388,15 @@ async def _shadow_collect(args) -> int:
     return 0
 
 
+async def _reviews_judge(args) -> int:
+    from .infra.db import verify_db
+    from .application import review_judge
+
+    await verify_db()
+    print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
+    return 0
+
+
 async def _compare_collect(args) -> int:
     from .infra.db import verify_db
     from .application import compare
@@ -632,6 +643,29 @@ async def _admin_rotate_fernet(args) -> int:
     result = await fernet_rotation.rotate(batch_size=args.batch_size, dry_run=args.dry_run)
     print(json.dumps(result, sort_keys=True))
     return 1 if result.get("error") else 0
+
+
+async def _archive_retain(args) -> int:
+    """Delete archive questions no one asked for (application/archive_retention). Does nothing
+    unless TREG_ARCHIVE_RETENTION_ENABLED; `--dry-run` counts what would go either way."""
+    from . import bootstrap
+    from .application import archive_retention
+    from .infra.db import verify_db
+
+    await verify_db()
+    from .infra.db import read_session_maker
+
+    options = dict(dry_run=args.dry_run, days=args.days, batch=args.batch_size,
+                   pause_s=args.pause_seconds, max_seconds=args.max_seconds,
+                   max_keys=args.max_keys, after=args.after)
+    if args.dry_run:
+        # A dry run only reads: on the replica when one is configured, never the primary's load.
+        result = await archive_retention.run(**options, session_factory=read_session_maker)
+    else:
+        async with bootstrap.archive_object_store():
+            result = await archive_retention.run(**options)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result["stopped"] in ("error", "failures") else 0
 
 
 async def _admin_revoke_refund(args) -> int:
@@ -896,6 +930,12 @@ def main(argv: list[str] | None = None) -> int:
                              "recent routed calls")
     cmpc.add_argument("--max-seconds", type=float, default=600.0)
     cmpc.set_defaults(fn=_compare_collect)
+    reviews = sub.add_parser("reviews", help="agent reviews of call results")
+    revsub = reviews.add_subparsers(dest="cmd", required=True)
+    revj = revsub.add_parser("judge", help="ask Jev whether new review reasons name a person and what "
+                             "negative ones blame (off without typesafe_api_key)")
+    revj.add_argument("--max-seconds", type=float, default=600.0)
+    revj.set_defaults(fn=_reviews_judge)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")
@@ -1013,6 +1053,20 @@ def main(argv: list[str] | None = None) -> int:
     purge_audit = enterprisesub.add_parser("purge-audit", help="delete expired enterprise access evidence")
     purge_audit.add_argument("--days", type=_positive_int, default=400)
     purge_audit.set_defaults(fn=_enterprise_purge_audit)
+    arch = sub.add_parser("archive", help="archive row maintenance")
+    archsub = arch.add_subparsers(dest="cmd", required=True)
+    retain = archsub.add_parser("retain", help="delete archive questions no one asked for in N days")
+    retain.add_argument("--dry-run", action="store_true",
+                        help="count the keys, snapshots, marks and objects that would go; delete nothing")
+    retain.add_argument("--days", type=_positive_int, help="default TREG_ARCHIVE_RETENTION_DAYS (30)")
+    retain.add_argument("--batch-size", type=_positive_int,
+                        help="key ids per batch, at most 10000; default TREG_ARCHIVE_RETENTION_BATCH (1000)")
+    retain.add_argument("--pause-seconds", type=float, help="sleep between batches")
+    retain.add_argument("--max-seconds", type=float, help="time budget for this run")
+    retain.add_argument("--max-keys", type=_positive_int,
+                        help="keys deleted per run at most; default TREG_ARCHIVE_RETENTION_MAX_KEYS (200000)")
+    retain.add_argument("--after", type=int, help="start after this key id instead of the saved cursor")
+    retain.set_defaults(fn=_archive_retain)
     idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
     idemsub = idem.add_subparsers(dest="cmd", required=True)
     prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")

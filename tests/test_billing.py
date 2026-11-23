@@ -1815,12 +1815,14 @@ async def test_auto_topup_stops_at_the_monthly_cap(c: AsyncClient, monkeypatch):
     assert result["spent_micro"] == 10_000_000 and result["cap_micro"] == 15_000_000
 
 
-async def test_an_unchosen_monthly_cap_is_the_single_topup_ceiling(c: AsyncClient):
+async def test_an_unchosen_monthly_cap_never_holds_a_charge(c: AsyncClient):
     org_id, _ = await _org(c)
     await _armed(org_id, autotopup_monthly_cap_micro=0)
     async with session_maker() as db:
         org = await db.get(Org, org_id)
-        assert billing.autotopup_prefs(org)["monthly_cap_micro"] == billing.usd_to_micro(billing.TOPUP_MAX_USD)
+        prefs = billing.autotopup_prefs(org)
+        assert prefs["monthly_cap_micro"] == 0
+        assert not billing.autotopup_cap_reached(prefs, 10**12)
 
 
 async def test_inline_auto_charge_emits_one_topup_completed(c: AsyncClient, monkeypatch, posthog_events):
@@ -2422,7 +2424,7 @@ async def test_topup_without_an_amount_uses_the_ladder_default(c: AsyncClient, m
     assert r.json()["amount_usd"] == 50
 
 
-async def test_a_monthly_cap_below_one_refill_is_refused_and_0_restores_the_default(c: AsyncClient, monkeypatch):
+async def test_a_monthly_cap_below_one_refill_is_refused_and_0_removes_the_cap(c: AsyncClient, monkeypatch):
     org_id, owner = await _org(c)
     monkeypatch.setattr(billing, "_sdk", _no_sdk)
     base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
@@ -2431,7 +2433,7 @@ async def test_a_monthly_cap_below_one_refill_is_refused_and_0_restores_the_defa
     r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 300})
     assert r.json()["autotopup"]["monthly_cap_usd"] == 300
     r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 0})
-    assert r.json()["autotopup"]["monthly_cap_usd"] == billing.TOPUP_MAX_USD
+    assert r.status_code == 200 and r.json()["autotopup"]["monthly_cap_usd"] == 0
 
 
 async def test_a_topup_checkout_arms_a_consented_policy_that_was_waiting_for_a_card(c: AsyncClient, monkeypatch):

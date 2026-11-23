@@ -306,6 +306,34 @@ class Allowance(NamedTuple):
     retired: bool = False
 
 
+class TeamNow(NamedTuple):
+    """The team's row as a refill reads it, under the lock an update of it takes: its daily cap
+    (0 = none) and its balance."""
+
+    daily_cap_micro: int
+    balance_micro: int
+
+
+def paced_target(spent_micro: int, over_ms: int, *, window_s: int, floor_micro: int,
+                 ceiling_micro: int) -> int:
+    """What a refill sized to the team's spend brings the counter up to: what the counter went
+    down by over the last `over_ms`, scaled to `window_s`, never below `floor_micro` and never
+    above `ceiling_micro` unless the floor already is.
+
+    A reading shorter than half the window counts as half the window, so a refill at most
+    doubles what the counter went down by: a burst raises the target by twice its size at the
+    most, and only spend kept up over half a window or more reaches the window.
+
+    The reading runs from the last refill, so it is always recent: while calls come the counter
+    is refilled at least every half lifetime, and a team that stopped calling has a reading
+    that grows longer while what it spent stays the same, down to the floor."""
+    if window_s <= 0 or spent_micro <= 0 or over_ms <= 0:
+        return floor_micro
+    window_ms = window_s * 1000
+    paced = spent_micro * window_ms // max(over_ms, window_ms // 2)
+    return max(floor_micro, min(paced, ceiling_micro))
+
+
 def _epoch(hold: Hold) -> int:
     return _epoch_of(hold.created_at)
 
@@ -348,7 +376,10 @@ async def refill_allowance_in_transaction(
     db: AsyncSession, org_id: int, add_micro: int, *, daily_cap_micro: int = 0,
     fold_limit: int = FOLD_BATCH, fold_all: bool = False,
     counter_epoch: int | None = None, fresh_add_micro: int | None = None,
-    current_daily_cap: Callable[[AsyncSession], Awaitable[int]] | None = None,
+    counter_micro: int | None = None,
+    current_team: Callable[[AsyncSession], Awaitable[TeamNow]] | None = None,
+    grow_to_micro: int | None = None, balance_percent: int = 100,
+    ceiling_micro: int | None = None,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -358,7 +389,9 @@ async def refill_allowance_in_transaction(
     cannot cover it adds nothing and raises nothing: the fold still stands, and `added_micro`
     of 0 tells the caller to stop spending from the allowance. `add_micro` is money, not a
     provider cost: no margin is applied. Writes on the hold (`heartbeat_at`) the instant until
-    which calls may be admitted against it: now plus `money_allowance_fresh_s`.
+    which calls may be admitted against it: now plus `money_allowance_fresh_s`. A refill
+    that leaves the hold's counter with nothing to offer leaves that instant where it was: it
+    added nothing, and the counter is gone or shows nothing (`counter_micro`, what it shows).
 
     `add_micro` is what the caller's counter is short of, and a counter speaks only for the
     hold it was built for. With `fresh_add_micro`, a hold whose epoch is not `counter_epoch` (a
@@ -373,9 +406,22 @@ async def refill_allowance_in_transaction(
     worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
     asked for is added to it. `over_cap` reports that it exceeds the cap before adding anything.
     `daily_cap_micro` is the cap its caller saw, which can be some time ago for a refill that
-    waited its turn. `current_daily_cap` reads the team's cap at that same point, in this
+    waited its turn. `current_team` reads the team's cap at that same point, in this
     transaction, and the stricter of the two applies: a cap the team has just lowered holds.
+
+    `grow_to_micro` asks for more: the counter brought up to that figure (`paced_target`), as
+    far as the team's money allows, where `add` is all that is asked for otherwise. Only the
+    part beyond `add` is limited, so a refill never adds less than it would without it. The
+    limits are on the hold after the refill, read under its lock: it carries what the counter
+    shows, what calls in flight took, and what a counter lost with the store left behind, which
+    no call can reach. It holds at most `balance_percent` of the balance `current_team` read,
+    at most `ceiling_micro`, and at most `balance_percent` of what the daily cap has left, so
+    calls on the exact path, whose cap check counts all of the hold as spent, keep the rest. A
+    balance the queue's claims leave short of the growth gives that part back first. It needs
+    `current_team`, whose read of the row is where the balance comes from.
     """
+    if grow_to_micro is not None and current_team is None:
+        raise ValueError("a refill sized to the team's spend reads the balance with current_team")
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
     hold = await _lock_allowance(db, org_id, keeps=True)
@@ -390,8 +436,13 @@ async def refill_allowance_in_transaction(
                   if fold_all else await _fold(db, org_id, hold, fold_limit))
         return Allowance(_epoch(hold), hold.amount_micro, 0, folded,
                          admit_until=hold.heartbeat_at, retired=True)
-    if fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch):
+    rebuilding = fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch)
+    if rebuilding:
         add = max(0, int(fresh_add_micro))
+    # What the counter shows that will still be there after this refill: nothing, when its add
+    # replaces the counter.
+    shown = 0 if rebuilding else max(0, int(counter_micro or 0))
+    grow = 0 if grow_to_micro is None else max(0, int(grow_to_micro) - shown - add)
     opened = False
     if hold is None and add:
         # Two callers can both find no row. The insert decides which one opens it, and the
@@ -406,14 +457,22 @@ async def refill_allowance_in_transaction(
     folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
               if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
-    if current_daily_cap is not None:
+    held = hold.amount_micro if hold is not None else 0
+    if current_team is not None:
+        team = await current_team(db)
         daily_cap_micro = min(
-            (cap for cap in (daily_cap_micro, await current_daily_cap(db)) if cap > 0), default=0)
+            (cap for cap in (daily_cap_micro, team.daily_cap_micro) if cap > 0), default=0)
+        grow = min(grow, max(0, team.balance_micro * balance_percent // 100 - held - add))
+    if ceiling_micro is not None:
+        grow = min(grow, max(0, ceiling_micro - held - add))
     if daily_cap_micro > 0:
         exposed = await committed_today(db, org_id)
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
-            add = 0
+            add = grow = 0
+        grow = min(grow, max(
+            0, (daily_cap_micro - exposed) * balance_percent // 100 - held - add))
+    add += grow
     debited, counted = False, {}
     if hold is not None and add:
         counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
@@ -429,14 +488,17 @@ async def refill_allowance_in_transaction(
             select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
         )).scalar() or 0)
     if debited and free < 0:
-        # Undo the debit as it was made. The day's counter is taken back from the day the debit
-        # counted it on, whatever the clock says now: a midnight between the two must not open
-        # the new day below zero.
-        uncounted = {"spent_today_micro": Org.spent_today_micro - add} if counted else {}
+        # Undo the debit as it was made: the growth alone when that leaves the rest covered,
+        # all of it otherwise. The day's counter is taken back from the day the debit counted
+        # it on, whatever the clock says now: a midnight between the two must not open the new
+        # day below zero.
+        back = grow if 0 < grow and free + grow >= 0 else add
+        uncounted = {"spent_today_micro": Org.spent_today_micro - back} if counted else {}
         with money_stage(db, "update_balance"):
             await db.execute(update(Org).where(Org.id == org_id).values(
-                balance_micro=Org.balance_micro + add, **uncounted))
-        free, debited = free + add, False
+                balance_micro=Org.balance_micro + back, **uncounted))
+        free, add = free + back, add - back
+        debited = add > 0
     overdrawn = free < 0
     if hold is None:
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
@@ -450,6 +512,9 @@ async def refill_allowance_in_transaction(
     if opened and not added:
         await db.delete(hold)
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
+    if not added and (rebuilding or counter_micro == 0):
+        return Allowance(_epoch(hold), hold.amount_micro, 0, folded, over_cap, overdrawn,
+                         hold.heartbeat_at)
     # Never earlier than one already published: the store keeps the latest too, and a sweep
     # must be able to trust this row whatever freshness the process that wrote it was running.
     admit_until = _now() + timedelta(seconds=get_settings().money_allowance_fresh_s)

@@ -104,6 +104,16 @@ def test_the_outcome_is_judged_in_order_status_expect_error_204_miss():
     assert outcome.judge(two, 200, {"items": []}).state == "miss" and outcome.declares_miss(two)
 
 
+def test_ok_when_beside_a_status_makes_both_a_4xx_and_an_empty_2xx_a_miss():
+    ep = row(miss={"status": [404], "ok_when": {"path": "response", "op": "empty"}})
+    assert outcome.judge(ep, 404, {"detail": "Not found."}) == outcome.Outcome("miss", "status")
+    assert outcome.judge(ep, 200, []) == outcome.Outcome("miss", "miss")
+    assert outcome.judge(ep, 200, [{"phone_number": "+15555550100"}]) == outcome.Outcome("hit")
+    assert outcome.judge(ep, 400, {}) == outcome.Outcome("error", "status")
+    with pytest.raises(ValueError, match="ok_when judges a 2xx beside status"):
+        row(miss={"when": {"path": "response.a", "op": "absent"}, "ok_when": {"path": "response", "op": "empty"}})
+
+
 def test_an_outcome_plugin_that_raises_is_false(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.boom = lambda request, answer: 1 / 0

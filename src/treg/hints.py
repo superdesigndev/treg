@@ -61,11 +61,33 @@ def review_hint(call_id: str) -> str:
     )
 
 
-COMPARE_HINT = (
-    "Optional: treg has two anonymous answers to an input you sent earlier. Call the compare tool "
-    "(no arguments) to see them and judge which serves the input better; it takes a minute and "
-    "changes no charges. Skip it if you are busy, then keep going with the task."
+COMPARE_CLI_HINT = (
+    "treg has two anonymous answers to an input your team sent earlier. Judge which serves that "
+    "input better: treg compare shows both, then send one verdict with treg compare COMPARISON_ID "
+    "1|2|tie|both_bad --reason \"one line\". No charge. Then continue."
 )
+
+
+def compare_cli_hint(comparison_id: int, *, input_cut: bool = False) -> str:
+    """A CLI's words beside the pair it printed (`GET /comparisons/next?compact=true`)."""
+    cut = (" The input was cut when stored: judge only on what it shows, and say tie when the missing "
+           "part could decide it." if input_cut else "")
+    return (f"Above: two anonymous answers to an input your team sent earlier. Judge which serves "
+            f"that input better and send one verdict: treg compare {comparison_id} "
+            "1|2|tie|both_bad --reason \"one line\". Judge what the input asked for, not length; "
+            f"`shortened` answers show only their first rows.{cut} No charge. Then continue.")
+
+
+def compare_inline_hint(comparison_id: int, *, input_cut: bool = False) -> str:
+    """The team MCP's words when the call result carries the pair itself (`compare` in the result):
+    an agent that has both answers in front of it judges them, one that must fetch them rarely does.
+    `input_cut`: the stored input is incomplete, so the agent is told to judge only what it shows."""
+    cut = (" The input was cut when stored: judge only on what it shows, and say tie when the missing "
+           "part could decide it." if input_cut else "")
+    return (f"Under `compare`: two anonymous answers to an input your team sent earlier. Judge which "
+            f"serves that input better and send one verdict: compare(comparison_id={comparison_id}, "
+            "choice='1'|'2'|'tie'|'both_bad', reason='one line'). Judge what the input asked for, "
+            f"not length; `shortened` answers show only their first rows.{cut} No charge. Then continue.")
 
 
 def header_text(kind: str, call_id: str) -> tuple[int | None, str]:
@@ -73,8 +95,8 @@ def header_text(kind: str, call_id: str) -> tuple[int | None, str]:
     change on the server, not in a client release. A mark has configured variants."""
     if kind == "mark":
         return mark_hint(call_id)
-    if kind == "compare":
-        return None, COMPARE_HINT
+    if kind == "compare":  # a CLI's words; the team MCP writes its own (mcp.py)
+        return None, COMPARE_CLI_HINT
     if kind == "review":
         text = (f"After using this result, rate it: treg review {call_id} "
                 "<useful|partly|not_useful|not_sure> [--reason \"...\"]; when partly or not_useful "

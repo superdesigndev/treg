@@ -88,7 +88,9 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   one can be wrong.
 - **Hints.** `X-Treg-Hint: review|feedback` (older `X-Treg-Review: requested`) prints one stderr line
   per kind. `X-Treg-Routed-Tool` on a provider endpoint's success prints a pointer to the routed
-  `treg.<capability>` tool (`_treg.routed_tool` under `--json`).
+  `treg.<capability>` tool (`_treg.routed_alternative` under `--json`). It names an alternative
+  for next time; the call itself was served by the endpoint it named. The server sends it only for
+  an endpoint among that route's `routed_children`, never one only listed beside it.
 - **Headers sent.** `_client` sends `X-Treg-Client-Version` (recorded as `client_version` on
   `tool_called`, so output changes compare across releases) and, with telemetry on, `X-Treg-Session`
   and `X-Treg-Agent`. Like every `x-treg-*` header, none reaches the upstream.
@@ -152,7 +154,8 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   `treg.domain.asynctasks`, never a CLI-side copy. It prints the task id and a resumable command to
   stderr, polls every descriptor `interval` and never past `max_age`, skips polling on
   `terminal_on_submission`, retries network/5xx failures with backoff, and keeps waiting through
-  unknown statuses after one warning. Stdout holds only the terminal response bytes; a fetch-mode
+  unknown statuses after one warning. A descriptor's exact `pending_response` HTTP envelope also
+  keeps the wait open at its normal interval. Stdout holds only the terminal response bytes; a fetch-mode
   result prints a retrieval command instead of downloading, and running it writes non-text bytes
   untouched (the upstream `Content-Type` stays authoritative). **Exit codes are a contract:** 0
   success, 2 provider terminal failure, 3 timeout, interruption or recoverable polling failure, 1

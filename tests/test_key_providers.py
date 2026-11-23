@@ -42,6 +42,37 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     assert rejected.status_code == 422 and "rejected" in rejected.text
 
 
+async def test_descovo_key_uses_free_credits_probe(clients, monkeypatch):
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/v1/credits")
+        if request.headers["authorization"] != "Bearer own-key":
+            return httpx.Response(403, json={"error": {"code": "forbidden", "message": "Invalid API key provided!"}})
+        return httpx.Response(200, json={"data": {"available": 0, "used": 500, "limit": 500}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "descovo", "token": "bad-key"})
+        assert bad.status_code == 422 and "rejected" in bad.text
+        good = await clients.post("/connections/token", json={"provider": "descovo", "token": "own-key"})
+        assert good.status_code == 200, good.text
+
+
+async def test_millionphones_key_uses_free_credits_probe(clients, monkeypatch):
+    """A good key on an account with 0 credits left still connects: the free routes work."""
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/v1/credits")
+        if request.headers["x-api-key"] != "own-key":
+            return httpx.Response(401, json={"error": "Invalid API key."})
+        return httpx.Response(200, json={"remaining": 0, "used": 50, "plan": "free"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "millionphones", "token": "bad-key"})
+        assert bad.status_code == 422 and "rejected" in bad.text
+        good = await clients.post("/connections/token", json={"provider": "millionphones", "token": "own-key"})
+        assert good.status_code == 200, good.text
+
+
 # ---- registry shape ----------------------------------------------------------------------
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
@@ -298,6 +329,41 @@ def test_hlrlookup_platform_bindings_match_the_byok_pair():
          "location": "json", "name": "api_key", "format": "{secret}"},
         {"platform_setting": "platform_key_hlrlookup_secret", "injector": "env",
          "location": "json", "name": "api_secret", "format": "{secret}"},
+    ]
+
+
+async def test_forager_connect_checks_the_key_then_binds_the_account_id_to_the_path(clients, monkeypatch):
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/api/users/current/")
+        if request.headers["x-api-key"] != "own-key":
+            return httpx.Response(403, json={"detail": "Authentication credentials were not provided."})
+        return httpx.Response(200, json={"id": 1, "accounts": [{"id": 1234, "subscription": {}}]})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "forager", "token": "bad-key"})
+        assert bad.status_code == 422, bad.text
+        first = await clients.post("/connections/token", json={"provider": "forager", "token": "own-key"})
+        assert first.status_code == 200, first.text
+        ready = await clients.post(
+            f"/connections/{first.json()['id']}/extra-credential", json={"value": "1234"},
+        )
+        assert ready.status_code == 200, ready.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "forager")
+    assert [(b["location"], b["name"]) for b in tool["bindings"]] == [
+        ("header", "X-API-KEY"), ("path", "account_id"),
+    ]
+
+
+def test_forager_platform_bindings_match_the_byok_pair():
+    provider = P.get("forager")
+    assert provider is not None and provider.credential_path_params == {"account_id"}
+    assert P.platform_bindings(provider) == [
+        {"platform_setting": "platform_key_forager", "injector": "env",
+         "location": "header", "name": "X-API-KEY", "format": "{secret}"},
+        {"platform_setting": "platform_key_forager_account", "injector": "env",
+         "location": "path", "name": "account_id", "format": "{secret}"},
     ]
 
 

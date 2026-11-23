@@ -35,6 +35,7 @@ or the CLI is enough, and having both is fine.
    treg login                            # browser sign-in; tell the human the short code it prints, to type on that page
    treg login --email you@company.com    # an emailed 6-digit code
    treg login --token <team-token>       # non-interactive, for agents and CI
+   treg login --ref <code>               # binary CLI only: an affiliate partner's code the human gave you
    ```
 
 3. **Neither**: treg is not set up here. Run the installer only when the human asked you to set treg
@@ -163,7 +164,10 @@ re-send the same find: every hit is billed, repeats included.
 - Send `X-Treg-Route-Verify: true` on `treg.people.email.find`, `treg.people.email.find.personal` or
   `treg.people.phone.find` to check each hit in the same call, as its own small charge. Read
   `_treg.verification.verdict` (it wins over the provider's own `output.verified`) and follow
-  `_treg.advice`. A live phone line does not prove the number is this person's.
+  `_treg.advice`. For a phone, that check is a live-line lookup: it does not show whose number
+  it is. To check a number belongs to the person, call `millionphones.people.contact.verify`
+  (`social_url` = their LinkedIn profile, `phone_number`) or, for a US number,
+  `trestleiq.people.contact.verify` (`phone` and `name`).
 <!--hub-->
 - `treg-hub.verified-email` finds and verifies in one call, and bills its fee only for a usable
   email.

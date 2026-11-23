@@ -259,6 +259,12 @@ def test_the_same_status_with_another_body_is_no_capacity_signal(provider, statu
     assert S.classify(provider, status, {}, other) is None
 
 
+def test_a_forager_throttle_is_a_burst_not_a_lock():
+    burst = S.classify("forager", 429, {"retry-after": "1"},
+                       b'{"detail":"Request was throttled. Expected available in 1 second."}')
+    assert burst.kind == "burst" and not S.is_exhausting(burst)
+
+
 def test_jobspipe_spent_credits_lock_but_a_plan_gate_and_a_rate_limit_do_not():
     spent = S.classify("jobspipe", 402, {"retry-after": "1296000"},
                        b'{"error":"Monthly request quota exceeded","message":"Upgrade to continue.",'
@@ -417,6 +423,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "descovo",  # funded plan credits remain; its 402 error code is undocumented and unobserved
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "branddev", "brightdata", "coresignal", "crustdata",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
@@ -464,6 +471,7 @@ _UNRECORDED_SIGNATURE = {
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
     "theirstack",  # funded API credits remain; the documented 402 body was not observed
+    "forager",  # funded plan credits remain; the out-of-credits answer is undocumented and unobserved
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
 }

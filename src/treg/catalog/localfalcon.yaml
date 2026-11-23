@@ -140,7 +140,7 @@ endpoints:
         keyword: {type: string, required: true, example: deli}
         lat: {type: number, required: true, example: 40.722233, note: "Grid center."}
         lng: {type: number, required: true, example: -73.987429}
-        grid_size: {type: string, required: true, enum: ['3', '5', '7', '9', '11', '13', '15'], example: '3', note: "Points per side. Grid 3 answers in about 10 s, grid 5 in about 40 s and grid 15 in about 110 s with a 2 MB body; start small, since a client that gives up first is still billed by Local Falcon."}
+        grid_size: {type: string, required: true, enum: ['3', '5', '7', '9', '11', '13', '15'], example: '3', note: "Points per side; 15 is the largest grid Local Falcon's On-Demand scan takes. Grid 3 answers in about 10 s, grid 5 in about 40 s and grid 15 in about 110 s with a 2 MB body; start small, since a client that gives up first is still billed by Local Falcon."}
         radius: {type: number, required: true, min: 0.1, max: 100, example: 0.5, note: "Distance from the center to the grid's edge, in measurement units."}
         measurement: {type: string, required: true, enum: [mi, km], example: mi}
       note: "A point where the business is absent has found false and counts as rank 21 in arp and atrp."

@@ -38,6 +38,11 @@ class Org(SQLModel, table=True):
     Verified sign-in creates only a user; the user explicitly creates or joins a team.
     """
 
+    # Stripe's payment-method events name only the card. Partial: most teams never save one.
+    __table_args__ = (Index("ix_org_stripe_default_pm", "stripe_default_pm",
+                            postgresql_where=text("stripe_default_pm IS NOT NULL"),
+                            sqlite_where=text("stripe_default_pm IS NOT NULL")),)
+
     id: int | None = Field(default=None, primary_key=True)
     name: str
     slug: str = Field(index=True, unique=True)
@@ -82,7 +87,7 @@ class Org(SQLModel, table=True):
     autotopup_enabled: bool = Field(default=False)
     autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
     autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
-    autotopup_monthly_cap_micro: int = Field(default=0, sa_type=BigInteger)  # 0 = the default, `billing.TOPUP_MAX_USD`
+    autotopup_monthly_cap_micro: int = Field(default=0, sa_type=BigInteger)  # 0 = no monthly cap
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
     autotopup_max_per_hour: int = Field(default=0)
@@ -588,7 +593,7 @@ class CallRecord(SQLModel, table=True):
     # The RUNTIME that made the call — "claude-code", "codex", "cursor", … — self-reported by the
     # treg CLI via X-Treg-Client (attribution, NOT authentication: anything holding the token can
     # claim any name). "" = unreported. What makes the observed-agents roster possible.
-    client: str = Field(default="", index=True)
+    client: str = Field(default="")
     # The key snapshot used for this call. Historical rows before managed-key tracking keep NULL.
     # Logical reference only: Activity must survive key and membership lifecycle changes.
     api_key_id: int | None = Field(default=None)
@@ -599,8 +604,8 @@ class CallRecord(SQLModel, table=True):
     # expected it to cost vs what the provider said it cost, and how big/slow the answer was. The
     # money itself is NOT here — it landed synchronously in the ledger (see domain/money); this table is
     # analytics and is allowed to lose rows.
-    endpoint_id: str | None = Field(default=None, index=True)
-    provider: str | None = Field(default=None, index=True)
+    endpoint_id: str | None = Field(default=None)
+    provider: str | None = Field(default=None)
     # tool | credential | platform — which rung of the credential ladder served it. "platform" is the
     # only one that spends treg's own money, so this is what a spend audit groups by.
     credential_tier: str | None = Field(default=None)
@@ -615,7 +620,7 @@ class CallRecord(SQLModel, table=True):
     # The hash itself never carries a body, so it is safe to keep forever; it is the future cache key
     # and the repeat-rate signal. For the ONE case where a body IS retained, see
     # `error_request` below — it is deliberately narrow and does not weaken this column's guarantee.
-    params_hash: str | None = Field(default=None, index=True)
+    params_hash: str | None = Field(default=None)
     # Failure evidence (NULL unless a relayed call failed).
     # The only place treg retains request or response CONTENT, and the exception to "bodies are not
     # stored". Written on failed catalog, own-key, and plain own-tool calls: production failures
@@ -636,18 +641,18 @@ class CallRecord(SQLModel, table=True):
     # or endpoint) | request (malformed pre-relay: wrong method, missing param, bad body). What
     # separates "the provider failed" from "we said no" — without it a paywall 402 is
     # indistinguishable from a provider error, and provider stats absorb our own refusals.
-    refused_by: str | None = Field(default=None, index=True)
+    refused_by: str | None = Field(default=None)
     # Caller tags (X-Treg-Meta).
     # A builder reselling treg tags each call with their OWN ids ("customer=cust_8123,
     # workspace=ws_9") so they can attribute, budget and invoice their users. `tags` is the whole
-    # bag; `budget_dim`/`budget_val` are the indexed copy of the org's PRIMARY dimension, which is
+    # bag; `budget_dim`/`budget_val` are the flat copy of the org's PRIMARY dimension, which is
     # what a per-tag report groups by without folding JSON (see TagSpend for the money side).
     # "" — never NULL — because NULLs are distinct in a unique index on both engines.
     # Echoed to the caller as X-Treg-Call-Id and used as the ledger call_id on a metered call, so a
     # builder can join this row, the money rows and their OWN records on one value.
     call_ref: str = Field(default="", index=True)
     budget_dim: str = Field(default="")
-    budget_val: str = Field(default="", index=True)
+    budget_val: str = Field(default="")
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     created_at: NaiveUTC = Field(default_factory=_now)
     # True when the archive served this answer instead of the vendor (X-Treg-Cache: hit).
@@ -889,6 +894,92 @@ class AdConversion(SQLModel, table=True):
     failed_at: NaiveUTC | None = Field(default=None, index=True)
     attempts: int = Field(default=0)
     error: str = Field(default="")
+
+
+class AffiliateLead(SQLModel, table=True):
+    """A team that arrived through an affiliate's Dub link: the lead Dub is owed (an outbox row).
+
+    Written in the team-creation transaction, uploaded later by `application.affiliates`. One per
+    team: the unique org id makes every redelivery and retry idempotent. The row is also the
+    durable record that the team is attributed. Billing tags the team's Stripe customer only once
+    the lead is `verified_at`: Dub accepted it and its partner is not the team's own owner.
+
+    Exactly one source: a link click (`click_id`, from the `?dub_id=` cookie) or a partner code
+    typed at a CLI or agent signup (`partner_code`, with the `country` Dub requires for that lead).
+    """
+
+    __table_args__ = (
+        UniqueConstraint("org_id", name="uq_affiliatelead_org"),
+        CheckConstraint("(click_id IS NULL) <> (partner_code IS NULL)", name="ck_affiliatelead_one_source"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int
+    user_id: int = Field(index=True)
+    click_id: str | None = None
+    partner_code: str | None = None
+    country: str = Field(default="")
+    partner_id: str | None = None
+    created_at: NaiveUTC = Field(default_factory=_now)
+    uploaded_at: NaiveUTC | None = Field(default=None, index=True)
+    verified_at: NaiveUTC | None = Field(default=None, index=True)
+    stripe_synced_at: NaiveUTC | None = Field(default=None, index=True)
+    next_attempt_at: NaiveUTC | None = Field(default=None, index=True)
+    failed_at: NaiveUTC | None = Field(default=None, index=True)
+    attempts: int = Field(default=0)
+    error: str = Field(default="")
+
+
+class AffiliateBonus(SQLModel, table=True):
+    """One paid top-up of a team a partner brought, and the bonus credit its offer earned: the
+    partner offer's outbox row (`application.affiliate_bonus`).
+
+    Written with the top-up's credit, decided later by the affiliate worker, which reads the offer
+    from Dub with no connection held. The unique `payment_intent` makes each payment decided once;
+    `outcome` records why it paid what it paid (`granted`, `no_offer`, `below_minimum`, ...), so
+    "why did I not get the bonus" has an answer. `block_id` names the granted credit block.
+    """
+
+    __table_args__ = (UniqueConstraint("payment_intent", name="uq_affiliatebonus_payment"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)
+    payment_intent: str
+    topup_micro: int = Field(sa_type=BigInteger)
+    fingerprint: str | None = None
+    created_at: NaiveUTC = Field(default_factory=_now)
+    next_attempt_at: NaiveUTC | None = Field(default=None, index=True)
+    attempts: int = Field(default=0)
+    decided_at: NaiveUTC | None = Field(default=None, index=True)
+    outcome: str = Field(default="")
+    offer: str = Field(default="")
+    bonus_micro: int = Field(default=0, sa_type=BigInteger)
+    block_id: str | None = None
+    error: str = Field(default="")
+
+
+class AffiliateCardClaim(SQLModel, table=True):
+    """A card (Stripe's opaque per-card `fingerprint`) that already earned a fixed partner offer. Like
+    `AffiliateClaim` it has no `org_id` and outlives the team: deleting a team that spent its bonus
+    never lets the same card earn it again. Unique, so a card earns it once."""
+
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_affiliatecardclaim_fingerprint"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    fingerprint: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class AffiliateClaim(SQLModel, table=True):
+    """A person a partner already brought, by inbox (`promotions.promo_inbox`): a partner earns on
+    the person, once. Staged with the team's `AffiliateLead`; it has no `org_id` and outlives the
+    team and the user, so deleting a team never makes its creator attributable again. Not unique:
+    two teams racing for one inbox leave two rows, never a failed signup."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    inbox: str = Field(index=True)
+    user_id: int
+    created_at: NaiveUTC = Field(default_factory=_now)
 
 
 class Tool(SQLModel, table=True):
@@ -1651,6 +1742,11 @@ class IdempotentCall(SQLModel, table=True):
         Index("ix_idempotentcall_archive_live", "expires_at",
               postgresql_where=text("archive_content_hash IS NOT NULL"),
               sqlite_where=text("archive_content_hash IS NOT NULL")),
+        # Only rows that dropped their copy: archive row retention's "a live retry replays from
+        # this key" check (Alembic 0123).
+        Index("ix_idempotentcall_archive_key_hash", "archive_key_hash",
+              postgresql_where=text("archive_content_hash IS NOT NULL"),
+              sqlite_where=text("archive_content_hash IS NOT NULL")),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -1855,6 +1951,15 @@ class CallReview(SQLModel, table=True):
     usefulness: str
     reason: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
+    # Jev's judgements of `reason` (`application.review_judge`), each written once and on its own:
+    # the probability it names or identifies a person (gates public quotes), and for a `partly` or
+    # `not_useful` review the codebook codes for what it blames.
+    person_p: float | None = Field(default=None)
+    privacy_judged_at: NaiveUTC | None = Field(default=None)
+    primary_code: str | None = Field(default=None)
+    secondary_code: str | None = Field(default=None)
+    codebook_version: str | None = Field(default=None)
+    code_judged_at: NaiveUTC | None = Field(default=None)
 
 
 class CallMark(SQLModel, table=True):
@@ -2306,13 +2411,15 @@ class ArchiveKeyOrg(SQLModel, table=True):
     `archive_hit_repeat_price_percent` of the live price (`archive.md`, "Pricing a hit"). Keyed by
     `key_hash` rather than `ArchiveKey.id` because the hash is known on the call path before the
     background recorder has created the key row. Written only by `archive`.
+
+    The primary key is (org, key_hash), so a mark takes no number from a sequence. `id` is the
+    retired surrogate key: nullable, without a default, written only by code older than revision
+    0121 during a rolling deploy, and read by nothing (`archive.md`, "Pricing a hit").
     """
 
-    __table_args__ = (UniqueConstraint("org_id", "key_hash", name="uq_archive_key_org"),)
-
-    id: int | None = Field(default=None, primary_key=True)
-    org_id: int
-    key_hash: str = Field(index=True)
+    id: int | None = Field(default=None)
+    org_id: int = Field(primary_key=True)
+    key_hash: str = Field(primary_key=True, index=True)
     first_call_at: NaiveUTC = Field(default_factory=_now)
     last_call_at: NaiveUTC = Field(default_factory=_now)
     calls: int = Field(default=1)
@@ -2428,6 +2535,33 @@ class ArenaEvaluation(SQLModel, table=True):
     kind: str
     payload: str  # encrypted selection, exposure snapshot, reasons and optional comment
     created_at: NaiveUTC = Field(default_factory=_now)
+
+
+class ArchiveRetentionCursor(SQLModel, table=True):
+    """Where `application.archive_retention` has got to in `archivekey`. One row
+    (`id = "archivekey"`): `after_id` is the last key id a run finished; a pass that reaches the
+    end of the table starts again from 0. Written only by `application.archive_retention`."""
+
+    id: str = Field(primary_key=True)
+    after_id: int = Field(default=0, sa_column=Column(BigInteger, nullable=False, server_default="0"))
+    passes: int = Field(default=0)               # completed walks over the whole table
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class ArchiveObjectPending(SQLModel, table=True):
+    """An object-stored archive body whose last snapshot row retention deleted, waiting to be
+    deleted from object storage once `recorded_at` is older than the grace period and no snapshot
+    references `content_hash` again. Written only by `application.archive_retention`; the
+    recorder reads it `FOR SHARE` (`archive._store_locked`)."""
+
+    __table_args__ = (Index("ix_archiveobjectpending_recorded_at", "recorded_at"),)
+
+    content_hash: str = Field(primary_key=True)
+    recorded_at: NaiveUTC = Field(default_factory=_now)
+    # A delete was attempted: the object may be gone, so a recorder keeps its own copy.
+    deleting: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default="false"))
+    deleted_at: NaiveUTC | None = None   # the object went; the row stays one grace period
+    attempts: int = Field(default=0, sa_column=Column(Integer, nullable=False, server_default="0"))
 
 
 class ArchiveEndpointStat(SQLModel, table=True):
