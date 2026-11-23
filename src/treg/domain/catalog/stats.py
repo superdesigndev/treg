@@ -74,6 +74,19 @@ def decided(status_code: int, hit: bool | None, outcome: str | None,
             empty or status_code >= 500 or status_code == 405)
 
 
+def is_fallback(call_ref: str | None, routed_fallback: bool | None = None) -> bool:
+    """Whether a CallRecord row is a router fallback attempt rather than a first-choice call.
+
+    Uses `CallRecord.routed_fallback` when recorded; rows without it infer fallback from
+    `call_ref` ending in `:r<n>` with `n >= 1` (`:r0`, direct calls, `:v`, `:s<n>` and `:p<k>`
+    polls are first-choice).
+    """
+    if routed_fallback is not None:
+        return routed_fallback
+    parent, sep, tail = (call_ref or "").rpartition(":r")
+    return sep == ":r" and bool(parent) and tail.isdigit() and int(tail) > 0
+
+
 @dataclass
 class Tally:
     """The evidence about one endpoint, before any judgement is applied to it.
@@ -88,6 +101,8 @@ class Tally:
     n: int = 0
     ok: int = 0
     bad: int = 0
+    fallback_ok: int = 0
+    fallback_bad: int = 0
     last_ok: datetime | None = None
     hits: int = 0
     hit_decided: int = 0
@@ -116,7 +131,8 @@ class Tally:
     def fold(self, *, status_code: int, created_at: datetime, duration_ms: int | None,
              hit: bool | None, cost_observed_micro: int | None, refused_by: str | None,
              verdict: str | None = None, rng: random.Random | None = None,
-             empty_fails: bool = False, outcome: str | None = None) -> bool:
+             empty_fails: bool = False, outcome: str | None = None,
+             call_ref: str | None = None, routed_fallback: bool | None = None) -> bool:
         """Fold one audit row in. Returns False when the row is not evidence about the endpoint.
 
         Mirrors the predicates in `observed()` exactly; see its docstring for why each one is
@@ -126,10 +142,15 @@ class Tally:
             return False     # treg said no before a byte went upstream: the caller's account, not the endpoint
         self.n += 1
         success, failure = decided(status_code, hit, outcome, empty_fails)
+        fallback = is_fallback(call_ref, routed_fallback)
         if failure:
             self.bad += 1
+            if fallback:
+                self.fallback_bad += 1
         if success:
             self.ok += 1
+            if fallback:
+                self.fallback_ok += 1
             if self.last_ok is None or created_at > self.last_ok:
                 self.last_ok = created_at
         if hit is not None:
@@ -163,6 +184,8 @@ class Tally:
         self.n += other.n
         self.ok += other.ok
         self.bad += other.bad
+        self.fallback_ok += other.fallback_ok
+        self.fallback_bad += other.fallback_bad
         if other.last_ok is not None and (self.last_ok is None or other.last_ok > self.last_ok):
             self.last_ok = other.last_ok
         self.hits += other.hits
@@ -207,9 +230,11 @@ def publish(endpoint_ids: Iterable[str], tallies: dict[str, Tally], *,
             hits += t.paid_hits
             hit_decided += t.paid_hits + t.free_misses
         hit_rate = round(hits / hit_decided, 4) if hit_decided >= MIN_HIT_SAMPLES else None
-        decided = t.ok + t.bad          # 4xx excluded — the caller's fault, not the provider's
+        first_ok = max(0, t.ok - t.fallback_ok)
+        first_bad = max(0, t.bad - t.fallback_bad)
+        decided = first_ok + first_bad  # 4xx and router fallback attempts excluded
         if decided < MIN_SAMPLES:
-            # Too few decided calls: say how thin the evidence is, claim nothing from it.
+            # Too few decided first-choice calls: say how thin the evidence is, claim nothing from it.
             out[ep_id] = {"samples": t.n, "decided": decided, "ok_rate": None,
                           "p50_ms": None, "p95_ms": None, "last_ok_days": None,
                           "hit_rate": hit_rate, "hit_samples": hit_decided}
@@ -217,10 +242,11 @@ def publish(endpoint_ids: Iterable[str], tallies: dict[str, Tally], *,
         enough_latency = len(t.latencies) >= MIN_SAMPLES
         out[ep_id] = {
             "samples": t.n,
-            # `decided` is the denominator of ok_rate (2xx + 5xx). Anything aggregating rates
-            # across endpoints must weight by this, not by `samples`, which still counts 4xx.
+            # `decided` is the denominator of ok_rate (first-choice 2xx + 5xx). Anything aggregating
+            # rates across endpoints must weight by this, not by `samples`, which still counts 4xx
+            # and router fallback attempts.
             "decided": decided,
-            "ok_rate": round(t.ok / decided, 4) if decided else None,
+            "ok_rate": round(first_ok / decided, 4) if decided else None,
             # A rate may rest on five decided calls while only one succeeded. Calling that single
             # duration p50 AND p95 dresses one observation up as a distribution, so latency has
             # its own successful-sample floor.
@@ -333,6 +359,12 @@ async def observed(
     bad = or_(legacy & ((CallRecord.status_code >= 500) | (CallRecord.status_code == 405) | empty),
               (CallRecord.outcome == "miss") & in_strict,
               (CallRecord.outcome == "error") & in_strict & CallRecord.hit.is_(False))
+    legacy_fallback = (
+        CallRecord.routed_fallback.is_(None)
+        & or_(*(CallRecord.call_ref.like(f"_%:r{d}%") for d in "123456789"))
+        & not_(CallRecord.call_ref.like("%:r%:%"))
+    )
+    fallback = or_(CallRecord.routed_fallback.is_(True), legacy_fallback)
 
     rows = (await db.execute(
         select(
@@ -341,6 +373,8 @@ async def observed(
             func.sum(case((good, 1), else_=0)).label("ok"),
             # 5xx, plus 405: on a catalog call the method is the catalog's, not the caller's.
             func.sum(case((bad, 1), else_=0)).label("bad"),
+            func.sum(case((good & fallback, 1), else_=0)).label("fallback_ok"),
+            func.sum(case((bad & fallback, 1), else_=0)).label("fallback_bad"),
             # LAST OK means last SUCCESS, not the last call.
             func.max(case((good, CallRecord.created_at))).label("last_ok"),
             # HIT RATE: the adapter's verdict (`hit`), plus — for per-success endpoints, which bill
@@ -372,9 +406,11 @@ async def observed(
         by_id.setdefault(ep_id, []).append(int(ms))
 
     tallies: dict[str, Tally] = {}
-    for ep_id, n, ok, bad, last_ok, hits, hit_decided, paid_hits, free_misses in rows:
+    for ep_id, n, ok, bad, fallback_ok, fallback_bad, last_ok, hits, hit_decided, paid_hits, free_misses in rows:
         tallies[ep_id] = Tally(
-            n=int(n or 0), ok=int(ok or 0), bad=int(bad or 0), last_ok=last_ok,
+            n=int(n or 0), ok=int(ok or 0), bad=int(bad or 0),
+            fallback_ok=int(fallback_ok or 0), fallback_bad=int(fallback_bad or 0),
+            last_ok=last_ok,
             hits=int(hits or 0), hit_decided=int(hit_decided or 0),
             paid_hits=int(paid_hits or 0), free_misses=int(free_misses or 0),
             latency_seen=len(by_id.get(ep_id, [])), latencies=by_id.get(ep_id, []),

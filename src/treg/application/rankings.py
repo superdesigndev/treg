@@ -52,10 +52,12 @@ async def _build(db: AsyncSession) -> dict:
     end = last_day.isoformat()
     counts = await db.execute(select(
         EndpointDayStat.endpoint_id, EndpointDayStat.day, EndpointDayStat.ok, EndpointDayStat.bad,
-        EndpointDayStat.latency_seen,
+        EndpointDayStat.fallback_ok, EndpointDayStat.fallback_bad, EndpointDayStat.latency_seen,
     ).where(EndpointDayStat.day >= since, EndpointDayStat.day <= end))
-    rows = {(e, d): rankings.DayRow(endpoint_id=e, day=d, ok=ok or 0, bad=bad or 0, latency_seen=seen or 0)
-            for e, d, ok, bad, seen in counts.all()}
+    rows = {(e, d): rankings.DayRow(endpoint_id=e, day=d, ok=ok or 0, bad=bad or 0,
+                                    fallback_ok=fallback_ok or 0, fallback_bad=fallback_bad or 0,
+                                    latency_seen=seen or 0)
+            for e, d, ok, bad, fallback_ok, fallback_bad, seen in counts.all()}
     sample = EndpointDayStat.latency_sample
     if db.get_bind().dialect.name == "postgresql":
         # Cut each reservoir in the database, so the rest never crosses the wire.

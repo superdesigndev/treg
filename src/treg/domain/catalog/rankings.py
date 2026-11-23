@@ -50,6 +50,8 @@ class DayRow:
     day: str
     ok: int = 0
     bad: int = 0
+    fallback_ok: int = 0
+    fallback_bad: int = 0
     latency_seen: int = 0
     latencies: list[int] = field(default_factory=list)
 
@@ -185,15 +187,18 @@ def build(rows: list[DayRow], cat: store.Catalog, last_day: date) -> dict:
     # Speed stays per endpoint: it depends on the job, and one tool's jobs differ.
     start7, end7 = _days(last_day, 7)
     tallies = stats.merged(
-        (r.endpoint_id, stats.Tally(ok=r.ok, bad=r.bad, latency_seen=r.latency_seen,
-                                    latencies=list(r.latencies)))
+        (r.endpoint_id, stats.Tally(ok=r.ok, bad=r.bad, fallback_ok=r.fallback_ok, fallback_bad=r.fallback_bad,
+                                    latency_seen=r.latency_seen, latencies=list(r.latencies)))
         for r in rows if start7 <= r.day <= end7 and not eps[r.endpoint_id].get("async"))
     reliable, fastest = [], []
     by_tool: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])   # ok, decided, endpoints
     for ep_id, t in tallies.items():
-        if t.ok + t.bad:
+        first_ok = max(0, t.ok - t.fallback_ok)
+        first_bad = max(0, t.bad - t.fallback_bad)
+        decided = first_ok + first_bad
+        if decided:
             acc = by_tool[eps[ep_id]["provider"]]
-            acc[0] += t.ok; acc[1] += t.ok + t.bad; acc[2] += 1
+            acc[0] += first_ok; acc[1] += decided; acc[2] += 1
     for provider, (ok, decided, n_eps) in by_tool.items():
         if decided >= RELIABLE_MIN_DECIDED:
             cats = provider_cats.get(provider) or {}
@@ -219,12 +224,14 @@ def build(rows: list[DayRow], cat: store.Catalog, last_day: date) -> dict:
     for cap, providers in by_job.items():
         side = []
         for provider, t in providers.items():
-            decided = t.ok + t.bad
+            first_ok = max(0, t.ok - t.fallback_ok)
+            first_bad = max(0, t.bad - t.fallback_bad)
+            decided = first_ok + first_bad
             if decided < RELIABLE_MIN_DECIDED:
                 continue
             timed = t.latency_seen >= FASTEST_MIN_TIMED and len(t.latencies) >= stats.MIN_SAMPLES
             side.append({"provider": provider, "label": label(provider), "calls": t.ok, "decided": decided,
-                         "errors": t.bad, "ok_rate": round(t.ok * 100 / decided, 2),
+                         "errors": first_bad, "ok_rate": round(first_ok * 100 / decided, 2),
                          "p50_ms": t.percentile(0.50) if timed else None})
         if len(side) < 2:
             continue

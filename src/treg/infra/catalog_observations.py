@@ -119,7 +119,8 @@ class PostgresEndpointObservationReader:
         unavailable.update(endpoint_id for endpoint_id, day in overdue if day >= since[endpoint_id])
         rows = [row for row in rows if row.endpoint_id not in unavailable]
         tallies = stats.merged((row.endpoint_id, stats.Tally(
-            n=row.n, ok=row.ok, bad=row.bad, last_ok=row.last_ok_at, hits=row.hits,
+            n=row.n, ok=row.ok, bad=row.bad, fallback_ok=row.fallback_ok,
+            fallback_bad=row.fallback_bad, last_ok=row.last_ok_at, hits=row.hits,
             hit_decided=row.hit_decided, paid_hits=row.paid_hits, free_misses=row.free_misses,
             latency_seen=row.latency_seen, latencies=list(row.latency_sample or []),
         )) for row in rows)
