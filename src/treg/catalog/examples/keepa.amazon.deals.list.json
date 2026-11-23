@@ -1,0 +1,197 @@
+{
+  "deals": {
+    "categoryCount": [
+      645,
+      4,
+      "… 30 more item(s) truncated"
+    ],
+    "categoryIds": [
+      9223372036854775807,
+      133140011,
+      "… 30 more item(s) truncated"
+    ],
+    "categoryNames": [
+      "?",
+      "Kindle Store",
+      "… 30 more item(s) truncated"
+    ],
+    "dr": [
+      {
+        "asin": "B0CKV1S1G9",
+        "avg": [
+          [
+            612,
+            612,
+            "… 34 more item(s) truncated"
+          ],
+          [
+            631,
+            631,
+            "… 34 more item(s) truncated"
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "backInStock": [
+          false,
+          false,
+          "… 34 more item(s) truncated"
+        ],
+        "categories": [
+          4
+        ],
+        "creationDate": 8358486,
+        "current": [
+          584,
+          584,
+          "… 34 more item(s) truncated"
+        ],
+        "currentSince": [
+          8358486,
+          8358486,
+          "… 34 more item(s) truncated"
+        ],
+        "dateIntervalIndex": 0,
+        "delta": [
+          [
+            28,
+            28,
+            "… 34 more item(s) truncated"
+          ],
+          [
+            47,
+            47,
+            "… 34 more item(s) truncated"
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "deltaLast": [
+          53,
+          53,
+          "… 34 more item(s) truncated"
+        ],
+        "deltaPercent": [
+          [
+            5,
+            5,
+            "… 34 more item(s) truncated"
+          ],
+          [
+            7,
+            7,
+            "… 34 more item(s) truncated"
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "image": [
+          53,
+          49,
+          "… 13 more item(s) truncated"
+        ],
+        "itemHighlights": null,
+        "lastUpdate": 8358486,
+        "lightningEnd": 0,
+        "lightningStart": 0,
+        "rootCat": 283155,
+        "salesRankDrops180": 0,
+        "salesRankDrops30": 0,
+        "salesRankDrops365": 0,
+        "salesRankDrops90": 0,
+        "title": "Fuzzy Pickles The Beginning",
+        "warehouseCondition": 0
+      },
+      {
+        "asin": "6208773776",
+        "avg": [
+          [
+            6667,
+            6667,
+            "… 34 more item(s) truncated"
+          ],
+          [
+            6712,
+            6712,
+            "… 34 more item(s) truncated"
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "backInStock": [
+          false,
+          false,
+          "… 34 more item(s) truncated"
+        ],
+        "categories": [
+          1000
+        ],
+        "creationDate": 8358486,
+        "current": [
+          6598,
+          6598,
+          "… 34 more item(s) truncated"
+        ],
+        "currentSince": [
+          8358486,
+          8358486,
+          "… 34 more item(s) truncated"
+        ],
+        "dateIntervalIndex": 0,
+        "delta": [
+          [
+            69,
+            69,
+            "… 34 more item(s) truncated"
+          ],
+          [
+            114,
+            114,
+            "… 34 more item(s) truncated"
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "deltaLast": [
+          129,
+          129,
+          "… 34 more item(s) truncated"
+        ],
+        "deltaPercent": [
+          [
+            1,
+            1,
+            "… 34 more item(s) truncated"
+          ],
+          [
+            2,
+            2,
+            "… 34 more item(s) truncated"
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "image": [
+          52,
+          49,
+          "… 13 more item(s) truncated"
+        ],
+        "itemHighlights": null,
+        "lastUpdate": 8358486,
+        "lightningEnd": 0,
+        "lightningStart": 0,
+        "rootCat": 283155,
+        "salesRankDrops180": -1,
+        "salesRankDrops30": -1,
+        "salesRankDrops365": -1,
+        "salesRankDrops90": -1,
+        "title": "The Hour and the Fog: Epic discourse, will to power and the malaise of modernity in Fernando Pessoa's poem Mensagem",
+        "warehouseCondition": 0
+      },
+      "… 148 more item(s) truncated"
+    ],
+    "drDateIndex": []
+  },
+  "dealsCached": false,
+  "processingTimeInMs": 306,
+  "refillIn": 54434,
+  "refillRate": 20,
+  "timestamp": 1795429736173,
+  "tokenFlowReduction": 0.0,
+  "tokensConsumed": 5,
+  "tokensLeft": 1128
+}

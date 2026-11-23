@@ -1,0 +1,71 @@
+{
+  "categories": {
+    "172282": {
+      "avgBuyBox": 13449,
+      "avgBuyBox365": 13185,
+      "avgBuyBox90": 13479,
+      "avgBuyBoxDeviation": 636,
+      "avgDeltaPercent30Amazon": -0.001461694,
+      "avgDeltaPercent30BuyBox": 0.14834101,
+      "avgDeltaPercent90Amazon": 0.071255386,
+      "avgDeltaPercent90BuyBox": 0.15711705,
+      "avgOfferCountNew": 1.4177629,
+      "avgOfferCountUsed": 2.060687,
+      "avgRating": 43,
+      "avgReviewCount": 548,
+      "brandCount": 112085,
+      "catId": 172282,
+      "children": [
+        493964,
+        13900851,
+        "… 3 more item(s) truncated"
+      ],
+      "contextFreeName": "Electronics",
+      "domainId": 1,
+      "hasCouponPercent": 1.5298662,
+      "highestRank": 16777481,
+      "isBrowseNode": true,
+      "isFBAPercent": 82.47212,
+      "lowestRank": 1,
+      "name": "Electronics",
+      "parent": 0,
+      "productCount": 20222487,
+      "relatedSellerNames": [
+        "Amazon.com",
+        "Power4Laptops UK",
+        "… 3 more item(s) truncated"
+      ],
+      "relatedSellerNamesAny": [
+        "Amazon.com",
+        "Power4Laptops UK",
+        "… 3 more item(s) truncated"
+      ],
+      "sellerCount": 101418,
+      "soldByAmazonPercent": 3.9281223,
+      "topBrands": [
+        "generic",
+        "mighty skins",
+        "… 3 more item(s) truncated"
+      ],
+      "topSellers": [
+        "ATVPDKIKX0DER",
+        "A159YX9LB4D00Q",
+        "… 3 more item(s) truncated"
+      ],
+      "topSellersAny": [
+        "ATVPDKIKX0DER",
+        "A159YX9LB4D00Q",
+        "… 3 more item(s) truncated"
+      ],
+      "websiteDisplayGroup": "ce_display_on_website"
+    }
+  },
+  "categoryParents": {},
+  "processingTimeInMs": 0,
+  "refillIn": 53424,
+  "refillRate": 20,
+  "timestamp": 1795429737489,
+  "tokenFlowReduction": 0.0,
+  "tokensConsumed": 1,
+  "tokensLeft": 1126
+}

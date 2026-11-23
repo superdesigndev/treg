@@ -67,6 +67,11 @@ _TABLE: list[Signature] = [
     Signature("mapsdata", 402, r"lead_limit_reached", "balance", tripwire=True),
     Signature("mapsdata", 402, r"org_past_due", "balance", tripwire=True),
     Signature("leadocean", 429, r"fair-use pace reached", "quota"),
+    # Keepa (api-docs request-basics, plans-tokens): a key without a live plan answers 402 "No active
+    # API plan found"; a 429 is the token bucket running dry, refilled every minute (`refillIn` ms in
+    # every answer), so it is a pace, never an empty account.
+    Signature("keepa", 402, r"no active api plan", "balance", tripwire=True),
+    Signature("keepa", 429, r'"refillIn"', "burst"),
     # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
     # Hirebase: a spent monthly meter is a 429 with `X-Billing-Code: limit_exceeded` and "You've reached your

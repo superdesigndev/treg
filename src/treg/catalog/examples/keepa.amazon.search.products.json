@@ -1,0 +1,231 @@
+{
+  "processingTimeInMs": 9,
+  "products": [
+    {
+      "aPlus": [
+        {
+          "fromManufacturer": true,
+          "module": [
+            {
+              "image": [
+                "https:/…"
+              ],
+              "imageAltText": [
+                "optimum…"
+              ]
+            },
+            {
+              "image": [
+                "https:/…"
+              ],
+              "imageAltText": [
+                "optimum…"
+              ]
+            },
+            "… 4 mor…"
+          ]
+        }
+      ],
+      "asin": "B000GIS…",
+      "author": null,
+      "availabilityAmazon": 0,
+      "availabilityAmazonDelay": [
+        0,
+        0
+      ],
+      "binding": null,
+      "brand": "Optimum…",
+      "brandStoreName": "Optimum…",
+      "brandStoreUrl": "/stores…",
+      "brandStoreUrlName": "OPTIMUM…",
+      "buyBoxEligibleOfferCounts": [
+        1,
+        3,
+        "… 6 mor…"
+      ],
+      "buyBoxSellerIdHistory": null,
+      "categories": [
+        6973717011
+      ],
+      "categoryTree": [
+        {
+          "catId": 3760901,
+          "name": "Health …"
+        },
+        {
+          "catId": 3764441,
+          "name": "Diet & …"
+        },
+        "… 3 mor…"
+      ],
+      "color": "5 Pound…",
+      "competitivePriceThreshold": 9996,
+      "coupon": null,
+      "csv": null,
+      "description": "Optimum…",
+      "domainId": 1,
+      "eanList": [
+        "5060469…"
+      ],
+      "ebayListingIds": null,
+      "edition": null,
+      "fbaFees": {
+        "lastUpdate": 8358813,
+        "pickAndPackFee": 895
+      },
+      "features": [
+        "GOLD ST…",
+        "ANYTIME…",
+        "… 4 mor…"
+      ],
+      "format": null,
+      "frequentlyBoughtTogether": null,
+      "g": 13645,
+      "gtinList": [
+        "0506046…"
+      ],
+      "hasReviews": true,
+      "images": [
+        {
+          "l": "71UwaEa…",
+          "lH": 2560,
+          "lW": 2560,
+          "m": "41YAcdw…",
+          "mH": 500,
+          "mW": 500,
+          "variant": "MAIN"
+        },
+        {
+          "l": "719spsA…",
+          "lH": 2560,
+          "lW": 2560,
+          "m": "41+FOic…",
+          "mH": 500,
+          "mW": 500,
+          "variant": "PT01"
+        },
+        "… 9 mor…"
+      ],
+      "ingredients": "Protein…",
+      "…": "64 more field(s) truncated"
+    },
+    {
+      "aPlus": [
+        {
+          "fromManufacturer": true,
+          "module": [
+            {
+              "image": [
+                "https:/…"
+              ],
+              "imageAltText": [
+                "optimum…"
+              ]
+            },
+            {
+              "image": [
+                "https:/…"
+              ],
+              "imageAltText": [
+                "optimum…"
+              ]
+            },
+            "… 4 mor…"
+          ]
+        }
+      ],
+      "asin": "B000QST…",
+      "author": null,
+      "availabilityAmazon": 0,
+      "availabilityAmazonDelay": [
+        0,
+        0
+      ],
+      "binding": null,
+      "brand": "Optimum…",
+      "brandStoreName": "Optimum…",
+      "brandStoreUrl": "/stores…",
+      "brandStoreUrlName": "OPTIMUM…",
+      "buyBoxEligibleOfferCounts": [
+        1,
+        6,
+        "… 6 mor…"
+      ],
+      "buyBoxSellerIdHistory": null,
+      "categories": [
+        6973717011
+      ],
+      "categoryTree": [
+        {
+          "catId": 3760901,
+          "name": "Health …"
+        },
+        {
+          "catId": 3764441,
+          "name": "Diet & …"
+        },
+        "… 3 mor…"
+      ],
+      "color": "5 Pound…",
+      "competitivePriceThreshold": 11499,
+      "coupon": null,
+      "csv": null,
+      "description": "Optimum…",
+      "domainId": 1,
+      "eanList": [
+        "0616312…",
+        "0644222…",
+        "… 8 mor…"
+      ],
+      "ebayListingIds": null,
+      "edition": null,
+      "fbaFees": {
+        "lastUpdate": 8359124,
+        "pickAndPackFee": 879
+      },
+      "features": [
+        "GOLD ST…",
+        "ANYTIME…",
+        "… 4 mor…"
+      ],
+      "format": null,
+      "frequentlyBoughtTogether": null,
+      "g": 10464,
+      "gtinList": [
+        "0074892…",
+        "0074892…"
+      ],
+      "hasReviews": true,
+      "images": [
+        {
+          "l": "71YOCRJ…",
+          "lH": 2560,
+          "lW": 2560,
+          "m": "41+sxVd…",
+          "mH": 500,
+          "mW": 500,
+          "variant": "MAIN"
+        },
+        {
+          "l": "81Z6wkq…",
+          "lH": 2560,
+          "lW": 2560,
+          "m": "41dpuJJ…",
+          "mH": 500,
+          "mW": 500,
+          "variant": "PT01"
+        },
+        "… 9 mor…"
+      ],
+      "ingredients": "Protein…",
+      "…": "64 more field(s) truncated"
+    },
+    "… 18 mo…"
+  ],
+  "refillIn": 56780,
+  "refillRate": 20,
+  "timestamp": 1795429734124,
+  "tokenFlowReduction": 0.0,
+  "tokensConsumed": 10,
+  "tokensLeft": 1183
+}

@@ -282,6 +282,15 @@ async def _serpapi(c, key):
             "note": f"plan {d.get('plan_id')}, {d.get('this_month_usage')} used this month"}
 
 
+async def _keepa(c, key):
+    # A token bucket, not a balance: it refills every minute and a request runs while the balance is
+    # positive, so a low or negative reading is a pace and never refuses calls. A lapsed plan answers
+    # 402, which the signature table reads as an empty account.
+    d = await _get(c, "https://api.keepa.com/token", params={"key": key})
+    return {"value": _finite(d.get("tokensLeft")), "unit": "tokens left", "informational": True,
+            "note": f"refills {d.get('refillRate')} tokens a minute; informational: a token bucket"}
+
+
 async def _moz(c, key):
     # Rows CONSUMED this period (there is no remaining-rows call) — trend it against the plan size.
     r = await c.post("https://api.moz.com/v2/usage_data",
@@ -1184,6 +1193,7 @@ BALANCE_ROUTES = {
     "scrapegraphai": _scrapegraphai,
     "scrapecreators": _scrapecreators,
     "serpapi": _serpapi,
+    "keepa": _keepa,
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
