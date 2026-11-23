@@ -201,7 +201,8 @@ def test_answer_counts_judge_rows_against_the_question():
     asked = {"company_domain": "acme.example", "title": "Head of Sales", "country": "us"}
     assert S.people_search_answer(asked, {"people": _ROWS}) == {
         "rows": "5", "rows_with_profile_url": "2", "rows_dup": "2", "rows_company_match": "3",
-        "rows_title_match": "3", "rows_country_match": "1"}
+        "rows_company_known": "5", "rows_title_match": "3", "rows_title_known": "5",
+        "rows_country_match": "2", "rows_country_known": "3"}
     # a leader asked: a row matches when it is a leader too
     assert S.people_search_answer({"title": "Founder"}, {"people": [
         {"title": "Co-founder & CEO"}, {"title": "CTO"}, {"title": "Geschäftsführer"}]})["rows_title_match"] == "2"
@@ -215,10 +216,43 @@ def test_answer_counts_judge_rows_against_the_question():
 
 @pytest.mark.parametrize("location, code", [
     ("Austin, Texas, United States", "US"), ("Austin, Texas", "US"), ("Berlin, Germany", "DE"),
-    ("San Francisco, CA", None), ("London, UK", "GB"), ("Paris", None), ("", None), (None, None),
+    ("London, UK", "GB"), ("", None), (None, None),
+    # a two-letter part is never a country code: the city before it decides, or nothing does
+    ("San Francisco, CA", "US"), ("Berlin, DE", "DE"), ("Birmingham, AL", None), ("US", None),
+    # a country or US state in any part wins over a city of the same name elsewhere
+    ("Paris, Texas", "US"), ("London, Ontario", "CA"), ("Birmingham, Alabama", "US"),
 ])
 def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(location, code):
     assert S.location_country(location) == code
+
+
+@pytest.mark.parametrize("location, code", [
+    ("San Francisco Bay Area", "US"), ("Greater Phoenix Area", "US"),
+    ("New York City Metropolitan Area", "US"), ("Dallas-Fort Worth Metroplex", "US"),
+    ("Washington DC-Baltimore Area", "US"), ("Greater Minneapolis-St. Paul Area", "US"),
+    ("Austin, Texas Metropolitan Area", "US"), ("Seattle", "US"), ("New York, NY", "US"),
+    ("Greater London", "GB"), ("Greater Paris Metropolitan Region", "FR"),
+    ("Berlin Metropolitan Area", "DE"), ("Greater Toronto Area", "CA"), ("Amsterdam Area", "NL"),
+    ("Greater Madrid Metropolitan Area", "ES"), ("Mumbai Metropolitan Region", "IN"),
+    # nothing known, or a name that is a large place in two countries
+    ("Remote", None), ("Greater Victoria Area", None), ("Valencia", None),
+])
+def test_a_city_or_metro_area_names_its_country(location, code):
+    assert S.location_country(location) == code
+
+
+def test_a_row_with_nothing_to_judge_is_unknown_not_a_mismatch():
+    asked = {"company_domain": "acme.example", "title": "Head of Sales", "country": "US"}
+    counts = S.people_search_answer(asked, {"people": [
+        {"name": "Ann", "title": "VP Sales", "company": "Acme", "location": "Greater Phoenix Area"},
+        {"name": "Bo", "title": "CTO", "company": "Other Co", "location": "Berlin, Germany"},
+        {"name": "Cy", "location": "Remote"},
+        {"name": "Di", "title": "", "company": " ", "location": None}]})
+    assert counts == {
+        "rows": "4", "rows_with_profile_url": "0", "rows_dup": "0",
+        "rows_company_match": "1", "rows_company_known": "2",
+        "rows_title_match": "1", "rows_title_known": "2",
+        "rows_country_match": "1", "rows_country_known": "2"}
 
 
 def test_answer_columns_record_counts_with_the_version_and_no_row_value():
