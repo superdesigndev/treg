@@ -17,6 +17,7 @@
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
+    treg-worker reviews judge [--max-seconds 600]    # Jev: new review reasons' privacy and codes (hourly)
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
@@ -384,6 +385,15 @@ async def _shadow_collect(args) -> int:
         await verify_db()
         result = await shadow.collect(max_seconds=args.max_seconds)
     print(shadow.dumps(result))
+    return 0
+
+
+async def _reviews_judge(args) -> int:
+    from .infra.db import verify_db
+    from .application import review_judge
+
+    await verify_db()
+    print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
     return 0
 
 
@@ -920,6 +930,12 @@ def main(argv: list[str] | None = None) -> int:
                              "recent routed calls")
     cmpc.add_argument("--max-seconds", type=float, default=600.0)
     cmpc.set_defaults(fn=_compare_collect)
+    reviews = sub.add_parser("reviews", help="agent reviews of call results")
+    revsub = reviews.add_subparsers(dest="cmd", required=True)
+    revj = revsub.add_parser("judge", help="ask Jev whether new review reasons name a person and what "
+                             "negative ones blame (off without typesafe_api_key)")
+    revj.add_argument("--max-seconds", type=float, default=600.0)
+    revj.set_defaults(fn=_reviews_judge)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")
