@@ -415,8 +415,13 @@ Rules a change must keep:
 - Below `MIN_TEAMS` there is no `share`, only early quotes with `teams: 0`; with nothing quotable there
   is no `reviews` at all.
 - Quotes: at most one per team (its latest), drawn in the proportions the teams voted rather than for
-  tone, with verdict, month (never day) and `client`; no team, user or call is identified. Reasons are
-  quoted unfiltered because the review tool tells agents they may be quoted publicly.
+  tone, with verdict, month (never day) and `client`; no team, user or call is identified. The review
+  tool tells agents reasons may be quoted publicly and to leave private data out, but agents still
+  copy what they found: a reason carrying an email address, a phone number (nine digits or more) or a
+  LinkedIn profile link is never quoted (`verdicts.quotable`), and an endpoint whose capability is
+  about people (`verdicts.about_people`: a `people`, `user`, `employees`, `members`, `contacts`, ...
+  segment, or any segment naming `email` or `phone`) shows its score and no reason at all, since its
+  reasons name the person. Reasons are otherwise quoted as written.
 
 `application.feedback.endpoint_verdicts` caches the fold per process; only the first fold is awaited,
 later refreshes run in the background and a failed refresh keeps the previous fold. With no fold the

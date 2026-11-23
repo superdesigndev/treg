@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from treg.application import feedback
-from treg.domain.feedback.verdicts import Review, quotable, summarize
+from treg.domain.feedback.verdicts import Review, about_people, quotable, summarize
 from treg.infra.db import session_maker
 from treg.models import CallReview
 
@@ -67,9 +67,40 @@ def test_one_quote_per_team_its_latest():
 
 def test_quotable():
     assert quotable(LONG)
-    assert quotable(LONG + " Found jane@acme.io at https://acme.io, as asked.")   # quoted as written
+    assert quotable(LONG + " Ran on 2026-11-22 for $0.0025, 120 rows.")  # dates and prices are fine
     assert not quotable("   too short   ")
     assert not quotable(None)
+
+
+def test_a_reason_carrying_contact_data_is_never_quoted():
+    for leaked in (" Found jane@acme.io at https://acme.io, as asked.",
+                   " Confirmed 732-433-0667 as a live mobile line.",
+                   " Confirmed +44 20 7946 0958 as the direct line.",
+                   " Matched https://www.LinkedIn.com/in/someone as the person."):
+        assert not quotable(LONG + leaked), leaked
+    rows = [review(org, reason=LONG + " Reach them at 732-433-0667.", day=org) for org in range(4)]
+    assert summarize(rows) == {}
+
+
+def test_an_endpoint_about_people_shows_its_score_and_no_reason():
+    rows = [review(org, endpoint="p.people.search") for org in range(5)] + [review(org) for org in range(5)]
+    out = summarize(rows, quotes_allowed=lambda endpoint_id: endpoint_id != "p.people.search")
+    assert out["p.people.search"]["share"]["useful"] == 1.0
+    assert out["p.people.search"]["samples"] == []
+    assert len(out["a.b.c"]["samples"]) == 3
+    # Below the threshold it has nothing to show at all.
+    early = [review(org, endpoint="p.people.search") for org in range(4)]
+    assert summarize(early, quotes_allowed=lambda _: False) == {}
+
+
+def test_capabilities_about_people():
+    for capability in ("people.search", "people.phone.find", "companies.employees.list",
+                       "instagram.user.profile", "linkedin.profile.from_email", "x.list.members",
+                       "creators.enrich.by_email", "phone.validate"):
+        assert about_people(capability), capability
+    for capability in ("web.search", "google.serp.organic", "companies.profile.url",
+                       "google.keywords.volume", None, ""):
+        assert not about_people(capability), capability
 
 
 async def test_platform_payload_carries_verdicts_past_the_threshold(clients):

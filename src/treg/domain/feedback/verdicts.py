@@ -15,6 +15,8 @@ never rolled up per provider.
 """
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -56,10 +58,40 @@ def team_band(n: int) -> int:
     return max((b for b in TEAM_BANDS if b <= n), default=0)
 
 
+# Contact data an agent copied from its result into a reason. The review tool asks agents to leave
+# private data out; a reason that still carries an email address, a phone number or a personal
+# profile link is never published.
+_EMAIL = re.compile(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+")
+_PHONE = re.compile(r"\+?\d[\d\s().-]{6,}\d")
+_PHONE_DIGITS = 9
+_PROFILE = re.compile(r"linkedin\.com/in/", re.IGNORECASE)
+# Capability segments whose results are about a person: their reasons name the person, so they
+# are never quoted, whatever a pattern can catch.
+PERSON_SEGMENTS = frozenset({"people", "person", "persons", "contact", "contacts", "employee",
+                             "employees", "user", "users", "member", "members", "followers"})
+# Any segment naming these (`phone`, `by_email`, `from_email`, `phones`) is about a person's contact.
+PERSON_FRAGMENTS = ("email", "phone")
+
+
+def carries_contact_data(reason: str) -> bool:
+    return bool(_EMAIL.search(reason) or _PROFILE.search(reason) or any(
+        sum(c.isdigit() for c in m.group()) >= _PHONE_DIGITS for m in _PHONE.finditer(reason)))
+
+
+def about_people(capability: str | None) -> bool:
+    """Whether a capability's results are about people (`people.search`, `phone.validate`,
+    `instagram.user.profile`, `companies.employees`, ...)."""
+    segments = (capability or "").lower().split(".")
+    return bool(capability) and (not PERSON_SEGMENTS.isdisjoint(segments) or any(
+        f in s for s in segments for f in PERSON_FRAGMENTS))
+
+
 def quotable(reason: str | None) -> bool:
-    """A reason long enough to say something about the endpoint. Quoted as written: the review tool
-    tells agents reasons may be quoted without naming the team, and to leave private data out."""
-    return len((reason or "").strip()) >= MIN_REASON_CHARS
+    """A reason long enough to say something about the endpoint, and carrying no contact data.
+    Quoted as written: the review tool tells agents reasons may be quoted without naming the team,
+    and to leave private data out."""
+    text = (reason or "").strip()
+    return len(text) >= MIN_REASON_CHARS and not carries_contact_data(text)
 
 
 def _quotas(share: dict[str, float], slots: int) -> dict[str, int]:
@@ -90,10 +122,12 @@ def _quote(r: Review) -> dict:
             "month": r.created_at.strftime("%Y-%m")}
 
 
-def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int = SAMPLES) -> dict[str, dict]:
+def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int = SAMPLES,
+              quotes_allowed: Callable[[str], bool] = lambda _endpoint_id: True) -> dict[str, dict]:
     """Per endpoint id: `{teams, share, samples}` from `min_teams` teams, `teams` banded. Below
     that the `share` is withheld (`teams` is then the band below the first, 0) and the row exists
-    only when there is a quotable reason to show."""
+    only when there is a quotable reason to show. An endpoint `quotes_allowed` refuses (one whose
+    results are about people) shows no reason at all."""
     by_endpoint: dict[str, dict[int, list[Review]]] = {}
     for r in reviews:
         by_endpoint.setdefault(r.endpoint_id, {}).setdefault(r.org_id, []).append(r)
@@ -109,7 +143,8 @@ def summarize(reviews: list[Review], *, min_teams: int = MIN_TEAMS, samples: int
                 candidates.append(max(quoted, key=lambda r: r.created_at))
         share = {v: votes[v] / len(teams) for v in VERDICTS}
         scored = len(teams) >= min_teams
-        quotes = [_quote(r) for r in _samples(candidates, share, samples)]
+        quotes = ([_quote(r) for r in _samples(candidates, share, samples)]
+                  if quotes_allowed(endpoint_id) else [])
         if scored or quotes:
             out[endpoint_id] = {"teams": team_band(len(teams)), "samples": quotes}
         if scored:
