@@ -191,7 +191,8 @@ _CITIES = frozenset({
 # The country a place that names none belongs to, for a location with no country part: a city
 # (`Seattle`, `Austin, TX`), a metro area once its region words are gone (`Greater Phoenix Area`,
 # `San Francisco Bay Area`, `Dallas-Fort Worth Metroplex`) or a region inside one country. A name
-# that is a large place in two countries (`Birmingham`, `Valencia`, `Victoria`, `Punjab`) is left out.
+# that is a large place in two countries (`Birmingham`, `Valencia`, `Victoria`, `Punjab`,
+# `Hyderabad`) is left out.
 _PLACE_COUNTRY: dict[str, str] = {
     **dict.fromkeys((
         "new york", "new york city", "nyc", "los angeles", "chicago", "houston", "phoenix",
@@ -202,12 +203,13 @@ _PLACE_COUNTRY: dict[str, str] = {
         "orlando", "st. louis", "saint louis", "kansas city", "cincinnati", "cleveland", "columbus",
         "indianapolis", "sacramento", "oakland", "jacksonville", "milwaukee", "new orleans",
         "oklahoma city", "boise", "tucson", "albuquerque", "scottsdale", "irvine", "palo alto",
-        "mountain view", "sunnyvale", "san mateo", "bay area", "silicon valley", "midwest",
+        "mountain view", "sunnyvale", "san mateo", "st. paul", "saint paul", "fort lauderdale",
+        "chapel hill", "bay area", "silicon valley", "midwest",
         "new england"), "US"),
     **dict.fromkeys(("toronto", "montreal", "montréal", "vancouver", "calgary", "ottawa",
                      "edmonton", "winnipeg", "ontario", "quebec", "british columbia", "alberta",
                      "manitoba", "saskatchewan", "nova scotia"), "CA"),
-    **dict.fromkeys(("mexico city", "guadalajara", "monterrey"), "MX"),
+    **dict.fromkeys(("mexico city", "guadalajara", "monterrey", "tijuana"), "MX"),
     **dict.fromkeys(("são paulo", "sao paulo", "rio de janeiro", "são paulo state"), "BR"),
     "buenos aires": "AR", "bogotá": "CO", "bogota": "CO", "lima": "PE", "santiago": "CL",
     **dict.fromkeys(("london", "manchester", "edinburgh", "glasgow", "bristol", "leeds"), "GB"),
@@ -229,9 +231,9 @@ _PLACE_COUNTRY: dict[str, str] = {
     "athens": "GR", "istanbul": "TR", "tel aviv": "IL", "dubai": "AE", "abu dhabi": "AE",
     "riyadh": "SA", "doha": "QA", "cairo": "EG", "lagos": "NG", "nairobi": "KE",
     "johannesburg": "ZA", "cape town": "ZA",
-    **dict.fromkeys(("mumbai", "delhi", "new delhi", "bangalore", "bengaluru", "hyderabad",
-                     "chennai", "pune", "kolkata", "gurgaon", "gurugram", "noida", "maharashtra",
-                     "karnataka", "tamil nadu", "gujarat"), "IN"),
+    **dict.fromkeys(("mumbai", "delhi", "new delhi", "bangalore", "bengaluru", "chennai", "pune",
+                     "kolkata", "gurgaon", "gurugram", "noida", "maharashtra", "karnataka",
+                     "tamil nadu", "gujarat"), "IN"),
     "singapore": "SG", "hong kong": "HK",
     **dict.fromkeys(("shanghai", "beijing", "shenzhen", "guangzhou", "guangdong"), "CN"),
     "tokyo": "JP", "osaka": "JP", "seoul": "KR", "taipei": "TW", "bangkok": "TH",
@@ -293,13 +295,23 @@ def _part_country(part: str) -> str | None:
     return None
 
 
+def _named_country(name: str) -> str | None:
+    return _part_country(name) or _PLACE_COUNTRY.get(name)
+
+
 def _place_country(part: str) -> str | None:
     """A city, metro area or one-country region's country: `greater phoenix area`, `san francisco
-    bay area`, `dallas-fort worth metroplex` (the first of a hyphenated pair)."""
+    bay area`, `dallas-fort worth metroplex`. A hyphenated name gives a country only when every
+    place in it is known and in that country: `san diego-tijuana` spans two, so it gives none."""
     core = re.sub(r"\s+", " ", _METRO_WORDS.sub(" ", part)).strip()
-    for name in (part, core, core.removesuffix(" bay"), re.split(r"\s*[-–/]\s*", core, maxsplit=1)[0]):
-        if code := _part_country(name) or _PLACE_COUNTRY.get(name):
+    for name in (part, core, core.removesuffix(" bay")):
+        if code := _named_country(name):
             return code
+    pieces = re.split(r"\s*[-–/]\s*", core.removesuffix(" bay"))
+    if len(pieces) > 1:
+        codes = {_named_country(p) for p in pieces}
+        if len(codes) == 1 and None not in codes:
+            return codes.pop()
     return None
 
 
@@ -308,18 +320,35 @@ def location_country(value: Any) -> str | None:
     `US`), from its comma parts, last first. A two-letter part is never read as a country code:
     `San Francisco, CA` names a state, not Canada. With no country or US state in any part, a city,
     metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
-    `San Francisco Bay Area` -> `US`). A state or province abbreviation beside the city must agree
-    with it: `Vancouver, WA`, `London, ON` and `Paris, TX` are None, not Canada, Britain or France.
-    None when nothing in it is a place we know."""
+    `San Francisco Bay Area` -> `US`) when every part is a place we know or a state or province
+    abbreviation (`Austin, TX`). Where they disagree, the part further right, the wider place,
+    decides: `London, ON` is Canada, `Paris, TX` the United States, and `Vancouver, WA` (Washington
+    or Western Australia) none. A part we do not know (`Hyderabad, Sindh`) leaves it None.
+
+    A two-letter part that is a country code and no state or province abbreviation is the
+    provider's own country (`Vancouver, US` -> `US`), as adapters write `place(city, country)`;
+    one that is both (`CA`, `DE`, `IN`) is read either way and the city decides."""
     parts = [p.strip() for p in _text(value).split(",") if p.strip()]
     for part in reversed(parts):
         if (code := _part_country(part)) is not None:
             return code
-    within = frozenset().union(*(_REGION_CODES[p] for p in parts if p in _REGION_CODES))
-    for part in reversed(parts):
-        if part not in _REGION_CODES and (code := _place_country(part)) is not None:
-            return code if not within or code in within else None
-    return None
+        if len(part) == 2 and part not in _REGION_CODES and (code := iso2(part)) is not None:
+            return code
+    within: list[frozenset[str]] = []
+    places = 0
+    for part in parts:
+        if part in _REGION_CODES:
+            within.append(_REGION_CODES[part] | {c for c in (iso2(part),) if c})
+        elif (code := _place_country(part)) is not None:
+            within.append(frozenset({code}))
+            places += 1
+        else:
+            return None
+    if not places:
+        return None
+    common = frozenset.intersection(*within)
+    widest = common if common else within[-1]
+    return next(iter(widest)) if len(widest) == 1 else None
 
 
 def _is_iso2(value: str) -> bool:

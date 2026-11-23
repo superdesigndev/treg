@@ -236,7 +236,7 @@ gives nothing to judge by is absent, not zero; a request that cannot be read bac
 | `rows_company_known` | rows with a company domain or name to judge | with `rows_company_match` |
 | `rows_title_match` | rows whose title has the asked title's `title_function` (a leader asked: an `executive` row) | the asked title has a function other than `other` |
 | `rows_title_known` | rows with a title | with `rows_title_match` |
-| `rows_country_match` | rows whose location names the asked country: by a country name or US state in any part, never a two-letter part; failing that, by a city, metro area or one-country region (`Austin, TX`, `Greater Phoenix Area`, `San Francisco Bay Area`) that agrees with any state or province abbreviation beside it (`Vancouver, WA` and `London, ON` name no country) | the asked country is an ISO code or name |
+| `rows_country_match` | rows whose location names the asked country: by a country name or US state in any part, never a two-letter part; by a two-letter country code that is no state or province abbreviation (`Vancouver, US`, as adapters write `place(city, country)`); failing that, by a city, metro area or one-country region (`Austin, TX`, `Greater Phoenix Area`) when every part is a known place or abbreviation, the part further right deciding where they disagree (`London, ON` is Canada; `Hyderabad, Sindh`, a bare `Hyderabad` and `San Diego-Tijuana` name no country) | the asked country is an ISO code or name |
 | `rows_country_known` | rows whose location names any country by the same reading | with `rows_country_match` |
 
 A row with nothing to judge (no company, no title, a location that is empty, `Remote` or a place
