@@ -240,6 +240,19 @@ _PLACE_COUNTRY: dict[str, str] = {
                      "western australia", "south australia", "tasmania"), "AU"),
     "auckland": "NZ", "wellington": "NZ",
 }
+# State and province abbreviations after a city (`Vancouver, WA`, `London, ON`): never a country
+# code, but the countries the city must be in. `WA` and `NT` name a region in two countries.
+_REGION_CODES: dict[str, frozenset[str]] = {
+    **{c: frozenset({"US"}) for c in (
+        "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia",
+        "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj",
+        "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt",
+        "va", "wv", "wi", "wy", "dc")},
+    **{c: frozenset({"CA"}) for c in ("on", "qc", "bc", "ab", "mb", "sk", "ns", "nb", "nl", "pe",
+                                      "yt", "nu")},
+    **{c: frozenset({"AU"}) for c in ("nsw", "vic", "qld", "tas", "act")},
+    "wa": frozenset({"US", "AU"}), "nt": frozenset({"CA", "AU"}),
+}
 _METRO_WORDS = re.compile(r"\b(?:greater|metropolitan|metroplex|metro|area|region)\b")
 # Country names that are also common given names: a q naming a person must not read as a place.
 _NOT_PLACES = frozenset({"chad", "jordan"})
@@ -295,14 +308,17 @@ def location_country(value: Any) -> str | None:
     `US`), from its comma parts, last first. A two-letter part is never read as a country code:
     `San Francisco, CA` names a state, not Canada. With no country or US state in any part, a city,
     metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
-    `San Francisco Bay Area` -> `US`). None when nothing in it is a place we know."""
+    `San Francisco Bay Area` -> `US`). A state or province abbreviation beside the city must agree
+    with it: `Vancouver, WA`, `London, ON` and `Paris, TX` are None, not Canada, Britain or France.
+    None when nothing in it is a place we know."""
     parts = [p.strip() for p in _text(value).split(",") if p.strip()]
     for part in reversed(parts):
         if (code := _part_country(part)) is not None:
             return code
+    within = frozenset().union(*(_REGION_CODES[p] for p in parts if p in _REGION_CODES))
     for part in reversed(parts):
-        if (code := _place_country(part)) is not None:
-            return code
+        if part not in _REGION_CODES and (code := _place_country(part)) is not None:
+            return code if not within or code in within else None
     return None
 
 

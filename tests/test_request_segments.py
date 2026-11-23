@@ -218,7 +218,10 @@ def test_answer_counts_judge_rows_against_the_question():
     ("Austin, Texas, United States", "US"), ("Austin, Texas", "US"), ("Berlin, Germany", "DE"),
     ("London, UK", "GB"), ("", None), (None, None),
     # a two-letter part is never a country code: the city before it decides, or nothing does
-    ("San Francisco, CA", "US"), ("Berlin, DE", "DE"), ("Birmingham, AL", None), ("US", None),
+    ("San Francisco, CA", "US"), ("Birmingham, AL", None), ("US", None),
+    # a state or province abbreviation must agree with the city, else the row is unknown
+    ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"), ("Perth, WA", "AU"),
+    ("Vancouver, WA", None), ("London, ON", None), ("Paris, TX", None), ("Berlin, DE", None),
     # a country or US state in any part wins over a city of the same name elsewhere
     ("Paris, Texas", "US"), ("London, Ontario", "CA"), ("Birmingham, Alabama", "US"),
 ])
