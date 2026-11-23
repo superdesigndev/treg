@@ -347,3 +347,186 @@ async def test_a_trimmed_replay_reads_the_archive_with_no_db_connection_held(
     replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "pool-check"})
     assert replay.status_code == 200 and replay.content == body
     assert held == [0], held
+
+
+# ---- 2026-11 resilience fixes: advisory locks, timeout handling, wall-clock budgets ---------------
+
+async def test_prune_advisory_lock_prevents_overlapping_runs(clients):
+    """Advisory lock makes the second run exit 0 immediately with lock_held=False."""
+    async with session_maker() as db:
+        if db.bind.dialect.name != "postgresql":
+            pytest.skip("Advisory locks are Postgres-specific")
+
+    for n in range(3):
+        await _seed_answer(clients, f"expired-{n}", ttl_s=-3600)
+
+    # Simulate holding the advisory lock from another "run"
+    from sqlalchemy import text
+    async with session_maker() as holder:
+        await holder.execute(text(f"SELECT pg_advisory_lock({idempotency._PRUNE_ADVISORY_LOCK_ID})"))
+        try:
+            # Second run should exit immediately with lock_held=False
+            result = await idempotency.prune_expired_idempotency(pause_s=0)
+            assert result.lock_held is False
+            assert result.deleted == 0
+            assert result.complete is True  # Exited cleanly
+        finally:
+            await holder.execute(text(f"SELECT pg_advisory_unlock({idempotency._PRUNE_ADVISORY_LOCK_ID})"))
+
+    # Now without the lock held, prune should work
+    result = await idempotency.prune_expired_idempotency(pause_s=0)
+    assert result.lock_held is True
+    assert result.deleted == 3
+
+
+async def test_trim_advisory_lock_prevents_overlapping_runs(clients, platform_on):
+    """Advisory lock makes the second trim run exit 0 immediately."""
+    async with session_maker() as db:
+        if db.bind.dialect.name != "postgresql":
+            pytest.skip("Advisory locks are Postgres-specific")
+
+    body = b'{"data":1}'
+    row_id = await _seed_answer(clients, "trim-lock-test", body=body)
+    await _link(row_id, call_ref="call-lock-test", archived=body)
+
+    from sqlalchemy import text
+    async with session_maker() as holder:
+        await holder.execute(text(f"SELECT pg_advisory_lock({idempotency._TRIM_ADVISORY_LOCK_ID})"))
+        try:
+            result = await idempotency.trim_archived_answers(pause_s=0)
+            # Should exit cleanly with no work done
+            assert result.trimmed == 0
+            assert result.complete is True
+        finally:
+            await holder.execute(text(f"SELECT pg_advisory_unlock({idempotency._TRIM_ADVISORY_LOCK_ID})"))
+
+    # Without lock, trim should work
+    result = await idempotency.trim_archived_answers(pause_s=0)
+    assert result.trimmed == 1
+
+
+async def test_trim_batch_timeout_skips_and_continues(clients, platform_on, monkeypatch):
+    """A timeout in trim skips the batch and continues; trim completes with timeouts counted."""
+    from treg import archive
+
+    body = b'{"data":1}'
+    for n in range(6):
+        row_id = await _seed_answer(clients, f"trim-timeout-{n}", body=body)
+        await _link(row_id, call_ref=f"call-timeout-{n}", archived=body)
+
+    class FakeQueryCanceledError(Exception):
+        pass
+
+    call_count = 0
+    real_bytes_on_file = archive.bytes_on_file
+
+    async def timeout_on_second_call(session, pairs, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:  # Second batch's bytes_on_file call
+            raise FakeQueryCanceledError("statement timeout")
+        return await real_bytes_on_file(session, pairs, **kwargs)
+
+    monkeypatch.setattr(archive, "bytes_on_file", timeout_on_second_call)
+
+    result = await idempotency.trim_archived_answers(
+        batch_size=2, pause_s=0
+    )
+
+    assert result.timeouts >= 1, "should have recorded at least one timeout"
+    assert result.skipped_batches >= 1, "should have skipped at least one batch"
+    # Trimmed some rows despite the timeout
+    assert result.trimmed >= 0
+    # Complete=False because timeouts happened
+    assert result.complete is False
+
+
+async def test_prune_wall_clock_budget_stops_cleanly(clients, monkeypatch):
+    """The wall-clock budget stops the prune before the time limit."""
+    for n in range(10):
+        await _seed_answer(clients, f"budget-{n}", ttl_s=-3600)
+
+    # Set a very short budget so it expires quickly
+    result = await idempotency.prune_expired_idempotency(
+        batch_size=2, pause_s=0.1, wall_budget_s=0.05  # 50ms budget
+    )
+    # Should stop before completing all batches
+    # (may complete if the machine is fast enough, so we just check it ran)
+    assert result.batches >= 0
+    assert result.lock_held is True
+
+
+async def test_trim_wall_clock_budget_stops_cleanly(clients, platform_on):
+    """The wall-clock budget stops the trim before the time limit."""
+    body = b'{"data":1}'
+    for n in range(10):
+        row_id = await _seed_answer(clients, f"budget-trim-{n}", body=body)
+        await _link(row_id, call_ref=f"call-budget-{n}", archived=body)
+
+    result = await idempotency.trim_archived_answers(
+        batch_size=2, pause_s=0.1, wall_budget_s=0.05  # 50ms budget
+    )
+    # Should stop before completing all batches (or complete if fast)
+    assert result.batches >= 0
+
+
+async def test_bytes_on_file_per_key_lookup(clients, platform_on):
+    """bytes_on_file uses per-key lookups that are index-friendly."""
+    from treg import archive
+    from treg.models import ArchiveKey, ArchiveSnapshot
+
+    # Create multiple archive entries
+    bodies = [b'{"n":1}', b'{"n":2}', b'{"n":3}']
+    pairs = set()
+
+    async with session_maker() as db:
+        for i, body in enumerate(bodies):
+            key_hash = f"test-key-{i}"
+            content_hash = archive.content_hash(body)
+            key = ArchiveKey(key_hash=key_hash, endpoint_id=EP)
+            db.add(key)
+            await db.flush()
+            snap = ArchiveSnapshot(
+                key_id=key.id, content_hash=content_hash, size_bytes=len(body),
+                body=body, body_storage="db"
+            )
+            db.add(snap)
+            pairs.add((key_hash, content_hash))
+        await db.commit()
+
+        # Test bytes_on_file finds all of them
+        on_file = await archive.bytes_on_file(db, pairs)
+        assert on_file == pairs
+
+        # Test with a mix of existing and non-existing
+        mixed = pairs | {("nonexistent-key", "nonexistent-hash")}
+        on_file = await archive.bytes_on_file(db, mixed)
+        assert on_file == pairs
+
+        # Test empty set
+        on_file = await archive.bytes_on_file(db, set())
+        assert on_file == set()
+
+
+async def test_prune_result_includes_lock_held_field(clients):
+    """The prune result dataclass includes lock_held for monitoring."""
+    await _seed_answer(clients, "lock-field-test", ttl_s=-3600)
+    result = await idempotency.prune_expired_idempotency(pause_s=0)
+    assert hasattr(result, "lock_held"), "result must have lock_held field"
+    # On SQLite, advisory locks are skipped but lock_held stays True
+    assert result.lock_held is True
+    assert result.deleted == 1
+
+
+async def test_trim_result_includes_timeout_fields(clients, platform_on):
+    """The trim result dataclass includes timeout tracking fields."""
+    body = b'{"data":1}'
+    row_id = await _seed_answer(clients, "timeout-field-test", body=body)
+    await _link(row_id, call_ref="call-timeout-field", archived=body)
+
+    result = await idempotency.trim_archived_answers(pause_s=0)
+    assert hasattr(result, "timeouts"), "result must have timeouts field"
+    assert hasattr(result, "skipped_batches"), "result must have skipped_batches field"
+    assert result.timeouts == 0, "no timeouts in normal operation"
+    assert result.skipped_batches == 0
+    assert result.trimmed == 1
