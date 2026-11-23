@@ -1,0 +1,377 @@
+provider: speko
+source:
+  docs: https://docs.speko.ai/api-reference
+  openapi: https://docs.speko.ai/openapi.json
+  curated: 2026-11-18
+pricing_url: https://speko.com/pricing
+# Speko bills managed speech at the serving model's published rate plus 5%, from prepaid credits.
+# Speech rows auto-route by default; the response names the model that served (X-Speko-Model on
+# synthesize, route.model on transcriptions) but carries no USD charge, so each speech row's price
+# is the default English route's rate, observed against the workspace credit ledger on 2026-11-18.
+limits: "Synthesize accepts up to 50,000 characters per request."
+# Speech audio, transcripts, call recordings and agent prompts are customer data: treg must not
+# replay them from its archive or keep response bodies.
+cache: forbidden
+response_retention: forbidden
+proposed_capabilities:
+  voice-agents.list: "List the voice agents in your account"
+  voice-agents.get: "Get a voice agent's full configuration"
+  voice-agents.create: "Create a voice agent from a prompt and language"
+  voice-agents.update: "Update a voice agent's prompt, voice or language"
+  voice-agents.call.outbound: "Place an outbound phone call with a voice agent"
+  voice-agents.call.quote: "Check whether a number can be called, and its price, without dialing"
+  voice-agents.call.get: "Get a call's status, duration, transcript and report"
+  voice-agents.call.end: "End a live call"
+  voice-agents.call.recording: "Get a call's recording"
+  voice-agents.phone-numbers.list: "List the phone numbers calls can be placed from"
+  voice-gen.models.list: "List TTS models with measured quality, latency and price"
+  speech-to-text.from_audio: "Transcribe a recording"
+  speech-to-text.models.list: "List speech-to-text models with measured quality, latency and price"
+defaults:
+  provenance: {source: observed, source_url: 'https://speko.com/pricing', checked: '2026-11-18', confidence: verified}
+endpoints:
+  # --- Voice agents on phone calls --------------------------------------------------------------------
+  - id: speko.voice-agents.list
+    added: '2026-11-18'
+    kind: account
+    capability: voice-agents.list
+    platform: voice-agents
+    scope: own_account
+    method: GET
+    path: /v1/agents
+    name: "Speko: list voice agents"
+    summary: "List the voice agents in your Speko workspace with their ids, names, languages and voice settings."
+    note: "The list leaves out each system prompt; read it with speko.voice-agents.get."
+    input: {}
+    test_request: {}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/agents-list
+
+  - id: speko.voice-agents.get
+    added: '2026-11-18'
+    kind: account
+    capability: voice-agents.get
+    platform: voice-agents
+    scope: own_account
+    method: GET
+    path: /v1/agents/{id}
+    name: "Speko: get a voice agent"
+    summary: "Read one voice agent's full configuration, including its system prompt, opening line, voice and language."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Agent id from speko.voice-agents.list."}
+    untestable: "Needs an agent id from the caller's own workspace."
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/agents-get
+
+  - id: speko.voice-agents.create
+    kind: action
+    added: '2026-11-18'
+    capability: voice-agents.create
+    platform: voice-agents
+    scope: own_account
+    method: POST
+    path: /v1/agents
+    name: "Speko: create a voice agent"
+    summary: "Create a reusable voice agent from a system prompt, language and optional voice; returns the agent id to place calls with."
+    input:
+      body:
+        name: {type: string, required: true, example: "Appointment reminder"}
+        systemPrompt: {type: string, required: true, example: "You call patients to confirm tomorrow's appointment. Be brief and polite."}
+        intent: {type: object, required: true, example: {language: en}, note: "language is a BCP-47 tag; Speko picks the speech and LLM models for it."}
+        firstMessage: {type: string, required: false, max: 2000, note: "The agent's opening line."}
+        voice: {type: string, required: false, note: "A voice id from speko.voice-gen.voices.browse."}
+        maxDurationSeconds: {type: integer, required: false, min: 30, max: 14400, note: "Default call length cap; a value outside 30-14,400 is refused."}
+      bodyType: json
+    untestable: "Creates a persistent agent in the caller's workspace. Verified by creating one and deleting it with DELETE /v1/agents/{id}."
+    price: {value: '0', currency: USD, unit: call, note: "Creating an agent is free; calls it places bill per minute."}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/agents-create
+
+  - id: speko.voice-agents.update
+    kind: action
+    added: '2026-11-18'
+    capability: voice-agents.update
+    platform: voice-agents
+    scope: own_account
+    method: PATCH
+    path: /v1/agents/{id}
+    name: "Speko: update a voice agent"
+    summary: "Change a voice agent's prompt, opening line, voice or language; only the fields you send are written."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Agent id from speko.voice-agents.list."}
+      body:
+        name: {type: string, required: false}
+        systemPrompt: {type: string, required: false}
+        firstMessage: {type: string, required: false, max: 2000, note: "Send null to remove the opening line."}
+        voice: {type: string, required: false, note: "A voice id from speko.voice-gen.voices.browse. Send null to return to the default voice."}
+        intent: {type: object, required: false, example: {language: en}}
+        maxDurationSeconds: {type: integer, required: false, min: 30, max: 14400, note: "A value outside 30-14,400 is refused."}
+      bodyType: json
+    untestable: "Writes to an agent in the caller's own workspace. Verified on a throwaway agent that was then deleted."
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/agents-update
+
+  - id: speko.voice-agents.call.quote
+    added: '2026-11-18'
+    kind: utility
+    capability: voice-agents.call.quote
+    platform: voice-agents
+    scope: own_account
+    method: POST
+    path: /v1/actions/sessions.phone.quote
+    name: "Speko: check a phone call before dialing"
+    summary: "Check whether your workspace can call a number now, its price per minute and how long your balance lasts, without dialing."
+    input:
+      body:
+        to: {type: string, required: true, note: "E.164 number to call.", example: "+12015550123"}
+        from: {type: string, required: false, note: "The caller ID the call will use, when known."}
+      bodyType: json
+      note: "data.status is ready, free_call, top_up_required, insufficient_credits, spending_cap_reached or not_allowed; only ready and free_call can dial. Calls outside the US and Canada need one card top-up first."
+    test_request:
+      body: {to: "+12015550123"}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/sms/mcp
+
+  - id: speko.voice-agents.call.outbound
+    kind: action
+    added: '2026-11-18'
+    capability: voice-agents.call.outbound
+    platform: voice-agents
+    scope: own_account
+    method: POST
+    path: /v1/sessions/phone
+    name: "Speko: place a phone call with a voice agent"
+    summary: "Dial a phone number and run a voice agent on the call; returns the session id for reading the transcript and outcome."
+    input:
+      body:
+        to: {type: string, required: true, note: "E.164 number to call.", example: "+12015551234"}
+        agentId: {type: string, required: false, note: "Agent to run, from speko.voice-agents.list. Send agentId or intent. Check the number with speko.voice-agents.call.quote first."}
+        intent: {type: object, required: false, example: {language: en}, note: "Runs Speko's default agent stack in this language when no agentId is sent."}
+        from: {type: string, required: false, note: "Caller ID: one of your workspace's numbers, or a verified caller ID. Omit to call from a workspace number."}
+        firstMessage: {type: string, required: false, note: "Replaces the agent's opening line for this call."}
+        systemPrompt: {type: string, required: false, note: "Replaces the agent's system prompt for this call."}
+        variables: {type: object, required: false, note: "Values for {{name}} placeholders in systemPrompt and firstMessage."}
+        maxDurationSeconds: {type: integer, required: false, default: 3600, note: "Ends the call after this many seconds from dial; clamped to 30-14,400."}
+        ringTimeoutSeconds: {type: integer, required: false, min: 20, max: 45, default: 45}
+        metadata: {type: object, required: false, note: "Your own key/value pairs, echoed on call reads and webhooks."}
+      bodyType: json
+      note: "The response returns while the call is dialing. Read the outcome with speko.voice-agents.call.get using sessionId."
+    untestable: "Dials a real phone number. Verify with a number you own, a workspace agent and a Speko number."
+    price:
+      value: '0.105'
+      currency: USD
+      per: 1
+      unit: call
+      note: "Bills $0.09 per answered minute, by the second, plus the carrier's charge for the call, including its taxes and fees, plus 20%: at least $0.015 a minute outbound, which most US calls pay. Other countries cost more; speko.voice-agents.call.quote gives the rate. An agent on GPT-Live also bills its reasoning model's tokens at the provider rate plus 5%. The value is one US minute. Unanswered calls bill nothing."
+    provenance: {source: docs, source_url: 'https://speko.com/pricing', checked: '2026-11-18', confidence: documented}
+    docs_url: https://docs.speko.ai/api-reference/sessions-phone
+
+  - id: speko.voice-agents.call.get
+    added: '2026-11-18'
+    kind: account
+    capability: voice-agents.call.get
+    platform: voice-agents
+    scope: own_account
+    method: GET
+    path: /v1/calls/{id}
+    name: "Speko: get a call"
+    summary: "Read a call's status, duration, end reason, transcript, post-call report and recording metadata."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "sessionId from speko.voice-agents.call.outbound."}
+    untestable: "Needs a call id from the caller's own workspace."
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/calls
+
+  - id: speko.voice-agents.call.end
+    kind: action
+    added: '2026-11-18'
+    capability: voice-agents.call.end
+    platform: voice-agents
+    scope: own_account
+    method: POST
+    path: /v1/calls/{id}/end
+    name: "Speko: end a live call"
+    summary: "Hang up a live call now; billing stops when the call ends."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "sessionId from speko.voice-agents.call.outbound."}
+      note: "Ending a call that already ended returns status already_ended."
+    untestable: "Needs a live call id from the caller's own workspace."
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/calls
+
+  - id: speko.voice-agents.call.recording
+    added: '2026-11-18'
+    kind: account
+    capability: voice-agents.call.recording
+    platform: voice-agents
+    scope: own_account
+    method: GET
+    path: /v1/calls/{id}/recording
+    name: "Speko: get a call recording"
+    summary: "Get a signed download URL for a finished call's recording."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "sessionId from speko.voice-agents.call.outbound."}
+    untestable: "Needs a call id from the caller's own workspace."
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/calls
+
+  - id: speko.voice-agents.phone-numbers.list
+    added: '2026-11-18'
+    kind: account
+    capability: voice-agents.phone-numbers.list
+    platform: voice-agents
+    scope: own_account
+    method: GET
+    path: /v1/phone-numbers
+    name: "Speko: list phone numbers"
+    summary: "List the managed and SIP-trunk phone numbers in your workspace that calls can be placed from."
+    input: {}
+    test_request: {}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/phone-numbers
+
+  # --- Text to speech: auto-routed, with optional model and voice -------------------------------------
+  - id: speko.voice-gen.from_text
+    added: '2026-11-18'
+    capability: voice-gen.from_text
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/synthesize
+    name: "Speko: text to speech (auto-routed)"
+    summary: "Generate speech from text; Speko routes to the best TTS model for the language, or to the model and voice you pick."
+    input:
+      body:
+        text: {type: string, required: true, min: 1, max: 50000, example: "Hello."}
+        intent: {type: object, required: true, example: {language: en}, note: "language is a BCP-47 tag. Add optimizeFor (balanced, accuracy, latency or cost) to steer auto routing."}
+        voice: {type: string, required: false, note: "Voice id. Take use_with.voice from speko.voice-gen.voices.browse, with its model below."}
+        model: {type: string, required: false, note: "Pins the model: use_with.model from speko.voice-gen.voices.browse, or model from speko.voice-gen.models.list. Send constraints with it."}
+        constraints: {type: object, required: false, note: 'allowedProviders.tts lists "provider:model" ids: the id from speko.voice-gen.models.list, or use_with provider and model. One entry keeps the call on that model.'}
+        speed: {type: number, required: false, min: 0.5, max: 2}
+      bodyType: json
+      note: "Answers raw audio; Content-Type gives the format (audio/pcm;rate=24000 on the routes tested). X-Speko-Provider and X-Speko-Model name the model that served."
+    test_request:
+      body: {text: "Hello.", intent: {language: en}}
+    price: {value: '4.2', currency: USD, per: 1000000, unit: character, note: "Bills the serving model's rate plus 5%. The default English route bills $4.20 per million characters. A pinned model bills Speko's rate for it plus 5%; models.list shows list prices, which can be above that rate. Models that bill by audio length bill at least 15 characters per second of audio."}
+    docs_url: https://docs.speko.ai/api-reference/synthesize
+
+  - id: speko.voice-gen.voices.browse
+    added: '2026-11-18'
+    kind: utility
+    capability: voice-gen.voices.list
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: GET
+    path: /v1/tts/voices
+    name: "Speko: browse voices by measured quality"
+    summary: "Filter TTS voices by language, gender, accent, pace and measured quality labels; each voice names the provider and model to call it with."
+    input:
+      queryParams:
+        language: {type: string, required: false, note: "Exact when a region is named (en-US), prefix otherwise (en).", example: en}
+        gender: {type: string, required: false, enum: [male, female, neutral]}
+        accent: {type: string, required: false}
+        vendor: {type: string, required: false, note: "A provider id; router and platform spellings are both accepted."}
+        model: {type: string, required: false, note: "Pins one model id; use_with then names that model."}
+        use_case: {type: string, required: false, enum: [longform, phone]}
+        pace: {type: string, required: false, enum: [slow, normal, brisk, fast]}
+        sort: {type: string, required: false, enum: [model_naturalness, latency, model_cost, pace, max_chars, name], default: model_naturalness}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 25, example: 3}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page, with the same filters and sort."}
+    test_request:
+      queryParams: {language: en, limit: 3}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/tts-voices
+
+  - id: speko.voice-gen.models.list
+    added: '2026-11-18'
+    kind: utility
+    capability: voice-gen.models.list
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: GET
+    path: /v1/tts/models
+    name: "Speko: compare TTS models"
+    summary: "List the TTS models your key can route with measured naturalness, robustness, latency and list price per million characters."
+    input:
+      queryParams:
+        language: {type: string, required: false, default: en, example: en}
+        use_case: {type: string, required: false, enum: [longform, phone]}
+        sort: {type: string, required: false, enum: [natural, latency, cost, robustness], default: natural, example: cost}
+        order: {type: string, required: false, enum: [asc, desc], example: asc}
+        include_unroutable: {type: string, required: false, enum: ["true", "false"], default: "false"}
+    test_request:
+      queryParams: {language: en, sort: cost, order: asc}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://docs.speko.ai/api-reference/tts-models
+
+  # --- Speech to text: Speko Router, auto-routed, with optional model ---------------------------------
+  - id: speko.speech-to-text.from_audio
+    added: '2026-11-18'
+    capability: speech-to-text.from_audio
+    platform: speech-to-text
+    domain: models
+    scope: any_account
+    host: router.speko.dev
+    method: POST
+    path: /v1/stt/transcriptions
+    name: "Speko: speech to text (auto-routed)"
+    summary: "Transcribe an uploaded recording; Speko routes to the best STT model for the language, or to the model you pick. Returns text, timed segments and the audio duration."
+    input:
+      headers:
+        Idempotency-Key: {type: string, required: true, note: "A new unique value per request; reuse it only to retry the same bytes. On treg's MCP call tool, pass it as idempotency_key, not in headers.", example: "treg-0001"}
+      body:
+        request: {type: string, required: true, note: 'JSON. {"language":"en"} auto-routes. Add "routing":{"mode":"auto","objective":"cost"} to steer it (quality, balanced, latency, cost), or "routing":{"mode":"explicit","provider":"<provider>","model":"<id>"} with provider and id from speko.speech-to-text.models.list.', example: '{"language":"en"}'}
+        audio: {type: file, required: true, note: "The recording, as WAV or 16-bit PCM."}
+      bodyType: multipart
+      note: "route.provider and route.model name the model that served; usage.duration_ms is the audio duration. Some providers bill whole seconds or settle from their own usage log, so the charge can exceed duration times rate."
+    test_request:
+      bodyType: multipart
+      headers: {Idempotency-Key: "treg-verify-from-audio"}
+      body: {request: '{"language":"en"}'}
+      files:
+        audio: {filename: sample.wav, content_type: audio/wav, note: "Any short English speech clip; 2.7 s of 24 kHz mono WAV was used."}
+    price: {value: '0.0016', currency: USD, per: 1, unit: call, note: "Bills the serving model's per-audio-hour rate plus 5%. The default English route is $0.0945 an hour, and the value is one minute of it; that route settles from the provider's usage log, so a short clip can bill more. A pinned model bills its provider's batch rate plus 5%. speko.speech-to-text.models.list shows list rates before the 5%, and for some models the streaming rate, which is above the batch rate."}
+    docs_url: https://router.speko.dev/openapi.json
+
+  - id: speko.speech-to-text.models.list
+    added: '2026-11-18'
+    kind: utility
+    capability: speech-to-text.models.list
+    platform: speech-to-text
+    domain: models
+    scope: any_account
+    host: router.speko.dev
+    method: GET
+    path: /v1/models
+    name: "Speko: compare STT models"
+    summary: "List routable speech-to-text models ranked for a language, with benchmark quality, latency, list price per minute and audio limits."
+    note: "models[].benchmark.cost.per_min_usd is a list rate before Speko's 5%. For some models it is the streaming rate; transcription bills the batch rate, which can be lower."
+    input:
+      queryParams:
+        kind: {type: string, required: false, enum: [stt, tts, llm], example: stt}
+        language: {type: string, required: false, note: "Language for the benchmark ranking; default en.", example: en}
+        objective: {type: string, required: false, enum: [quality, balanced, latency, cost], default: balanced}
+        path: {type: string, required: false, enum: [all, stream, batch], example: batch, note: "batch lists the models the transcription endpoint can use."}
+    test_request:
+      queryParams: {kind: stt, language: en, path: batch}
+    price: {value: '0', currency: USD, unit: call}
+    provenance: null
+    docs_url: https://router.speko.dev/openapi.json
