@@ -159,3 +159,32 @@ async def test_a_failed_fold_never_takes_the_catalog_down(clients, monkeypatch):
         raise RuntimeError("replica unavailable")
     monkeypatch.setattr(feedback, "endpoint_verdicts", broken)
     assert (await clients.get("/catalog/platforms/tiktok")).status_code == 200
+
+
+async def _review(org_ids, endpoint_id, reason=LONG):
+    async with session_maker() as db:
+        for org in org_ids:
+            db.add(CallReview(org_id=org, user_email="agent@example.dev", call_id=f"{endpoint_id}-{org}",
+                              endpoint_id=endpoint_id, client="claude-code", usefulness="useful",
+                              reason=reason))
+        await db.commit()
+    feedback.forget_endpoint_verdicts()
+
+
+async def test_public_detail_never_quotes_an_endpoint_about_people_or_without_a_capability(clients):
+    """The real catalog's classification, through the public detail `catalog_get` relays: one team
+    publishes nothing, five teams publish the score and no quote."""
+    orgs = [(await clients.post("/orgs", json={"name": f"People {i}"})).json()["org_id"] for i in range(5)]
+    hidden = ("apollo.people.search", "aviato.companies.founders", "anyapi.facebook.followers")
+    for endpoint_id in hidden:
+        await _review(orgs[:1], endpoint_id)
+    for endpoint_id in hidden:
+        detail = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()
+        assert "reviews" not in detail["endpoint"], endpoint_id
+
+    for endpoint_id in hidden:
+        await _review(orgs[1:], endpoint_id)
+    for endpoint_id in hidden:
+        reviews = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()["endpoint"]["reviews"]
+        assert reviews["teams"] == 5 and reviews["share"]["useful"] == 1.0, endpoint_id
+        assert reviews["samples"] == [], endpoint_id
