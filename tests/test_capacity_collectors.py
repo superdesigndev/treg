@@ -48,6 +48,23 @@ async def test_anymailfinder_balance_uses_free_account_route(monkeypatch):
                                b'{"error":"upgrade_needed","message":"You do not have enough credits."}').kind == "balance"
 
 
+async def test_descovo_balance_uses_free_credits_route(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.descovo.com/v1/credits"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"data": {"available": 15469, "used": 31, "limit": 15500,
+                                                  "resetsOn": "2026-12-23T18:20:49.066Z"},
+                                         "credits": {"charged": 0, "available": None}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "descovo", client, "test-key")
+    assert row == {"value": 15469, "unit": "credits", "note": "resets 2026-12-23T18:20:49.066Z"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"data": {}}))) as client:
+        _refused(await _balance(monkeypatch, "descovo", client, "test-key"), "no credit balance")
+
+
 async def test_millionphones_balance_uses_free_credits_route(monkeypatch):
     def probe(request):
         assert request.method == "GET"
