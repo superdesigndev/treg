@@ -1705,10 +1705,52 @@ def _scrappa_type(schema: dict) -> str:
     kind = schema.get("type")
     if isinstance(kind, list):
         kind = next((k for k in kind if k != "null"), "string")
-    if kind == "array":
-        inner = _scrappa_type(schema.get("items") or {})
-        return f"array[{inner}]"
-    return kind if kind in ("string", "integer", "number", "boolean") else "string"
+    return kind if kind in ("string", "integer", "number", "boolean", "array") else "string"
+
+
+def _scrappa_enum(values: list, kind: str) -> list | None:
+    """The spec's enum in the parameter's own type; None when a value does not fit it (the spec
+    writes some integer enums as strings)."""
+    out = []
+    for v in values:
+        if v is None:
+            continue
+        if kind in ("integer", "number"):
+            if isinstance(v, bool):
+                return None
+            try:
+                num = float(v)
+            except (TypeError, ValueError):
+                return None
+            if kind == "integer":
+                if not num.is_integer():
+                    return None
+                num = int(num)
+            out.append(num)
+        elif kind == "boolean":
+            if not isinstance(v, bool):
+                return None
+            out.append(v)
+        else:
+            out.append(str(v))
+    return out or None
+
+
+def _scrappa_param_type(schema: dict) -> dict:
+    kind = _scrappa_type(schema)
+    if kind != "array":
+        spec: dict = {"type": kind}
+        enum = _scrappa_enum(schema.get("enum") or [], kind)
+        if enum:
+            spec["enum"] = enum
+        return spec
+    items_schema = schema.get("items") or {}
+    inner = _scrappa_type(items_schema)
+    items: dict = {"type": "string" if inner == "array" else inner}
+    enum = _scrappa_enum(items_schema.get("enum") or schema.get("enum") or [], items["type"])
+    if enum:
+        items["enum"] = enum
+    return {"type": "array", "items": items}
 
 
 def _scrappa_params(op: dict) -> dict:
@@ -1718,13 +1760,15 @@ def _scrappa_params(op: dict) -> dict:
         if where is None:
             continue
         schema = q.get("schema") or {}
-        spec: dict = {"type": _scrappa_type(schema), "required": bool(q.get("required"))}
+        typed = _scrappa_param_type(schema)
+        spec: dict = {"type": typed["type"], "required": bool(q.get("required"))}
+        if "items" in typed:
+            spec["items"] = typed["items"]
         note = clean(q.get("description") or "")
         if note:
             spec["note"] = note[:240]
-        enum = [v for v in (schema.get("enum") or []) if v is not None]
-        if enum:
-            spec["enum"] = enum
+        if "enum" in typed:
+            spec["enum"] = typed["enum"]
         if q.get("example") is not None and not isinstance(q["example"], (dict, list)):
             spec["example"] = q["example"]
         out.setdefault(where, {})[q["name"].rstrip("[]")] = spec
@@ -1802,7 +1846,7 @@ def ingest_scrappa(refresh: bool) -> tuple[Path, dict]:
         f"{excluded['no taxonomy platform']} route(s) in {len(unmapped)} source(s) with no platform in capabilities.yaml.",
         "No row carries a test_request: bulk verification is catalog_verify_extended.py's job.",
     ]
-    return write_extended("scrappa", source, endpoints, notes), {"excluded": excluded, "unmapped": unmapped}
+    return write_extended("scrappa", source, endpoints, notes, carry_input=False), {"excluded": excluded, "unmapped": unmapped}
 
 
 INGESTERS = {

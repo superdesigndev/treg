@@ -8,13 +8,13 @@
 # The price is the operation's maximum credits; a call settles on the X-Credits-Charged header
 # (the core file's defaults), so a range such as 1 to 50 pages bills only what was fetched.
 # `platform` is the shared-taxonomy platform the data is about; Google surfaces fold into `google`.
-# Left out: 2 own-account route(s) (account, auth, zapier), 13 POST route(s) that need a request body, and 2244 route(s) in 416 source(s) with no platform in capabilities.yaml.
+# Left out: 2 own-account route(s) (account, auth, zapier), 10 POST route(s) that need a request body, and 3239 route(s) in 618 source(s) with no platform in capabilities.yaml.
 # No row carries a test_request: bulk verification is catalog_verify_extended.py's job.
 
 provider: scrappa
 source:
   method: openapi x-credits
-  ingested: '2026-11-18'
+  ingested: '2026-11-23'
   spec_urls:
   - https://scrappa.co/api/docs/openapi.json
 endpoints:
@@ -803,7 +803,7 @@ endpoints:
         type: integer
         required: false
         enum:
-        - '1'
+        - 1
 - id: scrappa.x.apple-maps-search
   added: '2026-11-18'
   platform: apple-maps
@@ -1752,8 +1752,10 @@ endpoints:
   input:
     queryParams:
       uris:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Post AT-URIs. Repeat the key or pass a comma-separated list. Maximum 25.
 - id: scrappa.x.bluesky-profile
   added: '2026-11-18'
@@ -1789,8 +1791,10 @@ endpoints:
   input:
     queryParams:
       actors:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Handles or DIDs. Repeat the key, or pass a comma-separated list. Maximum 25.
 - id: scrappa.x.bluesky-quotes
   added: '2026-11-18'
@@ -1942,61 +1946,91 @@ endpoints:
         required: false
         note: Only posts before this timestamp. Both generations.
       authors:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Restrict to these authors. V2 only, plural key.
       hashtags:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Restrict to these hashtags. V2 only, plural key.
       domains:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Restrict to posts linking these domains. V2 only.
       urls:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
       languages:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
       embeddedAtUris:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
       tag:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: 'Restrict to these hashtags. V1 only. This is the one plural filter on V1: repeat the key or pass a comma-separated list, and multiple tags are AND-matched.'
       excludeAuthors:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude these authors. V2 only, plural key. Accepted and forwarded; upstream effect unverified.
       excludeHashtags:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude these hashtags. V2 only, plural key. Accepted and forwarded; upstream effect unverified.
       excludeMentions:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude these mentions. V2 only, plural key. Accepted and forwarded; upstream effect unverified.
       excludeDomains:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude posts linking these domains. V2 only. Accepted and forwarded; upstream effect unverified.
       excludeUrls:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude posts linking these URLs. V2 only. Accepted and forwarded; upstream effect unverified.
       excludeLanguages:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude these language codes. V2 only. Accepted and forwarded; upstream effect unverified.
       excludeEmbeddedAtUris:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Exclude posts embedding these records. V2 only. Accepted and forwarded; upstream effect unverified.
       mentions:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
       allTime:
         type: boolean
         required: false
@@ -2361,6 +2395,10 @@ endpoints:
         type: integer
         required: false
         note: Number of children (0-20).
+      children_ages:
+        type: string
+        required: false
+        note: Comma-separated age of each child (0-17), one per child, e.g. 4,9. Needed for reliable results when group_children is above 0.
       no_rooms:
         type: integer
         required: false
@@ -2564,7 +2602,7 @@ endpoints:
   platform: booking
   method: GET
   path: /booking/search
-  summary: Fetches a Booking.com search results page and returns structured property cards (name, URL, image, review score, location, price).
+  summary: Searches Booking.com and returns structured property cards (name, URL, image, review score, review count, location, price).
   name: Search hotels on Booking.com
   price:
     value: '1'
@@ -2581,12 +2619,12 @@ endpoints:
       checkin:
         type: string
         required: false
-        note: Check-in date (YYYY-MM-DD). Required for property cards to render.
+        note: Check-in date (YYYY-MM-DD). Required for prices.
         example: '2026-06-01'
       checkout:
         type: string
         required: false
-        note: Check-out date (YYYY-MM-DD). Required for property cards to render.
+        note: Check-out date (YYYY-MM-DD). Required for prices.
         example: '2026-06-04'
       group_adults:
         type: integer
@@ -2597,6 +2635,10 @@ endpoints:
         type: integer
         required: false
         note: Number of children (0-20).
+      children_ages:
+        type: string
+        required: false
+        note: Comma-separated age of each child (0-17), one per child, e.g. 4,9. Needed for reliable results when group_children is above 0.
       no_rooms:
         type: integer
         required: false
@@ -2984,10 +3026,10 @@ endpoints:
         required: false
         note: 'Feedback per page. Allowed: 25, 50, 100, 200. Default: 25.'
         enum:
-        - '25'
-        - '50'
-        - '100'
-        - '200'
+        - 25
+        - 50
+        - 100
+        - 200
         example: 25
 - id: scrappa.x.etsy-product
   added: '2026-11-18'
@@ -5108,12 +5150,12 @@ endpoints:
         required: false
         note: Carry-on bag count. Only 0 is currently supported.
         enum:
-        - '0'
+        - 0
       api_version:
         type: integer
         required: false
         enum:
-        - '2'
+        - 2
       from_date:
         type: string
         required: true
@@ -5209,12 +5251,12 @@ endpoints:
         required: false
         note: Carry-on bag count. Only 0 is currently supported.
         enum:
-        - '0'
+        - 0
       api_version:
         type: integer
         required: false
         enum:
-        - '2'
+        - 2
       departure_date:
         type: string
         required: true
@@ -5237,8 +5279,10 @@ endpoints:
         - duration
         - emissions
       airlines:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Filter by airline IATA codes (e.g., ["AA", "UA", "DL"] or "AA,UA,DL")
       include_baggage:
         type: boolean
@@ -5851,9 +5895,9 @@ endpoints:
         type: integer
         required: false
         enum:
-        - '1'
-        - '2'
-        - '4'
+        - 1
+        - 2
+        - 4
         example: 2
       currency:
         type: string
@@ -6709,10 +6753,10 @@ endpoints:
         required: false
         note: 'Trending window in hours: 4, 24, 48 or 168 (7 days)'
         enum:
-        - '4'
-        - '24'
-        - '48'
-        - '168'
+        - 4
+        - 24
+        - 48
+        - 168
         example: 24
       num_news:
         type: integer
@@ -8202,9 +8246,9 @@ endpoints:
         required: false
         note: 0 for relevance, 1 for recent abstracts, or 2 for all recent additions.
         enum:
-        - '0'
-        - '1'
-        - '2'
+        - 0
+        - 1
+        - 2
       cites:
         type: string
         required: false
@@ -8608,15 +8652,15 @@ endpoints:
         required: false
         note: Set to 1 to disable automatic spelling correction, 0 to allow it.
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       filter:
         type: integer
         required: false
         note: Set to 1 to omit near-duplicate results (default), 0 to keep them.
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       start:
         type: integer
         required: false
@@ -9074,15 +9118,15 @@ endpoints:
         required: false
         note: 'Exclude auto-corrected results (default: 1). Set 0 to allow auto-correction; results for a different query are rejected.'
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       filter:
         type: integer
         required: false
         note: Enable/disable similar/omitted filters (0 or 1)
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       tbm:
         type: string
         required: false
@@ -9097,9 +9141,9 @@ endpoints:
       udm:
         type: integer
         required: false
-        note: 'Set 14 to request Google''s Web tab: plain web results without AI overview, related questions and other modules. Use it for site: searches, where the default tab can mix in other sites on later pages. Cannot be combined with tbm.'
+        note: 'Set 14 to request Google''s Web tab: plain web results only, without AI overview, related questions, related searches, ads and other modules. Recommended when you only need the organic results (rank tracking, link lists, research): Web tab p'
         enum:
-        - '14'
+        - 14
       start:
         type: integer
         required: false
@@ -9241,11 +9285,11 @@ endpoints:
       start:
         type: integer
         required: false
-        note: Starting index for offset-based pagination (0-170). Mutually exclusive with "page".
+        note: Starting index for offset-based pagination (0-100). Google serves at most about 100 results per query, so a larger start returns 422 at once and is never billed. Mutually exclusive with "page".
       page:
         type: integer
         required: false
-        note: 'Page number for pagination (1-10, default: 1). Mutually exclusive with "start". Internally converted to a start offset after validation.'
+        note: 'Page number for pagination (1-10, default: 1). Google serves at most about 100 results per query, so the offset (page - 1) × num must be 100 or less: with num=20 use page 1-6. A deeper page returns 422 at once and is never billed. Mutually '
       hl:
         type: string
         required: false
@@ -9286,8 +9330,8 @@ endpoints:
         required: false
         note: 'Duplicate-content filter: 1 to omit near-duplicate results (default), 0 to keep them.'
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       rights:
         type: string
         required: false
@@ -10753,8 +10797,10 @@ endpoints:
         note: Search phrase.
         example: analytics platform
       countries:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Repeatable 2-letter country code (e.g., countries[]=US&countries[]=DE).
       dateOption:
         type: string
@@ -10851,11 +10897,11 @@ endpoints:
       start:
         type: integer
         required: false
-        note: Starting index for pagination (0-170). Mutually exclusive with page.
+        note: Starting index for pagination (0-100). Google serves at most about 100 results per query, so a larger start returns 422 at once and is never billed. Mutually exclusive with page.
       page:
         type: integer
         required: false
-        note: Page number for pagination (1-10). Mutually exclusive with start.
+        note: 'Page number for pagination (1-10). Google serves at most about 100 results per query, so the offset (page - 1) × num must be 100 or less: with num=20 use page 1-6. A deeper page returns 422 at once and is never billed. Mutually exclusive wi'
       hl:
         type: string
         required: false
@@ -10896,8 +10942,8 @@ endpoints:
         required: false
         note: 'Duplicate-content filter: 1 to omit near-duplicate results (default), 0 to keep them.'
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       rights:
         type: string
         required: false
@@ -10986,11 +11032,11 @@ endpoints:
       start:
         type: integer
         required: false
-        note: Zero-based pagination offset (0-170). Cannot be used together with page.
+        note: Starting index for pagination (0-100). Google serves at most about 100 results per query, so a larger start returns 422 at once and is never billed. Mutually exclusive with page.
       page:
         type: integer
         required: false
-        note: Page number for pagination (1-10). Cannot be used together with start.
+        note: 'Page number for pagination (1-10). Google serves at most about 100 results per query, so the offset (page - 1) × num must be 100 or less: with num=20 use page 1-6. A deeper page returns 422 at once and is never billed. Mutually exclusive wi'
       hl:
         type: string
         required: false
@@ -11031,8 +11077,8 @@ endpoints:
         required: false
         note: 'Duplicate-content filter: 1 to omit near-duplicate results (default), 0 to keep them.'
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       rights:
         type: string
         required: false
@@ -11101,11 +11147,11 @@ endpoints:
       start:
         type: integer
         required: false
-        note: Starting index for pagination (0-170). Mutually exclusive with page.
+        note: Starting index for pagination (0-100). Google serves at most about 100 results per query, so a larger start returns 422 at once and is never billed. Mutually exclusive with page.
       page:
         type: integer
         required: false
-        note: Page number for pagination (1-10). Mutually exclusive with start.
+        note: 'Page number for pagination (1-10). Google serves at most about 100 results per query, so the offset (page - 1) × num must be 100 or less: with num=20 use page 1-6. A deeper page returns 422 at once and is never billed. Mutually exclusive wi'
       hl:
         type: string
         required: false
@@ -11146,8 +11192,8 @@ endpoints:
         required: false
         note: 'Duplicate-content filter: 1 to omit near-duplicate results (default), 0 to keep them.'
         enum:
-        - '0'
-        - '1'
+        - 0
+        - 1
       rights:
         type: string
         required: false
@@ -11314,7 +11360,7 @@ endpoints:
         required: false
         note: Only 1 is accepted. Naver serves one page of up to 50 places per query.
         enum:
-        - '1'
+        - 1
 - id: scrappa.x.naver-search
   added: '2026-11-18'
   platform: naver
@@ -11351,9 +11397,9 @@ endpoints:
         required: false
         note: 'Sort order: 0=relevance (default), 1=date, 2=age.'
         enum:
-        - '0'
-        - '1'
-        - '2'
+        - 0
+        - 1
+        - 2
 - id: scrappa.x.pinterest-board
   added: '2026-11-18'
   platform: pinterest
@@ -14214,8 +14260,10 @@ endpoints:
   input:
     queryParams:
       ids:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Spotify ids or URIs to look up (max 50)
       type:
         type: string
@@ -14832,6 +14880,117 @@ endpoints:
         required: true
         note: 'Substack publication subdomain. Example: slowboring.'
         example: slowboring
+- id: scrappa.x.taobao-category
+  added: '2026-11-23'
+  platform: taobao
+  method: GET
+  path: /taobao/category
+  summary: <p>List the products published on one public Taobao category page.
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  input:
+    queryParams:
+      id:
+        type: string
+        required: true
+        example: '1512'
+- id: scrappa.x.taobao-item
+  added: '2026-11-23'
+  platform: taobao
+  method: GET
+  path: /taobao/item
+  summary: <p>Open one public Taobao item with the item_id_str returned by search.
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  input:
+    queryParams:
+      id:
+        type: string
+        required: true
+        example: NnA1ek1CdXZMRTBpaEE4WUpxeUtnQT09
+- id: scrappa.x.taobao-search
+  added: '2026-11-23'
+  platform: taobao
+  method: GET
+  path: /taobao/search
+  summary: <p>Search the public logged-out Taobao catalogue.
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: phone
+      page:
+        type: integer
+        required: false
+      sort:
+        type: string
+        required: false
+        enum:
+        - default
+        - price_asc
+        - price_desc
+      min_price:
+        type: number
+        required: false
+      max_price:
+        type: number
+        required: false
+      site:
+        type: string
+        required: false
+        enum:
+        - world
+        - sg
+        - my
+        - th
+        - jp
+        - ca
+- id: scrappa.x.taobao-shop
+  added: '2026-11-23'
+  platform: taobao
+  method: GET
+  path: /taobao/shop
+  summary: <p>Open a public Taobao shop with the numeric shop id returned by search or item.
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  input:
+    queryParams:
+      id:
+        type: string
+        required: true
+        example: '107922698'
+- id: scrappa.x.taobao-suggest
+  added: '2026-11-23'
+  platform: taobao
+  method: GET
+  path: /taobao/suggest
+  summary: <p>Return public autocomplete keywords and their weights for a query.
+  price:
+    value: '1'
+    currency: credit
+    per: 1
+    unit: call
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        example: phone
 - id: scrappa.x.telegram-channels-username
   added: '2026-11-18'
   platform: telegram
@@ -15640,8 +15799,8 @@ endpoints:
         required: false
         note: Trend window in days. Accepts 7 or 30. Defaults to 7.
         enum:
-        - '7'
-        - '30'
+        - 7
+        - 30
         example: 7
 - id: scrappa.x.tiktok-user-favorites
   added: '2026-11-18'
@@ -16075,9 +16234,9 @@ endpoints:
         required: false
         note: Minimum trustscore (3.0, 4.0, 4.5)
         enum:
-        - '3.0'
-        - '4.0'
-        - '4.5'
+        - 3.0
+        - 4.0
+        - 4.5
 - id: scrappa.x.trustpilot-categories
   added: '2026-11-18'
   platform: trustpilot
@@ -16332,8 +16491,10 @@ endpoints:
   input:
     queryParams:
       logins:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Comma-separated Twitch channel login names (max 100).
 - id: scrappa.x.twitch-clip
   added: '2026-11-18'
@@ -17834,7 +17995,7 @@ endpoints:
         required: false
         note: Results per page are fixed upstream.
         enum:
-        - '7'
+        - 7
       vm:
         type: string
         required: false
@@ -18019,7 +18180,7 @@ endpoints:
         type: integer
         required: false
         enum:
-        - '1'
+        - 1
 - id: scrappa.x.yandex-suggest
   added: '2026-11-18'
   platform: yandex
@@ -18393,6 +18554,10 @@ endpoints:
         required: true
         note: YouTube playlist ID
         example: PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf
+      continuation:
+        type: string
+        required: false
+        note: Token for the next page from pagination.continuationToken of the previous response
 - id: scrappa.x.youtube-related
   added: '2026-11-18'
   platform: youtube
@@ -18648,22 +18813,24 @@ endpoints:
         - desc
         example: desc
       service_provided_type_ids:
-        type: array[integer]
+        type: array
         required: false
+        items:
+          type: integer
+          enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 9
+          - 10
+          - 11
+          - 12
+          - 999
         note: 'Only reviews for these service types: 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12 or 999.'
-        enum:
-        - '1'
-        - '2'
-        - '3'
-        - '4'
-        - '5'
-        - '6'
-        - '7'
-        - '9'
-        - '10'
-        - '11'
-        - '12'
-        - '999'
 - id: scrappa.x.zillow-agent-sold
   added: '2026-11-18'
   platform: zillow
@@ -18722,25 +18889,29 @@ endpoints:
         note: Page number, 1 to 25.
         example: 1
       specialties:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
+          enum:
+          - first-time-home-buyers
+          - investment-properties
+          - rentals
+          - military-or-veterans
+          - luxury-homes
+          - new-construction
+          - property-management
+          - senior-communities
+          - relocation
+          - foreclosure
+          - lot-or-land
+          - vacation-short-term-rentals
         note: One or more of first-time-home-buyers, investment-properties, rentals, military-or-veterans, luxury-homes, new-construction, property-management, senior-communities, relocation, foreclosure, lot-or-land, vacation-short-term-rentals.
-        enum:
-        - first-time-home-buyers
-        - investment-properties
-        - rentals
-        - military-or-veterans
-        - luxury-homes
-        - new-construction
-        - property-management
-        - senior-communities
-        - relocation
-        - foreclosure
-        - lot-or-land
-        - vacation-short-term-rentals
       languages:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
         note: Spoken languages in lower case, for example spanish or french. The agent has to speak all of them.
       is_top_agent:
         type: boolean
@@ -18989,8 +19160,10 @@ endpoints:
   input:
     queryParams:
       zpid:
-        type: array[integer]
+        type: array
         required: false
+        items:
+          type: integer
         note: Up to 3 Zillow property ids, each a positive 32-bit integer.
 - id: scrappa.x.zillow-property
   added: '2026-11-18'
@@ -19007,8 +19180,10 @@ endpoints:
   input:
     queryParams:
       zpid:
-        type: array[integer]
+        type: array
         required: false
+        items:
+          type: integer
         note: Up to 3 Zillow property ids, each a positive 32-bit integer.
 - id: scrappa.x.zillow-property-history
   added: '2026-11-18'
@@ -19144,8 +19319,10 @@ endpoints:
   input:
     queryParams:
       school_ids:
-        type: array[integer]
+        type: array
         required: false
+        items:
+          type: integer
         note: One of north_latitude or school_ids is required. Resolve specific schools by id instead of searching an area.
       north_latitude:
         type: number
@@ -19222,8 +19399,10 @@ endpoints:
         required: false
         note: Western bound of an explicit bounding box.
       region_ids:
-        type: array[integer]
+        type: array
         required: false
+        items:
+          type: integer
         note: Region ids from the autocomplete endpoint, up to 20.
       region_id_type:
         type: integer
@@ -19301,20 +19480,22 @@ endpoints:
         required: false
         note: Earliest construction year.
       home_statuses:
-        type: array[string]
+        type: array
         required: false
+        items:
+          type: string
+          enum:
+          - newConstruction
+          - forRent
+          - auction
+          - foreclosed
+          - fsbo
+          - recentlySold
+          - foreclosure
+          - comingSoon
+          - preforeclosure
+          - fsba
         note: 'Statuses from one listing type only: for-sale statuses (fsba, fsbo, newConstruction, comingSoon, auction, foreclosure, foreclosed, preforeclosure), forRent, or recentlySold. Defaults to every for-sale status, or forRent when listing_categor'
-        enum:
-        - newConstruction
-        - forRent
-        - auction
-        - foreclosed
-        - fsbo
-        - recentlySold
-        - foreclosure
-        - comingSoon
-        - preforeclosure
-        - fsba
       keywords:
         type: string
         required: false
