@@ -118,15 +118,11 @@ async def judge_privacy(*, deadline: float) -> dict:
         out["tokens_in"] += reply.tokens_in or 0
         values = {}
         for i, r in enumerate(batch):
-            try:
-                p = float(reply.answers[f"p{i}"]["noul"])
-            except (KeyError, TypeError, ValueError):
+            p = review_codes.person_p_from(reply.answers.get(f"p{i}"))
+            if p is None:
                 out["unreadable"] += 1
-                continue
-            if 0.0 <= p <= 1.0:
-                values[r.id] = p
             else:
-                out["unreadable"] += 1
+                values[r.id] = p
         written = await _write_privacy(values)
         out["judged"] += written
         out["already_judged"] += len(values) - written
@@ -166,7 +162,7 @@ async def judge_codes(*, deadline: float) -> dict:
         out["tokens_in"] += reply.tokens_in or 0
         values = {}
         for i, r in enumerate(batch):
-            codes = review_codes.codes_from(reply.answers.get(f"a{i}") or {})
+            codes = review_codes.codes_from(reply.answers.get(f"a{i}"))
             if codes is None:
                 out["unreadable"] += 1
                 continue

@@ -7,6 +7,8 @@ code bumps the version, and only reviews judged under an older version are judge
 """
 from __future__ import annotations
 
+import math
+
 CODEBOOK_VERSION = "2026-11-20"
 
 CODES = {
@@ -78,11 +80,28 @@ def code_question(i: int) -> dict:
     }
 
 
-def codes_from(answer: dict) -> tuple[str, str | None] | None:
-    """`(primary, secondary)` from a Choice answer, or None when it is not one of the codes."""
-    primary = answer.get("choice")
-    if primary not in CODES:
+def probability(value: object) -> float | None:
+    """A Noul answer's probability, or None: a JSON number in [0, 1] only (never a boolean, a string
+    or NaN, which `float()` would accept)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    probs = {k: float(v) for k, v in (answer.get("probabilities") or {}).items() if k in CODES and k != primary}
+    p = float(value)
+    return p if math.isfinite(p) and 0.0 <= p <= 1.0 else None
+
+
+def person_p_from(answer: object) -> float | None:
+    """The privacy answer's probability, or None when the answer is not a readable Noul."""
+    return probability(answer.get("noul")) if isinstance(answer, dict) else None
+
+
+def codes_from(answer: object) -> tuple[str, str | None] | None:
+    """`(primary, secondary)` from a Choice answer, or None when it is not one of the codes. A
+    probability that is not a number is ignored, never fatal."""
+    if not isinstance(answer, dict) or answer.get("choice") not in CODES:
+        return None
+    primary = answer["choice"]
+    raw = answer.get("probabilities")
+    probs = {k: p for k, v in (raw.items() if isinstance(raw, dict) else ())
+             if k in CODES and k != primary and (p := probability(v)) is not None}
     second = max(probs, key=probs.get, default=None)
     return primary, second if second is not None and probs[second] >= SECONDARY_MIN_P else None

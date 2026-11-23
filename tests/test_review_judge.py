@@ -70,6 +70,10 @@ async def test_a_failed_or_unreadable_privacy_answer_leaves_the_review_unjudged(
     _fake(monkeypatch, lambda q, spec, state: {"noul": "n/a"} if q == "p0" else {"noul": 1.4})
     out = await review_judge.judge_privacy(deadline=float("inf"))
     assert out["unreadable"] == 2 and out["judged"] == 0
+    # A boolean is not a probability: `false` must not read as 0.0 and clear a quote.
+    _fake(monkeypatch, lambda q, spec, state: {"noul": False} if q == "p0" else None)
+    out = await review_judge.judge_privacy(deadline=float("inf"))
+    assert out["unreadable"] == 2 and out["judged"] == 0
     assert all(r.privacy_judged_at is None for r in (await _all()).values())
 
 
@@ -168,6 +172,24 @@ async def test_one_pass_failing_never_stops_the_other(clients, monkeypatch):
 async def test_without_a_judge_key_nothing_runs(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_judge.run(max_seconds=60) == {"skipped": "no_judge_key"}
+
+
+async def test_one_malformed_code_answer_never_costs_its_batch(clients, monkeypatch):
+    await _reviews(clients, [("partly", "Nothing came back for this domain at all, empty list.", {}),
+                             ("partly", "Nothing came back for that domain at all, empty list.", {})])
+    _fake(monkeypatch, lambda q, spec, state: (
+        {"choice": "EMPTY", "probabilities": {"EMPTY": 0.7, "COVER": None}} if q == "a0"
+        else {"choice": "COVER", "probabilities": "oops"}))
+    out = await review_judge.judge_codes(deadline=float("inf"))
+    assert out["judged"] == 2 and out["unreadable"] == 0
+    rows = await _all()
+    assert {(r.primary_code, r.secondary_code) for r in rows.values()} == {("EMPTY", None), ("COVER", None)}
+
+
+def test_only_a_number_in_range_is_a_probability():
+    assert [review_codes.person_p_from(a) for a in (
+        {"noul": 0.2}, {"noul": 0}, {"noul": False}, {"noul": True}, {"noul": "0.1"}, {"noul": float("nan")},
+        {"noul": -0.1}, {}, None, 0.1)] == [0.2, 0.0, None, None, None, None, None, None, None, None]
 
 
 def test_a_second_code_needs_real_weight():
