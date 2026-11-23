@@ -1201,7 +1201,10 @@ an invalid extra never disables the primary.
   quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  request at its requested size and `P(hit)` is the published hit rate. A price table is priced at its
+  fallback ceiling, except a v1 table that multiplies the adapter's `limit` field and a v2 table whose
+  every condition reads a parameter the adapter fixes (`const`): the routed request always picks that
+  row, so the child ranks at the hold its call will take (`route._table_price`). Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
   seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child

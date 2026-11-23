@@ -133,8 +133,8 @@ endpoints:
         email: {type: string, format: email, required: true, example: jane.doe@example.com}
     test_request:
       queryParams: {email: jane.doe@example.com}
-    price: {value: '1', currency: credit, per: 1, unit: call, note: "0.1 credits per valid, invalid or catch_all verdict, billed as 1 credit when a call opens a new block of 10; unknown and re-checks are free. credits_charged reports the debit."}
-    settle: {reported: {path: response.credits_charged, unit: credit}}
+    price: {value: '0.1', currency: credit, per: 1, unit: call, note: "0.1 credits per valid, invalid or catch_all verdict, billed as 1 credit when a call opens a new block of 10, so the hold is 1 credit; unknown and re-checks are free. credits_charged reports the debit."}
+    settle: {reported: {path: response.credits_charged, unit: credit}, worst_case: '1'}
     miss: {when: {path: response.result, op: absent}}
 
   - id: millionphones.people.search.count
@@ -199,5 +199,5 @@ endpoints:
     test_request:
       queryParams: {domain: stripe.com}
     reserve: {entities: {from: [query.name, query.domain], max: 125}}
-    price: {value: '1', currency: credit, per: 1, unit: target, note: "0.1 credits per company the account has not received before, billed as 1 credit per 10; each name or domain returns at most 10, so the hold is 1 credit for each. Companies already received and no match are free."}
+    price: {value: '1', currency: credit, per: 1, unit: target, note: "The price shown is the most one name or domain can cost: each returns up to 10 companies at 0.1 credits (about $0.0038) per company the account has not received before, billed as 1 credit per 10. Companies already received and no match are free; credits_charged settles the call."}
     settle: {reported: {path: response.credits_charged, unit: credit}}

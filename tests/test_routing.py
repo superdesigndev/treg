@@ -21,6 +21,7 @@ from treg.domain import money as ledger
 from treg.domain.catalog.schema import is_v2
 from treg.application.call import overflow as call_overflow
 from treg.application.call import resolve as call_resolve
+from treg.application.call import cost as call_cost
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.application import catalog_stats
@@ -586,6 +587,28 @@ async def _first_providers(ep_id: str, identity: dict, header: str | None = None
     caller = SimpleNamespace(org_id=org_id, org=SimpleNamespace(id=org_id, platform_overflow_disabled=False))
     plan = await call_route.build_plan(catalog_store.load().by_id[ep_id], identity, caller, options)
     return [c.endpoint["provider"] for c in plan.candidates][:n]
+
+
+async def test_a_table_row_the_adapter_fixes_ranks_the_child_at_that_row(clients, monkeypatch):
+    """The routed phone find always sends quality_tier=most_coverage (9 Forager credits), so the
+    plan ranks Forager at that row; a direct call without it still holds the 15-credit fallback."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER", "PLATFORM-FORAGER-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER_ACCOUNT", "1234")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "forager")
+    get_settings.cache_clear()
+    try:
+        cat = catalog_store.load()
+        caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+        plan = await call_route.build_plan(cat.by_id["treg.people.phone.find"], {"linkedin_handle": "williamhgates"},
+                                           caller, call_route.RouteOptions.from_headers(lambda key: None))
+        forager = next(c for c in plan.candidates if c.endpoint["provider"] == "forager")
+        unit = cat.credit_rates["forager"]
+        assert forager.price_micro == round(9 * unit * 1_000_000)
+        direct = call_cost.price(cat.by_id["forager.people.phone.find"], cat,
+                                 {"body": {"linkedin_public_identifier": "williamhgates"}})[0]
+        assert direct == round(15 * unit * 1_000_000)
+    finally:
+        get_settings.cache_clear()
 
 
 def test_phrase_leaves_out_what_the_text_already_says():
