@@ -3242,6 +3242,36 @@ CLORO = OAuthProvider(
 )
 
 
+VIDCRAWL = OAuthProvider(
+    service="vidcrawl",
+    display_name="VidCrawl",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="vc_live_…",
+    # VidCrawl accepts Authorization: Bearer <key> and x-api-key: <key>.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://vidcrawl.com/dashboard",
+    setup_action_label="Get your VidCrawl API key",
+    setup_steps=(
+        "Sign in to VidCrawl and open the Developer Console.",
+        "Copy or create an API key (vc_live_…).",
+    ),
+    setup_note="Scrape, frames, search, and agent spend credits (100 free on signup); the account check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary=(
+        "Extract cleaned transcripts, chapters, visual storyboards, timestamped frames, "
+        "video search, and cited video Q&A from YouTube, TikTok, Instagram Reels, and X."
+    ),
+    base_url="https://vidcrawl.com",
+    docs_url="https://vidcrawl.com/api-reference",
+    probe_path="/v1/account",  # free — returns current credit balance without consuming credits
+)
+
+
 COMPANYENRICH = OAuthProvider(
     service="companyenrich",
     display_name="CompanyEnrich",
@@ -4512,7 +4542,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, VIDCRAWL,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
