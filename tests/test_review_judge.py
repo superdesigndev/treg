@@ -139,3 +139,21 @@ def test_a_second_code_needs_real_weight():
     assert review_codes.codes_from({"choice": "EMPTY", "probabilities": {"EMPTY": 0.8, "COVER": 0.2}}) == ("EMPTY", None)
     assert review_codes.codes_from({"choice": "EMPTY", "probabilities": {"EMPTY": 0.6, "COVER": 0.3}}) == ("EMPTY", "COVER")
     assert review_codes.codes_from({"choice": "maybe"}) is None
+
+
+async def test_the_worker_command(clients, monkeypatch, capsys):
+    import argparse
+    import json
+
+    import treg.infra.db as infra_db
+    from treg import worker
+
+    async def verified():
+        return None
+    monkeypatch.setattr(infra_db, "verify_db", verified)
+    await _reviews(clients, [("partly", LONG, {})])
+    _fake(monkeypatch, lambda q, spec, state: (
+        {"noul": 0.01} if q.startswith("p") else {"choice": "PARTIAL", "probabilities": {"PARTIAL": 1.0}}))
+    assert await worker._reviews_judge(argparse.Namespace(max_seconds=60)) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["privacy"]["judged"] == 1 and out["codes"]["judged"] == 1
