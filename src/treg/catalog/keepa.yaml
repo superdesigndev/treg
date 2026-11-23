@@ -13,7 +13,8 @@
 # expire after 60 minutes, and every answer reports `tokensConsumed` and `tokensLeft`. A request
 # runs while the balance is positive, so `tokensLeft` can go negative; a request made with no
 # tokens left answers 429. Failed requests (400 invalidParameter, 405 out of range) consume
-# nothing. Prices below are in Keepa tokens; the token's USD rate is in fx.yaml (keepa).
+# nothing. Prices below are in Keepa tokens; the token's USD rate is a treg shared-plan rate in
+# fx.yaml (keepa).
 #
 # Answer conventions every row shares: prices are integers in the marketplace's smallest currency
 # unit (cents), -1 means no offer or no data, ratings are tenths of a star (45 = 4.5), and times
@@ -39,6 +40,9 @@ defaults:
   error: {when: {path: response.error, op: present}}
   # Keepa consumes tokens for a lookup that finds nothing (an unknown ASIN costs its 1 token).
   bill: {miss: charged}
+  # Every answer reports the tokens it consumed, options such as buybox, rating, stock and update=0
+  # included, and an error answer reports 0, so settlement charges Keepa's own count.
+  settle: {reported: {path: response.tokensConsumed, unit: credit}}
 
 
 endpoints:

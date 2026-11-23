@@ -241,7 +241,8 @@ async def test_window_start_is_clamped(c: AsyncClient):
 # ---- shared-plan recovery (the monthly review's input) -----------------------------------------
 async def test_recovery_over_recovered_says_lower(c: AsyncClient):
     """Collected far above the (window-scaled) fee: the report must say so and suggest the rate at
-    which the MEASURED volume breaks even (fee ÷ calls) — the review rule applied mechanically.
+    which the MEASURED volume breaks even (rate × fee ÷ collected). The review rule, applied
+    mechanically.
 
     The fixture window is ONE day, so the monthly fee scales to 1/30 before comparison. The first
     version of this test assumed 30 days and failed against a correct report; the expectation now
@@ -255,7 +256,7 @@ async def test_recovery_over_recovered_says_lower(c: AsyncClient):
     assert row["calls"] == 3 and row["collected_micro"] == 90_000_000
     assert row["fee_micro"] == fee_scaled
     assert row["recovery"] == round(90_000_000 / fee_scaled, 4)
-    assert row["suggested_usd"] == round(fee_scaled / 3 / 1_000_000, 9)
+    assert row["suggested_usd"] == round(0.001 * fee_scaled / 90_000_000, 9)
     assert row["action"].startswith("over-recovered")
 
 
@@ -267,6 +268,23 @@ async def test_recovery_quiet_month_says_raise_or_demote(c: AsyncClient):
     row = next(p for p in out["providers"] if p["provider"] == "alphavantage")
     assert row["recovery"] < 0.5
     assert "raise toward" in row["action"] and "demote" in row["action"]
+
+
+async def test_recovery_suggests_a_rate_per_credit_when_a_call_spends_many(c: AsyncClient):
+    """A shared-plan credit need not be a call: one Keepa best-seller list spends 50 tokens. The
+    suggestion must stay in the rate's unit (per token), so two 50-token calls that collected
+    exactly the fee suggest the current rate, where fee ÷ calls would suggest 50 times it."""
+    async with session_maker() as db:
+        out = await reconcile.shared_plan_recovery(db, _since())
+    plan = next(p for p in out["providers"] if p["provider"] == "keepa")
+    half_fee = plan["fee_micro"] // 2
+    await _settles([{"provider": "keepa", "amount": half_fee,
+                     "endpoint_id": "keepa.amazon.bestsellers.list"} for _ in range(2)])
+    async with session_maker() as db:
+        out = await reconcile.shared_plan_recovery(db, _since())
+    row = next(p for p in out["providers"] if p["provider"] == "keepa")
+    assert row["calls"] == 2 and row["action"] == "on target"
+    assert row["suggested_usd"] == pytest.approx(row["rate_usd"], rel=1e-3)
 
 
 async def test_recovery_zero_calls_has_no_suggestion(c: AsyncClient):

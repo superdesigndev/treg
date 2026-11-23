@@ -1462,8 +1462,9 @@ def check_fx(errors: list[str]) -> None:
                                 "showing provenance says whose price this is")
         if not re.search(r"\$[\d,]+(?:\.\d+)?\s*/\s*(?:mo|yr)", basis):
             fail(errors, where, "basis must name the vendor fee (e.g. '$49.99/mo')")
-        if not re.search(r"break-even at [\d,]+ calls/mo", basis):
-            fail(errors, where, "basis must state 'break-even at N calls/mo'")
+        if not re.search(r"break-even at [\d,]+ (?:calls|tokens)/mo", basis):
+            fail(errors, where, "basis must state 'break-even at N calls/mo' (or 'N tokens/mo' "
+                                "when the provider's credit is a token)")
         if not entry.get("source") or not entry.get("checked"):
             fail(errors, where, "source and checked are required on a treg-set rate")
         fee = entry.get("fee_usd_month")

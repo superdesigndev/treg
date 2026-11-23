@@ -999,6 +999,8 @@ credit_rates_usd:
   typo_kind:  {usd: 0.001, kind: treg_shared_pla, basis: "whatever", source: "x", checked: "2026-08-14"}
   prose_only: {usd: 0.001, basis: "treg shared-plan rate without the marker", source: "x", checked: "2026-08-14"}
   fine_vendor: {usd: 0.02, basis: "Starter $49/mo / 2,000 credits", source: "x", checked: "2026-08-14"}
+  fine_tokens: {usd: 0.001, kind: treg_shared_plan, fee_usd_month: 53.85, basis: "treg shared-plan rate. $53.85/mo; break-even at 53,850 tokens/mo", source: "x", checked: "2026-11-23"}
+  odd_unit:   {usd: 0.001, kind: treg_shared_plan, fee_usd_month: 10, basis: "treg shared-plan rate. $10/mo; break-even at 1,000 widgets/mo", source: "x", checked: "2026-11-23"}
 """
     (tmp_path / "fx.yaml").write_text(bad)
     original = cv.CATALOG
@@ -1009,9 +1011,11 @@ credit_rates_usd:
     finally:
         cv.CATALOG = original
     blob = "\n".join(errors)
-    for name in ("no_price", "no_fee", "no_breakeven", "wrong_start", "typo_kind", "prose_only"):
+    for name in ("no_price", "no_fee", "no_breakeven", "wrong_start", "typo_kind", "prose_only",
+                 "odd_unit"):
         assert name in blob, f"{name} should have been refused:\n{blob}"
     assert "fine_vendor" not in blob, "an ordinary vendor rate must pass untouched"
+    assert "fine_tokens" not in blob, "a break-even in tokens is honest when the credit is a token"
 
 
 def test_the_trial_kind_check_actually_BITES(tmp_path):

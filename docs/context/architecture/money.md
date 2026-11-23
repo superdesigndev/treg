@@ -1406,13 +1406,16 @@ Detail in [archive](archive.md#pricing-a-hit).
 share of the rate limit) at a published rate with fee and break-even beside it (`kind:
 treg_shared_plan`, enforced by `check_fx`). The price is also congestion control: at $0 one looping
 agent exhausts a shared rate limit for every team. Mechanically it is a credit provider whose credit
-is "one call on treg's plan"; holds, caps and settlement are unchanged.
+is "one call on treg's plan", or the provider's own metered unit when it has one (a Keepa token);
+holds, caps and settlement are unchanged.
 
 `shared_plan_recovery` reports fee versus collected per treg-set rate, scaled to the report window,
-with `suggested_usd = fee / measured calls` and an action at plus or minus 50%. It REPORTS; a human
-edits fx.yaml monthly, because a rate card that moves on its own under an agent is not a rate card.
-`price_drift` never sees these providers (they report no charge); a test fires if an observed-cost
-parser is ever added for one, because drift would then police a price treg set.
+with `suggested_usd = rate x fee / collected` (the rate per credit that would have collected the fee,
+in the rate's own unit even when one call spends many credits) and an action at plus or minus 50%.
+It REPORTS; a human edits fx.yaml monthly, because a rate card that moves on its own under an agent
+is not a rate card. When a shared-plan provider reports the credits it spent (Keepa's
+`tokensConsumed`), `price_drift` compares that count with the estimate at the same treg rate, so it
+polices the credit count and never the rate treg set.
 
 **Trial pools** (`kind: treg_trial`): $0 on treg's free-tier key, capped per team per UTC day by
 `_enforce_trial_allowance` (successful platform calls with a non-free catalog cost only, fail-closed,

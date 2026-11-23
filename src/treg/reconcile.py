@@ -330,8 +330,11 @@ async def shared_plan_recovery(db: AsyncSession, since: datetime) -> dict:
                              compares against a quarter of the fee, not all of it).
       * `collected_micro`  — settled platform charges for the provider in the window.
       * `recovery`         — collected / fee. 1.0 is break-even.
-      * `suggested_usd`    — fee ÷ measured calls: the rate at which THIS volume would break even.
-                             None when there were no calls, because $∞/call is not a suggestion.
+      * `suggested_usd`    : rate × fee ÷ collected, the rate per credit at which THIS volume
+                             would have collected the fee. It is in the rate's own unit, so a credit
+                             that is a token (one call spends 1 to 50 of Keepa's) is priced per
+                             token, not per call. None when nothing was collected, because $∞ is
+                             not a suggestion.
 
     The action field applies the review rule mechanically so the reviewer applies judgement, not
     arithmetic: well over fee → "lower toward suggested"; well under → "raise toward suggested, or
@@ -365,7 +368,8 @@ async def shared_plan_recovery(db: AsyncSession, since: datetime) -> dict:
         row = per.get(provider, {"calls": 0, "collected_micro": 0})
         calls, collected = row["calls"], row["collected_micro"]
         recovery = (collected / fee_micro) if fee_micro else None
-        suggested = round(fee_micro / calls / 1_000_000, 9) if calls else None
+        rate = float(plan.get("usd") or 0)
+        suggested = round(rate * fee_micro / collected, 9) if collected else None
         if recovery is None:
             action = "no fee recorded — fix fx.yaml"
         elif calls == 0:
