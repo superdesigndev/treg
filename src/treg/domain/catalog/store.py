@@ -921,7 +921,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *
         "platform_eligible": cat.platform_eligible(ep) if cat else None,
         **({"platform_auth": "anonymous"} if ep.get("platform_auth") == "anonymous" else {}),
         "platform_blocked": ep.get("platform_blocked") or None,
-        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin")}
+        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin", "ok_when")}
                  if isinstance(ep.get("miss"), dict) and "status" in ep["miss"] else None),
         **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.
