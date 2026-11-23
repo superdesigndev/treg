@@ -481,6 +481,12 @@ adapters:
             body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: true}
     test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
     out: {phone: "data.profile.phoneNumbers[0].number"}
+  fiber-ai.people.phone.find:
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: body.linkedinUrl}
+    const: {body.enrichmentType: {getWorkEmails: false, getPersonalEmails: false, getPhoneNumbers: true}}
+    out: {phone: "output.profile.phoneNumbers[0].number"}
+    miss: "coalesce(output.profile.phoneNumbers, []) == []"
   millionphones.people.phone.find:
     accepts: [[linkedin_url], [first_name, last_name, domain]]
     in: {linkedin_url: queryParams.social_url, first_name: queryParams.first_name,
