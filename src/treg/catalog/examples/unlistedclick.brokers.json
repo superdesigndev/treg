@@ -1,0 +1,53 @@
+{
+  "count": 33,
+  "groups": [
+    {
+      "key": "people-search",
+      "label": "People-search",
+      "blurb": "The pages that rank for your own name."
+    },
+    {
+      "key": "directory",
+      "label": "Directories",
+      "blurb": "Phone, address and map listings."
+    },
+    "… 2 more item(s) truncated"
+  ],
+  "brokers": [
+    {
+      "slug": "whitepages",
+      "name": "Whitepages",
+      "group": "people-search",
+      "url": "https://www.whitepages.com/suppression-requests",
+      "channel": "form",
+      "email": "privacyrequest@whitepages.com",
+      "note": "One profile per past address; verifies by an automated phone call.",
+      "captcha": "phone"
+    },
+    {
+      "slug": "spokeo",
+      "name": "Spokeo",
+      "group": "people-search",
+      "url": "https://www.spokeo.com/optout",
+      "channel": "form",
+      "email": "privacy@spokeo.com",
+      "note": "Email verification; profile usually drops in 24-48h."
+    },
+    "… 31 more item(s) truncated"
+  ],
+  "registries": [
+    {
+      "name": "California DROP",
+      "url": "https://consumer.drop.privacy.ca.gov/",
+      "covers": "One request reaches every broker registered in California.",
+      "days": 90
+    },
+    {
+      "name": "Oregon data-broker registry",
+      "url": "https://dfr.oregon.gov/business/licensing/data-broker-registry/pages/index.aspx",
+      "covers": "Registry lookup; requests still go broker by broker.",
+      "days": 45
+    },
+    "… 2 more item(s) truncated"
+  ]
+}
