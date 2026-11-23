@@ -60,6 +60,9 @@ _TABLE: list[Signature] = [
     Signature("corpoapi", 402, r"spend_cap_reached", "balance", tripwire=True),
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
+    # MillionPhones documents its out-of-credits answer as a 402 carrying billing_url; no other
+    # answer carries that field.
+    Signature("millionphones", 402, r"billing_url", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
     # MapsData (dashboard API error codes): a scrape submitted with no Scraping Credits left is a 402
     # {"error": {"code": "lead_limit_reached", ...}}; an unpaid renewal pauses submissions with a

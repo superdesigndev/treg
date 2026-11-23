@@ -617,6 +617,7 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
@@ -1311,6 +1312,10 @@ class Settings(BaseSettings):
     # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
     # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
     dub_default_country: str = "US"
+    # The most bonus credit one paid top-up can earn from a partner offer set in Dub, whatever the
+    # offer says. A typo in Dub ($500 for $5, 200% for 20%) is then a bounded mistake, not a free
+    # balance. The offer's minimum top-up is the friend referral's (`referral_min_topup_micro`).
+    affiliate_bonus_max_micro: int = 50_000_000  # $50
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
