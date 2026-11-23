@@ -723,6 +723,10 @@ class Settings(BaseSettings):
     typesafe_url: str = "https://api.typesafe.ai/v1/systemone"
     # Past this the search answers from the baseline alone; the row records `judge_error=timeout`.
     typesafe_timeout_s: float = 2.5
+    # Review judging (application.review_judge): reviews per Jev request, and how long one request may
+    # take. It runs from a cron, so its wait is not a caller's.
+    review_judge_batch: int = Field(default=25, ge=1, le=100)
+    review_judge_timeout_s: float = 60.0
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
