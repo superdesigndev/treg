@@ -58,7 +58,7 @@ from ..config import get_settings
 from ..infra import stripe as stripe_adapter
 from ..models import CreditBlock, EnterpriseSSO, EnterpriseSSOIdentity, EnterpriseDirectoryUser, LedgerEntry, Membership, Org, User
 from ..infra.db import session_maker
-from . import affiliates, enterprise_sso
+from . import affiliate_bonus, affiliates, enterprise_sso
 
 
 
@@ -1494,6 +1494,10 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
             select(CreditBlock.id).where(CreditBlock.stripe_payment_intent == pi["id"])
         )).first() is not None
         await ledger.topup(db, org_id, credited, pi["id"], meta={"auto": True, "source": "stripe"})
+        if not already:
+            # Staged with this credit, as `_credit` does: the webhook's later delivery finds the
+            # payment credited and stages nothing. The worker reads the card from Stripe.
+            await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi["id"], amount_micro=credited)
         org = await db.get(Org, org_id)
         org.autotopup_failures = 0
         # A pause recorded while this attempt was paying is resolved by this payment. Blanking the
@@ -1724,6 +1728,12 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     )).first() is not None
     block = await ledger.topup(db, org_id, amount_micro, pi_id,
                               meta={"auto": auto, "source": "stripe", **attribution})
+    if not already:
+        # The partner offer's outbox row commits with the credit, so a crash after this commit
+        # cannot lose it (a redelivery is not `fresh` and stages nothing). The affiliate worker
+        # decides it later from Dub; this webhook never waits on Dub.
+        await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi_id,
+                                    amount_micro=amount_micro, fingerprint=fingerprint)
     block_id = block.id  # captured now: a later rollback (the ad-conversion except below) expires
                         # every object this session is tracking, `block` included, and reading an
                         # expired attribute outside an awaited call raises MissingGreenlet.
