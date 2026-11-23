@@ -1,0 +1,464 @@
+{
+ "_comment": "Measured AnyAPI charges. Each row is the distribution of the exact USD AnyAPI billed for a settled, charged request over the trailing 7 days, exported from AnyAPI's own request ledger. Calls that were not charged (a miss no source could serve) are excluded, since treg reserves against a call it expects to succeed. Only per-result (linear) SKUs are exported, since only they read this file, and only those with at least 5 charged calls in the window appear; the rest fall back to the live rate card's cheapest-source price.",
+ "as_of": "2026-11-23",
+ "skus": {
+  "ahrefs.backlinks": {
+   "calls": 65,
+   "max_usd": 0.00546,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00546
+  },
+  "ahrefs.keyword_ideas": {
+   "calls": 46,
+   "max_usd": 0.00546,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.keywords": {
+   "calls": 116,
+   "max_usd": 0.00546,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.overview": {
+   "calls": 363,
+   "max_usd": 0.00546,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.traffic": {
+   "calls": 472,
+   "max_usd": 0.00576,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "airbnb.search": {
+   "calls": 125,
+   "max_usd": 0.02409,
+   "p50_usd": 0.02208,
+   "p90_usd": 0.02208
+  },
+  "alibaba.search": {
+   "calls": 512,
+   "max_usd": 0.021,
+   "p50_usd": 0.0077,
+   "p90_usd": 0.01155
+  },
+  "amazon.asins": {
+   "calls": 88,
+   "max_usd": 0.036,
+   "p50_usd": 0.0099,
+   "p90_usd": 0.033
+  },
+  "booking.search": {
+   "calls": 238,
+   "max_usd": 0.1104,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.1012
+  },
+  "capterra.reviews": {
+   "calls": 89,
+   "max_usd": 0.09,
+   "p50_usd": 0.0144,
+   "p90_usd": 0.048
+  },
+  "coinmarketcap.listings": {
+   "calls": 19,
+   "max_usd": 0.0216,
+   "p50_usd": 0.0198,
+   "p90_usd": 0.0216
+  },
+  "company_enrichment.datalegion": {
+   "calls": 10,
+   "max_usd": 0.04806,
+   "p50_usd": 0.04806,
+   "p90_usd": 0.04806
+  },
+  "company_search.ai_ark": {
+   "calls": 6,
+   "max_usd": 0.0048,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.0048
+  },
+  "company_search.crustdata": {
+   "calls": 8181,
+   "max_usd": 0.3612,
+   "p50_usd": 0.00264,
+   "p90_usd": 0.00264
+  },
+  "company_search.fullenrich": {
+   "calls": 11,
+   "max_usd": 0.63,
+   "p50_usd": 0.0252,
+   "p90_usd": 0.0756
+  },
+  "company_search.quickenrich": {
+   "calls": 6,
+   "max_usd": 0.0864,
+   "p50_usd": 0.0072,
+   "p90_usd": 0.0864
+  },
+  "company_search.theirstack": {
+   "calls": 8,
+   "max_usd": 9.96,
+   "p50_usd": 0.1992,
+   "p90_usd": 9.96
+  },
+  "congress.trades": {
+   "calls": 6,
+   "max_usd": 0.01015,
+   "p50_usd": 0.01015,
+   "p90_usd": 0.01015
+  },
+  "facebook.ad_details_full": {
+   "calls": 148,
+   "max_usd": 0.00408,
+   "p50_usd": 0.00374,
+   "p90_usd": 0.00408
+  },
+  "facebook.followers": {
+   "calls": 20,
+   "max_usd": 0.063,
+   "p50_usd": 0.003,
+   "p90_usd": 0.033
+  },
+  "facebook.search_pages": {
+   "calls": 532,
+   "max_usd": 0.1092,
+   "p50_usd": 0.012,
+   "p90_usd": 0.0506
+  },
+  "fiverr.search": {
+   "calls": 208,
+   "max_usd": 0.036,
+   "p50_usd": 0.033,
+   "p90_usd": 0.033
+  },
+  "g2.reviews": {
+   "calls": 630,
+   "max_usd": 0.1155,
+   "p50_usd": 0.00261,
+   "p90_usd": 0.0036
+  },
+  "google_ads.search": {
+   "calls": 305,
+   "max_usd": 0.02166,
+   "p50_usd": 0.00105,
+   "p90_usd": 0.01986
+  },
+  "google_finance.quote": {
+   "calls": 588,
+   "max_usd": 0.00126,
+   "p50_usd": 0.00116,
+   "p90_usd": 0.00116
+  },
+  "instagram.reel_transcript": {
+   "calls": 6284,
+   "max_usd": 0.095,
+   "p50_usd": 0.0081,
+   "p90_usd": 0.0161
+  },
+  "instagram.search_profiles_contact": {
+   "calls": 226,
+   "max_usd": 0.08,
+   "p50_usd": 0.0352,
+   "p90_usd": 0.08
+  },
+  "job_search.theirstack": {
+   "calls": 208,
+   "max_usd": 0.336,
+   "p50_usd": 0.0672,
+   "p90_usd": 0.0672
+  },
+  "linkedin.ads": {
+   "calls": 14,
+   "max_usd": 0.0123,
+   "p50_usd": 0.00133,
+   "p90_usd": 0.0123
+  },
+  "linkedin.article": {
+   "calls": 615,
+   "max_usd": 0.00616,
+   "p50_usd": 0.00565,
+   "p90_usd": 0.00565
+  },
+  "linkedin.email": {
+   "calls": 17397,
+   "max_usd": 0.012,
+   "p50_usd": 0.011,
+   "p90_usd": 0.012
+  },
+  "linkedin.search_profiles": {
+   "calls": 2087,
+   "max_usd": 0.216,
+   "p50_usd": 0.1364,
+   "p90_usd": 0.198
+  },
+  "linkedin.search_profiles_email": {
+   "calls": 133,
+   "max_usd": 0.3355,
+   "p50_usd": 0.1573,
+   "p90_usd": 0.2365
+  },
+  "maps.reviews": {
+   "calls": 44240,
+   "max_usd": 0.01326,
+   "p50_usd": 0.00035,
+   "p90_usd": 0.00215
+  },
+  "people_search.ai_ark": {
+   "calls": 9,
+   "max_usd": 0.84,
+   "p50_usd": 0.798,
+   "p90_usd": 0.84
+  },
+  "people_search.crustdata": {
+   "calls": 17563,
+   "max_usd": 0.1452,
+   "p50_usd": 0.00264,
+   "p90_usd": 0.0156
+  },
+  "people_search.fullenrich": {
+   "calls": 14,
+   "max_usd": 0.0252,
+   "p50_usd": 0.0252,
+   "p90_usd": 0.0252
+  },
+  "people_search.quickenrich_company": {
+   "calls": 1341,
+   "max_usd": 0.1356,
+   "p50_usd": 0.0072,
+   "p90_usd": 0.02808
+  },
+  "person.skip_trace": {
+   "calls": 2039,
+   "max_usd": 0.0084,
+   "p50_usd": 0.0077,
+   "p90_usd": 0.0084
+  },
+  "person_enrichment.datalegion": {
+   "calls": 11,
+   "max_usd": 0.09606,
+   "p50_usd": 0.09606,
+   "p90_usd": 0.09606
+  },
+  "pexels.search_photos": {
+   "calls": 438,
+   "max_usd": 0.0726,
+   "p50_usd": 0.01705,
+   "p90_usd": 0.04015
+  },
+  "realtor.search": {
+   "calls": 112,
+   "max_usd": 0.051,
+   "p50_usd": 0.0294,
+   "p90_usd": 0.051
+  },
+  "sec.filings": {
+   "calls": 1569,
+   "max_usd": 0.0132,
+   "p50_usd": 0.00352,
+   "p90_usd": 0.00484
+  },
+  "semrush.keywords": {
+   "calls": 394,
+   "max_usd": 0.0054,
+   "p50_usd": 0.00495,
+   "p90_usd": 0.0054
+  },
+  "semrush.overview": {
+   "calls": 128,
+   "max_usd": 0.0054,
+   "p50_usd": 0.00495,
+   "p90_usd": 0.0054
+  },
+  "seo.backlinks": {
+   "calls": 42,
+   "max_usd": 0.0638,
+   "p50_usd": 0.0363,
+   "p90_usd": 0.05925
+  },
+  "seo.backlinks_summary": {
+   "calls": 97,
+   "max_usd": 0.02885,
+   "p50_usd": 0.02885,
+   "p90_usd": 0.02885
+  },
+  "seo.competitors_domain": {
+   "calls": 15,
+   "max_usd": 0.03664,
+   "p50_usd": 0.03104,
+   "p90_usd": 0.03344
+  },
+  "seo.domain_intersection": {
+   "calls": 8,
+   "max_usd": 0.04464,
+   "p50_usd": 0.03024,
+   "p90_usd": 0.04464
+  },
+  "seo.domain_rank_overview": {
+   "calls": 104,
+   "max_usd": 0.01455,
+   "p50_usd": 0.01455,
+   "p90_usd": 0.01455
+  },
+  "seo.domains_by_technology": {
+   "calls": 5,
+   "max_usd": 0.03264,
+   "p50_usd": 0.02664,
+   "p90_usd": 0.03264
+  },
+  "seo.keyword_difficulty": {
+   "calls": 5,
+   "max_usd": 0.01454,
+   "p50_usd": 0.01454,
+   "p90_usd": 0.01454
+  },
+  "seo.keyword_ideas": {
+   "calls": 70,
+   "max_usd": 0.11096,
+   "p50_usd": 0.03896,
+   "p90_usd": 0.07896
+  },
+  "seo.keyword_overview": {
+   "calls": 194,
+   "max_usd": 0.11838,
+   "p50_usd": 0.01886,
+   "p90_usd": 0.02942
+  },
+  "seo.keyword_suggestions": {
+   "calls": 199,
+   "max_usd": 0.03896,
+   "p50_usd": 0.02296,
+   "p90_usd": 0.03416
+  },
+  "seo.llm_mentions": {
+   "calls": 45,
+   "max_usd": 0.1896,
+   "p50_usd": 0.12,
+   "p90_usd": 0.132
+  },
+  "seo.llm_top_brands": {
+   "calls": 12,
+   "max_usd": 0.15,
+   "p50_usd": 0.1224,
+   "p90_usd": 0.15
+  },
+  "seo.llm_top_domains": {
+   "calls": 12,
+   "max_usd": 0.144,
+   "p50_usd": 0.126,
+   "p90_usd": 0.144
+  },
+  "seo.local_pack": {
+   "calls": 288,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.0024
+  },
+  "seo.ranked_keywords": {
+   "calls": 105,
+   "max_usd": 0.17496,
+   "p50_usd": 0.02456,
+   "p90_usd": 0.05064
+  },
+  "seo.referring_domains": {
+   "calls": 41,
+   "max_usd": 0.0488,
+   "p50_usd": 0.0338,
+   "p90_usd": 0.0413
+  },
+  "seo.related_keywords": {
+   "calls": 60,
+   "max_usd": 0.0212,
+   "p50_usd": 0.01624,
+   "p90_usd": 0.01928
+  },
+  "seo.search_intent": {
+   "calls": 5,
+   "max_usd": 0.0259,
+   "p50_usd": 0.01454,
+   "p90_usd": 0.0259
+  },
+  "seo.search_volume": {
+   "calls": 258,
+   "max_usd": 0.108,
+   "p50_usd": 0.108,
+   "p90_usd": 0.108
+  },
+  "seo.top_pages": {
+   "calls": 30,
+   "max_usd": 0.0294,
+   "p50_usd": 0.01815,
+   "p90_usd": 0.0234
+  },
+  "similarweb.overview": {
+   "calls": 9281,
+   "max_usd": 0.00209,
+   "p50_usd": 0.00167,
+   "p90_usd": 0.0018
+  },
+  "similarweb.similar_sites": {
+   "calls": 181,
+   "max_usd": 0.00209,
+   "p50_usd": 0.00083,
+   "p90_usd": 0.00083
+  },
+  "social.finder": {
+   "calls": 38,
+   "max_usd": 0.0252,
+   "p50_usd": 0.0077,
+   "p90_usd": 0.0252
+  },
+  "substack.posts": {
+   "calls": 178,
+   "max_usd": 0.07242,
+   "p50_usd": 0.00303,
+   "p90_usd": 0.02634
+  },
+  "tiktok.profile_contact": {
+   "calls": 29948,
+   "max_usd": 0.00384,
+   "p50_usd": 0.00352,
+   "p90_usd": 0.00384
+  },
+  "tiktok.video_transcript_full": {
+   "calls": 1881,
+   "max_usd": 0.095,
+   "p50_usd": 0.006,
+   "p90_usd": 0.0137
+  },
+  "tiktok_shop.creator": {
+   "calls": 99,
+   "max_usd": 0.006,
+   "p50_usd": 0.0055,
+   "p90_usd": 0.006
+  },
+  "twitter.search_communities": {
+   "calls": 88,
+   "max_usd": 0.0011,
+   "p50_usd": 0.001,
+   "p90_usd": 0.0011
+  },
+  "unsplash.search_photos": {
+   "calls": 157,
+   "max_usd": 0.0186,
+   "p50_usd": 0.00385,
+   "p90_usd": 0.01045
+  },
+  "web.crawl": {
+   "calls": 171,
+   "max_usd": 0.0125,
+   "p50_usd": 0.005,
+   "p90_usd": 0.00625
+  },
+  "yahoo_finance.quote": {
+   "calls": 344,
+   "max_usd": 0.00114,
+   "p50_usd": 0.00105,
+   "p90_usd": 0.00114
+  }
+ },
+ "unit": "usd_per_call",
+ "window_days": 7
+}
