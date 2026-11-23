@@ -93,6 +93,9 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "worker.py": {API, "read_session_maker"},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
     "application/catalog_stats.py": {API},
+    # Runs only inside `treg-worker reviews judge`; same reasoning as `worker.py`. No session is held
+    # across a Jev request.
+    "application/review_judge.py": {API},
     # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.
     "application/key_spend_rollup.py": {API},
     # Runs only inside `treg-worker usage rollup`; same reasoning as `worker.py`.
