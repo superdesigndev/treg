@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-CODEBOOK_VERSION = "2026-11-23"
+CODEBOOK_VERSION = "2026-11-23.2"
 
 CODES = {
     "ACCURACY": "The data returned is wrong: wrong email/phone/value, wrong verdict (valid vs invalid), metrics "
@@ -19,7 +19,7 @@ CODES = {
              "verdict, a guessed or pattern-generated email, a low confidence score. Not the agent's routine "
              "follow-up verification of results that look correct (that is CONTEXT).",
     "WRONG": "Wrong entity or off-target: different person/company/place, results unrelated to the query, "
-             "irrelevant hits.",
+             "irrelevant hits, including hits that only share a word with the query.",
     "PARAM": "The vendor ignored request parameters: site:, location/country/language, date range, filters, "
              "limit, sort.",
     "PARTIAL": "Some fields or results are missing, too few results, truncated content, only part of the "
@@ -38,12 +38,15 @@ CODES = {
                "query or an ambiguous term (a brand name that is a common word); results that match the query "
                "but not the agent's target segment; the agent's routine follow-up verification of correct "
                "results; a mismatch with what the agent needed that any vendor would have; or the agent says "
-               "the result was fine but not useful for its task.",
+               "the result was fine but not useful for its task. Not CONTEXT when the results are off-topic for "
+               "the query as written (hits sharing only a word with it, unrelated noise, job ads): that is "
+               "WRONG.",
     "TREG": "treg-side problem: routing, normalization, wrong capability mapping, treg parameter handling, "
             "billing display, including a vendor error saying treg's own account or key is out of quota, "
             "credits or limits (e.g. 'Limits exceeded' 32012, 402 'temporarily unavailable on treg's side', a "
             "shared account's daily money limit), even when it looks like an ordinary error.",
-    "NOREASON": "Reason is empty or too vague to classify.",
+    "NOREASON": "Reason is empty or too vague to classify, including boilerplate that names no specific "
+                "problem.",
 }
 
 RULES = (
