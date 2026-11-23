@@ -55,6 +55,7 @@ sources:
   - tests/test_catalog_validate.py
   - tests/test_rankings.py
   - tests/test_route_cost_ceiling.py
+  - tests/test_routed_child_encoding.py
   - tests/test_routing.py
 related:
   - architecture/money.md
@@ -1262,6 +1263,11 @@ an invalid extra never disables the primary.
     whose detail names the endpoint to call directly, no health strike, and the next candidate
     answers. When every non-skipped attempt was cut there, the failure is logged as treg's
     (`response_buffer_limit`), not the provider's.
+  - **The routed read is identity bytes.** A child asks for `Accept-Encoding: identity`, but a
+    provider may compress anyway (Keepa gzips every answer). The router undoes gzip and deflate
+    within the same `ROUTED_BODY_MAX`, so a small compressed answer cannot inflate past it; any
+    other encoding, or a body that does not decode, is read as it came and judged as a non-JSON
+    answer.
   - **A team's own tool and key, per row.** A child is the team's tool when the team registered a
     tool for the host the call goes to: the row's own `host` where the provider approves it in
     `catalog_targets` (as resolve calls it there), else the provider's main host. A tool on one
