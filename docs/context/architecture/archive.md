@@ -405,8 +405,11 @@ to members of the row's org; what makes it safe is that the row belongs to the t
 bytes that team already received. A metered answer is returned as its caller received it: with
 `strip_reported_charge` on, without the provider's reported charge unless the request keeps it
 ([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
-provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
-`children`, audited before the parent, so the lookup reads the hour before the parent's row.
+provider's bytes, which repeat hits settle from. Without an ordinary archive link, the result route
+can return the metered task's terminal JSON with `origin: async_terminal`, including under a routed
+pending parent's id. The task lookup respects the caller's team and pinned tags. Otherwise a
+routed parent lists its `children`, audited before the parent, so the lookup reads the hour before
+the parent's row.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).
 

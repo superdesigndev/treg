@@ -7,6 +7,7 @@ import gzip
 import json
 from datetime import timedelta
 
+import jsonschema
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
@@ -17,7 +18,7 @@ from test_bounceban_async import (  # noqa: F401
     TASK, VERIFYING, Upstream, _finished, bounceban_on, fast_polls,
 )
 
-from treg import audit
+from treg import audit, jsontext
 from treg.application import tasks as tasks_app
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
@@ -95,6 +96,7 @@ async def test_a_platform_task_is_read_polled_and_settled_once(
     assert first.status_code == 200, first.text
     view = first.json()
     assert view["state"] == "pending" and view["status"] is None and view["error"] is None
+    assert view["fetch"] is None
     assert view["task_shown"] == "t1"
     assert view["resume"] == "treg call replicate.predictions.get -p id=t1"
     assert view["retry_after"] == 2 and view["max_wait"] == 86400
@@ -196,6 +198,8 @@ async def test_a_fetch_mode_result_is_a_command_and_a_missing_value_is_named(
     view = (await clients.get(f"/tasks/{call_id}")).json()
     assert view["state"] == "succeeded" and view["result"] is None
     assert view["fetch_command"] == "treg call replicate.predictions.get -p 'id=x; rm -rf /'"
+    assert view["fetch"] == {"endpoint_id": "replicate.predictions.get",
+                             "query": {"id": "x; rm -rf /"}}
     assert view["ttl_note"] == "1h"
     missing = (await clients.get(f"/tasks/{call_id}")).json()
     assert missing["state"] == "error" and missing["ttl_note"] is None
@@ -367,3 +371,226 @@ def test_a_result_strict_json_cannot_carry_is_left_to_its_text():
     view = tasks_app.poll_view(task, _response(200, {}), b'{"status":"succeeded","output":NaN}', False, "p")
     assert view["result_text"] == "nan"
     assert json.loads(tasks_app.encode(view))["result"] is None
+
+@pytest.mark.parametrize("tool", ["call", "call_media"])
+async def test_team_mcp_follows_a_held_task_by_call_id(clients, monkeypatch, replicate_platform, tool):
+    from test_mcp import _call_tool, mcp_session
+    from treg.mcp import mcp as server
+
+    schemas = {t.name: t.output_schema for t in await server.list_tools()}
+    script = Script({"id": "t-mcp", "status": "starting", "logs": "queued\n" * 5000},
+                    {"id": "t-mcp", "status": "processing"},
+                    {"id": "t-mcp", "status": "succeeded", "output": ["https://example.invalid/image"]})
+    monkeypatch.setattr(call_service, "relay", script)
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        receipt = await _call_tool(client, tool, {"endpoint_id": EP, "body": SUBMISSION}, token)
+        jsonschema.validate(receipt, schemas[tool])
+        call_id = receipt["call_id"]
+        assert receipt["task"]["call_id"] == call_id and receipt["task"]["state"] == "pending"
+        assert receipt["reserved_usd"] == 0.003 and receipt.get("cost_usd") is None
+        assert len(script.seen) == 1 and await _entries(call_id) == ["reserve"]
+        pending = await _call_tool(client, "task_status", {"call_id": call_id}, token)
+        jsonschema.validate(pending, schemas["task_status"])
+        assert pending["state"] == "pending" and pending["retry_after"] == 2
+        done = await _call_tool(client, "task_status", {"call_id": call_id}, token)
+        jsonschema.validate(done, schemas["task_status"])
+        assert done["state"] == "succeeded" and done["result_url"] == "https://example.invalid/image"
+        assert done["settled_usd"] == 0.003 and await _entries(call_id) == ["reserve", "settle"]
+        assert len(script.seen) == 3
+        await audit.drain()
+        history = await _call_tool(client, "call_result", {"call_id": call_id}, token)
+        assert history["result"]["async_task"]["settled_micro"] == 3000
+        unknown = await _call_tool(client, "task_status", {"call_id": "unknown"}, token)
+        jsonschema.validate(unknown, schemas["task_status"])
+        assert unknown["error"]["error"] == "task_not_found" and len(script.seen) == 3
+
+
+async def test_team_mcp_routed_task_reports_child_settlement_before_and_after_audit(
+    clients, monkeypatch, bounceban_on, fast_polls,
+):
+    from test_mcp import _call_tool, mcp_session
+
+    upstream = Upstream(VERIFYING)
+    monkeypatch.setattr(call_service, "relay", upstream)
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.05)
+    await audit.drain()
+    monkeypatch.setattr(audit, "_schedule", lambda coro: coro.close())
+    owner = clients.headers["X-Treg-Token"]
+    matching = await _pinned_token(clients, "a")
+    other = await _pinned_token(clients, "b")
+    async with mcp_session(clients) as client:
+        receipt = await _call_tool(client, "call", {
+            "endpoint_id": "treg.people.email.verify",
+            "body": {"email": "dev@bounceban.com"},
+            "headers": {"X-Treg-Route-Prefer": "bounceban"},
+        }, matching)
+        parent = receipt["call_id"]
+        assert receipt["status"] == 202 and receipt["body"]["_treg"]["outcome"] == "pending"
+        assert receipt["task"]["state"] == "pending" and "cost_usd" not in receipt
+        async with session_maker() as db:
+            [child] = (await db.execute(select(AsyncTaskRecord))).scalars().all()
+        assert child.call_id.startswith(f"{parent}:")
+        assert receipt["reserved_usd"] == round(child.reserved_micro / 1_000_000, 6) > 0
+
+        upstream.polls = [_finished("deliverable")]
+        before = await _call_tool(client, "task_status", {"call_id": parent}, matching)
+        async with session_maker() as db:
+            settled = await db.get(AsyncTaskRecord, child.call_id)
+            assert settled.status == "settled"
+        assert before["state"] == "succeeded"
+        assert before["settled_usd"] == round(settled.settled_micro / 1_000_000, 6) > 0
+        detail = (await clients.get(f"/calls/{parent}", headers={"X-Treg-Token": matching})).json()
+        assert detail["call"] is None and detail["ledger"] == []
+        assert detail["async_task"]["settled_micro"] == settled.settled_micro
+        foreign = await clients.get(f"/calls/{parent}", headers={"X-Treg-Token": other})
+        assert foreign.status_code == 404
+
+        await audit.drain()
+        after = await _call_tool(client, "task_status", {"call_id": parent}, owner)
+        assert after["state"] == "succeeded" and after["settled_usd"] == before["settled_usd"]
+        detail = (await clients.get(f"/calls/{parent}", headers={"X-Treg-Token": owner})).json()
+        assert detail["call"]["status_code"] == 202
+        history = await _call_tool(client, "call_result", {"call_id": parent}, matching)
+        stored = history["result"]["response"]
+        assert stored["origin"] == "async_terminal" and json.loads(stored["body_text"]) == upstream.polls[0]
+        assert history["result"]["async_task"]["settled_micro"] == settled.settled_micro
+        assert (await clients.get(f"/calls/{parent}/result", headers={"X-Treg-Token": other})).status_code == 404
+
+
+async def test_team_mcp_keeps_the_charge_for_a_terminal_submission(clients, monkeypatch, bounceban_on):
+    from test_mcp import _call_tool, mcp_session
+
+    upstream = Upstream(_finished("deliverable"))
+    monkeypatch.setattr(call_service, "relay", upstream)
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        receipt = await _call_tool(client, "call", {
+            "endpoint_id": "bounceban.people.email.verify", "query": {"email": "dev@bounceban.com"},
+        }, token)
+    assert receipt["task"]["state"] == "succeeded" and receipt["task"]["result"] == "deliverable"
+    assert receipt["cost_usd"] > 0 and "reserved_usd" not in receipt
+    assert upstream.seen == ["submit"]
+
+
+@pytest.mark.parametrize("tool", ["call", "call_media"])
+async def test_team_mcp_replays_an_async_submission_without_another_hold(
+    clients, monkeypatch, replicate_platform, tool,
+):
+    from test_mcp import _call_tool, mcp_session
+
+    script = Script({"id": "t-replay", "status": "starting"})
+    monkeypatch.setattr(call_service, "relay", script)
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": EP, "body": SUBMISSION, "idempotency_key": "retry-submission"}
+    async with mcp_session(clients) as client:
+        first = await _call_tool(client, tool, args, token)
+        replay = await _call_tool(client, tool, args, token)
+    assert first["reserved_usd"] == 0.003 and first["task"]["state"] == "pending"
+    assert replay["call_id"] == first["call_id"] and replay["replayed"] is True
+    assert replay["cost_usd"] == 0.0 and replay["task"]["state"] == "pending"
+    assert "reserved_usd" not in replay and len(script.seen) == 1
+
+
+@pytest.mark.parametrize(("word", "billed", "settled"), [("failed", False, 0.0), ("billed", True, 0.003)])
+async def test_team_mcp_reports_a_terminal_failure_and_its_charge(
+    clients, monkeypatch, replicate_platform, descriptor, word, billed, settled,
+):
+    from test_mcp import _call_tool, mcp_session
+
+    descriptor(status={"path": "status", "success": ["succeeded"], "failure": ["failed"],
+                       "billed_failure": ["billed"]})
+    script = Script({"id": "t-failure"}, {"id": "t-failure", "status": word, "error": "no"})
+    submitted = await _submit(clients, monkeypatch, script)
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        done = await _call_tool(client, "task_status", {"call_id": submitted.headers["X-Treg-Call-Id"]}, token)
+    assert done["state"] == "failed" and done["billed"] is billed
+    assert done["settled_usd"] == settled and "retry_after" not in done
+
+
+async def test_team_mcp_recovers_oversized_task_results_from_the_terminal_archive(
+    clients, monkeypatch, replicate_platform, descriptor,
+):
+    from test_mcp import _call_tool, mcp_session
+
+    descriptor(result={"path": "output", "ttl_note": "1h"})
+    url = "https://example.invalid/image"
+    document = {"id": "t-large", "status": "succeeded", "output": [url, "☃" * 11000]}
+    script = Script({"id": "t-large"}, document)
+    submitted = await _submit(clients, monkeypatch, script)
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        done = await _call_tool(client, "task_status", {"call_id": call_id}, token)
+        raw = jsontext.dumps_bytes(document["output"], separators=(",", ":"))
+        assert done["state"] == "succeeded" and done["status"] == "succeeded"
+        assert done["result_url"] == url and done["ttl_note"] == "1h" and done["settled_usd"] == 0.003
+        preview = done["result"]
+        assert preview["omitted"] is True and preview["size_bytes"] == len(raw) > 20 * 1024
+        assert preview["head"] == raw[:1024].decode("utf-8", "replace")
+        assert preview["tail"] == raw[-1024:].decode("utf-8", "replace")
+        assert "call_result(call_id)" in preview["note"]
+        assert "result_call_id" not in done and "result_truncated" not in done
+
+        await audit.drain()
+        history = await _call_tool(client, "call_result", {"call_id": call_id}, token)
+    result = history["result"]
+    assert result["stored"] is True and result["note"] is None and result["request"] is None
+    answer = result["response"]
+    assert answer["origin"] == "async_terminal" and answer["status_code"] == 200
+    assert answer["media_type"] == "application/json"
+    assert answer["size_bytes"] == len(answer["body_text"].encode("utf-8"))
+    assert json.loads(answer["body_text"]) == document and len(script.seen) == 2
+
+
+async def test_team_mcp_history_keeps_fetch_arguments_and_hides_the_cli_command(
+    clients, monkeypatch, replicate_platform, descriptor,
+):
+    from test_mcp import _call_tool, mcp_session
+
+    descriptor(result={"fetch": "replicate.predictions.get", "ttl_note": "1h",
+                       "fetch_param": {"in": "pathParams", "name": "id", "value_from": "output.file"}})
+    submitted = await _submit(clients, monkeypatch, Script(
+        {"id": "t-fetch"}, {"status": "succeeded", "output": {"file": "file-1"}}))
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        done = await _call_tool(client, "task_status", {"call_id": call_id}, token)
+        await audit.drain()
+        single = await _call_tool(client, "call_result", {"call_id": call_id}, token)
+        recent = await _call_tool(client, "call_result", {}, token)
+    listed = next(row for row in recent["calls"] if row["call_id"] == call_id)
+    assert done["fetch"] == {"endpoint_id": "replicate.predictions.get", "query": {"id": "file-1"}}
+    for task in (done, single["result"]["async_task"], listed["async_task"]):
+        assert task["fetch"] == done["fetch"]
+        assert "fetch_command" not in task
+
+
+async def _pinned_token(clients, pin):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    agent = await clients.post(f"/orgs/{org_id}/agents", json={
+        "name": f"task-agent-{pin}", "pinned_tags": {"customer": pin},
+    })
+    assert agent.status_code == 200, agent.text
+    return agent.json()["token"]
+
+
+async def test_team_mcp_poll_respects_pins_and_forwards_transport_meta(
+    clients, monkeypatch, replicate_platform,
+):
+    from test_mcp import _call_tool, mcp_session
+
+    matching = await _pinned_token(clients, "a")
+    other = await _pinned_token(clients, "b")
+    script = Script({"id": "t-pin"}, {"status": "succeeded", "output": ["done"]})
+    monkeypatch.setattr(call_service, "relay", script)
+    async with mcp_session(clients) as client:
+        receipt = await _call_tool(client, "call", {"endpoint_id": EP, "body": SUBMISSION}, matching)
+        client.headers["X-Treg-Meta"] = "project=watcher"
+        args = {"call_id": receipt["call_id"]}
+        blocked = await _call_tool(client, "task_status", args, other)
+        assert blocked["error"]["error"] == "task_not_found" and len(script.seen) == 1
+        done = await _call_tool(client, "task_status", args, matching)
+        assert done["state"] == "succeeded" and done["settled_usd"] == 0.003
+    assert script.seen[-1][1]["x-treg-meta"] == "project=watcher"

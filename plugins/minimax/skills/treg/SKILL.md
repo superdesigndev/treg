@@ -68,6 +68,8 @@ Gmail dots) share it.
   `sort: "newest"`; `query` may then be empty.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
+- an async receipt with `task.state: pending` → wait `retry_after` seconds, then use
+  `task_status(call_id)`. When it returns `fetch`, pass those arguments to `call`.
 - a call whose answer you never received (a timeout) → `call_result` lists the team's latest
   calls and reads a finished one's answer; check it before calling again.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
@@ -341,9 +343,11 @@ treg call minimax.video-gen.h3.generate --await --timeout 900 --data @body.json
   task and the money are not lost, and the CLI prints the command that resumes it.
 - **CLI agents: raise your shell tool's timeout or run the call in the background.** A video takes
   1-5 minutes, and a default 2-minute command limit cuts the wait off.
-- **MCP and raw HTTP:** the response header `X-Treg-Async` is the descriptor: where to poll, which
-  statuses are final, where the result is. Wait about 60 s before the first check, then every
-  30-60 s; three to six checks per video is normal. Do other work in between.
+- **MCP:** when `task.state` is `pending`, wait `task.retry_after` seconds, then call
+  `task_status(call_id)`. Pass any `fetch` it returns to `call` as arguments.
+- **Raw HTTP:** `X-Treg-Async` identifies an async answer. Send its body to `POST /tasks/{call_id}`
+  using `X-Treg-Call-Id`. While the task is pending, wait `retry_after` seconds before each
+  `GET /tasks/{call_id}`.
 - A first answer that is already final (an email verification often is) is charged as one call.
 - **Result URLs expire** (the descriptor's `ttl_note` says when). Download
   promptly: treg never stores generated media. On some routes the file needs one more call, and

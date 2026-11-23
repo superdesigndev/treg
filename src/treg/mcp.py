@@ -80,6 +80,8 @@ _READS = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world
                          idempotent_hint=True)
 _CALLS = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=True,
                          idempotent_hint=False)
+_TASK_POLL = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                             idempotent_hint=True)
 
 # One shared in-process client. ASGITransport speaks straight to the app object — no socket, no DNS,
 # no TLS — so this is a function call wearing an HTTP shape, which is what makes reusing the real
@@ -259,7 +261,7 @@ _V1_TOOL_SCOPES = {
     "feedback": "treg:catalog", "review": "treg:catalog", "mark": "treg:catalog",
     "call": "treg:call", "call_media": "treg:call", "hub_create": "treg:call", "hub_update": "treg:call",
     "balance": "treg:read", "my_tools": "treg:read", "resources_list": "treg:read", "hub_mine": "treg:read",
-    "call_result": "treg:read",
+    "call_result": "treg:read", "task_status": "treg:call",
     # Shows the team's past inputs and answers, like `call_result`, whether it reads or votes.
     "compare": "treg:read",
 }
@@ -413,6 +415,7 @@ _BASE_INSTRUCTIONS = (
     "tools. Flow: catalog_search (say what you want to do, not a vendor name), then "
     "catalog_get (parameters, price, measured reliability), then call. When several providers "
     "cover one job, catalog_get ranks them by measured success, speed and price; you pick."
+    " If a receipt has task.state pending, wait task.retry_after seconds and call task_status(call_id)."
 )
 _REVIEW_INSTRUCTION = (
     "If a call result invites a review, rate that one call with review(call_id, usefulness, "
@@ -631,6 +634,29 @@ class CallOut(TypedDict, total=False):
     detail: str | None
 
 
+class TaskOut(TypedDict, total=False):
+    call_id: str | None
+    state: str | None
+    status: str | None
+    retry_after: float | None
+    result: Any
+    result_url: str | None
+    fetch: dict | None
+    settled_usd: float | None
+    ttl_note: str | None
+    warning: str | None
+    billed: bool | None
+    error: Any
+    detail: Any
+    hint: str | None
+    teams: list[str] | None
+
+
+class TaskCallOut(CallOut, total=False):
+    task: TaskOut | None
+    reserved_usd: float | None
+
+
 class ResourcesOut(TypedDict, total=False):
     team: str | None
     source: str | None
@@ -648,8 +674,8 @@ class CallResultOut(TypedDict, total=False):
     detail: Any
 
 
-class MediaOut(CallOut, total=False):
-    """Structured metadata paired with native MCP audio content."""
+class MediaOut(TaskCallOut, total=False):
+    """Structured metadata returned by call_media."""
 
 
 class BalanceOut(TypedDict, total=False):
@@ -1675,6 +1701,8 @@ async def _catalog_get_impl(
         "Reusing one key for a DIFFERENT request is refused rather than answered. If a call timed "
         "out on your side and you sent no key, do not call again: `call_result` lists the team's "
         "latest calls and returns a finished call's stored answer.\n\n"
+        "If a receipt has `task.state: pending`, wait `task.retry_after` seconds and call "
+        "`task_status(call_id)`.\n\n"
         "For requests `params` can't express, the explicit slots mirror the CLI's flags: `query` "
         "is ALWAYS the query string (a list value expands to repeated keys), `body` is ALWAYS the "
         "request body (object/array → JSON; a STRING is sent raw, with `content_type` naming what "
@@ -1699,7 +1727,7 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
                prior: Annotated[Any, Field(description=PRIOR_DESCRIPTION)] = None,
-               ctx: Context = None) -> CallOut:  # type: ignore[assignment]
+               ctx: Context = None) -> TaskCallOut:  # type: ignore[assignment]
     # `prior` takes any value and is parsed here, so a malformed one (a string, a list, a bad
     # field) is dropped rather than failing argument validation for the call it rides on.
     if prior is not None and _shows_prior(ctx.headers if ctx else None):
@@ -1908,7 +1936,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
             # and never derived from the request: two identical searches an hour apart are new work,
             # not a retry, and a server-invented key would hand back the stale answer — a 24-hour
             # cache wearing an idempotency badge.
-            client.headers["Idempotency-Key"] = _header_idempotency_key(idempotency_key)
+            extra_headers["Idempotency-Key"] = _header_idempotency_key(idempotency_key)
         # The SAME route the CLI and the proxy use, so the tool ACL, deny rules, both daily caps,
         # the balance reserve and the settle all happen exactly once, in one place. params= is
         # only passed when there ARE pairs — see the inline-query gotcha above.
@@ -1967,24 +1995,15 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
             kw["files"] = parts
         route = "/catalog/call" if catalog_only else "/call"
         r = await client.request(method, _call_url(route, endpoint_id), **kw)
+        out: dict[str, Any] = {
+            "status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r), **_call_receipt(r),
+        }
+        if surface is _TEAM_SURFACE:
+            await _add_submission(out, r, client, slug)
 
-    out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
-    if retry_after := r.headers.get("Retry-After"):
-        out["retry_after"] = retry_after
-    if call_id := r.headers.get("X-Treg-Call-Id"):
-        out["call_id"] = call_id
-    if r.headers.get("X-Treg-Idempotent-Replay") == "true":
-        out["replayed"] = True
+    if out.get("replayed"):
         out["hint"] = ("this is the stored answer from the earlier call with the same "
                        "idempotency_key — nothing was charged for it")
-    # Set by /call/ on a METERED call only — a team's own key is never charged, and its absence
-    # therefore means "not applicable" rather than "free".
-    spent = r.headers.get("X-Treg-Cost-Micro")
-    if spent is not None:
-        try:
-            out["cost_usd"] = round(int(spent) / 1_000_000, 6)
-        except ValueError:
-            pass
     # The relay disclosure. `/call/` says it in a header; an MCP client never sees headers, and an
     # agent reading `cost_usd` on a "free" endpoint needs it to explain the charge to the human.
     served_via = r.headers.get("X-Treg-Served-Via")
@@ -2087,7 +2106,7 @@ async def _call_media_impl(
         if inbound_meta:
             extra_headers["X-Treg-Meta"] = str(inbound_meta)
         if idempotency_key:
-            client.headers["Idempotency-Key"] = _header_idempotency_key(idempotency_key)
+            extra_headers["Idempotency-Key"] = _header_idempotency_key(idempotency_key)
         kw: dict[str, Any] = {"headers": extra_headers} if extra_headers else {}
         if isinstance(body, str):
             kw["content"] = body.encode()
@@ -2095,18 +2114,11 @@ async def _call_media_impl(
             kw["json"] = body
         route = "/catalog/call" if catalog_only else "/call"
         response = await client.post(_call_url(route, endpoint_id), **kw)
-    metadata: dict[str, Any] = {"status": response.status_code, "endpoint_id": endpoint_id}
-    if retry_after := response.headers.get("Retry-After"):
-        metadata["retry_after"] = retry_after
-    if call_id := response.headers.get("X-Treg-Call-Id"):
-        metadata["call_id"] = call_id
-    if response.headers.get("X-Treg-Idempotent-Replay") == "true":
-        metadata["replayed"] = True
-    if spent := response.headers.get("X-Treg-Cost-Micro"):
-        try:
-            metadata["cost_usd"] = round(int(spent) / 1_000_000, 6)
-        except ValueError:
-            pass
+        metadata: dict[str, Any] = {
+            "status": response.status_code, "endpoint_id": endpoint_id, **_call_receipt(response),
+        }
+        if surface is _TEAM_SURFACE:
+            await _add_submission(metadata, response, client, slug)
     mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if 200 <= response.status_code < 300 and mime.startswith("audio/"):
         return CallToolResult(
@@ -2178,6 +2190,134 @@ async def resources_list(
     return await _resources_list_impl(provider, kind, ctx, surface=_TEAM_SURFACE)
 
 
+def _call_receipt(response: httpx.Response) -> dict:
+    out = {}
+    if retry_after := response.headers.get("Retry-After"):
+        out["retry_after"] = retry_after
+    if call_id := response.headers.get("X-Treg-Call-Id"):
+        out["call_id"] = call_id
+    if response.headers.get("X-Treg-Idempotent-Replay") == "true":
+        out["replayed"] = True
+    if spent := response.headers.get("X-Treg-Cost-Micro"):
+        try:
+            out["cost_usd"] = round(int(spent) / 1_000_000, 6)
+        except ValueError:
+            pass
+    return out
+
+
+_TASK_BODY_BYTES = 20 * 1024
+
+
+def _task_answer(response: httpx.Response, call_id: str) -> TaskOut:
+    view = _body(response)
+    if response.status_code != 200:
+        detail = view.get("detail", view) if isinstance(view, dict) else view
+        out = {"call_id": call_id, "state": "error", "error": detail}
+    else:
+        out = {key: view[key] for key in ("state", "status", "retry_after", "result", "result_url",
+                                          "fetch", "ttl_note", "warning", "billed", "error")
+               if view.get(key) is not None}
+        out["call_id"] = call_id
+        if out.get("state") != "pending" and not (view.get("error") or {}).get("retryable"):
+            out.pop("retry_after", None)
+    if len(jsontext.dumps_bytes(out, separators=(",", ":"))) <= _TASK_BODY_BYTES:
+        return out
+    if "result" in out:
+        raw_result = jsontext.dumps_bytes(out["result"], separators=(",", ":"))
+        out["result"] = {
+            "omitted": True,
+            "size_bytes": len(raw_result),
+            "head": raw_result[:1024].decode("utf-8", "replace"),
+            "tail": raw_result[-1024:].decode("utf-8", "replace"),
+            "note": ("The task result exceeds the MCP budget. Use result_url or fetch if present, "
+                     "or call_result(call_id) to read the archived terminal answer."),
+        }
+    if len(jsontext.dumps_bytes(out, separators=(",", ":"))) > _TASK_BODY_BYTES:
+        for key, value in out.items():
+            if key == "result":
+                continue
+            raw = jsontext.dumps_bytes(value, separators=(",", ":"))
+            if len(raw) > 2048:
+                if key in ("result_url", "fetch"):
+                    out[key] = None
+                elif isinstance(value, str):
+                    out[key] = value[:300] + "…"
+                else:
+                    out[key] = raw[:900].decode("utf-8", "replace") + "…"
+    return out
+
+
+async def _add_submission(
+    out: dict, response: httpx.Response, client: httpx.AsyncClient, slug: str | None,
+) -> None:
+    call_id = out.get("call_id")
+    if not (response.is_success and response.headers.get("X-Treg-Async") and call_id):
+        return
+    path = _segment_url("/tasks", call_id)
+    if path is None:
+        return
+    replayed = out.get("replayed")
+    routed_pending = response.headers.get("X-Treg-Route-Outcome") == "pending"
+    if routed_pending and not replayed:
+        reserved = response.headers.get("X-Treg-Reserved-Micro", "")
+        if reserved.isascii() and reserved.isdigit() and len(reserved) < 20:
+            out["reserved_usd"] = round(int(reserved) / 1_000_000, 6)
+        out.pop("cost_usd", None)
+    headers = {"X-Treg-Org": slug} if slug else {}
+    try:
+        described = await client.post(path, content=response.content, headers=headers)
+        out["task"] = _task_answer(described, call_id)
+        if replayed or routed_pending or "cost_usd" not in out:
+            return
+        # A metered submission's cost header can report a hold or an immediate charge.
+        account = await client.get(_segment_url("/calls", call_id), headers=headers)
+        task = (account.json().get("async_task") or {}) if account.is_success else {}
+        if task.get("reserved_micro") is not None:
+            out["reserved_usd"] = round(task["reserved_micro"] / 1_000_000, 6)
+            out.pop("cost_usd", None)
+            if task.get("settled_micro") is not None:
+                out["cost_usd"] = round(task["settled_micro"] / 1_000_000, 6)
+        elif not account.is_success:
+            out.pop("cost_usd", None)
+    except Exception:  # noqa: BLE001 — the provider already accepted this call
+        logging.getLogger(__name__).warning("Could not describe MCP task receipt %s", call_id)
+        out.setdefault("task", {"state": "error", "call_id": call_id,
+                                "error": "Task receipt unavailable; check task_status by call_id."})
+        if not replayed:
+            out.pop("cost_usd", None)
+
+
+@mcp.tool(
+    description=("Check an async call once using its treg call_id. This can call the provider "
+                 "as your team. On pending, wait retry_after seconds before checking again. "
+                 "On success, use result_url or pass fetch directly to call."),
+    annotations=_TASK_POLL, structured_output=True,
+)
+async def task_status(call_id: str, ctx: Context) -> TaskOut:
+    token = _bearer(ctx)
+    if not token:
+        return _need_token()
+    path = _segment_url("/tasks", call_id)
+    if path is None:
+        return {"error": "pass the call_id returned by call"}
+    async with _api(token) as client:
+        _, slug, problem = await _resolve_org(client)
+        if problem:
+            return problem
+        headers = {"X-Treg-Org": slug} if slug else {}
+        if meta := (ctx.headers or {}).get("x-treg-meta") or (ctx.headers or {}).get("X-Treg-Meta"):
+            headers["X-Treg-Meta"] = meta
+        answer = _task_answer(await client.get(path, headers=headers), call_id)
+        if answer.get("state") in ("failed", "succeeded"):
+            receipt = await client.get(_segment_url("/calls", call_id), headers=headers)
+            if receipt.is_success:
+                settled = (receipt.json().get("async_task") or {}).get("settled_micro")
+                if settled is not None:
+                    answer["settled_usd"] = round(settled / 1_000_000, 6)
+        return answer
+
+
 _RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_micro", "has_result",
                        "created_at", "async_task")
 
@@ -2190,7 +2330,7 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
     if call_id and url is None:
         return {"error": "call_id must be the call_id a call returned, or a row id from this list"}
     async with _api(token) as client:
-        org_id, slug, problem = await _resolve_org(client)
+        _, slug, problem = await _resolve_org(client)
         if problem:
             return problem
         headers = {"X-Treg-Org": slug or ""}
@@ -2198,13 +2338,24 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
             r = await client.get(f"{url}/result", headers=headers)
         else:
             r = await client.get("/calls", params={"limit": max(1, min(limit, 50))}, headers=headers)
-    body = _body(r)
-    if r.status_code != 200:
-        return {"error": "could not read the call" if call_id else "could not list recent calls",
-                "detail": body}
-    if url is not None:
-        return {"team": slug, "result": body}
+        body = _body(r)
+        if r.status_code != 200:
+            return {"error": "could not read the call" if call_id else "could not list recent calls",
+                    "detail": body}
+        if url is not None:
+            endpoint = catalog_store.load().by_id.get(body.get("endpoint_id")) or {}
+            receipt_url = _segment_url("/calls", body.get("call_ref"))
+            routed_pending = body.get("credential_tier") == "routed" and body.get("status_code") == 202
+            if receipt_url and (endpoint.get("async") or routed_pending):
+                receipt = await client.get(receipt_url, headers=headers)
+                if receipt.is_success and (task := receipt.json().get("async_task")):
+                    task.pop("fetch_command", None)
+                    body["async_task"] = task
+            return {"team": slug, "result": body}
     rows = body if isinstance(body, list) else []
+    for row in rows:
+        if task := row.get("async_task"):
+            task.pop("fetch_command", None)
     return {"team": slug, "calls": [
         {"call_id": c.get("call_ref"), **{k: c.get(k) for k in _RECENT_CALL_FIELDS if k != "call_ref"}}
         for c in rows]}

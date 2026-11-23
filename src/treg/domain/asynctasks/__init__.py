@@ -114,6 +114,11 @@ def artifact(descriptor: dict, terminal: object) -> dict:
     return view
 
 
+def fetch_arguments(fetch: dict) -> dict:
+    """Arguments for the registry call that retrieves a fetch-mode result."""
+    return {"endpoint_id": fetch["endpoint"], "query": {fetch["name"]: fetch["value"]}}
+
+
 def fetch_command(fetch: dict) -> str:
     """The `treg call` line that retrieves a fetch-mode artifact, shell-safe: the value is the
     provider's, so it is quoted wherever a human might paste the line (CLI stderr, the dashboard)."""

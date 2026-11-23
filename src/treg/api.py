@@ -32,6 +32,7 @@ from .application import asynctasks as async_task_app
 from .application.call import service as call_service
 from .caller_metadata import _client_of
 from .config import get_settings
+from .domain.asynctasks import RELEASED, SETTLED
 from .domain.catalog import store as catalog_store
 from .infra.db import get_session, session_maker
 from .domain.governance.access import pinned_tag_predicates
@@ -724,10 +725,10 @@ async def get_call_result(
     audit row keeps the identities of the provider's bytes; a metered answer is returned as its
     caller received it: where treg removes the provider's reported charge, without it unless this
     request sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
-    relayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
-    with a `note` saying which. A routed call's answer is its children's: its row lists them in
-    `children`, each readable here by its call ref. The request shape is the vendor-facing one
-    BEFORE credential injection, so no secret can appear in it.
+    relayed without being stored, and ordinary failure evidence stays admin-only. An archived
+    async terminal answer can be read by its submission or routed parent id. Otherwise a routed
+    call lists its `children`, each readable here by its call ref. The request shape is the
+    vendor-facing one BEFORE credential injection, so no secret can appear in it.
     """
     row = (await db.execute(
         select(CallRecord)
@@ -743,17 +744,42 @@ async def get_call_result(
            "method": row.method, "path": row.path, "status_code": row.status_code,
            "cached": row.cached, "created_at": row.created_at.isoformat() if row.created_at else None,
            "stored": False, "note": None, "request": None, "response": None}
-    if not row.archive_key_hash or not row.archive_content_hash:
+    await db.close()
+    metered = row.cost_charged_micro is not None
+    answer_endpoint = row.endpoint_id
+    answer_status = row.status_code
+    found = None
+    if row.archive_key_hash and row.archive_content_hash:
+        found = await archive.resolve_result(row.archive_key_hash, row.archive_content_hash)
+        if found is None:
+            out["note"] = "expired: this answer is no longer on file"
+            return out
+    elif row.call_ref:
+        task = await async_task_app.record_for_call(
+            caller.org_id, row.call_ref, pinned_tags=caller.membership.pinned_tags)
+        if task is not None and task.status in (SETTLED, RELEASED):
+            snapshots = await archive.load_terminal_snapshots([(task.call_id, task.endpoint_id)])
+            if snapshot := snapshots.get(task.call_id):
+                status_code, body = snapshot
+                found = {"stored": True, "response": {
+                    "status_code": status_code, "media_type": "application/json",
+                    "size_bytes": len(body), "origin": "async_terminal", "body_text": archive._decode(body),
+                }}
+                answer_endpoint = task.endpoint_id
+                answer_status = status_code
+                metered = True
+    if found is None:
         if row.credential_tier == "routed" and row.call_ref:
-            children = (await db.execute(
-                select(CallRecord.id, CallRecord.call_ref, CallRecord.endpoint_id, CallRecord.provider,
-                       CallRecord.status_code, CallRecord.archive_key_hash)
-                .where(CallRecord.org_id == caller.org_id,
-                       CallRecord.created_at >= row.created_at - _ROUTED_CHILD_WINDOW,
-                       CallRecord.created_at <= row.created_at,
-                       CallRecord.call_ref.startswith(f"{row.call_ref}:", autoescape=True),
-                       *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags))
-                .order_by(CallRecord.id))).all()
+            async with session_maker() as read_db:
+                children = (await read_db.execute(
+                    select(CallRecord.id, CallRecord.call_ref, CallRecord.endpoint_id, CallRecord.provider,
+                           CallRecord.status_code, CallRecord.archive_key_hash)
+                    .where(CallRecord.org_id == caller.org_id,
+                           CallRecord.created_at >= row.created_at - _ROUTED_CHILD_WINDOW,
+                           CallRecord.created_at <= row.created_at,
+                           CallRecord.call_ref.startswith(f"{row.call_ref}:", autoescape=True),
+                           *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags))
+                    .order_by(CallRecord.id))).all()
             out["children"] = [{"id": c.id, "call_ref": c.call_ref, "endpoint_id": c.endpoint_id,
                                 "provider": c.provider, "status_code": c.status_code,
                                 "has_result": c.archive_key_hash is not None} for c in children]
@@ -770,21 +796,16 @@ async def get_call_result(
         else:
             out["note"] = "not stored: recording was off when this call was made"
         return out
-    key_hash, body_hash = row.archive_key_hash, row.archive_content_hash
-    await db.close()
-    found = await archive.resolve_result(key_hash, body_hash)
-    if found is None:
-        out["note"] = "expired: this answer is no longer on file"
-        return out
     out |= found
+    response = out["response"] or {}
     if not found["stored"]:
         out["note"] = ("hash-only: the provider's licence or the size cap did not allow keeping "
                        "the bytes")
-    elif (row.cost_charged_micro is not None and 200 <= row.status_code < 300
-          and (text := (found.get("response") or {}).get("body_text")) is not None):
+    elif (metered and 200 <= answer_status < 300
+          and (text := response.get("body_text")) is not None):
         # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
         out["response"]["body_text"] = call_service.answer_for_caller(
-            row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
+            answer_endpoint, text.encode("utf-8"), request.headers).decode("utf-8")
     return out
 
 
@@ -796,8 +817,7 @@ async def get_call(
 
     Also reports the LEDGER's view of the same reference, because that is the durable one: the audit
     row is fire-and-forget and may have been shed, while the money entries were written synchronously.
-    A 404 here therefore means "no audit row", not "this call never happened" — check `ledger` in the
-    body before concluding anything about money.
+    A durable async task can also identify the call before its audit row arrives.
     """
     # This view does not use failure evidence; forbid an accidental lazy load of those wide fields.
     row = (await db.execute(
@@ -806,22 +826,22 @@ async def get_call(
                  defer(cast(QueryableAttribute, CallRecord.error_response), raiseload=True))
         .where(CallRecord.org_id == caller.org_id, CallRecord.call_ref == call_ref,
                *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
+    can_read_ledger = True
     if row is None and caller.membership.pinned_tags:
         owned = (await db.execute(select(LedgerEntry.id).where(
             LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref,
             LedgerEntry.kind == "reserve",
             *pinned_tag_predicates(LedgerEntry.meta["tags"], caller.membership.pinned_tags),
         ).limit(1))).scalar_one_or_none()
-        if owned is None:
-            raise HTTPException(status_code=404, detail="no call with that id")
+        can_read_ledger = owned is not None
     entries = (await db.execute(select(LedgerEntry).where(
         LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref)
-        .order_by(LedgerEntry.created_at))).scalars().all()
-    if row is None and not entries:
-        raise HTTPException(status_code=404, detail="no call with that id")
+        .order_by(LedgerEntry.created_at))).scalars().all() if can_read_ledger else []
     await db.close()
-    task = (await async_task_app.views_for(
-        caller.org_id, [call_ref], pinned_tags=caller.membership.pinned_tags)).get(call_ref)
+    task = await async_task_app.view_for_call(
+        caller.org_id, call_ref, pinned_tags=caller.membership.pinned_tags)
+    if row is None and not entries and task is None:
+        raise HTTPException(status_code=404, detail="no call with that id")
     view = None
     if row is not None:
         view = {"id": row.id, "call_ref": row.call_ref, "user_email": row.user_email,
@@ -833,7 +853,8 @@ async def get_call(
                 "credential_tier": row.credential_tier,
                 "cost_estimated_micro": row.cost_estimated_micro,
                 "cost_observed_micro": row.cost_observed_micro,
-                "cost_charged_micro": activity_routes.async_charged(row, task),
+                "cost_charged_micro": activity_routes.async_charged(
+                    row, task if row.credential_tier != "routed" else None),
                 "duration_ms": row.duration_ms, "response_bytes": row.response_bytes,
                 "refused_by": row.refused_by, "budget_dim": row.budget_dim,
                 "budget_val": row.budget_val, "tags": row.tags,

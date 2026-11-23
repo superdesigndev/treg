@@ -182,6 +182,7 @@ async def test_call_detail_keeps_async_view(clients, org_id, status, settled):
             "status": status, "task_id": "synthetic-task", "reserved_micro": 2500,
             "settled_micro": settled, "created_at": CREATED_AT.isoformat(),
             "completed_at": completed_at.isoformat() if completed_at else None,
-            "error": error or None, "result_url": None, "fetch_command": None, "ttl_note": None,
+            "error": error or None, "result_url": None, "fetch": None, "fetch_command": None,
+            "ttl_note": None,
         },
     }
