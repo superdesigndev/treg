@@ -1453,6 +1453,104 @@ async def test_balance_says_WHOSE_grant_and_which_team_by_name(clients):
     assert "use-team" not in (out.get("hint") or "")
 
 
+# ---- holds_micro fix (#1892) --------------------------------------------------------------------
+
+def test_sum_holds_with_empty_list():
+    """An explicitly empty holds list gives 0, not None — the distinction matters for budget guards."""
+    from treg.mcp import _sum_holds
+    holds_micro, holds_count = _sum_holds([])
+    assert holds_micro == 0
+    assert holds_count == 0
+
+
+def test_sum_holds_with_populated_list():
+    """A populated holds list sums amount_micro and counts items."""
+    from treg.mcp import _sum_holds
+    holds = [
+        {"call_id": "c1", "endpoint_id": "ep.a", "amount_micro": 1000, "created_at": "2026-01-01T00:00:00"},
+        {"call_id": "c2", "endpoint_id": "ep.b", "amount_micro": 2500, "created_at": "2026-01-01T00:01:00"},
+        {"call_id": "c3", "endpoint_id": "ep.a", "amount_micro": 500, "created_at": "2026-01-01T00:02:00"},
+    ]
+    holds_micro, holds_count = _sum_holds(holds)
+    assert holds_micro == 4000
+    assert holds_count == 3
+
+
+def test_sum_holds_with_missing_holds():
+    """When holds is missing (None), return None for both values."""
+    from treg.mcp import _sum_holds
+    holds_micro, holds_count = _sum_holds(None)
+    assert holds_micro is None
+    assert holds_count is None
+
+
+def test_sum_holds_with_malformed_holds():
+    """When holds is not a list, return None for both values."""
+    from treg.mcp import _sum_holds
+    holds_micro, holds_count = _sum_holds("not a list")
+    assert holds_micro is None
+    assert holds_count is None
+
+    holds_micro, holds_count = _sum_holds({"foo": "bar"})
+    assert holds_micro is None
+    assert holds_count is None
+
+
+def test_sum_holds_tolerates_malformed_items():
+    """Malformed items in an otherwise valid list are skipped (amount_micro defaults to 0)."""
+    from treg.mcp import _sum_holds
+    holds = [
+        {"call_id": "c1", "endpoint_id": "ep.a", "amount_micro": 1000},
+        "not a dict",
+        {"call_id": "c2"},  # missing amount_micro
+        {"call_id": "c3", "endpoint_id": "ep.a", "amount_micro": 500},
+    ]
+    holds_micro, holds_count = _sum_holds(holds)
+    assert holds_micro == 1500  # only valid amounts summed
+    assert holds_count == 4     # all items counted
+
+
+async def test_balance_reports_holds_micro_and_holds_count(clients):
+    """The balance tool computes holds_micro from the REST holds list, not a missing field."""
+    token = (await verified_signup(clients, json={"email": "holds-test@superdesign.dev"})).json()["token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=token)
+    assert "balance_micro" in out
+    # A fresh account has no open holds
+    assert out["holds_micro"] == 0
+    assert out["holds_count"] == 0
+
+
+async def test_balance_sums_open_holds(clients):
+    """When there are open holds, holds_micro is their sum and holds_count is their count."""
+    from treg.infra.db import session_maker
+    from treg.models import Hold
+
+    token = (await verified_signup(clients, json={"email": "open-holds@superdesign.dev"})).json()["token"]
+    clients.headers["X-Treg-Token"] = token
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+
+    # Create some open holds directly in the DB
+    async with session_maker() as db:
+        db.add(Hold(id="hold-1", org_id=org_id, endpoint_id="test.ep.a", amount_micro=3000))
+        db.add(Hold(id="hold-2", org_id=org_id, endpoint_id="test.ep.b", amount_micro=7000))
+        await db.commit()
+
+    try:
+        async with mcp_session(clients) as c:
+            out = await _call_tool(c, "balance", {}, token=token)
+        assert out["holds_micro"] == 10000, f"expected sum of holds, got {out}"
+        assert out["holds_count"] == 2, f"expected 2 holds, got {out}"
+    finally:
+        # Clean up holds
+        async with session_maker() as db:
+            for hid in ("hold-1", "hold-2"):
+                h = await db.get(Hold, hid)
+                if h:
+                    await db.delete(h)
+            await db.commit()
+
+
 async def test_the_tie_band_covers_the_WHOLE_equal_scoring_group(clients, monkeypatch):
     """Reranking a slice that was already cut mid-tie cannot put back the row the cut dropped. The
     band therefore keeps taking while the score stays equal — and when a query ties so broadly that
