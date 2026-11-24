@@ -210,14 +210,24 @@ endpoints:
     path: /enrichment/emails
     name: "Start a bulk work-email job"
     summary: "Request email finding."
-    resource_ownership:
-      produces:
-        - {kind: enrichment_job, path: jobID}
+    async: &enrichment_job_async
+      id_from: jobID
+      poll:
+        endpoint: leadsforge.people.enrich.job.status
+        param: {in: pathParams, name: jobID}
+      status:
+        path: status
+        progress: [in_progress]
+        success: [completed]
+        failure: []
+        billed_failure: [failed]
+      result: {path: resultsURL}
+      interval: 10
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "a retried request with the same key returns the original job instead of charging again", example: "treg-emails-2026-08-20-1"}
       body:
-        people: {type: array, items: {type: object}, required: false, note: "max 500; each item is {linkedinURL} OR {firstName, lastName, company}, plus optional externalID (max 128 chars). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}]}
+        people: {type: array, items: {type: object}, required: false, minItems: 1, maxItems: 500, note: "max 500; each item is {linkedinURL} OR {firstName, lastName, company}, plus optional externalID (max 128 chars). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}]}
         personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search; externalID is NOT supported in this mode", example: ["p_abc123", "p_def456"]}
         clientRequestID: {type: string, required: false, note: "your own correlation id — also the filter key on the jobs list", example: "my-request-123"}
         webhookURL: {type: string, required: false, note: "POSTed on completion/failure, retried up to 10 times with exponential backoff", example: "https://example.com/webhook"}
@@ -227,10 +237,13 @@ endpoints:
       body: {people: [{firstName: "Patrick", lastName: "Collison", company: "Stripe", externalID: "crm-42"}], clientRequestID: "treg-verify-1"}
     cost:
       type: per_success
-      value: 1
+      table:
+        - {when: {}, value: 1, times: body.people}
+      fallback: {value: 500, note: "500 people at one credit each."}
       currency: credit
-      per: 1
       unit: row
+      settle: usage
+      usage: {path: consumedCredits, unit: credit, missing: 0}
       source: docs
       source_url: https://www.leadsforge.ai/pricing
       checked: '2026-08-20'
@@ -250,14 +263,12 @@ endpoints:
     path: /enrichment/phones
     name: "Start a bulk phone-number job"
     summary: "Request phone number finding."
-    resource_ownership:
-      produces:
-        - {kind: enrichment_job, path: jobID}
+    async: *enrichment_job_async
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe; the original job is returned without re-charging", example: "treg-phones-2026-08-20-1"}
       body:
-        people: {type: array, items: {type: object}, required: false, note: "max 500; {linkedinURL} OR {firstName, lastName, company} (+ optional externalID). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
+        people: {type: array, items: {type: object}, required: false, minItems: 1, maxItems: 500, note: "max 500; {linkedinURL} OR {firstName, lastName, company} (+ optional externalID). Mutually exclusive with personIDs", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
         personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
         clientRequestID: {type: string, required: false, example: "my-request-123"}
         webhookURL: {type: string, required: false, note: "completion callback"}
@@ -267,10 +278,13 @@ endpoints:
       body: {people: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}], clientRequestID: "treg-verify-3"}
     cost:
       type: per_success
-      value: 10
+      table:
+        - {when: {}, value: 10, times: body.people}
+      fallback: {value: 5000, note: "500 people at ten credits each."}
       currency: credit
-      per: 1
       unit: row
+      settle: usage
+      usage: {path: consumedCredits, unit: credit, missing: 0}
       source: docs
       source_url: https://www.leadsforge.ai/pricing
       checked: '2026-08-20'
@@ -290,14 +304,12 @@ endpoints:
     path: /enrichment/linkedin
     name: "Start a bulk job — name + company to LinkedIn URL"
     summary: "Request linkedin profile finding."
-    resource_ownership:
-      produces:
-        - {kind: enrichment_job, path: jobID}
+    async: *enrichment_job_async
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe", example: "treg-li-2026-08-20-1"}
       body:
-        people: {type: array, items: {type: object}, required: false, note: "max 500; {firstName, lastName, company} (+ optional externalID) — resolve a name at a company to their LinkedIn profile URL", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
+        people: {type: array, items: {type: object}, required: false, minItems: 1, maxItems: 500, note: "max 500; {firstName, lastName, company} (+ optional externalID) — resolve a name at a company to their LinkedIn profile URL", example: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}]}
         personIDs: {type: array, items: {type: string}, required: false, note: "ids from leadsforge.people.search", example: ["p_abc123"]}
         clientRequestID: {type: string, required: false, example: "my-request-123"}
         webhookURL: {type: string, required: false}
@@ -307,10 +319,13 @@ endpoints:
       body: {people: [{firstName: "Patrick", lastName: "Collison", company: "Stripe"}], clientRequestID: "treg-verify-2"}
     cost:
       type: per_success
-      value: 1
+      table:
+        - {when: {}, value: 1, times: body.people}
+      fallback: {value: 500, note: "500 people at one credit each."}
       currency: credit
-      per: 1
       unit: row
+      settle: usage
+      usage: {path: consumedCredits, unit: credit, missing: 0}
       source: docs
       source_url: https://www.leadsforge.ai/pricing
       checked: '2026-08-20'
@@ -329,10 +344,12 @@ endpoints:
     scope: any_account
     method: GET
     path: /enrichment/jobs/{jobID}
+    kind: utility
     name: "Check a bulk enrichment job"
     summary: "Fetch enrichment job status"
+    async: false
     resource_ownership:
-      requires: {kind: enrichment_job, param: jobID}
+      requires: {kind: "poll:leadsforge.people.enrich.job.status", param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, note: "the jobID returned by any /enrichment/{emails,phones,linkedin} start", example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -363,8 +380,9 @@ endpoints:
     path: /enrichment/jobs/{jobID}/results
     name: "Fetch bulk enrichment results"
     summary: "Fetch enrichment job results"
+    async: false
     resource_ownership:
-      requires: {kind: enrichment_job, param: jobID}
+      requires: {kind: "poll:leadsforge.people.enrich.job.status", param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -510,15 +528,25 @@ endpoints:
     path: /company-followers/search
     name: "List a LinkedIn company page's followers (async job)"
     summary: "Starts an async company followers search for a LinkedIn company page"
-    resource_ownership:
-      produces:
-        - {kind: followers_job, path: jobID}
+    async:
+      id_from: jobID
+      poll:
+        endpoint: leadsforge.linkedin.company.followers.job.status
+        param: {in: pathParams, name: jobID}
+      status:
+        path: status
+        progress: [in_progress]
+        success: [completed]
+        failure: []
+        billed_failure: [failed]
+      result: {path: resultsURL}
+      interval: 15
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "if a job with this key already exists for the account, the existing job is returned as-is", example: "treg-followers-2026-08-20-1"}
       body:
         linkedinUrl: {type: string, required: true, note: "the company PAGE url", example: "https://www.linkedin.com/company/stripe"}
-        limit: {type: integer, required: true, note: "how many followers to pull, capped at 50000 — THIS IS THE PRICE DIAL: 1 credit per follower returned", example: 1}
+        limit: {type: integer, required: true, min: 1, max: 50000, note: "how many followers to pull, capped at 50000 — THIS IS THE PRICE DIAL: 1 credit per follower returned", example: 1}
         countries: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.countries", example: ["United States", "Germany"]}
         states: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.states", example: ["California"]}
         departments: {type: array, items: {type: string}, required: false, note: "values from leadsforge.linkedin.company.followers.filters.departments", example: ["Engineering"]}
@@ -530,16 +558,19 @@ endpoints:
     test_request:
       body: {linkedinUrl: "https://www.linkedin.com/company/stripe", limit: 1, clientRequestID: "treg-verify-4"}
     cost:
-      type: per_result
-      value: 1
+      type: per_success
+      table:
+        - {when: {}, value: 1, times: body.limit}
+      fallback: {value: 50000, note: "The vendor's largest limit at 1 credit per follower."}
       currency: credit
-      per: 1
       unit: row
+      settle: usage
+      usage: {path: consumedCredits, unit: credit}
       source: docs
       source_url: https://www.leadsforge.ai/pricing
       checked: '2026-08-20'
       confidence: documented
-      note: "1 credit per follower returned, with their LinkedIn URL. Confirmed live: limit=1 reserved 1 credit and settled at 87 -> 86; GET /balance reports companyFollowersPrice=1"
+      note: "1 credit per follower returned, with their LinkedIn URL; `limit` is the hold, the job's consumedCredits is the bill. A failed job consumes 0. Confirmed live: limit=1 reserved 1 credit and settled at 87 -> 86; GET /balance reports companyFollowersPrice=1"
     docs_url: https://api.leadsforge.ai/public/swagger/doc.json
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -552,10 +583,12 @@ endpoints:
     scope: any_account
     method: GET
     path: /company-followers/jobs/{jobID}
+    kind: utility
     name: "Check a company-followers job"
     summary: "Fetch company followers job status."
+    async: false
     resource_ownership:
-      requires: {kind: followers_job, param: jobID}
+      requires: {kind: "poll:leadsforge.linkedin.company.followers.job.status", param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
@@ -585,8 +618,9 @@ endpoints:
     path: /company-followers/jobs/{jobID}/results
     name: "Fetch company-followers results"
     summary: "Fetch company followers job results with pagination."
+    async: false
     resource_ownership:
-      requires: {kind: followers_job, param: jobID}
+      requires: {kind: "poll:leadsforge.linkedin.company.followers.job.status", param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
