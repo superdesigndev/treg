@@ -1105,6 +1105,15 @@ returned and never documented as stable. An output field may say where it lands 
   A boolean filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off
   is left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
   before the filter existed.
+- `companies.jobs.search` and `companies.jobs` carry two candidate-side job filters: `language`,
+  an ISO 639-1 code for the language the **posting is written in** (`en`, not the language of its
+  country), and `visa_sponsorship`, the stance read from the posting (`offers`, `no`,
+  `citizenship_required`). Both are optional and absent from a child's body when not sent. Only
+  `jobspipe.jobs.search` expresses them (`language_or` / `visa_sponsorship_or`): a call that sends
+  one ranks that child above indexes that cannot apply it, and `X-Treg-Route-Strict-Filters: 1`
+  drops the others. A posting with no labelled language never matches `language` — JobsPipe's
+  `include_unknown` is not sent by the route; the direct endpoint still takes it. These filter the
+  posting, not the candidate: no resume, contact or employer-side data is involved.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
   2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if

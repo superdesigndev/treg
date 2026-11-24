@@ -166,7 +166,9 @@ Scoping filters (country, date window, sort, location) stay out of `input_id`; t
 `analytics: value` go to `input_meta`, so analysis can split by them. A status poll
 (`video-gen.task.status`) gets neither: repeating it is how it works, so an `input_id` would make
 every poll a retry, and a running task is neither a hit nor a miss. Its outcome belongs to the
-generation it polls.
+generation it polls. The routed jobs filters `language` and `visa_sponsorship` are also
+`analytics: value`: they describe the posting that was asked for, not the candidate, and go to
+`input_meta` like `country` on a job search.
 
 ## Request segments
 
