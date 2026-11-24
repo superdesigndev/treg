@@ -91,6 +91,10 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                               "each attempt at its own price." if contract.advice_domain_mismatch else "")
                            + (f" X-Treg-Route-Verify: true also checks a hit with {contract.check.endpoint}, "
                               "at that call's own price, in _treg.verification." if contract.check else "")
+                           + (" X-Treg-Route-Verify-Fallthrough: true treats a check verdict of "
+                              + " or ".join(contract.check.fallthrough_verdicts)
+                              + " as a miss and keeps trying providers within X-Treg-Route-Max-Cost."
+                              if contract.check and contract.check.fallthrough_verdicts else "")
                            + (f" X-Treg-Route-Confirm: true counts a hit only once a second provider returns the same "
                               f"{contract.confirm}, each attempt at its own price, in _treg.confirmation."
                               if contract.confirm else "")

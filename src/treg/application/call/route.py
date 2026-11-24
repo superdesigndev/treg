@@ -19,7 +19,9 @@ only while what was already charged plus its catalog estimate fits under it.
 
 `X-Treg-Route-Verify` asks for one more call after a hit, the contract's `check` (an email find
 checked by `treg.people.email.verify`). It is its own linked child `:v` with its own hold and
-verdict, reported in `_treg.verification`; the find's answer is not altered. A check still pending
+verdict, reported in `_treg.verification`; the find's answer is not altered. `X-Treg-Route-Verify-Fallthrough`
+(opt-in) treats a hit whose check returns a definite invalid verdict (`invalid` or `dead`) as a miss for
+routing purposes and continues the waterfall, bounded by `X-Treg-Route-Max-Cost`. A check still pending
 after the routed async wait keeps `pending: true`, its `call_id`, and the child's `async` poll
 descriptor (`task_id` + poll endpoint) so the caller can resume; `cost_micro` is then the hold.
 
@@ -207,6 +209,7 @@ MIN_RESULTS_HEADER = "x-treg-route-min-results"
 MERGE_HEADER = "x-treg-route-merge"
 STRICT_FILTERS_HEADER = "x-treg-route-strict-filters"
 VERIFY_HEADER = "x-treg-route-verify"
+VERIFY_FALLTHROUGH_HEADER = "x-treg-route-verify-fallthrough"
 CONFIRM_HEADER = "x-treg-route-confirm"
 DECISIVE_HEADER = "x-treg-route-decisive"
 QUALITY_HEADER = "x-treg-route-quality"
@@ -217,7 +220,8 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
                               b"x-treg-route-waterfall", b"x-treg-route-max-cost", b"x-treg-route-prefer",
                               b"x-treg-route-exclude", b"x-treg-route-min-results",
                               b"x-treg-route-merge", b"x-treg-route-strict-filters",
-                              b"x-treg-route-verify", b"x-treg-route-confirm",
+                              b"x-treg-route-verify", b"x-treg-route-verify-fallthrough",
+                              b"x-treg-route-confirm",
                               b"x-treg-route-decisive", b"x-treg-route-quality",
                               b"x-treg-route-upgrade", b"x-treg-route-complete",
                               b"x-treg-route-domain-match", b"host",
@@ -438,6 +442,7 @@ class RouteOptions:
     merge: bool = False      # union the rows of every attempt that returned some (list answers only)
     strict_filters: bool = False  # drop any candidate that cannot express a filter the caller sent
     verify: bool = False     # after a hit, run the contract's check (`X-Treg-Route-Verify`)
+    verify_fallthrough: bool = False  # fall through on a definite invalid check verdict (`X-Treg-Route-Verify-Fallthrough`)
     confirm: bool = False    # a hit needs a second provider's same answer (`X-Treg-Route-Confirm`)
     decisive: bool = False   # a hit needs a deciding verdict word (`X-Treg-Route-Decisive`)
     quality: bool = False    # ask providers in order of measured answer quality (`X-Treg-Route-Quality`)
@@ -465,6 +470,7 @@ class RouteOptions:
         mg = str(get(MERGE_HEADER) or "").strip().lower()
         sf = str(get(STRICT_FILTERS_HEADER) or "").strip().lower()
         vf = str(get(VERIFY_HEADER) or "").strip().lower()
+        vff = str(get(VERIFY_FALLTHROUGH_HEADER) or "").strip().lower()
         cf = str(get(CONFIRM_HEADER) or "").strip().lower()
         dc = str(get(DECISIVE_HEADER) or "").strip().lower()
         ql = str(get(QUALITY_HEADER) or "").strip().lower()
@@ -475,10 +481,14 @@ class RouteOptions:
             raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
                                    detail=f"{DOMAIN_MATCH_HEADER} must be strict (or true, 1, yes, on) or off (or false, 0, no), "
                                           f"got {get(DOMAIN_MATCH_HEADER)!r}")
+        verify_fallthrough = vff in ("1", "true", "yes", "on")
+        verify_explicit_off = vf in ("0", "false", "no", "off")
+        verify = (vf in ("1", "true", "yes", "on")) or (verify_fallthrough and not verify_explicit_off)
         return cls(waterfall=wf not in ("0", "false", "no", "off"),
                    max_cost_micro=max_cost, prefer=_list(get(PREFER_HEADER)), exclude=_list(get(EXCLUDE_HEADER)),
                    min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"),
-                   verify=vf in ("1", "true", "yes", "on"), confirm=cf in ("1", "true", "yes", "on"),
+                   verify=verify, verify_fallthrough=verify_fallthrough,
+                   confirm=cf in ("1", "true", "yes", "on"),
                    decisive=dc in ("1", "true", "yes", "on"), quality=ql in ("1", "true", "yes", "on"),
                    upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm in ("strict", "true", "1", "yes", "on"))
 
@@ -503,11 +513,13 @@ class Attempt:
     charged_micro: int
     detail: str = ""
     ignored: tuple[str, ...] = ()  # filters the caller sent that this provider's adapter has no place for
+    verification: dict | None = None
 
     def view(self) -> dict:
         return {"endpoint_id": self.endpoint_id, "provider": self.provider, "outcome": self.outcome,
                 "status": self.status, "charged_micro": self.charged_micro, **({"detail": self.detail} if self.detail else {}),
-                **({"ignored_filters": list(self.ignored)} if self.ignored else {})}
+                **({"ignored_filters": list(self.ignored)} if self.ignored else {}),
+                **({"verification": self.verification} if self.verification is not None else {})}
 
 
 def _above(value: object, cap: int) -> bool:
@@ -1258,6 +1270,24 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # `fill_limit_when`: the caller's `limit` is how many rows it wants, so a shorter answer
         # goes on to the next provider and the rows add up, within MAX_WEAK_FALLBACKS and the cost cap.
         options.min_results, options.merge = target, True
+    if options.verify_fallthrough and (
+        contract is None or contract.check is None or not contract.check.fallthrough_verdicts
+        or not options.waterfall or not options.verify
+    ):
+        fallthroughable = sorted(
+            f"treg.{cap}" for cap, c in catalog_store.load().contracts.items()
+            if c.check and c.check.fallthrough_verdicts
+        )
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
+            "error": "route_verify_fallthrough_unsupported", "endpoint_id": ep["id"],
+            "message": (
+                f"{VERIFY_FALLTHROUGH_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. "
+                if contract and contract.check and contract.check.fallthrough_verdicts and not options.waterfall else
+                f"{VERIFY_FALLTHROUGH_HEADER} needs {VERIFY_HEADER} enabled; drop {VERIFY_HEADER}: false. "
+                if contract and contract.check and contract.check.fallthrough_verdicts and not options.verify else
+                f"{VERIFY_FALLTHROUGH_HEADER} works only on {', '.join(fallthroughable)}; "
+                f"{ep['id']} has no check fallthrough. "
+            ) + "Nothing was charged."})
     if options.verify and (contract is None or contract.check is None):
         # Refused before anything is planned or held: an agent must not believe a check ran.
         checked = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.check)
@@ -1356,6 +1386,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
     errored: list[tuple[Attempt, str]] = []     # answered-but-failed attempts and their child call ids
+    checked_by_cand: dict[int, dict] = {}       # X-Treg-Route-Verify-Fallthrough: per-candidate check results
+    last_verification: dict | None = None       # most recent check result when fallthrough ruled out earlier hits
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
     # measured quality the providers left are ordered by once the first attempt has not decided.
@@ -1473,8 +1505,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 admission_refusals.append(exc)
                 continue
             if exc.kind in _GLOBAL_REFUSALS or exc.kind in _TEAM_BUSY:
-                if unconfirmed or undecided or best is not None:
-                    # An answer is already paid for: keep it, and say the next ask was refused.
+                if unconfirmed or undecided or best is not None or last_verification is not None or checked_by_cand:
+                    # An answer (or a checked hit) is already paid for: keep it, and say the next ask was refused.
                     tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                          exc.status_code, 0, f"refused by treg: {exc.kind}"))
                     break
@@ -1743,6 +1775,22 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                   else "reports another subject; needs a second provider" if other else "")
         tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak" if weak or thin or other else "hit",
                              response.status, charged, detail, ignored=ignored))
+        if options.verify_fallthrough and plan.contract.check is not None:
+            check_spec = plan.contract.check
+            remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+            cand_verification, check_cost = await _run_check(
+                parent, check_spec, core, remaining, pending, execute_child, upstream_client,
+                call_ref=f"{child.call_ref}:v",
+            )
+            spent += check_cost
+            tried[-1].verification = cand_verification
+            last_verification = cand_verification
+            if (cand_verification["checked"] and not cand_verification.get("pending")
+                    and cand_verification["verdict"] in check_spec.fallthrough_verdicts):
+                tried[-1].outcome = "miss"
+                tried[-1].detail = f"verification verdict {cand_verification['verdict']}"
+                continue
+            checked_by_cand[id(cand)] = cand_verification
         if other is not None:
             agreed = next((h for v, h in other_subject if v == other
                            and h[0].endpoint["provider"] != cand.endpoint["provider"]), None)
@@ -1846,12 +1894,14 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             body_out = {"output": _empty_output(plan.contract), "raw": None,
                         "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                                   **({"incomplete": True} if incomplete else {}),
-                                  **({"verification": _unchecked("no_hit")} if options.verify else {}),
+                                  **({"verification": last_verification or _unchecked("no_hit")} if options.verify else {}),
                                   **({"capped": True} if cost_capped else {}),
                                   **({"dropped": plan.dropped} if plan.dropped else {})}}
             # The event reads the empty answer the caller got, so its counts say 0 rather than
             # nothing (`rows: 0` on a people search that found no one).
-            _summarize(parent, hit=False, tried_count=len(tried), output=body_out["output"])
+            _summarize(parent, hit=False, tried_count=len(tried), output=body_out["output"],
+                       check_verdict=(last_verification or {}).get("verdict")
+                       if (last_verification or {}).get("checked") else None)
             _audit_parent(parent, ep, 200, spent, audit_client)
             headers = {"X-Treg-Providers-Tried": ",".join(t.provider for t in tried), "X-Treg-Route-Outcome": "miss",
                        **({"X-Treg-Route-Incomplete": "true"} if incomplete else {}),
@@ -1880,6 +1930,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # The waterfall-off miss: the same rule as an all-miss walk (see the no-winner branch).
         incomplete, spent = True, _refund_errors(errored, pending, spent)
     upgrade, provider = None, cand.endpoint["provider"]
+    prechecked = checked_by_cand.get(id(cand))
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
         upgrade, better, upgrade_cost = await _run_upgrade(parent, ep, options.upgrade, output, remaining,
@@ -1888,6 +1939,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         if better is not None:
             output, doc, served = better
             provider = served.split(".")[0]
+            prechecked = None
     merged_from: list[str] = []
     if options.merge and len(answers) > 1:
         # A LIST answer is the only shape a union makes sense for, and the caller has already been
@@ -1928,10 +1980,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if options.verify and check is not None and winner_outcome in ("hit", "weak"):
         # The find's holds stay open in `pending` while the check runs: a cancellation releases
         # them with everything else, and `run_routed` still closes each exactly once.
-        remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
-        verification, check_cost = await _run_check(parent, check, output, remaining,
-                                                    pending, execute_child, upstream_client)
-        spent += check_cost
+        if prechecked is not None:
+            verification = prechecked
+        else:
+            remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+            verification, check_cost = await _run_check(parent, check, output, remaining,
+                                                        pending, execute_child, upstream_client)
+            spent += check_cost
         if verification["checked"]:
             advice = ""   # the verdict answers what the advice suggests
             if (check.disagree_advice and output.get("verified") is True and not verification.get("pending")
@@ -2034,7 +2089,7 @@ def _unchecked(reason: str) -> dict:
 
 
 async def _run_check(parent: CallContext, check, output: dict, remaining: int | None, pending: list,
-                     execute_child, upstream_client) -> tuple[dict, int]:
+                     execute_child, upstream_client, *, call_ref: str | None = None) -> tuple[dict, int]:
     """The contract's check on a hit, as an ordinary call: (`_treg.verification`, money it moved).
 
     A routed check (`treg.people.email.verify`) runs its own waterfall and closes its own holds;
@@ -2061,7 +2116,7 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
         query, body = adapter.to_upstream(identity, variant)
     prefer = ((PREFER_HEADER.encode(), ",".join(check.prefer).encode()),) if routed and check.prefer else ()
     child = CallContext(input=_child_input(parent, ep, query, body, remaining, prefer),
-                        call_ref=f"{parent.call_ref}:v", meta=parent.meta,
+                        call_ref=call_ref or f"{parent.call_ref}:v", meta=parent.meta,
                         deferred_settles=None if routed else pending,
                         quota_admissions=parent.quota_admissions,
                         quota_pending=parent.quota_pending)

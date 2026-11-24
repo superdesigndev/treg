@@ -27,6 +27,8 @@ class Check:
     hit's `field` as its identity key of the same name. `prefer` orders that call's providers only.
     `when` is an expression over `{field: value}`; a hit failing it is not checked, for `skip_reason`,
     and `skip_advice` replaces the find's advice then: the caller already asked for the check.
+    `fallthrough_verdicts` names the definite bad verdicts (such as `invalid` or `dead`) that
+    `X-Treg-Route-Verify-Fallthrough` treats as a miss for routing purposes.
     The check wins over the finder's own `verified`: a completed verdict other than `valid` on a
     `verified: true` hit attaches `disagree_advice`, and the finder's answer is left as it said."""
     endpoint: str
@@ -36,6 +38,7 @@ class Check:
     skip_reason: str = ""
     skip_advice: str = ""
     disagree_advice: str = ""
+    fallthrough_verdicts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -532,6 +535,15 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             segments=_parse_segments(cap, c.get("segments")),
             **_parse_row(cap, c.get("row"), c.get("output") or {}, types),
             **_parse_verdict(cap, c.get("verdict")))
+    for cap, contract in out.items():
+        if contract.check and contract.check.fallthrough_verdicts and contract.check.endpoint.startswith("treg."):
+            target = out.get(contract.check.endpoint.removeprefix("treg."))
+            if target and target.verdict_words:
+                unknown = [w for w in contract.check.fallthrough_verdicts if w not in target.verdict_words]
+                if unknown:
+                    raise ValueError(
+                        f"contract {cap}: check `fallthrough_verdicts` names unknown verdict(s) "
+                        f"{', '.join(unknown)} for {contract.check.endpoint}")
     return out
 
 
@@ -676,11 +688,15 @@ def _parse_check(cap: str, raw, output: dict) -> Check | None:
         raise ValueError(f"contract {cap}: check `skip_advice` needs a `when`")
     if raw.get("disagree_advice") and "verified" not in output:
         raise ValueError(f"contract {cap}: check `disagree_advice` needs a `verified` output")
+    fallthrough = tuple(str(w).strip() for w in raw.get("fallthrough_verdicts") or ())
+    if any(not w for w in fallthrough):
+        raise ValueError(f"contract {cap}: check `fallthrough_verdicts` cannot contain blank verdicts")
     return Check(endpoint=str(raw["endpoint"]), field=str(raw["field"]),
                  prefer=tuple(str(p).lower() for p in raw.get("prefer") or ()),
                  when=str(raw.get("when") or ""), skip_reason=str(raw.get("skip_reason") or ""),
                  skip_advice=str(raw.get("skip_advice") or ""),
-                 disagree_advice=str(raw.get("disagree_advice") or ""))
+                 disagree_advice=str(raw.get("disagree_advice") or ""),
+                 fallthrough_verdicts=fallthrough)
 
 
 def _parse_confirm(cap: str, raw, output: dict) -> str:
