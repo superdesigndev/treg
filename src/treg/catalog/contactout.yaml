@@ -220,8 +220,8 @@ endpoints:
         type: string
         required: true
         example: support@contactout.com
-    note: One verifier credit per valid, invalid or accept_all verdict. A call
-      with no verdict is not charged.
+    note: Charged only for a valid, invalid or accept_all verdict. Unknown, disposable
+      and no verdict are free.
   test_request:
     queryParams:
       email: support@contactout.com
@@ -235,7 +235,7 @@ endpoints:
     source_url: https://api.contactout.com/
     checked: '2026-11-24'
     note: ContactOut bills one verifier credit per valid, invalid or accept_all
-      verdict. A call with no verdict is not charged.
+      verdict, single or batch. Unknown, disposable and no verdict are not charged.
   verified: 2026-09-09
   added: '2026-09-08'
   example_response: examples/contactout.people.email.verify.json

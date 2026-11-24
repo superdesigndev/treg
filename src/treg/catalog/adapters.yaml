@@ -678,10 +678,10 @@ adapters:
     accepts: [[email]]
     in: {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status}
-    # Preserve uncertain verdict words; only explicit valid confirms deliverability.
-    # Require both a successful envelope and a nonempty verdict, using existing expressions.
-    # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
-    miss: "at_least(status_code != 200, coalesce(data.status) == null)"
+    # Only explicit valid confirms deliverability. ContactOut bills valid, invalid and accept_all;
+    # unknown and disposable are unbilled, so they are misses: settlement charges nothing and a
+    # routed call goes on. at_least takes the maximum of two 0/1 predicates, so it reads as "or".
+    miss: "at_least(at_least(status_code != 200, coalesce(data.status) == null), at_least(data.status == 'unknown', data.status == 'disposable'))"
     verdicts: {accept_all: catch_all}
   crawl4ai.people.email.verify:
     accepts: [[email]]
