@@ -342,7 +342,12 @@ Each process writes one line per reason a minute for every team together:
 `allowance_skips {"reason":..,"calls":..,"held_micro":..,"orgs":..,"window_s":..,"top":[[org_id,calls,held_micro],..]}`,
 where `calls` counts every call sent to the exact path, `held_micro` only what the holds that path
 then committed reserved (with margin), `orgs` how many teams sent them and `top` the five that
-held the most (a team that held nothing is never in it). A call is counted once, when its reserve is decided: with its hold when the
+held the most (a team that held nothing is never in it). A child of a routed call (every segment
+after the root `rN`, `v` or `u`; never a poll, an overflow rung or a hub step) is also judged as
+if it were a direct call (`reserve._as_direct`: the same rules less the deferred settle every
+routed child has), and its line adds `"as_direct":{"<reason>":[calls,held_micro],..}`, with
+`eligible` for a child nothing else would keep off the allowance: how much of the routed
+children's money the allowance could carry if a child's take were finished by its parent. A call is counted once, when its reserve is decided: with its hold when the
 session's commit event fired, even if a cancellation then reached `commit()` before it returned,
 or with nothing held when it is refused or cancelled first. Its call and its money land in the same minute, and a call that got
 the counter back and was tried again counts once, under its first reason. The line is written by the first skip of that reason after the

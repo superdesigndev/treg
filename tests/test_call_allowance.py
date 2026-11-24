@@ -1262,10 +1262,11 @@ def _skip(org_id: int, reason: str, calls: int) -> str:
 
 
 def _total(reason: str, calls: int, held_micro: int, top: list, orgs: int | None = None,
-           window_s: float = call_reserve._SKIP_LOG_EVERY_S) -> str:
+           window_s: float = call_reserve._SKIP_LOG_EVERY_S, as_direct: dict | None = None) -> str:
     return "allowance_skips " + json.dumps(
         {"reason": reason, "calls": calls, "held_micro": held_micro,
-         "orgs": len(top) if orgs is None else orgs, "window_s": window_s, "top": top},
+         "orgs": len(top) if orgs is None else orgs, "window_s": window_s, "top": top,
+         **({"as_direct": as_direct} if as_direct else {})},
         separators=(",", ":"))
 
 
@@ -1432,6 +1433,61 @@ async def test_a_child_call_s_skip_names_what_kind_of_child_it_is(org_id, call_r
     caller = await _caller(org_id)
     assert call_reserve._allowance_skip(_call(org_id), caller, CallMeta(tags={}), call_ref,
                                         True) == reason
+
+
+@pytest.mark.parametrize(("call_ref", "as_direct"), [
+    ("c-1:r1", "eligible"), ("c-1:r12", "eligible"), ("c-1:v", "eligible"),
+    ("c-1:v:r2", "eligible"), ("c-1:u:r3", "eligible"), ("c-1:r1:v", "eligible"),
+    ("c-1:r1:overflow", None), ("c-1:r1:p2", None), ("run:s3", None), ("run:s3:r1", None),
+    ("c-1:overflow", None), ("c-1", None), (None, None),
+])
+async def test_a_routed_child_is_also_judged_as_a_direct_call(org_id, store, call_ref, as_direct):
+    caller = await _caller(org_id)
+    mk = _call(org_id, deferred=[], reserved_micro=600)
+    assert call_reserve._as_direct(mk, caller, CallMeta(tags={}), call_ref, True) == as_direct
+
+
+async def test_a_routed_child_judged_as_a_direct_call_keeps_every_other_rule(org_id, store):
+    caller = await _caller(org_id)
+    tagged = CallMeta(tags={"user": "u1"})
+    assert call_reserve._as_direct(_call(org_id, deferred=[], reserved_micro=600), caller, tagged,
+                                   "c-1:r1",
+                                   True) == "tagged"
+    assert call_reserve._as_direct(_call(org_id, deferred=[], reserved_micro=0), caller,
+                                   CallMeta(tags={}),
+                                   "c-1:r1", True) == "zero_price"
+
+
+def test_a_routed_child_s_line_says_what_it_would_have_been_as_a_direct_call(
+        monkeypatch, skip_lines):
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    for held, as_direct in ((100, "eligible"), (100, "eligible"), (40, "tagged"), (0, "eligible")):
+        call_reserve._note_allowance_skip(1, "child_call:routed", held, as_direct)
+    _skipped(2, "tagged", 10)
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    _skipped(2, "tagged", 10)
+    call_reserve._note_allowance_skip(1, "child_call:routed", 0, "eligible")
+    assert skip_lines() == [
+        _total("tagged", 1, 10, [[2, 1, 10]]),
+        _total("child_call:routed", 4, 240, [[1, 4, 240]],
+               as_direct={"eligible": [3, 200], "tagged": [1, 40]}),
+    ], "a direct call's line carries no as_direct"
+
+
+async def test_a_reserved_routed_child_counts_under_the_reason_it_would_have_as_a_direct_call(
+        org_id, store, skip_lines):
+    caller = await _caller(org_id)
+    for call_ref, tags in (("c-1:r1", {}), ("c-2:r1", {"user": "u1"}), ("c-3:r1:p1", {})):
+        mk = _call(org_id, deferred=[])
+        await call_reserve._platform_reserve(mk, caller, CallMeta(tags=tags), call_ref,
+                                             allow_allowance=True)
+    routed, other = (call_reserve._skip_totals[reason]
+                     for reason in ("child_call:routed", "child_call:other"))
+    held = ledger.with_margin(600)
+    assert routed["as_direct"] == {"eligible": [1, held], "tagged": [1, held]}
+    assert other["calls"] == 1 and other["as_direct"] == {}
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):
