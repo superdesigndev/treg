@@ -94,6 +94,11 @@ _TABLE: list[Signature] = [
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),
+    # GetProspect: an empty credit or wallet balance is a 402 {"success": false, "errors": [{"name":
+    # "PAYMENT_REQUIRED", ...}]} with X-Limit-Reached / X-Limit-Type headers; a day rate-limit window
+    # spent is a 429 whose payload carries "window": "day".
+    Signature("getprospect", 402, r'"name"\s*:\s*"payment_required"', "balance"),
+    Signature("getprospect", 429, r'"window"\s*:\s*"day"', "quota"),
     # AI Ark: an empty credit pool is a 402 {"error": "sorry, you don't have enough credit"}.
     Signature("aiark", 402, r"don't have enough credit", "balance"),
     Signature("lusha", 400, r"reached your credit limit", "balance", tripwire=True),

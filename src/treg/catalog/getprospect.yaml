@@ -3,10 +3,6 @@ source:
   docs: https://getprospect.com/api-docs
   openapi: https://api.getprospect.com/openapi.json
   curated: '2026-11-24'
-# Vendor-raised listing. Every test_request below was live-called on 2026-11-24 against GetProspect's
-# own account, and each row's price was reconciled against the balance delta of GET /v2/credits
-# (email credits and wallet USD before -> after); the ledger is in the pull request.
-#
 # Billing: two meters.
 #   - Email CREDITS (fx.yaml credit_rates_usd.getprospect): 1 per valid email served that the
 #     workspace does not already own. An email the workspace revealed before is served free.
@@ -97,6 +93,7 @@ endpoints:
           note: "one of id, linkedin_id, linkedin_url, email, or first_name + last_name + company_domain or company_name; the strongest identifier sent wins"
         enrich_email: {type: boolean, required: false, default: true, note: "false skips the email reveal and its credit"}
         enrich_phone: {type: boolean, required: false, enum: [false], note: "mobile phone lookups are not part of this listing"}
+    body_allowlist: true
     platform_request:
       body.enrich_phone: false
     test_request:
@@ -132,6 +129,7 @@ endpoints:
           note: "1-50 items, each with an optional identifier echoed back and the same identifiers as getprospect.people.enrich"
         enrich_email: {type: boolean, required: false, default: true, note: "false skips the email reveals and their credits"}
         enrich_phone: {type: boolean, required: false, enum: [false], note: "mobile phone lookups are not part of this listing"}
+    body_allowlist: true
     platform_request:
       body.enrich_phone: false
     test_request:
@@ -141,11 +139,11 @@ endpoints:
       currency: credit
       per: 1
       unit: record
-      note: "1 email credit per matched person whose email is newly revealed; not_matched and invalid items are free"
+      note: "1 email credit per email served (newly revealed); matched people without an email, enrich_email false, not_matched and invalid items are free"
     reserve:
       entities: {from: body.data, max: 50}
     settle:
-      count: {path: response.data.matched}
+      count: {path: response.data.matched.*.person.email.address}
     docs_url: https://getprospect.com/api-docs/people-bulk-enrich
 
   - id: getprospect.people.search
@@ -166,7 +164,8 @@ endpoints:
           note: "include/exclude filter object; at least one include condition. Filter values come from getprospect.people.search.suggest and getprospect.people.search.filters"
         page: {type: integer, required: false, default: 1, min: 1}
         per_page: {type: integer, required: false, default: 25, enum: [25, 50, 100]}
-        enrich_email: {type: boolean, required: false, default: false, note: "true reveals emails for email credits, billed by GetProspect to your own key; treg's key always sends false. Reveal with getprospect.people.enrich instead"}
+        enrich_email: {type: boolean, required: false, enum: [false], note: "reveal emails with getprospect.people.enrich instead"}
+    body_allowlist: true
     platform_request:
       body.enrich_email: false
     test_request:

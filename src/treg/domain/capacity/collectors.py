@@ -599,6 +599,18 @@ async def _hunter(c, key):
                     f"resets {(d.get('data') or {}).get('reset_date')}"}
 
 
+async def _getprospect(c, key):
+    # GET /v2/credits is free: email credits left (finds and reveals) and the USD wallet (verifications).
+    d = await _get(c, "https://api.getprospect.com/v2/credits", headers={"x-api-key": key})
+    data = d.get("data") if isinstance(d, dict) and d.get("success") is True else None
+    emails = ((data or {}).get("email_search") or {}).get("available")
+    if isinstance(emails, bool) or not isinstance(emails, (int, float)) or emails < 0:
+        raise ValueError("GetProspect returned no valid email-credit balance")
+    wallet = (data.get("wallet") or {}).get("balance")
+    return {"value": emails, "unit": "email credits",
+            "note": f"wallet ${wallet} for verifications, renews {data.get('reset_at')}"}
+
+
 async def _trykitt(c, key):
     d = await _get(c, "https://api.trykitt.ai/credit", headers={"x-api-key": key})
     value = d.get("credits")
@@ -1168,6 +1180,7 @@ async def _piapi(c, key):
 
 
 BALANCE_ROUTES = {
+    "getprospect": _getprospect,
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,

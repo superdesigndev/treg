@@ -1648,6 +1648,11 @@ async def _catalog_get_impl(
             out["overflow_via"] = ep.get("overflow_via")
     if isinstance(out, dict) and (out.get("routing") or {}).get("plan"):
         out.pop("siblings", None)
+    elif isinstance(out, dict) and isinstance(out.get("siblings"), list):
+        # A crowded capability lists dozens of siblings; their null fields are most of each entry and
+        # say nothing, so they are dropped to keep the result inside an MCP client's output limit.
+        out["siblings"] = [{k: v for k, v in s.items() if v is not None} if isinstance(s, dict) else s
+                           for s in out["siblings"]]
     return out
 
 
