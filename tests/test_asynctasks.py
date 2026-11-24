@@ -1181,6 +1181,35 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
     get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(("provider", "kind", "method", "path", "body"), [
+    ("leadsforge", "followers_job", "GET", "leadsforge.linkedin.company.followers.job.results?jobID=old-job", None),
+    ("leadsforge", "enrichment_job", "GET", "leadsforge.people.enrich.job.status?jobID=old-job", None),
+    ("companyenrich", "job", "GET", "companyenrich.companies.enrich.bulk.status?jobId=old-job", None),
+    ("icypeas", "search", "POST", "icypeas.search.results.read", {"id": "old-job"}),
+    ("icypeas", "bulk_file", "POST", "icypeas.bulk.results.read", {"mode": "bulk", "file": "old-job"}),
+])
+async def test_a_job_started_before_its_tool_went_async_stays_readable(
+    clients: AsyncClient, monkeypatch, provider, kind, method, path, body,
+):
+    """A job submitted before its start row gained `async:` has only its ownership record, no task
+    row. Its status and results stay readable by the team that paid for it."""
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    get_settings.cache_clear()
+
+    async def fake_relay(*args, **kwargs):
+        return _response(200, {"status": "completed"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    async with session_maker() as db:
+        db.add(AsyncResourceRecord(org_id=1, provider=provider, resource_kind=kind,
+                                   resource_id="old-job", source_call_id="before-the-deploy"))
+        await db.commit()
+    response = await clients.request(method, f"/call/{path}", json=body)
+    assert response.status_code == 200, response.text
+    get_settings.cache_clear()
+
+
 async def test_apify_actor_start_needs_own_key(
     clients: AsyncClient, monkeypatch, legacy_async_platform,
 ):

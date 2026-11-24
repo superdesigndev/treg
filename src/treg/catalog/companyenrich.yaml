@@ -517,6 +517,9 @@ endpoints:
     path: /companies/enrich/bulk
     name: "Start a bulk enrichment job (up to 10,000 domains)"
     summary: "Creates an asynchronous bulk enrichment job for up to 10,000 domains — returns a job ID immediately"
+    resource_ownership:
+      produces:
+        - {kind: job, path: job_id}
     async:
       id_from: job_id
       poll:
@@ -568,7 +571,7 @@ endpoints:
     kind: utility
     async: false
     resource_ownership:
-      requires: {kind: "poll:companyenrich.companies.enrich.bulk.status", param: jobId}
+      requires: {kind: job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` returned by companyenrich.companies.enrich.bulk.start", example: "01a01ca2-932a-7b00-bc07-9417bb2a2b58"}
@@ -613,6 +616,9 @@ endpoints:
     path: /companies/search/async
     name: "Start a company-search export (up to 50,000 rows)"
     summary: "Creates an asynchronous search export job for up to 50,000 companies — supports both standard company search and similar-company search"
+    resource_ownership:
+      produces:
+        - {kind: company_search_job, path: job_id}
     async:
       id_from: job_id
       poll:
@@ -666,7 +672,7 @@ endpoints:
     kind: utility
     async: false
     resource_ownership:
-      requires: {kind: "poll:companyenrich.companies.search.async.status", param: jobId}
+      requires: {kind: company_search_job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` from companyenrich.companies.search.async.start", example: "01a01ca2-97b9-7aa3-94d8-b34128beaef5"}
@@ -897,6 +903,9 @@ endpoints:
     path: /people/email/bulk
     name: "Start a bulk work-email lookup (beta, up to 1,000 people)"
     summary: "Creates an asynchronous bulk person email enrichment job for up to 1,000 lookup items"
+    resource_ownership:
+      produces:
+        - {kind: people_email_job, path: job_id}
     async:
       id_from: job_id
       poll:
@@ -948,7 +957,7 @@ endpoints:
     kind: utility
     async: false
     resource_ownership:
-      requires: {kind: "poll:companyenrich.people.email.bulk.status", param: jobId}
+      requires: {kind: people_email_job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` from companyenrich.people.email.bulk.start", example: "01a01ca3-7120-7ee5-beba-a7bc64de4ea7"}
@@ -970,6 +979,9 @@ endpoints:
     path: /people/search/async
     name: "Start a people-search export (up to 50,000 rows)"
     summary: "Creates an asynchronous search export job for up to 50,000 people — returns a job ID immediately"
+    resource_ownership:
+      produces:
+        - {kind: people_search_job, path: job_id}
     async:
       id_from: job_id
       poll:
@@ -1027,7 +1039,7 @@ endpoints:
     kind: utility
     async: false
     resource_ownership:
-      requires: {kind: "poll:companyenrich.people.search.async.status", param: jobId}
+      requires: {kind: people_search_job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` from companyenrich.people.search.async.start", example: "01a01ca3-32df-70c8-bb03-8060f181e9fc"}

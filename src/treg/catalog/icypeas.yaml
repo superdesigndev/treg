@@ -53,6 +53,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /email-search
+    resource_ownership:
+      produces: [{kind: search, path: item._id}]
     async: &icypeas_single_async
       id_from: item._id
       poll:
@@ -102,6 +104,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /email-verification
+    resource_ownership:
+      produces: [{kind: search, path: item._id}]
     async: *icypeas_single_async
     name: "Verify email — catch-all and mail provider (async)"
     summary: "Check whether a specific email address exists and is deliverable, including catch-all detection"
@@ -135,6 +139,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /domain-search
+    resource_ownership:
+      produces: [{kind: search, path: item._id}]
     async: *icypeas_single_async
     body_allowlist: true
     name: "Find role-based emails at a domain — contact@, support@"
@@ -179,7 +185,7 @@ endpoints:
     async: false
     body_allowlist: true
     resource_ownership:
-      requires: {kind: "poll:icypeas.search.results.read", param: id, in: body}
+      requires: {kind: search, param: id, in: body}
     input:
       body:
         id: {type: string, required: true, note: "the _id returned by icypeas.people.email.find, icypeas.people.email.verify or icypeas.companies.emails.role", example: "mP6hHKABeMoKaEB1K1HF"}
@@ -204,7 +210,7 @@ endpoints:
     async: false
     body_allowlist: true
     resource_ownership:
-      requires: {kind: "poll:icypeas.search.files.read", param: file, in: body}
+      requires: {kind: bulk_file, param: file, in: body}
     input:
       body:
         mode: {type: string, required: true, enum: [bulk], note: "always 'bulk'", example: "bulk"}
@@ -228,6 +234,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /bulk-search
+    resource_ownership:
+      produces: [{kind: bulk_file, path: file}]
     async:
       id_from: file
       poll:
@@ -290,7 +298,7 @@ endpoints:
     async: false
     body_allowlist: true
     resource_ownership:
-      requires: {kind: "poll:icypeas.search.files.read", param: file, in: body}
+      requires: {kind: bulk_file, param: file, in: body}
     input:
       body:
         file: {type: string, required: true, note: "the file id returned by icypeas.bulk.search", example: "L3mhHKAB9iupLhv96W-F"}

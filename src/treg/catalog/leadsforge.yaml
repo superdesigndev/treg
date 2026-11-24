@@ -210,6 +210,9 @@ endpoints:
     path: /enrichment/emails
     name: "Start a bulk work-email job"
     summary: "Request email finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     async: &enrichment_job_async
       id_from: jobID
       poll:
@@ -263,6 +266,9 @@ endpoints:
     path: /enrichment/phones
     name: "Start a bulk phone-number job"
     summary: "Request phone number finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     async: *enrichment_job_async
     input:
       headers:
@@ -304,6 +310,9 @@ endpoints:
     path: /enrichment/linkedin
     name: "Start a bulk job — name + company to LinkedIn URL"
     summary: "Request linkedin profile finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     async: *enrichment_job_async
     input:
       headers:
@@ -349,7 +358,7 @@ endpoints:
     summary: "Fetch enrichment job status"
     async: false
     resource_ownership:
-      requires: {kind: "poll:leadsforge.people.enrich.job.status", param: jobID}
+      requires: {kind: enrichment_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, note: "the jobID returned by any /enrichment/{emails,phones,linkedin} start", example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -382,7 +391,7 @@ endpoints:
     summary: "Fetch enrichment job results"
     async: false
     resource_ownership:
-      requires: {kind: "poll:leadsforge.people.enrich.job.status", param: jobID}
+      requires: {kind: enrichment_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -528,6 +537,9 @@ endpoints:
     path: /company-followers/search
     name: "List a LinkedIn company page's followers (async job)"
     summary: "Starts an async company followers search for a LinkedIn company page"
+    resource_ownership:
+      produces:
+        - {kind: followers_job, path: jobID}
     async:
       id_from: jobID
       poll:
@@ -588,7 +600,7 @@ endpoints:
     summary: "Fetch company followers job status."
     async: false
     resource_ownership:
-      requires: {kind: "poll:leadsforge.linkedin.company.followers.job.status", param: jobID}
+      requires: {kind: followers_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
@@ -620,7 +632,7 @@ endpoints:
     summary: "Fetch company followers job results with pagination."
     async: false
     resource_ownership:
-      requires: {kind: "poll:leadsforge.linkedin.company.followers.job.status", param: jobID}
+      requires: {kind: followers_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
