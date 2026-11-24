@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -281,8 +282,8 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     marked = await kv.store().call_in_flight(call_ref) if kv.configured() else False
     open_hold = (await db.execute(select(Hold.id).where(
         Hold.org_id == org_id, mine(Hold.id)).limit(1))).first() is not None
-    queued = (await db.execute(select(CallCharge.call_id).where(
-        CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).first() is not None
+    queued = set((await db.execute(select(CallCharge.call_id).where(
+        CallCharge.org_id == org_id, mine(CallCharge.call_id)))).scalars())
     rows = list((await db.execute(select(
         LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.org_id == org_id, LedgerEntry.created_at >= since, LedgerEntry.created_at <= until,
@@ -294,23 +295,33 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         open_hold = True  # a task's hold is its worker's until it resolves
     # Past the lifetime only by exact id, which the call_id index serves: the tasks' late settles,
     # and the owner's own fold, which a backlog can push past it.
-    late_ids = [call_ref, *(task_id for task_id, _ in tasks)]
+    late_ids = list({call_ref, *queued, *(task_id for task_id, _ in tasks)})
     rows += (await db.execute(select(
         LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
-    if queued and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
+    settled = {cid for kind, _, cid in rows if kind == "settle"}
+    if queued - settled:
         open_hold = True
     # The mark matters only while the ledger cannot speak for the owner. An entry of its own (a
-    # reserve: it took a hold; a settle: its allowance charge is folded) or of a child other than
-    # overflow (routed and hub parents never take the allowance) puts all its money in the
-    # database, so a store that cannot answer does not keep its claim waiting. An overflow child's
-    # entries do not: its parent's own charge may still be unwritten.
-    overflow = f"{call_ref}:overflow"
-    if marked is not False and not any(
-            cid == call_ref or not cid.startswith(overflow) for _, _, cid in rows):
+    # reserve: it took a hold; a settle: its allowance charge is folded) or of a hub child (a hub
+    # run's steps never take the allowance) puts all its money in the database, so a store that
+    # cannot answer does not keep its claim waiting. An overflow child's or a routed child's
+    # entries do not: the parent's own charge, or another routed child's, may still be unwritten.
+    if marked is not False and not any(_speaks_for(call_ref, cid) for _, _, cid in rows):
         open_hold = True
     # settle entries are negative (money leaving)
     return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}
+
+
+_ROUTED_OR_OVERFLOW = re.compile(r"r\d+(?:\.\d+)*|v|u|overflow")
+
+
+def _speaks_for(call_ref: str, cid: str) -> bool:
+    """Whether a ledger entry under `cid` shows the owner's money is all in the database."""
+    if cid == call_ref:
+        return True
+    child = cid[len(call_ref) + 1:].split(":", 1)[0]
+    return not _ROUTED_OR_OVERFLOW.fullmatch(child)
 
 
 async def _resolve_stale_claim(row: IdempotentCall, caller: Caller, db: AsyncSession):

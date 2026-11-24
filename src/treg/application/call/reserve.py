@@ -347,11 +347,14 @@ def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_re
     Everything else keeps its own hold, because something reads that hold: a tag or member row
     written with it, an async task or a routed parent that closes it later, the purchased-credit
     gate. A child call's reference is its parent's plus a `:suffix` (`_child_kind`). A call whose application did
-    not allow the allowance (`allowed`) keeps its hold too.
+    not allow the allowance (`allowed`) keeps its hold too. A routed child whose root lets its
+    children take (`mk.routed_allowance`) is judged as a direct call: its parent finishes its take.
     """
     if not call_ref:
         return "no_call_ref"
     if ":" in call_ref:
+        if mk.routed_allowance and _routed_chain(call_ref):
+            return _direct_skip(mk, caller, meta, allowed, deferred_settle=False)
         return _child_kind(call_ref)
     return _direct_skip(mk, caller, meta, allowed)
 
@@ -386,13 +389,18 @@ def _direct_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, allowed: b
 _ROUTED_SEGMENT = re.compile(r"r\d+(?:\.\d+)*|v|u")
 
 
+def _routed_chain(call_ref: str | None) -> bool:
+    """Every segment after the root is a routed attempt `rN`, a check `v` or an upgrade `u`."""
+    segments = (call_ref or "").split(":")[1:]
+    return bool(segments) and all(_ROUTED_SEGMENT.fullmatch(s) for s in segments)
+
+
 def _as_direct(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
                allowed: bool) -> str | None:
     """For a child of a routed call (every segment after the root a routed attempt `rN`, a
     check `v` or an upgrade `u`): what `_allowance_skip` would answer if it were a direct
     call, `eligible` when nothing else keeps it off the allowance. None for any other call."""
-    segments = (call_ref or "").split(":")[1:]
-    if not segments or not all(_ROUTED_SEGMENT.fullmatch(s) for s in segments):
+    if not _routed_chain(call_ref):
         return None
     return _direct_skip(mk, caller, meta, allowed, deferred_settle=False) or "eligible"
 

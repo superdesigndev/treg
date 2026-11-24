@@ -431,6 +431,8 @@ class MarketplaceCall:
     key_slot: str | None = None
     # A routed child: settle into this list instead of the ledger (CallContext.deferred_settles).
     deferred: list | None = None
+    # A routed child whose root lets it take from the allowance (CallContext.routed_allowance).
+    routed_allowance: bool = False
     # A v2 row's frozen cost terms (`call.cost`): the settle follows the v2 settlement order.
     cost_terms: dict | None = None
 

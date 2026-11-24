@@ -451,11 +451,13 @@ a 400 `catalog_parameter_invalid` naming the field before any child is planned o
 `catalog_parameter_would_refuse` line), then runs each child endpoint through this same use
 case as a child `CallContext` (`call_ref` `{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
 child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
-`deferred_settles` and leaves its hold open; a child that is not billable or settles at a
+`deferred_settles` and leaves its hold open (or, on the allowance, its take: [money](money.md)
+§ Allowance, "Routed children"); a child that is not billable or settles at a
 provider-reported zero releases at once so it never blocks the next child's reserve. The parent
 closes every child hold exactly once with `settle.close_deferred(charge=...)`: settle each billable
 child as its own settle would have, or release all because a failed routed call charges nothing.
-A crash before that leaves holds to the reaper, which releases in the caller's favor.
+A crash before that leaves holds to the reaper, which releases in the caller's favor, and takes
+in the team's allowance hold until it is closed.
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.

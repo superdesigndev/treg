@@ -2489,6 +2489,35 @@ async def test_an_abandoned_allowance_call_waits_for_its_fold_and_answers_what_i
     assert r.json()["detail"]["charged_micro"] == 600
 
 
+@pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
+async def test_a_routed_child_s_queued_charge_keeps_its_parent_s_stale_claim(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """A routed child on the allowance has no hold: its queued charge, under the parent's
+    prefix, is money in flight until a fold writes its settle."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import CallCharge, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "routed-label", status="pending")
+    await _set_claim("routed-label", call_ref="routed-owner")
+    async with session_maker() as db:
+        db.add(CallCharge(call_id="routed-owner:r1", org_id=org_id, endpoint_id=EP, amount_micro=700))
+        if trail == "queued_and_folded":
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                               call_id="routed-owner:r1", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "routed-label"})
+    if trail == "queued":
+        assert r.status_code == 409, r.text
+        return
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
 @pytest.mark.parametrize("key", [None, "keyed-label"])
 async def test_a_direct_call_may_use_the_allowance_and_a_keyed_one_is_marked_in_flight(
         clients: AsyncClient, platform_on, monkeypatch, key):
@@ -2540,14 +2569,16 @@ async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
 @pytest.mark.parametrize(("trail", "expect"), [
     ("own_hold", (410, 400)),          # its own reserve and settle: it took a hold
     ("folded_allowance", (410, 400)),  # only its own settle: its allowance charge is folded
-    ("routed_parent", (410, 400)),     # only its children's entries: a route never takes the allowance
+    ("hub_run", (410, 400)),           # only its steps' entries: a hub step never takes the allowance
+    ("routed_parent", (409, None)),    # a routed child's entries say nothing of another child's charge
     ("overflow_only", (409, None)),    # an overflow child's entries say nothing of the parent's charge
 ])
 async def test_an_owner_the_ledger_speaks_for_is_closed_from_it_when_the_store_cannot_answer(
         clients: AsyncClient, platform_on, monkeypatch, trail, expect):
     """With its money all in the ledger, a store fault does not keep the claim waiting: the
     receipt comes from the ledger. Only an owner whose own charge could still be unwritten (an
-    allowance parent with nothing but an overflow child in the ledger) waits for the store."""
+    allowance parent with nothing but an overflow child in the ledger, a routed parent whose
+    other children may have taken from the allowance) waits for the store."""
     from treg.application.call import idempotency
     from treg.infra import kv
 
@@ -2562,7 +2593,8 @@ async def test_an_owner_the_ledger_speaks_for_is_closed_from_it_when_the_store_c
     await _seed_answer(clients, "held-label", status="pending")
     await _set_claim("held-label", call_ref="held-owner")
     entry = {"own_hold": "held-owner", "folded_allowance": "held-owner",
-             "routed_parent": "held-owner:r0", "overflow_only": "held-owner:overflow"}[trail]
+             "hub_run": "held-owner:s1", "routed_parent": "held-owner:r0",
+             "overflow_only": "held-owner:overflow"}[trail]
     if trail != "folded_allowance":
         await _ledger(org_id, entry, "reserve", amount=-500)
     await _ledger(org_id, entry, "settle", amount=-400)
