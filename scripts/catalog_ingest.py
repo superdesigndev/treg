@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import quote
 
 import yaml
 from treg.domain.catalog.schema import spelling
@@ -1674,8 +1675,122 @@ def ingest_anyapi(refresh: bool = False):
     return out, {"endpoints": len(endpoints)}
 
 
+XPOZ_OPENAPI = "https://api.xpoz.ai/openapi.json"
+XPOZ_CHECKED = "2026-11-24"
+XPOZ_DATA_PREFIX = "/api/data/"
+# The async operation poll serves responseType=paging|csv results; treg calls are synchronous.
+XPOZ_SKIP_PREFIX = "/api/data/operations/"
+XPOZ_PLATFORM = {"twitter": "x", "instagram": "instagram", "tiktok": "tiktok", "reddit": "reddit"}
+# https://xpoz.ai/pricing: a flat credit price per query by platform, empty answers included.
+XPOZ_CREDITS = {"x": "2", "instagram": "12", "tiktok": "5", "reddit": "2"}
+# Real targets observed answering 200 with data on 2026-11-24 (the core listing's ledger run).
+# The spec states no example values for these path and query parameters.
+XPOZ_EXAMPLES = {
+    ("x", "username"): "nasa",
+    ("x", "id"): "2125270727028859059",
+    ("instagram", "identifier"): "nasa",
+    ("instagram", "id"): "4034722052525930893_528817151",
+    ("tiktok", "identifier"): "tiktok",
+    ("tiktok", "id"): "7351594254663159083",
+    ("tiktok", "hashtag"): "recipe",
+    ("reddit", "username"): "spez",
+    ("reddit", "name"): "programming",
+    ("reddit", "id"): "1xhd5ut",
+    ("*", "q"): "recipe",
+}
+XPOZ_TYPES = {"string": "string", "integer": "integer", "number": "number", "boolean": "boolean",
+              "array": "string"}
+
+
+def _xpoz_param(spec: dict, param: dict, platform: str) -> tuple[str, dict]:
+    if "$ref" in param:
+        param = spec["components"]["parameters"][param["$ref"].rsplit("/", 1)[1]]
+    schema = param.get("schema") or {}
+    note = clean(param.get("description") or "")
+    if schema.get("enum"):
+        note = (note + " One of " + " | ".join(str(v) for v in schema["enum"]) + ".").strip()
+    field = {"type": XPOZ_TYPES.get(schema.get("type", "string"), "string"),
+             "required": bool(param.get("required"))}
+    if len(note) > 300:
+        note = note[:300].rsplit(", ", 1)[0] + ", …"
+    if note:
+        field["note"] = note
+    example = (param.get("example") or schema.get("example")
+               or XPOZ_EXAMPLES.get((platform, param["name"])) or XPOZ_EXAMPLES.get(("*", param["name"])))
+    if example is None and field["required"] and schema.get("enum"):
+        example = schema["enum"][0]
+    if example is not None and field["required"]:
+        field["example"] = example
+    return param["name"], field
+
+
+def _xpoz_body(op: dict) -> dict:
+    schema = (((op.get("requestBody") or {}).get("content") or {}).get("application/json") or {}).get("schema") or {}
+    required = set(schema.get("required") or [])
+    body = {}
+    for name, prop in (schema.get("properties") or {}).items():
+        field = {"type": "array" if prop.get("type") == "array" or "$ref" in prop else XPOZ_TYPES.get(prop.get("type", "string"), "string")}
+        if field["type"] == "array":
+            field["items"] = {"type": "string"}
+        field["required"] = name in required
+        if prop.get("description"):
+            field["note"] = clean(prop["description"])
+        if prop.get("example") is not None and field["required"]:
+            field["example"] = prop["example"]
+        body[name] = field
+    return body
+
+
+def ingest_xpoz(refresh: bool) -> tuple[Path, dict]:
+    """Every synchronous Xpoz data route except those curated in xpoz.yaml, from Xpoz's OpenAPI."""
+    spec = json.loads(fetch(XPOZ_OPENAPI, "xpoz_openapi.json", refresh=refresh))
+    skip = core_routes("xpoz")
+    endpoints = []
+    for path, ops in sorted((spec.get("paths") or {}).items()):
+        if not path.startswith(XPOZ_DATA_PREFIX) or path.startswith(XPOZ_SKIP_PREFIX):
+            continue
+        for method in ("get", "post"):
+            op = ops.get(method)
+            if not op or (method.upper(), path) in skip:
+                continue
+            platform = XPOZ_PLATFORM[path[len(XPOZ_DATA_PREFIX):].split("/", 1)[0]]
+            params = [_xpoz_param(spec, p, platform) for p in (ops.get("parameters") or []) + (op.get("parameters") or [])]
+            path_params = {n: f for n, f in params if "{" + n + "}" in path}
+            query_params = {n: f for n, f in params if n not in path_params}
+            route = path[len(XPOZ_DATA_PREFIX):].split("/", 1)[1]
+            body = re.sub(r"[^a-z0-9]+", "-", route.lower()).strip("-")
+            if method == "post":
+                body += "-by-ids"
+            description = clean(op.get("description") or op.get("summary") or "")
+            ep_input = {k: v for k, v in (("pathParams", path_params), ("queryParams", query_params),
+                                          ("body", _xpoz_body(op))) if v}
+            endpoints.append({
+                "id": f"xpoz.{platform}.{body}",
+                "platform": platform,
+                "scope": "any_account",
+                "method": method.upper(),
+                "path": path,
+                "name": clean(op.get("summary") or titlecase(body))[:60],
+                "summary": description.split(". ", 1)[0].rstrip(".") + ".",
+                "input": ep_input,
+                "price": {"value": XPOZ_CREDITS[platform], "currency": "credit", "per": 1, "unit": "call"},
+                "docs_url": ("https://api.xpoz.ai/api-docs/#/"
+                             f"{quote((op.get('tags') or [''])[0])}/{op.get('operationId', '')}"),
+            })
+            # No `test_request`: a freshly ingested row has never been called; the example values
+            # on its input fields are what treg's verify pass builds one from.
+    source = {"method": "openapi", "ingested": XPOZ_CHECKED, "spec_urls": [XPOZ_OPENAPI]}
+    out = write_extended("xpoz", source, endpoints, [
+        "Every synchronous /api/data route in Xpoz's OpenAPI, minus the routes curated in xpoz.yaml",
+        "and the async operation poll. Prices are the flat per-platform credit price from",
+        "https://xpoz.ai/pricing (observed exact on every core row); xpoz.yaml's defaults apply.",
+    ], carry_capability=True)
+    return out, {"endpoints": len(endpoints)}
+
+
 INGESTERS = {
     "anyapi": ingest_anyapi,
+    "xpoz": ingest_xpoz,
     "tikhub": ingest_tikhub,
     "dataforseo": ingest_dataforseo,
     "justoneapi": ingest_justoneapi,

@@ -1,0 +1,313 @@
+provider: xpoz
+source:
+  docs: https://api.xpoz.ai/api-docs/
+  openapi: https://api.xpoz.ai/openapi.json
+  curated: '2026-11-24'
+# Every 2xx on /api/data/* costs the platform's flat per-query credit price, an empty result
+# included; a 4xx or 5xx is free. Rows returned do not change the charge. No answer reports its
+# charge: the meter is GET /api/usage (free), whose credit balance moves by exactly that price.
+limits: "Every route pages with an opaque cursor (next_page_cursor)."
+pricing_url: https://xpoz.ai/pricing
+
+defaults:
+  bill: {miss: charged, error: free}
+  provenance: {source: observed, source_url: 'https://xpoz.ai/pricing', checked: '2026-11-24', confidence: verified}
+  docs_url: https://api.xpoz.ai/api-docs/
+  miss: {when: {path: response.count, op: equals, value: 0}}
+
+endpoints:
+  # --- X (Twitter): 2 credits per query ---------------------------------------------------------
+  - id: xpoz.x.search.posts
+    added: '2026-11-24'
+    capability: x.search.posts
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/posts/live
+    name: "Search X posts by keyword"
+    summary: "Search X posts by keyword live from the platform, with date, language and country filters"
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "Lucene-style keyword query", example: "openai"}
+        since: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-11-01"}
+        until: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-11-20"}
+        lang: {type: string, required: false, example: "en"}
+        countryCode: {type: string, required: false, example: "US"}
+        sortBy: {type: string, required: false, note: "relevance | latest", example: "latest"}
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      queryParams: {q: "openai"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.x.search.users
+    added: '2026-11-24'
+    capability: x.search.users
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/users/live
+    name: "Search X users by keyword"
+    summary: "Search X accounts by keyword live from the platform, paged by cursor"
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "nasa"}
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      queryParams: {q: "nasa"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.x.user.profile
+    added: '2026-11-24'
+    capability: x.user.profile
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/users/{username}/live
+    name: "X user profile"
+    summary: "Fetch a public X profile by username, live from the platform"
+    input:
+      pathParams:
+        username: {type: string, required: true, note: "without @", example: "nasa"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {username: "nasa"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.x.user.posts
+    added: '2026-11-24'
+    capability: x.user.posts
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/posts/users/{username}/live
+    name: "X user's recent posts"
+    summary: "List a user's recent X posts live from the platform, paged by cursor"
+    input:
+      pathParams:
+        username: {type: string, required: true, note: "without @", example: "nasa"}
+      queryParams:
+        since: {type: string, required: false, note: "YYYY-MM-DD"}
+        until: {type: string, required: false, note: "YYYY-MM-DD"}
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {username: "nasa"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.x.post.detail
+    added: '2026-11-24'
+    capability: x.post.detail
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/posts/{id}/live
+    name: "X post by ID"
+    summary: "Fetch one X post with its engagement counts, live from the platform"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "numeric post ID", example: "2125270727028859059"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {id: "2125270727028859059"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.x.post.comments
+    added: '2026-11-24'
+    capability: x.post.comments
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/posts/{id}/comments/live
+    name: "X post replies"
+    summary: "List replies to an X post live from the platform, paged by cursor"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "numeric post ID", example: "2125270727028859059"}
+      queryParams:
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {id: "2125270727028859059"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.x.post.quotes
+    added: '2026-11-24'
+    capability: x.post.quotes
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/data/twitter/posts/{id}/quotes/live
+    name: "X post quotes"
+    summary: "List quote posts of an X post live from the platform, paged by cursor"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "numeric post ID", example: "2125270727028859059"}
+      queryParams:
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {id: "2125270727028859059"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  # --- Instagram: 12 credits per query ----------------------------------------------------------
+  - id: xpoz.instagram.user.profile
+    added: '2026-11-24'
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /api/data/instagram/users/{identifier}/live
+    name: "Instagram user profile"
+    summary: "Fetch a public Instagram profile by username, live from the platform"
+    input:
+      pathParams:
+        identifier: {type: string, required: true, note: "username", example: "nasa"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {identifier: "nasa"}
+    price: {value: '12', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.instagram.user.posts
+    added: '2026-11-24'
+    capability: instagram.user.posts
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /api/data/instagram/posts/users/{identifier}/live
+    name: "Instagram user's recent posts"
+    summary: "List a user's recent Instagram posts live from the platform, paged by cursor"
+    input:
+      pathParams:
+        identifier: {type: string, required: true, note: "username", example: "nasa"}
+      queryParams:
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {identifier: "nasa"}
+    price: {value: '12', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.instagram.post.comments
+    added: '2026-11-24'
+    capability: instagram.post.comments
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /api/data/instagram/posts/{id}/comments/live
+    name: "Instagram post comments"
+    summary: "List top-level comments of an Instagram post live from the platform, paged by cursor"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "post shortcode (instagram.com/p/<shortcode>) or <mediaId>_<userId>", example: "4034722052525930893_528817151"}
+      queryParams:
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {id: "4034722052525930893_528817151"}
+    price: {value: '12', currency: credit, per: 1, unit: call}
+
+  # --- TikTok: 5 credits per query --------------------------------------------------------------
+  - id: xpoz.tiktok.search.videos
+    added: '2026-11-24'
+    capability: tiktok.search.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /api/data/tiktok/posts/live
+    name: "Search TikTok videos by keyword"
+    summary: "Search TikTok videos by keyword live from the platform, paged by cursor"
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "recipe"}
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      queryParams: {q: "recipe"}
+    price: {value: '5', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.tiktok.user.profile
+    added: '2026-11-24'
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /api/data/tiktok/users/{identifier}/live
+    name: "TikTok user profile"
+    summary: "Fetch a public TikTok profile by username, live from the platform"
+    input:
+      pathParams:
+        identifier: {type: string, required: true, note: "username without @", example: "tiktok"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {identifier: "tiktok"}
+    price: {value: '5', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.tiktok.video.comments
+    added: '2026-11-24'
+    capability: tiktok.video.comments
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /api/data/tiktok/posts/{id}/comments/live
+    name: "TikTok video comments"
+    summary: "List top-level comments of a TikTok video live from the platform, paged by cursor"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "numeric video ID", example: "7351594254663159083"}
+      queryParams:
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {id: "7351594254663159083"}
+    price: {value: '5', currency: credit, per: 1, unit: call}
+
+  # --- Reddit: 2 credits per query --------------------------------------------------------------
+  - id: xpoz.reddit.search.posts
+    added: '2026-11-24'
+    capability: reddit.search.posts
+    platform: reddit
+    scope: any_account
+    method: GET
+    path: /api/data/reddit/posts/live
+    name: "Search Reddit posts by keyword"
+    summary: "Search Reddit posts by keyword, optionally within one subreddit, live from the platform"
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "typescript"}
+        subreddit: {type: string, required: false, note: "name without r/", example: "programming"}
+        sort: {type: string, required: false, note: "relevance | hot | top | new | comments", example: "top"}
+        time: {type: string, required: false, note: "hour | day | week | month | year | all; used with sort=top", example: "week"}
+        limit: {type: integer, required: false, note: "up to 100", example: 5}
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      queryParams: {q: "typescript", limit: 1}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+
+  - id: xpoz.reddit.post.comments
+    added: '2026-11-24'
+    capability: reddit.post.comments
+    platform: reddit
+    scope: any_account
+    method: GET
+    path: /api/data/reddit/posts/{id}/comments/live
+    name: "Reddit post comment thread"
+    summary: "Fetch a Reddit post's comment thread, flat or nested, live from the platform"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "post ID", example: "1xhd5ut"}
+      queryParams:
+        sort: {type: string, required: false, note: "best | top | new | controversial | old | qa", example: "top"}
+        limit: {type: integer, required: false, note: "up to 500", example: 10}
+        tree: {type: boolean, required: false, note: "true nests replies under their parent"}
+        cursor: {type: string, required: false, note: "next_page_cursor from the previous page"}
+        fields: {type: string, required: false, note: "comma-separated field names; omit for all"}
+    test_request:
+      pathParams: {id: "1xhd5ut"}
+      queryParams: {limit: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}

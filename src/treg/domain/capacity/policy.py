@@ -23,6 +23,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "theirstack": ("credits", "manual", "api"),
     "jobspipe": ("monthly_quota", "quota_reset", "api"),
     "forager": ("monthly_quota", "quota_reset", "api"),
+    "xpoz": ("monthly_quota", "quota_reset", "api"),
     "millionphones": ("credits", "subscription", "api"),
     "descovo": ("monthly_quota", "quota_reset", "api"),
     "hirebase": ("monthly_quota", "quota_reset", "api"),

@@ -1343,6 +1343,34 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+XPOZ = OAuthProvider(
+    service="xpoz",
+    display_name="Xpoz",
+    auth_kind="key",
+    token_label="API access key",
+    token_placeholder="your Xpoz API access key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://xpoz.ai",
+    setup_action_label="Get your Xpoz API access key",
+    setup_steps=(
+        "Sign up at xpoz.ai; the free plan includes 500 credits.",
+        "Open the dashboard and copy your API access key.",
+    ),
+    setup_note=(
+        "Each data query spends plan credits by platform: X and Reddit 2, TikTok 5, Instagram 12. "
+        "Errors and the usage check are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Search and fetch posts, profiles and comments from X, Instagram, TikTok and Reddit.",
+    base_url="https://api.xpoz.ai",
+    docs_url="https://api.xpoz.ai/api-docs/",
+    probe_path="/api/usage",  # free; a bad key gets 401 {"success":false,"message":"Unauthorized"}
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -4625,7 +4653,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA, XPOZ,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

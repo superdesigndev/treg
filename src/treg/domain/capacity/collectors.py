@@ -856,6 +856,21 @@ async def _forager(c, key):
             "note": f"plan {tier}, subscription {'active' if sub.get('is_active') else 'inactive'}"}
 
 
+async def _xpoz(c, key):
+    # Free: GET /api/usage spends nothing and answers 401 for a bad key. Spendable credits are the
+    # period's remaining plan credits plus the purchased extra-credit balance.
+    d = await _get(c, "https://api.xpoz.ai/api/usage", headers={"Authorization": f"Bearer {key}"})
+    try:
+        remaining = Decimal(str(d.get("creditsRemaining")))
+        extra = Decimal(str(d.get("extraCreditsBalance") or 0))
+    except (InvalidOperation, ValueError, AttributeError):
+        raise ValueError("Xpoz returned no credit balance")
+    if not (remaining.is_finite() and extra.is_finite()):
+        raise ValueError("Xpoz returned no credit balance")
+    return {"value": float(remaining + extra), "unit": "credits",
+            "note": f"plan {d.get('plan', '?')}, period ends {d.get('periodEnd') or 'never'}"}
+
+
 async def _predictleads(c, key):
     # The platform slot holds base64("api_key:api_token") for HTTP Basic — pass it straight through.
     d = await _get(c, "https://predictleads.com/api/v3/api_subscription",
@@ -1205,6 +1220,7 @@ BALANCE_ROUTES = {
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
     "forager": _forager,
+    "xpoz": _xpoz,
     "millionphones": _millionphones,
     "descovo": _descovo,
     "dataforseo": _dataforseo,
