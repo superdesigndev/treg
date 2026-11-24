@@ -27,7 +27,7 @@ from treg.domain.identity.promotions import promo_inbox
 from treg.infra import dub
 from treg.infra import stripe as stripe_adapter
 from treg.infra.db import reset_db, session_maker
-from treg.models import AffiliateClaim, AffiliateLead, Org, Referral
+from treg.models import AffiliateClaim, AffiliateLead, Membership, Org, Referral, User
 from treg.timeutil import utcnow_naive
 from treg.routers.signup_cookies import AFFILIATE_COOKIE, PARTNER_CODE_COOKIE, REFERRAL_COOKIE
 
@@ -805,6 +805,46 @@ async def test_a_partner_earns_on_the_person_not_every_team_they_make(c):
                           headers={**click, "X-Treg-Token": token})
     assert first.status_code == second.status_code == 200
     assert [lead.org_id for lead in await _leads()] == [first.json()["org_id"]]
+
+
+async def test_a_partner_earns_only_on_new_customers(c):
+    from conftest import verified_identity
+    token = await verified_identity(c, "bob@superdesign.dev")
+    first = await c.post("/orgs", json={"name": "Bob"}, headers={"X-Treg-Token": token})
+    second = await c.post("/orgs", json={"name": "Bob two", "ref": "jane-doe"},
+                          headers={**_cookies(**{AFFILIATE_COOKIE: "cm3w8x2abc"}), "X-Treg-Token": token})
+    assert first.status_code == second.status_code == 200
+    assert await _leads() == []
+
+
+async def test_a_member_of_another_team_is_not_a_new_customer(c):
+    from conftest import verified_identity
+    ann = await verified_signup(c, json={"email": "ann@superdesign.dev"})
+    token = await verified_identity(c, "bob@superdesign.dev")
+    async with session_maker() as db:
+        bob = (await db.execute(select(User).where(User.email == "bob@superdesign.dev"))).scalar_one()
+        db.add(Membership(user_id=bob.id, org_id=ann.json()["org_id"], role="member", token_hash=""))
+        await db.commit()
+    r = await c.post("/orgs", json={"name": "Bob"},
+                     headers={**_cookies(**{AFFILIATE_COOKIE: "cm3w8x2abc"}), "X-Treg-Token": token})
+    assert r.status_code == 200, r.text
+    assert await _leads() == []
+
+
+async def test_a_demo_team_does_not_make_a_customer(c):
+    from conftest import verified_identity
+    token = await verified_identity(c, "bob@superdesign.dev")
+    async with session_maker() as db:
+        bob = (await db.execute(select(User).where(User.email == "bob@superdesign.dev"))).scalar_one()
+        demo = Org(name="Demo", slug="bob-demo", demo=True)
+        db.add(demo)
+        await db.flush()
+        db.add(Membership(user_id=bob.id, org_id=demo.id, role="owner", token_hash=""))
+        await db.commit()
+    r = await c.post("/orgs", json={"name": "Bob"},
+                     headers={**_cookies(**{AFFILIATE_COOKIE: "cm3w8x2abc"}), "X-Treg-Token": token})
+    assert r.status_code == 200, r.text
+    assert [lead.org_id for lead in await _leads()] == [r.json()["org_id"]]
 
 
 async def test_making_a_team_clears_the_parked_click_and_code(c):
