@@ -229,8 +229,6 @@ async def org_id(monkeypatch):
         await ledger.grant(db, org.id, amount_micro=GRANT)
         await db.commit()
         monkeypatch.setattr(settings, "money_allowance_org_ids", [org.id])
-        # Named one by one, whatever the environment the suite runs in sets: a test that wants
-        # every team on, or one left off, says so.
         monkeypatch.setattr(settings, "money_allowance_all_orgs", False)
         monkeypatch.setattr(settings, "money_allowance_excluded_org_ids", [])
         return org.id
