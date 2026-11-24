@@ -1470,7 +1470,10 @@ still pay the provider twice.
   or a task's worker can settle later.
 - An allowance call has no hold to show it is still running, so a stale claim also asks the shared
   store for the owner's in-flight mark (`kv.call_in_flight`, `IN_FLIGHT_MARK_MS`): a mark, or a
-  store that cannot answer, is money in flight (409) like an open hold. `_platform_reserve` with
+  store that cannot answer, is money in flight (409) like an open hold, unless the ledger has the
+  owner's own reserve: that call took a hold, its money is all in the database, and a store fault
+  does not hold up its receipt. The mark is read before the database, since it is cleared only
+  once the charge is written. `_platform_reserve` with
   `mark_in_flight` sets the mark before the take and clears it when the take is refused; a call
   the store would not mark keeps its own hold (`in_flight_unmarked`). The claim's lease task
   renews it (only while it is there), and settle and the cancel cleanup clear it once the charge

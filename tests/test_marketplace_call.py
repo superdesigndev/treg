@@ -2537,6 +2537,32 @@ async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
         assert r.json()["detail"]["call_id"] == "marked-owner"
 
 
+async def test_an_owner_on_its_own_hold_is_closed_from_the_ledger_when_the_store_cannot_answer(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """Its reserve and settle in the ledger say it never took the allowance, so a store fault does
+    not keep its claim waiting: the receipt comes from the ledger."""
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = kv.LocalStore()
+
+    async def unread(call_ref):
+        return None
+    monkeypatch.setattr(store, "call_in_flight", unread)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "held-label", status="pending")
+    await _set_claim("held-label", call_ref="held-owner")
+    await _ledger(org_id, "held-owner", "reserve", amount=-500)
+    await _ledger(org_id, "held-owner", "settle", amount=-400)
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "held-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 400
+
+
 async def test_an_expired_lease_with_money_in_flight_still_answers_409(
         clients: AsyncClient, platform_on):
     """An open hold under the owner's call id (or a child's) means the call or its async worker is

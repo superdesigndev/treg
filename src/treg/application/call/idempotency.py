@@ -275,12 +275,12 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     """
     def mine(col):
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
+    # The allowance call's stand-in for its hold (`IN_FLIGHT_MARK_MS`), read before the database:
+    # the mark is cleared only once the charge is written, so one gone by now left its charge to
+    # be found below. Unread is not proof the owner stopped.
+    marked = await kv.store().call_in_flight(call_ref) if kv.configured() else False
     open_hold = (await db.execute(select(Hold.id).where(
         Hold.org_id == org_id, mine(Hold.id)).limit(1))).first() is not None
-    if not open_hold and kv.configured():
-        # The allowance call's stand-in for its hold (`IN_FLIGHT_MARK_MS`). Unread is not proof
-        # the owner stopped: the retry is told to wait, as for an open hold.
-        open_hold = await kv.store().call_in_flight(call_ref) is not False
     queued = (await db.execute(select(CallCharge.call_id).where(
         CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).first() is not None
     rows = list((await db.execute(select(
@@ -299,6 +299,10 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
     if queued and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
+        open_hold = True
+    # An owner whose own reserve is in the ledger took a hold, never the allowance: its money is all
+    # in the database, and a store that cannot answer does not keep its claim waiting.
+    if marked is not False and not any(kind == "reserve" and cid == call_ref for kind, _, cid in rows):
         open_hold = True
     # settle entries are negative (money leaving)
     return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}
