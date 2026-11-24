@@ -525,6 +525,16 @@ def _terminal_event(snapshot: AsyncTaskRecord, result: str, outcome: str, *,
         async_outcome="closed_hold" if result == "closed_hold" else outcome)
 
 
+def _record_terminal(snapshot: AsyncTaskRecord, settled: dict, *,
+                     hit: bool | None = None, verdict: str | None = None) -> None:
+    """Copy what the task closed at onto its submission's call record. `settled` is filled only by
+    the transition out of PENDING, so each task writes it once."""
+    if settled.get("micro") is None and hit is None:
+        return
+    audit.record_async_call_terminal(snapshot.call_id, snapshot.endpoint_id, snapshot.org_id,
+                                     hit=hit, verdict=verdict, charged_micro=settled.get("micro"))
+
+
 async def _answers_allowed(db, org_id: int | None) -> bool:
     """Whether the task owner's events may carry answer columns (no archive opt-out). Read on a
     session the caller already holds, before any network I/O, and only when events are on."""
@@ -589,11 +599,10 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
                     hit=terminal_hit if result == expected else None,
                     verdict_word=terminal_verdict if result == expected else None,
                     answers_allowed=answers_allowed, charged_micro=settled.get("micro"))
+    _record_terminal(snapshot, settled,
+                     hit=terminal_hit if result == expected else None,
+                     verdict=terminal_verdict if result == expected else None)
     if result == expected:
-        if terminal_hit is not None:
-            audit.record_async_call_hit(
-                snapshot.call_id, snapshot.endpoint_id, snapshot.org_id, terminal_hit,
-                verdict=terminal_verdict)
         # Only the winning finalizer records evidence; a late poll cannot replace the result
         # whose usage was charged. Archive failure cannot undo the committed money transaction.
         try:
@@ -622,6 +631,7 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,
             snapshot.org_id, "release", call_id, "timed_out", None, now, expected_attempt=attempt,
             settled=settled, deadline=deadline)
         _terminal_event(snapshot, result, "timed_out", charged_micro=settled.get("micro"))
+        _record_terminal(snapshot, settled)
         return result
     try:
         async with asyncio.timeout(POLL_TIMEOUT_S):
@@ -662,6 +672,7 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,
                                        None, utcnow_naive(), expected_attempt=attempt,
                                        settled=settled, deadline=deadline)
         _terminal_event(snapshot, result, "account_retired", charged_micro=settled.get("micro"))
+        _record_terminal(snapshot, settled)
         return result
     except money_admission.AdmissionRefused:
         raise
