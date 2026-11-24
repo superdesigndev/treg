@@ -3398,6 +3398,23 @@ def test_contactout_contact_hits_are_per_type_per_profile(work, personal, phone,
     assert contactout.estimate(c, {}) == 650000
 
 
+@pytest.mark.parametrize("status,billed", [
+    ("valid", True), ("invalid", True), ("accept_all", True),
+    ("unknown", False), ("disposable", False), (None, False),
+])
+def test_contactout_verify_bills_only_the_verdicts_contactout_bills(status, billed):
+    eid = "contactout.people.email.verify"
+    cost = catalog_store.load().cost_view(catalog_store.load().by_id[eid]["cost"], "contactout")
+    query = call_resolution.QueryValues((("email", "a@example.test"),))
+    hold, _unit = call_resolution._marketplace_pricing("contactout", eid, cost, query, b"")
+    assert hold == 10_000
+    mk = _mk("contactout", endpoint_id=eid, cost_type="per_success", unit_micro=hold,
+             estimate_micro=hold, request_data={"queryParams": {"email": "a@example.test"}})
+    body = json.dumps({"status_code": 200, "data": {"status": status}}).encode()
+    observed = call_settle._observed_cost_micro(mk, body)
+    assert (hold if observed is None else observed) == (hold if billed else 0)
+
+
 def test_contactout_search_counts_returned_profiles_and_contacts_not_availability_or_total():
     c = _contactout_cost("people.search.reveal")
     doc = {
