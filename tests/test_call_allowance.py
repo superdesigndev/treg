@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import event, select, update
+from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
 from treg.application.call import allowance as runtime
@@ -2182,6 +2183,97 @@ async def test_a_long_pass_keeps_the_lease(store, monkeypatch):
     monkeypatch.setattr(allowance_sweep, "run_once", slow)
     await _run_workers(2, 0.5, every_s=0.01, stagger_s=0.02)
     assert overlapped and not any(overlapped)
+
+
+async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monkeypatch):
+    """Shutdown cancels each background task once and waits for it. The cancellation may land
+    while the pass lease waits for its renewal task to finish; it must still end the worker."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 30)
+    renewing, finish = asyncio.Event(), asyncio.Event()
+
+    async def stubborn_renew(key, token, ttl_ms, *, deadline=None):
+        renewing.set()
+        try:
+            await finish.wait()
+        except asyncio.CancelledError:
+            await finish.wait()
+            raise
+        return "renewed"
+
+    stop = [False]
+
+    async def until_renewing(session_maker, *, sweep):
+        if stop[0]:
+            raise asyncio.CancelledError
+        await renewing.wait()
+        return 1
+
+    monkeypatch.setattr(store, "renew_lease", stubborn_renew)
+    monkeypatch.setattr(allowance_sweep, "run_once", until_renewing)
+    task = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.005))
+    await renewing.wait()
+    await asyncio.sleep(0.01)
+    task.cancel()
+    finish.set()
+    await asyncio.wait({task}, timeout=0.5)
+    stopped_on_its_own = task.done()
+    stop[0] = True  # ends a worker that swallowed its cancellation, so a failure cannot hang
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    assert stopped_on_its_own and task.cancelled()
+
+
+async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkeypatch):
+    """A store that fails once and comes back while the lease is still valid must not leave a
+    long pass without its lease."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
+    answers = ["unavailable"]
+    renew = store.renew_lease
+
+    async def flaky_renew(key, token, ttl_ms, *, deadline=None):
+        if answers:
+            return answers.pop()
+        return await renew(key, token, ttl_ms, deadline=deadline)
+
+    running, overlapped = [0], []
+
+    async def slow(session_maker, *, sweep):
+        running[0] += 1
+        overlapped.append(running[0] > 1)
+        await asyncio.sleep(0.2)
+        running[0] -= 1
+        return 1
+
+    monkeypatch.setattr(store, "renew_lease", flaky_renew)
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(2, 0.4, every_s=0.01, stagger_s=0.03)
+    assert overlapped and not any(overlapped)
+
+
+async def test_a_team_whose_rows_stay_locked_does_not_hold_up_the_others(
+        org_id, store, monkeypatch, caplog):
+    """One process folds for every team, so a fold gives up a team whose rows another session
+    keeps locked past the lock wait, and goes on to the next."""
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1)])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def locked_first(db, team, **kwargs):
+        if team == org_id:
+            raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", locked_first)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(org_id) == 1 and await _queued(org_id + 1) == 0
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 async def test_a_pass_reaches_every_team_however_many_have_charges_queued(

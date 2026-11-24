@@ -20,9 +20,11 @@ import asyncio
 import logging
 import time
 import uuid
-import contextlib
 from contextlib import asynccontextmanager
 from datetime import timedelta
+
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from ..domain import money as ledger
 from ..domain.money import allowance
@@ -50,10 +52,29 @@ _ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
 _PASS_KEY = "treg:money-allowance-pass:v1"
 _PASS_LEASE_MS = 30_000
+# One process folds for every team, so a fold must not sit behind one team's row locks: past
+# this wait it gives the team up for the pass and goes on to the next.
+_LOCK_WAIT_MS = 1000
 
 
 def _row_locks() -> bool:
     return not infra_db._is_sqlite
+
+
+async def _bound_lock_wait(db) -> None:
+    """Cap how long this transaction waits for another session's row locks."""
+    if not infra_db._is_sqlite:
+        await db.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_WAIT_MS}ms'"))
+
+
+def _lock_timed_out(exc: BaseException) -> bool:
+    """PostgreSQL cancelled a statement because `lock_timeout` elapsed (asyncpg's
+    `LockNotAvailableError`), wrapped however SQLAlchemy chose to wrap it."""
+    if not isinstance(exc, DBAPIError):
+        return False
+    origin = exc.orig
+    return "lock timeout" in str(origin or exc) or (
+        origin is not None and "LockNotAvailableError" in type(origin).__name__)
 
 
 @asynccontextmanager
@@ -83,10 +104,17 @@ class _Pass:
 
 
 async def _keep_pass(store, token: str) -> None:
-    """Renew the pass lease while a long pass runs, so a second process does not start one."""
+    """Renew the pass lease while a long pass runs, so a second process does not start one. A
+    store that cannot answer is asked again until the lease would have run out; only a lease
+    known to be lost, or past its time, ends the renewal."""
+    valid_until = time.monotonic() + _PASS_LEASE_MS / 1000
     while True:
         await asyncio.sleep(_PASS_LEASE_MS / 3000)
-        if await store.renew_lease(_PASS_KEY, token, _PASS_LEASE_MS) != "renewed":
+        asked_at = time.monotonic()
+        answer = await store.renew_lease(_PASS_KEY, token, _PASS_LEASE_MS, deadline=valid_until)
+        if answer == "renewed":
+            valid_until = asked_at + _PASS_LEASE_MS / 1000
+        elif answer != "unavailable" or time.monotonic() >= valid_until:
             return
 
 
@@ -107,8 +135,9 @@ async def _pass_lease():
     finally:
         if keeper is not None:
             keeper.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await keeper
+            # gather hands back the keeper's own cancellation as a result; a cancellation of this
+            # task while it waits still propagates.
+            await asyncio.gather(keeper, return_exceptions=True)
         if acquired == "acquired":
             if turn.rest_s > 0:
                 await store.renew_lease(_PASS_KEY, token, max(1, int(turn.rest_s * 1000)))
@@ -152,6 +181,7 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
                     max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
                 money_session(session_maker()) as db,
             ):
+                await _bound_lock_wait(db)
                 result = await allowance.close_stale_allowance_in_transaction(
                     db, org_id, stale_before=stale_before, reason="idle")
                 await db.commit()
@@ -165,8 +195,11 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
         return True
     except money_admission.AdmissionTimeout:
         return False
-    except Exception:
-        log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
+    except Exception as exc:
+        if _lock_timed_out(exc):
+            log.info("closing the idle allowance of org %s waited too long on its rows", org_id)
+        else:
+            log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
         return False
 
 
@@ -188,9 +221,10 @@ async def fold_queued_once(session_maker) -> int:
 
 
 async def _fold_team(session_maker, org_id: int) -> int:
-    """A few batches of one team's queue. Stops when another process has the team or the team's
-    money sessions are busy, and the next pass comes back: the teams behind it are not kept
-    waiting. One team failing does not stop the pass."""
+    """A few batches of one team's queue. Stops when another process has the team, the team's
+    money sessions are busy, or its rows stay locked past `_LOCK_WAIT_MS`, and the next pass
+    comes back: the teams behind it are not kept waiting. One team failing does not stop the
+    pass."""
     total = 0
     try:
         for _ in range(_FOLD_BATCHES_PER_PASS):
@@ -204,6 +238,7 @@ async def _fold_team(session_maker, org_id: int) -> int:
                         max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
                     money_session(session_maker()) as db,
                 ):
+                    await _bound_lock_wait(db)
                     folded = await allowance.fold_charges_in_transaction(
                         db, org_id, limit=_FOLD_BATCH)
                     await db.commit()
@@ -212,8 +247,11 @@ async def _fold_team(session_maker, org_id: int) -> int:
                 break
     except money_admission.AdmissionTimeout:
         pass
-    except Exception:
-        log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+    except Exception as exc:
+        if _lock_timed_out(exc):
+            log.info("folding the queued charges of org %s waited too long on its rows", org_id)
+        else:
+            log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
     return total
 
 
