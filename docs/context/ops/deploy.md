@@ -446,11 +446,13 @@ Not recognised: a server that goes back to older data WITHOUT starting again (a 
 place; a server that kept running, took older data from another primary and became primary
 again), and a restart while processes of an earlier build still serve calls. Either can
 admit the same money twice, with no bound on amount or time while the allowance stays on,
-and what a team's credit cannot cover is the platform's cost. After such an event, empty
-the list, and list a team again only when all of these can be seen:
+and what a team's credit cannot cover is the platform's cost. After such an event, take every
+team off: `TREG_MONEY_ALLOWANCE_ALL_ORGS=false` and `TREG_MONEY_ALLOWANCE_ORG_IDS=[]` together
+(emptying the list alone leaves every team on while the switch is on). Put a team back, or turn
+the switch on again, only when all of these can be seen:
 
-- every process that serves calls has restarted on the empty list (the list is read per
-  process, so one still running the old value keeps admitting from the counter);
+- every process that serves calls has restarted with every team off (the settings are read
+  per process, so one still running the old value keeps admitting from the counter);
 - calls admitted before that have ended and their charges are written. A process that still
   runs logs when it could not confirm call charges and when they are written; the team having
   no `callcharge` rows shows only that the queue in the database is empty. A process that
@@ -458,10 +460,14 @@ the list, and list a team again only when all of these can be seen:
   compare the team's calls with its `settle` entries for the interval;
 - the team has no `hold` row with `allowance` set (the idle sweep closes it once no refill has
   stamped it for the hold lifetime plus its margin);
-- the team's counter in the store has been retired or has expired. With the list empty no
+- the team's counter in the store has been retired or has expired. With every team off no
   call reaches a refill, so nothing else removes it; the sweep retires it after closing the
-  hold, and that write is not retried. A counter still there when the team is listed again is
+  hold, and that write is not retried. A counter still there when the team is back on is
   replaced by the first refill, which does not count what it shows.
+
+When only some teams' counters were affected, list those teams in
+`TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` instead, with the same restart and the same checks for
+each before taking it out of that list; an exclusion wins over the switch and the list.
 
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
