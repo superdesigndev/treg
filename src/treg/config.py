@@ -887,6 +887,8 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # A caller waiting longer than this for that lookup is refused, as an unresolvable host is.
+    ssrf_lookup_timeout_s: float = 10.0
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible

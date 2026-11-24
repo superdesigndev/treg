@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
 import socket
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
+
+_log = logging.getLogger(__name__)
 
 
 def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -82,7 +85,9 @@ def _lookup_executor() -> ThreadPoolExecutor:
 
 async def host_is_public_async(host: str, check=None) -> bool:
     """host_is_public off the event loop, on a small dedicated pool. At most one lookup per host is in
-    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands."""
+    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands. A
+    caller that has waited `ssrf_lookup_timeout_s` is refused; the lookup itself cannot be interrupted
+    and finishes on its thread, answering only callers still waiting."""
     if not host:
         return False
     fut = _inflight.get(host)
@@ -90,8 +95,22 @@ async def host_is_public_async(host: str, check=None) -> bool:
         loop = asyncio.get_running_loop()
         fut = loop.run_in_executor(_lookup_executor(), check or host_is_public, host)
         _inflight[host] = fut
-        fut.add_done_callback(lambda f, h=host: _inflight.pop(h, None) if _inflight.get(h) is f else None)
-    return await asyncio.shield(fut)
+        fut.add_done_callback(_forget(host))
+    from ...config import get_settings
+    try:
+        return await asyncio.wait_for(asyncio.shield(fut), get_settings().ssrf_lookup_timeout_s)
+    except TimeoutError:
+        _log.warning("ssrf_lookup_timeout host=%s", host)
+        return False
+
+
+def _forget(host: str):
+    def done(fut: asyncio.Future) -> None:
+        if _inflight.get(host) is fut:
+            _inflight.pop(host, None)
+        if not fut.cancelled():
+            fut.exception()  # a refused caller may have stopped waiting; mark the outcome retrieved
+    return done
 
 
 async def url_host_is_public(url: object) -> bool:

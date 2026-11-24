@@ -391,15 +391,19 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
 dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
 most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
-lands, so each new call resolves again.
+lands, so each new call resolves again. A caller that has waited `ssrf_lookup_timeout_s` is refused, as an
+unresolvable host is (`ssrf_lookup_timeout` in the log); the stuck lookup finishes on its thread and the
+next call starts a fresh one, so a refusal never outlasts the slow resolver.
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
 registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
 user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
 same switch) just before sending: the health probe (`health._probe`), the owner webhook
-(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
-code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`health._notify`), the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`), and the MCP OAuth client-id metadata fetch
+(`mcp_oauth.fetch_client_id_metadata`). The blocking `host_is_public` is for sync callers only; an
+async path never calls it directly. Registration
 (`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
 `proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
 (`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
