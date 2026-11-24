@@ -1298,6 +1298,12 @@ async def test_every_other_call_keeps_its_own_hold_and_a_listed_team_logs_why(
     assert skip_lines() == ([] if reason is None else [_skip(org_id, reason, 1)])
 
 
+def _skipped(org_id: int, reason: str, held_micro: int) -> None:
+    """A skip whose exact-path hold of `held_micro` then committed."""
+    call_reserve._note_allowance_skip(org_id, reason)
+    call_reserve._note_skip_held(org_id, reason, held_micro)
+
+
 def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
         monkeypatch, skip_lines):
     org_id = 7
@@ -1305,10 +1311,10 @@ def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
     clock = [1000.0]
     monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
     for _ in range(3):
-        call_reserve._note_allowance_skip(org_id, "not_allowed", 10)
-    call_reserve._note_allowance_skip(org_id, "tagged", 10)
+        _skipped(org_id, "not_allowed", 10)
+    _skipped(org_id, "tagged", 10)
     clock[0] += call_reserve._SKIP_LOG_EVERY_S
-    call_reserve._note_allowance_skip(org_id, "not_allowed", 10)
+    _skipped(org_id, "not_allowed", 10)
     assert skip_lines() == [_skip(org_id, "not_allowed", 1), _skip(org_id, "tagged", 1),
                             _total("not_allowed", 3, 30, [[org_id, 3, 30]]),
                             _skip(org_id, "not_allowed", 3)]
@@ -1321,11 +1327,11 @@ def test_every_team_counts_toward_one_line_per_reason_a_minute_naming_the_teams_
     monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
     for org_id in range(1, 8):
         for _ in range(org_id):
-            call_reserve._note_allowance_skip(org_id, "child_call:routed", 100 * (8 - org_id))
-    call_reserve._note_allowance_skip(1, "tagged", 5)
+            _skipped(org_id, "child_call:routed", 100 * (8 - org_id))
+    _skipped(1, "tagged", 5)
     assert skip_lines() == [], "no team named: nothing until the minute is up"
     clock[0] += call_reserve._SKIP_LOG_EVERY_S + 0.04
-    call_reserve._note_allowance_skip(1, "child_call:routed", 0)
+    call_reserve._note_allowance_skip(1, "child_call:routed")
     # Team n sent n calls of 100 * (8 - n) each: team 4 held the most; a tie goes to more calls.
     assert skip_lines() == [_total("child_call:routed", 28, 8400,
                                    [[4, 4, 1600], [5, 5, 1500], [3, 3, 1500], [6, 6, 1200],
@@ -1338,10 +1344,10 @@ def test_a_minute_naming_too_many_teams_is_logged_early(monkeypatch, skip_lines)
     clock = [1000.0]
     monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
     for org_id in (1, 2, 1):
-        call_reserve._note_allowance_skip(org_id, "tagged", 10)
+        _skipped(org_id, "tagged", 10)
     assert skip_lines() == [], "a team already counted adds no room"
     clock[0] += 1
-    call_reserve._note_allowance_skip(3, "tagged", 10)
+    _skipped(3, "tagged", 10)
     assert skip_lines() == [_total("tagged", 3, 30, [[1, 2, 20], [2, 1, 10]], window_s=1.0)]
     assert call_reserve._skip_totals["tagged"]["orgs"] == {3: [1, 10]}
 
@@ -2746,7 +2752,7 @@ async def test_a_sized_refill_leaves_most_of_the_days_room_to_the_exact_path(
 
 
 async def test_an_exact_path_call_the_balance_alone_cannot_pay_for_gets_the_counter_back(
-        org_id, store, paced, monkeypatch):
+        org_id, store, paced, monkeypatch, skip_lines):
     """Sized refills can set aside a share of the balance that a call on the exact path does
     not see. Short of it, that call has the counter returned to the balance and tries once
     more; the counter is frozen, so the next call on the allowance refills it first."""
@@ -2772,6 +2778,10 @@ async def test_an_exact_path_call_the_balance_alone_cannot_pay_for_gets_the_coun
         await call_reserve._platform_reserve(
             _call(org_id, estimate=1_500_000), caller, call_ref="exact-2")
     assert refused.value.status_code == 402, "nothing left to give back: refused as before"
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"]) == (2, mk.reserved_micro), (
+        "both calls counted; only the hold the retry committed, once")
+    assert total["orgs"] == {org_id: [2, mk.reserved_micro]}
 
 
 async def _counter_of(org_id: int, store, paced_spend: int = 0) -> dict:

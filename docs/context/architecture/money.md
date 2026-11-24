@@ -340,11 +340,14 @@ returned it to the exact path.
 
 Each process writes one line per reason a minute for every team together:
 `allowance_skips {"reason":..,"calls":..,"held_micro":..,"orgs":..,"window_s":..,"top":[[org_id,calls,held_micro],..]}`,
-where `held_micro` is what those calls reserved (with margin), `orgs` how many teams sent them and
+where `calls` counts every call sent to the exact path, `held_micro` only what the holds that path
+then committed reserved (with margin; a refused call adds nothing, and a call that got the
+counter back and was tried again adds its one hold once), `orgs` how many teams sent them and
 `top` the five that held the most. The line is written by the first skip of that reason after the
 minute is up, so a reason that stops leaves its last minute unwritten until it recurs. A minute
-that would name more than `_SKIP_TEAMS_MAX` teams (the allowance's own `_TEAM_STATE_PRUNE_AT`) is
-written early and a new one starts, so the per-team counts a process holds stay bounded. A line
+that would name more than `_SKIP_TEAMS_MAX` teams is written early and a new one starts, so the
+per-team counts a process holds stay bounded. The limit reuses the allowance's prune threshold
+(`_TEAM_STATE_PRUNE_AT`) as a hard cap; the allowance's own maps only prune idle entries there. A line
 per team and reason for every team would grow with the number of teams; the aggregate's totals
 and its `top` answer how much each reason costs and who drives it at a fixed volume.
 
