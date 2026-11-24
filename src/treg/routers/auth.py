@@ -219,7 +219,7 @@ _AUTH_HEAD = (
     "transition:opacity .18s var(--ease),transform .12s var(--ease-out)}"
     ".pbtn:hover{opacity:.88}.pbtn:active{transform:scale(.98)}"
     "@media (prefers-reduced-motion:reduce){*{transition:none!important}}"
-    '</style><script src="/adtrack.js" defer></script></head>'
+    '</style><script src="/click-id.js" defer></script></head>'
 )
 
 # Same geometry as src/treg/web/favicon.svg and the dashboard's BrandMark.vue.

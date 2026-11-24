@@ -36,7 +36,8 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
+from .infra.db import (DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker,
+                       log_connection_budget, verify_db)
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -203,7 +204,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
     ('/plugins/claude', ('GET',), 'claude_plugin_page'),
-    ('/adtrack.js', ('GET',), 'adtrack_js'),
+    ('/click-id.js', ('GET',), 'click_id_js'),
     ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),
     ('/gtag.js', ('GET',), 'gtag_js'),
@@ -819,6 +820,7 @@ def _lifespan(role: AppRole):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             media.validate_configuration()
             await verify_db()
+            log_connection_budget()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.

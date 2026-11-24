@@ -55,7 +55,7 @@ this page keeps what no single file shows. The look follows the root `design.md`
   `/meta`'s version is the bundle hash, so an open tab offers a refresh after a deploy.
 - Each page and dialog is its own chunk (`views.ts`): the one for the opened URL loads during boot,
   the rest in idle time, so navigation never shows a blank frame. Vue's runtime is bundled, no CDN.
-- `sitetrack.js` and `adtrack.js` load `defer` in `<head>` before the app, so attribution is captured
+- `sitetrack.js` and `click-id.js` load `defer` in `<head>` before the app, so attribution is captured
   before boot can redirect (`tests/test_adsconv.py`).
 
 ## Signed-out boot (`state/boot.js`)

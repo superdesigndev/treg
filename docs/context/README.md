@@ -10,7 +10,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 
 | Fragment | Status | Covers |
 |---|---|---|
-| [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, adtrack.js, … |
+| [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, click-id.js, … |
 | [Affiliate program on Dub Partners - click or code, lead outbox, Stripe tag](architecture/affiliates.md) | shipped | affiliates.py, affiliate_bonus.py, dub.py, signup_cookies.py, … |
 | [Agent payments — a keyless caller pays a catalog call with MPP or x402](architecture/agent-payments.md) | built, behind `agent_payments_enabled` (TREG_AGENT_PAYMENTS_ENABLED), off by default | agent_payments.py, __init__.py, tempo.py, x402.py, … |
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
