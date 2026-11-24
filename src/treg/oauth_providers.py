@@ -3319,6 +3319,34 @@ FUNDABLE = OAuthProvider(
 )
 
 
+SMBLISTINGS = OAuthProvider(
+    service="smblistings",
+    display_name="SMB Listings",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your SMB Listings API key (starts with sl_)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://smblistings.ai/sign-up",
+    setup_action_label="Get your SMB Listings API key",
+    setup_steps=(
+        "Sign up at smblistings.ai.",
+        "Open the dashboard and create an API key.",
+        "Copy the key and paste it here.",
+    ),
+    setup_note="Search, new-listings and listing calls spend credits; the balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search small businesses for sale across broker sites, with asking price, revenue, cash flow and price history.",
+    base_url="https://smblistings.ai/api/v1",
+    docs_url="https://smblistings.ai/docs",
+    # The free balance check rejects a bogus key with HTTP 401.
+    probe_path="/account",
+)
+
+
 OCEANIO = OAuthProvider(
     service="oceanio",
     display_name="Ocean.io",
@@ -4625,7 +4653,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, SMBLISTINGS, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

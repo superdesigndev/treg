@@ -524,6 +524,32 @@ async def test_fetchin_capacity_uses_free_subscription_balance(monkeypatch):
     assert "account limit 5 requests/s" in row["note"]
 
 
+async def test_smblistings_balance_uses_free_account_route_and_accepts_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def probe(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url == "https://smblistings.ai/api/v1/account"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"credits": 0})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "smblistings", client, "test-key")
+    assert row == {"value": 0, "unit": "credits", "note": "prepaid credit balance ($0.02 per partner credit)"}
+    assert collectors.BALANCE_ROUTES["smblistings"] is collectors._smblistings
+    assert "smblistings" not in collectors.NO_BALANCE_API
+
+
+@pytest.mark.parametrize("balance", [None, True, -1, "12"])
+async def test_smblistings_rejects_invalid_balance(
+    balance: object, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={"credits": balance})
+    )) as client:
+        _refused(await _balance(monkeypatch, "smblistings", client, "test-key"), "valid credit balance")
+
+
 async def test_orbisearch_capacity_uses_free_credits_route(monkeypatch):
     def probe(request):
         assert request.method == "GET"

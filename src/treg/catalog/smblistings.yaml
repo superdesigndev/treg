@@ -1,0 +1,117 @@
+provider: smblistings
+source:
+  docs: https://smblistings.ai/docs
+  openapi: https://smblistings.ai/openapi.json
+  curated: '2026-11-22'
+# Each response reports its exact charge in top-level `credits_charged` (partner credits of $0.02).
+limits: "Per-account rate limit across REST and MCP (429 with Retry-After). Search returns at most 100 listings per call, new listings at most 100. HTTP 402 when the credit balance cannot cover the up-front hold."
+pricing_url: https://smblistings.ai/docs#credits
+
+proposed_capabilities:
+  companies.for_sale.search: "Search businesses for sale by industry, location, price & cash flow"
+  companies.for_sale.new: "List businesses newly put up for sale since a date"
+  companies.for_sale.detail: "Get one business-for-sale listing with its price history"
+
+defaults:
+  expect: {path: response.data, op: present}
+  provenance:
+    source: docs
+    source_url: https://smblistings.ai/docs#credits
+    checked: '2026-11-22'
+    confidence: documented
+  # The exact charge of every answer, in $0.02 partner credits; 0 when nothing came back.
+  settle: {reported: {path: response.credits_charged, unit: usd, scale: 0.02}}
+
+endpoints:
+  - id: smblistings.companies.for_sale.search
+    capability: companies.for_sale.search
+    platform: companies
+    domain: acquisitions
+    scope: any_account
+    method: GET
+    path: /listings/search
+    name: Search businesses for sale - price, revenue, cash flow
+    summary: One search across BizBuySell, Flippa and other public marketplaces and broker sites, deduped, with asking price, revenue, cash flow and price history.
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "Words to match in the listing title.", example: "laundromat"}
+        industry: {type: string, required: false, note: "An industry key from the OpenAPI spec, e.g. saas, restaurants_food, home_services."}
+        businessType: {type: string, required: false, note: "A specific business type key from the OpenAPI spec, e.g. hvac, plumbing, car_wash, dental."}
+        source: {type: string, required: false, note: "Only listings from this source, e.g. bizbuysell."}
+        broker: {type: string, required: false, note: "Words in the brokerage firm's name, case-insensitive.", example: "Sunbelt"}
+        country: {type: string, required: false, note: "Two-letter ISO 3166-1 code.", example: "US"}
+        state: {type: string, required: false, note: "US state or Canadian province code; implies the country.", example: "TX"}
+        city: {type: string, required: false, note: "Exact city name, case-insensitive.", example: "Austin"}
+        currency: {type: string, required: false, note: "ISO 4217 code; money filters use USD unless this names another. Figures are never converted.", example: "USD"}
+        minPrice: {type: number, required: false, note: "Minimum asking price."}
+        maxPrice: {type: number, required: false, note: "Maximum asking price."}
+        minCashFlow: {type: number, required: false, note: "Minimum annual cash flow."}
+        maxCashFlow: {type: number, required: false, note: "Maximum annual cash flow."}
+        minRevenue: {type: number, required: false, note: "Minimum annual revenue."}
+        maxRevenue: {type: number, required: false, note: "Maximum annual revenue."}
+        minMultiple: {type: number, required: false, min: 0, note: "Minimum asking price over annual cash flow."}
+        maxMultiple: {type: number, required: false, min: 0, note: "Maximum asking price over annual cash flow, e.g. 4."}
+        priceCutWithinDays: {type: integer, required: false, min: 1, max: 365, note: "Only listings whose asking price dropped in the last N days."}
+        minDaysOnMarket: {type: integer, required: false, min: 0, max: 3650}
+        sort: {type: string, required: false, default: newest, enum: [newest, price_asc, price_desc, cash_flow_desc, multiple_asc, legitimacy]}
+        minLegitimacy: {type: integer, required: false, min: 0, max: 100, note: "Only listings scoring at least this on legitimacy (how likely a real business still for sale), e.g. 50."}
+        includeJunk: {type: boolean, required: false, default: false, note: "Include listings flagged as junk (placeholders, very old unchanged posts)."}
+        includeDuplicates: {type: boolean, required: false, default: false, note: "Include same-source copies of a listing (each with duplicateOf)."}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+        offset: {type: integer, required: false, default: 0, min: 0}
+      note: "An unknown filter name answers 400 instead of being ignored."
+    test_request: {queryParams: {state: "TX", industry: "home_services", limit: 1}}
+    reserve: {rows: {param: query.limit, default: {value: 25, source: docs}, max: 100}}
+    price: {value: '0.02', currency: USD, per: 1, unit: result, note: "$0.02 per listing returned on treg's key; an empty page is free. treg holds limit listings (25 when omitted)."}
+    miss: {when: {path: response.data, op: empty}, means: "No matches; nothing charged."}
+    docs_url: https://smblistings.ai/docs/api/search-listings
+    verified: '2026-11-24'
+    example_response: examples/smblistings.companies.for_sale.search.json
+    added: '2026-11-24'
+
+  - id: smblistings.companies.for_sale.new
+    capability: companies.for_sale.new
+    platform: companies
+    domain: acquisitions
+    scope: any_account
+    method: GET
+    path: /listings/new
+    name: New businesses for sale since a date
+    summary: List businesses first seen for sale after a timestamp and still for sale, newest first.
+    input:
+      queryParams:
+        since: {type: string, required: true, note: "ISO 8601 timestamp.", example: "2026-11-20T00:00:00Z"}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 100, note: "Most listings to return, newest first; this is the price dial."}
+        minLegitimacy: {type: integer, required: false, min: 0, max: 100, note: "Only listings scoring at least this on legitimacy (how likely a real business still for sale), e.g. 50."}
+        includeJunk: {type: boolean, required: false, default: false, note: "Include listings flagged as junk (placeholders, very old unchanged posts)."}
+        includeDuplicates: {type: boolean, required: false, default: false, note: "Include same-source copies of a listing (each with duplicateOf)."}
+    test_request: {queryParams: {since: "2026-11-20T00:00:00Z", limit: 2}}
+    reserve: {rows: {param: query.limit, default: {value: 100, source: docs}, max: 100}}
+    price: {value: '0.02', currency: USD, per: 1, unit: result, note: "$0.02 per listing returned on treg's key; an empty page is free. treg holds limit listings (100 when omitted)."}
+    miss: {when: {path: response.data, op: empty}, means: "No new listings; nothing charged."}
+    docs_url: https://smblistings.ai/docs/api/new-listings
+    verified: '2026-11-24'
+    example_response: examples/smblistings.companies.for_sale.new.json
+    added: '2026-11-24'
+
+  - id: smblistings.companies.for_sale.detail
+    capability: companies.for_sale.detail
+    platform: companies
+    domain: acquisitions
+    scope: any_account
+    method: GET
+    path: /listings/{id}
+    name: Business-for-sale listing by ID - price history
+    summary: Get one business-for-sale listing by ID with its source links, broker, financials and full price history, including listings since removed.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Listing id from a search or new-listings call."}
+    test_request: {pathParams: {id: "lst_5b3c7a9a47ccdb18"}}
+    price: {value: '0.06', currency: USD, per: 1, unit: call, note: "$0.06 per listing on treg's key; a 404 is free."}
+    miss:
+      status: [404]
+      means: "No listing with that id; nothing charged."
+    docs_url: https://smblistings.ai/docs/api/get-listing
+    verified: '2026-11-24'
+    example_response: examples/smblistings.companies.for_sale.detail.json
+    added: '2026-11-24'

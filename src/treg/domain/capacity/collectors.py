@@ -389,6 +389,16 @@ async def _fundable(c: httpx.AsyncClient, key: str) -> dict[str, object]:
     return {"value": balance, "unit": "credits", "note": "API credit balance"}
 
 
+async def _smblistings(c: httpx.AsyncClient, key: str) -> dict[str, object]:
+    # GET /api/v1/account is documented as free (0 credits); a bad key answers 401.
+    d = await _get(c, "https://smblistings.ai/api/v1/account",
+                   headers={"Authorization": f"Bearer {key}"})
+    balance = _finite(d.get("credits")) if isinstance(d, dict) else None
+    if balance is None or balance < 0:
+        raise ValueError("SMB Listings returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "prepaid credit balance ($0.02 per partner credit)"}
+
+
 async def _harvestapi(c, key):
     d = await _get(c, "https://api.harvestapi.io/users/my-api-user",
                    headers={"X-API-Key": key})
@@ -1241,6 +1251,7 @@ BALANCE_ROUTES = {
     "moltsets": _moltsets,
     "openmart": _openmart,
     "fundable": _fundable,
+    "smblistings": _smblistings,
     "trykitt": _trykitt,
     "contactout": _contactout,
     "millionverifier": _millionverifier,
