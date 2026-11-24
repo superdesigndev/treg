@@ -1,6 +1,6 @@
-# Every per-result row below was called live on 2026-09-26 and its billed events matched the actor's
-# published rate card (pricingInfos on GET /v2/acts/{actor}); each row's cost note records what was
-# billed. Paths and parameters were first transcribed from official docs 2026-07-28.
+# The per-result rows verified on 2026-09-26 matched the actor's published rate card
+# (pricingInfos on GET /v2/acts/{actor}). Their cost notes record the billed events.
+# The original paths and parameters came from official docs on 2026-07-28.
 #
 # BILLING IS READABLE AFTER THE FACT, but late: GET /v2/actor-runs/{id} returns chargedEventCounts
 # as soon as a run ends, while usageTotalUsd (the dollars) can trail it by minutes. Settlement
@@ -580,7 +580,7 @@ endpoints:
               sortBy: {type: string, enum: [recent, helpful], example: recent}
               filterByStar: {type: string, note: "Use critical for one to three stars.", example: critical}
               maxPages: {type: integer, default: 1, note: "Number of pages to collect from the start, 1–10. Use -1 to request additional available reviews beyond page 10."}
-      note: "Each review carries reviewId, rating, title, text and a localized date with the review country. The marketplace can include reviews from other countries. An invalid ASIN or empty filter result yields three penalty entries."
+      note: "This actor requires a paid Apify account. On the free plan it completes with an empty dataset even for valid inputs. Review rows carry reviewId, rating, title, text and a localized date with the review country. The actor documents three penalty rows for an invalid ASIN or an empty filter result."
     test_request:
       queryParams: {maxTotalChargeUsd: 0.05, timeout: 90}
       body: {input: [{asin: B09G7ZMVJP, domainCode: de, sortBy: recent, filterByStar: critical, maxPages: 1}]}
@@ -611,15 +611,17 @@ endpoints:
             type: object
             required: [reviewId, domainCode]
             properties:
-              reviewId: {type: string, note: "Use the reviewId from a product review.", example: RKP7CFF9MXBS9}
+              reviewId: {type: string, note: "Use the reviewId from a product review.", example: R2YBQLVCB4UMJI}
               domainCode: {type: string, note: "Use the same marketplace as the review list.", example: de}
-      note: "Read the actor's responseStatus on each row. Its documented found response is PRODUCT_FOUND_RESPONSE and includes the review ID and text. A failed run leaves the review's status unknown."
+      note: "Match rows by reviewId and domainCode. A live review returns statusCode 200, statusMessage FOUND and text. An absent review returns statusCode 404 and statusMessage NOT_FOUND. A failed run leaves the review’s status unknown."
     platform_request: {queryParams.memory: 1024}
     test_request:
-      queryParams: {maxTotalChargeUsd: 0.15, timeout: 90, memory: 1024}
-      body: {input: [{reviewId: RKP7CFF9MXBS9, domainCode: com}]}
+      queryParams: {maxTotalChargeUsd: 0.25, timeout: 90, memory: 1024}
+      body: {input: [{reviewId: R2YBQLVCB4UMJI, domainCode: de}, {reviewId: R0000000000000, domainCode: de}]}
     cost: {type: per_result, value: 0.007, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/axesso_data~amazon-review-details-scraper', checked: '2026-11-24', confidence: verified, note: "Paid plans charge $0.007 per result and the free plan charges $0.10. Starting a run costs $0.00005 per GB, with a one-GB minimum."}
+    verified: 2026-11-24
     added: '2026-11-24'
+    example_response: examples/apify.amazon.review.detail.json
     docs_url: https://apify.com/axesso_data/amazon-review-details-scraper
 
 proposed_capabilities:

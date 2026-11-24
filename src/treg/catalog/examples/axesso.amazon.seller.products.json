@@ -1,0 +1,29 @@
+{
+  "responseStatus": "PRODUCT_FOUND_RESPONSE",
+  "responseMessage": "Product successfully found!",
+  "sellerId": "A3JWKAKR8XB7XF",
+  "currentPage": 1,
+  "nextPage": 1,
+  "lastPage": 7,
+  "numberOfProducts": 48,
+  "resultCount": 500000,
+  "searchProductDetails": [
+    {
+      "asin": "B0HCPTNRZJ",
+      "countReview": 220,
+      "price": 478.98,
+      "retailPrice": 499.99,
+      "productRating": null,
+      "prime": false
+    },
+    {
+      "asin": "B0DXLBZF4Q",
+      "countReview": 13799,
+      "price": 34.99,
+      "retailPrice": 59.99,
+      "productRating": null,
+      "prime": false
+    },
+    "… 46 more item(s) truncated"
+  ]
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "statusCode": 404,
+    "statusMessage": "NOT_FOUND",
+    "reviewId": "R0000000000000",
+    "domainCode": "de"
+  },
+  {
+    "statusCode": 200,
+    "statusMessage": "FOUND",
+    "asin": "B0D429RB3M",
+    "domainCode": "de",
+    "productTitle": "Logitech Combo Touch Tastatur-Case fuer iPad Air 11 Zoll (M2, M3 und M4) | Fuer iPad Air (5. Generation), abnehmbare Tastatur mit Hintergrundbeleuchtung und Halterung, Deutsches QWERTZ-Layout - Grau",
+    "countRatings": 637,
+    "productRating": "4,2 von 5",
+    "reviewSummary": {
+      "fiveStar": {
+        "percentage": 67
+      },
+      "fourStar": {
+        "percentage": 12
+      },
+      "threeStar": {
+        "percentage": 7
+      },
+      "twoStar": {
+        "percentage": 3
+      },
+      "oneStar": {
+        "percentage": 11
+      }
+    },
+    "reviewId": "R2YBQLVCB4UMJI",
+    "text": "[redacted]",
+    "date": "Bewertet in Deutschland am 2. November 2026",
+    "rating": "5 von 5 Sternen",
+    "title": "[redacted]",
+    "userName": "[redacted]",
+    "numberOfHelpful": 2,
+    "variationId": "B0D429RB3M",
+    "imageUrlList": null,
+    "variationList": [
+      "Stil: Combo Touch",
+      "Mustername:: iPad Air 11’’",
+      "Farbe: Grau"
+    ],
+    "locale": {
+      "language": "de",
+      "country": "DE",
+      "marketplaceId": "A1PA6795UKMFR9"
+    },
+    "profilePath": "[redacted]",
+    "textHtml": "[redacted]",
+    "verified": true
+  }
+]
