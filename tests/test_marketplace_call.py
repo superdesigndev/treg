@@ -4404,3 +4404,11 @@ async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves
         assert len(relayed) == 1 and await _balance(clients) == 1_000_000
     finally:
         get_settings.cache_clear()
+
+
+def test_xpoz_catalog_endpoints_are_platform_eligible() -> None:
+    catalog = catalog_store.load()
+    endpoints = [ep for ep in catalog.endpoints if ep["provider"] == "xpoz"]
+    assert endpoints
+    ineligible = [ep["id"] for ep in endpoints if not catalog.platform_eligible(ep)]
+    assert not ineligible, ineligible
