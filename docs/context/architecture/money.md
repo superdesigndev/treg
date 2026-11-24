@@ -323,7 +323,8 @@ every team on; `money_allowance_excluded_org_ids` keeps a team off either way
 atomic take from the team's allowance counter and touches no balance row, so its calls no longer
 queue on the team's money lease twice each.
 
-Eligible: a direct call (not a child of a route, a hub run or overflow), synchronous, on treg's
+Eligible: a direct call (not a child of a route, a hub run or overflow; a routed child under the
+next paragraph), synchronous, on treg's
 platform key, with no tags, a member with no daily spend limit, a provider outside the trial
 pools, an endpoint any credit may pay for, and a price above zero. Every other call keeps its own
 hold, because something reads that hold: the tag and member rows written with it, the async task
@@ -331,9 +332,31 @@ or routed parent that closes it later, the purchased-credit gate. A call with an
 is eligible too: its claim's stale check, which asks whether money moved, reads the call's
 in-flight mark and queued charge where it would read a hold ("Idempotency and retries").
 
+**Routed children.** Off by default: `money_allowance_routed_org_ids` lists the teams, or
+`money_allowance_routed_all_orgs` turns it on for every team on the allowance. The routed call at the root
+decides once (`route._allow_children`) and hands the answer to every routed descendant on its
+`CallContext`; a hub step's routed call never does. A child whose reference is the root's plus
+routed segments only (`rN`, a check `v`, an upgrade `u`) is then judged by the direct-call rules
+less the deferred settle (`reserve._allowance_skip`), so a tagged parent's children, an async
+child, a poll, an overflow rung keep their holds. An eligible child takes like a direct call; at
+its settle (`_platform_settle`) a child that bills nothing gives its take back at once, and a
+billable one hands its epoch to the parent's `deferred_settles` in a `DeferredSettle`, in the same
+step that clears it from the child, so the take always has exactly one owner. The parent finishes
+every take in `close_deferred` (`_finish_takes`) before closing the holds: queued charge when the
+routed call answers, give back when it fails or the child was unbilled, so a failed routed call
+still charges nothing. A take older than `hold_ttl_s()` at the close is given back, as the reaper
+releases a hold that old. The close runs in a task a second cancellation cannot stop halfway
+(`route._close`). A keyed root is marked in flight before its first child; a store that will not
+mark it keeps every child on its own hold. The charge writer keeps that one mark for all the
+root's charges, a nested routed check's or upgrade's included (`hold_mark`, `mark_id`,
+`CallContext.allowance_mark`), and clears it once the last is written and the root has released
+it. A root cancelled after a child's charge was queued keeps its claim pending
+(`CallContext.allowance_charged`). A process that dies before the close leaves the takes in the
+allowance hold, unspent and uncharged, until the hold is closed.
+
 Every listed team's call that keeps its own hold is counted by why, on its own logger
 (`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `async`,
-`member_spend_cap`, ...), with a child call named by its own suffix (`child_call:routed` for a
+`member_spend_cap`, ...; a routed child its root lets take is counted under these too), with any other child call named by its own suffix (`child_call:routed` for a
 routed child `:rN`, `child_call:overflow`, `child_call:hub_step` for `:sN`, `child_call:other` for
 polls and verifications), `in_flight_unmarked`, or `take_refused` when an eligible call's take
 returned it to the exact path.
@@ -546,7 +569,7 @@ past the bound do not make every new team scan them.
   path's balance gate decides: the stop the next reserve is after an overrun there. Each refill
   also compares the counter with the hold it just committed and takes back anything above it.
 - **A settlement outside the allowance that took more than its hold** (a tagged call, a routed
-  child, an async task) freezes the counter the same way, after its commit: it may have used
+  child on its own hold, an async task) freezes the counter the same way, after its commit: it may have used
   the team's last credit, and calls admitted from the counter would not meet the balance gate
   its own next reserve does. Whether to freeze is read in the settlement's own transaction,
   after its ledger write: the team has an allowance hold (`allowance.has_allowance`). The hold
@@ -1497,21 +1520,24 @@ still pay the provider twice.
   allowance charge was already handed to the charge writer (`allowance_charged`): that charge is
   written whatever happens to the request, so the label stays pending for the stale check.
   Expired entries are swept lazily per caller at claim time, skipping locked rows.
-- A stale claim's money (`_money_of`) is read from the owner's holds, its ledger entries and its
-  queued `CallCharge` row, read before the ledger: a call on the allowance has no hold of its own,
+- A stale claim's money (`_money_of`) is read from the owner's holds, its ledger entries and the
+  queued `CallCharge` rows under its prefix (its own and its routed children's), read before the ledger: a call on the allowance has no hold of its own,
   and its charge waits in the queue until a fold writes its settle. A queued charge with no settle
   yet is money in flight (409): its amount is what the team owes, and the fold may take less when
   the credit runs short, so the receipt waits for the settle.
   The ledger read is bounded to the owner's lifetime, except by exact id (the `call_id` index):
-  the owner's own entries and its async tasks' are read past it, since a fold delayed by a backlog
-  or a task's worker can settle later.
+  the owner's own entries, its queued charges', its async tasks' and those of every id a routed
+  child of it could carry (`_routed_child_ids`: `rN` below its plan's widest possible size, `v`,
+  `u`, and their attempts) are read past it, since a fold delayed by a backlog (which deletes the
+  queued row it settles) or a task's worker can settle later.
 - An allowance call has no hold to show it is still running, so a stale claim also asks the shared
   store for the owner's in-flight mark (`kv.call_in_flight`, `IN_FLIGHT_MARK_MS`): a mark, or a
   store that cannot answer, is money in flight (409) like an open hold, unless the ledger already
   speaks for the owner: an entry of its own (a reserve, so it took a hold; a settle, so its
-  allowance charge is folded) or of a child other than `:overflow` (routed and hub parents never
-  take the allowance). Its money is then all in the database, and a store fault does not hold up
-  its receipt. An overflow child's entries do not count: its parent's own charge may be unwritten. The mark is read before the database, since it is cleared only
+  allowance charge is folded) or of a hub step (a hub run's steps never take the allowance). Its
+  money is then all in the database, and a store fault does not hold up its receipt. An overflow
+  child's or a routed child's (`rN`, `v`, `u`) entries do not count: the parent's own charge, or
+  another routed child's, may be unwritten. The mark is read before the database, since it is cleared only
   once the charge is written. `_platform_reserve` with
   `mark_in_flight` sets the mark before the take and clears it when the take is refused; a call
   the store would not mark keeps its own hold (`in_flight_unmarked`). The claim's lease task

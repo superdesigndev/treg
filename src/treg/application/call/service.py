@@ -1051,8 +1051,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             body_bytes = await _await_before_reserve(request.body(), request, call_ref)
             response, charged = await routed.run_routed(
                 request.context, ep, body_bytes, request.headers.get, upstream_client, execute_call,
-                audit_client=_client_name(request))
+                audit_client=_client_name(request), keyed=bool(idem_key))
         except asyncio.CancelledError:
+            if request.context.allowance_charged:
+                # A child's charge stands: the claim stays pending for a retry to resolve.
+                request.state.idem_claim = None
             await _finish_cancelled_call(request, None, call_ref)
             raise
         except CallFailure as exc:
@@ -1171,6 +1174,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.context.marketplace = mk
         request.context.tool_name = tool.name
         mk.deferred = request.context.deferred_settles
+        mk.routed_allowance = bool(request.context.routed_allowance)
     try:
         slot_day = await _await_before_reserve(
             authorize_call(
@@ -1464,6 +1468,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles
+        mk.routed_allowance = bool(request.context.routed_allowance)
     if mk is not None and mk.tier == "platform" and mk.public_resource_ids:
         # Resolution already proved these ids are absent from every org's durable assignments.
         # End the DB phase before asking the provider whether each is an approved public resource.

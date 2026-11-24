@@ -3069,3 +3069,146 @@ async def test_a_refill_ahead_of_the_deadline_is_sized_to_the_pace_too(
     # may carry half of the 4_000_000 balance, so the counter is brought up to 1_300_000.
     assert store.counters[org_id]["avail"] == 1_300_000
     assert await _state(org_id) == (GRANT - CHUNK - 1_000_000, CHUNK + 1_000_000)
+
+
+# ---------------------------------------------------------------------------------------------
+# A routed child on the allowance: it takes like a direct call, its parent finishes the take.
+
+async def _routed_child(org_id: int, call_ref: str = "root:r1", pending: list | None = None,
+                        tags: dict | None = None) -> MarketplaceCall:
+    caller, mk = await _caller(org_id), _call(org_id, deferred=[] if pending is None else pending,
+                                              routed_allowance=True)
+    await call_reserve._platform_reserve(mk, caller, CallMeta(tags=tags or {}), call_ref,
+                                         allow_allowance=True)
+    return mk
+
+
+@pytest.mark.parametrize(("call_ref", "reason"), [
+    ("root:r1", None), ("root:v", None), ("root:v:r2", None), ("root:u:r3", None),
+    ("root:r1:overflow", "child_call:overflow"), ("root:r1:p2", "child_call:other"),
+    ("run:s3", "child_call:hub_step"), ("run:s3:r1", "child_call:routed"),
+])
+async def test_a_routed_child_whose_root_allows_it_is_judged_as_a_direct_call(
+        org_id, store, call_ref, reason):
+    caller = await _caller(org_id)
+    mk = _call(org_id, deferred=[], routed_allowance=True, reserved_micro=600)
+    assert call_reserve._allowance_skip(mk, caller, CallMeta(tags={}), call_ref, True) == reason
+    assert call_reserve._allowance_skip(mk, caller, CallMeta(tags={"user": "u1"}), call_ref,
+                                        True) == (reason or "tagged")
+
+
+async def test_a_routed_child_whose_root_does_not_allow_it_keeps_its_hold(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id, deferred=[])
+    await call_reserve._platform_reserve(mk, caller, CallMeta(tags={}), "root:r1",
+                                         allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["root:r1"]
+
+
+async def test_a_billed_routed_child_leaves_its_take_for_the_parent(org_id, store):
+    pending: list = []
+    mk = await _routed_child(org_id, pending=pending)
+    assert mk.allowance_epoch and await _per_call_holds(org_id) == []
+    before = store.counters[org_id]["avail"]
+    charged, _ = await call_settle._platform_settle(mk, 200)
+    assert charged == 600 and mk.allowance_epoch is None
+    assert [(d.call_id, d.billable, d.epoch is not None) for d in pending] == [("root:r1", True, True)]
+    assert await _queued(org_id) == 0 and store.counters[org_id]["avail"] == before
+    assert not mk.allowance_charged
+
+
+async def test_a_routed_child_that_bills_nothing_gives_its_take_back_at_once(org_id, store):
+    pending: list = []
+    mk = await _routed_child(org_id, pending=pending)
+    assert await call_settle._platform_settle(mk, None) == (0, None)
+    assert pending == [] and store.counters[org_id]["avail"] == CHUNK
+
+
+@pytest.mark.parametrize("answered", [True, False])
+async def test_the_parent_charges_its_children_s_takes_only_when_it_answers(
+        org_id, store, answered):
+    pending: list = []
+    for ref in ("root:r1", "root:r2"):
+        await call_settle._platform_settle(await _routed_child(org_id, ref, pending), 200)
+    assert await call_settle.close_deferred(pending, charge=answered) == (1200 if answered else 0)
+    if answered:
+        await runtime._charges._task
+    assert pending == []
+    assert await _queued(org_id) == (2 if answered else 0)
+    assert store.counters[org_id]["avail"] == (CHUNK - 1200 if answered else CHUNK)
+
+
+async def test_an_unbilled_child_s_take_is_given_back_when_the_parent_answers(org_id, store):
+    pending: list = []
+    await call_settle._platform_settle(await _routed_child(org_id, "root:r1", pending), 200)
+    pending[0].billable = False  # route._unbill: the child timed out after its settle
+    assert await call_settle.close_deferred(pending, charge=True) == 0
+    assert await _queued(org_id) == 0 and store.counters[org_id]["avail"] == CHUNK
+
+
+async def test_a_take_older_than_a_hold_may_live_is_given_back(org_id, store):
+    pending: list = []
+    await call_settle._platform_settle(await _routed_child(org_id, "root:r1", pending), 200)
+    pending[0].reserved_at -= ledger.hold_ttl_s() + 1
+    assert await call_settle.close_deferred(pending, charge=True) == 0
+    assert await _queued(org_id) == 0 and store.counters[org_id]["avail"] == CHUNK
+
+
+async def test_takes_and_holds_close_together(org_id, store, monkeypatch):
+    pending: list = []
+    await call_settle._platform_settle(await _routed_child(org_id, "root:r1", pending), 200)
+    caller, held = await _caller(org_id), _call(org_id, deferred=pending)
+    await call_reserve._platform_reserve(held, caller, CallMeta(tags={}), "root:r2",
+                                         allow_allowance=True)
+    await call_settle._platform_settle(held, 200)
+    assert await call_settle.close_deferred(pending, charge=True) == 1200
+    await runtime._charges._task
+    assert await _queued(org_id) == 1 and await _per_call_holds(org_id) == []
+
+
+async def test_the_root_s_mark_stays_until_every_child_charge_is_written(org_id, store):
+    store.marks.add("root")
+    runtime.hold_mark("root")
+    pending: list = []
+    for ref in ("root:r1", "root:r2"):
+        await call_settle._platform_settle(await _routed_child(org_id, ref, pending), 200)
+    await call_settle.close_deferred(pending, charge=True, mark="root")
+    await runtime.release_mark("root")
+    await runtime._charges._task
+    assert await _queued(org_id) == 2 and store.marks == set()
+    assert runtime._charges._marked == {} and runtime._charges._mark_of == {}
+
+
+async def test_a_root_s_mark_with_nothing_charged_is_cleared_on_release(org_id, store):
+    store.marks.add("root")
+    runtime.hold_mark("root")
+    pending: list = []
+    await call_settle._platform_settle(await _routed_child(org_id, "root:r1", pending), 200)
+    await call_settle.close_deferred(pending, charge=False, mark="root")
+    assert store.marks == {"root"}, "the parent still holds it"
+    await runtime.release_mark("root")
+    assert store.marks == set()
+
+
+async def test_a_nested_routed_close_keeps_the_root_s_mark_and_leaves_its_release_to_the_root(
+        org_id, store):
+    from types import SimpleNamespace
+
+    from treg.application.call import route as call_route
+
+    store.marks.add("root")
+    runtime.hold_mark("root")
+    pending: list = []
+    await call_settle._platform_settle(await _routed_child(org_id, "root:v:r1", pending), 200)
+    nested = SimpleNamespace(routed_root=None, allowance_charged=False)
+    seen = []
+    submit = runtime._charges.submit
+
+    def spy(charge, use, **kwargs):
+        seen.append((charge.call_id, kwargs.get("marked"), kwargs.get("mark_id")))
+        return submit(charge, use, **kwargs)
+    runtime._charges.submit = spy
+    await call_route._close(nested, pending, charge=True, mark="root", release=False)
+    assert seen == [("root:v:r1", True, "root")]
+    assert store.marks == {"root"} and runtime._charges._marked == {"root": 1}
+    await runtime.release_mark("root")
+    assert store.marks == set()

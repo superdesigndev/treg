@@ -1163,6 +1163,26 @@ async def _platform_settle(
     # the caller because the aggregator's prepaid account still incurred the cost.
     call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
     charged = 0
+    deferrable = (mk.deferred is not None and billable and overflow_spend is None
+                  and observed_override is None and status_code is not None)
+    meta = {"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
+            "cost_source": ("provider" if observed is not None else
+                            mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
+            **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
+               if cached_hit else {})}
+    if mk.allowance_epoch is not None and deferrable:
+        # A routed child that took from the allowance: its parent charges or gives back the take
+        # (`close_deferred`), as it settles or releases a deferred hold.
+        epoch, mk.allowance_epoch = mk.allowance_epoch, None
+        mk.allowance_marked = False
+        mk.deferred.append(DeferredSettle(
+            call_id=call_id, billable=billable, actual_micro=actual, archive_use=archive_use,
+            payer_org_id=mk.payer_org_id, reserved_micro=mk.reserved_micro,
+            reserved_at=mk.reserved_at, reason=reason or f"not_billable_{status_code}",
+            meta=meta, epoch=epoch, endpoint_id=mk.endpoint_id))
+        if finalized is not None:
+            finalized()
+        return decision.charged_micro, observed
     if mk.allowance_epoch is not None:
         # Reserved from the team's allowance: there is no hold to close. The charge is queued
         # and the unused part goes back to the counter; a release writes nothing at all.
@@ -1172,17 +1192,11 @@ async def _platform_settle(
         charged = await allowance_runtime.finish(
             mk.payer_org_id, call_id, epoch, mk.reserved_micro or 0, endpoint_id=mk.endpoint_id,
             billable=billable, actual_micro=actual, archive_use=archive_use if billable else None,
-            marked=marked,
-            meta={"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
-                  "cost_source": ("provider" if observed is not None else
-                                  mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
-                  **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
-                     if cached_hit else {})})
+            marked=marked, meta=meta)
         if finalized is not None:
             finalized()
         return charged, observed
-    if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
-            and status_code is not None):
+    if deferrable:
         # A routed child: the parent decides whether the caller pays (a routed call that fails
         # charges nothing). Leave the hold open, hand the parent what this settle WOULD do, and
         # tell the child it is finished. The parent closes it exactly once (`close_deferred`);
@@ -1194,11 +1208,7 @@ async def _platform_settle(
             call_id=call_id, billable=billable, actual_micro=actual, archive_use=archive_use,
             payer_org_id=mk.payer_org_id, reserved_micro=mk.reserved_micro,
             reserved_at=mk.reserved_at, reason=reason or f"not_billable_{status_code}",
-            meta={"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
-                  "cost_source": ("provider" if observed is not None else
-                                  mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
-                  **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
-                     if cached_hit else {})}))
+            meta=meta))
         if finalized is not None:
             finalized()
         return decision.charged_micro, observed
@@ -1282,7 +1292,8 @@ async def _platform_settle(
 
 @dataclass
 class DeferredSettle:
-    """One routed child's hold, left open for its parent to close (`close_deferred`)."""
+    """One routed child's hold, or its allowance take (`epoch`), left open for its parent to
+    close (`close_deferred`)."""
 
     call_id: str
     billable: bool
@@ -1293,6 +1304,8 @@ class DeferredSettle:
     payer_org_id: int | None = None
     reserved_micro: int | None = None
     reserved_at: float | None = None
+    epoch: int | None = None
+    endpoint_id: str = ""
 
 
 def hold_admission_wait_s(reserved_at: list[float | None]) -> float | None:
@@ -1305,14 +1318,24 @@ def hold_admission_wait_s(reserved_at: list[float | None]) -> float | None:
     return ledger.hold_ttl_s() - age - get_settings().hold_grace_s / 2
 
 
-async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str = "") -> int:
+async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str = "",
+                         mark: str | None = None) -> int:
     """Close every hold a routed call's children left open, exactly once each, in one transaction.
     `charge=True` settles each billable one as its own settle would have; `charge=False` releases all
     of them, because a routed call that fails charges the caller nothing. Returns what was charged.
-    Never raises: a hold that fails to close is released later by the reaper, in the caller's favour."""
+    Never raises: a hold that fails to close is released later by the reaper, in the caller's favour.
+
+    A child's allowance take is finished the same way, before the holds: its charge queued or the
+    take given back (`_finish_takes`). `mark` is the routed root's in-flight mark, which every
+    queued charge keeps until it is written."""
     if not items:
         return 0
     pending, items[:] = list(items), []
+    takes = [d for d in pending if d.epoch is not None]
+    pending = [d for d in pending if d.epoch is None]
+    taken = await _finish_takes(takes, charge=charge, why=why, mark=mark) if takes else 0
+    if not pending:
+        return taken
     # One session closes every hold. A batch that draws blocks stays `deferred` and also leases
     # orgs that this same session only refunds. A batch that only releases or refunds is `release`.
     consumes = any(_consumes_blocks(
@@ -1360,8 +1383,26 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,
             exc_info=True)
-        return 0
-    return total
+        return taken
+    return taken + total
+
+
+async def _finish_takes(takes: list[DeferredSettle], *, charge: bool, why: str,
+                        mark: str | None) -> int:
+    """Finish each child's take once: charge a billable one when the routed call answers, give
+    back every other. A take older than `hold_ttl_s()` is given back as the reaper releases a
+    hold that old, in the caller's favour: the allowance hold it came from may be closed by now."""
+    oldest = time.monotonic() - ledger.hold_ttl_s()
+    calls = []
+    for d in takes:
+        billable = charge and d.billable and (d.reserved_at is None or d.reserved_at > oldest)
+        calls.append(allowance_runtime.finish(
+            d.payer_org_id, d.call_id, d.epoch, d.reserved_micro or 0, endpoint_id=d.endpoint_id,
+            billable=billable, actual_micro=d.actual_micro,
+            archive_use=d.archive_use if billable else None,
+            marked=billable and mark is not None, mark_id=mark if billable else None,
+            meta=d.meta if billable else {**d.meta, "reason": why or d.reason}))
+    return sum(await asyncio.gather(*calls))
 
 
 async def _finish_cancelled_call(

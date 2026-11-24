@@ -158,6 +158,7 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._drain, "store.allowance_drop"),
         (call_allowance.finish, "store.allowance_give_back"),
         (settle._platform_settle, "allowance_runtime.finish"),
+        (settle._finish_takes, "allowance_runtime.finish"),
     ),
     # The counter is refilled from the balance into the team's one allowance hold, under the
     # same money admission lease as a reserve, by whichever call found the counter short. While
@@ -189,6 +190,7 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._ChargeWriter._committed, "clear_calls_in_flight"),
         (call_allowance._ChargeWriter._keep_marks, "mark_calls_in_flight"),
         (call_allowance.finish, "store.clear_call_in_flight"),
+        (call_allowance._ChargeWriter.release_mark, "clear_calls_in_flight"),
     ),
     # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
     # marker holding the caller's input in the shared store (one bounded write, no database); the
@@ -345,11 +347,15 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),
     ("application/call/settle.py", "_finish_cancelled_call", "allowance_runtime.finish"),
     ("application/call/settle.py", "_platform_settle", "allowance_runtime.finish"),
+    # a routed parent finishes its children's allowance takes when it closes their holds
+    ("application/call/settle.py", "_finish_takes", "allowance_runtime.finish"),
     # a keyed call on the allowance: its in-flight mark, set before the take and cleared after
     # the charge is written, or at once when the take was refused
     ("application/call/reserve.py", "_platform_reserve", "idempotency.mark_in_flight"),
     ("application/call/reserve.py", "_platform_reserve", "idempotency.clear_in_flight"),
     ("application/call/allowance.py", "_committed", "clear_calls_in_flight"),
+    # a keyed routed root's mark, held while its children take, cleared once nothing keeps it
+    ("application/call/allowance.py", "release_mark", "clear_calls_in_flight"),
     ("application/call/allowance.py", "_keep_marks", "mark_calls_in_flight"),
     ("application/call/allowance.py", "finish", "store.clear_call_in_flight"),
     ("application/call/idempotency.py", "mark_in_flight", "mark_call_in_flight"),

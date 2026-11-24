@@ -31,6 +31,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    its reservation from the team's allowance (one standing hold, mirrored in a shared counter);
    that take is charged or given back exactly once on the same paths, and a take that is never
    finished stays in the allowance hold, never spent and never charged, until the hold is closed.
+   A routed child's take (only under `money_allowance_routed_org_ids` or
+   `money_allowance_routed_all_orgs`) is finished by its routed parent, as its hold would be.
 3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
    pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
@@ -78,7 +80,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
    call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
-   hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   reservation and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps

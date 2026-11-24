@@ -331,6 +331,10 @@ class Settings(BaseSettings):
     money_allowance_all_orgs: bool = False
     # Never on the allowance, whatever the two settings above say.
     money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # A routed call's children may take from the allowance too (their parent finishes the takes):
+    # for these teams, or every team on the allowance.
+    money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_routed_all_orgs: bool = False
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many
