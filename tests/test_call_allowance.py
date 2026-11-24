@@ -3187,3 +3187,28 @@ async def test_a_root_s_mark_with_nothing_charged_is_cleared_on_release(org_id, 
     assert store.marks == {"root"}, "the parent still holds it"
     await runtime.release_mark("root")
     assert store.marks == set()
+
+
+async def test_a_nested_routed_close_keeps_the_root_s_mark_and_leaves_its_release_to_the_root(
+        org_id, store):
+    from types import SimpleNamespace
+
+    from treg.application.call import route as call_route
+
+    store.marks.add("root")
+    runtime.hold_mark("root")
+    pending: list = []
+    await call_settle._platform_settle(await _routed_child(org_id, "root:v:r1", pending), 200)
+    nested = SimpleNamespace(routed_root=None, allowance_charged=False)
+    seen = []
+    submit = runtime._charges.submit
+
+    def spy(charge, use, **kwargs):
+        seen.append((charge.call_id, kwargs.get("marked"), kwargs.get("mark_id")))
+        return submit(charge, use, **kwargs)
+    runtime._charges.submit = spy
+    await call_route._close(nested, pending, charge=True, mark="root", release=False)
+    assert seen == [("root:v:r1", True, "root")]
+    assert store.marks == {"root"} and runtime._charges._marked == {"root": 1}
+    await runtime.release_mark("root")
+    assert store.marks == set()

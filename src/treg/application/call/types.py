@@ -341,6 +341,8 @@ class CallContext:
     allowance_charged: bool = False
     # The routed call at the root, on each of its routed descendants.
     routed_root: Any = None
+    # The keyed routed root's in-flight mark, which every allowance charge under it keeps.
+    allowance_mark: str | None = None
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.

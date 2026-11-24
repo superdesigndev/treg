@@ -2518,6 +2518,28 @@ async def test_a_routed_child_s_queued_charge_keeps_its_parent_s_stale_claim(
     assert r.json()["detail"]["charged_micro"] == 700
 
 
+async def test_a_routed_child_s_charge_folded_after_its_owner_s_lifetime_is_still_found(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The fold deletes the queued row and writes the settle when it runs, which a backlog can
+    push past the owner's lifetime: the child's settle is read by its id."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.models import LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "late-label", status="pending")
+    await _set_claim("late-label", call_ref="late-owner", created_at=_ago(hours=1))
+    async with session_maker() as db:
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                           call_id="late-owner:r3", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "late-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
 @pytest.mark.parametrize("key", [None, "keyed-label"])
 async def test_a_direct_call_may_use_the_allowance_and_a_keyed_one_is_marked_in_flight(
         clients: AsyncClient, platform_on, monkeypatch, key):

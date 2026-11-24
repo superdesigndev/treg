@@ -19,6 +19,7 @@ from sqlmodel import select
 
 from ... import archive
 from ...config import get_settings
+from ...domain.catalog import store as catalog_store
 from ...infra import kv
 from ...infra.db import is_db_busy, session_maker
 from ...domain.identity.access import Caller
@@ -294,8 +295,10 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     if any(status == "pending" for _, status in tasks):
         open_hold = True  # a task's hold is its worker's until it resolves
     # Past the lifetime only by exact id, which the call_id index serves: the tasks' late settles,
-    # and the owner's own fold, which a backlog can push past it.
-    late_ids = list({call_ref, *queued, *(task_id for task_id, _ in tasks)})
+    # and the folds of the owner and of every routed child it could have had, which a backlog can
+    # push past it (a fold deletes the queued row it settles).
+    late_ids = list({call_ref, *queued, *(task_id for task_id, _ in tasks),
+                     *_routed_child_ids(call_ref)})
     rows += (await db.execute(select(
         LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
@@ -311,6 +314,22 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         open_hold = True
     # settle entries are negative (money leaving)
     return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}
+
+
+def _routed_child_ids(call_ref: str) -> list[str]:
+    """Every id a routed child of `call_ref` can carry: an attempt `rN` (N a candidate's place in
+    its plan, which never holds more than its capability's endpoints), the check `v`, the
+    upgrade `u`, and the attempts of a routed check or upgrade."""
+    width = _routed_width()
+    attempts = [f"r{n}" for n in range(width)]
+    return [f"{call_ref}:{child}" for child in (
+        *attempts, "v", "u", *(f"{via}:{a}" for via in ("v", "u") for a in attempts))]
+
+
+def _routed_width() -> int:
+    catalog = catalog_store.load()
+    routed = {e["capability"] for e in catalog.by_id.values() if e.get("kind") == "routed"}
+    return max((len(catalog.for_capability(cap)) for cap in routed), default=0)
 
 
 _ROUTED_OR_OVERFLOW = re.compile(r"r\d+(?:\.\d+)*|v|u|overflow")

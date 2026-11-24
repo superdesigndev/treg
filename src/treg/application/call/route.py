@@ -1162,16 +1162,19 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     a provider on the way answered and billed treg (owner decision 2026-09-21).
 
     A child may take from the team's allowance instead of holding (`_allow_children`); its take is
-    closed with the holds, the same way."""
+    closed with the holds, the same way. Every charge keeps the keyed root's mark, a nested routed
+    call's too; only the root releases its own hold on the mark."""
     pending: list = []
     mark = await _allow_children(parent, keyed)
+    charge_mark = (parent.routed_root or parent).allowance_mark
     try:
         response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
                                             execute_child, pending, audit_client=audit_client)
     except CallFailure as exc:
         released = sum(int(a.get("charged_micro") or 0) for a in (exc.detail.get("tried") or [])
                        if isinstance(a, dict)) if isinstance(exc.detail, dict) else 0
-        await _close(parent, pending, charge=False, why=f"routed_{exc.kind}", mark=mark)
+        await _close(parent, pending, charge=False, why=f"routed_{exc.kind}", mark=charge_mark,
+                     release=mark is not None)
         if isinstance(exc.detail, dict):
             exc.detail["charged_micro"] = 0
             if released:
@@ -1181,9 +1184,10 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                     a["charged_micro"] = 0
         raise
     except BaseException:
-        await _close(parent, pending, charge=False, why="routed_aborted", mark=mark)
+        await _close(parent, pending, charge=False, why="routed_aborted", mark=charge_mark,
+                     release=mark is not None)
         raise
-    await _close(parent, pending, charge=True, mark=mark)
+    await _close(parent, pending, charge=True, mark=charge_mark, release=mark is not None)
     return response, spent
 
 
@@ -1199,7 +1203,7 @@ async def _allow_children(parent: CallContext, keyed: bool) -> str | None:
     mark = None
     if allowed and keyed:
         if await idempotency.mark_in_flight(parent.call_ref):
-            mark = parent.call_ref
+            mark = parent.allowance_mark = parent.call_ref
             allowance_runtime.hold_mark(mark)
         else:
             allowed = False
@@ -1208,8 +1212,9 @@ async def _allow_children(parent: CallContext, keyed: bool) -> str | None:
 
 
 async def _close(parent: CallContext, pending: list, *, charge: bool, why: str = "",
-                 mark: str | None) -> None:
-    """`close_deferred` and then the root's mark, in a task a second cancellation cannot stop
+                 mark: str | None, release: bool) -> None:
+    """`close_deferred`, each charge keeping `mark`, and then the root's own hold on the mark
+    (`release`), in a task a second cancellation cannot stop
     halfway: a child's take not finished stays out of every call's reach until its hold is
     closed. A cancellation that arrives meanwhile is raised once the close is done."""
     if charge and any(d.epoch is not None and d.billable for d in pending):
@@ -1219,7 +1224,7 @@ async def _close(parent: CallContext, pending: list, *, charge: bool, why: str =
         try:
             await close_deferred(pending, charge=charge, why=why, mark=mark)
         finally:
-            if mark is not None:
+            if release and mark is not None:
                 try:
                     await allowance_runtime.release_mark(mark)
                 except Exception:

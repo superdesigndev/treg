@@ -348,8 +348,9 @@ still charges nothing. A take older than `hold_ttl_s()` at the close is given ba
 releases a hold that old. The close runs in a task a second cancellation cannot stop halfway
 (`route._close`). A keyed root is marked in flight before its first child; a store that will not
 mark it keeps every child on its own hold. The charge writer keeps that one mark for all the
-root's charges (`hold_mark`, `mark_id`) and clears it once the last is written and the root has
-released it. A root cancelled after a child's charge was queued keeps its claim pending
+root's charges, a nested routed check's or upgrade's included (`hold_mark`, `mark_id`,
+`CallContext.allowance_mark`), and clears it once the last is written and the root has released
+it. A root cancelled after a child's charge was queued keeps its claim pending
 (`CallContext.allowance_charged`). A process that dies before the close leaves the takes in the
 allowance hold, unspent and uncharged, until the hold is closed.
 
@@ -1525,8 +1526,10 @@ still pay the provider twice.
   yet is money in flight (409): its amount is what the team owes, and the fold may take less when
   the credit runs short, so the receipt waits for the settle.
   The ledger read is bounded to the owner's lifetime, except by exact id (the `call_id` index):
-  the owner's own entries, its queued charges' and its async tasks' are read past it, since a fold
-  delayed by a backlog or a task's worker can settle later.
+  the owner's own entries, its queued charges', its async tasks' and those of every id a routed
+  child of it could carry (`_routed_child_ids`: `rN` below its plan's widest possible size, `v`,
+  `u`, and their attempts) are read past it, since a fold delayed by a backlog (which deletes the
+  queued row it settles) or a task's worker can settle later.
 - An allowance call has no hold to show it is still running, so a stale claim also asks the shared
   store for the owner's in-flight mark (`kv.call_in_flight`, `IN_FLIGHT_MARK_MS`): a mark, or a
   store that cannot answer, is money in flight (409) like an open hold, unless the ledger already
