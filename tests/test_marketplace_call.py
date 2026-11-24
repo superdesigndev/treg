@@ -2457,11 +2457,12 @@ async def test_an_abandoned_allowance_call_folded_after_its_lifetime_is_still_a_
 
 
 @pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
-async def test_an_abandoned_allowance_call_counts_its_queued_charge_once(
+async def test_an_abandoned_allowance_call_waits_for_its_fold_and_answers_what_it_paid(
         clients: AsyncClient, platform_on, monkeypatch, trail):
     """An owner on the team's allowance has no hold: its charge waits in the queue until a fold
-    writes its settle. Queued, it is still a charge; queued and settled (the row read before the
-    fold deleted it), it is counted once."""
+    writes its settle. Queued, the amount is only what the team owes, so the claim waits (409);
+    folded, the receipt is what the ledger took, here less than the queued figure (the row read
+    before the fold deleted it)."""
     import uuid
 
     from treg.application.call import idempotency
@@ -2474,14 +2475,18 @@ async def test_an_abandoned_allowance_call_counts_its_queued_charge_once(
     async with session_maker() as db:
         db.add(CallCharge(call_id="allowance-owner", org_id=org_id, endpoint_id=EP, amount_micro=700))
         if trail == "queued_and_folded":
-            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-600,
                                call_id="allowance-owner", endpoint_id=EP, meta={}))
         await db.commit()
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "allowance-label"})
+    if trail == "queued":
+        assert r.status_code == 409, r.text
+        assert (await _claim_row("allowance-label")).status == "pending"
+        return
     assert r.status_code == 410, r.text
     assert r.json()["detail"]["error"] == "idempotency_response_lost"
-    assert r.json()["detail"]["charged_micro"] == 700
+    assert r.json()["detail"]["charged_micro"] == 600
 
 
 @pytest.mark.parametrize("key", [None, "keyed-label"])

@@ -267,10 +267,11 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     money in flight, and a late settle is a charge.
 
     A call on the team's allowance has no hold of its own: its charge is a `CallCharge` row until a
-    fold turns it into its settle entry, deleting the row in the same transaction. The row is read
-    before the ledger, so a fold committing in between leaves the settle to be found; a call with
-    both is counted once, by its settle. A backlog can push the fold past the owner's lifetime, so
-    the owner's own entries are also read past it, by exact id.
+    fold turns it into its settle entry, deleting the row in the same transaction. Until then the
+    amount is what the team owes, not what its credit paid, so a queued charge is money in flight.
+    The row is read before the ledger, so a fold committing in between leaves the settle to be
+    found. A backlog can push the fold past the owner's lifetime, so the owner's own entries are
+    also read past it, by exact id.
     """
     def mine(col):
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
@@ -280,8 +281,8 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         # The allowance call's stand-in for its hold (`IN_FLIGHT_MARK_MS`). Unread is not proof
         # the owner stopped: the retry is told to wait, as for an open hold.
         open_hold = await kv.store().call_in_flight(call_ref) is not False
-    queued = (await db.execute(select(CallCharge.amount_micro).where(
-        CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).scalar_one_or_none()
+    queued = (await db.execute(select(CallCharge.call_id).where(
+        CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).first() is not None
     rows = list((await db.execute(select(
         LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.org_id == org_id, LedgerEntry.created_at >= since, LedgerEntry.created_at <= until,
@@ -297,11 +298,10 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     rows += (await db.execute(select(
         LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
+    if queued and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
+        open_hold = True
     # settle entries are negative (money leaving)
-    charged = -sum(amount for kind, amount, _ in rows if kind == "settle")
-    if queued is not None and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
-        charged += int(queued)
-    return {"in_flight": open_hold, "charged": charged}
+    return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}
 
 
 async def _resolve_stale_claim(row: IdempotentCall, caller: Caller, db: AsyncSession):

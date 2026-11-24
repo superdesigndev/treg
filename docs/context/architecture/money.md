@@ -1462,7 +1462,9 @@ still pay the provider twice.
   caller at claim time, skipping locked rows.
 - A stale claim's money (`_money_of`) is read from the owner's holds, its ledger entries and its
   queued `CallCharge` row, read before the ledger: a call on the allowance has no hold of its own,
-  and its charge waits in the queue until a fold writes its settle. One with both is counted once.
+  and its charge waits in the queue until a fold writes its settle. A queued charge with no settle
+  yet is money in flight (409): its amount is what the team owes, and the fold may take less when
+  the credit runs short, so the receipt waits for the settle.
   The ledger read is bounded to the owner's lifetime, except by exact id (the `call_id` index):
   the owner's own entries and its async tasks' are read past it, since a fold delayed by a backlog
   or a task's worker can settle later.
