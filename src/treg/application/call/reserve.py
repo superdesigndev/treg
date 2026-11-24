@@ -442,7 +442,8 @@ def _skip_window(now: float, org_id: int, reason: str) -> dict:
 
 
 def _log_skip_total(now: float, reason: str, total: dict) -> None:
-    top = sorted(total["orgs"].items(), key=lambda kv: (-kv[1][1], -kv[1][0], kv[0]))[:_SKIP_TOP]
+    held = [item for item in total["orgs"].items() if item[1][1] > 0]
+    top = sorted(held, key=lambda kv: (-kv[1][1], -kv[1][0], kv[0]))[:_SKIP_TOP]
     _skip_log.info("allowance_skips %s", json.dumps({
         "reason": reason, "calls": total["calls"], "held_micro": total["held_micro"],
         "orgs": len(total["orgs"]), "window_s": round(now - total["since"], 1),

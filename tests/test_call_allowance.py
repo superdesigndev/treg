@@ -1351,6 +1351,20 @@ def test_a_minute_naming_too_many_teams_is_logged_early(monkeypatch, skip_lines)
     assert call_reserve._skip_totals["tagged"]["orgs"] == {3: [1, 10]}
 
 
+def test_a_team_that_held_nothing_is_counted_but_never_in_the_top(monkeypatch, skip_lines):
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    _skipped(1, "tagged", 0)
+    _skipped(2, "tagged", 10)
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    _skipped(3, "tagged", 0)
+    assert skip_lines() == [_total("tagged", 2, 10, [[2, 1, 10]], orgs=2)]
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    _skipped(3, "tagged", 0)
+    assert skip_lines()[-1] == _total("tagged", 1, 0, [], orgs=1)
+
+
 async def test_a_skipped_call_s_committed_hold_is_counted_when_the_call_is_cancelled_after(
         org_id, store, monkeypatch, skip_lines):
     """Cancelled while its money session closes: the hold is committed, so it is counted."""
