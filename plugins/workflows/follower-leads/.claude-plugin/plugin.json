@@ -1,0 +1,13 @@
+{
+  "name": "follower-leads",
+  "version": "0.31.0",
+  "description": "Use when someone wants to know how many potential customers are among their followers on X, Instagram or TikTok, with a shareable card (leads, tags, revenue estimate) and a tagged network map they can search.",
+  "author": {
+    "name": "Superdesign dev, Inc.",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg",
+  "license": "Apache-2.0"
+}

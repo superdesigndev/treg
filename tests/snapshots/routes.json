@@ -955,6 +955,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_leads_skill_md",
+    "path": "/skills/follower-leads/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "doomscroll_skill_md",
     "path": "/skills/doomscroll/SKILL.md"
   },
@@ -1324,6 +1333,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_leads_page",
+    "path": "/follower-leads"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_page",
     "path": "/jev"
   },
@@ -1573,6 +1591,15 @@
     ],
     "name": "well_known_doomscroll_md",
     "path": "/.well-known/skills/doomscroll/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_follower_leads_md",
+    "path": "/.well-known/skills/follower-leads/SKILL.md"
   },
   {
     "kind": "APIRoute",
