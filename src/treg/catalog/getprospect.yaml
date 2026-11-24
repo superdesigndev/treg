@@ -97,7 +97,7 @@ endpoints:
     platform_request:
       body.enrich_phone: false
     test_request:
-      body: {data: {linkedin_url: "https://www.linkedin.com/in/eoghanmccabe/"}}
+      body: {data: {linkedin_url: "https://www.linkedin.com/in/eoghanmccabe/"}, enrich_phone: false}
     price:
       value: '1'
       currency: credit
@@ -133,7 +133,7 @@ endpoints:
     platform_request:
       body.enrich_phone: false
     test_request:
-      body: {data: [{identifier: row-1, linkedin_url: "https://www.linkedin.com/in/dharmesh/"}]}
+      body: {data: [{identifier: row-1, linkedin_url: "https://www.linkedin.com/in/dharmesh/"}], enrich_phone: false}
     price:
       value: '1'
       currency: credit
@@ -169,7 +169,7 @@ endpoints:
     platform_request:
       body.enrich_email: false
     test_request:
-      body: {filters: {person_job_title: {include: [CEO], match_mode: CONTAINS}, company: {domain: {include: [stripe.com]}}}, page: 1, per_page: 25}
+      body: {filters: {person_job_title: {include: [CEO], match_mode: CONTAINS}, company: {domain: {include: [stripe.com]}}}, page: 1, per_page: 25, enrich_email: false}
     price:
       value: '0'
       currency: USD
