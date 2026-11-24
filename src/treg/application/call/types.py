@@ -333,6 +333,16 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    # Decided once by the routed call at the root and handed to every routed child: the children
+    # may take from the team's allowance (`allowance.routed_listed`, and the root marked when keyed).
+    routed_allowance: bool | None = None
+    # A routed parent handed a child's allowance charge to the charge writer: it stands even if
+    # the request is cancelled, so the idempotency claim stays pending for the stale check.
+    allowance_charged: bool = False
+    # The routed call at the root, on each of its routed descendants.
+    routed_root: Any = None
+    # The keyed routed root's in-flight mark, which every allowance charge under it keeps.
+    allowance_mark: str | None = None
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.

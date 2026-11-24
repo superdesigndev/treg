@@ -41,7 +41,10 @@ together with any tracking-only parameter in `web._SHARE_LINK_PARAMS` (`via`, ad
   first team) stages one `AffiliateLead` in the team's own transaction (`affiliates.stage_lead`).
   The unique `org_id` makes it once per team, and `affiliates.brought_before` makes it once per
   person: a partner earns on the person they brought, so a later team the same user, or the same
-  inbox under an alias, makes stages no lead. An `AffiliateClaim` row (the `promo_inbox`) is staged
+  inbox under an alias, makes stages no lead. A partner earns only on new customers: a person who
+  already owns or belongs to a team, demo teams aside, stages no lead either
+  (`affiliates.existing_customer`), and the friend referral applies to the team as if there had been
+  no click. An `AffiliateClaim` row (the `promo_inbox`) is staged
   with the lead and outlives team deletion, as `SignupPromoClaim` does (the CLI's `settleRef` and the cleared cookies below say the same thing client side).
 - An affiliate click wins over a friend code: a team with a staged lead skips `_redeem_referral`, so
   one signup is never paid by both programs.

@@ -1099,8 +1099,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "adtrack_js",
-    "path": "/adtrack.js"
+    "name": "click_id_js",
+    "path": "/click-id.js"
   },
   {
     "kind": "APIRoute",

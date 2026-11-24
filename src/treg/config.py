@@ -323,8 +323,18 @@ class Settings(BaseSettings):
             "money_admission_retry_after_s"))
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
-    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
+    # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
+    # orgs named here also get a line of their own.
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`.
+    money_allowance_all_orgs: bool = False
+    # Never on the allowance, whatever the two settings above say.
+    money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # A routed call's children may take from the allowance too (their parent finishes the takes):
+    # for these teams, or every team on the allowance.
+    money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_routed_all_orgs: bool = False
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many
@@ -1193,6 +1203,15 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # Where BROWSERS send analytics, when it differs from `posthog_host`: a first-party proxy such as
+    # PostHog's managed reverse proxy. Blockers drop requests to PostHog's own domains, so a page that
+    # talks to them directly loses its blocker-using visitors. Server-side capture and the install
+    # script keep `posthog_host`; nothing blocks them. Empty = browsers use `posthog_host`.
+    posthog_browser_host: str = ""
+
+    @property
+    def posthog_page_host(self) -> str:
+        return (self.posthog_browser_host or self.posthog_host).rstrip("/")
     # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""

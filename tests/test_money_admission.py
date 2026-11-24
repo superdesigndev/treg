@@ -49,6 +49,9 @@ class LeaseStore:
         self.lose_on_renew = False
         self.renewed = asyncio.Event()
 
+    async def call_in_flight(self, call_ref):
+        return False
+
     async def acquire_lease(self, key, token, ttl_ms):
         self.calls.append(("acquire", key))
         if self.unavailable:

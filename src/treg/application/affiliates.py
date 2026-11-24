@@ -96,6 +96,16 @@ async def brought_before(db: AsyncSession, user: User) -> bool:
     return row.first() is not None
 
 
+async def existing_customer(db: AsyncSession, user: User) -> bool:
+    """treg already has this person: they own or belong to a team, demo teams aside. A partner earns
+    only on new customers, so a team such a person makes through a partner link is not a lead."""
+    if user.id is None:
+        return False
+    row = await db.execute(select(Membership.id).join(Org, Org.id == Membership.org_id).where(
+        Membership.user_id == user.id, Org.demo.is_(False), Org.public_demo.is_(False)).limit(1))
+    return row.first() is not None
+
+
 async def stripe_metadata(db: AsyncSession, org_id: int | None) -> dict[str, str]:
     """What tells Dub's Stripe app whose top-ups these are. Empty for a team no verified affiliate
     brought. Dub credits only a payment that carries the tag when it is made, so a lead still waiting
