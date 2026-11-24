@@ -2108,6 +2108,37 @@ async def test_a_pass_folds_a_few_batches_of_a_team_and_comes_back_for_the_rest(
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 50)
 
 
+async def test_one_process_at_a_time_runs_the_pass(store, monkeypatch):
+    """Every process runs the loop, and each pass reads every team with queued charges: run by
+    every process every second, that reading cost the database more than the folding. A process
+    whose store says another has the pass pauses; one whose store cannot answer still runs."""
+    passes: list[bool] = []
+
+    async def counted(session_maker, *, sweep):
+        passes.append(sweep)
+        return 0
+
+    async def run_for(seconds):
+        task = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.005))
+        await asyncio.sleep(seconds)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    monkeypatch.setattr(allowance_sweep, "run_once", counted)
+    store.leases[allowance_sweep._PASS_KEY] = "another process"
+    await run_for(0.05)
+    assert passes == []
+    del store.leases[allowance_sweep._PASS_KEY]
+    await run_for(0.05)
+    assert passes and passes[0] is True, "the first pass it runs is a sweep too"
+    assert allowance_sweep._PASS_KEY not in store.leases, "a pass gives the lease back"
+    passes.clear()
+    store.lease_answer = "unavailable"
+    await run_for(0.05)
+    assert passes
+
+
 async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
         org_id, store, monkeypatch):
     """Teams are listed a page at a time. A pass that only ever read the first page would never

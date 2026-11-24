@@ -4,8 +4,8 @@ of a team that has stopped spending from it.
 **Folding.** A finished call's charge waits in a queue (`CallCharge`). This loop is what applies
 the queue: a team at a time, a batch per transaction, on the background pool. Request processes
 do not fold, so the connections folding uses do not grow with traffic or with the number of
-busy teams: one per process running this loop. A team another process is working on is skipped,
-not waited for.
+busy teams. One process at a time runs the pass (`_pass_lease`); a team another process is
+working on is skipped, not waited for.
 
 **Closing.** Each refill writes on the hold the instant until which calls may take from the team's counter, and
 publishes that same instant to the counter. A call lives at most `hold_ttl_s()`. So a hold whose
@@ -47,6 +47,8 @@ _FOLD_BATCHES_PER_PASS = 10
 _TEAMS_PER_PAGE = 50
 _ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
+_PASS_KEY = "treg:money-allowance-pass:v1"
+_PASS_LEASE_MS = 30_000
 
 
 def _row_locks() -> bool:
@@ -67,6 +69,23 @@ async def _team_lease(org_id: int):
     finally:
         if acquired == "acquired":
             await store.release_lease(key, token)
+
+
+@asynccontextmanager
+async def _pass_lease():
+    """Yield whether this process runs the pass: one process at a time does, the others pause.
+
+    Every process runs the loop, but a pass reads every team with queued charges, so many
+    processes each reading them every second cost the database more than the folding itself.
+    When the store cannot answer every process runs its pass, as without the lease: the team
+    leases and row locks keep two writers of one team apart either way."""
+    store, token = kv.store(), uuid.uuid4().hex
+    acquired = await store.acquire_lease(_PASS_KEY, token, _PASS_LEASE_MS)
+    try:
+        yield acquired != "busy"
+    finally:
+        if acquired == "acquired":
+            await store.release_lease(_PASS_KEY, token)
 
 
 def idle_after_s() -> int:
@@ -180,16 +199,19 @@ async def run_once(session_maker, *, sweep: bool) -> int:
 
 async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                  sweep_every_s: float = _SWEEP_EVERY_S) -> None:
-    """Fold and sweep forever on the background pool. A pass that folded something is followed
-    by the next at once; an idle one by a pause. A bad pass never kills the loop."""
+    """Fold and sweep forever on the background pool, one process at a time (`_pass_lease`). A
+    pass that folded something is followed by the next at once; an idle one, or one another
+    process has, by a pause. A bad pass never kills the loop."""
     next_sweep = 0.0
     while True:
         folded = 0
-        sweep = time.monotonic() >= next_sweep
-        if sweep:
-            next_sweep = time.monotonic() + sweep_every_s
         try:
-            folded = await run_once(background_session_maker, sweep=sweep)
+            async with _pass_lease() as mine:
+                if mine:
+                    sweep = time.monotonic() >= next_sweep
+                    if sweep:
+                        next_sweep = time.monotonic() + sweep_every_s
+                    folded = await run_once(background_session_maker, sweep=sweep)
         except asyncio.CancelledError:
             raise
         except Exception:
