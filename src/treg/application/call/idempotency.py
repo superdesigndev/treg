@@ -20,7 +20,7 @@ from ... import archive
 from ...config import get_settings
 from ...infra.db import is_db_busy, session_maker
 from ...domain.identity.access import Caller
-from ...models import AsyncTaskRecord, CallRecord, Hold, IdempotentCall, LedgerEntry
+from ...models import AsyncTaskRecord, CallCharge, CallRecord, Hold, IdempotentCall, LedgerEntry
 from .types import IdempotencyFailed, IdempotentReplay
 
 if TYPE_CHECKING:
@@ -260,12 +260,20 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     settling or releasing it, so the tasks the owner started in its lifetime are found the same
     way and their ledger rows read by exact call id, with no time bound: a still-pending task is
     money in flight, and a late settle is a charge.
+
+    A call on the team's allowance has no hold of its own: its charge is a `CallCharge` row until a
+    fold turns it into its settle entry, deleting the row in the same transaction. The row is read
+    before the ledger, so a fold committing in between leaves the settle to be found; a call with
+    both is counted once, by its settle.
     """
     def mine(col):
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
     open_hold = (await db.execute(select(Hold.id).where(
         Hold.org_id == org_id, mine(Hold.id)).limit(1))).first() is not None
-    rows = list((await db.execute(select(LedgerEntry.kind, LedgerEntry.amount_micro).where(
+    queued = (await db.execute(select(CallCharge.amount_micro).where(
+        CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).scalar_one_or_none()
+    rows = list((await db.execute(select(
+        LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.org_id == org_id, LedgerEntry.created_at >= since, LedgerEntry.created_at <= until,
         mine(LedgerEntry.call_id)))).all())
     tasks = (await db.execute(select(AsyncTaskRecord.call_id, AsyncTaskRecord.status).where(
@@ -274,11 +282,15 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     if any(status == "pending" for _, status in tasks):
         open_hold = True  # a task's hold is its worker's until it resolves
     if tasks:
-        rows += (await db.execute(select(LedgerEntry.kind, LedgerEntry.amount_micro).where(
+        rows += (await db.execute(select(
+            LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
             LedgerEntry.call_id.in_([task_id for task_id, _ in tasks]),
             LedgerEntry.created_at > until))).all()
     # settle entries are negative (money leaving)
-    return {"in_flight": open_hold, "charged": -sum(amount for kind, amount in rows if kind == "settle")}
+    charged = -sum(amount for kind, amount, _ in rows if kind == "settle")
+    if queued is not None and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
+        charged += int(queued)
+    return {"in_flight": open_hold, "charged": charged}
 
 
 async def _resolve_stale_claim(row: IdempotentCall, caller: Caller, db: AsyncSession):

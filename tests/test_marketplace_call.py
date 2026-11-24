@@ -2432,6 +2432,34 @@ async def test_an_abandoned_CHARGED_claim_answers_410_and_never_charges_twice(
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == balance
 
 
+@pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
+async def test_an_abandoned_allowance_call_counts_its_queued_charge_once(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """An owner on the team's allowance has no hold: its charge waits in the queue until a fold
+    writes its settle. Queued, it is still a charge; queued and settled (the row read before the
+    fold deleted it), it is counted once."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import CallCharge, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "allowance-label", status="pending")
+    await _set_claim("allowance-label", call_ref="allowance-owner")
+    async with session_maker() as db:
+        db.add(CallCharge(call_id="allowance-owner", org_id=org_id, endpoint_id=EP, amount_micro=700))
+        if trail == "queued_and_folded":
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                               call_id="allowance-owner", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "allowance-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
 async def test_an_expired_lease_with_money_in_flight_still_answers_409(
         clients: AsyncClient, platform_on):
     """An open hold under the owner's call id (or a child's) means the call or its async worker is
