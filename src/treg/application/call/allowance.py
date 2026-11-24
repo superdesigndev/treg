@@ -73,11 +73,22 @@ def money_lock(org_id: int) -> asyncio.Lock:
 
 
 _TEAM_STATE_PRUNE_AT = 1024
+_next_prune_at = 0
+
+
+def _team_state_size() -> int:
+    return max(len(_money_locks), len(_refills), len(_refused_until))
 
 
 def _prune_if_full() -> None:
-    if max(len(_money_locks), len(_refills), len(_refused_until)) < _TEAM_STATE_PRUNE_AT:
+    global _next_prune_at
+    if _team_state_size() < max(_TEAM_STATE_PRUNE_AT, _next_prune_at):
         return
+    _prune()
+    _next_prune_at = 2 * _team_state_size()
+
+
+def _prune() -> None:
     now = time.monotonic()
     for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
         del _refused_until[org_id]

@@ -200,6 +200,7 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(runtime, "_in_flight", [0])
     monkeypatch.setattr(runtime, "_taking", {})
+    monkeypatch.setattr(runtime, "_next_prune_at", 0)
     # The allowance is PostgreSQL only; its logic is still tested on whatever the suite runs on.
     monkeypatch.setattr(runtime, "_database_supported", lambda: True)
     monkeypatch.setattr(runtime, "_freezes_due", {})
@@ -1010,6 +1011,23 @@ async def test_a_team_taking_keeps_its_refill_count_through_a_prune(
     runtime._prune_if_full()
     assert (org_id in runtime._refills) is taking
     assert org_id + 1 not in runtime._refills
+
+
+async def test_busy_teams_past_the_bound_do_not_make_every_new_team_scan(
+        org_id, store, monkeypatch):
+    """A prune that keeps most teams waits until the maps have doubled before the next one."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
+    prunes = []
+    prune = runtime._prune
+    monkeypatch.setattr(runtime, "_prune", lambda: (prunes.append(1), prune()))
+    held = []
+    for team in range(9):
+        held.append(lock := runtime.money_lock(org_id + team))
+        await lock.acquire()
+    assert len(prunes) == 3
+    for lock in held:
+        lock.release()
 
 
 async def test_a_lock_in_use_or_waited_for_is_never_dropped(org_id, store, monkeypatch):

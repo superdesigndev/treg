@@ -345,7 +345,8 @@ after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_
 teams, the idle entries go (an expired cooldown; a lock nobody holds or waits for; the count of a
 team with neither and no take in progress, since a caller compares the count before and after its
 take), so with every team on they follow the busy teams, not every team the process
-has met.
+has met. The next prune waits until the maps hold twice what the last one kept, so busy teams
+past the bound do not make every new team scan them.
 
 `application/call/allowance.py` is the whole runtime:
 
