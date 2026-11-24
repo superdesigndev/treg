@@ -418,6 +418,9 @@ class MarketplaceCall:
     # That reserve marked the call in flight in the shared store (a keyed call): cleared once its
     # charge is written.
     allowance_marked: bool = False
+    # Its allowance charge was handed to the charge writer, which writes it whatever then happens
+    # to the request: a cancel from here on keeps the call's idempotency claim.
+    allowance_charged: bool = False
     # An overflow child reserve started for this parent: its `{call_ref}:overflow` hold may exist.
     overflow_hold_possible: bool = False
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears

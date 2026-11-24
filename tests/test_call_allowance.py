@@ -1020,6 +1020,54 @@ async def test_a_cancelled_keyed_call_clears_its_mark(org_id, store):
     assert store.marks == set() and store.counters[org_id]["avail"] == CHUNK
 
 
+async def _pending_claim(caller: Caller, key: str, call_ref: str) -> tuple[int, str, str]:
+    from datetime import datetime, timedelta, timezone
+
+    from treg.models import IdempotentCall
+    async with session_maker() as db:
+        db.add(IdempotentCall(
+            org_id=caller.org.id, membership_id=caller.membership.id, key=key,
+            request_fingerprint="", endpoint_id="test.allowance", status="pending", call_ref=call_ref,
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)))
+        await db.commit()
+    return (caller.membership.id, key, call_ref)
+
+
+async def _claim_kept(key: str) -> bool:
+    from treg.models import IdempotentCall
+    async with session_maker() as db:
+        return (await db.execute(select(IdempotentCall).where(
+            IdempotentCall.key == key))).first() is not None
+
+
+@pytest.mark.parametrize("cancelled", ["before_settle", "while_its_charge_is_written"])
+async def test_a_cancelled_keyed_call_keeps_its_claim_once_its_charge_is_queued(
+        org_id, store, monkeypatch, cancelled):
+    """A charge handed to the writer stands whatever happens to the request, so the key must not
+    run again: the claim stays for a retry to resolve from the charge. A call cancelled before
+    anything was charged gives its label back."""
+    caller, mk = await _caller(org_id), _call(org_id)
+    claim = await _pending_claim(caller, "cancel-label", "keyed-1")
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    if cancelled == "while_its_charge_is_written":
+        monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 200)
+        settle = asyncio.create_task(call_settle._platform_settle(mk, 200, observed_override=450))
+        while not runtime._charges._pending:
+            await asyncio.sleep(0)
+        settle.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await settle
+    await call_settle._finish_cancelled_call(claim, mk, "keyed-1")
+    if cancelled == "before_settle":
+        assert not await _claim_kept("cancel-label")
+        assert store.counters[org_id]["avail"] == CHUNK
+        return
+    assert await _claim_kept("cancel-label")
+    await runtime._charges._task
+    assert await _queued(org_id) == 1 and store.marks == set()
+
+
 async def test_an_unmarked_call_is_not_marked(org_id, store):
     caller, mk = await _caller(org_id), _call(org_id)
     await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)

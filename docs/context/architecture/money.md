@@ -1458,8 +1458,10 @@ still pay the provider twice.
   at once.
 - Replays return `X-Treg-Idempotent-Replay: true`, `X-Treg-Cost-Micro: 0` and the first figure in
   `X-Treg-Original-Cost-Micro`; MCP returns `replayed: true`.
-- Refusal and cancellation cleanup return an acquired label; expired entries are swept lazily per
-  caller at claim time, skipping locked rows.
+- Refusal and cancellation cleanup return an acquired label, except a cancelled call whose
+  allowance charge was already handed to the charge writer (`allowance_charged`): that charge is
+  written whatever happens to the request, so the label stays pending for the stale check.
+  Expired entries are swept lazily per caller at claim time, skipping locked rows.
 - A stale claim's money (`_money_of`) is read from the owner's holds, its ledger entries and its
   queued `CallCharge` row, read before the ledger: a call on the allowance has no hold of its own,
   and its charge waits in the queue until a fold writes its settle. A queued charge with no settle

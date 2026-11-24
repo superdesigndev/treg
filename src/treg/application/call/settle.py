@@ -1168,6 +1168,7 @@ async def _platform_settle(
         # and the unused part goes back to the counter; a release writes nothing at all.
         epoch, mk.allowance_epoch = mk.allowance_epoch, None
         marked, mk.allowance_marked = mk.allowance_marked, False
+        mk.allowance_charged = billable
         charged = await allowance_runtime.finish(
             mk.payer_org_id, call_id, epoch, mk.reserved_micro or 0, endpoint_id=mk.endpoint_id,
             billable=billable, actual_micro=actual, archive_use=archive_use if billable else None,
@@ -1405,6 +1406,7 @@ async def _finish_cancelled_call(
             # charge it, when the purchase was already sent). An overflow child keeps its hold.
             epoch, mk.allowance_epoch = mk.allowance_epoch, None
             marked, mk.allowance_marked = mk.allowance_marked, False
+            mk.allowance_charged = charge_hold
             hold_ids = [hold_id for hold_id in hold_ids if hold_id != call_ref]
             await allowance_runtime.finish(
                 mk.payer_org_id, call_ref, epoch, mk.reserved_micro or 0,
@@ -1443,6 +1445,10 @@ async def _finish_cancelled_call(
             except (Exception, asyncio.CancelledError):
                 logging.getLogger("treg.ledger").error(
                     "cancellation release failed for call %s", call_ref, exc_info=True)
+        if mk is not None and mk.allowance_charged:
+            # The charge stands, so the key must not run again: the claim stays pending for a
+            # retry to resolve from the charge once it is written (`_resolve_stale_claim`).
+            return
         try:
             await _release_idempotent_claim(claim)
         except (Exception, asyncio.CancelledError):
