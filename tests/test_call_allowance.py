@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import time
 from datetime import datetime, timedelta
@@ -952,11 +953,15 @@ async def test_a_cancelled_eligible_call_returns_its_take(org_id, store):
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
-@pytest.mark.parametrize("why", [
-    "not_allowed_by_the_caller", "team_not_listed", "tagged", "child_call", "billed_oauth",
-    "routed_child", "store_unavailable",
+@pytest.mark.parametrize(("why", "reason"), [
+    ("not_allowed_by_the_caller", "idempotency_key"), ("team_not_listed", None),
+    ("tagged", "tagged"), ("child_call", "child_call"), ("billed_oauth", "billed_oauth"),
+    ("routed_child", "deferred_settle"), ("store_unavailable", "take_refused"),
 ])
-async def test_every_other_call_keeps_its_own_hold(org_id, store, monkeypatch, why):
+async def test_every_other_call_keeps_its_own_hold_and_a_listed_team_logs_why(
+        org_id, store, monkeypatch, caplog, why, reason):
+    monkeypatch.setattr(call_reserve, "_skips", {})
+    caplog.set_level(logging.INFO, logger="treg.money_allowance")
     caller, mk, meta, call_ref, allow = await _caller(org_id), _call(org_id), CallMeta(tags={}), "c-1", True
     if why == "not_allowed_by_the_caller":
         allow = False
@@ -976,6 +981,27 @@ async def test_every_other_call_keeps_its_own_hold(org_id, store, monkeypatch, w
     assert mk.allowance_epoch is None and mk.call_id == call_ref
     assert await _per_call_holds(org_id) == [call_ref]
     assert store.counters == {}
+    skipped = [r.getMessage() for r in caplog.records if r.getMessage().startswith("allowance_skipped")]
+    assert skipped == ([] if reason is None else
+                       [f"allowance_skipped org_id={org_id} reason={reason} calls=1"])
+
+
+def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(monkeypatch, caplog):
+    org_id = 7
+    monkeypatch.setattr(call_reserve, "_skips", {})
+    caplog.set_level(logging.INFO, logger="treg.money_allowance")
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    for _ in range(3):
+        call_reserve._note_allowance_skip(org_id, "idempotency_key")
+    call_reserve._note_allowance_skip(org_id, "tagged")
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    call_reserve._note_allowance_skip(org_id, "idempotency_key")
+    assert [r.getMessage() for r in caplog.records] == [
+        f"allowance_skipped org_id={org_id} reason=idempotency_key calls=1",
+        f"allowance_skipped org_id={org_id} reason=tagged calls=1",
+        f"allowance_skipped org_id={org_id} reason=idempotency_key calls=3",
+    ]
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):
