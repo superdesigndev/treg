@@ -1,0 +1,111 @@
+{
+  "data": [
+    {
+      "id": "lst_9a10a71cc3f2e185",
+      "source": "websiteclosers",
+      "url": "https://www.websiteclosers.com/businesses/sba-pre-qualified-ecommerce-brand-japanese-knives-16-year-brand-40-repeat-customers-545k-in-inventory-retail-value/119829/",
+      "title": "SBA Pre-Qualified eCommerce Brand | Japanese Knives | 16-Year Brand | 40% Repeat Customers | $545K in Inventory (Retail Value)",
+      "industry": "ecommerce",
+      "businessType": null,
+      "sourceIndustry": null,
+      "broker": "Website Closers",
+      "location": null,
+      "country": null,
+      "state": null,
+      "city": null,
+      "currency": "USD",
+      "askingPrice": 325000,
+      "revenue": null,
+      "cashFlow": 115275,
+      "firstSeen": "2026-11-24T06:36:25.724Z",
+      "originalAskingPrice": 325000,
+      "lastPriceCutAt": null,
+      "priceCutCount": 0,
+      "duplicateOf": null,
+      "legitimacy": 57,
+      "legitimacyReasons": [
+        {
+          "code": "source_broker",
+          "text": "listed on a brokerage firm's own site",
+          "points": 30
+        },
+        {
+          "code": "figures",
+          "text": "asking price and cash flow given",
+          "points": 11
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "daysOnMarket": 0,
+      "priceCutPercent": null,
+      "qualityFlags": [],
+      "sources": [
+        {
+          "source": "websiteclosers",
+          "url": "https://www.websiteclosers.com/businesses/sba-pre-qualified-ecommerce-brand-japanese-knives-16-year-brand-40-repeat-customers-545k-in-inventory-retail-value/119829/",
+          "askingPrice": 325000,
+          "revenue": null,
+          "cashFlow": 115275,
+          "firstSeen": "2026-11-24T06:36:25.724Z",
+          "lastSeen": "2026-11-24T06:36:25.724Z",
+          "priceCutCount": 0,
+          "removedAt": null
+        }
+      ]
+    },
+    {
+      "id": "lst_88eaeee42b1240f8",
+      "source": "accountingpracticesales",
+      "url": "https://accountingpracticesales.com/united-states/southeast/georgia/21258-NW+Georgia+CPA+Practice/",
+      "title": "NW Georgia CPA Practice",
+      "industry": "business_services",
+      "businessType": "accounting_tax",
+      "sourceIndustry": "Accounting and Tax Practices",
+      "broker": "Accounting Practice Sales",
+      "location": "Georgia, United States",
+      "country": "US",
+      "state": "GA",
+      "city": null,
+      "currency": "USD",
+      "askingPrice": 875000,
+      "revenue": 675000,
+      "cashFlow": null,
+      "firstSeen": "2026-11-24T06:35:07.078Z",
+      "originalAskingPrice": 875000,
+      "lastPriceCutAt": null,
+      "priceCutCount": 0,
+      "duplicateOf": null,
+      "legitimacy": 56,
+      "legitimacyReasons": [
+        {
+          "code": "source_broker",
+          "text": "listed on a brokerage firm's own site",
+          "points": 30
+        },
+        {
+          "code": "figures",
+          "text": "asking price and revenue given",
+          "points": 10
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "daysOnMarket": 0,
+      "priceCutPercent": null,
+      "qualityFlags": [],
+      "sources": [
+        {
+          "source": "accountingpracticesales",
+          "url": "https://accountingpracticesales.com/united-states/southeast/georgia/21258-NW+Georgia+CPA+Practice/",
+          "askingPrice": 875000,
+          "revenue": 675000,
+          "cashFlow": null,
+          "firstSeen": "2026-11-24T06:35:07.078Z",
+          "lastSeen": "2026-11-24T06:35:07.078Z",
+          "priceCutCount": 0,
+          "removedAt": null
+        }
+      ]
+    }
+  ],
+  "credits_charged": 2
+}

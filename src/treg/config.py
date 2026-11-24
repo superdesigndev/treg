@@ -610,6 +610,7 @@ class Settings(BaseSettings):
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key
     platform_key_fundable: str = ""  # Bearer API key
+    platform_key_smblistings: str = ""  # Bearer API key on a marketplace partner account ($0.02 credits)
     platform_key_corpoapi: str = ""      # X-API-Key; prepaid USD balance, $0.05 per paid call, 100 free on signup
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)

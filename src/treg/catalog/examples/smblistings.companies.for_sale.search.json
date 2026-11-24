@@ -1,0 +1,62 @@
+{
+  "data": [
+    {
+      "id": "lst_001b13fc4542e658",
+      "source": "bizbuysell",
+      "url": "https://www.bizbuysell.com/business-opportunity/turnkey-houston-laundromat-175k-in-equipment-and-growth-potential/2436190/",
+      "title": "Turnkey Houston Laundromat, $175K in Equipment & Growth Potential",
+      "industry": "home_services",
+      "businessType": "laundromat",
+      "sourceIndustry": "Commercial Laundry",
+      "broker": null,
+      "location": "Harris County, Texas, United States",
+      "country": "US",
+      "state": "TX",
+      "city": "Harris County",
+      "currency": "USD",
+      "askingPrice": 175000,
+      "revenue": null,
+      "cashFlow": 1719,
+      "firstSeen": "2026-11-24T05:20:15.438Z",
+      "originalAskingPrice": 175000,
+      "lastPriceCutAt": null,
+      "priceCutCount": 0,
+      "duplicateOf": null,
+      "legitimacy": 32,
+      "legitimacyReasons": [
+        {
+          "code": "source_marketplace",
+          "text": "listed on a paid or vetted marketplace",
+          "points": 25
+        },
+        {
+          "code": "figures",
+          "text": "asking price and cash flow given",
+          "points": 11
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "daysOnMarket": 0,
+      "priceCutPercent": null,
+      "qualityFlags": [
+        "multiple_too_high"
+      ],
+      "sources": [
+        {
+          "source": "bizbuysell",
+          "url": "https://www.bizbuysell.com/business-opportunity/turnkey-houston-laundromat-175k-in-equipment-and-growth-potential/2436190/",
+          "askingPrice": 175000,
+          "revenue": null,
+          "cashFlow": 1719,
+          "firstSeen": "2026-11-24T05:20:15.438Z",
+          "lastSeen": "2026-11-24T05:20:15.438Z",
+          "priceCutCount": 0,
+          "removedAt": null
+        }
+      ]
+    }
+  ],
+  "limit": 1,
+  "offset": 0,
+  "credits_charged": 1
+}
