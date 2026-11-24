@@ -15,7 +15,7 @@ from treg.models import Org
 from conftest import verified_signup
 
 LOGIN_ID = "a" * 24
-COOKIE = "gclid%7CCLICK_LINK%7Cstart"  # as adtrack.js writes it: encodeURIComponent(kind|id|landing)
+COOKIE = "gclid%7CCLICK_LINK%7Cstart"  # as click-id.js writes it: encodeURIComponent(kind|id|landing)
 
 
 async def test_short_link_carries_the_click_into_a_cookieless_login(clients: AsyncClient, ads_enabled):
@@ -39,7 +39,7 @@ async def test_short_link_carries_the_click_into_a_cookieless_login(clients: Asy
     max_age = int(set_cookie.split("Max-Age=")[1].split(";")[0])
     assert 7776000 - 60 <= max_age <= 7776000  # 90 days from the mint, not renewed
     assert "SameSite=lax" in set_cookie and "Path=/" in set_cookie
-    assert "HttpOnly" not in set_cookie  # adtrack.js must still be able to read and carry it
+    assert "HttpOnly" not in set_cookie  # click-id.js must still be able to read and carry it
 
     # The restored cookie reaches the signup door exactly like a first-party capture would.
     r = await verified_signup(clients, json={"email": "link-user@example.com"})

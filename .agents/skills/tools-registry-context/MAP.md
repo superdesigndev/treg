@@ -640,12 +640,12 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/shell.py` | interface/shell.md |
 | `src/treg/skills.py` | interface/env-import.md |
 | `src/treg/timeutil.py` | architecture/data-model.md, interface/api.md |
-| `src/treg/web/adtrack.js` | architecture/ads-conversions.md |
 | `src/treg/web/aeo.html` | interface/seo.md |
 | `src/treg/web/astra.html` | interface/seo.md |
 | `src/treg/web/captcha.js` | architecture/multi-tenancy.md |
 | `src/treg/web/catalog.css` | interface/seo.md |
 | `src/treg/web/claude-connector.html` | architecture/mcp-oauth.md |
+| `src/treg/web/click-id.js` | architecture/ads-conversions.md |
 | `src/treg/web/connect-demo.html` | architecture/mcp-oauth.md |
 | `src/treg/web/doomscroll.html` | interface/seo.md |
 | `src/treg/web/enrich-arena.html` | interface/enrich-arena.md |
@@ -916,7 +916,7 @@ Regenerate via `scripts/build-map.py`.
 
 | Fragment | Sources |
 |---|---|
-| `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `adtrack.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
+| `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `click-id.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
 | `architecture/affiliates.md` | `affiliates.py`, `affiliate_bonus.py`, `dub.py`, `signup_cookies.py`, `0118_affiliate_lead.py`, `0125_affiliate_bonus.py` |
 | `architecture/agent-payments.md` | `agent_payments.py`, `__init__.py`, `tempo.py`, `x402.py`, `evm.py`, `stripe.py`, `worker.py`, `call.py`, `catalog.py`, `bootstrap.py`, `config.py`, `models.py`, `teams.py`, `access.py`, `api_keys.py`, `resolve.py`, `0104_agent_payments.py`, `0106_agentpayer_per_network.py`, `ratestore.py`, `test_agent_payments.py`, `test_agentpayer_network_migration.py` |
 | `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0120_archivekeyorg_natural_key_index.py`, `0121_archivekeyorg_natural_primary_key.py`, `test_archivekeyorg_natural_key_migration.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py`, `archive_retention.py`, `0122_archive_retention_cursor.py`, `0123_idempotentcall_archive_key_hash.py`, `test_archive_retention.py` |

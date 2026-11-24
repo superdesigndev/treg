@@ -214,7 +214,7 @@ async def meta() -> dict:
             "google": bool(s.google_client_id), "app_version": _app_version(),
             "treg_version": _treg_version(),
             # public ingestion key — only present when this deployment opts in (self-hosters send nothing)
-            "posthog_key": s.posthog_key, "posthog_host": s.posthog_host.rstrip("/") if s.posthog_key else "",
+            "posthog_key": s.posthog_key, "posthog_host": s.posthog_page_host if s.posthog_key else "",
             # public workspace id — only present when this deployment opts in (self-hosters load no widget)
             "intercom_app_id": s.intercom_app_id,
             # Whether the hub routes exist here at all (TREG_HUB_ENABLED), so the dashboard asks

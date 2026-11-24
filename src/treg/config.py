@@ -1199,6 +1199,15 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # Where BROWSERS send analytics, when it differs from `posthog_host`: a first-party proxy such as
+    # PostHog's managed reverse proxy. Blockers drop requests to PostHog's own domains, so a page that
+    # talks to them directly loses its blocker-using visitors. Server-side capture and the install
+    # script keep `posthog_host`; nothing blocks them. Empty = browsers use `posthog_host`.
+    posthog_browser_host: str = ""
+
+    @property
+    def posthog_page_host(self) -> str:
+        return (self.posthog_browser_host or self.posthog_host).rstrip("/")
     # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
