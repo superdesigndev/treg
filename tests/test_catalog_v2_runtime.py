@@ -352,6 +352,8 @@ def test_usage_meters_settle_from_the_frozen_basis_and_may_exceed_the_hold():
     assert call(ep, answer={"usage": {"in": 10, "details": [{"kind": "TXT", "n": 5}, {"kind": "IMG", "n": 3}]}})[1] \
         .actual_micro == 40000
     assert call(ep, answer={"other": 1})[1].actual_micro == 10000
+    assert call(ep, answer={"usage": {"in": 0.0004}})[1].actual_micro == 1   # 0.4 micro-USD rounds up
+    assert call(ep, answer={"usage": {"in": 0}})[1].actual_micro == 0
 
 
 def test_a_declared_worst_case_is_held_while_a_missing_meter_settles_at_the_estimate():
