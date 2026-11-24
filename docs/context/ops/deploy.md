@@ -397,8 +397,9 @@ an id restores the hold path for that org's new calls; no migration is needed.
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
 `TREG_MONEY_ALLOWANCE_ALL_ORGS=true` puts every org on it instead, and
 `TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` (default `[]`) keeps the orgs it lists off either way, so
-one team is taken off without turning the rest back. Skip reasons are logged only for the orgs in
-`TREG_MONEY_ALLOWANCE_ORG_IDS`. The allowance needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
+one team is taken off without turning the rest back. Every listed org's calls that keep their own
+hold are counted by reason in one `allowance_skips` line per reason a minute per process; the orgs
+in `TREG_MONEY_ALLOWANCE_ORG_IDS` also get `allowance_skipped` lines of their own. The allowance needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
 `TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert.
 `TREG_MONEY_ALLOWANCE_REFILL_WINDOW_S` (default `0`, off) sizes a refill to what the team took
@@ -412,7 +413,7 @@ than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it
 refill to the chunk again, with nothing else to undo, and processes of different settings can
 run side by side. With the switch off, removing an id
 returns that org's new calls to the hold path at once; no migration is needed. With the switch
-on, removing an id only stops its skip logs: the org stays on until it is excluded. The allowance's
+on, removing an id only stops its own skip lines: the org stays on, and counted, until it is excluded. The allowance's
 background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
 the `background` pool, which is one connection larger per process for it; request processes do

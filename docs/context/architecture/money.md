@@ -331,14 +331,30 @@ or routed parent that closes it later, the purchased-credit gate. A call with an
 is eligible too: its claim's stale check, which asks whether money moved, reads the call's
 in-flight mark and queued charge where it would read a hold ("Idempotency and retries").
 
-A team named in `money_allowance_org_ids` whose call keeps its own hold logs why (with every
-team on, the others do not: a line per team and reason a minute is noise nobody asked to watch), as one JSON line on its own logger
-(`treg.allowance_skips`): `allowance_skipped {"org_id":..,"reason":..,"calls":..}`, with the reason `_allowance_skip` named (`child_call`, `tagged`, `async`, `in_flight_unmarked`, ...)
-or `take_refused` when an eligible call's take returned it to the exact path. The first skip of a
-team and reason is logged at once, then one line a minute per process with the count since the
-last line, so a listed team whose calls never reach the allowance says which rule kept them out.
-`calls` counts calls sent to the exact path, before its reserve runs: a call that path then
-refuses (short balance, a cap) is counted too, so it is not the number of holds written.
+Every listed team's call that keeps its own hold is counted by why, on its own logger
+(`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `async`,
+`member_spend_cap`, ...), with a child call named by its own suffix (`child_call:routed` for a
+routed child `:rN`, `child_call:overflow`, `child_call:hub_step` for `:sN`, `child_call:other` for
+polls and verifications), `in_flight_unmarked`, or `take_refused` when an eligible call's take
+returned it to the exact path.
+
+Each process writes one line per reason a minute for every team together:
+`allowance_skips {"reason":..,"calls":..,"held_micro":..,"orgs":..,"window_s":..,"top":[[org_id,calls,held_micro],..]}`,
+where `held_micro` is what those calls reserved (with margin), `orgs` how many teams sent them and
+`top` the five that held the most. The line is written by the first skip of that reason after the
+minute is up, so a reason that stops leaves its last minute unwritten until it recurs. A minute
+that would name more than `_SKIP_TEAMS_MAX` teams (the allowance's own `_TEAM_STATE_PRUNE_AT`) is
+written early and a new one starts, so the per-team counts a process holds stay bounded. A line
+per team and reason for every team would grow with the number of teams; the aggregate's totals
+and its `top` answer how much each reason costs and who drives it at a fixed volume.
+
+A team named in `money_allowance_org_ids` also gets lines of its own,
+`allowance_skipped {"org_id":..,"reason":..,"calls":..}`: the first skip of a team and reason at
+once, then one line a minute per process with the count since the last, so a team under watch
+says which rule kept each call out. With `money_allowance_all_orgs` on, naming a team there only
+adds these lines. `calls` counts calls sent to the exact path, before its reserve runs: a call
+that path then refuses (short balance, a cap) is counted too, so it is not the number of holds
+written.
 
 A process keeps a little state per team it has refilled for: its money lock, a refill count and,
 after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_STATE_PRUNE_AT`
