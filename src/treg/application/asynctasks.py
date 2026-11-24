@@ -312,10 +312,10 @@ async def _claim_due(call_id: str, now) -> int | None:
         return attempt
 
 
-def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]:
+def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]], bytes]:
     poll = row.descriptor.get("poll") or {}
     if row.poll_url:
-        return "GET", row.poll_url, []
+        return "GET", row.poll_url, [], b""
     endpoint_id = poll.get("endpoint")
     endpoint = catalog_store.load().by_id.get(endpoint_id)
     if not endpoint:
@@ -326,6 +326,9 @@ def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]
     url = provider.base_url.rstrip("/") + "/" + endpoint["path"].lstrip("/")
     query: list[tuple[str, str]] = []
     param = poll.get("param") or {}
+    if param.get("in") == "body":
+        _, document = asynctasks.poll_inputs(param, row.task_id)
+        return str(endpoint.get("method") or "POST"), url, query, json.dumps(document).encode()
     if param:
         # The declared location decides, never a coincidental placeholder; a path value is
         # percent-encoded so a provider-controlled task id cannot add URL syntax.
@@ -337,14 +340,14 @@ def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]
             url = url.replace(marker, quote(value, safe=""))
         else:
             query.append((name, value))
-    return str(endpoint.get("method") or "GET"), url, query
+    return str(endpoint.get("method") or "GET"), url, query, b""
 
 
 async def _poll(row: AsyncTaskRecord, client: httpx.AsyncClient) -> tuple[int, bytes]:
     provider = oauth_providers.get(row.provider)
     if provider is None:
         raise RuntimeError(f"provider {row.provider!r} is not registered")
-    method, url, query = _poll_target(row)
+    method, url, query, body = _poll_target(row)
     # The query travels as `query_items`: the relay composes the upstream URL from those (it
     # forwards a URL's own query string nowhere), so a query-parameter poll (MiniMax v1
     # `?task_id=`) appended to the URL would reach the provider empty.
@@ -355,12 +358,14 @@ async def _poll(row: AsyncTaskRecord, client: httpx.AsyncClient) -> tuple[int, b
                 base_url=provider.base_url, host=_host_of(provider.base_url),
                 bindings=oauth_providers.platform_bindings(provider, account))
 
-    async def empty():
-        if False:
-            yield b""
+    async def payload():
+        if body:
+            yield body
 
-    request = UpstreamRequest(method=method, raw_headers=(), query_items=tuple(query),
-                              body_stream=empty, has_body=False)
+    headers = ((b"content-type", b"application/json"),
+               (b"content-length", str(len(body)).encode())) if body else ()
+    request = UpstreamRequest(method=method, raw_headers=headers, query_items=tuple(query),
+                              body_stream=payload, has_body=bool(body))
     response = await relay(request, url, tool, [], client, force_identity=True)
     try:
         chunks, size = [], 0

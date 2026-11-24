@@ -371,8 +371,10 @@ cost:
   `queryParams.mode`) so query/body collisions cannot price the wrong field. Every `when` field must
   be required or have a `default`; narrow rows precede broad ones; the validator rejects shadowed or
   duplicate conditions, unknown keys, non-finite values, values outside the input's enum/min/max, and
-  `value` together with `table`.
-- `times` multiplies by one numeric field with a positive `max`. A value outside the declared range,
+  `value` together with `table`. An empty `when: {}` matches every request, so it can only be the
+  last row: a job priced by its size alone is one such row with `times`.
+- `times` multiplies by one numeric field with a positive `max`, or by the length of one list field
+  with a positive `maxItems` (one price per row a job asks for). A value outside the declared range,
   non-finite or non-positive (whatever minimum the field declares) matches no row and prices at the
   fallback, so a request can neither reserve zero nor bill past the ceiling. A sentinel such as
   `-1` is priced by a flat row that pins it, and that row is left out of the advertised rate span.
@@ -382,10 +384,13 @@ cost:
   `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
   most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
-  `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
-  positive USD rates; a term path may select a list item by key
+  `unit_rates_usd[provider][unit]` entry. `usage.terms` sums several meters times positive rates in
+  `usage.unit` (USD, or the provider's credit or meter, priced by fx.yaml like a single path); a term path may select a list item by key
   (`candidatesTokensDetails[modality=IMAGE].tokenCount`); an absent meter counts as zero (proto3
-  JSON omits zeros) and a response with none settles at the reserve. Settlement itself is in
+  JSON omits zeros) and a response with none settles at the reserve. A single `usage.path` may add
+  `missing: 0` for a provider that leaves a zero meter out of its finished answer (LeadsForge's
+  `consumedCredits`): absent then settles at zero, while an unreadable value still settles at the
+  reserve. Settlement itself is in
   [money](money.md).
 - Display: `_table_floor` computes the cheapest row into `cost.table_min`, served as `usd_min`
   beside `usd` (still the ceiling reserve and eligibility read), so every surface shows `$low-$high`.
@@ -611,9 +616,12 @@ Validation of the effective descriptor: dotted paths; non-empty `success`; `fail
 only when `billed_failure` supplies terminal failure words, or the descriptor has `max_age`; optional
 `progress` names expected non-terminal words; status lists are disjoint; positive `interval`; poll
 has exactly one of `endpoint` or `url_from`, result exactly one of `path` or `fetch`; unknown keys
-fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `param` is exactly
+fail. Static poll/fetch ids must be same-provider utility endpoints; poll `param` is exactly
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
-the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
+the target. A path or query id needs a GET target. A poll `param` with `in: body` needs a POST
+target and is sent as the whole JSON body `{name: id}` (Icypeas reads a search that way) by the
+worker, the routed bridge, Enrich Arena, `/tasks/` and the CLI awaiter, whose resume line is then
+`treg call <poll> --data '{...}'`; a fetch id is never a body. Dynamic URLs need a non-empty `url_hosts`.
 An optional `pending_response` matches one non-2xx HTTP status and one JSON error value. The CLI
 and worker treat only that exact envelope as progress; other non-2xx responses remain errors and
 never serve as settlement evidence.

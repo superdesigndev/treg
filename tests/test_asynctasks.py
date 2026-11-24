@@ -1181,6 +1181,35 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
     get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(("provider", "kind", "method", "path", "body"), [
+    ("leadsforge", "followers_job", "GET", "leadsforge.linkedin.company.followers.job.results?jobID=old-job", None),
+    ("leadsforge", "enrichment_job", "GET", "leadsforge.people.enrich.job.status?jobID=old-job", None),
+    ("companyenrich", "job", "GET", "companyenrich.companies.enrich.bulk.status?jobId=old-job", None),
+    ("icypeas", "search", "POST", "icypeas.search.results.read", {"id": "old-job"}),
+    ("icypeas", "bulk_file", "POST", "icypeas.bulk.results.read", {"mode": "bulk", "file": "old-job"}),
+])
+async def test_a_job_started_before_its_tool_went_async_stays_readable(
+    clients: AsyncClient, monkeypatch, provider, kind, method, path, body,
+):
+    """A job submitted before its start row gained `async:` has only its ownership record, no task
+    row. Its status and results stay readable by the team that paid for it."""
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    get_settings.cache_clear()
+
+    async def fake_relay(*args, **kwargs):
+        return _response(200, {"status": "completed"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    async with session_maker() as db:
+        db.add(AsyncResourceRecord(org_id=1, provider=provider, resource_kind=kind,
+                                   resource_id="old-job", source_call_id="before-the-deploy"))
+        await db.commit()
+    response = await clients.request(method, f"/call/{path}", json=body)
+    assert response.status_code == 200, response.text
+    get_settings.cache_clear()
+
+
 async def test_apify_actor_start_needs_own_key(
     clients: AsyncClient, monkeypatch, legacy_async_platform,
 ):
@@ -1697,6 +1726,45 @@ def test_times_multiplier_is_bounded_by_the_input_schema():
     assert price(float("inf")) == 6_000_000 and price("5") == 250_000  # strings coerce by type
 
 
+def test_usage_terms_in_credits_settle_at_the_frozen_credit_rate():
+    basis = {"amount": {"kind": "usage", "unit": "credit", "unit_micro": 19_000, "terms": [
+        {"path": "files[task=email-search].found", "rate": 1},
+        {"path": "files[task=email-verification].done", "rate": 0.1}]}, "reserve_micro": 95_000_000}
+    found = {"files": [{"task": "email-search", "found": 3, "done": 5}]}
+    tested = {"files": [{"task": "email-verification", "found": 2, "done": 10}]}
+    assert settlement.settle(basis, {"terminal": found}) == 57_000
+    assert settlement.settle(basis, {"terminal": tested}) == 19_000
+
+
+def test_a_usage_meter_declared_missing_zero_settles_an_absent_field_at_zero():
+    """LeadsForge leaves `consumedCredits` out of a finished job that used none: `missing: 0`
+    settles that at zero, while an unreadable value is still unobserved (the reserve)."""
+    basis = {"amount": {"kind": "usage", "path": "consumedCredits", "unit": "credit",
+                        "unit_micro": 24_500, "missing": 0}, "reserve_micro": 2_450_000}
+    assert settlement.settle(basis, {"terminal": {"status": "completed"}}) == 0
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": 3}}) == 73_500
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": "lots"}}) == 2_450_000
+    plain = {**basis, "amount": {k: v for k, v in basis["amount"].items() if k != "missing"}}
+    assert settlement.settle(plain, {"terminal": {"status": "completed"}}) == 2_450_000
+
+
+def test_a_catch_all_row_prices_by_a_number_or_a_list_length_inside_its_bounds():
+    """A job holds what its size says: `limit` x price, or one price per item of a list, never
+    beyond the declared bounds (outside them the fallback prices it)."""
+    schema = {"body": {"limit": {"type": "integer", "min": 1, "max": 300},
+                       "rows": {"type": "array", "minItems": 1, "maxItems": 3}}}
+    by_limit = {"table": [{"when": {}, "value": 1, "times": "body.limit"}], "fallback": {"value": 300}}
+    by_rows = {"table": [{"when": {}, "value": 1, "times": "body.rows"}], "fallback": {"value": 3}}
+
+    def price(cost, body):
+        return settlement.table_amount_micro(cost, {"body": body}, schema, 1_000)
+
+    assert price(by_limit, {"limit": 2}) == 2_000 and price(by_limit, {"limit": 300}) == 300_000
+    assert price(by_limit, {"limit": 301}) == price(by_limit, {}) == 300_000
+    assert price(by_rows, {"rows": ["a", "b"]}) == 2_000
+    assert price(by_rows, {"rows": []}) == price(by_rows, {"rows": ["a"] * 4}) == 3_000
+
+
 async def test_worker_ignores_terminal_looking_fields_on_error_responses(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):
@@ -1719,13 +1787,70 @@ def test_poll_target_follows_the_declared_location_and_encodes_path_values():
         task_id="a?view=admin/../x", reserved_micro=1, next_check_at=utcnow_naive(),
         descriptor={"poll": {"endpoint": "minimax.video-gen.v2.task.status",
                              "param": {"in": "pathParams", "name": "task_id"}}})
-    method, url, query = task_app._poll_target(row)
-    assert (method, query) == ("GET", [])
+    method, url, query, body = task_app._poll_target(row)
+    assert (method, query, body) == ("GET", [], b"")
     assert url == "https://api.minimax.io/v2/query/video_generation/a%3Fview%3Dadmin%2F..%2Fx"
     row.descriptor = {"poll": {"endpoint": "minimax.video-gen.task.status",
                                "param": {"in": "pathParams", "name": "task_id"}}}
     with pytest.raises(RuntimeError):
         task_app._poll_target(row)  # declared as a path parameter, but the target has no placeholder
+
+
+def test_a_body_poll_sends_the_task_id_as_its_json_object_and_says_so_in_its_resume_line():
+    assert asynctasks.poll_inputs({"in": "body", "name": "id"}, "f-1") == ((), {"id": "f-1"})
+    assert asynctasks.poll_inputs({"in": "queryParams", "name": "task_id"}, 7) == ((("task_id", "7"),), None)
+    assert asynctasks.poll_command("icypeas.search.results.read", {"in": "body", "name": "id"}, "x'; rm") == \
+        """treg call icypeas.search.results.read --data '{"id": "x'"'"'; rm"}'"""
+    assert asynctasks.poll_command("vendor.status", {"in": "pathParams", "name": "id"}, "t 1") == \
+        "treg call vendor.status -p 'id=t 1'"
+
+
+async def test_body_parameter_poll_posts_the_task_id_as_json(monkeypatch):
+    """Icypeas reads a search by POST /bulk-single-searchs/read {"id": ...}: the worker sends that
+    body to the poll endpoint's own method, never a query string the provider ignores."""
+    seen = {}
+
+    async def fake_relay(request, url, tool, *args, **kwargs):
+        seen.update(url=url, method=request.method, query=request.query_items,
+                    headers=dict(request.raw_headers), body=b"".join([c async for c in request.body_stream()]))
+
+        async def stream():
+            yield b'{"items": [{"status": "DEBITED"}]}'
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, (), stream(), close)
+
+    monkeypatch.setattr(task_app, "relay", fake_relay)
+    row = AsyncTaskRecord(
+        call_id="b-1", org_id=1, provider="icypeas", endpoint_id="icypeas.people.email.find",
+        task_id="mP6hHKABeMoKaEB1K1HF", reserved_micro=1, next_check_at=utcnow_naive(),
+        descriptor={"poll": {"endpoint": "icypeas.search.results.read",
+                             "param": {"in": "body", "name": "id"}}})
+    status, _ = await task_app._poll(row, None)
+    assert status == 200 and seen["method"] == "POST" and seen["query"] == ()
+    assert seen["url"].endswith("/bulk-single-searchs/read")
+    assert json.loads(seen["body"]) == {"id": "mP6hHKABeMoKaEB1K1HF"}
+    assert seen["headers"][b"content-type"] == b"application/json"
+
+
+async def test_a_task_look_posts_a_body_poll_and_resumes_with_data():
+    """A look at a task whose poll reads a body id (`treg call --await`'s twin on MCP) POSTs that
+    id as JSON and drops a caller content type that no longer describes the body."""
+    from treg.application import tasks as task_looks
+    from treg.models import CallTask
+    task = CallTask(call_id="c-1", org_id=1, endpoint_id="icypeas.people.email.find", task_id="s-9",
+                    descriptor={"poll": {"endpoint": "icypeas.search.results.read",
+                                         "param": {"in": "body", "name": "id"}}})
+    look = task_looks.poll_input(task, ((b"content-type", b"text/plain"),), None, "127.0.0.1")
+    assert look.method == "POST" and look.query_items == ()
+    assert json.loads(await look.body.read()) == {"id": "s-9"}
+    assert dict(look.raw_headers)[b"content-type"] == b"application/json"
+    assert task_looks._resume(task) == """treg call icypeas.search.results.read --data '{"id": "s-9"}'"""
+    task.descriptor = {"poll": {"endpoint": "vendor.status", "param": {"in": "pathParams", "name": "id"}}}
+    look = task_looks.poll_input(task, (), None, "127.0.0.1")
+    assert look.method == "GET" and look.query_items == (("id", "s-9"),)
 
 
 def test_fetch_command_and_shown_neutralise_provider_strings():

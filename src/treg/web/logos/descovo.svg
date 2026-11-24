@@ -1,1 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="descovo"><rect width="180" height="180" rx="36" fill="#4b3a8c"/><path d="M58 46v88h26c26 0 42-18 42-44s-16-44-42-44z" fill="none" stroke="#ffffff" stroke-width="16" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 150 150">
+  <rect width="150" height="150" fill="#141414"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M32,23 H66 A52,52 0 0 1 66,127 H32" stroke="#C3E043" stroke-width="13"/>
+    <path d="M32,40 H66 A35,35 0 0 1 66,110 H32" stroke="#7D8F32" stroke-width="11"/>
+    <path d="M32,56 H66 A19,19 0 0 1 66,94 H32" stroke="#4E5A25" stroke-width="9"/>
+  </g>
+</svg>
