@@ -1181,6 +1181,35 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
     get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(("provider", "kind", "method", "path", "body"), [
+    ("leadsforge", "followers_job", "GET", "leadsforge.linkedin.company.followers.job.results?jobID=old-job", None),
+    ("leadsforge", "enrichment_job", "GET", "leadsforge.people.enrich.job.status?jobID=old-job", None),
+    ("companyenrich", "job", "GET", "companyenrich.companies.enrich.bulk.status?jobId=old-job", None),
+    ("icypeas", "search", "POST", "icypeas.search.results.read", {"id": "old-job"}),
+    ("icypeas", "bulk_file", "POST", "icypeas.bulk.results.read", {"mode": "bulk", "file": "old-job"}),
+])
+async def test_a_job_started_before_its_tool_went_async_stays_readable(
+    clients: AsyncClient, monkeypatch, provider, kind, method, path, body,
+):
+    """A job submitted before its start row gained `async:` has only its ownership record, no task
+    row. Its status and results stay readable by the team that paid for it."""
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    get_settings.cache_clear()
+
+    async def fake_relay(*args, **kwargs):
+        return _response(200, {"status": "completed"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    async with session_maker() as db:
+        db.add(AsyncResourceRecord(org_id=1, provider=provider, resource_kind=kind,
+                                   resource_id="old-job", source_call_id="before-the-deploy"))
+        await db.commit()
+    response = await clients.request(method, f"/call/{path}", json=body)
+    assert response.status_code == 200, response.text
+    get_settings.cache_clear()
+
+
 async def test_apify_actor_start_needs_own_key(
     clients: AsyncClient, monkeypatch, legacy_async_platform,
 ):
@@ -1695,6 +1724,28 @@ def test_times_multiplier_is_bounded_by_the_input_schema():
     assert price(2) == 100_000 and price(30) == 1_500_000
     assert price(0) == price(-3) == price(31) == price(100) == price(float("nan")) == 6_000_000
     assert price(float("inf")) == 6_000_000 and price("5") == 250_000  # strings coerce by type
+
+
+def test_usage_terms_in_credits_settle_at_the_frozen_credit_rate():
+    basis = {"amount": {"kind": "usage", "unit": "credit", "unit_micro": 19_000, "terms": [
+        {"path": "files[task=email-search].found", "rate": 1},
+        {"path": "files[task=email-verification].done", "rate": 0.1}]}, "reserve_micro": 95_000_000}
+    found = {"files": [{"task": "email-search", "found": 3, "done": 5}]}
+    tested = {"files": [{"task": "email-verification", "found": 2, "done": 10}]}
+    assert settlement.settle(basis, {"terminal": found}) == 57_000
+    assert settlement.settle(basis, {"terminal": tested}) == 19_000
+
+
+def test_a_usage_meter_declared_missing_zero_settles_an_absent_field_at_zero():
+    """LeadsForge leaves `consumedCredits` out of a finished job that used none: `missing: 0`
+    settles that at zero, while an unreadable value is still unobserved (the reserve)."""
+    basis = {"amount": {"kind": "usage", "path": "consumedCredits", "unit": "credit",
+                        "unit_micro": 24_500, "missing": 0}, "reserve_micro": 2_450_000}
+    assert settlement.settle(basis, {"terminal": {"status": "completed"}}) == 0
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": 3}}) == 73_500
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": "lots"}}) == 2_450_000
+    plain = {**basis, "amount": {k: v for k, v in basis["amount"].items() if k != "missing"}}
+    assert settlement.settle(plain, {"terminal": {"status": "completed"}}) == 2_450_000
 
 
 def test_a_catch_all_row_prices_by_a_number_or_a_list_length_inside_its_bounds():
