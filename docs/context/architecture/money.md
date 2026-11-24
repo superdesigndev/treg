@@ -342,9 +342,9 @@ Each process writes one line per reason a minute for every team together:
 `allowance_skips {"reason":..,"calls":..,"held_micro":..,"orgs":..,"window_s":..,"top":[[org_id,calls,held_micro],..]}`,
 where `calls` counts every call sent to the exact path, `held_micro` only what the holds that path
 then committed reserved (with margin), `orgs` how many teams sent them and `top` the five that
-held the most (a team that held nothing is never in it). A call is counted once, when its reserve is decided: right after its hold
-commits, so a cancellation after that still counts the hold, or with nothing held when it is
-refused or cancelled first. Its call and its money land in the same minute, and a call that got
+held the most (a team that held nothing is never in it). A call is counted once, when its reserve is decided: with its hold when the
+session's commit event fired, even if a cancellation then reached `commit()` before it returned,
+or with nothing held when it is refused or cancelled first. Its call and its money land in the same minute, and a call that got
 the counter back and was tried again counts once, under its first reason. The line is written by the first skip of that reason after the
 minute is up, so a reason that stops leaves its last minute unwritten until it recurs. A minute
 that would name more than `_SKIP_TEAMS_MAX` teams is written early and a new one starts, so the
@@ -357,9 +357,8 @@ A team named in `money_allowance_org_ids` also gets lines of its own,
 `allowance_skipped {"org_id":..,"reason":..,"calls":..}`: the first skip of a team and reason at
 once, then one line a minute per process with the count since the last, so a team under watch
 says which rule kept each call out. With `money_allowance_all_orgs` on, naming a team there only
-adds these lines. `calls` counts calls sent to the exact path, before its reserve runs: a call
-that path then refuses (short balance, a cap) is counted too, so it is not the number of holds
-written.
+adds these lines. `calls` counts calls sent to the exact path: a call that path then refuses
+(short balance, a cap) is counted too, so it is not the number of holds written.
 
 A process keeps a little state per team it has refilled for: its money lock, a refill count and,
 after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_STATE_PRUNE_AT`

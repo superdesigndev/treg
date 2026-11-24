@@ -1385,6 +1385,31 @@ async def test_a_skipped_call_s_committed_hold_is_counted_when_the_call_is_cance
     assert (total["calls"], total["held_micro"]) == (1, mk.reserved_micro)
 
 
+async def test_a_skipped_call_s_hold_is_counted_when_the_cancel_lands_inside_the_commit(
+        org_id, store, monkeypatch, skip_lines):
+    """The database committed, then the cancellation reached `commit()` before it returned."""
+    maker = call_reserve.session_maker
+
+    def committing_then_cancelled():
+        session = maker()
+        commit = session.commit
+
+        async def cancelled_commit():
+            await commit()
+            raise asyncio.CancelledError
+
+        session.commit = cancelled_commit
+        return session
+
+    monkeypatch.setattr(call_reserve, "session_maker", committing_then_cancelled)
+    caller, mk = await _caller(org_id), _call(org_id)
+    with pytest.raises(asyncio.CancelledError):
+        await call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=False)
+    assert await _per_call_holds(org_id) == ["c-1"]
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"]) == (1, mk.reserved_micro)
+
+
 async def test_a_skipped_call_the_balance_refuses_counts_as_a_call_that_held_nothing(
         org_id, store, skip_lines):
     caller = await _caller(org_id)

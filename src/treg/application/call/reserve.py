@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func
+from sqlalchemy import event, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -553,10 +553,10 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         skip = "take_refused"
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
-    # A listed team's call is counted once its reserve is decided (`_note_allowance_skip`); a
-    # retry after a give-back (`skip_reason`) is counted under the first attempt's reason.
+    # A listed team's call is counted once, when its reserve is decided (`_note_allowance_skip`);
+    # a retry after a give-back (`skip_reason`) is counted under the first attempt's reason.
     note = skip if listed else skip_reason
-    noted = note is None
+    noted, committed = note is None, []
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.
     refused_org = None
@@ -594,11 +594,12 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                         with money_stage(db, "post_refusal_read"):
                             refused_org = await db.get(Org, caller.org_id)
                     raise
+                # A cancellation can reach `commit()` after the database committed;
+                # only the session's commit event says the hold exists.
+                event.listen(db.sync_session, "after_commit",
+                             lambda _session: committed.append(True), once=True)
                 with timing.phase("commit"):
                     await db.commit()
-                if not noted:
-                    noted = True
-                    _note_allowance_skip(caller.org_id, note, mk.reserved_micro)
         if auto_on:
             await _schedule_autotopup_after(caller.org_id)
     except ledger.PurchasedCreditShort as exc:
@@ -656,4 +657,4 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         }) from exc
     finally:
         if not noted:
-            _note_allowance_skip(caller.org_id, note, 0)
+            _note_allowance_skip(caller.org_id, note, mk.reserved_micro if committed else 0)
