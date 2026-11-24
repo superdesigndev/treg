@@ -179,6 +179,22 @@ class EmptyBody:
         return b""
 
 
+class BytesBody:
+    """The body of a call treg makes itself with a small known payload: a POSTed task poll."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    async def _once(self) -> AsyncIterator[bytes]:
+        yield self._data
+
+    def stream(self) -> AsyncIterator[bytes]:
+        return self._once()
+
+    async def read(self) -> bytes:
+        return self._data
+
+
 @dataclass(frozen=True)
 class UserSnapshot:
     id: int | None

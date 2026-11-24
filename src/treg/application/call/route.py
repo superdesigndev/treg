@@ -1607,11 +1607,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                 remaining=remaining, child=child):
                 if poll_ep is None:
                     raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
-                param = poll_rule.get("param") or {}
-                name = str(param.get("name") or "id")
-                poll_query = {name: task_id}
+                query, document = asynctasks_rules.poll_inputs(poll_rule.get("param") or {"name": "id"}, task_id)
                 poll_child = CallContext(
-                    input=_child_input(parent, poll_ep, poll_query, {}, remaining),
+                    input=_child_input(parent, poll_ep, dict(query), document or {}, remaining),
                     call_ref=f"{child.call_ref}:p{poll_number}", meta=parent.meta,
                     quota_admissions=parent.quota_admissions | {
                         (parent.input.caller.org_id, poll_ep["id"])})

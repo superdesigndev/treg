@@ -660,13 +660,18 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                     async def poll_task(task_id: str, poll_number: int):
                         if poll_ep is None:
                             raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
-                        name = str((poll_rule.get("param") or {}).get("name") or "id")
+                        query, document = asynctasks_rules.poll_inputs(
+                            poll_rule.get("param") or {"name": "id"}, task_id)
+                        payload = json.dumps(document).encode() if document is not None else b""
                         poll_headers = ((b"x-treg-client", b"enrich-arena"),
                                         (b"cache-control", b"no-cache"))
+                        if payload:
+                            poll_headers += ((b"content-type", b"application/json"),
+                                             (b"content-length", str(len(payload)).encode()))
                         poll_context = service.create_call_context(CallInput(
                             method=poll_ep["method"], raw_rest=poll_ep["id"], raw_headers=poll_headers,
-                            query_items=((name, task_id),), raw_query=urlencode({name: task_id}),
-                            body=route._Bytes(b""), caller=current, client_ip=client_ip))
+                            query_items=query, raw_query=urlencode(query),
+                            body=route._Bytes(payload), caller=current, client_ip=client_ip))
                         poll_context.quota_admissions = context.quota_admissions | {
                             (current.org_id, poll_ep["id"])}
                         poll_response = await service.execute_call(poll_context, client)

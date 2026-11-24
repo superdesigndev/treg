@@ -1736,13 +1736,70 @@ def test_poll_target_follows_the_declared_location_and_encodes_path_values():
         task_id="a?view=admin/../x", reserved_micro=1, next_check_at=utcnow_naive(),
         descriptor={"poll": {"endpoint": "minimax.video-gen.v2.task.status",
                              "param": {"in": "pathParams", "name": "task_id"}}})
-    method, url, query = task_app._poll_target(row)
-    assert (method, query) == ("GET", [])
+    method, url, query, body = task_app._poll_target(row)
+    assert (method, query, body) == ("GET", [], b"")
     assert url == "https://api.minimax.io/v2/query/video_generation/a%3Fview%3Dadmin%2F..%2Fx"
     row.descriptor = {"poll": {"endpoint": "minimax.video-gen.task.status",
                                "param": {"in": "pathParams", "name": "task_id"}}}
     with pytest.raises(RuntimeError):
         task_app._poll_target(row)  # declared as a path parameter, but the target has no placeholder
+
+
+def test_a_body_poll_sends_the_task_id_as_its_json_object_and_says_so_in_its_resume_line():
+    assert asynctasks.poll_inputs({"in": "body", "name": "id"}, "f-1") == ((), {"id": "f-1"})
+    assert asynctasks.poll_inputs({"in": "queryParams", "name": "task_id"}, 7) == ((("task_id", "7"),), None)
+    assert asynctasks.poll_command("icypeas.search.results.read", {"in": "body", "name": "id"}, "x'; rm") == \
+        """treg call icypeas.search.results.read --data '{"id": "x'"'"'; rm"}'"""
+    assert asynctasks.poll_command("vendor.status", {"in": "pathParams", "name": "id"}, "t 1") == \
+        "treg call vendor.status -p 'id=t 1'"
+
+
+async def test_body_parameter_poll_posts_the_task_id_as_json(monkeypatch):
+    """Icypeas reads a search by POST /bulk-single-searchs/read {"id": ...}: the worker sends that
+    body to the poll endpoint's own method, never a query string the provider ignores."""
+    seen = {}
+
+    async def fake_relay(request, url, tool, *args, **kwargs):
+        seen.update(url=url, method=request.method, query=request.query_items,
+                    headers=dict(request.raw_headers), body=b"".join([c async for c in request.body_stream()]))
+
+        async def stream():
+            yield b'{"items": [{"status": "DEBITED"}]}'
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, (), stream(), close)
+
+    monkeypatch.setattr(task_app, "relay", fake_relay)
+    row = AsyncTaskRecord(
+        call_id="b-1", org_id=1, provider="icypeas", endpoint_id="icypeas.people.email.find",
+        task_id="mP6hHKABeMoKaEB1K1HF", reserved_micro=1, next_check_at=utcnow_naive(),
+        descriptor={"poll": {"endpoint": "icypeas.search.results.read",
+                             "param": {"in": "body", "name": "id"}}})
+    status, _ = await task_app._poll(row, None)
+    assert status == 200 and seen["method"] == "POST" and seen["query"] == ()
+    assert seen["url"].endswith("/bulk-single-searchs/read")
+    assert json.loads(seen["body"]) == {"id": "mP6hHKABeMoKaEB1K1HF"}
+    assert seen["headers"][b"content-type"] == b"application/json"
+
+
+async def test_a_task_look_posts_a_body_poll_and_resumes_with_data():
+    """A look at a task whose poll reads a body id (`treg call --await`'s twin on MCP) POSTs that
+    id as JSON and drops a caller content type that no longer describes the body."""
+    from treg.application import tasks as task_looks
+    from treg.models import CallTask
+    task = CallTask(call_id="c-1", org_id=1, endpoint_id="icypeas.people.email.find", task_id="s-9",
+                    descriptor={"poll": {"endpoint": "icypeas.search.results.read",
+                                         "param": {"in": "body", "name": "id"}}})
+    look = task_looks.poll_input(task, ((b"content-type", b"text/plain"),), None, "127.0.0.1")
+    assert look.method == "POST" and look.query_items == ()
+    assert json.loads(await look.body.read()) == {"id": "s-9"}
+    assert dict(look.raw_headers)[b"content-type"] == b"application/json"
+    assert task_looks._resume(task) == """treg call icypeas.search.results.read --data '{"id": "s-9"}'"""
+    task.descriptor = {"poll": {"endpoint": "vendor.status", "param": {"in": "pathParams", "name": "id"}}}
+    look = task_looks.poll_input(task, (), None, "127.0.0.1")
+    assert look.method == "GET" and look.query_items == (("id", "s-9"),)
 
 
 def test_fetch_command_and_shown_neutralise_provider_strings():

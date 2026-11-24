@@ -222,7 +222,7 @@ def test_async_descriptor_accepts_both_poll_and_result_modes():
      "requires exactly in, name"),
     (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
                               "param": {"in": "headers", "name": "task_id"}}),
-     "must name an input field in pathParams or queryParams"),
+     "must name an input field in pathParams, queryParams or body"),
     (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
                               "param": {"in": "pathParams", "name": "missing"}}),
      "target does not declare input field"),
@@ -309,6 +309,23 @@ def test_async_descriptor_rejects_non_get_or_non_utility_targets():
     errors = _async_errors(_valid_async(), endpoint_index=target)
     assert any("must have kind utility" in error for error in errors)
     assert any("must use GET" in error for error in errors)
+
+
+def test_async_descriptor_polls_a_body_id_only_through_a_post_target():
+    """A provider that reads a task by POSTing its id (Icypeas) declares `in: body`; a path or
+    query id still needs GET, and a body id needs POST."""
+    index = {"demo.video-gen.status": {
+        "provider": "demo", "kind": "utility", "method": "POST", "path": "/tasks/read",
+        "input": {"body": {"id": {"type": "string", "required": True}}}}}
+    descriptor = _valid_async()
+    descriptor["poll"] = {"endpoint": "demo.video-gen.status", "param": {"in": "body", "name": "id"}}
+    assert _async_errors(descriptor, endpoint_index=index) == []
+    index["demo.video-gen.status"]["method"] = "GET"
+    assert any("must use POST to read a body id" in e for e in _async_errors(descriptor, endpoint_index=index))
+    fetch = _valid_async()
+    fetch["result"] = {"fetch": "demo.video-gen.content",
+                       "fetch_param": {"in": "body", "name": "video_id", "value_from": "id"}}
+    assert any("must name an input field in pathParams or queryParams" in e for e in _async_errors(fetch))
 
 
 def test_async_descriptor_rejects_unknown_keys_and_invalid_json_paths():
