@@ -1479,9 +1479,10 @@ still pay the provider twice.
   `mark_in_flight` sets the mark before the take and clears it when the take is refused; a call
   the store would not mark keeps its own hold (`in_flight_unmarked`). The claim's lease task
   renews it (only while it is there). A call charged nothing clears it in `allowance.finish`; a
-  charge hands it to the charge writer, which renews every mark it holds on its own clock
-  (`_MARK_RENEW_S`), queued, being written or unconfirmed alike, and clears one only once its
-  charge is known written, even after the call has answered or been cancelled.
+  charge hands it to the charge writer, which sets every mark it holds again on its own clock
+  (`_MARK_RENEW_S`), queued, being written or unconfirmed alike (set, not only extended, so a
+  store that restarted gets them back within one period), and clears one only once its charge
+  is known written, even after the call has answered or been cancelled.
   A process that dies leaves it to expire before the claim reads stale.
 - A reserve admission 429 never reaches `_store_idempotent`; `_stamp_call_exit` releases its pending
   claim (both MCP surfaces too). If that cleanup fails twice, the row stays pending until the

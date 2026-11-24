@@ -187,7 +187,7 @@ _DATAPLANE_DERIVED_WRITES = {
         (idempotency._hold_claim_lease, "renew_call_in_flight"),
         (idempotency.clear_in_flight, "clear_call_in_flight"),
         (call_allowance._ChargeWriter._committed, "clear_calls_in_flight"),
-        (call_allowance._ChargeWriter._keep_marks, "renew_calls_in_flight"),
+        (call_allowance._ChargeWriter._keep_marks, "mark_calls_in_flight"),
         (call_allowance.finish, "store.clear_call_in_flight"),
     ),
     # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
@@ -251,7 +251,7 @@ _DERIVED_WRITE_FILES = {
         "store.allowance_freeze",
         "store.allowance_add",
         "store.allowance_drop", "store.acquire_lease", "store.release_lease",
-        "store.clear_call_in_flight", "clear_calls_in_flight", "renew_calls_in_flight",
+        "store.clear_call_in_flight", "clear_calls_in_flight", "mark_calls_in_flight",
     },
     _SRC / "application" / "call" / "settle.py": {
         "allowance_runtime.finish",
@@ -350,7 +350,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/reserve.py", "_platform_reserve", "idempotency.mark_in_flight"),
     ("application/call/reserve.py", "_platform_reserve", "idempotency.clear_in_flight"),
     ("application/call/allowance.py", "_committed", "clear_calls_in_flight"),
-    ("application/call/allowance.py", "_keep_marks", "renew_calls_in_flight"),
+    ("application/call/allowance.py", "_keep_marks", "mark_calls_in_flight"),
     ("application/call/allowance.py", "finish", "store.clear_call_in_flight"),
     ("application/call/idempotency.py", "mark_in_flight", "mark_call_in_flight"),
     ("application/call/idempotency.py", "_hold_claim_lease", "renew_call_in_flight"),

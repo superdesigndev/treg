@@ -532,6 +532,9 @@ class _ChargeWriter:
         self.owed = 0
         self._marked: set[str] = set()
         self._marks_task: asyncio.Task | None = None
+        # Orders a renewal against a clear: a mark set again after its clear would outlive its
+        # charge, and a claim would wait for it to expire.
+        self._marks_lock = asyncio.Lock()
 
     def submit(self, charge: allowance.Charge, archive_use: tuple[int, str] | None, *,
                marked: bool = False) -> asyncio.Future:
@@ -631,12 +634,13 @@ class _ChargeWriter:
         """The rows are in the database and their teams' freezes with the store: count the rows
         as written, and clear their calls' in-flight marks, which a stale claim no longer needs."""
         self.owed = max(0, self.owed - len(rows))
-        done = [charge.call_id for charge, _ in rows if charge.call_id in self._marked]
-        self._marked.difference_update(done)
-        if done:
-            # One round trip for the batch: a store that does not answer costs the writer one
-            # short timeout, not one per row.
-            await kv.store().clear_calls_in_flight(done)
+        async with self._marks_lock:
+            done = [charge.call_id for charge, _ in rows if charge.call_id in self._marked]
+            self._marked.difference_update(done)
+            if done:
+                # One round trip for the batch: a store that does not answer costs the writer one
+                # short timeout, not one per row.
+                await kv.store().clear_calls_in_flight(done)
 
     async def _keep_marks(self) -> None:
         """Renew every mark the writer holds, queued, being written or unconfirmed alike, until
@@ -644,8 +648,11 @@ class _ChargeWriter:
         call, and the request that set it may be gone."""
         while self._marked:
             await asyncio.sleep(_MARK_RENEW_S)
-            if self._marked:
-                await kv.store().renew_calls_in_flight(sorted(self._marked), IN_FLIGHT_MARK_MS)
+            # Set, not only extended: a store that restarted lost the marks, and the writer
+            # knows these calls' charges are still unwritten.
+            async with self._marks_lock:
+                if self._marked:
+                    await kv.store().mark_calls_in_flight(sorted(self._marked), IN_FLIGHT_MARK_MS)
 
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> set[int]:

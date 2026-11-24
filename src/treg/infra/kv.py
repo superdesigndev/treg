@@ -556,8 +556,10 @@ class Store(Protocol):
     async def call_in_flight(self, call_ref: str) -> bool | None:
         """Whether a call's mark is there; None when the store cannot answer."""
 
-    async def renew_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
-        """`renew_call_in_flight` of each, in one round trip. Best-effort."""
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        """`mark_call_in_flight` of each, in one round trip, setting a mark that is gone too (a
+        store that restarted lost it). Only for marks whose owner knows its call is still
+        running. Best-effort."""
 
     async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
         """`clear_call_in_flight` of each, in one round trip. Best-effort."""
@@ -626,9 +628,9 @@ class LocalStore:
     async def call_in_flight(self, call_ref: str) -> bool | None:
         return self._live_value(_in_flight_key(call_ref)) is not None
 
-    async def renew_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
         for call_ref in call_refs:
-            await self.renew_call_in_flight(call_ref, ttl_ms)
+            await self.mark_call_in_flight(call_ref, ttl_ms)
 
     async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
         for call_ref in call_refs:
@@ -845,14 +847,14 @@ class RedisStore:
             _note_fault(exc)
             return None
 
-    async def renew_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
         if not call_refs:
             return
         try:
             async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
                 async with self._client.pipeline(transaction=False) as pipe:
                     for call_ref in call_refs:
-                        pipe.set(_in_flight_key(call_ref), "1", px=ttl_ms, xx=True)
+                        pipe.set(_in_flight_key(call_ref), "1", px=ttl_ms)
                     await pipe.execute()
         except Exception as exc:  # noqa: BLE001 - the marks expire on their own
             _note_fault(exc)

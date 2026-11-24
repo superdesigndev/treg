@@ -60,8 +60,9 @@ class FakeStore:
     async def clear_call_in_flight(self, call_ref):
         self.marks.discard(call_ref)
 
-    async def renew_calls_in_flight(self, call_refs, ttl_ms):
+    async def mark_calls_in_flight(self, call_refs, ttl_ms):
         self.renewed.extend(call_refs)
+        self.marks.update(call_refs)
 
     async def clear_calls_in_flight(self, call_refs):
         self.cleared_batches.append(list(call_refs))
@@ -454,6 +455,24 @@ async def test_the_writer_renews_a_mark_while_its_charge_is_still_queued(
         org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450, marked=True))
     await asyncio.sleep(0.1)
     assert await _queued(org_id) == 0 and "keyed-1" in store.renewed
+    assert await finishing == 450
+    assert store.marks == set() and await _queued(org_id) == 1
+
+
+async def test_the_writer_sets_again_a_mark_the_store_lost_while_its_charge_is_unwritten(
+        org_id, store, monkeypatch):
+    """The store restarted and lost the mark; the writer still holds the unwritten charge, so its
+    next renewal puts the mark back."""
+    monkeypatch.setattr(runtime, "_MARK_RENEW_S", 0.01)
+    monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 300)
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    finishing = asyncio.create_task(_finish(
+        org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450, marked=True))
+    await asyncio.sleep(0.02)
+    store.marks.clear()  # the store restarted
+    await asyncio.sleep(0.05)
+    assert store.marks == {"keyed-1"} and await _queued(org_id) == 0
     assert await finishing == 450
     assert store.marks == set() and await _queued(org_id) == 1
 

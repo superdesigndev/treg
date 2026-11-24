@@ -240,35 +240,36 @@ async def test_real_redis_in_flight_mark_is_set_renewed_only_while_there_and_cle
         await store.aclose()
 
 
-async def test_an_unreachable_store_clears_and_renews_a_batch_of_marks_within_one_timeout():
+async def test_an_unreachable_store_clears_and_sets_a_batch_of_marks_within_one_timeout():
     store = kv.RedisStore('redis://127.0.0.1:1')
     refs = [f'owner-{i}' for i in range(500)]
     started = time.monotonic()
-    await store.renew_calls_in_flight(refs, 1000)
+    await store.mark_calls_in_flight(refs, 1000)
     await store.clear_calls_in_flight(refs)
     assert time.monotonic() - started < 1
     await store.aclose()
 
 
-async def test_local_marks_are_renewed_and_cleared_in_batches():
+async def test_local_marks_are_set_and_cleared_in_batches_a_lost_one_included():
     store = kv.LocalStore()
     await store.mark_call_in_flight('a', 60_000)
-    await store.renew_calls_in_flight(['a', 'gone'], 60_000)
-    assert await store.call_in_flight('a') is True and await store.call_in_flight('gone') is False
-    await store.clear_calls_in_flight(['a', 'gone'])
-    assert await store.call_in_flight('a') is False
+    await store.mark_calls_in_flight(['a', 'lost'], 60_000)
+    assert await store.call_in_flight('a') is True and await store.call_in_flight('lost') is True
+    await store.clear_calls_in_flight(['a', 'lost'])
+    assert await store.call_in_flight('a') is False and await store.call_in_flight('lost') is False
 
 
 @pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
-async def test_real_redis_marks_are_renewed_only_while_there_and_cleared_in_one_batch():
+async def test_real_redis_marks_are_set_and_cleared_in_one_batch_a_lost_one_included():
     store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
     base = f'treg-test-{time.time_ns()}'
     try:
         await store.mark_call_in_flight(f'{base}-a', 60_000)
-        await store.renew_calls_in_flight([f'{base}-a', f'{base}-gone'], 60_000)
+        await store.mark_calls_in_flight([f'{base}-a', f'{base}-lost'], 60_000)
         assert await store.call_in_flight(f'{base}-a') is True
-        assert await store.call_in_flight(f'{base}-gone') is False
-        await store.clear_calls_in_flight([f'{base}-a', f'{base}-gone'])
+        assert await store.call_in_flight(f'{base}-lost') is True
+        await store.clear_calls_in_flight([f'{base}-a', f'{base}-lost'])
         assert await store.call_in_flight(f'{base}-a') is False
+        assert await store.call_in_flight(f'{base}-lost') is False
     finally:
         await store.aclose()
