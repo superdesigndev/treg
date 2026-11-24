@@ -6784,11 +6784,17 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 8192,
-              "maximum": 16384,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 2097152,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           },
           {

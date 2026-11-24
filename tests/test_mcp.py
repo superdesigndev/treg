@@ -1789,20 +1789,24 @@ async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_even
 
 
 @pytest.mark.parametrize("tool", ["call", "call_media"])
-@pytest.mark.parametrize("mime", ["image/png", "image/svg+xml"])
-async def test_team_calls_use_native_content_only_for_raster_images(clients, monkeypatch, tool, mime):
+@pytest.mark.parametrize(("mime", "kind"), [("image/png", "image"), ("audio/mpeg", "audio")])
+@pytest.mark.parametrize("ua", [
+    "", "claude-code/2.1.0", "Cursor", "openai-mcp/1.0.0", "Claude-User/1.0", "codex-mcp-client/0.160.1",
+])
+async def test_native_media_channels_and_codex_schemas(clients, monkeypatch, tool, mime, kind, ua):
     import base64
 
     import jsonschema
 
+    from treg import mcp_output
     from treg.application.call import service
     from treg.application.call.types import UpstreamResponse
 
-    data = (base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
-                             "/x8AAwMCAO+/lrkAAAAASUVORK5CYII=")
-            if mime == "image/png" else b'<svg xmlns="http://www.w3.org/2000/svg"/>')
+    chat = mcp_output.is_chat_sandbox({"User-Agent": ua})
+    codex = ua.startswith("codex-mcp-client/")
+    data = b"\xff" * (600 * 1024 if chat else 1536 * 1024)
 
-    async def image(*args, **kwargs):
+    async def upstream(*args, **kwargs):
         async def stream():
             yield data
 
@@ -1811,63 +1815,90 @@ async def test_team_calls_use_native_content_only_for_raster_images(clients, mon
 
         return UpstreamResponse(200, ((b"content-type", mime.encode()),), stream(), close)
 
-    monkeypatch.setattr(service, "relay", image)
+    monkeypatch.setattr(service, "relay", upstream)
     token = await _register_echo(clients)
     async with mcp_session(clients) as client:
-        await _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                                         "clientInfo": {"name": "media", "version": "1"}}, token)
+        client.headers["User-Agent"] = ua
         listed = await _rpc(client, "tools/list", token=token)
-        schema = next(t["outputSchema"] for t in listed.json()["result"]["tools"] if t["name"] == tool)
+        tools = {t["name"]: t for t in listed.json()["result"]["tools"]}
+        r = await _rpc(client, "tools/call", {"name": tool, "arguments": {
+            "endpoint_id": "echo/media", "body": {}}}, token)
+
+    for name in ("call", "call_media"):
+        assert ("outputSchema" in tools[name]) is not codex
+    assert tools["catalog_search"]["outputSchema"] and tools["call_result"]["outputSchema"]
+    result = r.json()["result"]
+    assert result["isError"] is False
+    media, *rest = result["content"]
+    assert media["type"] == kind and media["mimeType"] == mime
+    assert base64.b64decode(media["data"]) == data
+    if codex:
+        assert "structuredContent" not in result
+        structured = json.loads(rest[0]["text"])
+    else:
+        structured = result["structuredContent"]
+        jsonschema.validate(structured, tools[tool]["outputSchema"])
+    assert structured["call_id"] and structured["status"] == 200 and "body" not in structured
+    if chat:
+        assert rest == []
+    else:
+        assert len(rest) == 1 and rest[0]["type"] == "text"
+        assert rest[0]["text"] == json.dumps(structured, separators=(",", ":"))
+
+
+@pytest.mark.parametrize("tool", ["call", "call_media"])
+async def test_svg_stays_text_even_for_codex(clients, monkeypatch, tool):
+    from treg.application.call import service
+    from treg.application.call.types import UpstreamResponse
+
+    data = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+
+    async def upstream(*args, **kwargs):
+        async def stream():
+            yield data
+
+        async def close():
+            pass
+
+        return UpstreamResponse(200, ((b"content-type", b"image/svg+xml"),), stream(), close)
+
+    monkeypatch.setattr(service, "relay", upstream)
+    token = await _register_echo(clients)
+    async with mcp_session(clients) as client:
+        client.headers["User-Agent"] = "codex-mcp-client/0.160.1"
         r = await _rpc(client, "tools/call", {"name": tool, "arguments": {
             "endpoint_id": "echo/image", "body": {}}}, token)
-
     result = r.json()["result"]
-    structured = result["structuredContent"]
-    jsonschema.validate(structured, schema)
-    assert structured["call_id"]
-    if mime == "image/png":
-        assert result["content"] == [{"type": "image", "mimeType": mime,
-                                      "data": base64.b64encode(data).decode()}]
-        assert "body" not in structured
-    else:
-        assert result["content"][0]["type"] == "text"
-        assert json.loads(result["content"][0]["text"]) == structured
-        assert structured["body"] == data.decode()
+    [block] = result["content"]
+    assert block["type"] == "text"
+    assert json.loads(block["text"]) == result["structuredContent"]
+    assert result["structuredContent"]["body"] == data.decode()
 
 
-@pytest.mark.parametrize(("size", "pretty", "with_compare"), [
-    (19 * 1024, True, False),
-    (18 * 1024, False, True),
-    (22 * 1024, False, False),
+@pytest.mark.parametrize(("ua", "size", "omitted"), [
+    ("", 100 * 1024, False),
+    ("", 1536 * 1024, False),
+    ("claude-code/2.1.0", 100 * 1024, False),
+    ("claude-code/2.1.0", 1536 * 1024, False),
+    ("openai-mcp/1.0.0", 250 * 1024, True),
+    ("Claude-User/1.0", 250 * 1024, True),
 ])
-async def test_paid_call_body_and_metadata_share_one_mcp_envelope(
-    clients, monkeypatch, platform_on, size, pretty, with_compare,
-):
+async def test_paid_call_text_uses_the_transport_profile(clients, monkeypatch, platform_on, ua, size, omitted):
     import jsonschema
 
     from test_marketplace_call import EP, EP_MICRO, _fake_relay
-    from treg import hints, mcp, mcp_output
+    from treg import mcp_output
     from treg.application.call import service
-    from treg.routers import call as call_routes
+    from treg.config import get_settings
 
-    body = {"omitted": True, "data": ["x" * 32] * (size // 35)}
-    raw = json.dumps(body, indent=32 if pretty else None, separators=(",", ":")).encode()
-    if pretty:
-        assert mcp_output.BODY_BYTES < len(raw) < mcp_output.TEXT_CAPTURE_BYTES
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    body = {"omitted": True, "data": "x" * size}
+    raw = json.dumps(body, separators=(",", ":")).encode()
     monkeypatch.setattr(service, "relay", _fake_relay(200, raw))
 
-    async def invitation(*args, **kwargs):
-        return "compare" if with_compare else "feedback"
-
-    async def comparison(*args, **kwargs):
-        return {"comparison_id": 123, "answer_1": "b" * (16 * 1024)}
-
-    monkeypatch.setattr(call_routes, "invitation", invitation)
-    monkeypatch.setattr(mcp, "_inline_comparison", comparison)
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as client:
-        await _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                                         "clientInfo": {"name": "budget", "version": "1"}}, token)
+        client.headers["User-Agent"] = ua
         listed = await _rpc(client, "tools/list", token=token)
         schema = next(t["outputSchema"] for t in listed.json()["result"]["tools"] if t["name"] == "call")
         r = await _rpc(client, "tools/call", {"name": "call", "arguments": {
@@ -1877,21 +1908,98 @@ async def test_paid_call_body_and_metadata_share_one_mcp_envelope(
     text = result["content"][0]["text"]
     out = result["structuredContent"]
     jsonschema.validate(out, schema)
-    assert json.loads(text) == out and len(text.encode()) <= mcp_output.ENVELOPE_BYTES
+    assert json.loads(text) == out
+    assert len(text.encode()) <= mcp_output.budget_for({"User-Agent": ua}).envelope_bytes
     assert out["endpoint_id"] == EP and out["call_id"] and out["cost_usd"] == EP_MICRO / 1_000_000
-    if size <= mcp_output.BODY_BYTES:
-        assert out["body"] == body
-        assert "compare" not in out
-        if with_compare:
-            assert "hint" not in out
-        else:
-            assert out["hint"] == hints.HINT
-    else:
+    if omitted:
         receipt = out["body"]
         assert receipt["omitted"] and receipt["size_bytes"] == len(raw)
         assert receipt["head"] == raw[:mcp_output.PREVIEW_BYTES].decode()
         assert receipt["tail"] == raw[-mcp_output.PREVIEW_BYTES:].decode()
         assert "call_result" in receipt["note"]
+    else:
+        assert out["body"] == body
+
+
+@pytest.mark.parametrize(("kind", "status", "note"), [
+    ("archive", 200, "Call call_result(call_id, offset=0)"),
+    ("over_cap", 200, "not archived"),
+    ("own_tool", 200, "not archived"),
+    ("forbidden", 200, "not archived"),
+    ("spooled", 200, "fields parameter"),
+    ("error", 400, "The error body exceeds the MCP budget and is not archived."),
+])
+async def test_standard_budget_omission_reports_the_archive_boundary(
+    clients, monkeypatch, platform_on, kind, status, note,
+):
+    from test_marketplace_call import EP, _fake_relay
+    from treg import mcp_output
+    from treg.application.call import service
+    from treg.config import get_settings
+    from treg.domain.catalog import store as catalog_store
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "archive_mode", "shadow")
+    if kind != "over_cap":
+        monkeypatch.setattr(settings, "archive_max_body_bytes", 3 * 1024 * 1024)
+    cat = catalog_store.load()
+    row = cat.by_id[EP] | {"cache": "forbidden" if kind == "forbidden" else "transient"}
+    if kind == "spooled":
+        row["spooled_response"] = True
+    monkeypatch.setitem(cat.by_id, EP, row)
+    raw = b'{"data":"' + b"x" * mcp_output.MAX_TEXT_BYTES + b'"}'
+    monkeypatch.setattr(service, "relay", _fake_relay(status, raw))
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": EP, "query": {"aweme_id": "7"}}
+    if kind == "own_tool":
+        token = await _register_echo(clients)
+        args = {"endpoint_id": "echo/response"}
+    async with mcp_session(clients) as client:
+        out = await _call_tool(client, "call", args, token)
+    assert out["status"] == status and out["call_id"]
+    receipt = out["body"]
+    assert receipt["omitted"] is True and receipt["size_bytes"] == len(raw)
+    assert note in receipt["note"]
+    if kind != "archive":
+        assert "not archived" in receipt["note"] and "call_result" not in receipt["note"]
+
+
+async def test_call_media_errors_and_argument_refusals_have_the_same_json_in_both_channels(clients, monkeypatch):
+    from test_marketplace_call import _fake_relay
+    from treg.application.call import service
+
+    monkeypatch.setattr(service, "relay", _fake_relay(400, b'{"error":"invalid input","detail":"try another value"}'))
+    token = await _register_echo(clients)
+    async with mcp_session(clients) as client:
+        for tool, arguments in (
+            ("call_media", {"endpoint_id": "echo/media", "body": {}}),
+            ("call", {"endpoint_id": "echo/media", "max_bytes": 16}),
+        ):
+            r = await _rpc(client, "tools/call", {"name": tool, "arguments": arguments}, token)
+            result = r.json()["result"]
+            assert result["isError"] is True
+            [block] = result["content"]
+            assert block["type"] == "text"
+            assert block["text"] == json.dumps(result["structuredContent"], separators=(",", ":"))
+
+
+async def test_oauth_scope_middleware_returns_compact_matching_json():
+    from types import SimpleNamespace
+
+    from treg import mcp
+    from treg.domain.identity import mcp_oauth
+
+    token = mcp_oauth.make_access_token(user_id=1, org_id=1, audience=mcp_oauth.mcp_resource_url("v1"),
+                                        scope="treg:catalog")
+    ctx = SimpleNamespace(method="tools/call", params={"name": "call"},
+                          request=SimpleNamespace(headers={"Authorization": f"Bearer {token}"}))
+
+    async def not_called(ctx):
+        pytest.fail("scope middleware must refuse before calling the tool")
+
+    result = await mcp._OAuthScopeGate(mcp._V1_TOOL_SCOPES, compact_json=True)(ctx, not_called)
+    assert result.is_error and result.structured_content["error"] == "insufficient_scope"
+    assert result.content[0].text == json.dumps(result.structured_content, separators=(",", ":"))
 
 
 @pytest.mark.parametrize("wide_projection", [False, True])
@@ -1915,7 +2023,7 @@ async def test_mcp_history_budgets_the_projected_rows_newest_first(clients, monk
         call_row = activity.call_row
 
         def wide_row(row, task):
-            return call_row(row, task) | {"async_task": {"detail": "x" * 1200}}
+            return call_row(row, task) | {"async_task": {"detail": "x" * (5 * 1024)}}
 
         monkeypatch.setattr(activity, "call_row", wide_row)
     history = await clients.get("/calls", params={"limit": 50})
@@ -1925,6 +2033,7 @@ async def test_mcp_history_budgets_the_projected_rows_newest_first(clients, monk
     async with mcp_session(clients) as client:
         await _rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                          "clientInfo": {"name": "history", "version": "1"}}, token)
+        client.headers["User-Agent"] = "openai-mcp/1.0.0"
         listed = await _rpc(client, "tools/list", token=token)
         schema = next(t["outputSchema"] for t in listed.json()["result"]["tools"] if t["name"] == "call_result")
         r = await _rpc(client, "tools/call", {"name": "call_result", "arguments": {"limit": 50}}, token)
@@ -1932,7 +2041,7 @@ async def test_mcp_history_budgets_the_projected_rows_newest_first(clients, monk
     text = result["content"][0]["text"]
     out = result["structuredContent"]
     jsonschema.validate(out, schema)
-    assert json.loads(text) == out and len(text.encode()) <= mcp_output.ENVELOPE_BYTES
+    assert json.loads(text) == out and len(text.encode()) <= mcp_output.CHAT_ENVELOPE_BYTES
     if wide_projection:
         assert 0 < len(out["calls"]) < 50 and "pass a smaller limit" in out["detail"]
     else:
@@ -1946,12 +2055,49 @@ def test_envelope_fallbacks_keep_receipt_and_small_task():
     receipt = {"status": 200, "call_id": "call-1", "endpoint_id": "test.run", "cost_usd": 0.01,
                "reserved_usd": 0.02, "task": {"kind": "async"}, "replayed": False,
                "served_via": "overflow:test", "upstream_failed": "reported", "retry_after": "5"}
-    raw_body = {"data": "x" * mcp_output.ENVELOPE_BYTES}
+    raw_body = {"data": "x" * mcp_output.CHAT_ENVELOPE_BYTES}
     out = receipt | {"body": raw_body}
-    trimmed = mcp._team_result(out).structured_content
+    budget = mcp_output.CHAT_SANDBOX_BUDGET
+    trimmed = mcp._team_result(out, budget=budget).structured_content
     assert trimmed["body"]["omitted"] and trimmed["body"]["head"].startswith('{"data":"')
     assert {k: trimmed[k] for k in receipt} == receipt and out["body"] == raw_body
 
-    large = out | {"detail": "d" * mcp_output.ENVELOPE_BYTES}
-    fallback = mcp._team_result(large).structured_content
+    large = out | {"detail": "d" * mcp_output.CHAT_ENVELOPE_BYTES}
+    fallback = mcp._team_result(large, budget=budget).structured_content
     assert fallback == receipt | {"detail": "Result exceeds the MCP output budget."}
+
+
+def test_comparison_and_hint_are_trimmed_before_the_call_body():
+    from treg import mcp, mcp_output
+
+    budget = mcp_output.STANDARD_BUDGET
+    body = {"data": "x" * (budget.text_bytes - 20)}
+    out = {"body": body, "compare": {"answer_1": "x" * (300 * 1024)}, "hint": "answer this comparison"}
+    result = mcp._team_result(out, budget=budget)
+    assert result.structured_content == {"body": body}
+
+
+@pytest.mark.parametrize("method", ["tools/list", "tools/call"])
+async def test_codex_gate_also_accepts_dictionary_results(method):
+    from types import SimpleNamespace
+
+    from treg import mcp
+
+    tool_list = {"tools": [
+        {"name": "call", "output_schema": {}},
+        {"name": "call_media", "outputSchema": {}},
+        {"name": "call_result", "outputSchema": {}},
+        {"name": "compare"},
+    ]}
+    media_result = {"content": [{"type": "audio"}], "structuredContent": {"call_id": "stored"}}
+    original, expected = (
+        (tool_list, {"tools": [{"name": "call"}, {"name": "call_media"},
+                              {"name": "call_result", "outputSchema": {}}]})
+        if method == "tools/list" else (media_result, {"content": [{"type": "audio"}]})
+    )
+
+    async def next_handler(ctx):
+        return original
+
+    ctx = SimpleNamespace(method=method, request=SimpleNamespace(headers={"User-Agent": "codex-mcp-client/0.160.1"}))
+    assert await mcp._OpenAIClientGate()(ctx, next_handler) == expected

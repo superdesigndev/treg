@@ -313,25 +313,35 @@ call in `detail.call_id`. Over MCP it is the `idempotency_key` argument and a re
 `replayed: true`; `call_result` lists the team's recent calls and reads one's stored answer
 (`GET /calls`, `GET /calls/{id}/result`). Storage rules: [money](../architecture/money.md).
 
-On the team MCP surface, `call` and `call_media` show up to 20 KiB of text or compact JSON
-in a 28 KiB JSON envelope that includes call and charge metadata. The same JSON appears in the
-text block and `structuredContent`. The in-process relay captures up to 64 KiB of text so
-pretty-printed JSON can fit after compaction. A successful textual async submission can retain
-up to 8 MiB internally for the task endpoint's digest check. Oversized text returns a bounded
-head and tail when available, with the call receipt. A call id can look up whether an answer was
-archived, subject to the archive's size, licence and retention rules.
+On the team MCP surface, `call` and `call_media` cap text or compact JSON at 2 MiB in a
+2.25 MiB JSON envelope. ChatGPT and Claude.ai hosted connectors use 192 KiB of text and a
+224 KiB envelope to fit their tool result limits. The envelope includes the call id and
+charge, and text-only results carry the same compact JSON in their text block and
+`structuredContent`. The capture limits apply before compaction: 2 MiB for standard clients
+and 384 KiB for hosted chat. A successful textual async submission can retain up to 8 MiB
+internally for the task endpoint's digest check.
 
-Successful PNG, JPEG, GIF, WebP and audio responses up to 1 MiB use native MCP content, with
-metadata in `structuredContent`. SVG is text. Other binary results carry download guidance and
-the provider's HTTP(S) content location when supplied.
+Oversized text returns a receipt with a bounded UTF-8 head and tail when available. It suggests
+`call_result` when the catalog policy, response size and runtime mode permit retention. The actual
+copy depends on team retention and archive availability. Spooled inline media and errors
+carry different recovery guidance. Unsupported binary bodies are drained and counted without
+buffering. The receipt includes the provider's HTTP(S) content location when supplied and valid.
 
-`call_result(call_id, offset)` pages stored response text starting at character `offset` (zero by
-default). `response.total_chars` gives the length of the caller-visible text. Pass
-`response.next_offset` for the next page, until it is null. The default page is 8,192 characters.
-MCP can return a shorter page to fit the 28 KiB envelope. `GET /calls/{id}/result` accepts
-`offset` and a `limit` of 1 to 16,384 characters (default 8,192). The first page includes
-up to 2,048 characters of request text. Later pages return `request: null`. HTTP reads without
-`offset` return the full archive view.
+Successful PNG, JPEG, GIF, WebP and audio responses use native MCP content up to 3.75 MiB
+raw (5 MiB in base64), or 720 KiB raw for hosted chat. Standard clients receive the media block
+followed by a JSON receipt, with the receipt also in `structuredContent` where supported.
+Hosted chat keeps the receipt only in `structuredContent`. SVG uses the text limit.
+
+`call_result(call_id)` reads the full stored answer by default when it fits the standard MCP
+envelope. Supply `offset` or `max_chars` (1 to 2,000,000) to page explicitly. Hosted chat pages
+by default. Pages start at character zero and request up to 65,536 characters by default. MCP
+can return a shorter prefix to fit the envelope. `response.total_chars` gives the length of the
+caller-visible text. Pass `response.next_offset` as the next `offset` until it is null.
+
+`GET /calls/{id}/result` returns the full archive view when both paging parameters are omitted.
+Supply `offset` or `limit` to page. The default offset is zero and `limit` accepts 1 to 2,097,152
+characters (default 65,536). The first page includes up to 4,096 characters of request text.
+Later pages return `request: null`.
 
 ### `X-Treg-Keep-Reported-Charge` on `/call/`
 

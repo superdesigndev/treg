@@ -1086,15 +1086,27 @@ async def test_a_recorded_call_links_to_its_stored_answer(clients: AsyncClient, 
     assert "PLATFORM-TIKHUB-KEY" not in d["request"]["url"]  # pre-injection shape, no secret
 
 
-async def test_an_mcp_agent_recovers_a_paid_answer_it_never_received(clients: AsyncClient, shadow):
+async def test_an_mcp_agent_recovers_a_paid_answer_in_one_full_read(clients: AsyncClient, shadow, monkeypatch):
     """The answer an agent's client gave up on is found by listing recent calls, then read by its
     call_id, without calling the provider again."""
     from test_mcp import _call_tool, mcp_session
 
+    source = '{"data":"' + "x" * (100 * 1024 - 11) + '"}'
+    assert len(source.encode()) == 100 * 1024
+    _vendor_says(monkeypatch, source.encode())
     r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
-    assert r1.status_code == 200, r1.text
+    assert r1.status_code == 200 and r1.text == source
     await archive.drain()
     await audit.drain()
+
+    reads = []
+    resolve_result = archive.resolve_result
+
+    async def read_once(*args):
+        reads.append(args)
+        return await resolve_result(*args)
+
+    monkeypatch.setattr(archive, "resolve_result", read_once)
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as c:
         listed = await _call_tool(c, "call_result", {}, token=token)
@@ -1103,8 +1115,9 @@ async def test_an_mcp_agent_recovers_a_paid_answer_it_never_received(clients: As
         refused = await _call_tool(c, "call_result", {"call_id": "../orgs"}, token=token)
     assert latest["endpoint_id"] == EP and latest["has_result"] is True
     assert latest["cost_charged_micro"] == int(r1.headers["X-Treg-Cost-Micro"])
-    assert got["result"]["response"]["body_text"] == r1.text
-    assert "error" in refused
+    response = got["result"]["response"]
+    assert response["body_text"] == source and "next_offset" not in response
+    assert len(reads) == 1 and "error" in refused
 
 
 async def test_a_served_hit_links_to_the_same_answer(clients: AsyncClient, serve):
@@ -2197,73 +2210,98 @@ async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncC
     assert await archive.prune_once() == 1
 
 
-@pytest.mark.parametrize("character", ["评", "🦦"])
-async def test_mcp_pages_the_archived_text_after_a_bounded_call(clients, shadow, monkeypatch, character):
+async def test_full_archive_read_adapts_when_json_escaping_pushes_it_over_the_envelope(clients, shadow, monkeypatch):
+    from copy import deepcopy
+
     from test_mcp import _call_tool, mcp_session
-    from treg import mcp_output
-    from treg.application.call.types import UpstreamResponse
+    from treg import mcp, mcp_output
 
-    source = json.dumps({"data": character * 13000}, ensure_ascii=False, separators=(",", ":"))
+    source = json.dumps({"data": '"' * (650 * 1024)}, separators=(",", ":"))
+    _vendor_says(monkeypatch, source.encode())
+    answer = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert answer.status_code == 200 and answer.text == source
+    await archive.drain()
+    await audit.drain()
+    token = clients.headers["X-Treg-Token"]
+    args = {"call_id": answer.headers["X-Treg-Call-Id"]}
+    async with mcp_session(clients) as client:
+        first = await _call_tool(client, "call_result", args, token)
+        page = first["result"]["response"]
+        prefix = page["body_text"]
+        assert page["offset"] == 0 and page["total_chars"] == len(source)
+        assert 0 < page["next_offset"] == len(prefix) < len(source)
+        longer = deepcopy(first)
+        longer["result"]["response"].update(body_text=source[:len(prefix) + 1], next_offset=len(prefix) + 1)
+        assert len(mcp._team_json(first)) <= mcp_output.STANDARD_ENVELOPE_BYTES < len(mcp._team_json(longer))
+        second = await _call_tool(client, "call_result", args | {"offset": len(prefix), "max_chars": len(source)}, token)
+    remainder = second["result"]["response"]
+    assert remainder["next_offset"] is None and second["result"]["request"] is None
+    assert prefix + remainder["body_text"] == source
+
+
+@pytest.mark.parametrize("ua", ["", "openai-mcp/1.0.0", "Claude-User/1.0"])
+async def test_mcp_pages_archived_utf8_and_emoji(clients, shadow, monkeypatch, ua):
+    from copy import deepcopy
+
+    from test_mcp import _call_tool, mcp_session
+    from treg import mcp, mcp_output
+
+    source = json.dumps({"data": "评🦦" * 38_000}, ensure_ascii=False, separators=(",", ":"))
     raw = source.encode()
-    sent = json.dumps({"data": "q" * 2300}, separators=(",", ":"))
-    relays = []
+    sent = json.dumps({"data": "q" * 4500}, separators=(",", ":"))
+    _vendor_says(monkeypatch, raw)
+    answer = await clients.request("GET", f"/call/{EP}?aweme_id=7", content=sent)
+    assert answer.status_code == 200 and answer.content == raw
+    call_id = answer.headers["X-Treg-Call-Id"]
+    await archive.drain()
+    await audit.drain()
 
-    async def relay(*args, **kwargs):
-        relays.append(1)
-
-        async def stream():
-            for offset in range(0, len(raw), 3072):
-                yield raw[offset:offset + 3072]
-
-        async def close():
-            pass
-
-        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
-
-    monkeypatch.setattr(call_service, "relay", relay)
+    budget = mcp_output.budget_for({"User-Agent": ua})
+    page_limit = 65_536 if ua else 8192
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as client:
-        receipt = await _call_tool(client, "call", {
-            "endpoint_id": EP, "method": "GET", "query": {"aweme_id": "7"}, "body": sent,
-        }, token)
-        assert receipt["body"]["omitted"] and receipt["body"]["size_bytes"] == len(raw)
-        assert len(receipt["body"]["head"]) < len(source) and receipt["cost_usd"] > 0
-        await archive.drain()
-        await audit.drain()
-
-        parts = []
+        client.headers["User-Agent"] = ua
+        args = {"call_id": call_id} if ua else {"call_id": call_id, "offset": 0, "max_chars": page_limit}
         cursor = 0
+        parts = []
         while cursor is not None:
-            page = await _call_tool(client, "call_result", {"call_id": receipt["call_id"], "offset": cursor}, token)
+            page = await _call_tool(client, "call_result", args, token)
             result = page["result"]
             response = result["response"]
             part = response["body_text"]
-            assert 0 < len(part) <= 8192
+            assert 0 < len(part) <= page_limit
             assert response["offset"] == cursor and response["total_chars"] == len(source)
-            assert len(json.dumps(page, ensure_ascii=False, separators=(",", ":")).encode()) <= mcp_output.ENVELOPE_BYTES
+            assert len(mcp._team_json(page)) <= budget.envelope_bytes
             if cursor == 0:
-                if character == "评":
-                    assert len(part) == 8192
-                else:
-                    assert len(part) < 8192
                 assert result["request"]["truncated"] is True
-                assert result["request"]["body_text"] == sent[:2048]
+                assert result["request"]["body_text"] == sent[:4096]
+                if ua:
+                    assert len(part) < page_limit
+                    longer = deepcopy(page)
+                    longer["result"]["response"].update(body_text=source[:len(part) + 1],
+                                                        next_offset=len(part) + 1)
+                    assert len(mcp._team_json(longer)) > budget.envelope_bytes
+                else:
+                    assert len(part) == page_limit
             else:
                 assert result["request"] is None
             parts.append(part)
             end = cursor + len(part)
             cursor = response["next_offset"]
             assert cursor == (end if end < len(source) else None)
-    assert "".join(parts) == source and len(parts) > 1 and len(relays) == 1
+            args["offset"] = cursor
+    assert "".join(parts) == source and len(parts) > 1
 
-    url = f"/calls/{receipt['call_id']}/result"
+    url = f"/calls/{call_id}/result"
     headers = {"X-Treg-Token": token}
     full = (await clients.get(url, headers=headers)).json()
     assert full["response"]["body_text"] == source and "next_offset" not in full["response"]
     assert full["request"]["body_text"] == sent and "truncated" not in full["request"]
     first = (await clients.get(url, params={"offset": 0}, headers=headers)).json()
-    assert first["response"]["body_text"] == source[:8192] and first["response"]["next_offset"] == 8192
-    custom = (await clients.get(url, params={"offset": 5, "limit": 16384}, headers=headers)).json()
+    assert first["response"]["body_text"] == source[:65_536] and first["response"]["next_offset"] == 65_536
+    limit_only = (await clients.get(url, params={"limit": 8192}, headers=headers)).json()
+    assert limit_only["response"]["body_text"] == source[:8192] and limit_only["response"]["offset"] == 0
+    custom = (await clients.get(url, params={"offset": 5, "limit": 2_097_152}, headers=headers)).json()
     assert custom["response"]["body_text"] == source[5:] and custom["response"]["next_offset"] is None
     assert custom["request"] is None
-    assert (await clients.get(url, params={"offset": 0, "limit": 16385}, headers=headers)).status_code == 422
+    assert (await clients.get(url, params={"limit": 2_097_153}, headers=headers)).status_code == 422

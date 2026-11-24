@@ -61,7 +61,7 @@ from mcp.shared.exceptions import MCPError
 from mcp.types import AudioContent, CallToolResult, ImageContent, METHOD_NOT_FOUND, TextContent, ToolAnnotations
 from starlette.responses import JSONResponse
 
-from . import analytics, client_ip, hints, jsontext, mcp_output, oauth_providers
+from . import analytics, archive, client_ip, hints, jsontext, mcp_output, oauth_providers
 from .application import catalog_find as find_app
 from .application import catalog_search as search_app
 from .application import search_experiment
@@ -190,8 +190,9 @@ class _UnknownCallArguments:
     errors are shared behavior; the advertised tools and their schemas do not change.
     """
 
-    def __init__(self, tools: dict[str, str]) -> None:
+    def __init__(self, tools: dict[str, str], *, compact_json: bool = False) -> None:
         self._tools = tools  # tool name -> the module function that serves it
+        self._compact_json = compact_json
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -214,7 +215,8 @@ class _UnknownCallArguments:
                      "(or `params` for a POST), the query string in `query` (or `params` for a GET)"),
             "endpoint_id": arguments.get("endpoint_id"),
         }
-        return CallToolResult(content=[TextContent(type="text", text=json.dumps(refusal))],
+        text = _team_json(refusal).decode("utf-8") if self._compact_json else json.dumps(refusal)
+        return CallToolResult(content=[TextContent(type="text", text=text)],
                               structured_content=refusal, is_error=True)
 
 
@@ -225,8 +227,9 @@ class _OAuthScopeGate:
     a full identity, so this is the only place it can be held to it. Per-org and identity tokens
     carry no OAuth scope and pass. A tool missing from `required` is refused to OAuth tokens."""
 
-    def __init__(self, required: dict[str, str]) -> None:
+    def __init__(self, required: dict[str, str], *, compact_json: bool = False) -> None:
         self._required = required  # tool name -> the scope it needs
+        self._compact_json = compact_json
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
@@ -250,7 +253,8 @@ class _OAuthScopeGate:
                        f"nothing was sent. Re-authorize at {base}/oauth/authorize asking for it."),
             "required_scope": needed,
         }
-        return CallToolResult(content=[TextContent(type="text", text=json.dumps(refusal))],
+        text = _team_json(refusal).decode("utf-8") if self._compact_json else json.dumps(refusal)
+        return CallToolResult(content=[TextContent(type="text", text=text)],
                               structured_content=refusal, is_error=True)
 
 
@@ -287,29 +291,54 @@ def _is_openai_client(headers: Any) -> bool:
     return ua.lower().startswith(_OPENAI_UA_PREFIXES)
 
 
+def _is_codex_client(headers: Any) -> bool:
+    headers = headers or {}
+    ua = headers.get("user-agent") or headers.get("User-Agent") or ""
+    return ua.lower().startswith("codex-mcp-client/")
+
+
 class _OpenAIClientGate:
-    """For OpenAI's clients only: no `review`, `mark` or `compare` tool and no sentence about them
-    in the instructions."""
+    """Hide review tools for OpenAI clients and adapt native media for Codex (openai/codex#38287)."""
 
     async def __call__(
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
     ) -> HandlerResult:
         result = await call_next(ctx)
-        if ctx.method not in ("tools/list", "initialize") or not _is_openai_client(
-                getattr(getattr(ctx, "request", None), "headers", None)):
+        headers = getattr(getattr(ctx, "request", None), "headers", None)
+        if not _is_openai_client(headers):
+            return result
+        codex = _is_codex_client(headers)
+        if ctx.method == "tools/call" and codex:
+            content = result.get("content") if isinstance(result, dict) else getattr(result, "content", None)
+            if any((block.get("type") if isinstance(block, dict) else getattr(block, "type", None))
+                   in ("image", "audio") for block in content or []):
+                if isinstance(result, dict):
+                    return {k: v for k, v in result.items() if k not in ("structuredContent", "structured_content")}
+                return result.model_copy(update={"structured_content": None})
+            return result
+        if ctx.method not in ("tools/list", "initialize"):
             return result
         if ctx.method == "initialize":
             if isinstance(result, dict):
                 return {**result, "instructions": _BASE_INSTRUCTIONS}
             return result.model_copy(update={"instructions": _BASE_INSTRUCTIONS})
-        if isinstance(result, dict) and isinstance(result.get("tools"), list):
-            return {**result, "tools": [t for t in result["tools"]
-                                        if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
-                                        not in _OPENAI_HIDDEN_TOOLS]}
-        tools = getattr(result, "tools", None)
-        if isinstance(tools, list):
-            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _OPENAI_HIDDEN_TOOLS]})
-        return result
+        tools = result.get("tools") if isinstance(result, dict) else getattr(result, "tools", None)
+        if not isinstance(tools, list):
+            return result
+        visible = []
+        for tool in tools:
+            name = tool.get("name") if isinstance(tool, dict) else getattr(tool, "name", None)
+            if name in _OPENAI_HIDDEN_TOOLS:
+                continue
+            if codex and name in ("call", "call_media"):
+                if isinstance(tool, dict):
+                    tool = {k: v for k, v in tool.items() if k not in ("outputSchema", "output_schema")}
+                else:
+                    tool = tool.model_copy(update={"output_schema": None})
+            visible.append(tool)
+        if isinstance(result, dict):
+            return {**result, "tools": visible}
+        return result.model_copy(update={"tools": visible})
 
 
 class _PriorReviewGate:
@@ -431,8 +460,8 @@ mcp = MCPServer(
         "Wan) and voice), plus your team's own tools."
     ),
     instructions=f"{_BASE_INSTRUCTIONS} {_REVIEW_INSTRUCTION}",
-    middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V1_TOOL_SCOPES),
-                _UnknownCallArguments({"call": "call", "call_media": "call_media"}),
+    middleware=[_StaticSurfaceCapabilities(), _OAuthScopeGate(_V1_TOOL_SCOPES, compact_json=True),
+                _UnknownCallArguments({"call": "call", "call_media": "call_media"}, compact_json=True),
                 _HubToolsGate(), _OpenAIClientGate(), _PriorReviewGate()],
 )
 
@@ -691,6 +720,9 @@ class MyToolsOut(TypedDict, total=False):
 _caller_ip: ContextVar[str] = ContextVar("treg_mcp_caller_ip", default="")
 # The MCP host behind that tool call (`clientInfo.name`, inbound User-Agent), forwarded the same way.
 _caller_host: ContextVar[tuple[str, str]] = ContextVar("treg_mcp_caller_host", default=("", ""))
+_caller_budget: ContextVar[mcp_output.OutputBudget] = ContextVar(
+    "treg_mcp_caller_budget", default=mcp_output.STANDARD_BUDGET,
+)
 
 
 def _host_of(ctx: Context, headers: Any) -> tuple[str, str]:
@@ -714,7 +746,9 @@ def _bearer(ctx: Context) -> str:
     """
     headers = ctx.headers or {}
     _caller_ip.set(client_ip.from_headers(headers, None) if headers else "")
-    _caller_host.set(_host_of(ctx, headers))
+    host_name, host_user_agent = _host_of(ctx, headers)
+    _caller_host.set((host_name, host_user_agent))
+    _caller_budget.set(mcp_output.budget_for(headers, host_name))
     raw = headers.get("authorization") or headers.get("Authorization") or ""
     return raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
 
@@ -870,7 +904,7 @@ async def _api(token: str, *, client_name: str = "mcp"):
     host = {k: v for k, v in (("X-Treg-Mcp-Client", host_name),
                               ("X-Treg-Mcp-User-Agent", host_user_agent)) if v}
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=mcp_output.BoundedCallResponse(app)
+        transport=httpx.ASGITransport(app=mcp_output.BoundedCallResponse(app, budget=_caller_budget.get())
                                       if client_name == _TEAM_SURFACE.client_name else app),
         base_url=_INTERNAL_BASE,
         timeout=_TIMEOUT,
@@ -1664,8 +1698,9 @@ async def _catalog_get_impl(
         "'render/v1/services' — or a HUB tool by its id '<team-slug>.<name>' (a maker's tool made of "
         "tools; `params` are its inputs, see catalog_get for them). treg injects the credential "
         "server-side and relays the provider's "
-        "answer. Large responses return a bounded receipt; call_result can page archived text. "
-        "Raster images and audio up to 1 MiB use native media content. Catalog calls on treg's key "
+        "answer. Oversized responses return a receipt with recovery guidance. Use call_result "
+        "to read archived text. Successful raster images and audio within the client's safety "
+        "limits use native MCP media content. Catalog calls on treg's key "
         "are metered from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
         "price (from catalog_get) before calling anything that costs more than a cent.\n\n"
         "`idempotency_key`: pass the SAME key when you are repeating a call whose answer you did "
@@ -1974,7 +2009,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     media = _native_media(r) if surface is _TEAM_SURFACE else None
     out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id}
     if media is None:
-        out["body"] = _team_body(r) if surface is _TEAM_SURFACE else _body(r)
+        out["body"] = _team_body(r, ep=ep) if surface is _TEAM_SURFACE else _body(r)
     if retry_after := r.headers.get("Retry-After"):
         out["retry_after"] = retry_after
     if call_id := r.headers.get("X-Treg-Call-Id"):
@@ -2052,32 +2087,62 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         out["body"] = _without_purchase_pointers(out.get("body"))
         if is_balance_refusal(r.headers, out.get("body")):
             out["hint"] = surface.balance_hint
-    if media is not None:
-        return _team_result(out, media=media)
+    if surface is _TEAM_SURFACE:
+        return _team_result(out, media=media, ep=ep, response=r)
     return out
 
 
-def _team_body(response: httpx.Response) -> Any:
+def _may_be_archived(ep: dict | None, *, status: int, textual: bool, size: int) -> bool:
+    return (200 <= status < 300 and textual and ep is not None and not ep.get("spooled_response")
+            and archive.mode() != "off" and archive.policy(ep) != archive.CACHE_FORBIDDEN
+            and size <= get_settings().archive_max_body_bytes)
+
+
+def _omit_call_body(raw: bytes, *, status: int, ep: dict | None,
+                    mime: str, location: str = "") -> dict:
+    return mcp_output.omitted_body(
+        size=len(raw), mime=mime, status=status, path="/call/",
+        head=raw[:mcp_output.PREVIEW_BYTES], tail=raw[-(mcp_output.PREVIEW_BYTES + 3):],
+        location=location, may_be_archived=_may_be_archived(ep, status=status, textual=True, size=len(raw)),
+        spooled=bool(ep and ep.get("spooled_response")),
+    )
+
+
+def _team_body(response: httpx.Response, *, ep: dict | None = None,
+               budget: mcp_output.OutputBudget | None = None) -> Any:
+    budget = budget or _caller_budget.get()
+    status = response.status_code
+    if response.headers.get(mcp_output.OMITTED_HEADER) == "1":
+        receipt = response.json()
+        mime = receipt["content_type"] or ""
+        textual = "head" in receipt or ("content_encoding" in receipt and mcp_output._textual(mime))
+        receipt["note"] = mcp_output.omitted_note(
+            status=status, path="/call/", textual=textual, has_location="content_location" in receipt,
+            may_be_archived=_may_be_archived(ep, status=status, textual=textual, size=receipt["size_bytes"]),
+            spooled=bool(ep and ep.get("spooled_response")),
+        )
+        return receipt
+
     raw = response.content
-    if len(raw) <= mcp_output.TEXT_CAPTURE_BYTES:
+    if len(raw) <= budget.capture_bytes:
         try:
             body = _body(response)
             size = len(jsontext.dumps_bytes(body, separators=(",", ":"), allow_nan=False))
         except (ValueError, RecursionError):
             body = response.text
             size = len(jsontext.dumps_bytes(body, separators=(",", ":")))
-        if size <= mcp_output.BODY_BYTES:
+        if size <= budget.text_bytes:
             return body
-    return mcp_output.omitted_body(
-        size=len(raw), mime=mcp_output.content_mime(response.headers.get("content-type", "")),
-        status=response.status_code, path="/call/", head=raw[:mcp_output.PREVIEW_BYTES],
-        tail=raw[-mcp_output.PREVIEW_BYTES:], location=response.headers.get("content-location", ""),
+    return _omit_call_body(
+        raw, status=status, ep=ep, mime=mcp_output.content_mime(response.headers.get("content-type", "")),
+        location=response.headers.get("content-location", ""),
     )
 
 
 def _native_media(response: httpx.Response) -> ImageContent | AudioContent | None:
     mime = mcp_output.content_mime(response.headers.get("content-type", ""))
-    if not response.is_success or not mcp_output.is_native_media(mime):
+    if (response.headers.get(mcp_output.OMITTED_HEADER) == "1"
+            or not response.is_success or not mcp_output.is_native_media(mime)):
         return None
     data = base64.b64encode(response.content).decode("ascii")
     if mime in mcp_output.NATIVE_IMAGE_TYPES:
@@ -2085,18 +2150,20 @@ def _native_media(response: httpx.Response) -> ImageContent | AudioContent | Non
     return AudioContent(type="audio", data=data, mimeType=mime)
 
 
-def _team_json(out: dict) -> bytes:
+def _team_json(out: Any) -> bytes:
     return jsontext.dumps_bytes(out, separators=(",", ":"))
 
 
 def _team_result(out: dict, *, media: ImageContent | AudioContent | None = None,
-                 error: bool = False) -> CallToolResult:
+                 error: bool = False, budget: mcp_output.OutputBudget | None = None,
+                 ep: dict | None = None, response: httpx.Response | None = None) -> CallToolResult:
+    budget = budget or _caller_budget.get()
+    limit = budget.envelope_bytes
     encoded = _team_json(out)
-    budget = mcp_output.ENVELOPE_BYTES
-    if len(encoded) > budget:
+    if len(encoded) > limit:
         out = out.copy()
         for key in ("compare", "suggestion", "routed_tool", "hint"):
-            if len(encoded) <= budget:
+            if len(encoded) <= limit:
                 break
             if key in out:
                 del out[key]
@@ -2104,20 +2171,24 @@ def _team_result(out: dict, *, media: ImageContent | AudioContent | None = None,
                     # The inline compare hint names the omitted compare payload.
                     out.pop("hint", None)
                 encoded = _team_json(out)
-    if len(encoded) > budget and "body" in out:
-        raw = jsontext.dumps_bytes(out["body"], separators=(",", ":"))
-        out["body"] = mcp_output.omitted_body(
-            size=len(raw), mime="application/json", status=out.get("status") or 200,
-            path="/call/", head=raw[:mcp_output.PREVIEW_BYTES], tail=raw[-mcp_output.PREVIEW_BYTES:],
+    if (len(encoded) > limit and "body" in out
+            and (response is None or response.headers.get(mcp_output.OMITTED_HEADER) != "1")):
+        raw = response.content if response is not None and response.is_success else _team_json(out["body"])
+        headers = response.headers if response is not None else {}
+        out["body"] = _omit_call_body(
+            raw, status=out.get("status") or 200, ep=ep,
+            mime=mcp_output.content_mime(headers.get("content-type", "application/json")),
+            location=headers.get("content-location", ""),
         )
         encoded = _team_json(out)
-    if len(encoded) > budget and isinstance(out.get("calls"), list):
+    if len(encoded) > limit and isinstance(out.get("calls"), list):
         calls = out["calls"] = out["calls"].copy()
         out["detail"] = "Showing the newest calls that fit the MCP budget; pass a smaller limit."
-        while calls and len(encoded) > budget:
+        encoded = _team_json(out)
+        while calls and len(encoded) > limit:
             calls.pop()
             encoded = _team_json(out)
-    if len(encoded) > budget:
+    if len(encoded) > limit:
         receipt_keys = ("status", "call_id", "endpoint_id", "cost_usd", "reserved_usd", "replayed",
                         "whose_error", "retry_after", "served_via", "upstream_failed", "error")
         receipt = {key: out[key] for key in receipt_keys if key in out and len(str(out[key])) <= 256}
@@ -2125,7 +2196,9 @@ def _team_result(out: dict, *, media: ImageContent | AudioContent | None = None,
             receipt["task"] = out["task"]
         out = receipt | {"detail": "Result exceeds the MCP output budget."}
         encoded = _team_json(out)
-    content = [media] if media is not None else [TextContent(type="text", text=encoded.decode("utf-8"))]
+    content = [media] if media is not None else []
+    if media is None or not budget.compact_media_content:
+        content.append(TextContent(type="text", text=encoded.decode("utf-8")))
     return CallToolResult(content=content, structuredContent=out, isError=error)
 
 
@@ -2141,6 +2214,7 @@ async def _call_media_impl(
         return _team_result(_need_token(), error=True)
     if _leaves_route(endpoint_id):
         return _team_result(_UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}, error=True)
+    ep = catalog_store.load().by_id.get(endpoint_id)
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
                                           "idempotency-key", "x-treg-meta")}
@@ -2178,17 +2252,18 @@ async def _call_media_impl(
             pass
     if media := _native_media(response):
         return _team_result(metadata, media=media)
-    metadata["body"] = _team_body(response)
+    metadata["body"] = _team_body(response, ep=ep)
     if response.status_code == 402 or (
             response.status_code == 403 and is_admission_refusal(response.headers, metadata["body"])):
         metadata["body"] = _without_purchase_pointers(metadata["body"])  # as `call` does: no payment link
-    return _team_result(metadata, error=response.status_code >= 400)
+    return _team_result(metadata, error=response.is_error, ep=ep, response=response)
 
 
 @mcp.tool(
     description=("Call a media-producing endpoint through the same treg proxy as `call`, returning "
-                 "raster images and audio up to 1 MiB as native MCP content. Use this for "
-                 "generated images and Fish Audio TTS; use `call` for JSON endpoints."),
+                 "raster images and audio as native MCP content within the client's safety "
+                 "limits. Oversized responses return a receipt with recovery guidance. Use "
+                 "this for generated images and Fish Audio TTS; use `call` for JSON endpoints."),
     annotations=_CALLS,
 )
 async def call_media(
@@ -2243,10 +2318,41 @@ _RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_m
                        "created_at", "async_task")
 
 
-async def _call_result_impl(call_id: str, limit: int, ctx: Context, offset: int = 0) -> CallResultOut:
+def _fit_result_page(out: dict, limit: int) -> None:
+    result = out["result"]
+    page = result["response"]
+    text = page["body_text"]
+    start = page.get("offset", 0)
+    total = page.get("total_chars", len(text))
+    page.update(offset=start, total_chars=total)
+    if (sent := (result.get("request") or {}).get("body_text")) and len(sent) > 4096:
+        result["request"].update(body_text=sent[:4096], truncated=True)
+
+    def set_prefix(length: int) -> None:
+        end = start + length
+        page.update(body_text=text[:length], next_offset=end if end < total else None)
+
+    set_prefix(len(text))
+    if len(_team_json(out)) <= limit:
+        return
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        set_prefix(mid)
+        if len(_team_json(out)) <= limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    set_prefix(lo)
+
+
+async def _call_result_impl(
+    call_id: str, limit: int, ctx: Context, offset: int | None = None, max_chars: int | None = None,
+) -> CallResultOut:
     token = _bearer(ctx)
     if not token:
         return _need_token()
+    budget = _caller_budget.get()
     url = _segment_url("/calls", call_id) if call_id else None
     if call_id and url is None:
         return {"error": "call_id must be the call_id a call returned, or a row id from this list"}
@@ -2256,7 +2362,12 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context, offset: int 
             return problem
         headers = {"X-Treg-Org": slug or ""}
         if url is not None:
-            r = await client.get(f"{url}/result", params={"offset": offset}, headers=headers)
+            paged = offset is not None or max_chars is not None or budget is not mcp_output.STANDARD_BUDGET
+            if paged:
+                params = {"offset": offset or 0, "limit": max_chars if max_chars is not None else 65_536}
+                r = await client.get(f"{url}/result", params=params, headers=headers)
+            else:
+                r = await client.get(f"{url}/result", headers=headers)
         else:
             r = await client.get("/calls", params={"limit": max(1, min(limit, 50))}, headers=headers)
     body = _body(r)
@@ -2265,11 +2376,10 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context, offset: int 
                 "detail": body}
     if url is not None:
         out = {"team": slug, "result": body}
-        if isinstance(body, dict) and (page := body.get("response")):
-            text = page.get("body_text")
-            while text and len(text) > 1 and len(_team_json(out)) > mcp_output.ENVELOPE_BYTES:
-                text = text[:len(text) // 2]
-                page.update(body_text=text, next_offset=offset + len(text))
+        if (isinstance(body, dict) and (page := body.get("response"))
+                and isinstance(page.get("body_text"), str)
+                and len(_team_json(out)) > budget.envelope_bytes):
+            _fit_result_page(out, budget.envelope_bytes)
         return out
     rows = body if isinstance(body, list) else []
     return {"team": slug, "calls": [
@@ -2282,17 +2392,23 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context, offset: int 
         "Recover a call you already made, typically one whose answer never reached you (your client "
         "timed out or the connection dropped while treg finished it). Without `call_id`: this team's "
         "latest calls, newest first, each with its call_id, endpoint, status, charge and whether an "
-        "answer is stored (`has_result`). With `call_id`: read a stored answer in pages. "
-        "response.total_chars is the length of the caller-visible text. Pass response.next_offset "
-        "as offset until it is null. "
+        "answer is stored (`has_result`). With `call_id`: read the full stored answer by default "
+        "when it fits the client's safety limits. Hosted connectors page by default. Set `offset` "
+        "or `max_chars` to request a page. response.total_chars is the length of the caller-visible "
+        "text. Pass response.next_offset as offset until it is null. "
         "Reading costs nothing; check here before calling again, so a finished call is not paid twice."
     ),
     annotations=_READS,
     structured_output=True
 )
-async def call_result(ctx: Context, call_id: str = "", limit: int = 10,
-                      offset: Annotated[int, Field(ge=0)] = 0) -> Annotated[CallToolResult, CallResultOut]:
-    return _team_result(await _call_result_impl(call_id, limit, ctx, offset))
+async def call_result(
+    ctx: Context,
+    call_id: str = "",
+    limit: int = 10,
+    offset: Annotated[int | None, Field(ge=0)] = None,
+    max_chars: Annotated[int | None, Field(ge=1, le=2_000_000)] = None,
+) -> Annotated[CallToolResult, CallResultOut]:
+    return _team_result(await _call_result_impl(call_id, limit, ctx, offset, max_chars))
 
 
 @mcp.tool(
