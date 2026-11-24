@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import event, select, update
+from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
 from treg.application.call import allowance as runtime
@@ -43,6 +44,7 @@ class FakeStore:
     def __init__(self) -> None:
         self.counters: dict[int, dict] = {}
         self.leases: dict[str, str] = {}
+        self.lease_until: dict[str, float] = {}
         self.until_ms = 0
         self.lease_answer: str | None = None
         self.run = "run1"
@@ -180,14 +182,22 @@ class FakeStore:
     async def acquire_lease(self, key, token, ttl_ms):
         if self.lease_answer is not None:
             return self.lease_answer
-        if key in self.leases:
+        if key in self.leases and self.lease_until.get(key, float("inf")) > time.monotonic():
             return "busy"
         self.leases[key] = token
+        self.lease_until[key] = time.monotonic() + ttl_ms / 1000
         return "acquired"
+
+    async def renew_lease(self, key, token, ttl_ms, *, deadline=None):
+        if self.leases.get(key) != token or self.lease_until.get(key, 0) <= time.monotonic():
+            return "lost"
+        self.lease_until[key] = time.monotonic() + ttl_ms / 1000
+        return "renewed"
 
     async def release_lease(self, key, token):
         if self.leases.get(key) == token:
             del self.leases[key]
+            self.lease_until.pop(key, None)
         return "released"
 
 
@@ -2108,6 +2118,250 @@ async def test_a_pass_folds_a_few_batches_of_a_team_and_comes_back_for_the_rest(
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 50)
 
 
+async def _run_workers(count, seconds, *, every_s, stagger_s=0.0):
+    tasks = []
+    for _ in range(count):
+        tasks.append(asyncio.create_task(allowance_sweep.worker(fold_every_s=every_s)))
+        await asyncio.sleep(stagger_s)
+    await asyncio.sleep(seconds)
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+async def test_one_process_at_a_time_runs_the_pass(store, monkeypatch):
+    """Every process runs the loop, and each pass reads every team with queued charges: run by
+    every process every second, that reading cost the database more than the folding. A process
+    whose store says another has the pass pauses; one whose store cannot answer still runs."""
+    passes: list[bool] = []
+
+    async def counted(session_maker, *, sweep, keep_going=None):
+        passes.append(sweep)
+        return 0
+
+    monkeypatch.setattr(allowance_sweep, "run_once", counted)
+    store.leases[allowance_sweep._PASS_KEY] = "another process"
+    await _run_workers(1, 0.05, every_s=0.005)
+    assert passes == []
+    del store.leases[allowance_sweep._PASS_KEY]
+    await _run_workers(1, 0.05, every_s=0.005)
+    assert passes and passes[0] is True, "the first pass it runs is a sweep too"
+    passes.clear()
+    store.lease_answer = "unavailable"
+    await _run_workers(1, 0.05, every_s=0.005)
+    assert passes
+
+
+async def test_the_pause_after_an_idle_pass_is_shared_by_every_process(store, monkeypatch):
+    """Released at once after an idle pass, the lease would go to whichever process woke next,
+    and processes waking at different moments would each scan once per pause anyway."""
+    passes: list[float] = []
+
+    async def idle(session_maker, *, sweep, keep_going=None):
+        passes.append(time.monotonic())
+        return 0
+
+    monkeypatch.setattr(allowance_sweep, "run_once", idle)
+    await _run_workers(4, 0.3, every_s=0.05, stagger_s=0.012)
+    assert len(passes) <= 9, f"{len(passes)} passes in 0.3 s; one per pause is about 7"
+
+
+async def test_a_long_pass_keeps_the_lease(store, monkeypatch):
+    """A pass that outlives the lease's time would let a second process start one beside it."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
+    running, overlapped = [0], []
+
+    async def slow(session_maker, *, sweep, keep_going=None):
+        running[0] += 1
+        overlapped.append(running[0] > 1)
+        await asyncio.sleep(0.2)
+        running[0] -= 1
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(2, 0.5, every_s=0.01, stagger_s=0.02)
+    assert overlapped and not any(overlapped)
+
+
+async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monkeypatch):
+    """Shutdown cancels each background task once and waits for it. The cancellation may land
+    while the pass lease waits for its renewal task to finish; it must still end the worker."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 30)
+    renewing, finish = asyncio.Event(), asyncio.Event()
+
+    async def stubborn_renew(key, token, ttl_ms, *, deadline=None):
+        renewing.set()
+        try:
+            await finish.wait()
+        except asyncio.CancelledError:
+            await finish.wait()
+            raise
+        return "renewed"
+
+    stop = [False]
+
+    async def until_renewing(session_maker, *, sweep, keep_going=None):
+        if stop[0]:
+            raise asyncio.CancelledError
+        await renewing.wait()
+        return 1
+
+    monkeypatch.setattr(store, "renew_lease", stubborn_renew)
+    monkeypatch.setattr(allowance_sweep, "run_once", until_renewing)
+    task = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.005))
+    await renewing.wait()
+    await asyncio.sleep(0.01)
+    task.cancel()
+    finish.set()
+    await asyncio.wait({task}, timeout=0.5)
+    stopped_on_its_own = task.done()
+    stop[0] = True  # ends a worker that swallowed its cancellation, so a failure cannot hang
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    assert stopped_on_its_own and task.cancelled()
+    assert allowance_sweep._PASS_KEY not in store.leases, "the lease is given back on the way out"
+
+
+async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkeypatch):
+    """A store that fails once and comes back while the lease is still valid must not leave a
+    long pass without its lease."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
+    answers = ["unavailable"]
+    renew = store.renew_lease
+
+    async def flaky_renew(key, token, ttl_ms, *, deadline=None):
+        if answers:
+            return answers.pop()
+        return await renew(key, token, ttl_ms, deadline=deadline)
+
+    running, overlapped = [0], []
+
+    async def slow(session_maker, *, sweep, keep_going=None):
+        running[0] += 1
+        overlapped.append(running[0] > 1)
+        await asyncio.sleep(0.2)
+        running[0] -= 1
+        return 1
+
+    monkeypatch.setattr(store, "renew_lease", flaky_renew)
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(2, 0.4, every_s=0.01, stagger_s=0.03)
+    assert overlapped and not any(overlapped)
+
+
+async def test_a_team_whose_rows_stay_locked_does_not_hold_up_the_others(
+        org_id, store, monkeypatch, caplog):
+    """One process folds for every team, so a fold gives up a team whose rows another session
+    keeps locked past the lock wait, and goes on to the next."""
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1)])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def locked_first(db, team, **kwargs):
+        if team == org_id:
+            raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", locked_first)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(org_id) == 1 and await _queued(org_id + 1) == 0
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_lease(
+        store, monkeypatch):
+    """Asked again only at the usual interval, two failed renewals in a row could miss the store
+    coming back before the lease runs out."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 90)
+    answers = ["unavailable", "unavailable"]
+    renew = store.renew_lease
+
+    async def flaky_renew(key, token, ttl_ms, *, deadline=None):
+        if answers:
+            return answers.pop()
+        return await renew(key, token, ttl_ms, deadline=deadline)
+
+    running, overlapped = [0], []
+
+    async def slow(session_maker, *, sweep, keep_going=None):
+        running[0] += 1
+        overlapped.append(running[0] > 1)
+        await asyncio.sleep(0.25)
+        running[0] -= 1
+        return 1
+
+    monkeypatch.setattr(store, "renew_lease", flaky_renew)
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(2, 0.45, every_s=0.01, stagger_s=0.03)
+    assert overlapped and not any(overlapped)
+
+
+async def test_a_pass_that_lost_its_lease_stops_between_teams(org_id, store):
+    """Once the lease is known to be gone another process may run a pass, so this one stops at
+    the next team instead of scanning beside it."""
+    async with session_maker() as db:
+        db.add_all([Org(id=org_id + n, name="later", slug=uuid4().hex) for n in (1, 2)])
+        await db.flush()
+        for n in (1, 2):
+            await ledger.grant(db, org_id + n, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1, org_id + 2)])
+        await db.commit()
+    asked = []
+
+    def holding():
+        asked.append(True)
+        return len(asked) < 2
+
+    assert await allowance_sweep.fold_queued_once(session_maker, keep_going=holding) == 1
+    assert [await _queued(org_id + n) for n in (0, 1, 2)] == [0, 1, 1]
+
+
+async def test_a_team_a_request_here_is_working_on_does_not_hold_up_the_others(
+        org_id, store, monkeypatch):
+    """A request in this process can hold the team's lock while it waits on the database; the
+    one process folding for every team skips that team instead of queueing behind it."""
+    async with session_maker() as db:
+        db.add(Org(id=org_id + 1, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, org_id + 1, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in (org_id, org_id + 1)])
+        await db.commit()
+    async with runtime.money_lock(org_id):
+        folded = await asyncio.wait_for(allowance_sweep.fold_queued_once(session_maker), 2)
+    assert folded == 1
+    assert await _queued(org_id) == 1 and await _queued(org_id + 1) == 0
+
+
+async def test_a_fold_on_postgresql_caps_its_wait_for_row_locks(monkeypatch):
+    """The cap is what lets the one folding process give up a team whose rows stay locked."""
+    ran: list[str] = []
+
+    class Recorder:
+        async def execute(self, statement):
+            ran.append(str(statement))
+
+    monkeypatch.setattr(infra_db, "_is_sqlite", False)
+    await allowance_sweep._bound_lock_wait(Recorder())
+    assert ran == [f"SET LOCAL lock_timeout = '{allowance_sweep._LOCK_WAIT_MS}ms'"]
+    monkeypatch.setattr(infra_db, "_is_sqlite", True)
+    ran.clear()
+    await allowance_sweep._bound_lock_wait(Recorder())
+    assert ran == []
+
+
 async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
         org_id, store, monkeypatch):
     """Teams are listed a page at a time. A pass that only ever read the first page would never
@@ -2256,13 +2510,13 @@ async def test_the_background_loop_folds_a_queue_whether_or_not_its_team_is_list
 async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(monkeypatch):
     passes, pauses, sweeps = iter([3, 2, 0]), [], []
 
-    async def fold(session_maker) -> int:
+    async def fold(session_maker, *, keep_going=None) -> int:
         try:
             return next(passes)
         except StopIteration:
             raise asyncio.CancelledError from None
 
-    async def sweep(session_maker) -> int:
+    async def sweep(session_maker, *, keep_going=None) -> int:
         sweeps.append(len(pauses))
         return 0
 

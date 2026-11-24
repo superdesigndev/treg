@@ -602,11 +602,22 @@ past the bound do not make every new team scan them.
   and it is made, in a task of its own, once that refill has committed and given up the lease.
 
 - **One place folds the queue.** `application/allowance_sweep.py` runs a loop wherever
-  background work runs. Each pass goes through every team with queued charges, listed or
+  background work runs, and one process at a time runs its pass: the pass holds a lease in the
+  store (`_pass_lease`), renewed while a long pass runs, and a process that finds it taken
+  pauses. After an idle pass the holder keeps the lease through the pause instead of releasing
+  it, so the pause is shared: processes waking at different moments do not each take a turn.
+  Every pass lists the teams with queued charges, a read over a queue that is written and
+  deleted all day; run by every process every second it cost the database more than the folding
+  did. When the store cannot answer, every process runs its pass, as before the lease; a renewal
+  the store could not answer is asked again sooner, within what is left of the lease, and a pass
+  whose lease is known to be gone stops at the next team. Since one process folds for every
+  team, a fold or idle close skips a team whose lock a request in the same process holds, and
+  waits at most `_LOCK_WAIT_MS` for a team's row locks (`lock_timeout`) before giving that team
+  up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass goes through every team with queued charges, listed or
   not, a page of teams at a time in the order of their numbers, and folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
   pool; a pass that folded something is followed by the next at once, an idle one by a short
   pause. Request processes only queue charges: neither a refill nor the charge writer folds.
-  So the connections folding uses are one per process running the loop, whatever the traffic
+  So the connections folding uses are one per process running a pass, whatever the traffic
   and however many teams are busy, and none of them comes from the pool requests use. A team
   another process is working on (its lease is taken) is skipped, not waited for; so is a team
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
