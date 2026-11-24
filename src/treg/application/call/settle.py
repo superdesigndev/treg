@@ -616,7 +616,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         rows = doc.get("accounts")
         row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
         return _rows_billed_micro(mk, ep, row_count)
-    if provider == "contactout" and cost:
+    if provider == "contactout" and cost and cost.get("contactout"):
         from . import contactout
         return contactout.observed(cost, mk.request_data, doc)
     if provider == "millionverifier" and mk.endpoint_id == "millionverifier.people.email.verify":

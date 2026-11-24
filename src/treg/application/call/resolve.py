@@ -914,7 +914,7 @@ def _marketplace_pricing(
         from . import sumble
         credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
         return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
-    if provider == "contactout":
+    if provider == "contactout" and cost.get("contactout"):
         from . import contactout
         request = _json_object(body) if body else dict(query.multi_items())
         return contactout.estimate(cost, request), 0

@@ -286,7 +286,7 @@ contracts:
     # not a miss, and catch-all is kept apart from `risky` so it can be counted on its own.
     # `decisive`: the words that answer the question, for `X-Treg-Route-Decisive` (route.py).
     verdict: {from: status, words: [valid, invalid, catch_all, risky, unknown], decisive: [valid, invalid]}
-    # ContactOut's free verifier answers most calls on treg's key with a 429; asked first on price, it adds a refused attempt to most calls.
+    # ContactOut's verifier answers most calls on treg's key with a 429; asked first on price, it adds a refused attempt to most calls.
     ask_last: [contactout]
 
   people.enrich:
