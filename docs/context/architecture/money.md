@@ -334,6 +334,8 @@ A listed team's call that keeps its own hold logs why, as one JSON line on its o
 or `take_refused` when an eligible call's take returned it to the exact path. The first skip of a
 team and reason is logged at once, then one line a minute per process with the count since the
 last line, so a listed team whose calls never reach the allowance says which rule kept them out.
+`calls` counts calls sent to the exact path, before its reserve runs: a call that path then
+refuses (short balance, a cap) is counted too, so it is not the number of holds written.
 
 `application/call/allowance.py` is the whole runtime:
 
