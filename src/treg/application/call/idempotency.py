@@ -381,13 +381,28 @@ async def _renew_claim_lease(claim: tuple[int, str, str]) -> None:
 
 
 async def _hold_claim_lease(state) -> None:
-    """Renew `state.idem_claim` until the request drops it; the caller cancels this task on exit."""
+    """Renew `state.idem_claim` until the request drops it; the caller cancels this task on exit.
+    The owner's in-flight mark is renewed with it, when it has one: a lease the database could not
+    renew still reads as running."""
     while True:
         await asyncio.sleep(IDEMPOTENCY_LEASE_RENEW_S)
         claim = getattr(state, "idem_claim", None)
         if not claim:
             return
+        if kv.configured():
+            await kv.store().renew_call_in_flight(claim[2], IN_FLIGHT_MARK_MS)
         await _renew_claim_lease(claim)
+
+
+async def mark_in_flight(call_ref: str) -> bool:
+    """Mark a keyed call on the allowance as running; False when the store did not take it, and
+    the call then keeps a hold of its own."""
+    return await kv.store().mark_call_in_flight(call_ref, IN_FLIGHT_MARK_MS)
+
+
+async def clear_in_flight(call_ref: str) -> None:
+    """Remove the mark once the call's charge is written, or once it did not take the allowance."""
+    await kv.store().clear_call_in_flight(call_ref)
 
 
 async def resolve_archived_replay(replay: IdempotentReplay, key: str) -> IdempotentReplay:

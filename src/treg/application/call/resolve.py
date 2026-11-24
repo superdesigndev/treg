@@ -415,6 +415,9 @@ class MarketplaceCall:
     holdless: bool = False
     # Reserved from the team's allowance counter of this epoch, not a hold (money.md "Allowance").
     allowance_epoch: int | None = None
+    # That reserve marked the call in flight in the shared store (a keyed call): cleared once its
+    # charge is written.
+    allowance_marked: bool = False
     # An overflow child reserve started for this parent: its `{call_ref}:overflow` hold may exist.
     overflow_hold_possible: bool = False
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears

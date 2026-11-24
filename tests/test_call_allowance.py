@@ -47,6 +47,16 @@ class FakeStore:
         self.lease_answer: str | None = None
         self.run = "run1"
         self.paces = 0
+        self.marks: set[str] = set()
+        self.mark_answer = True
+
+    async def mark_call_in_flight(self, call_ref, ttl_ms):
+        if self.mark_answer:
+            self.marks.add(call_ref)
+        return self.mark_answer
+
+    async def clear_call_in_flight(self, call_ref):
+        self.marks.discard(call_ref)
 
     def restart(self) -> None:
         """The store's server starts again: every counter built before is gone."""
@@ -953,6 +963,51 @@ async def test_a_cancelled_eligible_call_returns_its_take(org_id, store):
     await call_settle._finish_cancelled_call(None, mk, "direct-1")
     assert mk.allowance_epoch is None and store.counters[org_id]["avail"] == CHUNK
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
+
+
+async def test_a_keyed_call_is_marked_in_flight_until_its_charge_is_written(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    assert mk.allowance_epoch and mk.allowance_marked and store.marks == {"keyed-1"}
+    assert await _per_call_holds(org_id) == []
+    assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
+    assert store.marks == set() and not mk.allowance_marked
+    assert await _queued(org_id) == 1
+
+
+async def test_a_cancelled_keyed_call_clears_its_mark(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    await call_settle._finish_cancelled_call(None, mk, "keyed-1")
+    assert store.marks == set() and store.counters[org_id]["avail"] == CHUNK
+
+
+async def test_an_unmarked_call_is_not_marked(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)
+    assert mk.allowance_epoch and not mk.allowance_marked and store.marks == set()
+
+
+@pytest.mark.parametrize(("refused", "reason"), [
+    ("mark", "in_flight_unmarked"), ("take", "take_refused")])
+async def test_a_keyed_call_the_allowance_cannot_serve_keeps_its_hold_and_no_mark(
+        org_id, store, monkeypatch, skip_lines, refused, reason):
+    """No mark, no take: a stale claim could not see the call. A refused take leaves no mark
+    behind either: the call's own hold is what a stale claim reads."""
+    caller, mk = await _caller(org_id), _call(org_id)
+    if refused == "mark":
+        store.mark_answer = False
+    else:
+        async def no_take(*args, **kwargs):
+            return None
+        monkeypatch.setattr(runtime, "take", no_take)
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    assert mk.allowance_epoch is None and not mk.allowance_marked and store.marks == set()
+    assert await _per_call_holds(org_id) == ["keyed-1"]
+    assert skip_lines() == [_skip(org_id, reason, 1)]
 
 
 @pytest.fixture

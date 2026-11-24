@@ -34,7 +34,7 @@ from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
 from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
-from .idempotency import _release_idempotent_claim
+from .idempotency import _release_idempotent_claim, clear_in_flight
 from . import allowance as allowance_runtime
 from . import cost as call_cost
 from . import keyslots
@@ -1167,6 +1167,7 @@ async def _platform_settle(
         # Reserved from the team's allowance: there is no hold to close. The charge is queued
         # and the unused part goes back to the counter; a release writes nothing at all.
         epoch, mk.allowance_epoch = mk.allowance_epoch, None
+        marked, mk.allowance_marked = mk.allowance_marked, False
         charged = await allowance_runtime.finish(
             mk.payer_org_id, call_id, epoch, mk.reserved_micro or 0, endpoint_id=mk.endpoint_id,
             billable=billable, actual_micro=actual, archive_use=archive_use if billable else None,
@@ -1175,6 +1176,8 @@ async def _platform_settle(
                                   mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
                   **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
                      if cached_hit else {})})
+        if marked:  # the charge is written (or the take given back): the claim can see it now
+            await clear_in_flight(call_id)
         if finalized is not None:
             finalized()
         return charged, observed
@@ -1402,12 +1405,15 @@ async def _finish_cancelled_call(
             # The parent reserved from the allowance, so it has no hold: return the take (or
             # charge it, when the purchase was already sent). An overflow child keeps its hold.
             epoch, mk.allowance_epoch = mk.allowance_epoch, None
+            marked, mk.allowance_marked = mk.allowance_marked, False
             hold_ids = [hold_id for hold_id in hold_ids if hold_id != call_ref]
             await allowance_runtime.finish(
                 mk.payer_org_id, call_ref, epoch, mk.reserved_micro or 0,
                 endpoint_id=mk.endpoint_id, billable=charge_hold,
                 meta={"provider": mk.provider, "cost_type": mk.cost_type, "status_code": None,
                       "reason": "call_cancelled_after_purchase_sent"})
+            if marked:
+                await clear_in_flight(call_ref)
         if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release
