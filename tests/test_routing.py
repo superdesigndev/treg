@@ -1858,6 +1858,23 @@ async def test_the_routed_quote_ranks_the_children_the_router_skips_last(clients
     assert tomba["skipped"] == "not platform-eligible and no own key" and tomba["accepts"]
 
 
+async def test_the_routed_quote_prices_and_orders_children_as_the_router_does(clients: AsyncClient, enrichment_on):
+    """A price table the adapter's `const` fixes to one row is quoted at that row, not at its
+    fallback ceiling, and the contract's `ask_last` places those providers last, as a call does."""
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    plan = (await clients.get("/catalog/endpoints/treg.people.phone.find")).json()["routing"]["plan"]
+    kid = "descovo.people.phone.find"
+    ad = cat.adapters[kid]
+    held = call_route.const_table_price(cat, cat.by_id[kid], ad, dict(ad.test_identity), ad.accepts[0])
+    row = next(c for c in plan if c["endpoint_id"] == kid)
+    assert held is not None and row["usd"] == held / 1_000_000, row
+    for group in ([c for c in plan if "skipped" not in c], [c for c in plan if "skipped" in c]):
+        ids = [c["endpoint_id"].split(".")[0] for c in group]
+        if "leadocean" in ids:
+            assert ids[-1] == "leadocean", ids
+
+
 async def test_idempotent_replay_of_a_routed_call_never_calls_a_provider_twice(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(

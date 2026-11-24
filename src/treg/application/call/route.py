@@ -675,7 +675,7 @@ def _when_paths(when) -> set[str]:
     return {None}
 
 
-def _const_table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
+def const_table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
     """What the child's hold will be for a v2 price table whose every condition reads a parameter
     the adapter fixes (`const`): the routed request always picks the same row, so the plan ranks it
     at that row, not at the fallback ceiling. A table a caller's value can pick keeps its ceiling."""
@@ -698,7 +698,7 @@ def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
     """What the child's hold will be for a v1 price table, priced from the upstream request this
     adapter sends; the table's fallback ceiling would price every size alike. None for any other row."""
     if is_v2(ep):
-        return _const_table_price(cat, ep, adapter, identity, variant)
+        return const_table_price(cat, ep, adapter, identity, variant)
     raw = ep.get("cost") or {}
     if not isinstance(raw.get("table"), list):
         return None
