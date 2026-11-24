@@ -101,8 +101,6 @@ def _prune() -> None:
     for org_id in [org_id for org_id in _refills if org_id not in busy]:
         del _refills[org_id]
 _refills: dict[int, int] = {}
-# Takes in progress per team. A caller reads `refills` before a take and after it, so a team's
-# count is kept while one runs.
 _taking: dict[int, int] = {}
 
 
