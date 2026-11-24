@@ -609,9 +609,11 @@ past the bound do not make every new team scan them.
   Every pass lists the teams with queued charges, a read over a queue that is written and
   deleted all day; run by every process every second it cost the database more than the folding
   did. When the store cannot answer, every process runs its pass, as before the lease; a renewal
-  the store could not answer is asked again until the lease would have run out. Since one
-  process folds for every team, a fold or idle close waits at most `_LOCK_WAIT_MS` for a team's
-  row locks (`lock_timeout`), then gives that team up for the pass. Each pass goes through every team with queued charges, listed or
+  the store could not answer is asked again sooner, within what is left of the lease, and a pass
+  whose lease is known to be gone stops at the next team. Since one process folds for every
+  team, a fold or idle close skips a team whose lock a request in the same process holds, and
+  waits at most `_LOCK_WAIT_MS` for a team's row locks (`lock_timeout`) before giving that team
+  up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass goes through every team with queued charges, listed or
   not, a page of teams at a time in the order of their numbers, and folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
   pool; a pass that folded something is followed by the next at once, an idle one by a short
   pause. Request processes only queue charges: neither a refill nor the charge writer folds.

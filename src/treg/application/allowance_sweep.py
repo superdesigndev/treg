@@ -20,6 +20,7 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
@@ -96,25 +97,35 @@ async def _team_lease(org_id: int):
 class _Pass:
     """One process's turn at the pass. `rest_s` set by the holder keeps the lease after the pass
     for that long, so the pause after an idle pass is shared by every process, not taken by each
-    in turn."""
+    in turn. `lost` is set once the lease is known to be gone: the pass then stops between
+    teams, so it does not run beside the process that has the lease now."""
 
     def __init__(self, mine: bool) -> None:
         self.mine = mine
         self.rest_s = 0.0
+        self.lost = False
+
+    def holding(self) -> bool:
+        return not self.lost
 
 
-async def _keep_pass(store, token: str) -> None:
+async def _keep_pass(store, token: str, turn: _Pass) -> None:
     """Renew the pass lease while a long pass runs, so a second process does not start one. A
-    store that cannot answer is asked again until the lease would have run out; only a lease
-    known to be lost, or past its time, ends the renewal."""
-    valid_until = time.monotonic() + _PASS_LEASE_MS / 1000
+    store that cannot answer is asked again sooner, within what is left of the lease; a lease
+    known to be lost, or past its time, marks the turn `lost` and ends the renewal."""
+    ttl_s = _PASS_LEASE_MS / 1000
+    valid_until, wait_s = time.monotonic() + ttl_s, ttl_s / 3
     while True:
-        await asyncio.sleep(_PASS_LEASE_MS / 3000)
+        await asyncio.sleep(wait_s)
         asked_at = time.monotonic()
         answer = await store.renew_lease(_PASS_KEY, token, _PASS_LEASE_MS, deadline=valid_until)
+        left_s = valid_until - time.monotonic()
         if answer == "renewed":
-            valid_until = asked_at + _PASS_LEASE_MS / 1000
-        elif answer != "unavailable" or time.monotonic() >= valid_until:
+            valid_until, wait_s = asked_at + ttl_s, ttl_s / 3
+        elif answer == "unavailable" and left_s > 0:
+            wait_s = min(ttl_s / 3, max(left_s / 4, 0.005))
+        else:
+            turn.lost = True
             return
 
 
@@ -129,20 +140,23 @@ async def _pass_lease():
     store, token = kv.store(), uuid.uuid4().hex
     acquired = await store.acquire_lease(_PASS_KEY, token, _PASS_LEASE_MS)
     turn = _Pass(acquired != "busy")
-    keeper = asyncio.create_task(_keep_pass(store, token)) if acquired == "acquired" else None
+    keeper = (asyncio.create_task(_keep_pass(store, token, turn))
+              if acquired == "acquired" else None)
     try:
         yield turn
     finally:
-        if keeper is not None:
-            keeper.cancel()
-            # gather hands back the keeper's own cancellation as a result; a cancellation of this
-            # task while it waits still propagates.
-            await asyncio.gather(keeper, return_exceptions=True)
-        if acquired == "acquired":
-            if turn.rest_s > 0:
-                await store.renew_lease(_PASS_KEY, token, max(1, int(turn.rest_s * 1000)))
-            else:
-                await store.release_lease(_PASS_KEY, token)
+        try:
+            if keeper is not None:
+                keeper.cancel()
+                # gather hands back the keeper's own cancellation as a result; a cancellation of
+                # this task while it waits still propagates, after the lease is given back.
+                await asyncio.gather(keeper, return_exceptions=True)
+        finally:
+            if acquired == "acquired":
+                if turn.rest_s > 0 and not turn.lost:
+                    await store.renew_lease(_PASS_KEY, token, max(1, int(turn.rest_s * 1000)))
+                else:
+                    await store.release_lease(_PASS_KEY, token)
 
 
 def idle_after_s() -> int:
@@ -151,9 +165,14 @@ def idle_after_s() -> int:
     return ledger.hold_ttl_s() + _SLACK_S
 
 
-async def sweep_once(session_maker) -> int:
+def _always() -> bool:
+    return True
+
+
+async def sweep_once(session_maker, *, keep_going: Callable[[], bool] = _always) -> int:
     """Close every allowance hold idle for `idle_after_s()`, a page of teams at a time, so a
-    team is reached however many before it cannot be closed yet. Returns how many were closed."""
+    team is reached however many before it cannot be closed yet; stops between teams once
+    `keep_going` says so. Returns how many were closed."""
     stale_before = utcnow_naive() - timedelta(seconds=idle_after_s())
     closed, after = 0, 0
     while True:
@@ -161,6 +180,8 @@ async def sweep_once(session_maker) -> int:
             org_ids = await allowance.stale_allowance_orgs(
                 db, stale_before, after=after, limit=_TEAMS_PER_PAGE)
         for org_id in org_ids:
+            if not keep_going():
+                return closed
             closed += await _close_idle(session_maker, org_id, stale_before)
         if len(org_ids) < _TEAMS_PER_PAGE:
             return closed
@@ -169,13 +190,15 @@ async def sweep_once(session_maker) -> int:
 
 async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
     """Close one team's idle hold. False when another process has the team, its money sessions
-    are busy, the hold is no longer idle, or on a fault: the next sweep comes back."""
+    are busy (here or in another process), the hold is no longer idle, or on a fault: the next
+    sweep comes back."""
     try:
         async with _team_lease(org_id) as free:
-            if not free:
+            lock = money_lock(org_id)
+            if not free or lock.locked():
                 return False
             async with (
-                money_lock(org_id),
+                lock,
                 money_admission.admit(
                     money_admission.require_balance_orgs([org_id]), operation="release",
                     max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
@@ -203,17 +226,19 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
         return False
 
 
-async def fold_queued_once(session_maker) -> int:
+async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _always) -> int:
     """Fold the queue of every team that has charges queued, listed or not: a queue outlives
     its team's listing and its hold. A pass goes through all of them, a page of teams at a
-    time, so a team is reached however many others keep queueing. Returns how many charges
-    were folded."""
+    time, so a team is reached however many others keep queueing; it stops between teams once
+    `keep_going` says so. Returns how many charges were folded."""
     total, after, queued_before = 0, 0, utcnow_naive()
     while True:
         async with session_maker() as db:
             org_ids = await allowance.orgs_with_queued_charges(
                 db, queued_before, after=after, limit=_TEAMS_PER_PAGE)
         for org_id in org_ids:
+            if not keep_going():
+                return total
             total += await _fold_team(session_maker, org_id)
         if len(org_ids) < _TEAMS_PER_PAGE:
             return total
@@ -222,17 +247,19 @@ async def fold_queued_once(session_maker) -> int:
 
 async def _fold_team(session_maker, org_id: int) -> int:
     """A few batches of one team's queue. Stops when another process has the team, the team's
-    money sessions are busy, or its rows stay locked past `_LOCK_WAIT_MS`, and the next pass
+    money sessions are busy (a request in this process holding its lock among them), or its rows
+    stay locked past `_LOCK_WAIT_MS`, and the next pass
     comes back: the teams behind it are not kept waiting. One team failing does not stop the
     pass."""
     total = 0
     try:
         for _ in range(_FOLD_BATCHES_PER_PASS):
             async with _team_lease(org_id) as free:
-                if not free:
+                lock = money_lock(org_id)
+                if not free or lock.locked():
                     break
                 async with (
-                    money_lock(org_id),
+                    lock,
                     money_admission.admit(
                         money_admission.require_balance_orgs([org_id]), operation="close",
                         max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
@@ -255,12 +282,13 @@ async def _fold_team(session_maker, org_id: int) -> int:
     return total
 
 
-async def run_once(session_maker, *, sweep: bool) -> int:
+async def run_once(session_maker, *, sweep: bool,
+                   keep_going: Callable[[], bool] = _always) -> int:
     """One pass: the idle sweep when it is due, then the fold, one after the other, so never
     more than one connection. Returns how many charges were folded."""
     if sweep:
-        await sweep_once(session_maker)
-    return await fold_queued_once(session_maker)
+        await sweep_once(session_maker, keep_going=keep_going)
+    return await fold_queued_once(session_maker, keep_going=keep_going)
 
 
 async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
@@ -278,7 +306,8 @@ async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                     sweep = time.monotonic() >= next_sweep
                     if sweep:
                         next_sweep = time.monotonic() + sweep_every_s
-                    folded = await run_once(background_session_maker, sweep=sweep)
+                    folded = await run_once(background_session_maker, sweep=sweep,
+                                            keep_going=turn.holding)
                     if not folded:
                         turn.rest_s = fold_every_s
         except asyncio.CancelledError:
