@@ -31,6 +31,7 @@ from ...infra import kv, money_admission
 from ...infra.db import session_maker
 from ...infra.money_session import money_session
 from ...models import Org
+from .idempotency import IN_FLIGHT_MARK_MS
 
 log = logging.getLogger("treg.money_allowance")
 
@@ -54,6 +55,8 @@ _refused_until: dict[int, float] = {}
 _in_flight = [0]
 # The most charges this process may owe the database at once, in flight or waiting to be written.
 _MAX_OWED = 20_000
+# How often the charge writer renews the in-flight marks it holds: well inside their lifetime.
+_MARK_RENEW_S = 60.0
 _money_locks: dict[tuple[int, asyncio.AbstractEventLoop], asyncio.Lock] = {}
 
 
@@ -511,6 +514,11 @@ class _ChargeWriter:
     Every row here belongs to a call that was admitted while there was room for it (`owed`
     counts each from `submit` until it is known written), so nothing is ever cut from a queue.
 
+    A keyed call's in-flight mark (`marked`) is the writer's from `submit` on: a stale claim
+    reads the mark until it can read the charge, so the writer renews every mark it holds on its
+    own clock (`_keep_marks`), whatever its batches are doing, and clears one only once its charge
+    is known written, whatever happened to the call meanwhile.
+
     The writer, not the call, freezes a team's counter for an overrun, and does it after the
     charge is committed and before the call is told: only then can a refill that reads the
     freeze have the charge in front of it, and a call cancelled while it waited changes nothing.
@@ -522,9 +530,14 @@ class _ChargeWriter:
         self._task: asyncio.Task | None = None
         self._retry_task: asyncio.Task | None = None
         self.owed = 0
+        self._marked: set[str] = set()
+        self._marks_task: asyncio.Task | None = None
+        # Orders a renewal against a clear: a mark set again after its clear would outlive its
+        # charge, and a claim would wait for it to expire.
+        self._marks_lock = asyncio.Lock()
 
-    def submit(self, charge: allowance.Charge,
-               archive_use: tuple[int, str] | None) -> asyncio.Future:
+    def submit(self, charge: allowance.Charge, archive_use: tuple[int, str] | None, *,
+               marked: bool = False) -> asyncio.Future:
         """Queue one charge now, with no await: a call cancelled right after still pays. The
         future resolves to a `_Written`: confirmed once the charge is known committed,
         unconfirmed when that is not known yet and the writer keeps trying."""
@@ -532,6 +545,9 @@ class _ChargeWriter:
         future = loop.create_future()
         self._pending.append((charge, archive_use, future))
         self.owed += 1
+        if marked:
+            self._marked.add(charge.call_id)
+            self._marks_task = self._ensure(self._marks_task, self._keep_marks, "treg-allowance-marks")
         self._task = self._ensure(self._task, self._run, "treg-allowance-charges")
         return future
 
@@ -557,7 +573,7 @@ class _ChargeWriter:
                 failed, drew, fault = await self._attempt(
                     [row for row in rows if row[0].org_id in failed], again=True)
             owed = [row for row in rows if row[0].org_id in failed]
-            self._committed([row for row in rows if row[0].org_id not in failed])
+            await self._committed([row for row in rows if row[0].org_id not in failed])
             if owed:
                 log.error("writing %d call charges is unconfirmed; retrying in the background",
                           len(owed), exc_info=fault)
@@ -596,7 +612,7 @@ class _ChargeWriter:
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
             failed, _, _ = await self._attempt(rows, again=True)
             written = [row for row in rows if row[0].org_id not in failed]
-            self._committed(written)
+            await self._committed(written)
             # The rows still unconfirmed go to the back: a team whose writes keep failing does
             # not keep the teams queued behind it from being tried.
             self._unconfirmed = (self._unconfirmed[len(rows):]
@@ -614,10 +630,29 @@ class _ChargeWriter:
         more calls to the allowance: each would add a charge the database is not taking."""
         return bool(self._unconfirmed)
 
-    def _committed(self, rows: list) -> None:
+    async def _committed(self, rows: list) -> None:
         """The rows are in the database and their teams' freezes with the store: count the rows
-        as written."""
+        as written, and clear their calls' in-flight marks, which a stale claim no longer needs."""
         self.owed = max(0, self.owed - len(rows))
+        async with self._marks_lock:
+            done = [charge.call_id for charge, _ in rows if charge.call_id in self._marked]
+            self._marked.difference_update(done)
+            if done:
+                # One round trip for the batch: a store that does not answer costs the writer one
+                # short timeout, not one per row.
+                await kv.store().clear_calls_in_flight(done)
+
+    async def _keep_marks(self) -> None:
+        """Renew every mark the writer holds, queued, being written or unconfirmed alike, until
+        none is left: until its charge is written, the mark is all a stale claim can read of the
+        call, and the request that set it may be gone."""
+        while self._marked:
+            await asyncio.sleep(_MARK_RENEW_S)
+            # Set, not only extended: a store that restarted lost the marks, and the writer
+            # knows these calls' charges are still unwritten.
+            async with self._marks_lock:
+                if self._marked:
+                    await kv.store().mark_calls_in_flight(sorted(self._marked), IN_FLIGHT_MARK_MS)
 
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> set[int]:
@@ -794,9 +829,13 @@ async def _deliver_freezes(org_id: int) -> None:
 
 async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
                  endpoint_id: str, billable: bool, actual_micro: int | None = None,
-                 meta: dict | None = None, archive_use: tuple[int, str] | None = None) -> int:
+                 meta: dict | None = None, archive_use: tuple[int, str] | None = None,
+                 marked: bool = False) -> int:
     """End one take, once: charge the call and give back the rest, or give back all of it.
     Returns what was charged. Never raises: the call already has its answer.
+
+    `marked`: the call has an in-flight mark (a keyed call). A call charged nothing clears it
+    here; a charge hands it to the writer, which clears it once the charge is written.
 
     The charge is queued before anything is awaited, so a cancel in the middle cannot lose it.
     A give-back that does not arrive leaves that money in the hold until a close returns it.
@@ -809,10 +848,12 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
     try:
         if not billable:
             await store.allowance_give_back(org_id, epoch, reserved_micro)
+            if marked:
+                await store.clear_call_in_flight(call_id)
             return 0
         charge = allowance.Charge(
             call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro, epoch)
-        written = _charges.submit(charge, archive_use)
+        written = _charges.submit(charge, archive_use, marked=marked)
         amount = allowance.charged_micro(charge)
         if amount < reserved_micro:
             await store.allowance_give_back(org_id, epoch, reserved_micro - amount)

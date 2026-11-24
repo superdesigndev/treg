@@ -18,9 +18,10 @@ from sqlmodel import select
 
 from ... import archive
 from ...config import get_settings
+from ...infra import kv
 from ...infra.db import is_db_busy, session_maker
 from ...domain.identity.access import Caller
-from ...models import AsyncTaskRecord, CallRecord, Hold, IdempotentCall, LedgerEntry
+from ...models import AsyncTaskRecord, CallCharge, CallRecord, Hold, IdempotentCall, LedgerEntry
 from .types import IdempotencyFailed, IdempotentReplay
 
 if TYPE_CHECKING:
@@ -37,6 +38,10 @@ IDEMPOTENCY_SWEEP_BATCH = 100  # expired labels one claim reclaims; the rest go 
 # terminal answer rather than answering 409 for the whole window; see `_resolve_stale_claim`.
 IDEMPOTENCY_LEASE_RENEW_S = 5 * 60
 IDEMPOTENCY_STALE_PENDING_S = 3 * IDEMPOTENCY_LEASE_RENEW_S
+# A keyed call on the team's allowance has no hold to show it is running, so it keeps a mark in
+# the shared store instead, renewed with its lease. Outlives one missed renewal; gone well before
+# the lease reads stale when the process that set it has died.
+IN_FLIGHT_MARK_MS = 2 * IDEMPOTENCY_LEASE_RENEW_S * 1000
 _POOL_RETRY_PAUSE_S = 0.5  # the settle retry's pause (settle.py); one retry, fresh session
 
 _IDEM_MAX_KEY = 200
@@ -260,12 +265,26 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     settling or releasing it, so the tasks the owner started in its lifetime are found the same
     way and their ledger rows read by exact call id, with no time bound: a still-pending task is
     money in flight, and a late settle is a charge.
+
+    A call on the team's allowance has no hold of its own: its charge is a `CallCharge` row until a
+    fold turns it into its settle entry, deleting the row in the same transaction. Until then the
+    amount is what the team owes, not what its credit paid, so a queued charge is money in flight.
+    The row is read before the ledger, so a fold committing in between leaves the settle to be
+    found. A backlog can push the fold past the owner's lifetime, so the owner's own entries are
+    also read past it, by exact id.
     """
     def mine(col):
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
+    # The allowance call's stand-in for its hold (`IN_FLIGHT_MARK_MS`), read before the database:
+    # the mark is cleared only once the charge is written, so one gone by now left its charge to
+    # be found below. Unread is not proof the owner stopped.
+    marked = await kv.store().call_in_flight(call_ref) if kv.configured() else False
     open_hold = (await db.execute(select(Hold.id).where(
         Hold.org_id == org_id, mine(Hold.id)).limit(1))).first() is not None
-    rows = list((await db.execute(select(LedgerEntry.kind, LedgerEntry.amount_micro).where(
+    queued = (await db.execute(select(CallCharge.call_id).where(
+        CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).first() is not None
+    rows = list((await db.execute(select(
+        LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.org_id == org_id, LedgerEntry.created_at >= since, LedgerEntry.created_at <= until,
         mine(LedgerEntry.call_id)))).all())
     tasks = (await db.execute(select(AsyncTaskRecord.call_id, AsyncTaskRecord.status).where(
@@ -273,12 +292,25 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         AsyncTaskRecord.created_at <= until, mine(AsyncTaskRecord.call_id)))).all()
     if any(status == "pending" for _, status in tasks):
         open_hold = True  # a task's hold is its worker's until it resolves
-    if tasks:
-        rows += (await db.execute(select(LedgerEntry.kind, LedgerEntry.amount_micro).where(
-            LedgerEntry.call_id.in_([task_id for task_id, _ in tasks]),
-            LedgerEntry.created_at > until))).all()
+    # Past the lifetime only by exact id, which the call_id index serves: the tasks' late settles,
+    # and the owner's own fold, which a backlog can push past it.
+    late_ids = [call_ref, *(task_id for task_id, _ in tasks)]
+    rows += (await db.execute(select(
+        LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
+        LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
+    if queued and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
+        open_hold = True
+    # The mark matters only while the ledger cannot speak for the owner. An entry of its own (a
+    # reserve: it took a hold; a settle: its allowance charge is folded) or of a child other than
+    # overflow (routed and hub parents never take the allowance) puts all its money in the
+    # database, so a store that cannot answer does not keep its claim waiting. An overflow child's
+    # entries do not: its parent's own charge may still be unwritten.
+    overflow = f"{call_ref}:overflow"
+    if marked is not False and not any(
+            cid == call_ref or not cid.startswith(overflow) for _, _, cid in rows):
+        open_hold = True
     # settle entries are negative (money leaving)
-    return {"in_flight": open_hold, "charged": -sum(amount for kind, amount in rows if kind == "settle")}
+    return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}
 
 
 async def _resolve_stale_claim(row: IdempotentCall, caller: Caller, db: AsyncSession):
@@ -358,13 +390,29 @@ async def _renew_claim_lease(claim: tuple[int, str, str]) -> None:
 
 
 async def _hold_claim_lease(state) -> None:
-    """Renew `state.idem_claim` until the request drops it; the caller cancels this task on exit."""
+    """Renew `state.idem_claim` until the request drops it; the caller cancels this task on exit.
+    The owner's in-flight mark is renewed with it, when it has one: a lease the database could not
+    renew still reads as running."""
     while True:
         await asyncio.sleep(IDEMPOTENCY_LEASE_RENEW_S)
         claim = getattr(state, "idem_claim", None)
         if not claim:
             return
+        if kv.configured():
+            await kv.store().renew_call_in_flight(claim[2], IN_FLIGHT_MARK_MS)
         await _renew_claim_lease(claim)
+
+
+async def mark_in_flight(call_ref: str) -> bool:
+    """Mark a keyed call on the allowance as running; False when the store did not take it, and
+    the call then keeps a hold of its own."""
+    return await kv.store().mark_call_in_flight(call_ref, IN_FLIGHT_MARK_MS)
+
+
+async def clear_in_flight(call_ref: str) -> None:
+    """Remove the mark of a call that did not take the allowance. A call that did hands its mark
+    to the charge writer (`allowance.finish`)."""
+    await kv.store().clear_call_in_flight(call_ref)
 
 
 async def resolve_archived_replay(replay: IdempotentReplay, key: str) -> IdempotentReplay:

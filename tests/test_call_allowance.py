@@ -47,6 +47,26 @@ class FakeStore:
         self.lease_answer: str | None = None
         self.run = "run1"
         self.paces = 0
+        self.marks: set[str] = set()
+        self.renewed: list[str] = []
+        self.cleared_batches: list[list[str]] = []
+        self.mark_answer = True
+
+    async def mark_call_in_flight(self, call_ref, ttl_ms):
+        if self.mark_answer:
+            self.marks.add(call_ref)
+        return self.mark_answer
+
+    async def clear_call_in_flight(self, call_ref):
+        self.marks.discard(call_ref)
+
+    async def mark_calls_in_flight(self, call_refs, ttl_ms):
+        self.renewed.extend(call_refs)
+        self.marks.update(call_refs)
+
+    async def clear_calls_in_flight(self, call_refs):
+        self.cleared_batches.append(list(call_refs))
+        self.marks.difference_update(call_refs)
 
     def restart(self) -> None:
         """The store's server starts again: every counter built before is gone."""
@@ -397,6 +417,71 @@ async def test_a_charge_the_database_refused_is_written_once_the_database_is_bac
         assert (await db.execute(select(CallCharge))).first() is None
     await runtime._charges._retry_task
     assert (await _fold(org_id)).consumed_micro == 450
+
+
+async def test_a_marked_calls_mark_outlives_its_unconfirmed_charge_until_it_is_written(
+        org_id, store, monkeypatch):
+    """The call is answered while its charge is unconfirmed; a stale claim could then read
+    neither the mark nor the charge. The writer keeps the mark, renewing it, until it lands."""
+    write, attempts = runtime._ChargeWriter._write, []
+
+    async def down_then_up(rows, **kwargs):
+        attempts.append(len(rows))
+        if len(attempts) <= 3:
+            raise ConnectionError("database down")
+        return await write(rows, **kwargs)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(down_then_up))
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    await _instantly(monkeypatch)
+    assert await _finish(org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450,
+                         marked=True) == 450
+    assert store.marks == {"keyed-1"}, "answered, charge unconfirmed: the mark stays"
+    await runtime._charges._retry_task
+    assert "keyed-1" in store.renewed and store.marks == set()
+    assert await _queued(org_id) == 1
+
+
+async def test_the_writer_renews_a_mark_while_its_charge_is_still_queued(
+        org_id, store, monkeypatch):
+    """Handed over but not yet written, not even tried: the request may be gone, so the writer
+    renews the mark on its own clock, not only once a write has failed."""
+    monkeypatch.setattr(runtime, "_MARK_RENEW_S", 0.01)
+    monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 300)
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    finishing = asyncio.create_task(_finish(
+        org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450, marked=True))
+    await asyncio.sleep(0.1)
+    assert await _queued(org_id) == 0 and "keyed-1" in store.renewed
+    assert await finishing == 450
+    assert store.marks == set() and await _queued(org_id) == 1
+
+
+async def test_the_writer_sets_again_a_mark_the_store_lost_while_its_charge_is_unwritten(
+        org_id, store, monkeypatch):
+    """The store restarted and lost the mark; the writer still holds the unwritten charge, so its
+    next renewal puts the mark back."""
+    monkeypatch.setattr(runtime, "_MARK_RENEW_S", 0.01)
+    monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 300)
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    finishing = asyncio.create_task(_finish(
+        org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450, marked=True))
+    await asyncio.sleep(0.02)
+    store.marks.clear()  # the store restarted
+    await asyncio.sleep(0.05)
+    assert store.marks == {"keyed-1"} and await _queued(org_id) == 0
+    assert await finishing == 450
+    assert store.marks == set() and await _queued(org_id) == 1
+
+
+async def test_a_marked_call_charged_nothing_clears_its_mark(org_id, store):
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    assert await _finish(org_id, "keyed-1", epoch, 600, billable=False, marked=True) == 0
+    assert store.marks == set()
 
 
 async def test_no_call_is_admitted_while_charges_wait_to_be_written(org_id, store, monkeypatch):
@@ -955,6 +1040,99 @@ async def test_a_cancelled_eligible_call_returns_its_take(org_id, store):
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
+async def test_a_keyed_call_is_marked_in_flight_until_its_charge_is_written(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    assert mk.allowance_epoch and mk.allowance_marked and store.marks == {"keyed-1"}
+    assert await _per_call_holds(org_id) == []
+    assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
+    assert store.marks == set() and not mk.allowance_marked
+    assert await _queued(org_id) == 1
+
+
+async def test_a_cancelled_keyed_call_clears_its_mark(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    await call_settle._finish_cancelled_call(None, mk, "keyed-1")
+    assert store.marks == set() and store.counters[org_id]["avail"] == CHUNK
+
+
+async def _pending_claim(caller: Caller, key: str, call_ref: str) -> tuple[int, str, str]:
+    from datetime import datetime, timedelta, timezone
+
+    from treg.models import IdempotentCall
+    async with session_maker() as db:
+        db.add(IdempotentCall(
+            org_id=caller.org.id, membership_id=caller.membership.id, key=key,
+            request_fingerprint="", endpoint_id="test.allowance", status="pending", call_ref=call_ref,
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1)))
+        await db.commit()
+    return (caller.membership.id, key, call_ref)
+
+
+async def _claim_kept(key: str) -> bool:
+    from treg.models import IdempotentCall
+    async with session_maker() as db:
+        return (await db.execute(select(IdempotentCall).where(
+            IdempotentCall.key == key))).first() is not None
+
+
+@pytest.mark.parametrize("cancelled", ["before_settle", "while_its_charge_is_written"])
+async def test_a_cancelled_keyed_call_keeps_its_claim_once_its_charge_is_queued(
+        org_id, store, monkeypatch, cancelled):
+    """A charge handed to the writer stands whatever happens to the request, so the key must not
+    run again: the claim stays for a retry to resolve from the charge. A call cancelled before
+    anything was charged gives its label back."""
+    caller, mk = await _caller(org_id), _call(org_id)
+    claim = await _pending_claim(caller, "cancel-label", "keyed-1")
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    if cancelled == "while_its_charge_is_written":
+        monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 200)
+        settle = asyncio.create_task(call_settle._platform_settle(mk, 200, observed_override=450))
+        while not runtime._charges._pending:
+            await asyncio.sleep(0)
+        settle.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await settle
+    await call_settle._finish_cancelled_call(claim, mk, "keyed-1")
+    if cancelled == "before_settle":
+        assert not await _claim_kept("cancel-label")
+        assert store.counters[org_id]["avail"] == CHUNK
+        return
+    assert await _claim_kept("cancel-label")
+    await runtime._charges._task
+    assert await _queued(org_id) == 1 and store.marks == set()
+
+
+async def test_an_unmarked_call_is_not_marked(org_id, store):
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)
+    assert mk.allowance_epoch and not mk.allowance_marked and store.marks == set()
+
+
+@pytest.mark.parametrize(("refused", "reason"), [
+    ("mark", "in_flight_unmarked"), ("take", "take_refused")])
+async def test_a_keyed_call_the_allowance_cannot_serve_keeps_its_hold_and_no_mark(
+        org_id, store, monkeypatch, skip_lines, refused, reason):
+    """No mark, no take: a stale claim could not see the call. A refused take leaves no mark
+    behind either: the call's own hold is what a stale claim reads."""
+    caller, mk = await _caller(org_id), _call(org_id)
+    if refused == "mark":
+        store.mark_answer = False
+    else:
+        async def no_take(*args, **kwargs):
+            return None
+        monkeypatch.setattr(runtime, "take", no_take)
+    await call_reserve._platform_reserve(
+        mk, caller, call_ref="keyed-1", allow_allowance=True, mark_in_flight=True)
+    assert mk.allowance_epoch is None and not mk.allowance_marked and store.marks == set()
+    assert await _per_call_holds(org_id) == ["keyed-1"]
+    assert skip_lines() == [_skip(org_id, reason, 1)]
+
+
 @pytest.fixture
 def skip_lines(monkeypatch, caplog):
     """`skip_lines()` is every `allowance_skipped` line the default sink wrote, as raw text."""
@@ -974,7 +1152,7 @@ def _skip(org_id: int, reason: str, calls: int) -> str:
 
 
 @pytest.mark.parametrize(("why", "reason"), [
-    ("not_allowed_by_the_caller", "idempotency_key"), ("team_not_listed", None),
+    ("not_allowed_by_the_caller", "not_allowed"), ("team_not_listed", None),
     ("tagged", "tagged"), ("child_call", "child_call"), ("billed_oauth", "billed_oauth"),
     ("routed_child", "deferred_settle"), ("store_unavailable", "take_refused"),
 ])
@@ -1008,12 +1186,12 @@ def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
     clock = [1000.0]
     monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
     for _ in range(3):
-        call_reserve._note_allowance_skip(org_id, "idempotency_key")
+        call_reserve._note_allowance_skip(org_id, "not_allowed")
     call_reserve._note_allowance_skip(org_id, "tagged")
     clock[0] += call_reserve._SKIP_LOG_EVERY_S
-    call_reserve._note_allowance_skip(org_id, "idempotency_key")
-    assert skip_lines() == [_skip(org_id, "idempotency_key", 1), _skip(org_id, "tagged", 1),
-                            _skip(org_id, "idempotency_key", 3)]
+    call_reserve._note_allowance_skip(org_id, "not_allowed")
+    assert skip_lines() == [_skip(org_id, "not_allowed", 1), _skip(org_id, "tagged", 1),
+                            _skip(org_id, "not_allowed", 3)]
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):

@@ -30,6 +30,7 @@ from ...infra.money_trace import mark_money, money_stage
 from ...infra.structured_logging import get_logger
 from ...models import CallRecord, Org, TagBudget
 from . import allowance as allowance_runtime
+from . import idempotency
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall
 from .types import ReservationFailed
@@ -339,19 +340,18 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
 def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
                     allowed: bool) -> str | None:
     """Why a call keeps its own hold, or None for a call the team's allowance may pay for: a
-    direct, synchronous, untagged call on treg's platform key with no `Idempotency-Key`, by a
-    member with no spend limit, on an endpoint any credit may pay for.
+    direct, synchronous, untagged call on treg's platform key, by a member with no spend limit,
+    on an endpoint any credit may pay for.
 
     Everything else keeps its own hold, because something reads that hold: a tag or member row
-    written with it, an async task or a routed parent that closes it later, the idempotency check
-    that asks whether money moved, the purchased-credit gate. A child call's reference is its
-    parent's plus a `:suffix`. The call application passes `allowed` false only for a call that
-    carries an `Idempotency-Key`.
+    written with it, an async task or a routed parent that closes it later, the purchased-credit
+    gate. A child call's reference is its parent's plus a `:suffix`. A call whose application did
+    not allow the allowance (`allowed`) keeps its hold too.
     """
     if not call_ref or ":" in call_ref:
         return "child_call"
     if not allowed:
-        return "idempotency_key"
+        return "not_allowed"
     if (mk.reserved_micro or 0) <= 0:
         return "zero_price"
     if not allowance_runtime.enabled_for(caller.org_id):
@@ -423,7 +423,8 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
 
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False,
-                            allow_allowance: bool = False, retry_short: bool = True) -> None:
+                            allow_allowance: bool = False, mark_in_flight: bool = False,
+                            retry_short: bool = True) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
@@ -440,6 +441,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     `allow_allowance` lets an eligible call (`_allowance_skip` is None) of a team listed in
     `money_allowance_org_ids` reserve from the team's allowance counter instead: no hold, no
     balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
+    `mark_in_flight` (a call holding an Idempotency-Key claim) first marks the call as running in
+    the shared store, the one sign of it a stale claim can read; unmarked, it keeps its hold.
     A hold the balance cannot cover is tried once more (`retry_short`) when the team's
     allowance counter held money and gave it back to the balance
     (`allowance_runtime.give_back_for_exact_path`).
@@ -469,9 +472,12 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     # attribute load while constructing the refusal would otherwise escape the application session.
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
-    mk.allowance_epoch = None
+    mk.allowance_epoch, mk.allowance_marked = None, False
     listed = retry_short and caller.org_id in get_settings().money_allowance_org_ids
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
+    # Marked before the take: from the take on, the mark is all a stale claim can see of the call.
+    if skip is None and mark_in_flight and not await idempotency.mark_in_flight(call_ref):
+        skip = "in_flight_unmarked"
     if skip is None:
         before = allowance_runtime.refills(caller.org_id)
         epoch = await allowance_runtime.take(
@@ -483,11 +489,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             # Recorded on the call before anything else is awaited: a cancel from here on
             # finds the take and returns it.
             mk.call_id, mk.allowance_epoch = call_ref, epoch
+            mk.allowance_marked = mark_in_flight
         if auto_on and allowance_runtime.refills(caller.org_id) != before:
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
             return
         skip = "take_refused"
+        if mark_in_flight:
+            await idempotency.clear_in_flight(call_ref)
     if listed:
         _note_allowance_skip(caller.org_id, skip)
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
