@@ -4,6 +4,7 @@ import functools
 import json
 import logging
 import random
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -352,6 +353,13 @@ def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_re
         return "no_call_ref"
     if ":" in call_ref:
         return _child_kind(call_ref)
+    return _direct_skip(mk, caller, meta, allowed)
+
+
+def _direct_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, allowed: bool, *,
+                 deferred_settle: bool = True) -> str | None:
+    """`_allowance_skip` for a call judged as a direct call; `deferred_settle=False` leaves out
+    the deferred-settle rule, which every routed child meets."""
     if not allowed:
         return "not_allowed"
     if (mk.reserved_micro or 0) <= 0:
@@ -362,7 +370,7 @@ def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_re
         return "tagged"
     if mk.billed_oauth:
         return "billed_oauth"
-    if mk.deferred is not None:
+    if deferred_settle and mk.deferred is not None:
         return "deferred_settle"
     if mk.async_owner_call_id is not None or mk.async_descriptor:
         return "async"
@@ -373,6 +381,20 @@ def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_re
     if _purchased_only(mk.endpoint_id):
         return "purchased_credit_only"
     return None
+
+
+_ROUTED_SEGMENT = re.compile(r"r\d+(?:\.\d+)*|v|u")
+
+
+def _as_direct(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
+               allowed: bool) -> str | None:
+    """For a child of a routed call (every segment after the root a routed attempt `rN`, a
+    check `v` or an upgrade `u`): what `_allowance_skip` would answer if it were a direct
+    call, `eligible` when nothing else keeps it off the allowance. None for any other call."""
+    segments = (call_ref or "").split(":")[1:]
+    if not segments or not all(_ROUTED_SEGMENT.fullmatch(s) for s in segments):
+        return None
+    return _direct_skip(mk, caller, meta, allowed, deferred_settle=False) or "eligible"
 
 
 def _child_kind(call_ref: str) -> str:
@@ -396,13 +418,15 @@ _skip_totals: dict[str, dict] = {}
 _skip_log = get_logger("treg.allowance_skips")
 
 
-def _note_allowance_skip(org_id: int, reason: str, held_micro: int) -> None:
+def _note_allowance_skip(org_id: int, reason: str, held_micro: int,
+                         as_direct: str | None = None) -> None:
     """Count a listed team's call sent to the exact path, by reason, once its reserve is decided:
     `held_micro` is what the hold it committed reserved, 0 for a call refused or cancelled first.
 
     Every team counts toward one `allowance_skips` line per reason per minute in this process:
     the calls, the micro-USD they held, how many teams sent them and the teams that held the
-    most. A team named in `money_allowance_org_ids` also gets its own `allowance_skipped` lines:
+    most. A routed child also counts under `as_direct`, the reason it would have had as a
+    direct call (`_as_direct`). A team named in `money_allowance_org_ids` also gets its own `allowance_skipped` lines:
     the first at once, then one per reason per minute with the count since the last.
     Diagnostics never fail a call."""
     try:
@@ -413,6 +437,10 @@ def _note_allowance_skip(org_id: int, reason: str, held_micro: int) -> None:
         team = total["orgs"][org_id]
         team[0] += 1
         team[1] += held_micro
+        if as_direct is not None:
+            direct = total["as_direct"].setdefault(as_direct, [0, 0])
+            direct[0] += 1
+            direct[1] += held_micro
         if org_id not in get_settings().money_allowance_org_ids:
             return
         entry = _skips.setdefault((org_id, reason), [None, 0])
@@ -436,7 +464,8 @@ def _skip_window(now: float, org_id: int, reason: str) -> dict:
         _log_skip_total(now, reason, total)
         total = None
     if total is None:
-        total = _skip_totals[reason] = {"since": now, "calls": 0, "held_micro": 0, "orgs": {}}
+        total = _skip_totals[reason] = {"since": now, "calls": 0, "held_micro": 0, "orgs": {},
+                                        "as_direct": {}}
     total["orgs"].setdefault(org_id, [0, 0])
     return total
 
@@ -448,6 +477,7 @@ def _log_skip_total(now: float, reason: str, total: dict) -> None:
         "reason": reason, "calls": total["calls"], "held_micro": total["held_micro"],
         "orgs": len(total["orgs"]), "window_s": round(now - total["since"], 1),
         "top": [[org_id, calls, held] for org_id, (calls, held) in top],
+        **({"as_direct": dict(sorted(total["as_direct"].items()))} if total["as_direct"] else {}),
     }, separators=(",", ":")))
 
 
@@ -480,7 +510,8 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False,
                             allow_allowance: bool = False, mark_in_flight: bool = False,
-                            retry_short: bool = True, skip_reason: str | None = None) -> None:
+                            retry_short: bool = True, skip_reason: str | None = None,
+                            skip_as_direct: str | None = None) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
@@ -556,6 +587,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     # A listed team's call is counted once, when its reserve is decided (`_note_allowance_skip`);
     # a retry after a give-back (`skip_reason`) is counted under the first attempt's reason.
     note = skip if listed else skip_reason
+    as_direct = skip_as_direct
+    if listed and skip.startswith("child_call:"):
+        as_direct = _as_direct(mk, caller, meta, call_ref, allow_allowance)
     noted, committed = note is None, []
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.
@@ -627,7 +661,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             noted = True
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless, retry_short=False,
-                skip_reason=note)
+                skip_reason=note, skip_as_direct=as_direct)
         wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
@@ -657,4 +691,5 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         }) from exc
     finally:
         if not noted:
-            _note_allowance_skip(caller.org_id, note, mk.reserved_micro if committed else 0)
+            _note_allowance_skip(caller.org_id, note, mk.reserved_micro if committed else 0,
+                                 as_direct)
