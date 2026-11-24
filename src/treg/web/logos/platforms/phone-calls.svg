@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Phone calls">
+  <!-- Not a brand: a placed call, drawn as the handset and sound waves every dialler uses. -->
+  <path fill="#2F8F6B" d="M6.3 3.2h2.3c.4 0 .8.3.9.7l1.2 3.6c.1.4 0 .8-.3 1.1L8.8 10a11.6 11.6 0 0 0 5.2 5.2l1.4-1.6c.3-.3.7-.4 1.1-.3l3.6 1.2c.4.1.7.5.7.9v2.3c0 1.2-1 2.1-2.2 2.1C10.8 19.5 4.5 13.2 4.2 5.4c0-1.2.9-2.2 2.1-2.2z"/>
+  <path fill="none" stroke="#2F8F6B" stroke-width="1.7" stroke-linecap="round" d="M14.6 6.6a3 3 0 0 1 2.8 2.8"/>
+  <path fill="none" stroke="#2F8F6B" stroke-width="1.7" stroke-linecap="round" opacity=".55" d="M14.6 3.2a6.4 6.4 0 0 1 6.2 6.2"/>
+</svg>
