@@ -323,8 +323,14 @@ class Settings(BaseSettings):
             "money_admission_retry_after_s"))
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
-    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. A listed team's
+    # calls that keep their own hold are logged with the reason (`treg.allowance_skips`).
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`;
+    # only the orgs in `money_allowance_org_ids` have their skips logged.
+    money_allowance_all_orgs: bool = False
+    # Never on the allowance, whatever the two settings above say.
+    money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many

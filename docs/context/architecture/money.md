@@ -317,8 +317,9 @@ it creates no other money movement. A `/tasks/` poll is an ordinary call and set
 
 ## Allowance: one hold for many calls
 
-Off by default: `money_allowance_org_ids` lists the teams, and the shared key-value store must be
-configured. For a listed team, an eligible call (`reserve._allowance_skip` returns None) reserves with one
+Off by default: `money_allowance_org_ids` lists the teams, or `money_allowance_all_orgs` puts
+every team on; `money_allowance_excluded_org_ids` keeps a team off either way
+(`allowance.listed`). The shared key-value store must be configured. For a listed team, an eligible call (`reserve._allowance_skip` returns None) reserves with one
 atomic take from the team's allowance counter and touches no balance row, so its calls no longer
 queue on the team's money lease twice each.
 
@@ -330,13 +331,22 @@ or routed parent that closes it later, the purchased-credit gate. A call with an
 is eligible too: its claim's stale check, which asks whether money moved, reads the call's
 in-flight mark and queued charge where it would read a hold ("Idempotency and retries").
 
-A listed team's call that keeps its own hold logs why, as one JSON line on its own logger
+A team named in `money_allowance_org_ids` whose call keeps its own hold logs why (with every
+team on, the others do not: a line per team and reason a minute is noise nobody asked to watch), as one JSON line on its own logger
 (`treg.allowance_skips`): `allowance_skipped {"org_id":..,"reason":..,"calls":..}`, with the reason `_allowance_skip` named (`child_call`, `tagged`, `async`, `in_flight_unmarked`, ...)
 or `take_refused` when an eligible call's take returned it to the exact path. The first skip of a
 team and reason is logged at once, then one line a minute per process with the count since the
 last line, so a listed team whose calls never reach the allowance says which rule kept them out.
 `calls` counts calls sent to the exact path, before its reserve runs: a call that path then
 refuses (short balance, a cap) is counted too, so it is not the number of holds written.
+
+A process keeps a little state per team it has refilled for: its money lock, a refill count and,
+after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_STATE_PRUNE_AT`
+teams, the idle entries go (an expired cooldown; a lock nobody holds or waits for; the count of a
+team with neither and no take in progress, since a caller compares the count before and after its
+take), so with every team on they follow the busy teams, not every team the process
+has met. The next prune waits until the maps hold twice what the last one kept, so busy teams
+past the bound do not make every new team scan them.
 
 `application/call/allowance.py` is the whole runtime:
 

@@ -199,6 +199,8 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_refused_until", {})
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(runtime, "_in_flight", [0])
+    monkeypatch.setattr(runtime, "_taking", {})
+    monkeypatch.setattr(runtime, "_next_prune_at", 0)
     # The allowance is PostgreSQL only; its logic is still tested on whatever the suite runs on.
     monkeypatch.setattr(runtime, "_database_supported", lambda: True)
     monkeypatch.setattr(runtime, "_freezes_due", {})
@@ -228,6 +230,8 @@ async def org_id(monkeypatch):
         await ledger.grant(db, org.id, amount_micro=GRANT)
         await db.commit()
         monkeypatch.setattr(settings, "money_allowance_org_ids", [org.id])
+        monkeypatch.setattr(settings, "money_allowance_all_orgs", False)
+        monkeypatch.setattr(settings, "money_allowance_excluded_org_ids", [])
         return org.id
 
 
@@ -782,6 +786,41 @@ async def test_a_teams_freeze_does_not_wait_for_another_teams_write(org_id, stor
     assert counter["frozen"] != counter["thawed"] and await _queued(org_id) == 1
 
 
+@pytest.mark.parametrize(("all_orgs", "named", "excluded", "on"), [
+    (False, True, False, True),    # named one by one
+    (False, False, False, False),  # not named
+    (True, False, False, True),    # every team
+    (True, True, True, False),     # every team, but this one excluded
+    (False, True, True, False),    # an exclusion wins over a name too
+])
+async def test_every_team_can_be_put_on_the_allowance_and_one_left_off(
+        org_id, store, monkeypatch, all_orgs, named, excluded, on):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_allowance_all_orgs", all_orgs)
+    monkeypatch.setattr(settings, "money_allowance_org_ids", [org_id] if named else [])
+    monkeypatch.setattr(settings, "money_allowance_excluded_org_ids", [org_id] if excluded else [])
+    assert runtime.listed(org_id) is on and runtime.enabled_for(org_id) is on
+    caller, mk = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, call_ref="direct-1", allow_allowance=True)
+    assert bool(mk.allowance_epoch) is on
+    assert await _per_call_holds(org_id) == ([] if on else ["direct-1"])
+
+
+async def test_with_every_team_on_only_the_teams_named_log_their_skips(
+        org_id, store, monkeypatch, skip_lines):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_allowance_all_orgs", True)
+    monkeypatch.setattr(settings, "money_allowance_org_ids", [])
+    caller = await _caller(org_id)
+    await call_reserve._platform_reserve(_call(org_id), caller, call_ref="direct-1",
+                                         allow_allowance=False)
+    assert skip_lines() == []
+    monkeypatch.setattr(settings, "money_allowance_org_ids", [org_id])
+    await call_reserve._platform_reserve(_call(org_id), caller, call_ref="direct-2",
+                                         allow_allowance=False)
+    assert skip_lines() == [_skip(org_id, "not_allowed", 1)]
+
+
 async def test_the_allowance_is_off_where_the_database_is_not_postgresql(org_id, store, monkeypatch):
     assert runtime.enabled_for(org_id)
     monkeypatch.setattr(runtime, "_database_supported", lambda: False)
@@ -943,6 +982,71 @@ async def test_a_team_with_no_balance_opens_nothing(org_id, store):
     assert await runtime.take(org_id, GRANT + 1) is None
     assert await _state(org_id) == (GRANT, 0)
     assert store.counters == {}
+
+
+async def test_per_team_state_of_idle_teams_is_dropped_once_it_grows(org_id, store, monkeypatch):
+    """Teams refused a refill leave a lock, a refill count and a cooldown each. Past the bound
+    the idle ones go, so the maps follow the busy teams, not every team a process ever met."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_refills", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 4)
+    monkeypatch.setattr(runtime, "_REFUSAL_COOLDOWN_S", 0.0)
+    for team in range(10):
+        refused = org_id + 1000 + team  # no such team: nothing to refill from
+        assert await runtime.take(refused, 600) is None
+    assert len(runtime._money_locks) <= 4
+    assert len(runtime._refills) <= 4 and len(runtime._refused_until) <= 4
+
+
+@pytest.mark.parametrize("taking", [True, False])
+async def test_a_team_taking_keeps_its_refill_count_through_a_prune(
+        org_id, store, monkeypatch, taking):
+    """A caller compares the count before and after its take: dropped in between and rebuilt by
+    the take's own refill, it would read the same and hide the refill."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
+    monkeypatch.setattr(runtime, "_refills", {org_id: 1, org_id + 1: 1, org_id + 2: 1})
+    if taking:
+        runtime._taking[org_id] = 1
+    runtime._prune_if_full()
+    assert (org_id in runtime._refills) is taking
+    assert org_id + 1 not in runtime._refills
+
+
+async def test_busy_teams_past_the_bound_do_not_make_every_new_team_scan(
+        org_id, store, monkeypatch):
+    """A prune that keeps most teams waits until the maps have doubled before the next one."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_refills", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
+    prunes = []
+    prune = runtime._prune
+    monkeypatch.setattr(runtime, "_prune", lambda: (prunes.append(1), prune()))
+    held = []
+    for team in range(9):
+        held.append(lock := runtime.money_lock(org_id + team))
+        await lock.acquire()
+    assert len(prunes) == 3
+    for lock in held:
+        lock.release()
+
+
+async def test_a_lock_in_use_or_waited_for_is_never_dropped(org_id, store, monkeypatch):
+    """Two calls of a team must meet on one lock: one held, or one a caller waits for, stays."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
+    held, waited = runtime.money_lock(org_id), runtime.money_lock(org_id + 1)
+    await held.acquire()
+    await waited.acquire()
+    waiter = asyncio.create_task(waited.acquire())
+    await asyncio.sleep(0)
+    waited.release()  # free now, but the waiter has not taken it yet
+    runtime.money_lock(org_id + 2)
+    runtime.money_lock(org_id + 3)
+    assert runtime.money_lock(org_id) is held and runtime.money_lock(org_id + 1) is waited
+    await waiter
+    waited.release()
+    held.release()
 
 
 async def test_a_daily_cap_with_no_room_for_a_refill_sends_the_call_to_the_exact_path(org_id, store):

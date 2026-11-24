@@ -67,9 +67,41 @@ def money_lock(org_id: int) -> asyncio.Lock:
     key = (org_id, asyncio.get_running_loop())
     lock = _money_locks.get(key)
     if lock is None:
+        _prune_if_full()
         lock = _money_locks[key] = asyncio.Lock()
     return lock
+
+
+_TEAM_STATE_PRUNE_AT = 1024
+_next_prune_at = 0
+
+
+def _team_state_size() -> int:
+    return max(len(_money_locks), len(_refills), len(_refused_until))
+
+
+def _prune_if_full() -> None:
+    global _next_prune_at
+    if _team_state_size() < max(_TEAM_STATE_PRUNE_AT, _next_prune_at):
+        return
+    _prune()
+    _next_prune_at = 2 * _team_state_size()
+
+
+def _prune() -> None:
+    now = time.monotonic()
+    for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
+        del _refused_until[org_id]
+    # asyncio has no public count of a lock's waiters.
+    for key in [key for key, lock in _money_locks.items()
+                if not lock.locked() and not lock._waiters]:
+        del _money_locks[key]
+    busy = ({org_id for org_id, _ in _money_locks} | set(_refreshing) | set(_refused_until)
+            | set(_taking))
+    for org_id in [org_id for org_id in _refills if org_id not in busy]:
+        del _refills[org_id]
 _refills: dict[int, int] = {}
+_taking: dict[int, int] = {}
 
 
 def refills(org_id: int) -> int:
@@ -78,9 +110,18 @@ def refills(org_id: int) -> int:
     return _refills.get(org_id, 0)
 
 
+def listed(org_id: int) -> bool:
+    """Whether the operator put the team on the allowance: every team when
+    `money_allowance_all_orgs`, else the ones in `money_allowance_org_ids`, never an excluded
+    one."""
+    settings = get_settings()
+    if org_id in settings.money_allowance_excluded_org_ids:
+        return False
+    return settings.money_allowance_all_orgs or org_id in settings.money_allowance_org_ids
+
+
 def enabled_for(org_id: int) -> bool:
-    return (org_id in get_settings().money_allowance_org_ids and kv.configured()
-            and _database_supported())
+    return listed(org_id) and kv.configured() and _database_supported()
 
 
 def _database_supported() -> bool:
@@ -112,12 +153,16 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
     # The place is taken before anything is awaited, so calls arriving together cannot all pass
     # on the last one. `finish` gives it back, or hands it to the charge writer.
     _in_flight[0] += 1
+    _taking[org_id] = _taking.get(org_id, 0) + 1
     epoch = None
     try:
         epoch = await _take(org_id, amount_micro, daily_cap_micro, after_refill)
     finally:
         if not epoch:
             _in_flight[0] -= 1
+        _taking[org_id] -= 1
+        if not _taking[org_id]:
+            del _taking[org_id]
     return epoch
 
 
@@ -328,6 +373,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         # The counter read was built for another hold. Publishing this one replaces it, and
         # what it showed goes with it.
         available = 0
+    if org_id not in _refills:
+        _prune_if_full()
     _refills[org_id] = _refills.get(org_id, 0) + 1
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s "
              "target=%s", org_id, result.added_micro, result.amount_micro, available,
