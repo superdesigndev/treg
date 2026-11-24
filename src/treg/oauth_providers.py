@@ -1370,6 +1370,33 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+GETPROSPECT = OAuthProvider(
+    service="getprospect",
+    display_name="GetProspect",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your GetProspect API key (pk_…)",
+    # GetProspect takes the key in the x-api-key header; the deprecated GET aliases also read
+    # ?api_key=, which treg does not use so the key never lands in a logged URL.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.getprospect.com/settings/api",
+    setup_action_label="Get your GetProspect API key",
+    setup_steps=(
+        "Sign up or sign in to GetProspect (the Free plan includes API access).",
+        "Open Settings → API and copy your API key.",
+    ),
+    setup_note="Email finds and reveals spend email credits; verifications are paid from the wallet; searches, company enrichment and the account check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find and verify work emails, and search and enrich B2B people and companies.",
+    base_url="https://api.getprospect.com/v2",
+    docs_url="https://getprospect.com/api-docs",
+    probe_path="/credits",  # free; a bad or missing key gets 401 {"errors":[{"name":"UNAUTHORIZED"}]}
+)
+
 DANSUGC = OAuthProvider(
     service="dansugc",
     display_name="DansUGC",
@@ -4625,7 +4652,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA, GETPROSPECT,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

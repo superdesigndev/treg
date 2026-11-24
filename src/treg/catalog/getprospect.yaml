@@ -1,0 +1,317 @@
+provider: getprospect
+source:
+  docs: https://getprospect.com/api-docs
+  openapi: https://api.getprospect.com/openapi.json
+  curated: '2026-11-24'
+# Vendor-raised listing. Every test_request below was live-called on 2026-11-24 against GetProspect's
+# own account, and each row's price was reconciled against the balance delta of GET /v2/credits
+# (email credits and wallet USD before -> after); the ledger is in the pull request.
+#
+# Billing: two meters.
+#   - Email CREDITS (fx.yaml credit_rates_usd.getprospect): 1 per valid email served that the
+#     workspace does not already own. An email the workspace revealed before is served free.
+#   - Wallet USD: $0.0008 per verification with a verdict.
+# Everything that finds nothing is free: every route answers HTTP 200 with success: false and
+# errors[0].name NOT_FOUND (or VERIFICATION_ERROR for an unknown verdict), the shape each `miss`
+# rule reads. A 408 (still searching) is never charged.
+# Searches, counts, company enrichment and the filter vocabularies spend no credits; they count
+# against the plan's rate limits only.
+limits: "per plan; Free: 5 requests/second on email find; Growth: 100/second, 500,000 enrich and 250,000 search requests a day. GET /v2/rate-limits shows the caller's own limits (free)"
+pricing_url: https://getprospect.com/pricing
+defaults:
+  domain: contacts
+  scope: any_account
+  provenance: {source: docs, source_url: 'https://getprospect.com/pricing', checked: '2026-11-24', confidence: documented}
+endpoints:
+  - id: getprospect.people.email.find
+    added: '2026-11-24'
+    capability: people.email.find
+    platform: people
+    method: POST
+    path: /email/find
+    name: "Find a person's verified work email by name and company"
+    summary: "Find a person's verified work email from their name and company domain or company name"
+    input:
+      bodyType: json
+      body:
+        data:
+          type: object
+          required: true
+          example: {first_name: Patrick, last_name: Collison, domain: stripe.com}
+          note: "full_name, or first_name + last_name, plus the company's domain (preferred) or company name"
+      note: "A live search can take up to 95 seconds; a search that runs out of time answers 408 and is never charged"
+    test_request:
+      body: {data: {first_name: Patrick, last_name: Collison, domain: stripe.com}}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: "1 email credit when a valid email is served; not found and catch-all results are free, and so is an email the workspace already owns"
+    miss: {when: {path: response.success, op: equals, value: false}, means: "no confirmed email (200, success false, NOT_FOUND, data.status not_found) - free"}
+    docs_url: https://getprospect.com/api-docs/email-finder
+
+  - id: getprospect.people.email.verify
+    added: '2026-11-24'
+    capability: people.email.verify
+    platform: people
+    method: POST
+    path: /email/verify
+    name: "Verify an email address: valid, invalid or catch-all"
+    summary: "Check whether an email address is deliverable: valid, invalid or catch-all, with disposable, free-mail and domain checks"
+    input:
+      bodyType: json
+      body:
+        data:
+          type: object
+          required: true
+          example: {email: steli@close.io}
+          note: "{email}: the address to check"
+      note: "Runs live and can take up to 75 seconds"
+    test_request:
+      body: {data: {email: steli@close.io}}
+    price:
+      value: '0.0008'
+      currency: USD
+      per: 1
+      unit: call
+      note: "From the wallet, per address with a valid, invalid or accept_all verdict, once per address per workspace; an unknown verdict is free"
+    miss: {when: {path: response.success, op: equals, value: false}, means: "no verdict (200, success false, VERIFICATION_ERROR, data.status unknown) - free, retry later"}
+    docs_url: https://getprospect.com/api-docs/email-verifier
+
+  - id: getprospect.people.enrich
+    added: '2026-11-24'
+    capability: people.enrich
+    platform: people
+    method: POST
+    path: /people/enrich
+    name: "Enrich a person by LinkedIn URL, email, or name and company"
+    summary: "Get a person's full profile and verified work email from a LinkedIn URL, an email, or a name and company"
+    input:
+      bodyType: json
+      body:
+        data:
+          type: object
+          required: true
+          example: {linkedin_url: "https://www.linkedin.com/in/eoghanmccabe/"}
+          note: "one of id, linkedin_id, linkedin_url, email, or first_name + last_name + company_domain or company_name; the strongest identifier sent wins"
+        enrich_email: {type: boolean, required: false, default: true, note: "false skips the email reveal and its credit"}
+        enrich_phone: {type: boolean, required: false, enum: [false], note: "mobile phone lookups are not part of this listing"}
+    test_request:
+      body: {data: {linkedin_url: "https://www.linkedin.com/in/eoghanmccabe/"}}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: "1 email credit per newly revealed email; matching a person is free, and so is an email the workspace already owns or enrich_email false"
+    bill:
+      free_when: {path: response.data.email.address, op: absent}
+    miss: {when: {path: response.success, op: equals, value: false}, means: "nobody matched (200, success false, NOT_FOUND, data null) - free"}
+    docs_url: https://getprospect.com/api-docs/people-enrich
+
+  - id: getprospect.people.enrich.bulk
+    added: '2026-11-24'
+    capability: people.enrich
+    platform: people
+    method: POST
+    path: /people/bulk-enrich
+    name: "Bulk-enrich up to 50 people with work emails"
+    summary: "Enrich up to 50 people in one call with verified work emails; results split into matched, not_matched and invalid"
+    input:
+      bodyType: json
+      body:
+        data:
+          type: array
+          items: {type: object}
+          required: true
+          maxItems: 50
+          example: [{identifier: row-1, linkedin_url: "https://www.linkedin.com/in/dharmesh/"}]
+          note: "1-50 items, each with an optional identifier echoed back and the same identifiers as getprospect.people.enrich"
+        enrich_email: {type: boolean, required: false, default: true, note: "false skips the email reveals and their credits"}
+        enrich_phone: {type: boolean, required: false, enum: [false], note: "mobile phone lookups are not part of this listing"}
+    test_request:
+      body: {data: [{identifier: row-1, linkedin_url: "https://www.linkedin.com/in/dharmesh/"}]}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: record
+      note: "1 email credit per matched person whose email is newly revealed; not_matched and invalid items are free"
+    reserve:
+      entities: {from: body.data, max: 50}
+    settle:
+      count: {path: response.data.matched}
+    docs_url: https://getprospect.com/api-docs/people-bulk-enrich
+
+  - id: getprospect.people.search
+    added: '2026-11-24'
+    capability: people.search
+    platform: people
+    method: POST
+    path: /people/search
+    name: "Search people by title, seniority, company, location"
+    summary: "Search people by job title, seniority, department, location and company filters; each result shows whether a verified email is available"
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: true
+          example: {person_job_title: {include: [CEO], match_mode: CONTAINS}, company: {domain: {include: [stripe.com]}}}
+          note: "include/exclude filter object; at least one include condition. Filter values come from getprospect.people.search.suggest and getprospect.people.search.filters"
+        page: {type: integer, required: false, default: 1, min: 1}
+        per_page: {type: integer, required: false, default: 25, enum: [25, 50, 100]}
+      note: "enrich_email reveals emails for credits here too; reveal with getprospect.people.enrich instead"
+    test_request:
+      body: {filters: {person_job_title: {include: [CEO], match_mode: CONTAINS}, company: {domain: {include: [stripe.com]}}}, page: 1, per_page: 25}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    docs_url: https://getprospect.com/api-docs/people-search
+
+  - id: getprospect.people.search.count
+    added: '2026-11-24'
+    capability: people.search.count
+    platform: people
+    method: POST
+    path: /people/count
+    name: "Count people matching a search, by country or role"
+    summary: "Count the people a search matches, broken down by country, department or seniority, before paying for results"
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: true
+          example: {company: {domain: {include: [stripe.com]}}}
+          note: "the same filter object as getprospect.people.search"
+        group_by: {type: array, items: {type: string, enum: [country, department, seniority]}, required: false, example: [country]}
+        country_limit: {type: integer, required: false, example: 3}
+    test_request:
+      body: {filters: {company: {domain: {include: [stripe.com]}}}, group_by: [country], country_limit: 3}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    docs_url: https://getprospect.com/api-docs/people-count
+
+  - id: getprospect.companies.enrich
+    added: '2026-11-24'
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    method: POST
+    path: /companies/enrich
+    name: "Enrich a company: firmographics and tech stack"
+    summary: "Enrich a company from its domain, name or LinkedIn page: industry, headcount, founding year, location, keywords and technology stack"
+    input:
+      bodyType: json
+      body:
+        data:
+          type: object
+          required: true
+          example: {domain: stripe.com}
+          note: "one of id, linkedin_id, linkedin_url, domain or name; the strongest identifier sent wins"
+    test_request:
+      body: {data: {domain: stripe.com}}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    miss: {when: {path: response.success, op: equals, value: false}, means: "no company matched (200, success false, NOT_FOUND)"}
+    docs_url: https://getprospect.com/api-docs/company-enrich
+
+  - id: getprospect.companies.enrich.bulk
+    added: '2026-11-24'
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    method: POST
+    path: /companies/bulk-enrich
+    name: "Bulk-enrich up to 50 companies by domain, name or LinkedIn"
+    summary: "Enrich up to 50 companies in one call; results split into matched, not_matched and invalid"
+    input:
+      bodyType: json
+      body:
+        data:
+          type: array
+          items: {type: object}
+          required: true
+          maxItems: 50
+          example: [{identifier: acct-1, domain: stripe.com}]
+          note: "1-50 items, each with an optional identifier echoed back and the same identifiers as getprospect.companies.enrich"
+    test_request:
+      body: {data: [{identifier: acct-1, domain: stripe.com}]}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    docs_url: https://getprospect.com/api-docs/company-bulk-enrich
+
+  - id: getprospect.companies.search
+    added: '2026-11-24'
+    capability: companies.search
+    platform: companies
+    domain: companies
+    method: POST
+    path: /companies/search
+    name: "Search companies by industry, headcount, location, tech"
+    summary: "Search companies by industry, headcount, location, technologies and keywords"
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: true
+          example: {company_industry: {include: [Software Development]}, company_country: {include: [US]}}
+          note: "include/exclude filter object; values come from getprospect.people.search.filters"
+        page: {type: integer, required: false, default: 1, min: 1}
+        per_page: {type: integer, required: false, default: 25, enum: [25, 50, 100]}
+    test_request:
+      body: {filters: {company_industry: {include: [Software Development]}, company_country: {include: [US]}}, page: 1, per_page: 25}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    docs_url: https://getprospect.com/api-docs/company-search
+
+  - id: getprospect.people.search.suggest
+    added: '2026-11-24'
+    capability: people.search.filters
+    platform: people
+    method: POST
+    path: /search/suggest
+    name: "Suggest location, job title and industry filter values"
+    summary: "Autocomplete values for the location, job title and industry search filters"
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [location, job_title, industry], example: location}
+        query: {type: string, required: true, example: aust}
+        limit: {type: integer, required: false, example: 2}
+      note: "each suggestion's value is accepted as-is by the matching filter"
+    test_request:
+      body: {type: location, query: aust, limit: 2}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    docs_url: https://getprospect.com/api-docs/search-suggestions
+
+  - id: getprospect.people.search.filters
+    added: '2026-11-24'
+    capability: people.search.filters
+    platform: people
+    method: GET
+    path: /enums
+    name: "List the allowed values of the search filters"
+    summary: "List the allowed values of the fixed search filters, such as seniorities, departments, industries, company sizes and countries"
+    input: {}
+    test_request: {}
+    price:
+      value: '0'
+      currency: USD
+      unit: call
+    docs_url: https://getprospect.com/api-docs/enums
