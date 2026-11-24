@@ -72,6 +72,19 @@ def test_eligibility_rule_in_order():
     assert "free for us" in R.eligible(_route(ratio=None, agg_price_micro=20_000), our_cost=free, platform_eligible=True, policy=None, our_usd=0).reason
 
 
+def test_an_async_job_never_overflows():
+    """A job started at an aggregator lives on its account: our key cannot poll it, so the hold
+    could never close on the real outcome. The sync disables the row, and the view drops it even
+    before the next sync does."""
+    from treg.domain.capacity.routes_view import RouteView
+    cost = {"type": "per_success", "value": 1, "unit": "call"}
+    verdict = R.eligible(_route(), our_cost=cost, platform_eligible=True, policy=None, async_job=True)
+    assert not verdict.enabled and verdict.reason.startswith("async job")
+    view = RouteView()
+    view._routes = [_route(endpoint_id="icypeas.people.email.find", enabled=True)]
+    assert view.for_endpoint("icypeas.people.email.find") == []
+
+
 def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
     ours = [{"endpoint_id": "hunter.people.email.find", "provider": "hunter", "method": "GET",
              "path": "/email-finder", "base_url": "https://api.hunter.io/v2"},
@@ -123,7 +136,8 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     # What was verified but is NOT on, and why — every reason is one the rule names.
     off = {k: by[k].disabled_reason for k in verified - on}
     allowed = ("ratio ", "unit mismatch", "endpoint not platform-eligible",
-               "policy for scrapecreators disallows overflow", "no price on one side", "free for us")
+               "policy for scrapecreators disallows overflow", "no price on one side", "free for us",
+               "async job")
     assert all(r.startswith(allowed) for r in off.values()), off
     # a route with ratio 6.5 in the seed never enables, and a re-sync without it disables it
     bad = {**seed[0], "endpoint_id": "findymail.search.business-profile", "aggregator": "monid",
