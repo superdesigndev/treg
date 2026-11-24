@@ -1,1 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="forager"><rect width="180" height="180" rx="36" fill="#1f5f4a"/><path d="M66 134V46h54M66 90h42" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 431 431">
+  <rect width="431" height="431" fill="#4357FB"/>
+  <g fill="#FFFFFF" transform="translate(0 5)">
+    <polygon points="103,90 137,68 206,108 277,68 311,90 206,153"/>
+    <polygon points="62,118 186,190 186,365 150,347 150,210 62,158"/>
+    <polygon points="359,118 235,190 235,365 271,347 271,210 359,158"/>
+    <polygon points="62,192 124,228 124,277 62,240"/>
+    <polygon points="359,192 297,228 297,277 359,240"/>
+  </g>
+</svg>
