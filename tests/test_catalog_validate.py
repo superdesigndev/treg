@@ -514,6 +514,13 @@ def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
     assert any("must declare a positive input max" in error for error in errors)
 
 
+def test_a_usage_path_may_declare_that_a_missing_field_means_zero():
+    usage = _valid_table() | {"settle": "usage", "usage": {"path": "usage.cost", "unit": "usd", "missing": 0}}
+    assert _table_errors(usage) == []
+    usage["usage"]["missing"] = 1
+    assert any("usage.missing may only be 0" in e for e in _table_errors(usage))
+
+
 def test_cost_table_takes_a_last_catch_all_row_and_a_bounded_list_length_multiplier():
     """A job priced per item it asks for: `when: {}` matches every request, and `times` may name a
     list whose length is the quantity, bounded by its declared maxItems."""

@@ -1697,6 +1697,18 @@ def test_times_multiplier_is_bounded_by_the_input_schema():
     assert price(float("inf")) == 6_000_000 and price("5") == 250_000  # strings coerce by type
 
 
+def test_a_usage_meter_declared_missing_zero_settles_an_absent_field_at_zero():
+    """LeadsForge leaves `consumedCredits` out of a finished job that used none: `missing: 0`
+    settles that at zero, while an unreadable value is still unobserved (the reserve)."""
+    basis = {"amount": {"kind": "usage", "path": "consumedCredits", "unit": "credit",
+                        "unit_micro": 24_500, "missing": 0}, "reserve_micro": 2_450_000}
+    assert settlement.settle(basis, {"terminal": {"status": "completed"}}) == 0
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": 3}}) == 73_500
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": "lots"}}) == 2_450_000
+    plain = {**basis, "amount": {k: v for k, v in basis["amount"].items() if k != "missing"}}
+    assert settlement.settle(plain, {"terminal": {"status": "completed"}}) == 2_450_000
+
+
 def test_a_catch_all_row_prices_by_a_number_or_a_list_length_inside_its_bounds():
     """A job holds what its size says: `limit` x price, or one price per item of a list, never
     beyond the declared bounds (outside them the fallback prices it)."""

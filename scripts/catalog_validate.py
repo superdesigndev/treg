@@ -816,7 +816,10 @@ def check_usage_block(cost: dict, settle: object, where: str, errors: list[str],
             elif usage.get("unit") != "usd":
                 fail(errors, where, "usage.terms rates are USD per unit; usage.unit must be 'usd'")
             return
-        if not isinstance(usage, dict) or set(usage) != {"path", "unit"} \
+        if isinstance(usage, dict) and "missing" in usage and usage["missing"] != 0:
+            fail(errors, where, "usage.missing may only be 0 (the provider omits a zero meter)")
+            return
+        if not isinstance(usage, dict) or set(usage) - {"missing"} != {"path", "unit"} \
                 or not isinstance(usage.get("path"), str) or not JSON_PATH.fullmatch(usage["path"]) \
                 or not isinstance(usage.get("unit"), str) or not usage["unit"].strip():
             fail(errors, where, "cost.settle 'usage' requires usage.path and usage.unit, "

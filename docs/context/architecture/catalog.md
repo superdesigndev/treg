@@ -387,7 +387,10 @@ cost:
   `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
   positive USD rates; a term path may select a list item by key
   (`candidatesTokensDetails[modality=IMAGE].tokenCount`); an absent meter counts as zero (proto3
-  JSON omits zeros) and a response with none settles at the reserve. Settlement itself is in
+  JSON omits zeros) and a response with none settles at the reserve. A single `usage.path` may add
+  `missing: 0` for a provider that leaves a zero meter out of its finished answer (LeadsForge's
+  `consumedCredits`): absent then settles at zero, while an unreadable value still settles at the
+  reserve. Settlement itself is in
   [money](money.md).
 - Display: `_table_floor` computes the cheapest row into `cost.table_min`, served as `usd_min`
   beside `usd` (still the ceiling reserve and eligibility read), so every surface shows `$low-$high`.

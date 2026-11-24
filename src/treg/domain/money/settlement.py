@@ -232,7 +232,10 @@ def usage_evidence(basis: dict, evidence: dict[str, Any]) -> float | None:
     terminal = evidence.get("terminal")
     terms = amount.get("terms")
     if not terms:
-        return _usage_number(_path(terminal, str(amount.get("path") or "")))
+        raw = _path(terminal, str(amount.get("path") or ""))
+        if raw is None and amount.get("missing") == 0:
+            return 0.0  # the provider omits a zero meter (LeadsForge `consumedCredits`)
+        return _usage_number(raw)
     total, seen = 0.0, False
     for term in terms:
         value = usage_term_path(terminal, str(term.get("path") or ""))
