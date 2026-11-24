@@ -11,5 +11,10 @@
   "homepage": "https://treg.to",
   "repository": "https://github.com/superdesigndev/treg/tree/main/plugins/copilot",
   "license": "Apache-2.0",
+  "extensions": {
+    "com.nousresearch.hermes": {
+      "servers": {"treg": {"trust": "untrusted"}}
+    }
+  },
   "keywords": ["mcp", "oauth", "seo", "serp", "enrichment", "web-data", "scraping", "api-keys"]
 }

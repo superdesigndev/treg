@@ -6,7 +6,18 @@ version: 0.31.0
 
 This plugin ships treg's MCP server (`https://treg.to/mcp/`, OAuth sign-in). If you cannot see its
 tools yet, they are waiting for sign-in: the human connects treg in Copilot's MCP server settings and
-signs in to treg in the browser when asked. Do not install the CLI for this.
+signs in to treg in the browser when asked.
+
+In Hermes the plugin marks its server `untrusted` so write-capable tools prompt for approval.
+To sign in with OAuth, run both commands before starting an agent session. The first creates a
+profile entry that takes precedence over the plugin, so the second preserves its approval policy.
+
+```bash
+hermes mcp add treg --url https://treg.to/mcp/ --auth oauth
+hermes config set mcp_servers.treg.trust untrusted
+```
+
+This connection works without the treg CLI.
 
 treg's own marketplace also offers ready workflow skills as separate plugins. After
 `copilot plugin marketplace add superdesigndev/treg`, the human adds one with
@@ -255,8 +266,8 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
 
 ## Money
 
-**Call at the listed price without asking, then report what it cost.** Prices are visible before a
-call (`treg catalog get`, MCP `catalog_get`) and most are fractions of a cent. Before a generation
+**Call at the listed price, subject to the host's approval prompt, then report what it cost.**
+Prices are visible before a call (`treg catalog get`, MCP `catalog_get`) and most are fractions of a cent. Before a generation
 task or a loop over many inputs, tell the human the expected total, then keep a running sum of
 `X-Treg-Cost-Micro` and stop before it passes what they agreed to. `X-Treg-Route-Max-Cost` caps
 each call, not the loop.
@@ -451,29 +462,29 @@ owner's: your calls then appear under your own name.
 
 ## Feedback and reviews
 
-Report problems and suggestions about treg as you meet them, small ones included (unclear
-instructions, confusing results or charges, unhelpful errors, workarounds), even when the task
-succeeded: `treg feedback submit <quality|pricing|friction|other> "message" --call-id <id>`, or MCP
-`feedback`. Report each issue once, keep private information out, then carry on. See
-[feedback instructions](https://treg.to/feedback.md).
+In the Hermes and Copilot plugin, **send feedback, reviews or marks only when the user explicitly
+asks you to send that report to treg**. This applies to MCP, the CLI and HTTP. A response inviting
+a review, a failed call or a later correction is not permission to submit a report.
 
-When a result invites a review, rate that call after using it: `treg review CALL_ID USEFULNESS
-[--reason "..."]` or MCP `review`, with `useful`, `partly`, `not_useful` or `not_sure`. A reason may
-be quoted on the tool's catalog page without naming your team, so write about the tool.
+In other clients, follow their reporting policy. Where proactive reporting is allowed, report
+problems as they arise, rate calls that invite a review and mark outcomes you have checked.
 
-When you learn a result was wrong, or confirm it was right, mark that call: an email bounced,
-another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong --basis bounced`
-in the binary CLI, or the `mark` tool where your MCP connection lists it. Each item is
-`[INDEX][/FIELD]:VERDICT`, INDEX the 0-based row; a bare verdict is the whole result. `--basis` says
-how you know (`bounced`, `cross_checked`, `user_said`, `impression`). If your CLI answers that
-`mark` is not a command and you have no `mark` tool, POST the fields to `https://treg.to/marks` with your
-token ([feedback instructions](https://treg.to/feedback.md)), or skip it. Mark only what you checked, once
-you know; marking several calls at the end of the task is fine. Marks are private and never change
-charges.
+- To send **feedback**, use `treg feedback submit <quality|pricing|friction|other> "message" --call-id <id>`
+  or MCP `feedback`. Send each issue once. Keep private information out.
+- To **review** a call, use `treg review CALL_ID USEFULNESS [--reason "..."]` or MCP `review`.
+  Choose `useful`, `partly`, `not_useful` or `not_sure`. A reason may appear on the tool's catalog
+  page without naming your team, so write about the tool.
+- To **mark** an outcome you verified, use `treg mark CALL_ID 2/email:wrong --basis bounced` or MCP
+  `mark`. Supply `[INDEX][/FIELD]:VERDICT` for a field or row (indices start at zero), or a bare
+  verdict for the whole result. `--basis` records how you know (`bounced`, `cross_checked`,
+  `user_said` or `impression`). If your CLI and MCP client lack `mark`, the same reporting policy
+  applies to `POST https://treg.to/marks`. Marks are private and leave charges unchanged.
+
+[Feedback instructions](https://treg.to/feedback.md).
 
 ## Rules
 
-- **Follow the next step an answer names**: a `help` line, `_treg.advice`, an error body.
+- **Follow the next step an answer names** within the host's approval and reporting policy.
 - **Never ask for or paste a provider key.** Register it once; the team calls it without holding it.
 - **Keys are write-only.** No one can read a stored value back, you included. A tool may use a key a
   teammate shared with the team: you spend it without seeing it, and every call is logged against

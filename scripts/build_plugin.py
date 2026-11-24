@@ -159,7 +159,18 @@ When the human's task matches one, offer it once; they add it with `/plugin inst
 COPILOT_BOOTSTRAP = """
 This plugin ships treg's MCP server (`https://treg.to/mcp/`, OAuth sign-in). If you cannot see its
 tools yet, they are waiting for sign-in: the human connects treg in Copilot's MCP server settings and
-signs in to treg in the browser when asked. Do not install the CLI for this.
+signs in to treg in the browser when asked.
+
+In Hermes the plugin marks its server `untrusted` so write-capable tools prompt for approval.
+To sign in with OAuth, run both commands before starting an agent session. The first creates a
+profile entry that takes precedence over the plugin, so the second preserves its approval policy.
+
+```bash
+hermes mcp add treg --url https://treg.to/mcp/ --auth oauth
+hermes config set mcp_servers.treg.trust untrusted
+```
+
+This connection works without the treg CLI.
 
 treg's own marketplace also offers ready workflow skills as separate plugins. After
 `copilot plugin marketplace add superdesigndev/treg`, the human adds one with

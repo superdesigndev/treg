@@ -388,6 +388,7 @@ def test_the_copilot_manifest_keeps_to_the_agent_plugins_schema():
     assert set(manifest) <= {"$schema", "name", "version", "description", "author", "homepage",
                              "repository", "license", "keywords", "extensions"}
     assert manifest["name"] == "treg" and manifest["description"]
+    assert manifest["extensions"]["com.nousresearch.hermes"]["servers"]["treg"]["trust"] == "untrusted"
     assert set(manifest["author"]) <= {"name", "email", "url"}
     assert all(k == k.lower() and " " not in k for k in manifest["keywords"])
     assert frontmatter(COPILOT_SKILL)["name"] == "treg" == COPILOT_SKILL.parent.name
