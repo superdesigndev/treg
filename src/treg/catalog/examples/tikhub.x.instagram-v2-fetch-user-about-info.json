@@ -1,0 +1,32 @@
+{
+  "code": 200,
+  "request_id": "b4ec4996-3bb9-4ecf-afad-2e4b8aab3a4a",
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-11-23 12:48:44",
+  "time_stamp": 1795466924,
+  "time_zone": "America/Los_Angeles",
+  "docs": "https://api.tikhub.io/#/Instagram-V2-API/fetch_user_about_info_api_v1_instagram_v2_fetch_user_about_info_get",
+  "cache_message": "This response is cached and accessible via the URL below for 24 hours at no extra cost. The cache is for request tracing only — it doesn't affect the API's data freshness and won't be returned through the API again.",
+  "cache_message_zh": "本次响应已缓存，可通过下方 URL 直接查看，有效期 24 小时，访问缓存链接无额外费用。缓存仅用于请求溯源，不影响接口数据的时效性，也不会再次通过接口返回。",
+  "cache_url": "https://cache.tikhub.io/api/v1/cache/public/b4ec4996-3bb9-4ecf-afad-2e4b8aab3a4a?sign=…",
+  "router": "/api/v1/instagram/v2/fetch_user_about_info",
+  "params": {
+    "username": "cristiano"
+  },
+  "data": {
+    "data": {
+      "accounts_with_shared_followers": null,
+      "country": "Portugal",
+      "date_joined": "May 2012",
+      "date_joined_as_timestamp": 1335830400,
+      "date_verified": null,
+      "date_verified_as_timestamp": null,
+      "former_usernames": 0,
+      "id": 173560420,
+      "is_verified": true,
+      "username": null
+    }
+  }
+}
