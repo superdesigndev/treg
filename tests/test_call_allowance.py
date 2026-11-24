@@ -1017,6 +1017,7 @@ async def test_busy_teams_past_the_bound_do_not_make_every_new_team_scan(
         org_id, store, monkeypatch):
     """A prune that keeps most teams waits until the maps have doubled before the next one."""
     monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_refills", {})
     monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
     prunes = []
     prune = runtime._prune
