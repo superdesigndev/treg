@@ -603,10 +603,12 @@ past the bound do not make every new team scan them.
 
 - **One place folds the queue.** `application/allowance_sweep.py` runs a loop wherever
   background work runs, and one process at a time runs its pass: the pass holds a lease in the
-  store (`_pass_lease`), and a process that finds it taken pauses like an idle pass. Every pass
-  lists the teams with queued charges, a read over a queue that is written and deleted all day;
-  run by every process every second it cost the database more than the folding did. When the
-  store cannot answer, every process runs its pass, as before the lease. Each pass goes through every team with queued charges, listed or
+  store (`_pass_lease`), renewed while a long pass runs, and a process that finds it taken
+  pauses. After an idle pass the holder keeps the lease through the pause instead of releasing
+  it, so the pause is shared: processes waking at different moments do not each take a turn.
+  Every pass lists the teams with queued charges, a read over a queue that is written and
+  deleted all day; run by every process every second it cost the database more than the folding
+  did. When the store cannot answer, every process runs its pass, as before the lease. Each pass goes through every team with queued charges, listed or
   not, a page of teams at a time in the order of their numbers, and folds them a team at a time, a batch per transaction (`fold_queued_once`), on the background
   pool; a pass that folded something is followed by the next at once, an idle one by a short
   pause. Request processes only queue charges: neither a refill nor the charge writer folds.

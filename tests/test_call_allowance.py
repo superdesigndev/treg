@@ -43,6 +43,7 @@ class FakeStore:
     def __init__(self) -> None:
         self.counters: dict[int, dict] = {}
         self.leases: dict[str, str] = {}
+        self.lease_until: dict[str, float] = {}
         self.until_ms = 0
         self.lease_answer: str | None = None
         self.run = "run1"
@@ -180,14 +181,22 @@ class FakeStore:
     async def acquire_lease(self, key, token, ttl_ms):
         if self.lease_answer is not None:
             return self.lease_answer
-        if key in self.leases:
+        if key in self.leases and self.lease_until.get(key, float("inf")) > time.monotonic():
             return "busy"
         self.leases[key] = token
+        self.lease_until[key] = time.monotonic() + ttl_ms / 1000
         return "acquired"
+
+    async def renew_lease(self, key, token, ttl_ms, *, deadline=None):
+        if self.leases.get(key) != token or self.lease_until.get(key, 0) <= time.monotonic():
+            return "lost"
+        self.lease_until[key] = time.monotonic() + ttl_ms / 1000
+        return "renewed"
 
     async def release_lease(self, key, token):
         if self.leases.get(key) == token:
             del self.leases[key]
+            self.lease_until.pop(key, None)
         return "released"
 
 
@@ -2108,6 +2117,19 @@ async def test_a_pass_folds_a_few_batches_of_a_team_and_comes_back_for_the_rest(
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK - 50)
 
 
+async def _run_workers(count, seconds, *, every_s, stagger_s=0.0):
+    tasks = []
+    for _ in range(count):
+        tasks.append(asyncio.create_task(allowance_sweep.worker(fold_every_s=every_s)))
+        await asyncio.sleep(stagger_s)
+    await asyncio.sleep(seconds)
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 async def test_one_process_at_a_time_runs_the_pass(store, monkeypatch):
     """Every process runs the loop, and each pass reads every team with queued charges: run by
     every process every second, that reading cost the database more than the folding. A process
@@ -2118,25 +2140,48 @@ async def test_one_process_at_a_time_runs_the_pass(store, monkeypatch):
         passes.append(sweep)
         return 0
 
-    async def run_for(seconds):
-        task = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.005))
-        await asyncio.sleep(seconds)
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-
     monkeypatch.setattr(allowance_sweep, "run_once", counted)
     store.leases[allowance_sweep._PASS_KEY] = "another process"
-    await run_for(0.05)
+    await _run_workers(1, 0.05, every_s=0.005)
     assert passes == []
     del store.leases[allowance_sweep._PASS_KEY]
-    await run_for(0.05)
+    await _run_workers(1, 0.05, every_s=0.005)
     assert passes and passes[0] is True, "the first pass it runs is a sweep too"
-    assert allowance_sweep._PASS_KEY not in store.leases, "a pass gives the lease back"
     passes.clear()
     store.lease_answer = "unavailable"
-    await run_for(0.05)
+    await _run_workers(1, 0.05, every_s=0.005)
     assert passes
+
+
+async def test_the_pause_after_an_idle_pass_is_shared_by_every_process(store, monkeypatch):
+    """Released at once after an idle pass, the lease would go to whichever process woke next,
+    and processes waking at different moments would each scan once per pause anyway."""
+    passes: list[float] = []
+
+    async def idle(session_maker, *, sweep):
+        passes.append(time.monotonic())
+        return 0
+
+    monkeypatch.setattr(allowance_sweep, "run_once", idle)
+    await _run_workers(4, 0.3, every_s=0.05, stagger_s=0.012)
+    assert len(passes) <= 9, f"{len(passes)} passes in 0.3 s; one per pause is about 7"
+
+
+async def test_a_long_pass_keeps_the_lease(store, monkeypatch):
+    """A pass that outlives the lease's time would let a second process start one beside it."""
+    monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
+    running, overlapped = [0], []
+
+    async def slow(session_maker, *, sweep):
+        running[0] += 1
+        overlapped.append(running[0] > 1)
+        await asyncio.sleep(0.2)
+        running[0] -= 1
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(2, 0.5, every_s=0.01, stagger_s=0.02)
+    assert overlapped and not any(overlapped)
 
 
 async def test_a_pass_reaches_every_team_however_many_have_charges_queued(

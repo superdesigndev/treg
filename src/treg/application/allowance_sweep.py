@@ -20,6 +20,7 @@ import asyncio
 import logging
 import time
 import uuid
+import contextlib
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
@@ -71,9 +72,27 @@ async def _team_lease(org_id: int):
             await store.release_lease(key, token)
 
 
+class _Pass:
+    """One process's turn at the pass. `rest_s` set by the holder keeps the lease after the pass
+    for that long, so the pause after an idle pass is shared by every process, not taken by each
+    in turn."""
+
+    def __init__(self, mine: bool) -> None:
+        self.mine = mine
+        self.rest_s = 0.0
+
+
+async def _keep_pass(store, token: str) -> None:
+    """Renew the pass lease while a long pass runs, so a second process does not start one."""
+    while True:
+        await asyncio.sleep(_PASS_LEASE_MS / 3000)
+        if await store.renew_lease(_PASS_KEY, token, _PASS_LEASE_MS) != "renewed":
+            return
+
+
 @asynccontextmanager
 async def _pass_lease():
-    """Yield whether this process runs the pass: one process at a time does, the others pause.
+    """Yield this process's `_Pass`: one process at a time has it, the others pause.
 
     Every process runs the loop, but a pass reads every team with queued charges, so many
     processes each reading them every second cost the database more than the folding itself.
@@ -81,11 +100,20 @@ async def _pass_lease():
     leases and row locks keep two writers of one team apart either way."""
     store, token = kv.store(), uuid.uuid4().hex
     acquired = await store.acquire_lease(_PASS_KEY, token, _PASS_LEASE_MS)
+    turn = _Pass(acquired != "busy")
+    keeper = asyncio.create_task(_keep_pass(store, token)) if acquired == "acquired" else None
     try:
-        yield acquired != "busy"
+        yield turn
     finally:
+        if keeper is not None:
+            keeper.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await keeper
         if acquired == "acquired":
-            await store.release_lease(_PASS_KEY, token)
+            if turn.rest_s > 0:
+                await store.renew_lease(_PASS_KEY, token, max(1, int(turn.rest_s * 1000)))
+            else:
+                await store.release_lease(_PASS_KEY, token)
 
 
 def idle_after_s() -> int:
@@ -200,18 +228,21 @@ async def run_once(session_maker, *, sweep: bool) -> int:
 async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                  sweep_every_s: float = _SWEEP_EVERY_S) -> None:
     """Fold and sweep forever on the background pool, one process at a time (`_pass_lease`). A
-    pass that folded something is followed by the next at once; an idle one, or one another
-    process has, by a pause. A bad pass never kills the loop."""
+    pass that folded something is followed by the next at once; an idle one by a pause every
+    process shares (the holder keeps the lease through it); a process that finds the pass taken
+    pauses too. A bad pass never kills the loop."""
     next_sweep = 0.0
     while True:
         folded = 0
         try:
-            async with _pass_lease() as mine:
-                if mine:
+            async with _pass_lease() as turn:
+                if turn.mine:
                     sweep = time.monotonic() >= next_sweep
                     if sweep:
                         next_sweep = time.monotonic() + sweep_every_s
                     folded = await run_once(background_session_maker, sweep=sweep)
+                    if not folded:
+                        turn.rest_s = fold_every_s
         except asyncio.CancelledError:
             raise
         except Exception:
