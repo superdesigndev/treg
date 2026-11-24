@@ -629,17 +629,17 @@ class _ChargeWriter:
         self.owed = max(0, self.owed - len(rows))
         done = [charge.call_id for charge, _ in rows if charge.call_id in self._marked]
         self._marked.difference_update(done)
-        store = kv.store()
-        for call_id in done:
-            await store.clear_call_in_flight(call_id)
+        if done:
+            # One round trip for the batch: a store that does not answer costs the writer one
+            # short timeout, not one per row.
+            await kv.store().clear_calls_in_flight(done)
 
     async def _renew_marks(self) -> None:
         """Keep the marks of calls whose charge is still unconfirmed: until it is written, the
         mark is all a stale claim can read of the call."""
-        store = kv.store()
-        for charge, _ in self._unconfirmed:
-            if charge.call_id in self._marked:
-                await store.renew_call_in_flight(charge.call_id, IN_FLIGHT_MARK_MS)
+        marked = [charge.call_id for charge, _ in self._unconfirmed if charge.call_id in self._marked]
+        if marked:
+            await kv.store().renew_calls_in_flight(marked, IN_FLIGHT_MARK_MS)
 
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> set[int]:

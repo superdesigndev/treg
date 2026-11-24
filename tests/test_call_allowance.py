@@ -49,6 +49,7 @@ class FakeStore:
         self.paces = 0
         self.marks: set[str] = set()
         self.renewed: list[str] = []
+        self.cleared_batches: list[list[str]] = []
         self.mark_answer = True
 
     async def mark_call_in_flight(self, call_ref, ttl_ms):
@@ -59,9 +60,12 @@ class FakeStore:
     async def clear_call_in_flight(self, call_ref):
         self.marks.discard(call_ref)
 
-    async def renew_call_in_flight(self, call_ref, ttl_ms):
-        self.renewed.append(call_ref)
-        return call_ref in self.marks
+    async def renew_calls_in_flight(self, call_refs, ttl_ms):
+        self.renewed.extend(call_refs)
+
+    async def clear_calls_in_flight(self, call_refs):
+        self.cleared_batches.append(list(call_refs))
+        self.marks.difference_update(call_refs)
 
     def restart(self) -> None:
         """The store's server starts again: every counter built before is gone."""
