@@ -78,15 +78,17 @@ def record_call(
     ))
 
 
-def record_async_call_hit(call_id: str, endpoint_id: str, org_id: int, hit: bool, *,
-                          verdict: str | None = None) -> None:
+def record_async_call_terminal(call_id: str, endpoint_id: str, org_id: int, *,
+                               hit: bool | None = None, verdict: str | None = None,
+                               charged_micro: int | None = None) -> None:
     """Queue the terminal audit correction without delaying the provider's response.
 
-    If the insert has not landed, its task-row read supplies the durable verdict. If it
-    has landed, this update corrects it. Both operations use the one audit writer.
+    If the insert has not landed, its task-row read supplies the durable verdict and charge. If it
+    has landed, this update corrects it. Both operations use the one audit writer. A `None` field
+    leaves the column as it is.
     """
-    _enqueue(_AsyncHitUpdate, dict(call_id=call_id, endpoint_id=endpoint_id,
-                                   org_id=org_id, hit=hit, verdict=verdict))
+    _enqueue(_AsyncHitUpdate, dict(call_id=call_id, endpoint_id=endpoint_id, org_id=org_id,
+                                   hit=hit, verdict=verdict, charged_micro=charged_micro))
 
 
 def _known_fields(model, telemetry: dict | None) -> dict:
@@ -220,19 +222,29 @@ async def _write_batch(rows: list[tuple[type, dict]]) -> bool:
                         session.add_all(records)
                         records = []
                         await session.flush()
+                    judged = fields.get("hit") is not None
+                    changes = {"hit": fields["hit"], "verdict": fields.get("verdict")} if judged else {}
+                    if fields.get("charged_micro") is not None:
+                        changes["cost_charged_micro"] = fields["charged_micro"]
+                    if not changes:
+                        continue
                     corrected = await session.execute(update(CallRecord).where(
                         CallRecord.call_ref == fields["call_id"],
                         CallRecord.endpoint_id == fields["endpoint_id"],
                         CallRecord.org_id == fields["org_id"],
-                    ).values(hit=fields["hit"], verdict=fields["verdict"])
+                    ).values(**changes)
                       .returning(CallRecord.endpoint_id, CallRecord.created_at))
-                    dirty.update((endpoint_id, created_at.strftime("%Y-%m-%d"))
-                                 for endpoint_id, created_at in corrected.all())
+                    # Only a verdict changes what the endpoint's stats count; a charge alone does not.
+                    if judged:
+                        dirty.update((endpoint_id, created_at.strftime("%Y-%m-%d"))
+                                     for endpoint_id, created_at in corrected.all())
                     continue
                 values = {k: v for k, v in fields.items() if k != "_async_submission"}
                 if fields.get("_async_submission") and (task := tasks.get(fields["call_ref"])) is not None:
                     values["hit"] = task.hit
                     values["verdict"] = task.verdict
+                    if task.settled_micro is not None:
+                        values["cost_charged_micro"] = task.settled_micro
                 records.append(model(**values))
             session.add_all(records)
             await mark_dirty(session, dirty)

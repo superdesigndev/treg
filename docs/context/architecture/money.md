@@ -908,7 +908,9 @@ replays from the row alone. BYOK creates neither hold nor row. A caller poll and
 success or billed failure without required usage only records result ownership; a failure or a
 state past the window releases. Only the winning finalizer archives terminal evidence. The same
 transaction stores the adapter hit verdict and verdict word on the task; the audit path copies them
-to the submission row whichever is written first. A 2xx that is not an accepted submission
+to the submission row whichever is written first, with the amount the task closed at as the row's
+`cost_charged_micro` (0 on a release or a timeout), so a sum over `callrecord` counts async charges.
+A charge alone does not mark the endpoint's stats for a recount. A 2xx that is not an accepted submission
 (`_submission_rejected`: not JSON, fails `expect`, no task id or an off-allow-list poll URL) never
 becomes a row and settles at the provider-reported charge, else zero. If the row cannot be
 persisted, the request path releases with `async_task_not_recorded` and an ERROR alert.
