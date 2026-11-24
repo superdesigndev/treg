@@ -1343,6 +1343,26 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+AXESSO = OAuthProvider(
+    service="axesso",
+    display_name="Axesso",
+    auth_kind="key",
+    token_label="Amazon API subscription key",
+    token_header="axesso-api-key",
+    token_format="{secret}",
+    setup_url="https://axesso.developer.azure-api.net/products",
+    setup_action_label="Get an Axesso Amazon API key",
+    setup_steps=("Subscribe to the Amazon API in the Axesso developer portal.",
+                 "Copy the subscription key from your profile."),
+    setup_note="Connecting checks one seller-products page against your Amazon API request allowance.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="List products in an Amazon seller's storefront by marketplace.",
+    base_url="https://api.axesso.de",
+    docs_url="https://axesso.developer.azure-api.net/api-details#api=axesso-amazon-data-service",
+    probe_path="/amz/amazon-seller-products?domainCode=com&sellerId=A1VLPNTGGRFAR6&page=1",
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -4612,7 +4632,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
+        ANYAPI, APOLLO, PDL, AKTA, AXESSO, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

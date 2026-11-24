@@ -1,0 +1,31 @@
+provider: axesso
+source:
+  docs: https://axesso.developer.azure-api.net/api-details#api=axesso-amazon-data-service
+  curated: '2026-11-24'
+pricing_url: https://axesso.de/amazon-api/
+
+proposed_capabilities:
+  amazon.seller.products: List products in an Amazon seller's storefront
+
+endpoints:
+  - id: axesso.amazon.seller.products
+    capability: amazon.seller.products
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /amz/amazon-seller-products
+    name: Amazon seller storefront products
+    summary: List products sold by one seller on an Amazon marketplace, with ASINs for looking up product reviews.
+    input:
+      queryParams:
+        sellerId: {type: string, required: true, example: A3JWKAKR8XB7XF}
+        domainCode: {type: string, required: true, example: de}
+        page: {type: integer, required: true, min: 1, note: "Start at 1 and increment through lastPage.", example: 1}
+    test_request:
+      queryParams: {sellerId: A3JWKAKR8XB7XF, domainCode: de, page: 1}
+    price: {value: null, unit: call, note: "Each page uses one request from your Axesso Amazon API subscription. The per-call cost depends on your plan."}
+    provenance: {source: docs, source_url: 'https://axesso.de/amazon-api/', checked: '2026-11-24', confidence: unknown}
+    verified: 2026-11-24
+    added: '2026-11-24'
+    example_response: examples/axesso.amazon.seller.products.json
+    docs_url: https://axesso.developer.azure-api.net/api-details#api=axesso-amazon-data-service&operation=seller-products

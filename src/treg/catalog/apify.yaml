@@ -1,6 +1,6 @@
-# Every per-result row below was called live on 2026-09-26 and its billed events matched the actor's
-# published rate card (pricingInfos on GET /v2/acts/{actor}); each row's cost note records what was
-# billed. Paths and parameters were first transcribed from official docs 2026-07-28.
+# The per-result rows verified on 2026-09-26 matched the actor's published rate card
+# (pricingInfos on GET /v2/acts/{actor}). Their cost notes record the billed events.
+# The original paths and parameters came from official docs on 2026-07-28.
 #
 # BILLING IS READABLE AFTER THE FACT, but late: GET /v2/actor-runs/{id} returns chargedEventCounts
 # as soon as a run ends, while usageTotalUsd (the dollars) can trail it by minutes. Settlement
@@ -553,5 +553,78 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  - id: apify.amazon.product.reviews
+    capability: amazon.product.reviews
+    platform: amazon
+    scope: any_account
+    method: POST
+    path: /actors/axesso_data~amazon-reviews-scraper/run-sync-get-dataset-items
+    name: Amazon product reviews by ASIN and marketplace
+    summary: List recent critical reviews on Amazon.de and other marketplaces with review IDs and full text.
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, note: "Spend cap in USD. Required on treg's key, up to 1.", example: 0.05}
+        timeout: {type: integer, note: "Run timeout in seconds. Required on treg's key, from 1 to 90.", example: 90}
+      bodyType: json
+      body:
+        input:
+          type: array
+          required: true
+          minItems: 1
+          items:
+            type: object
+            required: [asin, domainCode]
+            properties:
+              asin: {type: string, example: B09G7ZMVJP}
+              domainCode: {type: string, example: de}
+              sortBy: {type: string, enum: [recent, helpful], example: recent}
+              filterByStar: {type: string, note: "Use critical for one to three stars.", example: critical}
+              maxPages: {type: integer, default: 1, note: "Number of pages to collect from the start, 1–10. Use -1 to request additional available reviews beyond page 10."}
+      note: "This actor requires a paid Apify account. On the free plan it completes with an empty dataset even for valid inputs. Review rows carry reviewId, rating, title, text and a localized date with the review country. The actor documents three penalty rows for an invalid ASIN or an empty filter result."
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {input: [{asin: B09G7ZMVJP, domainCode: de, sortBy: recent, filterByStar: critical, maxPages: 1}]}
+    cost: {type: per_result, value: 0.0009, currency: USD, per: 1, unit: review, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/axesso_data~amazon-reviews-scraper', checked: '2026-11-24', confidence: verified, note: "Charged per dataset item, including penalty entries."}
+    unverified: "Free-plan runs on Amazon.de returned HTTP 201 with zero rows. The actor reported that it requires a paying user. Critical reviews across pages still need a paid-account capture."
+    added: '2026-11-24'
+    docs_url: https://apify.com/axesso_data/amazon-reviews-scraper
+
+  - id: apify.amazon.review.detail
+    capability: amazon.review.detail
+    platform: amazon
+    scope: any_account
+    method: POST
+    path: /actors/axesso_data~amazon-review-details-scraper/run-sync-get-dataset-items
+    name: Amazon review lookup by ID and marketplace
+    summary: Look up an individual Amazon review by ID on its marketplace and read its current text.
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, note: "Spend cap in USD. Required on treg's key, up to 1.", example: 0.15}
+        timeout: {type: integer, note: "Run timeout in seconds. Required on treg's key, from 1 to 90.", example: 90}
+        memory: {type: integer, note: "Run memory in MB. Use 1024 on treg's key.", example: 1024}
+      bodyType: json
+      body:
+        input:
+          type: array
+          required: true
+          minItems: 1
+          items:
+            type: object
+            required: [reviewId, domainCode]
+            properties:
+              reviewId: {type: string, note: "Use the reviewId from a product review.", example: R2YBQLVCB4UMJI}
+              domainCode: {type: string, note: "Use the same marketplace as the review list.", example: de}
+      note: "Match rows by reviewId and domainCode. A live review returns statusCode 200, statusMessage FOUND and text. An absent review returns statusCode 404 and statusMessage NOT_FOUND. A failed run leaves the review’s status unknown."
+    platform_request: {queryParams.memory: 1024}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.25, timeout: 90, memory: 1024}
+      body: {input: [{reviewId: R2YBQLVCB4UMJI, domainCode: de}, {reviewId: R0000000000000, domainCode: de}]}
+    cost: {type: per_result, value: 0.007, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/axesso_data~amazon-review-details-scraper', checked: '2026-11-24', confidence: verified, note: "Paid plans charge $0.007 per result and the free plan charges $0.10. Starting a run costs $0.00005 per GB, with a one-GB minimum."}
+    verified: 2026-11-24
+    added: '2026-11-24'
+    example_response: examples/apify.amazon.review.detail.json
+    docs_url: https://apify.com/axesso_data/amazon-review-details-scraper
+
 proposed_capabilities:
+  amazon.review.detail: "Look up an Amazon review by ID and marketplace"
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
