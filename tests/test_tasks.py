@@ -515,19 +515,35 @@ async def test_team_mcp_recovers_oversized_task_results_from_the_terminal_archiv
     from test_mcp import _call_tool, mcp_session
 
     descriptor(result={"path": "output", "ttl_note": "1h"})
-    url = "https://example.invalid/image"
-    document = {"id": "t-large", "status": "succeeded", "output": [url, "☃" * 11000]}
+    url = "https://example.invalid/image?X-Amz-Security-Token=" + "s" * 2950
+    assert len(url) > 2048
+    medium_output = [url, "☃" * 11000]  # ~36 KiB UTF-8: over old 20 KiB cap, under 2 MiB standard cap
+    medium_doc = {"id": "t-medium", "status": "succeeded", "output": medium_output}
+    submitted_med = await _submit(clients, monkeypatch, Script({"id": "t-medium"}, medium_doc))
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        client.headers["User-Agent"] = "claude-code/2.1.330 (cli)"
+        med_done = await _call_tool(client, "task_status", {
+            "call_id": submitted_med.headers["X-Treg-Call-Id"],
+        }, token)
+    assert med_done["state"] == "succeeded" and med_done["result"] == medium_output
+    assert med_done["result_url"] == url
+
+    clients.headers["X-Treg-Token"] = token
+    clients.headers.pop("User-Agent", None)
+    huge_output = [url, "☃" * 70000]  # > 192 KiB hosted chat cap
+    document = {"id": "t-large", "status": "succeeded", "output": huge_output}
     script = Script({"id": "t-large"}, document)
     submitted = await _submit(clients, monkeypatch, script)
     call_id = submitted.headers["X-Treg-Call-Id"]
-    token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as client:
+        client.headers["User-Agent"] = "openai-mcp/1.0.0"
         done = await _call_tool(client, "task_status", {"call_id": call_id}, token)
         raw = jsontext.dumps_bytes(document["output"], separators=(",", ":"))
         assert done["state"] == "succeeded" and done["status"] == "succeeded"
         assert done["result_url"] == url and done["ttl_note"] == "1h" and done["settled_usd"] == 0.003
         preview = done["result"]
-        assert preview["omitted"] is True and preview["size_bytes"] == len(raw) > 20 * 1024
+        assert preview["omitted"] is True and preview["size_bytes"] == len(raw) > 192 * 1024
         assert preview["head"] == raw[:1024].decode("utf-8", "replace")
         assert preview["tail"] == raw[-1024:].decode("utf-8", "replace")
         assert "call_result(call_id)" in preview["note"]
@@ -542,6 +558,25 @@ async def test_team_mcp_recovers_oversized_task_results_from_the_terminal_archiv
     assert answer["media_type"] == "application/json"
     assert answer["size_bytes"] == len(answer["body_text"].encode("utf-8"))
     assert json.loads(answer["body_text"]) == document and len(script.seen) == 2
+
+
+def test_task_answer_keeps_presigned_url_when_trimming_oversized_fields():
+    import httpx
+    from treg import mcp
+
+    url = "https://storage.example.invalid/video.mp4?X-Amz-Security-Token=" + "t" * 3000
+    payload = {
+        "state": "succeeded",
+        "status": "succeeded",
+        "result_url": url,
+        "result": {"data": "x" * 1000},
+        "warning": "w" * 2500,
+    }
+    resp = httpx.Response(200, json=payload)
+    out = mcp._task_answer(resp, "call-1", limit=3500)
+    assert out["result_url"] == url
+    assert out["result"]["omitted"] is True
+    assert out["warning"].endswith("…") and len(out["warning"]) < 350
 
 
 async def test_team_mcp_history_keeps_fetch_arguments_and_hides_the_cli_command(

@@ -98,8 +98,10 @@ includes `task.state`. Direct and routed pending receipts show the hold as `rese
 When the receipt says `pending`, wait `task.retry_after` seconds. `task_status(call_id)` checks
 once with `treg:call` permission and reports `settled_usd` once the charge is finalized.
 A fetch-mode success carries `fetch` arguments for `call` on both the task view and the activity
-record. The CLI uses `fetch_command`. For oversized results, the task view gives a preview and
-`call_result(call_id)` can read the archived terminal JSON when it is on file.
+record. The CLI uses `fetch_command`. Task answers keep up to 2 MiB for standard clients (192 KiB
+for hosted chat connectors) and preserve `result_url` and `fetch` values up to 8 KiB; for oversized
+results, the task view gives a preview and `call_result(call_id)` can read the archived terminal
+JSON when it is on file.
 
 ## The Go CLI
 

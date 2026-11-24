@@ -610,17 +610,27 @@ def test_task_status_bounds_oversized_error_and_keeps_retry_after():
     from httpx import Response
 
     from treg import jsontext
-    from treg.mcp import _task_answer
+    from treg.mcp import _TASK_BODY_BYTES, _TASK_CHAT_BODY_BYTES, _task_answer
 
-    answer = _task_answer(Response(200, json={
+    standard = _task_answer(Response(200, json={
         "state": "error", "status": "\\" * 12000, "retry_after": 2,
-        "error": {"retryable": True, "message": "busy" * 8000},
+        "error": {"retryable": True, "message": "busy" * 600_000},
     }), "a-call")
-    assert answer["call_id"] == "a-call" and answer["state"] == "error"
-    assert answer["retry_after"] == 2
-    assert len(jsontext.dumps_bytes(answer["error"])) <= 2048
-    assert len(jsontext.dumps_bytes(answer["status"])) <= 2048
-    assert len(jsontext.dumps_bytes(answer, separators=(",", ":"))) <= 20 * 1024
+    assert standard["call_id"] == "a-call" and standard["state"] == "error"
+    assert standard["retry_after"] == 2
+    assert len(jsontext.dumps_bytes(standard["error"])) <= 2048
+    assert len(jsontext.dumps_bytes(standard["status"])) <= 2048
+    assert len(jsontext.dumps_bytes(standard, separators=(",", ":"))) <= _TASK_BODY_BYTES
+
+    hosted_chat = _task_answer(Response(200, json={
+        "state": "error", "status": "\\" * 12000, "retry_after": 2,
+        "error": {"retryable": True, "message": "busy" * 55_000},
+    }), "a-call", limit=_TASK_CHAT_BODY_BYTES)
+    assert hosted_chat["call_id"] == "a-call" and hosted_chat["state"] == "error"
+    assert hosted_chat["retry_after"] == 2
+    assert len(jsontext.dumps_bytes(hosted_chat["error"])) <= 2048
+    assert len(jsontext.dumps_bytes(hosted_chat["status"])) <= 2048
+    assert len(jsontext.dumps_bytes(hosted_chat, separators=(",", ":"))) <= _TASK_CHAT_BODY_BYTES
 
 
 async def test_the_schema_tolerates_NULLS_not_just_missing_keys(clients):

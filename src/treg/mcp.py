@@ -1999,7 +1999,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
             "status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r), **_call_receipt(r),
         }
         if surface is _TEAM_SURFACE:
-            await _add_submission(out, r, client, slug)
+            await _add_submission(out, r, client, slug, ctx=ctx)
 
     if out.get("replayed"):
         out["hint"] = ("this is the stored answer from the earlier call with the same "
@@ -2118,7 +2118,7 @@ async def _call_media_impl(
             "status": response.status_code, "endpoint_id": endpoint_id, **_call_receipt(response),
         }
         if surface is _TEAM_SURFACE:
-            await _add_submission(metadata, response, client, slug)
+            await _add_submission(metadata, response, client, slug, ctx=ctx)
     mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if 200 <= response.status_code < 300 and mime.startswith("audio/"):
         return CallToolResult(
@@ -2206,10 +2206,23 @@ def _call_receipt(response: httpx.Response) -> dict:
     return out
 
 
-_TASK_BODY_BYTES = 20 * 1024
+_TASK_BODY_BYTES = 2 * 1024 * 1024
+_TASK_CHAT_BODY_BYTES = 192 * 1024
+_TASK_URL_BYTES = 8 * 1024
 
 
-def _task_answer(response: httpx.Response, call_id: str) -> TaskOut:
+def _task_body_limit(ctx: Context | None) -> int:
+    headers = (ctx.headers if ctx else None) or {}
+    ua = (headers.get("user-agent") or headers.get("User-Agent") or _caller_host.get()[1]).lower()
+    origin = (headers.get("origin") or headers.get("Origin") or "").lower()
+    client_name = _caller_host.get()[0].strip().lower()
+    if (ua.startswith("openai-mcp/") or "claude-user/" in ua
+            or origin == "https://claude.ai" or client_name == "claude-ai"):
+        return _TASK_CHAT_BODY_BYTES
+    return _TASK_BODY_BYTES
+
+
+def _task_answer(response: httpx.Response, call_id: str, *, limit: int = _TASK_BODY_BYTES) -> TaskOut:
     view = _body(response)
     if response.status_code != 200:
         detail = view.get("detail", view) if isinstance(view, dict) else view
@@ -2221,7 +2234,7 @@ def _task_answer(response: httpx.Response, call_id: str) -> TaskOut:
         out["call_id"] = call_id
         if out.get("state") != "pending" and not (view.get("error") or {}).get("retryable"):
             out.pop("retry_after", None)
-    if len(jsontext.dumps_bytes(out, separators=(",", ":"))) <= _TASK_BODY_BYTES:
+    if len(jsontext.dumps_bytes(out, separators=(",", ":"))) <= limit:
         return out
     if "result" in out:
         raw_result = jsontext.dumps_bytes(out["result"], separators=(",", ":"))
@@ -2231,14 +2244,15 @@ def _task_answer(response: httpx.Response, call_id: str) -> TaskOut:
             "head": raw_result[:1024].decode("utf-8", "replace"),
             "tail": raw_result[-1024:].decode("utf-8", "replace"),
             "note": ("The task result exceeds the MCP budget. Use result_url or fetch if present, "
-                     "or call_result(call_id) to read the archived terminal answer."),
+                     "or call_result(call_id) if the terminal answer was archived."),
         }
-    if len(jsontext.dumps_bytes(out, separators=(",", ":"))) > _TASK_BODY_BYTES:
+    if len(jsontext.dumps_bytes(out, separators=(",", ":"))) > limit:
         for key, value in out.items():
             if key == "result":
                 continue
             raw = jsontext.dumps_bytes(value, separators=(",", ":"))
-            if len(raw) > 2048:
+            cap = _TASK_URL_BYTES if key in ("result_url", "fetch") else 2048
+            if len(raw) > cap:
                 if key in ("result_url", "fetch"):
                     out[key] = None
                 elif isinstance(value, str):
@@ -2250,6 +2264,7 @@ def _task_answer(response: httpx.Response, call_id: str) -> TaskOut:
 
 async def _add_submission(
     out: dict, response: httpx.Response, client: httpx.AsyncClient, slug: str | None,
+    *, ctx: Context | None = None,
 ) -> None:
     call_id = out.get("call_id")
     if not (response.is_success and response.headers.get("X-Treg-Async") and call_id):
@@ -2267,7 +2282,7 @@ async def _add_submission(
     headers = {"X-Treg-Org": slug} if slug else {}
     try:
         described = await client.post(path, content=response.content, headers=headers)
-        out["task"] = _task_answer(described, call_id)
+        out["task"] = _task_answer(described, call_id, limit=_task_body_limit(ctx))
         if replayed or routed_pending or "cost_usd" not in out:
             return
         # A metered submission's cost header can report a hold or an immediate charge.
@@ -2308,7 +2323,8 @@ async def task_status(call_id: str, ctx: Context) -> TaskOut:
         headers = {"X-Treg-Org": slug} if slug else {}
         if meta := (ctx.headers or {}).get("x-treg-meta") or (ctx.headers or {}).get("X-Treg-Meta"):
             headers["X-Treg-Meta"] = meta
-        answer = _task_answer(await client.get(path, headers=headers), call_id)
+        answer = _task_answer(await client.get(path, headers=headers), call_id,
+                              limit=_task_body_limit(ctx))
         if answer.get("state") in ("failed", "succeeded"):
             receipt = await client.get(_segment_url("/calls", call_id), headers=headers)
             if receipt.is_success:
