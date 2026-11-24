@@ -300,9 +300,14 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
     if queued and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
         open_hold = True
-    # An owner whose own reserve is in the ledger took a hold, never the allowance: its money is all
-    # in the database, and a store that cannot answer does not keep its claim waiting.
-    if marked is not False and not any(kind == "reserve" and cid == call_ref for kind, _, cid in rows):
+    # The mark matters only while the ledger cannot speak for the owner. An entry of its own (a
+    # reserve: it took a hold; a settle: its allowance charge is folded) or of a child other than
+    # overflow (routed and hub parents never take the allowance) puts all its money in the
+    # database, so a store that cannot answer does not keep its claim waiting. An overflow child's
+    # entries do not: its parent's own charge may still be unwritten.
+    overflow = f"{call_ref}:overflow"
+    if marked is not False and not any(
+            cid == call_ref or not cid.startswith(overflow) for _, _, cid in rows):
         open_hold = True
     # settle entries are negative (money leaving)
     return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}

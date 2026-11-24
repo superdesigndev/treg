@@ -2537,10 +2537,17 @@ async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
         assert r.json()["detail"]["call_id"] == "marked-owner"
 
 
-async def test_an_owner_on_its_own_hold_is_closed_from_the_ledger_when_the_store_cannot_answer(
-        clients: AsyncClient, platform_on, monkeypatch):
-    """Its reserve and settle in the ledger say it never took the allowance, so a store fault does
-    not keep its claim waiting: the receipt comes from the ledger."""
+@pytest.mark.parametrize(("trail", "expect"), [
+    ("own_hold", (410, 400)),          # its own reserve and settle: it took a hold
+    ("folded_allowance", (410, 400)),  # only its own settle: its allowance charge is folded
+    ("routed_parent", (410, 400)),     # only its children's entries: a route never takes the allowance
+    ("overflow_only", (409, None)),    # an overflow child's entries say nothing of the parent's charge
+])
+async def test_an_owner_the_ledger_speaks_for_is_closed_from_it_when_the_store_cannot_answer(
+        clients: AsyncClient, platform_on, monkeypatch, trail, expect):
+    """With its money all in the ledger, a store fault does not keep the claim waiting: the
+    receipt comes from the ledger. Only an owner whose own charge could still be unwritten (an
+    allowance parent with nothing but an overflow child in the ledger) waits for the store."""
     from treg.application.call import idempotency
     from treg.infra import kv
 
@@ -2554,13 +2561,18 @@ async def test_an_owner_on_its_own_hold_is_closed_from_the_ledger_when_the_store
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     await _seed_answer(clients, "held-label", status="pending")
     await _set_claim("held-label", call_ref="held-owner")
-    await _ledger(org_id, "held-owner", "reserve", amount=-500)
-    await _ledger(org_id, "held-owner", "settle", amount=-400)
+    entry = {"own_hold": "held-owner", "folded_allowance": "held-owner",
+             "routed_parent": "held-owner:r0", "overflow_only": "held-owner:overflow"}[trail]
+    if trail != "folded_allowance":
+        await _ledger(org_id, entry, "reserve", amount=-500)
+    await _ledger(org_id, entry, "settle", amount=-400)
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "held-label"})
-    assert r.status_code == 410, r.text
-    assert r.json()["detail"]["error"] == "idempotency_response_lost"
-    assert r.json()["detail"]["charged_micro"] == 400
+    status, charged = expect
+    assert r.status_code == status, r.text
+    if status == 410:
+        assert r.json()["detail"]["error"] == "idempotency_response_lost"
+        assert r.json()["detail"]["charged_micro"] == charged
 
 
 async def test_an_expired_lease_with_money_in_flight_still_answers_409(

@@ -1472,9 +1472,11 @@ still pay the provider twice.
   or a task's worker can settle later.
 - An allowance call has no hold to show it is still running, so a stale claim also asks the shared
   store for the owner's in-flight mark (`kv.call_in_flight`, `IN_FLIGHT_MARK_MS`): a mark, or a
-  store that cannot answer, is money in flight (409) like an open hold, unless the ledger has the
-  owner's own reserve: that call took a hold, its money is all in the database, and a store fault
-  does not hold up its receipt. The mark is read before the database, since it is cleared only
+  store that cannot answer, is money in flight (409) like an open hold, unless the ledger already
+  speaks for the owner: an entry of its own (a reserve, so it took a hold; a settle, so its
+  allowance charge is folded) or of a child other than `:overflow` (routed and hub parents never
+  take the allowance). Its money is then all in the database, and a store fault does not hold up
+  its receipt. An overflow child's entries do not count: its parent's own charge may be unwritten. The mark is read before the database, since it is cleared only
   once the charge is written. `_platform_reserve` with
   `mark_in_flight` sets the mark before the take and clears it when the take is refused; a call
   the store would not mark keeps its own hold (`in_flight_unmarked`). The claim's lease task
