@@ -340,19 +340,18 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
 def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
                     allowed: bool) -> str | None:
     """Why a call keeps its own hold, or None for a call the team's allowance may pay for: a
-    direct, synchronous, untagged call on treg's platform key with no `Idempotency-Key`, by a
-    member with no spend limit, on an endpoint any credit may pay for.
+    direct, synchronous, untagged call on treg's platform key, by a member with no spend limit,
+    on an endpoint any credit may pay for.
 
     Everything else keeps its own hold, because something reads that hold: a tag or member row
-    written with it, an async task or a routed parent that closes it later, the idempotency check
-    that asks whether money moved, the purchased-credit gate. A child call's reference is its
-    parent's plus a `:suffix`. The call application passes `allowed` false only for a call that
-    carries an `Idempotency-Key`.
+    written with it, an async task or a routed parent that closes it later, the purchased-credit
+    gate. A child call's reference is its parent's plus a `:suffix`. A call whose application did
+    not allow the allowance (`allowed`) keeps its hold too.
     """
     if not call_ref or ":" in call_ref:
         return "child_call"
     if not allowed:
-        return "idempotency_key"
+        return "not_allowed"
     if (mk.reserved_micro or 0) <= 0:
         return "zero_price"
     if not allowance_runtime.enabled_for(caller.org_id):

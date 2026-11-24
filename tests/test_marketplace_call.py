@@ -2484,6 +2484,25 @@ async def test_an_abandoned_allowance_call_counts_its_queued_charge_once(
     assert r.json()["detail"]["charged_micro"] == 700
 
 
+@pytest.mark.parametrize("key", [None, "keyed-label"])
+async def test_a_direct_call_may_use_the_allowance_and_a_keyed_one_is_marked_in_flight(
+        clients: AsyncClient, platform_on, monkeypatch, key):
+    from treg.application.call import service
+
+    seen = []
+    real = service._platform_reserve
+
+    async def spy(*args, **kwargs):
+        seen.append((kwargs.get("allow_allowance"), kwargs.get("mark_in_flight")))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(service, "_platform_reserve", spy)
+    headers = {"Idempotency-Key": key} if key else {}
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)
+    assert r.status_code == 200, r.text
+    assert seen == [(True, bool(key))]
+
+
 @pytest.mark.parametrize("mark", ["set", "unreadable", "absent"])
 async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
         clients: AsyncClient, platform_on, monkeypatch, mark):

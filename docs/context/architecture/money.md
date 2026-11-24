@@ -323,14 +323,15 @@ atomic take from the team's allowance counter and touches no balance row, so its
 queue on the team's money lease twice each.
 
 Eligible: a direct call (not a child of a route, a hub run or overflow), synchronous, on treg's
-platform key, with no tags, no `Idempotency-Key`, a member with no daily spend limit, a provider
-outside the trial pools, an endpoint any credit may pay for, and a price above zero. Every other
-call keeps its own hold, because something reads that hold: the tag and member rows written with
-it, the async task or routed parent that closes it later, the idempotency check that asks whether
-money moved, the purchased-credit gate.
+platform key, with no tags, a member with no daily spend limit, a provider outside the trial
+pools, an endpoint any credit may pay for, and a price above zero. Every other call keeps its own
+hold, because something reads that hold: the tag and member rows written with it, the async task
+or routed parent that closes it later, the purchased-credit gate. A call with an `Idempotency-Key`
+is eligible too: its claim's stale check, which asks whether money moved, reads the call's
+in-flight mark and queued charge where it would read a hold ("Idempotency and retries").
 
 A listed team's call that keeps its own hold logs why, as one JSON line on its own logger
-(`treg.allowance_skips`): `allowance_skipped {"org_id":..,"reason":..,"calls":..}`, with the reason `_allowance_skip` named (`child_call`, `idempotency_key`, `tagged`, `async`, ...)
+(`treg.allowance_skips`): `allowance_skipped {"org_id":..,"reason":..,"calls":..}`, with the reason `_allowance_skip` named (`child_call`, `tagged`, `async`, `in_flight_unmarked`, ...)
 or `take_refused` when an eligible call's take returned it to the exact path. The first skip of a
 team and reason is logged at once, then one line a minute per process with the count since the
 last line, so a listed team whose calls never reach the allowance says which rule kept them out.

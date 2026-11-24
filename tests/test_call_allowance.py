@@ -1029,7 +1029,7 @@ def _skip(org_id: int, reason: str, calls: int) -> str:
 
 
 @pytest.mark.parametrize(("why", "reason"), [
-    ("not_allowed_by_the_caller", "idempotency_key"), ("team_not_listed", None),
+    ("not_allowed_by_the_caller", "not_allowed"), ("team_not_listed", None),
     ("tagged", "tagged"), ("child_call", "child_call"), ("billed_oauth", "billed_oauth"),
     ("routed_child", "deferred_settle"), ("store_unavailable", "take_refused"),
 ])
@@ -1063,12 +1063,12 @@ def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
     clock = [1000.0]
     monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
     for _ in range(3):
-        call_reserve._note_allowance_skip(org_id, "idempotency_key")
+        call_reserve._note_allowance_skip(org_id, "not_allowed")
     call_reserve._note_allowance_skip(org_id, "tagged")
     clock[0] += call_reserve._SKIP_LOG_EVERY_S
-    call_reserve._note_allowance_skip(org_id, "idempotency_key")
-    assert skip_lines() == [_skip(org_id, "idempotency_key", 1), _skip(org_id, "tagged", 1),
-                            _skip(org_id, "idempotency_key", 3)]
+    call_reserve._note_allowance_skip(org_id, "not_allowed")
+    assert skip_lines() == [_skip(org_id, "not_allowed", 1), _skip(org_id, "tagged", 1),
+                            _skip(org_id, "not_allowed", 3)]
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):
