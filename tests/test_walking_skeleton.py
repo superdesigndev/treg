@@ -111,13 +111,13 @@ def test_migrations_fail_fast_rather_than_queueing_the_world():
     assert Settings.model_fields["migration_lock_timeout_s"].default <= 5
 
 
-def test_the_idle_floor_is_what_a_deploy_doubles_before_any_traffic():
-    """`pool_size` stays open while idle and `max_overflow` does not, so a rolling deploy costs at
-    least twice the idle floor even with no load. The budget must report that floor separately."""
+def test_the_budget_reports_what_a_process_retains_while_idle():
+    """A pool keeps up to `pool_size` returned connections open and closes overflow on return, so
+    after a busy spell every process, old ones during a deploy included, holds `pool_size`."""
     from treg.infra import db
 
     budget = db.connection_budget(workers=3)
     floor = sum(db.POOL_SPECS[name]["pool_size"] for name in ("api", "admin", "background"))
-    assert budget["idle_per_process"] == floor
+    assert budget["retained_per_process"] == floor
     assert budget["idle_deploy_peak"] == floor * 3 * 2
     assert budget["idle_deploy_peak"] <= budget["deploy_peak"]

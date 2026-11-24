@@ -186,13 +186,13 @@ semaphore. `tests/test_db_pool_isolation.py` pins the routing.
 
 Every process opens its own pools. Compute the connection peak from pool capacities, process count
 and the maximum overlap during a rolling deploy, and keep it below the database ceiling with
-headroom. The two halves of a capacity cost differently. `pool_size` connections stay open while
-idle in every process, so they are the floor the database always sees, and a rolling deploy
-doubles it before the new processes take any traffic. Overflow connections close when returned,
-so they cost only while busy, at the price of a new connection per burst. When the overlap does
-not fit, move capacity from `pool_size` to `max_overflow` before shrinking the cap.
-`connection_budget()` reports both: `deploy_peak` (every pool at capacity on both sides) and
-`idle_deploy_peak` (only the idle floors). `TREG_DB_POOL_OVERRIDES` (`"admin.pool_size=4,background.pool_size=12"`) patches
+headroom. The two halves of a capacity cost differently. A pool opens connections lazily, not
+at startup, and keeps up to `pool_size` of them open after they are returned: once a process has
+used that many at once, it holds them while idle, and old processes still hold theirs during a
+rolling deploy. Overflow connections close when returned, so they cost only while busy, at the
+price of a new connection per burst. Moving capacity from `pool_size` to `max_overflow` lowers
+what stays open after traffic subsides; the full-load peak is still `pool_size + max_overflow`
+per pool. `connection_budget()` reports both the capacity and `retained_per_process`. `TREG_DB_POOL_OVERRIDES` (`"admin.pool_size=4,background.pool_size=12"`) patches
 `POOL_SPECS` at startup; invalid entries are logged and skipped, and zero or negative values must
 never pass through because SQLAlchemy treats some as unlimited. `bootstrap.pool_gauge` emits
 per-pool peak, capacity and headroom: resize from measurements, one pool at a time. A larger pool

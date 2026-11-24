@@ -35,10 +35,12 @@ _is_sqlite = _db_url.startswith("sqlite")
 # semaphore: a semaphore bounds only the module that remembers to take one, a pool bounds every
 # module routed to it.
 #
-# The two numbers cost different things. `pool_size` connections stay open while idle, in every
-# process, including the old processes still running during a rolling deploy, so they set the
-# floor the database sees at all times. Overflow connections close on return, so they cost only
-# while in use, at the price of a fresh connect per burst.
+# The two numbers cost different things. A pool opens connections lazily, never at startup, and
+# keeps up to `pool_size` of them open after they are returned, so once a process has been that
+# busy it holds them while idle, old processes included during a rolling deploy. Overflow
+# connections close on return, so they cost only while in use, at the price of a fresh connect per
+# burst. Moving capacity from `pool_size` to `max_overflow` lowers what stays open after traffic
+# subsides; the peak under full load is still `pool_size + max_overflow`.
 #
 # `background` is sized from `BACKGROUND_CONSUMERS` below.
 #
@@ -145,13 +147,13 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
     deployment may briefly run two instances. Operators must compare
     `per_process * workers * 2` with their database's `max_connections` and leave headroom.
 
-    `idle_*` counts only `pool_size`, the connections every process keeps open while idle. It is
-    what a rolling deploy adds before either side carries load, so it is the least the overlap
-    costs; `deploy_peak` is the most.
+    `retained_per_process` counts only `pool_size`: the most connections a process keeps open
+    after its load subsides, reached once it has used that many at the same moment. It is not
+    opened at startup.
     """
     per_process = sum(POOL_SPECS[name]["pool_size"] + POOL_SPECS[name]["max_overflow"]
                       for name in _PRIMARY_POOL_NAMES)
-    idle_per_process = sum(POOL_SPECS[name]["pool_size"] for name in _PRIMARY_POOL_NAMES)
+    retained_per_process = sum(POOL_SPECS[name]["pool_size"] for name in _PRIMARY_POOL_NAMES)
     if workers is None:
         try:
             workers = max(1, int(os.environ.get("WEB_CONCURRENCY", "1")))
@@ -159,8 +161,8 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
             workers = 1
     return {"per_process": per_process, "workers": workers,
             "per_instance": per_process * workers, "deploy_peak": per_process * workers * 2,
-            "idle_per_process": idle_per_process,
-            "idle_deploy_peak": idle_per_process * workers * 2}
+            "retained_per_process": retained_per_process,
+            "idle_deploy_peak": retained_per_process * workers * 2}
 
 
 _budget = connection_budget()
