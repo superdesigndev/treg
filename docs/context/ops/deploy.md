@@ -410,8 +410,9 @@ exact path that the balance alone cannot pay for gets the counter back first whe
 enough to make up the difference. A window longer
 than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it back at `0`
 refill to the chunk again, with nothing else to undo, and processes of different settings can
-run side by side. Removing an id
-returns that org's new calls to the hold path at once; no migration is needed. The allowance's
+run side by side. With the switch off, removing an id
+returns that org's new calls to the hold path at once; no migration is needed. With the switch
+on, removing an id only stops its skip logs: the org stays on until it is excluded. The allowance's
 background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
 the `background` pool, which is one connection larger per process for it; request processes do
@@ -466,8 +467,11 @@ the switch on again, only when all of these can be seen:
   replaced by the first refill, which does not count what it shows.
 
 When only some teams' counters were affected, list those teams in
-`TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` instead, with the same restart and the same checks for
-each before taking it out of that list; an exclusion wins over the switch and the list.
+`TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` instead and remove them from
+`TREG_MONEY_ALLOWANCE_ORG_IDS`, with the same restart of every process that serves calls and the
+same checks for each before taking it out of the exclusion list. An exclusion wins over the
+switch and the list, but a process built before the exclusion list existed reads only
+`TREG_MONEY_ALLOWANCE_ORG_IDS`, and keeps admitting a team still named there.
 
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
