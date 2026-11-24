@@ -55,6 +55,8 @@ _refused_until: dict[int, float] = {}
 _in_flight = [0]
 # The most charges this process may owe the database at once, in flight or waiting to be written.
 _MAX_OWED = 20_000
+# How often the charge writer renews the in-flight marks it holds: well inside their lifetime.
+_MARK_RENEW_S = 60.0
 _money_locks: dict[tuple[int, asyncio.AbstractEventLoop], asyncio.Lock] = {}
 
 
@@ -513,8 +515,9 @@ class _ChargeWriter:
     counts each from `submit` until it is known written), so nothing is ever cut from a queue.
 
     A keyed call's in-flight mark (`marked`) is the writer's from `submit` on: a stale claim
-    reads the mark until it can read the charge, so it is renewed while the charge is unconfirmed
-    and cleared only once the charge is known written, whatever happened to the call meanwhile.
+    reads the mark until it can read the charge, so the writer renews every mark it holds on its
+    own clock (`_keep_marks`), whatever its batches are doing, and clears one only once its charge
+    is known written, whatever happened to the call meanwhile.
 
     The writer, not the call, freezes a team's counter for an overrun, and does it after the
     charge is committed and before the call is told: only then can a refill that reads the
@@ -528,6 +531,7 @@ class _ChargeWriter:
         self._retry_task: asyncio.Task | None = None
         self.owed = 0
         self._marked: set[str] = set()
+        self._marks_task: asyncio.Task | None = None
 
     def submit(self, charge: allowance.Charge, archive_use: tuple[int, str] | None, *,
                marked: bool = False) -> asyncio.Future:
@@ -540,6 +544,7 @@ class _ChargeWriter:
         self.owed += 1
         if marked:
             self._marked.add(charge.call_id)
+            self._marks_task = self._ensure(self._marks_task, self._keep_marks, "treg-allowance-marks")
         self._task = self._ensure(self._task, self._run, "treg-allowance-charges")
         return future
 
@@ -600,7 +605,6 @@ class _ChargeWriter:
     async def _retry(self) -> None:
         delay = 1.0
         while self._unconfirmed:
-            await self._renew_marks()
             await asyncio.sleep(delay)
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
             failed, _, _ = await self._attempt(rows, again=True)
@@ -634,12 +638,14 @@ class _ChargeWriter:
             # short timeout, not one per row.
             await kv.store().clear_calls_in_flight(done)
 
-    async def _renew_marks(self) -> None:
-        """Keep the marks of calls whose charge is still unconfirmed: until it is written, the
-        mark is all a stale claim can read of the call."""
-        marked = [charge.call_id for charge, _ in self._unconfirmed if charge.call_id in self._marked]
-        if marked:
-            await kv.store().renew_calls_in_flight(marked, IN_FLIGHT_MARK_MS)
+    async def _keep_marks(self) -> None:
+        """Renew every mark the writer holds, queued, being written or unconfirmed alike, until
+        none is left: until its charge is written, the mark is all a stale claim can read of the
+        call, and the request that set it may be gone."""
+        while self._marked:
+            await asyncio.sleep(_MARK_RENEW_S)
+            if self._marked:
+                await kv.store().renew_calls_in_flight(sorted(self._marked), IN_FLIGHT_MARK_MS)
 
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> set[int]:

@@ -442,6 +442,22 @@ async def test_a_marked_calls_mark_outlives_its_unconfirmed_charge_until_it_is_w
     assert await _queued(org_id) == 1
 
 
+async def test_the_writer_renews_a_mark_while_its_charge_is_still_queued(
+        org_id, store, monkeypatch):
+    """Handed over but not yet written, not even tried: the request may be gone, so the writer
+    renews the mark on its own clock, not only once a write has failed."""
+    monkeypatch.setattr(runtime, "_MARK_RENEW_S", 0.01)
+    monkeypatch.setattr(get_settings(), "money_allowance_linger_ms", 300)
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    finishing = asyncio.create_task(_finish(
+        org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450, marked=True))
+    await asyncio.sleep(0.1)
+    assert await _queued(org_id) == 0 and "keyed-1" in store.renewed
+    assert await finishing == 450
+    assert store.marks == set() and await _queued(org_id) == 1
+
+
 async def test_a_marked_call_charged_nothing_clears_its_mark(org_id, store):
     epoch = await runtime.take(org_id, 600)
     store.marks.add("keyed-1")
