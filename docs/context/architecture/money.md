@@ -329,8 +329,8 @@ call keeps its own hold, because something reads that hold: the tag and member r
 it, the async task or routed parent that closes it later, the idempotency check that asks whether
 money moved, the purchased-credit gate.
 
-A listed team's call that keeps its own hold logs why: `allowance_skipped org_id= reason= calls=`,
-with the reason `_allowance_skip` named (`child_call`, `idempotency_key`, `tagged`, `async`, ...)
+A listed team's call that keeps its own hold logs why, as one JSON line on its own logger
+(`treg.allowance_skips`): `allowance_skipped {"org_id":..,"reason":..,"calls":..}`, with the reason `_allowance_skip` named (`child_call`, `idempotency_key`, `tagged`, `async`, ...)
 or `take_refused` when an eligible call's take returned it to the exact path. The first skip of a
 team and reason is logged at once, then one line a minute per process with the count since the
 last line, so a listed team whose calls never reach the allowance says which rule kept them out.

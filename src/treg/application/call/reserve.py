@@ -1,6 +1,7 @@
 """Reservation and spend-cap helpers for metered calls."""
 
 import functools
+import json
 import logging
 import random
 import time
@@ -26,6 +27,7 @@ from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
+from ...infra.structured_logging import get_logger
 from ...models import CallRecord, Org, TagBudget
 from . import allowance as allowance_runtime
 from .intake import CallMeta, _NO_META
@@ -373,6 +375,7 @@ def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_re
 
 _SKIP_LOG_EVERY_S = 60.0
 _skips: dict[tuple[int, str], list] = {}
+_skip_log = get_logger("treg.allowance_skips")
 
 
 def _note_allowance_skip(org_id: int, reason: str) -> None:
@@ -385,8 +388,8 @@ def _note_allowance_skip(org_id: int, reason: str) -> None:
         entry[1] += 1
         if entry[0] is not None and now - entry[0] < _SKIP_LOG_EVERY_S:
             return
-        allowance_runtime.log.info("allowance_skipped org_id=%s reason=%s calls=%s",
-                                   org_id, reason, entry[1])
+        _skip_log.info("allowance_skipped %s", json.dumps(
+            {"org_id": org_id, "reason": reason, "calls": entry[1]}, separators=(",", ":")))
         entry[0], entry[1] = now, 0
     except Exception:  # noqa: BLE001
         pass
