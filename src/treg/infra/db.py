@@ -140,12 +140,13 @@ def answers_db_busy(exc: BaseException) -> bool:
 
 
 def connection_budget(workers: int | None = None) -> dict[str, int]:
-    """How many PRIMARY connections these specs can open, at the three scopes that matter.
+    """How many PRIMARY connections these specs can open, for ONE process and ONE instance.
 
     Every number in `POOL_SPECS` is per process. The optional read pool is budgeted against its
-    target separately and is excluded here. Uvicorn may run multiple workers, and a rolling
-    deployment may briefly run two instances. Operators must compare
-    `per_process * workers * 2` with their database's `max_connections` and leave headroom.
+    target separately and is excluded here. `deploy_peak` is one instance replaced by one running
+    the same specs. A deployment with several instances, or one changing these specs, sums each
+    generation on its own: old specs times old processes plus new specs times new processes,
+    compared with the database's `max_connections` with headroom left.
 
     `retained_per_process` counts only `pool_size`: the most connections a process keeps open
     after its load subsides, reached once it has used that many at the same moment. It is not
@@ -162,19 +163,19 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
     return {"per_process": per_process, "workers": workers,
             "per_instance": per_process * workers, "deploy_peak": per_process * workers * 2,
             "retained_per_process": retained_per_process,
-            "idle_deploy_peak": retained_per_process * workers * 2}
+            "retained_per_instance": retained_per_process * workers}
 
 
 _budget = connection_budget()
 logging.getLogger("treg").info(
     "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
-    "instance, %d at a rolling deploy (%d held open while idle); compare with the deployment "
-    "database connection ceiling",
+    "instance at full load, %d retained once idle; a rolling deploy adds the new generation to "
+    "the old one on every instance it replaces; compare with the database connection ceiling",
     POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
     POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
     POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
-    _budget["per_process"], _budget["workers"], _budget["per_instance"], _budget["deploy_peak"],
-    _budget["idle_deploy_peak"])
+    _budget["per_process"], _budget["workers"], _budget["per_instance"],
+    _budget["retained_per_instance"])
 
 
 def _new_engine(name: str, url: str | None = None):

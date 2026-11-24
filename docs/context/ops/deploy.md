@@ -192,7 +192,15 @@ used that many at once, it holds them while idle, and old processes still hold t
 rolling deploy. Overflow connections close when returned, so they cost only while busy, at the
 price of a new connection per burst. Moving capacity from `pool_size` to `max_overflow` lowers
 what stays open after traffic subsides; the full-load peak is still `pool_size + max_overflow`
-per pool. `connection_budget()` reports both the capacity and `retained_per_process`. `TREG_DB_POOL_OVERRIDES` (`"admin.pool_size=4,background.pool_size=12"`) patches
+per pool. `connection_budget()` reports both, per process and per instance
+(`per_instance`, `retained_per_instance`).
+
+During a rolling deploy both generations hold connections, each with its own specs. Budget the
+overlap as a sum, not a doubling: `old per-process figure x old process count + new per-process
+figure x new process count`, with process count = instances x workers. The first deploy that
+changes `TREG_DB_POOL_OVERRIDES` still runs the old processes on the old specs, so only later
+deploys see the new figure on both sides. Use the capacity for the worst case and the retained
+figure for what an idle overlap keeps open. `TREG_DB_POOL_OVERRIDES` (`"admin.pool_size=4,background.pool_size=12"`) patches
 `POOL_SPECS` at startup; invalid entries are logged and skipped, and zero or negative values must
 never pass through because SQLAlchemy treats some as unlimited. `bootstrap.pool_gauge` emits
 per-pool peak, capacity and headroom: resize from measurements, one pool at a time. A larger pool
