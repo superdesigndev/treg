@@ -316,6 +316,25 @@ async def test_a_spend_cap_refuses_and_names_its_dimension(clients: AsyncClient,
     assert d["cap_micro"] == EP_MICRO
 
 
+async def test_a_spend_cap_with_margin_counts_charged_cost(clients: AsyncClient, platform_on, monkeypatch):
+    """When a platform margin is configured, tag spend caps compare the charged cost (with margin),
+    not the raw provider cost. Otherwise a call exceeding the cap is admitted."""
+    monkeypatch.setenv("TREG_PLATFORM_MARGIN", "0.20")
+    get_settings.cache_clear()
+    try:
+        org_id = await _org_id(clients)
+        # EP_MICRO is 1000; with 20% margin, charged is 1200. Set cap to 1100:
+        await _set_budget(clients, org_id, "customer", "cust_B", daily_cap_micro=1_100)
+        r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_B"})
+        assert r.status_code == 429, r.text
+        d = r.json()["detail"]
+        assert d["error"] == "tag_spend_cap_reached"
+        assert d["estimated_cost_micro"] == 1_200
+        assert d["cap_micro"] == 1_100
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_a_tag_refusal_leaks_nothing_about_the_team(clients: AsyncClient, platform_on):
     """This body is the one a builder renders to their OWN end user. The team's balance, slug and
     top-up link are the builder's private numbers and must not ride along."""

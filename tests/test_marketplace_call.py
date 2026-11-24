@@ -1694,6 +1694,25 @@ async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeyp
         get_settings.cache_clear()
 
 
+async def test_daily_cap_with_margin_counts_charged_cost(clients: AsyncClient, platform_on, monkeypatch):
+    """When a platform margin is configured, the daily cap must compare the customer-charged cost
+    (with margin), not the raw provider cost. Otherwise a call exceeding the cap is admitted."""
+    monkeypatch.setenv("TREG_PLATFORM_MARGIN", "0.20")
+    # EP_MICRO is 1000; with 20% margin, charged is 1200. Set cap to 1100:
+    monkeypatch.setenv("TREG_PLATFORM_DAILY_CAP_USD", "0.0011")
+    get_settings.cache_clear()
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert r.status_code == 429, r.text
+        d = r.json()["detail"]
+        assert d["error"] == "platform_daily_cap_reached"
+        assert d["estimated_cost_micro"] == 1_200
+        assert d["daily_cap_micro"] == 1_100
+        assert await _balance(clients) == 1_000_000, "refused call reserved nothing"
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_daily_cap_refuses_when_it_cannot_be_verified(clients: AsyncClient, platform_on, monkeypatch):
     """FAIL CLOSED: if we can't count today's spend, we don't spend."""
     async def _boom(db, org_id):
