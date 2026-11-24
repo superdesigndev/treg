@@ -205,3 +205,36 @@ async def test_real_redis_expired_owner_cannot_renew_or_delete_replacement():
     finally:
         await first._client.delete(key)
         await asyncio.gather(first.aclose(), second.aclose())
+
+
+async def _exercise_in_flight_mark(store, call_ref: str) -> None:
+    assert await store.call_in_flight(call_ref) is False
+    assert await store.renew_call_in_flight(call_ref, 60_000) is False, "a gone mark is not set again"
+    assert await store.call_in_flight(call_ref) is False
+    assert await store.mark_call_in_flight(call_ref, 60_000)
+    assert await store.renew_call_in_flight(call_ref, 60_000)
+    assert await store.call_in_flight(call_ref) is True
+    await store.clear_call_in_flight(call_ref)
+    assert await store.call_in_flight(call_ref) is False
+
+
+async def test_local_in_flight_mark_is_set_renewed_only_while_there_and_cleared():
+    await _exercise_in_flight_mark(kv.LocalStore(), 'local-owner')
+
+
+async def test_an_unreachable_store_cannot_say_whether_a_call_is_in_flight():
+    store = kv.RedisStore('redis://127.0.0.1:1')
+    assert await store.mark_call_in_flight('owner', 1000) is False
+    assert await store.renew_call_in_flight('owner', 1000) is False
+    assert await store.call_in_flight('owner') is None
+    await store.clear_call_in_flight('owner')
+    await store.aclose()
+
+
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_in_flight_mark_is_set_renewed_only_while_there_and_cleared():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    try:
+        await _exercise_in_flight_mark(store, f'treg-test-{time.time_ns()}')
+    finally:
+        await store.aclose()

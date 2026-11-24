@@ -2484,6 +2484,35 @@ async def test_an_abandoned_allowance_call_counts_its_queued_charge_once(
     assert r.json()["detail"]["charged_micro"] == 700
 
 
+@pytest.mark.parametrize("mark", ["set", "unreadable", "absent"])
+async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
+        clients: AsyncClient, platform_on, monkeypatch, mark):
+    """An owner on the allowance has no hold; its mark in the shared store stands in for one. A
+    mark there, or one the store cannot read, answers 409; none lets the claim close."""
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = kv.LocalStore()
+    if mark == "set":
+        await store.mark_call_in_flight("marked-owner", idempotency.IN_FLIGHT_MARK_MS)
+    if mark == "unreadable":
+        async def unread(call_ref):
+            return None
+        monkeypatch.setattr(store, "call_in_flight", unread)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    await _seed_answer(clients, "marked-label", status="pending")
+    await _set_claim("marked-label", call_ref="marked-owner")
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "marked-label"})
+    if mark == "absent":
+        assert r.status_code == 410, r.text
+        assert r.json()["detail"]["error"] == "idempotency_outcome_unknown"
+    else:
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["call_id"] == "marked-owner"
+
+
 async def test_an_expired_lease_with_money_in_flight_still_answers_409(
         clients: AsyncClient, platform_on):
     """An open hold under the owner's call id (or a child's) means the call or its async worker is

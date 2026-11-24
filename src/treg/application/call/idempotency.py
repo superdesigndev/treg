@@ -18,6 +18,7 @@ from sqlmodel import select
 
 from ... import archive
 from ...config import get_settings
+from ...infra import kv
 from ...infra.db import is_db_busy, session_maker
 from ...domain.identity.access import Caller
 from ...models import AsyncTaskRecord, CallCharge, CallRecord, Hold, IdempotentCall, LedgerEntry
@@ -37,6 +38,10 @@ IDEMPOTENCY_SWEEP_BATCH = 100  # expired labels one claim reclaims; the rest go 
 # terminal answer rather than answering 409 for the whole window; see `_resolve_stale_claim`.
 IDEMPOTENCY_LEASE_RENEW_S = 5 * 60
 IDEMPOTENCY_STALE_PENDING_S = 3 * IDEMPOTENCY_LEASE_RENEW_S
+# A keyed call on the team's allowance has no hold to show it is running, so it keeps a mark in
+# the shared store instead, renewed with its lease. Outlives one missed renewal; gone well before
+# the lease reads stale when the process that set it has died.
+IN_FLIGHT_MARK_MS = 2 * IDEMPOTENCY_LEASE_RENEW_S * 1000
 _POOL_RETRY_PAUSE_S = 0.5  # the settle retry's pause (settle.py); one retry, fresh session
 
 _IDEM_MAX_KEY = 200
@@ -271,6 +276,10 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
     open_hold = (await db.execute(select(Hold.id).where(
         Hold.org_id == org_id, mine(Hold.id)).limit(1))).first() is not None
+    if not open_hold and kv.configured():
+        # The allowance call's stand-in for its hold (`IN_FLIGHT_MARK_MS`). Unread is not proof
+        # the owner stopped: the retry is told to wait, as for an open hold.
+        open_hold = await kv.store().call_in_flight(call_ref) is not False
     queued = (await db.execute(select(CallCharge.amount_micro).where(
         CallCharge.call_id == call_ref, CallCharge.org_id == org_id))).scalar_one_or_none()
     rows = list((await db.execute(select(
