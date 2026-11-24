@@ -184,6 +184,9 @@ _TABLE: list[Signature] = [
     # Apify: the account's monthly spend ceiling blocks every Actor run, a 403 {"error": {"type":
     # "platform-feature-disabled", "message": "You've reached your monthly usage limit of $N ..."}}.
     Signature("apify", 403, r"reached your monthly usage limit", "balance", tripwire=True),
+    # FraudNova refuses a check with 402 {"success": false, "message": "Insufficient credits."} when
+    # the prepaid balance is zero; batch routes answer 200 with per-item insufficient_credits instead.
+    Signature("fraudnova", 402, r'"message"\s*:\s*"insufficient credits', "balance"),
     # Tomba: a route's spent allowance is a 429 "You have reached your usage limit", with no Retry-After.
     Signature("tomba", 429, r"reached your usage limit", "quota", tripwire=True),
     # Fish Audio: too many requests in flight is a 429 "exceeded your current concurrency limit", no Retry-After.

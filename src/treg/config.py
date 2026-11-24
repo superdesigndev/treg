@@ -631,6 +631,7 @@ class Settings(BaseSettings):
     platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
+    platform_key_fraudnova: str = ""  # Bearer key (fn_…); prepaid credit packs, 1 credit per IP, email or phone check, fx.yaml $0.008/credit
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
