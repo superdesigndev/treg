@@ -698,8 +698,8 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
         if extra:
             fail(errors, rwhere, f"unknown table row keys: {sorted(extra)}")
         when = row.get("when")
-        if not isinstance(when, dict) or not when:
-            fail(errors, rwhere, "when must be a non-empty mapping")
+        if not isinstance(when, dict):
+            fail(errors, rwhere, "when must be a mapping (empty matches every request)")
         else:
             for previous in prior_conditions:
                 if all(field in when and when[field] == value for field, value in previous.items()):
@@ -740,10 +740,14 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
             if spec is None:
                 fail(errors, rwhere, f"times field '{times}' is not declared in input")
                 continue
-            if spec.get("type") not in ("integer", "number"):
-                fail(errors, rwhere, f"times field '{times}' must be numeric")
+            listed = spec.get("type") == "array"
+            if not listed and spec.get("type") not in ("integer", "number"):
+                fail(errors, rwhere, f"times field '{times}' must be numeric or a list with maxItems")
                 continue
-            upper = spec.get("max")
+            upper = spec.get("maxItems" if listed else "max")
+            if listed and not _finite_number(upper):
+                fail(errors, rwhere, f"times field '{times}' must be numeric or a list with maxItems")
+                continue
             if not _finite_number(upper) or float(upper) <= 0:
                 fail(errors, rwhere, f"times field '{times}' must declare a positive input max")
                 continue
@@ -753,7 +757,7 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
             # inside the field's declared range.
             if "times_min" in row:
                 low = row.get("times_min")
-                field_min = spec.get("min")
+                field_min = spec.get("minItems" if listed else "min")
                 if not _finite_number(low) or float(low) <= 0 \
                         or (_finite_number(field_min) and float(low) < float(field_min)) \
                         or float(low) > float(upper):
@@ -861,8 +865,10 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
             fail(errors, where, f"{label} requires exactly in, name{suffix}")
             return
         location, field = value.get("in"), value.get("name")
-        if location not in ASYNC_PARAM_LOCATIONS or not isinstance(field, str) or not field.strip():
-            fail(errors, where, f"{label} must name an input field in pathParams or queryParams")
+        locations = ASYNC_PARAM_LOCATIONS if fetch else ASYNC_PARAM_LOCATIONS | {"body"}
+        if location not in locations or not isinstance(field, str) or not field.strip():
+            fail(errors, where, f"{label} must name an input field in "
+                                + ("pathParams or queryParams" if fetch else "pathParams, queryParams or body"))
         elif target is not None and f"{location}.{field}" not in _input_fields(target.get("input")):
             fail(errors, where, f"{label} target does not declare input field '{location}.{field}'")
         elif target is not None:
@@ -873,6 +879,11 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
                 fail(errors, where, f"{label} pathParams '{field}' needs exactly one {marker} in the target path")
             if location == "queryParams" and marker in path:
                 fail(errors, where, f"{label} queryParams '{field}' must not appear as {marker} in the target path")
+            # A body id is POSTed (Icypeas reads a search by `{"id": ...}`); every other id is a GET.
+            method = "POST" if location == "body" else "GET"
+            if target.get("method") != method:
+                fail(errors, where, f"{label} '{field}' target must use {method}"
+                                    + (" to read a body id" if location == "body" else ""))
         if fetch and (not isinstance(value.get("value_from"), str)
                       or not JSON_PATH.fullmatch(value["value_from"])):
             fail(errors, where, f"{label}.value_from must be a dotted terminal-response JSON path")
@@ -887,7 +898,7 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
         if str(target.get("status") or "").strip():
             fail(errors, where, f"{label} '{endpoint_id}' is marked {target['status']!r}; a descriptor "
                                 "cannot depend on a retired or broken row")
-        if target.get("method") != "GET":
+        if target.get("method") not in ("GET", "POST"):
             fail(errors, where, f"{label} '{endpoint_id}' must use GET")
         return target
 

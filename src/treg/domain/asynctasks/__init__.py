@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shlex
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -112,6 +113,25 @@ def artifact(descriptor: dict, terminal: object) -> dict:
         view["fetch"] = {"endpoint": str(rule["fetch"]), "name": str(fetch_rule["name"]),
                          "value": str(value)}
     return view
+
+
+def poll_inputs(param: dict, task_id: object) -> tuple[tuple[tuple[str, str], ...], dict | None]:
+    """Where a static poll carries the task id: (query items, JSON body). A body id is the whole
+    JSON object a POST poll sends (Icypeas reads a search by `{"id": ...}`); a path or query id
+    rides as a query item, and the call path fills a path parameter from it."""
+    name, value = str(param.get("name") or ""), str(task_id)
+    if param.get("in") == "body":
+        return (), {name: value}
+    return ((name, value),), None
+
+
+def poll_command(endpoint: str, param: dict, task_id: object) -> str:
+    """The `treg call` line that polls a task by hand, shell-safe like `fetch_command`."""
+    query, body = poll_inputs(param, task_id)
+    if body is not None:
+        return f"treg call {shlex.quote(endpoint)} --data {shlex.quote(json.dumps(body))}"
+    name, value = query[0]
+    return f"treg call {shlex.quote(endpoint)} -p {shlex.quote(name + '=' + value)}"
 
 
 def fetch_command(fetch: dict) -> str:

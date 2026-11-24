@@ -923,8 +923,8 @@ pending result with the reservation open, and the worker later settles or releas
 The worker selects due rows, takes provider/global concurrency slots, then claims each still-due row;
 `attempts` fences stale workers, and `CLAIM_LEASE_S` exceeds `PROCESS_TIMEOUT_S`. Polls have a
 `POLL_TIMEOUT_S` total deadline including body consumption, use the normal credential injector (a
-static poll's parameter rides as `query_items` or a declared, percent-encoded path substitution; the
-relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
+static poll's parameter rides as `query_items`, a declared, percent-encoded path substitution, or
+the whole JSON body of a POST poll; the relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
 evidence only from a 2xx. A non-2xx matching the descriptor's `pending_response` stays in progress;
 other HTTP errors, invalid JSON and timeouts back off
 (`next_failure_check`: 2, 4, 8, then 15 minutes); there is no provider-wide circuit breaker. The
