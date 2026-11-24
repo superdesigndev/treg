@@ -1476,8 +1476,10 @@ still pay the provider twice.
   once the charge is written. `_platform_reserve` with
   `mark_in_flight` sets the mark before the take and clears it when the take is refused; a call
   the store would not mark keeps its own hold (`in_flight_unmarked`). The claim's lease task
-  renews it (only while it is there), and settle and the cancel cleanup clear it once the charge
-  is written. A process that dies leaves it to expire before the claim reads stale.
+  renews it (only while it is there). A call charged nothing clears it in `allowance.finish`; a
+  charge hands it to the charge writer, which renews it while the write is unconfirmed and clears
+  it only once the charge is known written, even after the call has answered or been cancelled.
+  A process that dies leaves it to expire before the claim reads stale.
 - A reserve admission 429 never reaches `_store_idempotent`; `_stamp_call_exit` releases its pending
   claim (both MCP surfaces too). If that cleanup fails twice, the row stays pending until the
   stale-claim resolver stores 410 `idempotency_outcome_unknown` when no money evidence exists.

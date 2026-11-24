@@ -48,6 +48,7 @@ class FakeStore:
         self.run = "run1"
         self.paces = 0
         self.marks: set[str] = set()
+        self.renewed: list[str] = []
         self.mark_answer = True
 
     async def mark_call_in_flight(self, call_ref, ttl_ms):
@@ -57,6 +58,10 @@ class FakeStore:
 
     async def clear_call_in_flight(self, call_ref):
         self.marks.discard(call_ref)
+
+    async def renew_call_in_flight(self, call_ref, ttl_ms):
+        self.renewed.append(call_ref)
+        return call_ref in self.marks
 
     def restart(self) -> None:
         """The store's server starts again: every counter built before is gone."""
@@ -407,6 +412,37 @@ async def test_a_charge_the_database_refused_is_written_once_the_database_is_bac
         assert (await db.execute(select(CallCharge))).first() is None
     await runtime._charges._retry_task
     assert (await _fold(org_id)).consumed_micro == 450
+
+
+async def test_a_marked_calls_mark_outlives_its_unconfirmed_charge_until_it_is_written(
+        org_id, store, monkeypatch):
+    """The call is answered while its charge is unconfirmed; a stale claim could then read
+    neither the mark nor the charge. The writer keeps the mark, renewing it, until it lands."""
+    write, attempts = runtime._ChargeWriter._write, []
+
+    async def down_then_up(rows, **kwargs):
+        attempts.append(len(rows))
+        if len(attempts) <= 3:
+            raise ConnectionError("database down")
+        return await write(rows, **kwargs)
+
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(down_then_up))
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    await _instantly(monkeypatch)
+    assert await _finish(org_id, "keyed-1", epoch, 600, billable=True, actual_micro=450,
+                         marked=True) == 450
+    assert store.marks == {"keyed-1"}, "answered, charge unconfirmed: the mark stays"
+    await runtime._charges._retry_task
+    assert "keyed-1" in store.renewed and store.marks == set()
+    assert await _queued(org_id) == 1
+
+
+async def test_a_marked_call_charged_nothing_clears_its_mark(org_id, store):
+    epoch = await runtime.take(org_id, 600)
+    store.marks.add("keyed-1")
+    assert await _finish(org_id, "keyed-1", epoch, 600, billable=False, marked=True) == 0
+    assert store.marks == set()
 
 
 async def test_no_call_is_admitted_while_charges_wait_to_be_written(org_id, store, monkeypatch):

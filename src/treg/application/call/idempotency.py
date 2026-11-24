@@ -405,7 +405,8 @@ async def mark_in_flight(call_ref: str) -> bool:
 
 
 async def clear_in_flight(call_ref: str) -> None:
-    """Remove the mark once the call's charge is written, or once it did not take the allowance."""
+    """Remove the mark of a call that did not take the allowance. A call that did hands its mark
+    to the charge writer (`allowance.finish`)."""
     await kv.store().clear_call_in_flight(call_ref)
 
 

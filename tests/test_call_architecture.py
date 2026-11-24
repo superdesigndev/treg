@@ -185,8 +185,10 @@ _DATAPLANE_DERIVED_WRITES = {
         (reserve._platform_reserve, "idempotency.mark_in_flight"),
         (idempotency.mark_in_flight, "mark_call_in_flight"),
         (idempotency._hold_claim_lease, "renew_call_in_flight"),
-        (settle._platform_settle, "clear_in_flight"),
         (idempotency.clear_in_flight, "clear_call_in_flight"),
+        (call_allowance._ChargeWriter._committed, "store.clear_call_in_flight"),
+        (call_allowance._ChargeWriter._renew_marks, "store.renew_call_in_flight"),
+        (call_allowance.finish, "store.clear_call_in_flight"),
     ),
     # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
     # marker holding the caller's input in the shared store (one bounded write, no database); the
@@ -249,9 +251,10 @@ _DERIVED_WRITE_FILES = {
         "store.allowance_freeze",
         "store.allowance_add",
         "store.allowance_drop", "store.acquire_lease", "store.release_lease",
+        "store.clear_call_in_flight", "store.renew_call_in_flight",
     },
     _SRC / "application" / "call" / "settle.py": {
-        "allowance_runtime.finish", "clear_in_flight",
+        "allowance_runtime.finish",
         "money_admission.admit", "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
         "capacity_marks.clear_sweep_state",
         "overflow_spend_ledger.add_in_transaction", "archive.note_org_use_in_transaction",
@@ -346,9 +349,9 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # the charge is written, or at once when the take was refused
     ("application/call/reserve.py", "_platform_reserve", "idempotency.mark_in_flight"),
     ("application/call/reserve.py", "_platform_reserve", "idempotency.clear_in_flight"),
-    ("application/call/settle.py", "_platform_settle", "clear_in_flight"),
-    ("application/call/settle.py", "_cleanup", "clear_in_flight"),
-    ("application/call/settle.py", "_finish_cancelled_call", "clear_in_flight"),
+    ("application/call/allowance.py", "_committed", "store.clear_call_in_flight"),
+    ("application/call/allowance.py", "_renew_marks", "store.renew_call_in_flight"),
+    ("application/call/allowance.py", "finish", "store.clear_call_in_flight"),
     ("application/call/idempotency.py", "mark_in_flight", "mark_call_in_flight"),
     ("application/call/idempotency.py", "_hold_claim_lease", "renew_call_in_flight"),
     ("application/call/idempotency.py", "clear_in_flight", "clear_call_in_flight"),
