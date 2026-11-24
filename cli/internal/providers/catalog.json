@@ -1,5 +1,5 @@
 {
- "version": 28,
+ "version": 29,
  "providers": [
   {
    "provider": "Google Ads",
@@ -782,6 +782,18 @@
     "shape": "bearer"
    },
    "probe": "v0/billing/credit-balance"
+  },
+  {
+   "provider": "Axesso",
+   "tokens": [
+    "AXESSO"
+   ],
+   "base_url": "https://api.axesso.de",
+   "auth": {
+    "shape": "api_key_header",
+    "header": "axesso-api-key"
+   },
+   "probe": "amz/amazon-seller-products?domainCode=com&sellerId=A1VLPNTGGRFAR6&page=1"
   },
   {
    "provider": "JobsPipe",

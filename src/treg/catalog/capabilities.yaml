@@ -411,6 +411,7 @@ capabilities:
   amazon.bestsellers.list: "List best sellers in a category"
   amazon.product.detail: "Get a product's detail by ASIN"
   amazon.search.products: "Search products by keyword"
+  amazon.product.reviews: "Reviews of an Amazon product"
   amazon.product.sellers: "List the sellers offering a product by ASIN"
   amazon.product.variants: "List every ASIN variation of a product"
 
