@@ -778,7 +778,9 @@ adapters:
           company: "get(flagged(roles, 'is_current'), 'organization.name')",
           company_domain: "get(flagged(roles, 'is_current'), 'organization.domain')",
           linkedin_url: linkedin_info.public_profile_url, location: location.name}
+  # Not a router candidate: almost no email it is sent matches a person, so it only adds a wait.
   forager.people.enrich.by_email:
+    route: false
     accepts: [[email]]
     in: {email: body.email}
     test_identity: {email: jane.doe@example.com}
