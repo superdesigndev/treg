@@ -109,3 +109,15 @@ def test_migrations_fail_fast_rather_than_queueing_the_world():
     assert env_src.index("in _session_timeouts():\n                await") < env_src.index(
         "run_sync(_run_migrations)"), "the timeout must be set BEFORE Alembic migrations run"
     assert Settings.model_fields["migration_lock_timeout_s"].default <= 5
+
+
+def test_the_idle_floor_is_what_a_deploy_doubles_before_any_traffic():
+    """`pool_size` stays open while idle and `max_overflow` does not, so a rolling deploy costs at
+    least twice the idle floor even with no load. The budget must report that floor separately."""
+    from treg.infra import db
+
+    budget = db.connection_budget(workers=3)
+    floor = sum(db.POOL_SPECS[name]["pool_size"] for name in ("api", "admin", "background"))
+    assert budget["idle_per_process"] == floor
+    assert budget["idle_deploy_peak"] == floor * 3 * 2
+    assert budget["idle_deploy_peak"] <= budget["deploy_peak"]
