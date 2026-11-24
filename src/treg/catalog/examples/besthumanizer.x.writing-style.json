@@ -1,0 +1,74 @@
+{
+  "handle": "nousresearch",
+  "name": "Nous Research",
+  "followers": 303343,
+  "posts_considered": 20,
+  "posts_scored": 11,
+  "posts_readable": 5,
+  "score": 69,
+  "median": 51,
+  "mean": 55,
+  "tells": [],
+  "histogram": [
+    {
+      "bucket": "reads like one-pass model prose",
+      "count": 0
+    },
+    {
+      "bucket": "mixed",
+      "count": 1
+    },
+    "… 2 more item(s) truncated"
+  ],
+  "posts": [
+    {
+      "text": "We've partnered with @Microsoft to bring Hermes Agent to the enterprise. Hermes Enterprise now works inside Microsoft Teams, the Microsoft Store and Azure. In Teams, employees hand Hermes work like financial analysis, document drafts or inbox triage, and review the result in the",
+      "score": 45,
+      "words": 43,
+      "likes": 3544,
+      "reposts": 334,
+      "url": "https://x.com/NousResearch/status/2123535954946257096",
+      "top_tells": [],
+      "sentences": 3,
+      "tooShort": false,
+      "bandBasis": "short",
+      "band": "mixed",
+      "label": "mixed"
+    },
+    {
+      "text": "@Microsoft Get Hermes Agent Enterprise for Microsoft Teams",
+      "score": 51,
+      "words": 8,
+      "likes": 13,
+      "reposts": 0,
+      "url": "https://x.com/NousResearch/status/2123568429286191522",
+      "top_tells": [],
+      "sentences": 1,
+      "tooShort": true,
+      "bandBasis": "none",
+      "band": null,
+      "label": "too short to read"
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "fetched_at": 1795136686914,
+  "hidden_chars_removed": 0,
+  "homoglyphs_folded": 0,
+  "injection_shapes": [],
+  "scorer": "v3-short-bands",
+  "mode": "pooled",
+  "pooled": {
+    "score": 69,
+    "band": "mixed",
+    "label": "mixed",
+    "basis": "full",
+    "posts": 11,
+    "sentences": 21,
+    "words": 231
+  },
+  "share_ai": 0,
+  "share_human": 80,
+  "verdict": "mixed",
+  "blurb": "formal, terse, academic, or non-native prose often lands here",
+  "caveat": "Read as one corpus of 11 recent posts: 21 sentences, 231 words. Per-post indices are shown for the distribution — a single post tops out near 51 because sentence rhythm needs length to mean anything."
+}

@@ -1,0 +1,139 @@
+provider: besthumanizer
+source:
+  docs: https://besthumanizer.app/llms-full.txt
+  openapi: https://besthumanizer.app/openapi.json
+  curated: '2026-11-19'
+# BestHumanizer scores prose on a 0-100 style index (higher reads more human) computed from
+# measurable properties of the text, with no model in the scoring path, and rewrites prose toward
+# the reads-human band. Scoring (GET /api/score, POST /api/analyze, GET /api/x/score) is free and
+# keyless: the two GETs are served anonymously, the POST rides the key and costs nothing. A rewrite
+# (POST /api/humanize) draws the pasted words from the account's monthly balance (three per word for
+# a premium rewrite on Free and Pro) and reports the draw in words_debited, which settles the call;
+# 402 means the balance is too low. A rewrite that does not clear the band is not charged at all:
+# words_debited is 0 and not_billed is true on a flagged result. fallback_reason is empty on a
+# real rewrite and names the failure otherwise; accepted_draws counts the model rewrites that made
+# it into the shipped text. A key comes from
+# POST /api/agent/keys with no browser; a bad key
+# answers 401 {"error":"invalid api key"} (no key at all: 401 "not signed in"). The X scorer reads X
+# timelines: a malformed handle answers 400 invalid handle and an account that does not exist 404;
+# only X throttling or an upstream failure answers 503 x_unavailable with retry_after_s, which is
+# released, not billed.
+limits: "Rewrite: 10,000 words a call. Scoring: no published cap. Free account: 200 words a month. X scoring is cached; a cold handle takes a few seconds and a 503 x_unavailable carries retry_after_s."
+pricing_url: https://besthumanizer.app/pricing
+
+defaults:
+  provenance: {source: observed, source_url: 'https://besthumanizer.app/pricing', checked: '2026-11-19', confidence: verified}
+  docs_url: https://besthumanizer.app/llms-full.txt
+
+endpoints:
+  - id: besthumanizer.text.score
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: content
+    capability: text.style.score
+    platform: text
+    scope: any_account
+    method: GET
+    path: /api/score
+    name: "Score a passage's writing style"
+    summary: "Score prose 0-100 on how human it reads, with its band, the measurements behind the number (sentence-length spread, stock phrases, punctuation habits) and the top patterns found."
+    note: "The score is deterministic: the same text always returns the same number. It is a stylistic read, not an authorship verdict."
+    input:
+      queryParams:
+        text: {type: string, required: true, note: "the prose to score, URL-encoded; five sentences or more for a band", example: "The report was compiled last week. We shared the findings with the team. Nobody liked the third chart. Sam rewrote it twice. It still looks odd to me."}
+    test_request:
+      queryParams: {text: "The report was compiled last week. We shared the findings with the team. Nobody liked the third chart. Sam rewrote it twice. It still looks odd to me."}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {when: {path: response.tooShort, op: equals, value: true}, means: "Under five sentences, or no text at all, the answer is 200 with tooShort true, band null and a placeholder score; send a longer passage."}
+    verified: '2026-11-19'
+    example_response: examples/besthumanizer.text.score.json
+
+  - id: besthumanizer.text.analyze
+    added: '2026-11-19'
+    domain: content
+    capability: text.style.analyze
+    platform: text
+    scope: any_account
+    method: POST
+    path: /api/analyze
+    name: "List the writing patterns in a passage"
+    summary: "Score prose 0-100 on how human it reads and list every detected writing pattern, plus a mechanical pass that applies the deterministic fixes and returns the cleaned text."
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, note: "five sentences or more for a band", example: "The report was compiled last week. We shared the findings with the team. Nobody liked the third chart. Sam rewrote it twice. It still looks odd to me."}
+    test_request:
+      body: {text: "The report was compiled last week. We shared the findings with the team. Nobody liked the third chart. Sam rewrote it twice. It still looks odd to me."}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {when: {path: response.tooShort, op: equals, value: true}, means: "Under five sentences the answer is 200 with tooShort true and band null; send a longer passage."}
+    verified: '2026-11-19'
+    example_response: examples/besthumanizer.text.analyze.json
+
+  - id: besthumanizer.text.humanize
+    added: '2026-11-19'
+    domain: content
+    capability: text.humanize
+    platform: text
+    scope: any_account
+    method: POST
+    path: /api/humanize
+    name: "Rewrite text to read human"
+    summary: "Rewrite prose so it reads less machine-written and return the rewrite with the style score and band before and after."
+    note: "A rewrite takes up to about 30 seconds. Text under five sentences is still rewritten and charged, but its before and after scores carry no band. fallback_reason is empty on a real rewrite and names the failure otherwise ('mechanical-only', 'mechanical-plus-surgery', 'below-band', 'no-ai-binding'). A rewrite that does not clear the band is not charged: words_debited is 0 and not_billed is true."
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, note: "the prose to rewrite, up to 10,000 words; a longer text answers 413", example: "Furthermore, it is important to note that the framework facilitates efficiency. Moreover, it leverages robust tooling. Additionally, it streamlines collaboration across teams. In conclusion, it delivers seamless value. Ultimately, it empowers stakeholders."}
+        mode: {type: string, required: false, enum: [general, academic, paraphrase], default: general, example: general}
+        premium: {type: boolean, required: false, note: "a second pass on the larger model; draws three words per pasted word on Free and Pro"}
+        voice_sample: {type: string, required: false, note: "a writing sample whose voice the rewrite matches"}
+    test_request:
+      body: {text: "Furthermore, it is important to note that the framework facilitates efficiency. Moreover, it leverages robust tooling. Additionally, it streamlines collaboration across teams. In conclusion, it delivers seamless value. Ultimately, it empowers stakeholders.", mode: general}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: credit
+      note: "One credit is one pasted word drawn from the monthly balance (three per word with premium on Free and Pro); the charge is the reported words_debited."
+    settle: {reported: {path: response.words_debited, unit: credit}}
+    verified: '2026-11-19'
+    example_response: examples/besthumanizer.text.humanize.json
+
+  - id: besthumanizer.x.writing-style
+    added: '2026-11-19'
+    platform_auth: anonymous
+    domain: social
+    capability: x.user.writing-style
+    platform: x
+    scope: any_account
+    method: GET
+    path: /api/x/score
+    name: "Score an X account's writing style"
+    summary: "Score the recent original posts of a public X account on the same 0-100 style index: overall score, median, mean, a band histogram and per-post scores with links."
+    note: "Short posts are pooled into one corpus read (the pooled field: score, band, posts, sentences, words); when even the pool is too short the answer says insufficient text instead of a zero."
+    input:
+      queryParams:
+        handle: {type: string, required: true, note: "the X handle, with or without @", example: NousResearch}
+        limit: {type: integer, required: false, min: 5, max: 50, default: 25, note: "how many recent posts to consider", example: 5}
+    test_request:
+      queryParams: {handle: NousResearch, limit: 5}
+    price: {value: '0', currency: USD, unit: call}
+    verified: '2026-11-19'
+    example_response: examples/besthumanizer.x.writing-style.json
+
+  - id: besthumanizer.account.usage
+    added: '2026-11-19'
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /api/me
+    name: "BestHumanizer plan and words remaining"
+    summary: "Your own BestHumanizer account: plan, words remaining this month and the monthly grant."
+    note: "Read it before a long rewrite: a rewrite larger than the balance answers 402 with need and have."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    verified: '2026-11-19'
+    example_response: examples/besthumanizer.account.usage.json

@@ -2683,6 +2683,32 @@ JOBSPIPE = OAuthProvider(
 )
 
 
+BESTHUMANIZER = OAuthProvider(
+    service="besthumanizer",
+    display_name="BestHumanizer",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your BestHumanizer API key (bh_…)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://besthumanizer.app/auth.md",
+    setup_action_label="Get your BestHumanizer API key",
+    setup_steps=(
+        "POST https://besthumanizer.app/api/agent/keys (no browser, no password) - or sign in and open Account.",
+        "Copy the api_key from the answer.",
+    ),
+    setup_note="Rewrites draw on the account's monthly words (200 free); scoring and the account check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Score how machine-written prose reads (0-100, deterministic), rewrite it to read human, and score a public X account's posts.",
+    base_url="https://besthumanizer.app",
+    docs_url="https://besthumanizer.app/llms-full.txt",
+    probe_path="/api/me",  # free; a bad key gets 401 {"error":"not signed in"}
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -4616,6 +4642,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
+        BESTHUMANIZER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
