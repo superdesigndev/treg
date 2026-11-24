@@ -806,19 +806,24 @@ async def test_every_team_can_be_put_on_the_allowance_and_one_left_off(
     assert await _per_call_holds(org_id) == ([] if on else ["direct-1"])
 
 
-async def test_with_every_team_on_only_the_teams_named_log_their_skips(
+async def test_with_every_team_on_every_team_is_counted_and_only_the_named_get_their_own_line(
         org_id, store, monkeypatch, skip_lines):
     settings = get_settings()
     monkeypatch.setattr(settings, "money_allowance_all_orgs", True)
     monkeypatch.setattr(settings, "money_allowance_org_ids", [])
-    caller = await _caller(org_id)
-    await call_reserve._platform_reserve(_call(org_id), caller, call_ref="direct-1",
-                                         allow_allowance=False)
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    caller, first = await _caller(org_id), _call(org_id)
+    await call_reserve._platform_reserve(first, caller, call_ref="direct-1", allow_allowance=False)
     assert skip_lines() == []
     monkeypatch.setattr(settings, "money_allowance_org_ids", [org_id])
-    await call_reserve._platform_reserve(_call(org_id), caller, call_ref="direct-2",
-                                         allow_allowance=False)
-    assert skip_lines() == [_skip(org_id, "not_allowed", 1)]
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    second = _call(org_id)
+    await call_reserve._platform_reserve(second, caller, call_ref="direct-2", allow_allowance=False)
+    held = first.reserved_micro
+    assert held > 0
+    assert skip_lines() == [_total("not_allowed", 1, held, [[org_id, 1, held]]),
+                            _skip(org_id, "not_allowed", 1)]
 
 
 async def test_the_allowance_is_off_where_the_database_is_not_postgresql(org_id, store, monkeypatch):
@@ -1239,8 +1244,9 @@ async def test_a_keyed_call_the_allowance_cannot_serve_keeps_its_hold_and_no_mar
 
 @pytest.fixture
 def skip_lines(monkeypatch, caplog):
-    """`skip_lines()` is every `allowance_skipped` line the default sink wrote, as raw text."""
+    """`skip_lines()` is every skip line the default sink wrote, as raw text."""
     monkeypatch.setattr(call_reserve, "_skips", {})
+    monkeypatch.setattr(call_reserve, "_skip_totals", {})
     caplog.set_level(logging.INFO, logger=call_reserve._skip_log.name)
     out = io.StringIO()
     sinks = [h for h in call_reserve._skip_log.handlers if type(h) is logging.StreamHandler]
@@ -1255,9 +1261,17 @@ def _skip(org_id: int, reason: str, calls: int) -> str:
         {"org_id": org_id, "reason": reason, "calls": calls}, separators=(",", ":"))
 
 
+def _total(reason: str, calls: int, held_micro: int, top: list, orgs: int | None = None,
+           window_s: float = call_reserve._SKIP_LOG_EVERY_S) -> str:
+    return "allowance_skips " + json.dumps(
+        {"reason": reason, "calls": calls, "held_micro": held_micro,
+         "orgs": len(top) if orgs is None else orgs, "window_s": window_s, "top": top},
+        separators=(",", ":"))
+
+
 @pytest.mark.parametrize(("why", "reason"), [
     ("not_allowed_by_the_caller", "not_allowed"), ("team_not_listed", None),
-    ("tagged", "tagged"), ("child_call", "child_call"), ("billed_oauth", "billed_oauth"),
+    ("tagged", "tagged"), ("child_call", "child_call:routed"), ("billed_oauth", "billed_oauth"),
     ("routed_child", "deferred_settle"), ("store_unavailable", "take_refused"),
 ])
 async def test_every_other_call_keeps_its_own_hold_and_a_listed_team_logs_why(
@@ -1284,18 +1298,140 @@ async def test_every_other_call_keeps_its_own_hold_and_a_listed_team_logs_why(
     assert skip_lines() == ([] if reason is None else [_skip(org_id, reason, 1)])
 
 
+def _skipped(org_id: int, reason: str, held_micro: int) -> None:
+    """A skip whose exact-path hold of `held_micro` then committed."""
+    call_reserve._note_allowance_skip(org_id, reason, held_micro)
+
+
 def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
         monkeypatch, skip_lines):
     org_id = 7
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [org_id])
     clock = [1000.0]
     monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
     for _ in range(3):
-        call_reserve._note_allowance_skip(org_id, "not_allowed")
-    call_reserve._note_allowance_skip(org_id, "tagged")
+        _skipped(org_id, "not_allowed", 10)
+    _skipped(org_id, "tagged", 10)
     clock[0] += call_reserve._SKIP_LOG_EVERY_S
-    call_reserve._note_allowance_skip(org_id, "not_allowed")
+    _skipped(org_id, "not_allowed", 10)
     assert skip_lines() == [_skip(org_id, "not_allowed", 1), _skip(org_id, "tagged", 1),
+                            _total("not_allowed", 3, 30, [[org_id, 3, 30]]),
                             _skip(org_id, "not_allowed", 3)]
+
+
+def test_every_team_counts_toward_one_line_per_reason_a_minute_naming_the_teams_that_held_most(
+        monkeypatch, skip_lines):
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    for org_id in range(1, 8):
+        for _ in range(org_id):
+            _skipped(org_id, "child_call:routed", 100 * (8 - org_id))
+    _skipped(1, "tagged", 5)
+    assert skip_lines() == [], "no team named: nothing until the minute is up"
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S + 0.04
+    call_reserve._note_allowance_skip(1, "child_call:routed", 0)
+    # Team n sent n calls of 100 * (8 - n) each: team 4 held the most; a tie goes to more calls.
+    assert skip_lines() == [_total("child_call:routed", 28, 8400,
+                                   [[4, 4, 1600], [5, 5, 1500], [3, 3, 1500], [6, 6, 1200],
+                                    [2, 2, 1200]], orgs=7, window_s=60.0)]
+
+
+def test_a_minute_naming_too_many_teams_is_logged_early(monkeypatch, skip_lines):
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    monkeypatch.setattr(call_reserve, "_SKIP_TEAMS_MAX", 2)
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    for org_id in (1, 2, 1):
+        _skipped(org_id, "tagged", 10)
+    assert skip_lines() == [], "a team already counted adds no room"
+    clock[0] += 1
+    _skipped(3, "tagged", 10)
+    assert skip_lines() == [_total("tagged", 3, 30, [[1, 2, 20], [2, 1, 10]], window_s=1.0)]
+    assert call_reserve._skip_totals["tagged"]["orgs"] == {3: [1, 10]}
+
+
+def test_a_team_that_held_nothing_is_counted_but_never_in_the_top(monkeypatch, skip_lines):
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    _skipped(1, "tagged", 0)
+    _skipped(2, "tagged", 10)
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    _skipped(3, "tagged", 0)
+    assert skip_lines() == [_total("tagged", 2, 10, [[2, 1, 10]], orgs=2)]
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    _skipped(3, "tagged", 0)
+    assert skip_lines()[-1] == _total("tagged", 1, 0, [], orgs=1)
+
+
+async def test_a_skipped_call_s_committed_hold_is_counted_when_the_call_is_cancelled_after(
+        org_id, store, monkeypatch, skip_lines):
+    """Cancelled while its money session closes: the hold is committed, so it is counted."""
+    admit = call_reserve.reserve_admission
+
+    @contextlib.asynccontextmanager
+    async def cancelled_on_the_way_out(org):
+        async with admit(org):
+            yield
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(call_reserve, "reserve_admission", cancelled_on_the_way_out)
+    caller, mk = await _caller(org_id), _call(org_id)
+    with pytest.raises(asyncio.CancelledError):
+        await call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=False)
+    assert await _per_call_holds(org_id) == ["c-1"]
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"]) == (1, mk.reserved_micro)
+
+
+async def test_a_skipped_call_s_hold_is_counted_when_the_cancel_lands_inside_the_commit(
+        org_id, store, monkeypatch, skip_lines):
+    """The database committed, then the cancellation reached `commit()` before it returned."""
+    maker = call_reserve.session_maker
+
+    def committing_then_cancelled():
+        session = maker()
+        commit = session.commit
+
+        async def cancelled_commit():
+            await commit()
+            raise asyncio.CancelledError
+
+        session.commit = cancelled_commit
+        return session
+
+    monkeypatch.setattr(call_reserve, "session_maker", committing_then_cancelled)
+    caller, mk = await _caller(org_id), _call(org_id)
+    with pytest.raises(asyncio.CancelledError):
+        await call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=False)
+    assert await _per_call_holds(org_id) == ["c-1"]
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"]) == (1, mk.reserved_micro)
+
+
+async def test_a_skipped_call_the_balance_refuses_counts_as_a_call_that_held_nothing(
+        org_id, store, skip_lines):
+    caller = await _caller(org_id)
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(_call(org_id, estimate=GRANT + 1), caller,
+                                             call_ref="c-1", allow_allowance=False)
+    assert refused.value.status_code == 402 and await _per_call_holds(org_id) == []
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"], total["orgs"]) == (1, 0, {org_id: [1, 0]})
+
+
+@pytest.mark.parametrize(("call_ref", "reason"), [
+    (None, "no_call_ref"), ("c-1:r1", "child_call:routed"), ("c-1:r12", "child_call:routed"),
+    ("c-1:overflow", "child_call:overflow"), ("c-1:r2:overflow", "child_call:overflow"),
+    ("run:s3", "child_call:hub_step"), ("run:s3.1", "child_call:hub_step"),
+    ("run:s3:r1", "child_call:routed"), ("c-1:r1:p2", "child_call:other"),
+    ("c-1:v", "child_call:other"), ("run:price", "child_call:other"),
+])
+async def test_a_child_call_s_skip_names_what_kind_of_child_it_is(org_id, call_ref, reason):
+    caller = await _caller(org_id)
+    assert call_reserve._allowance_skip(_call(org_id), caller, CallMeta(tags={}), call_ref,
+                                        True) == reason
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):
@@ -2685,7 +2821,7 @@ async def test_a_sized_refill_leaves_most_of_the_days_room_to_the_exact_path(
 
 
 async def test_an_exact_path_call_the_balance_alone_cannot_pay_for_gets_the_counter_back(
-        org_id, store, paced, monkeypatch):
+        org_id, store, paced, monkeypatch, skip_lines):
     """Sized refills can set aside a share of the balance that a call on the exact path does
     not see. Short of it, that call has the counter returned to the balance and tries once
     more; the counter is frozen, so the next call on the allowance refills it first."""
@@ -2711,6 +2847,10 @@ async def test_an_exact_path_call_the_balance_alone_cannot_pay_for_gets_the_coun
         await call_reserve._platform_reserve(
             _call(org_id, estimate=1_500_000), caller, call_ref="exact-2")
     assert refused.value.status_code == 402, "nothing left to give back: refused as before"
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"]) == (2, mk.reserved_micro), (
+        "both calls counted; only the hold the retry committed, once")
+    assert total["orgs"] == {org_id: [2, mk.reserved_micro]}
 
 
 async def _counter_of(org_id: int, store, paced_spend: int = 0) -> dict:

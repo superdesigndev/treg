@@ -323,11 +323,11 @@ class Settings(BaseSettings):
             "money_admission_retry_after_s"))
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
-    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. A listed team's
-    # calls that keep their own hold are logged with the reason (`treg.allowance_skips`).
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
+    # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
+    # orgs named here also get a line of their own.
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
-    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`;
-    # only the orgs in `money_allowance_org_ids` have their skips logged.
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`.
     money_allowance_all_orgs: bool = False
     # Never on the allowance, whatever the two settings above say.
     money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
