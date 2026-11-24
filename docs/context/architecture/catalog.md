@@ -384,8 +384,8 @@ cost:
   `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
   most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
-  `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
-  positive USD rates; a term path may select a list item by key
+  `unit_rates_usd[provider][unit]` entry. `usage.terms` sums several meters times positive rates in
+  `usage.unit` (USD, or the provider's credit or meter, priced by fx.yaml like a single path); a term path may select a list item by key
   (`candidatesTokensDetails[modality=IMAGE].tokenCount`); an absent meter counts as zero (proto3
   JSON omits zeros) and a response with none settles at the reserve. A single `usage.path` may add
   `missing: 0` for a provider that leaves a zero meter out of its finished answer (LeadsForge's

@@ -1167,6 +1167,17 @@ def test_usage_terms_are_accepted_for_a_multi_meter_response():
     assert errors == []
 
 
+def test_usage_terms_may_count_in_the_providers_credit():
+    """Icypeas bills a bulk file per counted row in credits: the rates stay in credits and fx.yaml
+    prices them, instead of a dollar rate copied into the row."""
+    cost = _flat_usage_cost()
+    cost["usage"] = {"unit": "credit", "terms": [{"path": "files[task=email-search].found", "rate": 1},
+                                                  {"path": "files[task=email-verification].done", "rate": 0.1}]}
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], provider="icypeas")
+    assert errors == []
+
+
 @pytest.mark.parametrize(("usage", "message"), [
     ({"terms": [], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b"}], "unit": "usd"}, "usage.terms must be"),
@@ -1176,9 +1187,9 @@ def test_usage_terms_are_accepted_for_a_multi_meter_response():
     ({"terms": [{"path": "a[version=v1.2].b", "rate": 1}], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b", "rate": 0}], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b", "rate": float("nan")}], "unit": "usd"}, "usage.terms must be"),
-    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "usage.unit must be 'usd'"),
+    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "needs a numeric fx.yaml credit_rates_usd"),
     ({"terms": [{"path": "a.b", "rate": 1}], "path": "a.b", "unit": "usd"},
-     "or usage.terms and unit 'usd'"),
+     "or usage.terms and usage.unit"),
 ])
 def test_usage_terms_reject_bad_shapes(usage, message):
     cost = _flat_usage_cost()

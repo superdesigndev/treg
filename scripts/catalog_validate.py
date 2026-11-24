@@ -813,17 +813,21 @@ def check_usage_block(cost: dict, settle: object, where: str, errors: list[str],
                 fail(errors, where, "usage.terms must be a non-empty list of {path, rate} with a "
                                     "dotted path (segments may select name[key=value]) and a "
                                     "positive rate")
-            elif usage.get("unit") != "usd":
-                fail(errors, where, "usage.terms rates are USD per unit; usage.unit must be 'usd'")
-            return
-        if isinstance(usage, dict) and "missing" in usage and usage["missing"] != 0:
-            fail(errors, where, "usage.missing may only be 0 (the provider omits a zero meter)")
-            return
-        if not isinstance(usage, dict) or set(usage) - {"missing"} != {"path", "unit"} \
-                or not isinstance(usage.get("path"), str) or not JSON_PATH.fullmatch(usage["path"]) \
-                or not isinstance(usage.get("unit"), str) or not usage["unit"].strip():
+                return
+        else:
+            if isinstance(usage, dict) and "missing" in usage and usage["missing"] != 0:
+                fail(errors, where, "usage.missing may only be 0 (the provider omits a zero meter)")
+                return
+            if not isinstance(usage, dict) or set(usage) - {"missing"} != {"path", "unit"} \
+                    or not isinstance(usage.get("path"), str) or not JSON_PATH.fullmatch(usage["path"]):
+                fail(errors, where, "cost.settle 'usage' requires usage.path and usage.unit, "
+                                    "or usage.terms and usage.unit")
+                return
+        # A term's rate is in `usage.unit` per counted thing: USD, or the provider's credit or meter
+        # priced by fx.yaml, so a credit price is never copied into the row as dollars.
+        if not isinstance(usage.get("unit"), str) or not usage["unit"].strip():
             fail(errors, where, "cost.settle 'usage' requires usage.path and usage.unit, "
-                                "or usage.terms and unit 'usd'")
+                                "or usage.terms and usage.unit")
         elif usage.get("unit") == "credit" and not _finite_number(_credit_rate(provider)):
             fail(errors, where, f"usage.unit 'credit' needs a numeric fx.yaml credit_rates_usd entry "
                                 f"for '{provider}'")

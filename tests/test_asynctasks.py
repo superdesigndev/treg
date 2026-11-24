@@ -1726,6 +1726,16 @@ def test_times_multiplier_is_bounded_by_the_input_schema():
     assert price(float("inf")) == 6_000_000 and price("5") == 250_000  # strings coerce by type
 
 
+def test_usage_terms_in_credits_settle_at_the_frozen_credit_rate():
+    basis = {"amount": {"kind": "usage", "unit": "credit", "unit_micro": 19_000, "terms": [
+        {"path": "files[task=email-search].found", "rate": 1},
+        {"path": "files[task=email-verification].done", "rate": 0.1}]}, "reserve_micro": 95_000_000}
+    found = {"files": [{"task": "email-search", "found": 3, "done": 5}]}
+    tested = {"files": [{"task": "email-verification", "found": 2, "done": 10}]}
+    assert settlement.settle(basis, {"terminal": found}) == 57_000
+    assert settlement.settle(basis, {"terminal": tested}) == 19_000
+
+
 def test_a_usage_meter_declared_missing_zero_settles_an_absent_field_at_zero():
     """LeadsForge leaves `consumedCredits` out of a finished job that used none: `missing: 0`
     settles that at zero, while an unreadable value is still unobserved (the reserve)."""

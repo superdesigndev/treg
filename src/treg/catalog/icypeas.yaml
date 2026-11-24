@@ -269,16 +269,16 @@ endpoints:
       unit: row
       settle: usage
       usage:
-        unit: usd
+        unit: credit
         terms:
-          - {path: "files[task=email-search].found", rate: 0.019}
-          - {path: "files[task=domain-search].found", rate: 0.019}
-          - {path: "files[task=email-verification].done", rate: 0.0019}
+          - {path: "files[task=email-search].found", rate: 1}
+          - {path: "files[task=domain-search].found", rate: 1}
+          - {path: "files[task=email-verification].done", rate: 0.1}
       source: docs
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
       confidence: documented
-      note: "each ROW bills at its task's own rate: 1 credit per found email (email-search), 1 credit per domain with a hit (domain-search), 0.1 credit per address tested (email-verification). The hold is every row at its task's rate; the finished file's counts are the bill. The term rates are the fx.yaml icypeas credit rate, per row."
+      note: "each ROW bills at its task's own rate: 1 credit per found email (email-search), 1 credit per domain with a hit (domain-search), 0.1 credit per address tested (email-verification). The hold is every row at its task's rate; the finished file's counts are the bill."
     verified: '2026-08-20'
     added: '2026-08-20'
     example_response: examples/icypeas.bulk.search.json
