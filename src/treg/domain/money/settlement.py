@@ -90,16 +90,19 @@ def _spec_for(input_schema: dict, dotted: str) -> dict:
 
 def _bounded_multiplier(value: object, spec: dict) -> float | None:
     """A `times` value the table may multiply by: a finite POSITIVE number inside the field's
-    declared range. Anything else is None - the row does not price that request and the explicit
+    declared range, or a list's length inside its declared item count. Anything else is None - the row does not price that request and the explicit
     fallback does, so a caller cannot reserve zero with `duration: 0` or bill past the validated
     ceiling with `duration: 100`. Positive holds even when the declared minimum is not: a field
     that admits a sentinel (Seedance's `-1` auto duration) has it priced by a flat row of its own,
     never multiplied."""
+    if isinstance(value, list):
+        value, low, high = len(value), spec.get("minItems"), spec.get("maxItems")
+    else:
+        low, high = spec.get("min"), spec.get("max")
     if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
         return None
     if value <= 0:
         return None
-    low, high = spec.get("min"), spec.get("max")
     if isinstance(low, (int, float)) and not isinstance(low, bool) and value < low:
         return None
     if isinstance(high, (int, float)) and not isinstance(high, bool) and value > high:

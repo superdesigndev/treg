@@ -459,7 +459,8 @@ def test_cost_table_accepts_subset_rows_times_bounds_and_usage_settlement():
 @pytest.mark.parametrize(("mutate", "message"), [
     (lambda c: c.update(table=[]), "cost.table must be a non-empty list"),
     (lambda c: c.update(table=["row"]), "table row must be a mapping"),
-    (lambda c: c["table"][0].update(when={}), "when must be a non-empty mapping"),
+    (lambda c: c["table"][0].update(when=[]), "when must be a mapping"),
+    (lambda c: c["table"][0].update(when={}), "when is shadowed by an earlier subset row"),
     (lambda c: c["table"][0].update(when={"body.unknown": "x"}), "is not declared in input"),
     (lambda c: c["table"][0].update(value=-1), "value must be a finite non-negative number"),
     (lambda c: c["table"][1].update(times="body.frames"), "times field 'body.frames' is not declared"),
@@ -494,6 +495,23 @@ def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
     no_max["body"]["duration"].pop("max")
     errors = _table_errors(_valid_table(), no_max)
     assert any("must declare a positive input max" in error for error in errors)
+
+
+def test_cost_table_takes_a_last_catch_all_row_and_a_bounded_list_length_multiplier():
+    """A job priced per item it asks for: `when: {}` matches every request, and `times` may name a
+    list whose length is the quantity, bounded by its declared maxItems."""
+    schema = {"body": {"rows": {"type": "array", "items": {"type": "string"}, "required": True,
+                                "minItems": 1, "maxItems": 500},
+                       "limit": {"type": "integer", "required": True, "min": 1, "max": 1000}}}
+    by_rows = _valid_table() | {"table": [{"when": {}, "value": 0.02, "times": "body.rows"}],
+                                "fallback": {"value": 10.0, "note": "the largest list"}}
+    assert _table_errors(by_rows, schema) == []
+    by_limit = by_rows | {"table": [{"when": {}, "value": 0.01, "times": "body.limit"}]}
+    assert _table_errors(by_limit, schema) == []
+    unbounded = {"body": {"rows": {"type": "array", "items": {"type": "string"}, "required": True}}}
+    assert any("must be numeric or a list with maxItems" in e for e in _table_errors(by_rows, unbounded))
+    low_fallback = by_rows | {"fallback": {"value": 1.0, "note": "too low"}}
+    assert any("must be at least every table row" in e for e in _table_errors(low_fallback, schema))
 
 
 def test_cost_table_rejects_shadowed_rows_and_ambiguous_or_non_finite_values():

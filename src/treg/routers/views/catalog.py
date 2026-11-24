@@ -465,8 +465,8 @@ def price_table_view(cost) -> dict:
             price += f" × {str(row['times']).split('.', 1)[-1]}"
             if row.get("times_min") is not None:
                 price += f" (from {row['times_min']})"
-        rows.append({"when": " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items()),
-                     "price": price})
+        when = " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items())
+        rows.append({"when": when or "any request", "price": price})
     fb = cost.get("fallback") or {}
     if isinstance(fb, dict) and fb.get("value") is not None:
         rows.append({"when": "fallback (ceiling)", "price": money(float(fb["value"]))})

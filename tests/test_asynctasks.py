@@ -1697,6 +1697,23 @@ def test_times_multiplier_is_bounded_by_the_input_schema():
     assert price(float("inf")) == 6_000_000 and price("5") == 250_000  # strings coerce by type
 
 
+def test_a_catch_all_row_prices_by_a_number_or_a_list_length_inside_its_bounds():
+    """A job holds what its size says: `limit` x price, or one price per item of a list, never
+    beyond the declared bounds (outside them the fallback prices it)."""
+    schema = {"body": {"limit": {"type": "integer", "min": 1, "max": 300},
+                       "rows": {"type": "array", "minItems": 1, "maxItems": 3}}}
+    by_limit = {"table": [{"when": {}, "value": 1, "times": "body.limit"}], "fallback": {"value": 300}}
+    by_rows = {"table": [{"when": {}, "value": 1, "times": "body.rows"}], "fallback": {"value": 3}}
+
+    def price(cost, body):
+        return settlement.table_amount_micro(cost, {"body": body}, schema, 1_000)
+
+    assert price(by_limit, {"limit": 2}) == 2_000 and price(by_limit, {"limit": 300}) == 300_000
+    assert price(by_limit, {"limit": 301}) == price(by_limit, {}) == 300_000
+    assert price(by_rows, {"rows": ["a", "b"]}) == 2_000
+    assert price(by_rows, {"rows": []}) == price(by_rows, {"rows": ["a"] * 4}) == 3_000
+
+
 async def test_worker_ignores_terminal_looking_fields_on_error_responses(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):

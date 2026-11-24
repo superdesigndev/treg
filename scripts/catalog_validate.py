@@ -698,8 +698,8 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
         if extra:
             fail(errors, rwhere, f"unknown table row keys: {sorted(extra)}")
         when = row.get("when")
-        if not isinstance(when, dict) or not when:
-            fail(errors, rwhere, "when must be a non-empty mapping")
+        if not isinstance(when, dict):
+            fail(errors, rwhere, "when must be a mapping (empty matches every request)")
         else:
             for previous in prior_conditions:
                 if all(field in when and when[field] == value for field, value in previous.items()):
@@ -740,10 +740,14 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
             if spec is None:
                 fail(errors, rwhere, f"times field '{times}' is not declared in input")
                 continue
-            if spec.get("type") not in ("integer", "number"):
-                fail(errors, rwhere, f"times field '{times}' must be numeric")
+            listed = spec.get("type") == "array"
+            if not listed and spec.get("type") not in ("integer", "number"):
+                fail(errors, rwhere, f"times field '{times}' must be numeric or a list with maxItems")
                 continue
-            upper = spec.get("max")
+            upper = spec.get("maxItems" if listed else "max")
+            if listed and not _finite_number(upper):
+                fail(errors, rwhere, f"times field '{times}' must be numeric or a list with maxItems")
+                continue
             if not _finite_number(upper) or float(upper) <= 0:
                 fail(errors, rwhere, f"times field '{times}' must declare a positive input max")
                 continue
@@ -753,7 +757,7 @@ def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[
             # inside the field's declared range.
             if "times_min" in row:
                 low = row.get("times_min")
-                field_min = spec.get("min")
+                field_min = spec.get("minItems" if listed else "min")
                 if not _finite_number(low) or float(low) <= 0 \
                         or (_finite_number(field_min) and float(low) < float(field_min)) \
                         or float(low) > float(upper):

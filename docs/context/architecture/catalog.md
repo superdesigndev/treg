@@ -371,8 +371,10 @@ cost:
   `queryParams.mode`) so query/body collisions cannot price the wrong field. Every `when` field must
   be required or have a `default`; narrow rows precede broad ones; the validator rejects shadowed or
   duplicate conditions, unknown keys, non-finite values, values outside the input's enum/min/max, and
-  `value` together with `table`.
-- `times` multiplies by one numeric field with a positive `max`. A value outside the declared range,
+  `value` together with `table`. An empty `when: {}` matches every request, so it can only be the
+  last row: a job priced by its size alone is one such row with `times`.
+- `times` multiplies by one numeric field with a positive `max`, or by the length of one list field
+  with a positive `maxItems` (one price per row a job asks for). A value outside the declared range,
   non-finite or non-positive (whatever minimum the field declares) matches no row and prices at the
   fallback, so a request can neither reserve zero nor bill past the ceiling. A sentinel such as
   `-1` is priced by a flat row that pins it, and that row is left out of the advertised rate span.
