@@ -1462,6 +1462,9 @@ still pay the provider twice.
 - A stale claim's money (`_money_of`) is read from the owner's holds, its ledger entries and its
   queued `CallCharge` row, read before the ledger: a call on the allowance has no hold of its own,
   and its charge waits in the queue until a fold writes its settle. One with both is counted once.
+  The ledger read is bounded to the owner's lifetime, except by exact id (the `call_id` index):
+  the owner's own entries and its async tasks' are read past it, since a fold delayed by a backlog
+  or a task's worker can settle later.
 - A reserve admission 429 never reaches `_store_idempotent`; `_stamp_call_exit` releases its pending
   claim (both MCP surfaces too). If that cleanup fails twice, the row stays pending until the
   stale-claim resolver stores 410 `idempotency_outcome_unknown` when no money evidence exists.

@@ -2432,6 +2432,30 @@ async def test_an_abandoned_CHARGED_claim_answers_410_and_never_charges_twice(
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == balance
 
 
+async def test_an_abandoned_allowance_call_folded_after_its_lifetime_is_still_a_charge(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """A fold delayed by a backlog writes the owner's settle after its lease's lifetime: read by
+    exact id, it is still the charge."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "late-fold-label", status="pending")
+    await _set_claim("late-fold-label", call_ref="late-fold-owner", created_at=_ago(hours=2))
+    async with session_maker() as db:  # stamped now: an hour past the lease's lifetime
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-900,
+                           call_id="late-fold-owner", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 60)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "late-fold-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 900
+
+
 @pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
 async def test_an_abandoned_allowance_call_counts_its_queued_charge_once(
         clients: AsyncClient, platform_on, monkeypatch, trail):

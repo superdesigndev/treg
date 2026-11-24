@@ -264,7 +264,8 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     A call on the team's allowance has no hold of its own: its charge is a `CallCharge` row until a
     fold turns it into its settle entry, deleting the row in the same transaction. The row is read
     before the ledger, so a fold committing in between leaves the settle to be found; a call with
-    both is counted once, by its settle.
+    both is counted once, by its settle. A backlog can push the fold past the owner's lifetime, so
+    the owner's own entries are also read past it, by exact id.
     """
     def mine(col):
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
@@ -281,11 +282,12 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         AsyncTaskRecord.created_at <= until, mine(AsyncTaskRecord.call_id)))).all()
     if any(status == "pending" for _, status in tasks):
         open_hold = True  # a task's hold is its worker's until it resolves
-    if tasks:
-        rows += (await db.execute(select(
-            LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
-            LedgerEntry.call_id.in_([task_id for task_id, _ in tasks]),
-            LedgerEntry.created_at > until))).all()
+    # Past the lifetime only by exact id, which the call_id index serves: the tasks' late settles,
+    # and the owner's own fold, which a backlog can push past it.
+    late_ids = [call_ref, *(task_id for task_id, _ in tasks)]
+    rows += (await db.execute(select(
+        LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
+        LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
     # settle entries are negative (money leaving)
     charged = -sum(amount for kind, amount, _ in rows if kind == "settle")
     if queued is not None and not any(kind == "settle" and cid == call_ref for kind, _, cid in rows):
