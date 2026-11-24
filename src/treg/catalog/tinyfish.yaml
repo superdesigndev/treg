@@ -58,7 +58,7 @@ endpoints:
         include_thumbnail: {type: boolean, required: false, default: false}
         fetch: {type: object, required: false, note: "JSON object in the query string; {} attaches each result's fetched page content. A boolean is rejected (400 INVALID_INPUT).", example: {}}
     test_request: {queryParams: {query: "TinyFish API documentation", domain_type: web}}
-    cost: {type: per_call, value: 0.001, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 Search requests ($0.001 each)."}
+    cost: {type: per_call, value: 0.00099, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $0.99 per 1,000 Search requests ($0.00099 each)."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.search.json
@@ -92,7 +92,7 @@ endpoints:
         include_thumbnail: {type: boolean, required: false, default: false}
         fetch: {type: object, required: false, note: "JSON object in the query string; {} attaches each result's fetched page content. A boolean is rejected (400 INVALID_INPUT).", example: {}}
     test_request: {queryParams: {query: "AI browser agents", domain_type: news}}
-    cost: {type: per_call, value: 0.001, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 Search requests ($0.001 each); the news index uses the same endpoint."}
+    cost: {type: per_call, value: 0.00099, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $0.99 per 1,000 Search requests ($0.00099 each); the news index uses the same endpoint."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.search.news.json
@@ -126,7 +126,7 @@ endpoints:
         include_thumbnail: {type: boolean, required: false, default: false}
         fetch: {type: object, required: false, note: "JSON object in the query string; {} attaches each result's fetched page content. A boolean is rejected (400 INVALID_INPUT).", example: {}}
     test_request: {queryParams: {query: "browser agent benchmark", domain_type: research_paper, pub_year_min: 2024}}
-    cost: {type: per_call, value: 0.001, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 Search requests ($0.001 each); the research-paper index uses the same endpoint."}
+    cost: {type: per_call, value: 0.00099, currency: USD, unit: call, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $0.99 per 1,000 Search requests ($0.00099 each); the research-paper index uses the same endpoint."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.search.publications.json
@@ -161,7 +161,7 @@ endpoints:
         include_selectors: {type: array, items: {type: string}, required: false}
         exclude_selectors: {type: array, items: {type: string}, required: false}
     test_request: {body: {urls: ["https://example.com"], format: markdown, links: true, ttl: 0}}
-    cost: {type: per_result, value: 0.001, currency: USD, unit: page, reserve: {entities: {}}, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $1 per 1,000 URLs ($0.001 each), counted from the request's urls (at most 10)."}
+    cost: {type: per_result, value: 0.00099, currency: USD, unit: page, reserve: {entities: {}}, source: vendor_email, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-11-24', confidence: documented, note: "treg charges $0.99 per 1,000 URLs ($0.00099 each), counted from the request's urls (at most 10)."}
     verified: '2026-09-23'
     added: '2026-09-23'
     example_response: examples/tinyfish.web.fetch.json
