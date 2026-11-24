@@ -1196,7 +1196,9 @@ an invalid extra never disables the primary.
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
-  price and unit. A child treg would not call on its key ranks last with a `skipped` reason; a child
+  price and unit. The plan ranks as a call with no `X-Treg-Route-Prefer` does: the contract's
+  `prefer` and `ask_last`, and a fixed v2 table row at that row's price (`route.const_table_price`),
+  so the order people read is the order a call tries. A child treg would not call on its key ranks last with a `skipped` reason; a child
   served keyless (`resolve.anonymous_served`, the team-independent half of `_anonymous_offer`) is
   quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then

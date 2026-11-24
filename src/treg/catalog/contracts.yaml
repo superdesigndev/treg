@@ -178,6 +178,8 @@ contracts:
     # `X-Treg-Route-Verify`: HLR's live check; a national-form number would be read as another country's.
     check: {endpoint: hlrlookup.people.phone.verify, field: phone, when: "e164_digits(phone) != null", skip_reason: not_international,
             skip_advice: "This number has no country code, so it was not checked: a live lookup would read its first digits as a country code. Add the country code (+ and the digits), or call hlrlookup.people.phone.verify with input_format set to the ISO3 country code (for example USA)."}
+    # LeadOcean returned the most wrong-person numbers in a 110-person benchmark; asked first on price, it answers before more accurate providers.
+    ask_last: [leadocean]
 
   people.phone.live:
     summary: "Check whether a phone number is live on its network — a live network lookup, not a format check"
