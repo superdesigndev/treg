@@ -921,7 +921,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *
         "platform_eligible": cat.platform_eligible(ep) if cat else None,
         **({"platform_auth": "anonymous"} if ep.get("platform_auth") == "anonymous" else {}),
         "platform_blocked": ep.get("platform_blocked") or None,
-        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin")}
+        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin", "ok_when")}
                  if isinstance(ep.get("miss"), dict) and "status" in ep["miss"] else None),
         **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.
@@ -1678,15 +1678,15 @@ def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
     is a number nobody can predict or argue with. Unmeasured sits ABOVE measured-poor and below
     measured-good — a new endpoint is an unknown, not a suspect.
     """
-    def bucket(ep: dict) -> int:
-        rate = (stats.get(ep["id"]) or {}).get("ok_rate")
-        if rate is None:
-            return 1        # no evidence either way (or too few samples to publish one)
-        # `ok_rate` is computed from DECIDED samples only (4xx excluded as the caller's fault), so a
-        # 0 here means the provider failed every call that was its to answer.
-        if rate == 0:
-            return 3
-        return 0 if rate >= 0.9 else 2
+    from ...config import get_settings
+    tiers = get_settings().ranking_tier_map
+
+    def callable_(ep: dict) -> bool:
+        return cat.platform_eligible(ep) if cat else True
+
+    def quality(ep: dict) -> int:
+        tier = tiers.get(ep.get("capability") or "", {}).get(ep.get("provider") or "")
+        return 0 if tier == "good" else 2 if tier == "bad" else 1
 
     def price(ep: dict) -> float:
         cost = (cat.cost_view(ep.get("cost"), ep.get("provider")) if cat else ep.get("cost")) or {}
@@ -1699,8 +1699,35 @@ def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
     # over the curated answer trades relevance for change: "tiktok comments" would lead with
     # douyin danmaku because it is cheap.
     return sorted(rows, key=lambda row: (
-        -row[1], bucket(row[0]), row[0]["tier"] != "core", price(row[0]),
-        not row[0]["verified"], row[0]["id"]))
+        -row[1], not callable_(row[0]), quality(row[0]), reliability_band(stats.get(row[0]["id"])),
+        row[0]["tier"] != "core", price(row[0]), not row[0]["verified"], row[0]["id"]))
+
+
+def reliability_band(observed: dict | None) -> int:
+    rate = (observed or {}).get("ok_rate")
+    if rate is None:
+        return 2
+    if rate == 0:
+        return 5
+    n = (observed or {}).get("decided") or (observed or {}).get("samples") or 0
+    low, high = _wilson(rate, n)
+    if low >= 0.9:
+        return 0
+    if low >= 0.8:
+        return 1
+    if high >= 0.8:
+        return 2
+    return 3 if rate >= 0.6 else 4
+
+
+def _wilson(rate: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n <= 0:
+        return rate, rate
+    centre = rate + z * z / (2 * n)
+    margin = z * math.sqrt(rate * (1 - rate) / n + z * z / (4 * n * n))
+    scale = 1 + z * z / n
+    return (centre - margin) / scale, (centre + margin) / scale
+
 
 
 def _placeholder(spec: dict):

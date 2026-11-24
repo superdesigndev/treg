@@ -413,7 +413,7 @@ async def create_org(
         click_field, gclid, landing = _ad_attribution_from(
             await _ad_cookie_for(db, user.email, ad_cookie))
         partner_code = await _partner_code(db, ref_code)
-        if await affiliates.brought_before(db, user):
+        if await affiliates.brought_before(db, user) or await affiliates.existing_customer(db, user):
             affiliate_cookie = partner_code = ""
         for _ in range(3):  # a concurrent create can claim the slug before commit; retry a fresh lookup
             org, token = await _make_org_membership(

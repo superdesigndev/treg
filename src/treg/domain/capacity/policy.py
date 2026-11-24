@@ -23,6 +23,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "theirstack": ("credits", "manual", "api"),
     "jobspipe": ("monthly_quota", "quota_reset", "api"),
     "forager": ("monthly_quota", "quota_reset", "api"),
+    "millionphones": ("credits", "subscription", "api"),
+    "descovo": ("monthly_quota", "quota_reset", "api"),
     "hirebase": ("monthly_quota", "quota_reset", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
@@ -136,6 +138,8 @@ _RATE_LIMITS: dict[str, dict] = {
     "theirstack": {"limit": 4, "window_s": 1, "source": "docs"},
     # Throttles at about 10 requests a second per key (429 "Request was throttled", Retry-After: 1).
     "forager": {"limit": 5, "window_s": 1, "source": "policy"},
+    "descovo": {"limit": 120, "window_s": 60, "source": "docs"},  # per key; X-RateLimit-* headers on every call
+    "millionphones": {"limit": 300, "window_s": 60, "source": "docs"},  # Pro plan; RateLimit-* headers on every call
     "jobspipe": {"limit": 10, "window_s": 1, "source": "docs"},  # Builder plan; RateLimit-* headers on every call
     "hirebase": {"limit": 100, "window_s": 60, "source": "docs"},  # per key; task reads have their own 600 per 60 s
     "enrichlayer": {"limit": 300, "window_s": 60, "source": "docs"},

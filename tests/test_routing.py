@@ -21,6 +21,7 @@ from treg.domain import money as ledger
 from treg.domain.catalog.schema import is_v2
 from treg.application.call import overflow as call_overflow
 from treg.application.call import resolve as call_resolve
+from treg.application.call import cost as call_cost
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.application import catalog_stats
@@ -586,6 +587,28 @@ async def _first_providers(ep_id: str, identity: dict, header: str | None = None
     caller = SimpleNamespace(org_id=org_id, org=SimpleNamespace(id=org_id, platform_overflow_disabled=False))
     plan = await call_route.build_plan(catalog_store.load().by_id[ep_id], identity, caller, options)
     return [c.endpoint["provider"] for c in plan.candidates][:n]
+
+
+async def test_a_table_row_the_adapter_fixes_ranks_the_child_at_that_row(clients, monkeypatch):
+    """The routed phone find always sends quality_tier=most_coverage (9 Forager credits), so the
+    plan ranks Forager at that row; a direct call without it still holds the 15-credit fallback."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER", "PLATFORM-FORAGER-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER_ACCOUNT", "1234")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "forager")
+    get_settings.cache_clear()
+    try:
+        cat = catalog_store.load()
+        caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+        plan = await call_route.build_plan(cat.by_id["treg.people.phone.find"], {"linkedin_handle": "williamhgates"},
+                                           caller, call_route.RouteOptions.from_headers(lambda key: None))
+        forager = next(c for c in plan.candidates if c.endpoint["provider"] == "forager")
+        unit = cat.credit_rates["forager"]
+        assert forager.price_micro == round(9 * unit * 1_000_000)
+        direct = call_cost.price(cat.by_id["forager.people.phone.find"], cat,
+                                 {"body": {"linkedin_public_identifier": "williamhgates"}})[0]
+        assert direct == round(15 * unit * 1_000_000)
+    finally:
+        get_settings.cache_clear()
 
 
 def test_phrase_leaves_out_what_the_text_already_says():
@@ -1835,6 +1858,23 @@ async def test_the_routed_quote_ranks_the_children_the_router_skips_last(clients
     assert tomba["skipped"] == "not platform-eligible and no own key" and tomba["accepts"]
 
 
+async def test_the_routed_quote_prices_and_orders_children_as_the_router_does(clients: AsyncClient, enrichment_on):
+    """A price table the adapter's `const` fixes to one row is quoted at that row, not at its
+    fallback ceiling, and the contract's `ask_last` places those providers last, as a call does."""
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    plan = (await clients.get("/catalog/endpoints/treg.people.phone.find")).json()["routing"]["plan"]
+    kid = "descovo.people.phone.find"
+    ad = cat.adapters[kid]
+    held = call_route.const_table_price(cat, cat.by_id[kid], ad, dict(ad.test_identity), ad.accepts[0])
+    row = next(c for c in plan if c["endpoint_id"] == kid)
+    assert held is not None and row["usd"] == held / 1_000_000, row
+    for group in ([c for c in plan if "skipped" not in c], [c for c in plan if "skipped" in c]):
+        ids = [c["endpoint_id"].split(".")[0] for c in group]
+        if "leadocean" in ids:
+            assert ids[-1] == "leadocean", ids
+
+
 async def test_idempotent_replay_of_a_routed_call_never_calls_a_provider_twice(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -3079,18 +3119,20 @@ async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: Asyn
          "tomba": [(200, {"data": {"e164_format": None}})],
          "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
          "findymail": [(200, {"phone": None})],
-         "leadsforge": [(200, {"phoneNumber": None})]}, seen))
+         "leadsforge": [(200, {"phoneNumber": None})],
+         "fiber": [(404, {"message": "Profile not found."})]}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"})
     assert r.status_code == 200, r.text
     assert r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["_treg"]["served_by"] is None
     outcomes = {t["endpoint_id"]: t["outcome"] for t in r.json()["_treg"]["tried"]}
-    assert outcomes["aviato.people.phone.find"] == "miss" and len(seen) == 5, "the 404 is a miss; every provider was still asked"
+    assert outcomes["aviato.people.phone.find"] == "miss" and outcomes["fiber-ai.people.phone.find"] == "miss"
+    assert len(seen) == 6, "each 404 is a miss; every provider was still asked"
     assert await _balance(clients) == before, "nobody found anything, nothing was charged"
     # an UNDECLARED 4xx keeps its meaning: a vendor rejecting the request is still the caller's fault
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 4}, seen))
+        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 5}, seen))
     r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
                            headers={"X-Treg-Route-Prefer": "aviato"})
     assert r.status_code == 422 and r.json()["detail"]["error"] == "route_caller_fault", r.text
@@ -5063,3 +5105,110 @@ async def test_a_host_the_provider_does_not_approve_does_not_move_the_router_s_t
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
     assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)
+
+
+@pytest.fixture
+def routed_allowance_on(monkeypatch, enrichment_on):
+    """Every team on the allowance, its routed children too, over the allowance tests' store."""
+    from test_call_allowance import FakeStore
+
+    from treg.application.call import allowance as allowance_runtime
+    from treg.infra import kv
+
+    store = FakeStore()
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(allowance_runtime, "_database_supported", lambda: True)
+    monkeypatch.setattr(allowance_runtime, "_charges", allowance_runtime._ChargeWriter())
+    monkeypatch.setattr(allowance_runtime, "_in_flight", [0])
+    monkeypatch.setattr(allowance_runtime, "_refused_until", {})
+    monkeypatch.setattr(allowance_runtime, "_ahead", lambda: {"ahead_ms": 0, "low_micro": 0})
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_allowance_all_orgs", True)
+    monkeypatch.setattr(settings, "money_allowance_routed_all_orgs", True)
+    monkeypatch.setattr(settings, "money_allowance_linger_ms", 1)
+    return store
+
+
+@pytest.mark.parametrize("key", [None, "routed-allowance-key"])
+async def test_routed_children_on_the_allowance_hold_nothing_and_only_the_hit_is_charged(
+    clients: AsyncClient, routed_allowance_on, monkeypatch, key,
+):
+    from treg.models import CallCharge, Hold, LedgerEntry
+
+    miss_tomba = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [miss_tomba],
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    headers = {"X-Treg-Route-Prefer": "tomba,findymail", **({"Idempotency-Key": key} if key else {})}
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers=headers)
+    assert r.status_code == 200, r.text
+    assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "hit"]
+    call_id = r.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold))).scalars().all()
+        charges = (await db.execute(select(CallCharge))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry))).scalars().all()
+    assert [h.allowance for h in holds] == [True], "the team's allowance hold, no child's own"
+    assert [(c.call_id, c.amount_micro) for c in charges] == [
+        (f"{call_id}:r1", int(r.headers["X-Treg-Cost-Micro"]))]
+    assert not [e for e in entries if (e.call_id or "").startswith(call_id)]
+    assert routed_allowance_on.marks == set(), "the root's mark is cleared"
+    assert ([call_id] in routed_allowance_on.cleared_batches) == bool(key), "only a keyed root is marked"
+
+
+async def test_a_routed_root_the_store_will_not_mark_keeps_its_children_on_holds(
+    clients: AsyncClient, routed_allowance_on, monkeypatch,
+):
+    from treg.models import CallCharge, LedgerEntry
+
+    async def refuse(call_ref, ttl_ms):
+        return False
+    monkeypatch.setattr(routed_allowance_on, "mark_call_in_flight", refuse)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "findymail", "Idempotency-Key": "unmarked"})
+    assert r.status_code == 200, r.text
+    call_id = r.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        charges = (await db.execute(select(CallCharge))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry))).scalars().all()
+    assert charges == []
+    assert sorted(e.kind for e in entries if (e.call_id or "").startswith(call_id)) == ["reserve", "settle"]
+
+
+async def test_a_failed_route_charges_nothing_from_the_allowance(
+    clients: AsyncClient, routed_allowance_on, monkeypatch,
+):
+    from treg.application.call import settle as call_settle
+    from treg.models import CallCharge
+
+    closed = []
+    real = call_settle.close_deferred
+
+    async def spy(items, **kwargs):
+        closed.append((kwargs["charge"], [d.epoch is not None for d in items]))
+        return await real(items, **kwargs)
+    monkeypatch.setattr(call_route, "close_deferred", spy)
+
+    async def boom(*args, **kwargs):
+        raise call_route.CallFailure("route_failed", status_code=502, detail={"tried": []})
+    real_run = call_route._run_routed
+
+    async def run_then_fail(parent, ep, body, get_header, client, execute_child, pending, **kw):
+        await real_run(parent, ep, body, get_header, client, execute_child, pending, **kw)
+        await boom()
+    monkeypatch.setattr(call_route, "_run_routed", run_then_fail)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "findymail"})
+    assert r.status_code == 502, r.text
+    assert closed == [(False, [True])], "the hit's take reached the close, and was given back"
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge))).scalars().all() == []

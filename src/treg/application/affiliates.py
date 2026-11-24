@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..domain.identity.access import _is_machine_email
 from ..domain.identity.promotions import promo_inbox
 from ..infra import dub
+from . import affiliate_bonus
 from ..infra import stripe as stripe_adapter
 from ..infra.db import background_session_maker
 from ..models import AffiliateClaim, AffiliateLead, Membership, Org, User
@@ -92,6 +93,16 @@ async def brought_before(db: AsyncSession, user: User) -> bool:
         return False
     row = await db.execute(select(AffiliateClaim.id).where(
         AffiliateClaim.inbox == promo_inbox(user.email)).limit(1))
+    return row.first() is not None
+
+
+async def existing_customer(db: AsyncSession, user: User) -> bool:
+    """treg already has this person: they own or belong to a team, demo teams aside. A partner earns
+    only on new customers, so a team such a person makes through a partner link is not a lead."""
+    if user.id is None:
+        return False
+    row = await db.execute(select(Membership.id).join(Org, Org.id == Membership.org_id).where(
+        Membership.user_id == user.id, Org.demo.is_(False), Org.public_demo.is_(False)).limit(1))
     return row.first() is not None
 
 
@@ -372,8 +383,9 @@ async def _sync_stripe(*, session_factory, stripe_call) -> dict:
 
 
 async def drain_once(client, *, session_factory, stripe_call=stripe_adapter.call) -> dict:
-    """Upload the due leads and resolve their partner check, then sync Stripe. No database connection
-    is held while Dub or Stripe is being called.
+    """Upload the due leads and resolve their partner check, sync Stripe, then decide the partner
+    offer on paid top-ups (`affiliate_bonus`). No database connection is held while Dub or Stripe is
+    being called.
 
     A lead whose partner is the team's own creator or owner is dead-lettered as `self_referral`, so
     the team's Stripe customer is never tagged (and untagged if it ever was). A recorded lead whose
@@ -389,7 +401,9 @@ async def drain_once(client, *, session_factory, stripe_call=stripe_adapter.call
             counts = await _record(db, results, utcnow_naive())
             await db.commit()
     synced = await _sync_stripe(session_factory=session_factory, stripe_call=stripe_call)
-    return {**counts, **synced}
+    bonuses = await affiliate_bonus.drain_once(client, session_factory=session_factory,
+                                               stripe_call=stripe_call)
+    return {**counts, **synced, **bonuses}
 
 
 async def worker(client) -> None:

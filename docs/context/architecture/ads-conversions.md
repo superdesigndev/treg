@@ -5,7 +5,7 @@ sources:
   - src/treg/adsconv.py
   - src/treg/application/signup.py
   - src/treg/application/call/settle.py
-  - src/treg/web/adtrack.js
+  - src/treg/web/click-id.js
   - src/treg/web/gtag.js
   - src/treg/routers/auth.py
   - src/treg/alembic/versions/0075_ad_click_stash.py
@@ -25,18 +25,21 @@ related:
 # Google Ads conversion tracking
 
 Off unless `google_ads_customer_id` and `ads_conv_refresh_token` are both set (`adsconv.enabled()`),
-so tests and self-hosted instances stay inert. When off, `/adtrack.js` is empty and attribution
+so tests and self-hosted instances stay inert. When off, `/click-id.js` is empty and attribution
 cookies are ignored. `google_ads_developer_token` is not part of the gate: Data Manager has no
 developer-token header; that setting serves only the read-side Ads catalog calls.
 
 ## Capture
 
-- `web/adtrack.js` reads `gclid`, `gbraid` or `wbraid` off the URL into the `treg_ad` cookie
+- `web/click-id.js` reads `gclid`, `gbraid` or `wbraid` off the URL into the `treg_ad` cookie
   (90 days, Google's click-through window; `SameSite=Lax` so it survives the cross-site navigation an
   ad click is). `gbraid`/`wbraid` are what Google substitutes on iOS traffic; dropping them silently
   loses most mobile conversions. The cookie stores the field name with the value so a braid is never
   uploaded as a GCLID.
-- Every public landing surface must load `adtrack.js`; no test sweeps every route, so a new landing
+- The script's path must not look like a tracker to filter lists: under its old name `/adtrack.js`
+  EasyList's `/adtrack.` rule blocked it in every mainstream blocker, so those visitors never got
+  `treg_ad`.
+- Every public landing surface must load `click-id.js`; no test sweeps every route, so a new landing
   page adds the tag itself (`interface/seo.md`).
 - The script carries the click id across same-origin navigation (link clicks, `history.pushState`/
   `replaceState`) only when it was captured from a URL in that tab, never on a cookie-only return

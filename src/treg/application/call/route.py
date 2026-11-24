@@ -99,6 +99,8 @@ from ... import oauth_providers
 from ... import sandbox as demo_sandbox
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
+from . import allowance as allowance_runtime
+from . import idempotency
 from . import route_health
 from . import route_rules as route_rules_app
 from . import cost as call_cost
@@ -667,11 +669,40 @@ def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str
     return _query_refusal(e, QueryValues(tuple(query.items()))) or _body_refusal(e, _child_body(e, body))
 
 
+def _when_paths(when) -> set[str]:
+    if isinstance(when, list):
+        return {p for w in when for p in _when_paths(w)}
+    if isinstance(when, dict):
+        return _when_paths(when["any"]) if "any" in when else {when.get("path")}
+    return {None}
+
+
+def const_table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
+    """What the child's hold will be for a v2 price table whose every condition reads a parameter
+    the adapter fixes (`const`): the routed request always picks the same row, so the plan ranks it
+    at that row, not at the fallback ceiling. A table a caller's value can pick keeps its ceiling."""
+    table = (ep.get("price") or {}).get("table")
+    if not isinstance(table, list) or any(row.get("times") for row in table):
+        return None
+    fixed = {path.replace("queryParams.", "query.", 1).replace("pathParams.", "query.", 1)
+             for path in (adapter.const or {})}
+    read = _when_paths([row.get("when") for row in table])
+    if not read or not read <= fixed:
+        return None
+    try:
+        query, body = adapter.to_upstream(identity, variant)
+        return call_cost.price(ep, cat, {"queryParams": query, "body": body})[0]
+    except Exception:  # noqa: BLE001 - the walk records the adapter's failure; the price falls back
+        return None
+
+
 def _table_price(cat, ep: dict, adapter, identity: dict, variant) -> int | None:
     """What the child's hold will be for a v1 price table, priced from the upstream request this
     adapter sends; the table's fallback ceiling would price every size alike. None for any other row."""
+    if is_v2(ep):
+        return const_table_price(cat, ep, adapter, identity, variant)
     raw = ep.get("cost") or {}
-    if not isinstance(raw.get("table"), list) or is_v2(ep):
+    if not isinstance(raw.get("table"), list):
         return None
     # Only a table that multiplies the field this adapter fills from `limit`: the hold grows with
     # the rows asked for. Other tables keep their ceiling price, and their routing order.
@@ -1121,22 +1152,29 @@ def _header(response: UpstreamResponse, name: str) -> str | None:
 
 
 async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_header, upstream_client: httpx.AsyncClient,
-                     execute_child, *, audit_client: str = "") -> tuple[UpstreamResponse, int]:
+                     execute_child, *, audit_client: str = "", keyed: bool = False) -> tuple[UpstreamResponse, int]:
     """Execute a routed call under `parent`. Returns (the assembled response, total charged).
 
     A child that charges nothing releases its hold at once, before the next child reserves. Every
     child that bills leaves its hold OPEN in `pending` (CallContext.deferred_settles) and this call
     closes all of them once, at the end: settled when the routed call answers (a hit, or a 200
     miss), released when it fails. A routed call that fails charges the caller nothing, even when
-    a provider on the way answered and billed treg (owner decision 2026-09-21)."""
+    a provider on the way answered and billed treg (owner decision 2026-09-21).
+
+    A child may take from the team's allowance instead of holding (`_allow_children`); its take is
+    closed with the holds, the same way. Every charge keeps the keyed root's mark, a nested routed
+    call's too; only the root releases its own hold on the mark."""
     pending: list = []
+    mark = await _allow_children(parent, keyed)
+    charge_mark = (parent.routed_root or parent).allowance_mark
     try:
         response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
                                             execute_child, pending, audit_client=audit_client)
     except CallFailure as exc:
         released = sum(int(a.get("charged_micro") or 0) for a in (exc.detail.get("tried") or [])
                        if isinstance(a, dict)) if isinstance(exc.detail, dict) else 0
-        await close_deferred(pending, charge=False, why=f"routed_{exc.kind}")
+        await _close(parent, pending, charge=False, why=f"routed_{exc.kind}", mark=charge_mark,
+                     release=mark is not None)
         if isinstance(exc.detail, dict):
             exc.detail["charged_micro"] = 0
             if released:
@@ -1146,10 +1184,61 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                     a["charged_micro"] = 0
         raise
     except BaseException:
-        await close_deferred(pending, charge=False, why="routed_aborted")
+        await _close(parent, pending, charge=False, why="routed_aborted", mark=charge_mark,
+                     release=mark is not None)
         raise
-    await close_deferred(pending, charge=True)
+    await _close(parent, pending, charge=True, mark=charge_mark, release=mark is not None)
     return response, spent
+
+
+async def _allow_children(parent: CallContext, keyed: bool) -> str | None:
+    """Decide once, at the routed root, whether its routed children may take from the team's
+    allowance; a nested routed call (a routed check or upgrade) inherits the answer. A keyed root
+    is marked in flight first: a child's take leaves no hold, so the mark is what a stale claim
+    reads until the children's charges are written. Returns the mark to release, if one was set."""
+    if parent.routed_allowance is not None:
+        return None
+    org_id = parent.input.caller.org_id
+    allowed = ":" not in parent.call_ref and allowance_runtime.routed_listed(org_id)
+    mark = None
+    if allowed and keyed:
+        if await idempotency.mark_in_flight(parent.call_ref):
+            mark = parent.allowance_mark = parent.call_ref
+            allowance_runtime.hold_mark(mark)
+        else:
+            allowed = False
+    parent.routed_allowance = allowed
+    return mark
+
+
+async def _close(parent: CallContext, pending: list, *, charge: bool, why: str = "",
+                 mark: str | None, release: bool) -> None:
+    """`close_deferred`, each charge keeping `mark`, and then the root's own hold on the mark
+    (`release`), in a task a second cancellation cannot stop
+    halfway: a child's take not finished stays out of every call's reach until its hold is
+    closed. A cancellation that arrives meanwhile is raised once the close is done."""
+    if charge and any(d.epoch is not None and d.billable for d in pending):
+        (parent.routed_root or parent).allowance_charged = True
+
+    async def work() -> None:
+        try:
+            await close_deferred(pending, charge=charge, why=why, mark=mark)
+        finally:
+            if release and mark is not None:
+                try:
+                    await allowance_runtime.release_mark(mark)
+                except Exception:
+                    log.warning("releasing the in-flight mark of %s failed", mark, exc_info=True)
+
+    task = asyncio.ensure_future(work())
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 def _second_host(e: dict) -> bool:
@@ -1385,6 +1474,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
         child = CallContext(input=_child_input(parent, cand.endpoint, query, body, remaining), call_ref=f"{parent.call_ref}:r{n}",
                             meta=parent.meta, deferred_settles=pending,
+                            routed_allowance=parent.routed_allowance, routed_root=parent.routed_root or parent,
                             quota_admissions=parent.quota_admissions,
                             quota_pending=parent.quota_pending)
         bound_s, cancel_s = _child_bound_s(cand), _child_timeout_s(cand)
@@ -2034,6 +2124,7 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
     child = CallContext(input=_child_input(parent, ep, query, body, remaining, prefer),
                         call_ref=f"{parent.call_ref}:v", meta=parent.meta,
                         deferred_settles=None if routed else pending,
+                        routed_allowance=parent.routed_allowance, routed_root=parent.routed_root or parent,
                         quota_admissions=parent.quota_admissions,
                         quota_pending=parent.quota_pending)
     try:
@@ -2098,7 +2189,9 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     if not isinstance(value, str) or not value.strip():
         return {"upgraded": False, "via": key, "reason": f"no_{key}"}, None, 0
     child = CallContext(input=_child_input(parent, ep, {}, {key: value}, remaining, ((QUALITY_HEADER.encode(), b"1"),)),
-                        call_ref=f"{parent.call_ref}:u", meta=parent.meta, deferred_settles=None)
+                        call_ref=f"{parent.call_ref}:u", meta=parent.meta, deferred_settles=None,
+                        routed_allowance=parent.routed_allowance,
+                        routed_root=parent.routed_root or parent)
     try:
         response = await execute_child(child, upstream_client)
         doc = json.loads(await _read(response))

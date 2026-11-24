@@ -49,7 +49,8 @@ async def store(monkeypatch):
     real = kv.RedisStore(url)
     settings = get_settings()
     for name, value in (("platform_margin", 0), ("kv_url", url), ("money_admission_enabled", True),
-                        ("money_admission_org_ids", []), ("money_allowance_org_ids", [])):
+                        ("money_admission_org_ids", []), ("money_allowance_org_ids", []),
+                        ("money_allowance_all_orgs", False), ("money_allowance_excluded_org_ids", [])):
         monkeypatch.setattr(settings, name, value)
     monkeypatch.setattr(kv, "store", lambda: real)
     monkeypatch.setattr(money_admission, "_store_down_until", 0.0)

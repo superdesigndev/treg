@@ -415,6 +415,12 @@ class MarketplaceCall:
     holdless: bool = False
     # Reserved from the team's allowance counter of this epoch, not a hold (money.md "Allowance").
     allowance_epoch: int | None = None
+    # That reserve marked the call in flight in the shared store (a keyed call): cleared once its
+    # charge is written.
+    allowance_marked: bool = False
+    # Its allowance charge was handed to the charge writer, which writes it whatever then happens
+    # to the request: a cancel from here on keeps the call's idempotency claim.
+    allowance_charged: bool = False
     # An overflow child reserve started for this parent: its `{call_ref}:overflow` hold may exist.
     overflow_hold_possible: bool = False
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears
@@ -425,6 +431,8 @@ class MarketplaceCall:
     key_slot: str | None = None
     # A routed child: settle into this list instead of the ledger (CallContext.deferred_settles).
     deferred: list | None = None
+    # A routed child whose root lets it take from the allowance (CallContext.routed_allowance).
+    routed_allowance: bool = False
     # A v2 row's frozen cost terms (`call.cost`): the settle follows the v2 settlement order.
     cost_terms: dict | None = None
 
@@ -906,7 +914,7 @@ def _marketplace_pricing(
         from . import sumble
         credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
         return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
-    if provider == "contactout":
+    if provider == "contactout" and cost.get("contactout"):
         from . import contactout
         request = _json_object(body) if body else dict(query.multi_items())
         return contactout.estimate(cost, request), 0

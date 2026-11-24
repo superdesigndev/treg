@@ -2150,6 +2150,19 @@ async def test_a_direct_call_names_the_routed_tool_for_its_job(clients: AsyncCli
     assert live.headers["X-Treg-Routed-Tool"] == "treg.tiktok.video.comments"
 
 
+async def test_a_direct_call_the_route_cannot_pick_names_no_routed_tool(clients: AsyncClient, serve,
+                                                                        monkeypatch):
+    """An endpoint of the job the route does not pick is only listed beside it; naming the route
+    would send the agent away from the provider it chose."""
+    from treg.domain.catalog import store as catalog_store
+    route = catalog_store.load().by_id["treg.tiktok.video.comments"]
+    monkeypatch.setitem(route, "routed_children",
+                        [c for c in route.get("routed_children") or [] if c != EP])
+    live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert live.status_code == 200
+    assert "X-Treg-Routed-Tool" not in live.headers
+
+
 async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncClient, shadow, monkeypatch):
     """A retry row that dropped its own copy names an archive answer for the rest of its 24-hour
     window; stripping it would turn the replay into a 410 for an answer the team paid for."""

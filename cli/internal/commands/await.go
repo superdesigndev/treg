@@ -104,7 +104,7 @@ func (w *taskWaiter) follow(sub *api.Response, timeout float64) error {
 	}
 	if reserved := strings.TrimSpace(sub.Header.Get("X-Treg-Cost-Micro")); reserved != "" {
 		if micro, err := strconv.ParseInt(reserved, 10, 64); err == nil {
-			fmt.Fprintf(stderr, "generation reservation: %s\n", output.USD(micro))
+			fmt.Fprintf(stderr, "async task reservation: %s\n", output.USD(micro))
 		}
 	}
 	if first.State != "pending" {

@@ -936,12 +936,22 @@ replays labeled agent queries; run it before and after a scoring change.
 ### The evidence decides the ORDER
 
 Token scores tie by the dozen; `catalog_store.rerank()` breaks ties over `rank_band()` on buckets,
-not a blended formula: **relevance, then measured (good / unknown / poor / never worked, from
-`ok_rate` alone), then core before extended, then price.** Evidence outranks curation (a core row
-that never answered is not better); curation outranks price (a tenth of a cent must not promote the
-bulk-ingested tail); unmeasured sits above measured-poor. `rank_band()` takes a tie group whole,
-bounded at `RERANK_BAND` on this open route, and **says when it truncated** (`ranking_note` on MCP,
-an HTTP hint).
+not a blended formula: **relevance, then callable on treg's key, then the operator's quality tier,
+then measured reliability, then core before extended, then price.**
+
+- **Callable.** A row only a team's own key can serve (`platform_eligible` false) stays listed,
+  after every row any caller can run; `/search` folds such vendors into one line.
+- **Quality tier** (`TREG_RANKING_TIERS`, JSON capability -> `{"good": [...], "bad": [...]}`) is
+  an operator's judgement from evidence kept outside this repo, so its values never belong here. It
+  outranks the measured rate because a 2xx is not a useful answer. Unnamed means mid; empty leaves the
+  measured order. Only the order reveals a tier.
+- **Reliability** reads `ok_rate` with its sample size (`reliability_band`): a few early
+  successes rank with the unmeasured, not above a long record.
+
+Evidence outranks curation (a core row that never answered is not better); curation outranks price
+(a tenth of a cent must not promote the bulk-ingested tail); unmeasured sits above measured-poor.
+`rank_band()` takes a tie group whole, bounded at `RERANK_BAND` on this open route, and **says when
+it truncated** (`ranking_note` on MCP, an HTTP hint).
 
 `CapabilityPin` ([data-model](data-model.md)) fixes a capability to one provider, enforced in
 `_resolve_marketplace_call` before reserve. A pin gates the catalog id, the only route to treg's key;
@@ -1186,12 +1196,17 @@ an invalid extra never disables the primary.
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
-  price and unit. A child treg would not call on its key ranks last with a `skipped` reason; a child
+  price and unit. The plan ranks as a call with no `X-Treg-Route-Prefer` does: the contract's
+  `prefer` and `ask_last`, and a fixed v2 table row at that row's price (`route.const_table_price`),
+  so the order people read is the order a call tries. A child treg would not call on its key ranks last with a `skipped` reason; a child
   served keyless (`resolve.anonymous_served`, the team-independent half of `_anonymous_offer`) is
   quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  request at its requested size and `P(hit)` is the published hit rate. A price table is priced at its
+  fallback ceiling, except a v1 table that multiplies the adapter's `limit` field and a v2 table whose
+  every condition reads a parameter the adapter fixes (`const`): the routed request always picks that
+  row, so the child ranks at the hold its call will take (`route._table_price`). Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
   seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child

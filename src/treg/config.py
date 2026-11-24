@@ -142,6 +142,38 @@ def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
     return out
 
 
+RANKING_TIERS = ("good", "bad")
+
+
+def _parse_ranking_tiers(raw: str) -> dict[str, dict[str, str]]:
+    if not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise ValueError("ranking_tiers must be a JSON object") from None
+    message = ("ranking_tiers must map capabilities to {\"good\": [...], \"bad\": [...]} lists of "
+               'lowercase providers, each provider in one list, e.g. {"web.extract": {"good": ["a"], "bad": ["b"]}}')
+    if not isinstance(parsed, dict):
+        raise ValueError(message)
+    out: dict[str, dict[str, str]] = {}
+    for capability, tiers in parsed.items():
+        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
+                and isinstance(tiers, dict) and set(tiers) <= set(RANKING_TIERS)):
+            raise ValueError(message)
+        named: dict[str, str] = {}
+        for tier, providers in tiers.items():
+            if not (isinstance(providers, list)
+                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in providers)):
+                raise ValueError(message)
+            for p in providers:
+                if p in named:
+                    raise ValueError(message)
+                named[p] = tier
+        out[capability] = named
+    return out
+
+
 class Settings(BaseSettings):
     # Most of these values are credentials: a validation error names the field, never the value.
     model_config = SettingsConfigDict(env_file=".env", env_prefix="TREG_", extra="ignore",
@@ -188,6 +220,7 @@ class Settings(BaseSettings):
     mark_hint_capabilities: list[str] = Field(default_factory=list)
     mark_hint_per_hour: int = Field(default=3, ge=1)
     mark_hint_texts: list[str] = Field(default_factory=list)
+    ranking_tiers: str = ""
     # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
     # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
     # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
@@ -290,8 +323,18 @@ class Settings(BaseSettings):
             "money_admission_retry_after_s"))
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
-    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
+    # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
+    # orgs named here also get a line of their own.
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`.
+    money_allowance_all_orgs: bool = False
+    # Never on the allowance, whatever the two settings above say.
+    money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # A routed call's children may take from the allowance too (their parent finishes the takes):
+    # for these teams, or every team on the allowance.
+    money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_routed_all_orgs: bool = False
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many
@@ -584,6 +627,8 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_descovo: str = ""  # Bearer key; monthly plan credits, free balance on /v1/credits
+    platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
@@ -1159,6 +1204,15 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # Where BROWSERS send analytics, when it differs from `posthog_host`: a first-party proxy such as
+    # PostHog's managed reverse proxy. Blockers drop requests to PostHog's own domains, so a page that
+    # talks to them directly loses its blocker-using visitors. Server-side capture and the install
+    # script keep `posthog_host`; nothing blocks them. Empty = browsers use `posthog_host`.
+    posthog_browser_host: str = ""
+
+    @property
+    def posthog_page_host(self) -> str:
+        return (self.posthog_browser_host or self.posthog_host).rstrip("/")
     # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
@@ -1279,6 +1333,10 @@ class Settings(BaseSettings):
     # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
     # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
     dub_default_country: str = "US"
+    # The most bonus credit one paid top-up can earn from a partner offer set in Dub, whatever the
+    # offer says. A typo in Dub ($500 for $5, 200% for 20%) is then a bounded mistake, not a free
+    # balance. The offer's minimum top-up is the friend referral's (`referral_min_topup_micro`).
+    affiliate_bonus_max_micro: int = 50_000_000  # $50
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
@@ -1401,6 +1459,16 @@ class Settings(BaseSettings):
     def _compare_pairs_shape(cls, v: str) -> str:
         _parse_compare_pairs(v)  # raises ValueError on a malformed value
         return v
+
+    @field_validator("ranking_tiers")
+    @classmethod
+    def _ranking_tiers_shape(cls, v: str) -> str:
+        _parse_ranking_tiers(v)
+        return v
+
+    @property
+    def ranking_tier_map(self) -> dict[str, dict[str, str]]:
+        return _parse_ranking_tiers(self.ranking_tiers)
 
     @property
     def compare_pair_map(self) -> dict[str, list[tuple[str, str]]]:

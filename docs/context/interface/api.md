@@ -471,7 +471,7 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.
 - `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read at team creation;
-  `/adtrack.js` is empty when conversion tracking is off, so unconfigured deployments set no
+  `/click-id.js` is empty when conversion tracking is off, so unconfigured deployments set no
   advertising cookies ([ads-conversions](../architecture/ads-conversions.md)).
 - Feedback, media hosting, pictures and the showcase are owned by their fragments:
   [feedback](../architecture/feedback.md), [media](../architecture/media.md),
