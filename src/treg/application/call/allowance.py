@@ -67,8 +67,30 @@ def money_lock(org_id: int) -> asyncio.Lock:
     key = (org_id, asyncio.get_running_loop())
     lock = _money_locks.get(key)
     if lock is None:
+        _prune_if_full()
         lock = _money_locks[key] = asyncio.Lock()
     return lock
+
+
+# Past this many teams in any of the per-team maps, the idle ones are dropped: with every team
+# on, a process meets far more teams over its life than are busy at once.
+_TEAM_STATE_PRUNE_AT = 1024
+
+
+def _prune_if_full() -> None:
+    if max(len(_money_locks), len(_refills), len(_refused_until)) < _TEAM_STATE_PRUNE_AT:
+        return
+    now = time.monotonic()
+    for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
+        del _refused_until[org_id]
+    # A lock that is free and that nobody waits for: the next caller makes a new one, and no
+    # caller still holds this. asyncio has no public count of a lock's waiters.
+    for key in [key for key, lock in _money_locks.items()
+                if not lock.locked() and not lock._waiters]:
+        del _money_locks[key]
+    busy = {org_id for org_id, _ in _money_locks} | set(_refreshing) | set(_refused_until)
+    for org_id in [org_id for org_id in _refills if org_id not in busy]:
+        del _refills[org_id]
 _refills: dict[int, int] = {}
 
 
@@ -337,6 +359,8 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         # The counter read was built for another hold. Publishing this one replaces it, and
         # what it showed goes with it.
         available = 0
+    if org_id not in _refills:
+        _prune_if_full()
     _refills[org_id] = _refills.get(org_id, 0) + 1
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s "
              "target=%s", org_id, result.added_micro, result.amount_micro, available,

@@ -984,6 +984,38 @@ async def test_a_team_with_no_balance_opens_nothing(org_id, store):
     assert store.counters == {}
 
 
+async def test_per_team_state_of_idle_teams_is_dropped_once_it_grows(org_id, store, monkeypatch):
+    """Teams refused a refill leave a lock, a refill count and a cooldown each. Past the bound
+    the idle ones go, so the maps follow the busy teams, not every team a process ever met."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_refills", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 4)
+    monkeypatch.setattr(runtime, "_REFUSAL_COOLDOWN_S", 0.0)
+    for team in range(10):
+        refused = org_id + 1000 + team  # no such team: nothing to refill from
+        assert await runtime.take(refused, 600) is None
+    assert len(runtime._money_locks) <= 4
+    assert len(runtime._refills) <= 4 and len(runtime._refused_until) <= 4
+
+
+async def test_a_lock_in_use_or_waited_for_is_never_dropped(org_id, store, monkeypatch):
+    """Two calls of a team must meet on one lock: one held, or one a caller waits for, stays."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
+    held, waited = runtime.money_lock(org_id), runtime.money_lock(org_id + 1)
+    await held.acquire()
+    await waited.acquire()
+    waiter = asyncio.create_task(waited.acquire())
+    await asyncio.sleep(0)
+    waited.release()  # free now, but the waiter has not taken it yet
+    runtime.money_lock(org_id + 2)
+    runtime.money_lock(org_id + 3)
+    assert runtime.money_lock(org_id) is held and runtime.money_lock(org_id + 1) is waited
+    await waiter
+    waited.release()
+    held.release()
+
+
 async def test_a_daily_cap_with_no_room_for_a_refill_sends_the_call_to_the_exact_path(org_id, store):
     assert await runtime.take(org_id, 600, daily_cap_micro=CHUNK - 1) is None
     assert await _state(org_id) == (GRANT, 0)

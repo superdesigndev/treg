@@ -340,6 +340,12 @@ last line, so a listed team whose calls never reach the allowance says which rul
 `calls` counts calls sent to the exact path, before its reserve runs: a call that path then
 refuses (short balance, a cap) is counted too, so it is not the number of holds written.
 
+A process keeps a little state per team it has refilled for: its money lock, a refill count and,
+after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_STATE_PRUNE_AT`
+teams, the idle entries go (an expired cooldown; a lock nobody holds or waits for; the count of a
+team with neither), so with every team on they follow the busy teams, not every team the process
+has met.
+
 `application/call/allowance.py` is the whole runtime:
 
 - **take.** `store.allowance_take`. On a miss, one process takes a short lease and refills; the
