@@ -343,7 +343,8 @@ refuses (short balance, a cap) is counted too, so it is not the number of holds 
 A process keeps a little state per team it has refilled for: its money lock, a refill count and,
 after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_STATE_PRUNE_AT`
 teams, the idle entries go (an expired cooldown; a lock nobody holds or waits for; the count of a
-team with neither), so with every team on they follow the busy teams, not every team the process
+team with neither and no take in progress, since a caller compares the count before and after its
+take), so with every team on they follow the busy teams, not every team the process
 has met.
 
 `application/call/allowance.py` is the whole runtime:

@@ -85,10 +85,14 @@ def _prune_if_full() -> None:
     for key in [key for key, lock in _money_locks.items()
                 if not lock.locked() and not lock._waiters]:
         del _money_locks[key]
-    busy = {org_id for org_id, _ in _money_locks} | set(_refreshing) | set(_refused_until)
+    busy = ({org_id for org_id, _ in _money_locks} | set(_refreshing) | set(_refused_until)
+            | set(_taking))
     for org_id in [org_id for org_id in _refills if org_id not in busy]:
         del _refills[org_id]
 _refills: dict[int, int] = {}
+# Takes in progress per team. A caller reads `refills` before a take and after it, so a team's
+# count is kept while one runs.
+_taking: dict[int, int] = {}
 
 
 def refills(org_id: int) -> int:
@@ -140,12 +144,16 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
     # The place is taken before anything is awaited, so calls arriving together cannot all pass
     # on the last one. `finish` gives it back, or hands it to the charge writer.
     _in_flight[0] += 1
+    _taking[org_id] = _taking.get(org_id, 0) + 1
     epoch = None
     try:
         epoch = await _take(org_id, amount_micro, daily_cap_micro, after_refill)
     finally:
         if not epoch:
             _in_flight[0] -= 1
+        _taking[org_id] -= 1
+        if not _taking[org_id]:
+            del _taking[org_id]
     return epoch
 
 

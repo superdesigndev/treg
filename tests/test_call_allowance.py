@@ -199,6 +199,7 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_refused_until", {})
     monkeypatch.setattr(runtime, "_charges", runtime._ChargeWriter())
     monkeypatch.setattr(runtime, "_in_flight", [0])
+    monkeypatch.setattr(runtime, "_taking", {})
     # The allowance is PostgreSQL only; its logic is still tested on whatever the suite runs on.
     monkeypatch.setattr(runtime, "_database_supported", lambda: True)
     monkeypatch.setattr(runtime, "_freezes_due", {})
@@ -996,6 +997,21 @@ async def test_per_team_state_of_idle_teams_is_dropped_once_it_grows(org_id, sto
         assert await runtime.take(refused, 600) is None
     assert len(runtime._money_locks) <= 4
     assert len(runtime._refills) <= 4 and len(runtime._refused_until) <= 4
+
+
+@pytest.mark.parametrize("taking", [True, False])
+async def test_a_team_taking_keeps_its_refill_count_through_a_prune(
+        org_id, store, monkeypatch, taking):
+    """A caller compares the count before and after its take: dropped in between and rebuilt by
+    the take's own refill, it would read the same and hide the refill."""
+    monkeypatch.setattr(runtime, "_money_locks", {})
+    monkeypatch.setattr(runtime, "_TEAM_STATE_PRUNE_AT", 2)
+    monkeypatch.setattr(runtime, "_refills", {org_id: 1, org_id + 1: 1, org_id + 2: 1})
+    if taking:
+        runtime._taking[org_id] = 1
+    runtime._prune_if_full()
+    assert (org_id in runtime._refills) is taking
+    assert org_id + 1 not in runtime._refills
 
 
 async def test_a_lock_in_use_or_waited_for_is_never_dropped(org_id, store, monkeypatch):
