@@ -585,6 +585,7 @@ endpoints:
       queryParams: {maxTotalChargeUsd: 0.05, timeout: 90}
       body: {input: [{asin: B09G7ZMVJP, domainCode: de, sortBy: recent, filterByStar: critical, maxPages: 1}]}
     cost: {type: per_result, value: 0.0009, currency: USD, per: 1, unit: review, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/axesso_data~amazon-reviews-scraper', checked: '2026-11-24', confidence: verified, note: "Charged per dataset item, including penalty entries."}
+    unverified: "Free-plan runs on Amazon.de returned HTTP 201 with zero rows. The actor reported that it requires a paying user. Critical reviews across pages still need a paid-account capture."
     added: '2026-11-24'
     docs_url: https://apify.com/axesso_data/amazon-reviews-scraper
 
