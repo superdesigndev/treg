@@ -166,16 +166,19 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
             "retained_per_instance": retained_per_process * workers}
 
 
-_budget = connection_budget()
-logging.getLogger("treg").info(
-    "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
-    "instance at full load, %d retained once idle; a rolling deploy adds the new generation to "
-    "the old one on every instance it replaces; compare with the database connection ceiling",
-    POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
-    POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
-    POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
-    _budget["per_process"], _budget["workers"], _budget["per_instance"],
-    _budget["retained_per_instance"])
+def log_connection_budget() -> None:
+    """Log the budget once per process. Called from the app lifespan, not at import: Uvicorn imports
+    the app before treg's loggers are configured, and an import-time INFO line is dropped."""
+    budget = connection_budget()
+    logging.getLogger("treg").info(
+        "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
+        "instance at full load, %d retained once idle; a rolling deploy adds the new generation to "
+        "the old one on every instance it replaces; compare with the database connection ceiling",
+        POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
+        POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
+        POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
+        budget["per_process"], budget["workers"], budget["per_instance"],
+        budget["retained_per_instance"])
 
 
 def _new_engine(name: str, url: str | None = None):

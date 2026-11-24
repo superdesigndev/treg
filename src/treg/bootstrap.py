@@ -36,7 +36,8 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
+from .infra.db import (DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker,
+                       log_connection_budget, verify_db)
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -819,6 +820,7 @@ def _lifespan(role: AppRole):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             media.validate_configuration()
             await verify_db()
+            log_connection_budget()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
