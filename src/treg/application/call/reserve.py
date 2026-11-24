@@ -497,8 +497,6 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         skip = "take_refused"
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
-    # Logged for the teams named one by one: with every team on, one line per team and reason
-    # a minute is noise nobody asked to watch.
     if listed and caller.org_id in get_settings().money_allowance_org_ids:
         _note_allowance_skip(caller.org_id, skip)
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens

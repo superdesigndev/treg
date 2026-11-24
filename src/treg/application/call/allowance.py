@@ -72,8 +72,6 @@ def money_lock(org_id: int) -> asyncio.Lock:
     return lock
 
 
-# Past this many teams in any of the per-team maps, the idle ones are dropped: with every team
-# on, a process meets far more teams over its life than are busy at once.
 _TEAM_STATE_PRUNE_AT = 1024
 
 
@@ -83,8 +81,7 @@ def _prune_if_full() -> None:
     now = time.monotonic()
     for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
         del _refused_until[org_id]
-    # A lock that is free and that nobody waits for: the next caller makes a new one, and no
-    # caller still holds this. asyncio has no public count of a lock's waiters.
+    # asyncio has no public count of a lock's waiters.
     for key in [key for key, lock in _money_locks.items()
                 if not lock.locked() and not lock._waiters]:
         del _money_locks[key]
