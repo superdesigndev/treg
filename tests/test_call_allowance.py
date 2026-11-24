@@ -1300,8 +1300,7 @@ async def test_every_other_call_keeps_its_own_hold_and_a_listed_team_logs_why(
 
 def _skipped(org_id: int, reason: str, held_micro: int) -> None:
     """A skip whose exact-path hold of `held_micro` then committed."""
-    call_reserve._note_allowance_skip(org_id, reason)
-    call_reserve._note_skip_held(org_id, reason, held_micro)
+    call_reserve._note_allowance_skip(org_id, reason, held_micro)
 
 
 def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
@@ -1331,7 +1330,7 @@ def test_every_team_counts_toward_one_line_per_reason_a_minute_naming_the_teams_
     _skipped(1, "tagged", 5)
     assert skip_lines() == [], "no team named: nothing until the minute is up"
     clock[0] += call_reserve._SKIP_LOG_EVERY_S + 0.04
-    call_reserve._note_allowance_skip(1, "child_call:routed")
+    call_reserve._note_allowance_skip(1, "child_call:routed", 0)
     # Team n sent n calls of 100 * (8 - n) each: team 4 held the most; a tie goes to more calls.
     assert skip_lines() == [_total("child_call:routed", 28, 8400,
                                    [[4, 4, 1600], [5, 5, 1500], [3, 3, 1500], [6, 6, 1200],
@@ -1350,6 +1349,37 @@ def test_a_minute_naming_too_many_teams_is_logged_early(monkeypatch, skip_lines)
     _skipped(3, "tagged", 10)
     assert skip_lines() == [_total("tagged", 3, 30, [[1, 2, 20], [2, 1, 10]], window_s=1.0)]
     assert call_reserve._skip_totals["tagged"]["orgs"] == {3: [1, 10]}
+
+
+async def test_a_skipped_call_s_committed_hold_is_counted_when_the_call_is_cancelled_after(
+        org_id, store, monkeypatch, skip_lines):
+    """Cancelled while its money session closes: the hold is committed, so it is counted."""
+    admit = call_reserve.reserve_admission
+
+    @contextlib.asynccontextmanager
+    async def cancelled_on_the_way_out(org):
+        async with admit(org):
+            yield
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(call_reserve, "reserve_admission", cancelled_on_the_way_out)
+    caller, mk = await _caller(org_id), _call(org_id)
+    with pytest.raises(asyncio.CancelledError):
+        await call_reserve._platform_reserve(mk, caller, call_ref="c-1", allow_allowance=False)
+    assert await _per_call_holds(org_id) == ["c-1"]
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"]) == (1, mk.reserved_micro)
+
+
+async def test_a_skipped_call_the_balance_refuses_counts_as_a_call_that_held_nothing(
+        org_id, store, skip_lines):
+    caller = await _caller(org_id)
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(_call(org_id, estimate=GRANT + 1), caller,
+                                             call_ref="c-1", allow_allowance=False)
+    assert refused.value.status_code == 402 and await _per_call_holds(org_id) == []
+    total = call_reserve._skip_totals["not_allowed"]
+    assert (total["calls"], total["held_micro"], total["orgs"]) == (1, 0, {org_id: [1, 0]})
 
 
 @pytest.mark.parametrize(("call_ref", "reason"), [

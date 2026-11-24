@@ -396,18 +396,23 @@ _skip_totals: dict[str, dict] = {}
 _skip_log = get_logger("treg.allowance_skips")
 
 
-def _note_allowance_skip(org_id: int, reason: str) -> None:
-    """Count a listed team's call sent to the exact path, by reason.
+def _note_allowance_skip(org_id: int, reason: str, held_micro: int) -> None:
+    """Count a listed team's call sent to the exact path, by reason, once its reserve is decided:
+    `held_micro` is what the hold it committed reserved, 0 for a call refused or cancelled first.
 
     Every team counts toward one `allowance_skips` line per reason per minute in this process:
-    the calls, the micro-USD their committed holds reserved (`_note_skip_held`), how many teams
-    sent them and the teams that held the most. A team named in `money_allowance_org_ids` also
-    gets its own `allowance_skipped` lines: the first at once, then one per reason per minute
-    with the count since the last. Diagnostics never fail a call."""
+    the calls, the micro-USD they held, how many teams sent them and the teams that held the
+    most. A team named in `money_allowance_org_ids` also gets its own `allowance_skipped` lines:
+    the first at once, then one per reason per minute with the count since the last.
+    Diagnostics never fail a call."""
     try:
         now = time.monotonic()
-        _skip_window(now, org_id, reason)["orgs"][org_id][0] += 1
-        _skip_totals[reason]["calls"] += 1
+        total = _skip_window(now, org_id, reason)
+        total["calls"] += 1
+        total["held_micro"] += held_micro
+        team = total["orgs"][org_id]
+        team[0] += 1
+        team[1] += held_micro
         if org_id not in get_settings().money_allowance_org_ids:
             return
         entry = _skips.setdefault((org_id, reason), [None, 0])
@@ -417,16 +422,6 @@ def _note_allowance_skip(org_id: int, reason: str) -> None:
         _skip_log.info("allowance_skipped %s", json.dumps(
             {"org_id": org_id, "reason": reason, "calls": entry[1]}, separators=(",", ":")))
         entry[0], entry[1] = now, 0
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _note_skip_held(org_id: int, reason: str, held_micro: int) -> None:
-    """Add a skipped call's hold to its reason's minute once the hold is committed."""
-    try:
-        total = _skip_window(time.monotonic(), org_id, reason)
-        total["held_micro"] += held_micro
-        total["orgs"][org_id][1] += held_micro
     except Exception:  # noqa: BLE001
         pass
 
@@ -484,7 +479,7 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False,
                             allow_allowance: bool = False, mark_in_flight: bool = False,
-                            retry_short: bool = True) -> None:
+                            retry_short: bool = True, skip_reason: str | None = None) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
@@ -557,8 +552,10 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         skip = "take_refused"
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
-    if listed:
-        _note_allowance_skip(caller.org_id, skip)
+    # A listed team's call is counted once its reserve is decided (`_note_allowance_skip`); a
+    # retry after a give-back (`skip_reason`) is counted under the first attempt's reason.
+    note = skip if listed else skip_reason
+    noted = note is None
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.
     refused_org = None
@@ -598,8 +595,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     raise
                 with timing.phase("commit"):
                     await db.commit()
-        if listed:
-            _note_skip_held(caller.org_id, skip, mk.reserved_micro)
+                if not noted:
+                    noted = True
+                    _note_allowance_skip(caller.org_id, note, mk.reserved_micro)
         if auto_on:
             await _schedule_autotopup_after(caller.org_id)
     except ledger.PurchasedCreditShort as exc:
@@ -624,11 +622,10 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             billing.maybe_schedule_autotopup(refused_org)
         if retry_short and await allowance_runtime.give_back_for_exact_path(
                 caller.org_id, exc.required_micro - exc.balance_micro):
-            await _platform_reserve(
-                mk, caller, meta, call_ref, allow_holdless=allow_holdless, retry_short=False)
-            if listed:
-                _note_skip_held(caller.org_id, skip, mk.reserved_micro)
-            return
+            noted = True
+            return await _platform_reserve(
+                mk, caller, meta, call_ref, allow_holdless=allow_holdless, retry_short=False,
+                skip_reason=note)
         wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
@@ -656,3 +653,6 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             "provider": mk.provider,
             "endpoint_id": mk.endpoint_id,
         }) from exc
+    finally:
+        if not noted:
+            _note_allowance_skip(caller.org_id, note, 0)
