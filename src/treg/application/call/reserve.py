@@ -1,6 +1,7 @@
 """Reservation and spend-cap helpers for metered calls."""
 
 import functools
+import json
 import logging
 import random
 import time
@@ -26,6 +27,7 @@ from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
+from ...infra.structured_logging import get_logger
 from ...models import CallRecord, Org, TagBudget
 from . import allowance as allowance_runtime
 from .intake import CallMeta, _NO_META
@@ -334,23 +336,63 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
             await _enforce_platform_daily_cap(caller, 0, db)
 
 
-def _allowance_eligible(mk: MarketplaceCall, caller: Caller, meta: CallMeta,
-                        call_ref: str | None) -> bool:
-    """A call the team's allowance may pay for: a direct, synchronous, untagged call on treg's
-    platform key, by a member with no spend limit, on an endpoint any credit may pay for.
+def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
+                    allowed: bool) -> str | None:
+    """Why a call keeps its own hold, or None for a call the team's allowance may pay for: a
+    direct, synchronous, untagged call on treg's platform key with no `Idempotency-Key`, by a
+    member with no spend limit, on an endpoint any credit may pay for.
 
     Everything else keeps its own hold, because something reads that hold: a tag or member row
-    written with it, an async task or a routed parent that closes it later, the purchased-credit
-    gate. A child call's reference is its parent's plus a `:suffix`.
+    written with it, an async task or a routed parent that closes it later, the idempotency check
+    that asks whether money moved, the purchased-credit gate. A child call's reference is its
+    parent's plus a `:suffix`. The call application passes `allowed` false only for a call that
+    carries an `Idempotency-Key`.
     """
-    return bool(
-        call_ref and ":" not in call_ref and (mk.reserved_micro or 0) > 0
-        and allowance_runtime.enabled_for(caller.org_id)
-        and not meta.tags and not mk.billed_oauth and mk.deferred is None
-        and mk.async_owner_call_id is None and not mk.async_descriptor
-        and mk.provider not in catalog_store.load().trial_pools
-        and budget_policy.member_daily_spend_cap(caller.membership, caller.org) is None
-        and not _purchased_only(mk.endpoint_id))
+    if not call_ref or ":" in call_ref:
+        return "child_call"
+    if not allowed:
+        return "idempotency_key"
+    if (mk.reserved_micro or 0) <= 0:
+        return "zero_price"
+    if not allowance_runtime.enabled_for(caller.org_id):
+        return "allowance_off"
+    if meta.tags:
+        return "tagged"
+    if mk.billed_oauth:
+        return "billed_oauth"
+    if mk.deferred is not None:
+        return "deferred_settle"
+    if mk.async_owner_call_id is not None or mk.async_descriptor:
+        return "async"
+    if mk.provider in catalog_store.load().trial_pools:
+        return "trial_pool"
+    if budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None:
+        return "member_spend_cap"
+    if _purchased_only(mk.endpoint_id):
+        return "purchased_credit_only"
+    return None
+
+
+_SKIP_LOG_EVERY_S = 60.0
+_skips: dict[tuple[int, str], list] = {}
+_skip_log = get_logger("treg.allowance_skips")
+
+
+def _note_allowance_skip(org_id: int, reason: str) -> None:
+    """Count a listed team's call that kept its own hold, by reason. The first one is logged at
+    once; after that one line per team and reason per minute in this process carries the count
+    since the last line. Diagnostics never fail a call."""
+    try:
+        now = time.monotonic()
+        entry = _skips.setdefault((org_id, reason), [None, 0])
+        entry[1] += 1
+        if entry[0] is not None and now - entry[0] < _SKIP_LOG_EVERY_S:
+            return
+        _skip_log.info("allowance_skipped %s", json.dumps(
+            {"org_id": org_id, "reason": reason, "calls": entry[1]}, separators=(",", ":")))
+        entry[0], entry[1] = now, 0
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def _schedule_autotopup_after(org_id: int) -> None:
@@ -395,7 +437,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     balance row. A tagged call keeps its hold,
     because the tag rows written with it count toward `calls_per_day`.
 
-    `allow_allowance` lets an eligible call (`_allowance_eligible`) of a team listed in
+    `allow_allowance` lets an eligible call (`_allowance_skip` is None) of a team listed in
     `money_allowance_org_ids` reserve from the team's allowance counter instead: no hold, no
     balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
     A hold the balance cannot cover is tried once more (`retry_short`) when the team's
@@ -428,7 +470,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
     mk.allowance_epoch = None
-    if allow_allowance and _allowance_eligible(mk, caller, meta, call_ref):
+    listed = retry_short and caller.org_id in get_settings().money_allowance_org_ids
+    skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
+    if skip is None:
         before = allowance_runtime.refills(caller.org_id)
         epoch = await allowance_runtime.take(
             caller.org_id, mk.reserved_micro,
@@ -443,6 +487,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
             return
+        skip = "take_refused"
+    if listed:
+        _note_allowance_skip(caller.org_id, skip)
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.
     refused_org = None

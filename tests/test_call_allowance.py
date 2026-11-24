@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
+import json
+import logging
 import os
 import time
 from datetime import datetime, timedelta
@@ -952,11 +955,31 @@ async def test_a_cancelled_eligible_call_returns_its_take(org_id, store):
     assert await _state(org_id) == (GRANT - CHUNK, CHUNK)
 
 
-@pytest.mark.parametrize("why", [
-    "not_allowed_by_the_caller", "team_not_listed", "tagged", "child_call", "billed_oauth",
-    "routed_child", "store_unavailable",
+@pytest.fixture
+def skip_lines(monkeypatch, caplog):
+    """`skip_lines()` is every `allowance_skipped` line the default sink wrote, as raw text."""
+    monkeypatch.setattr(call_reserve, "_skips", {})
+    caplog.set_level(logging.INFO, logger=call_reserve._skip_log.name)
+    out = io.StringIO()
+    sinks = [h for h in call_reserve._skip_log.handlers if type(h) is logging.StreamHandler]
+    assert sinks and not call_reserve._skip_log.propagate
+    for handler in sinks:
+        monkeypatch.setattr(handler, "stream", out)
+    return lambda: [line for line in out.getvalue().splitlines() if line]
+
+
+def _skip(org_id: int, reason: str, calls: int) -> str:
+    return "allowance_skipped " + json.dumps(
+        {"org_id": org_id, "reason": reason, "calls": calls}, separators=(",", ":"))
+
+
+@pytest.mark.parametrize(("why", "reason"), [
+    ("not_allowed_by_the_caller", "idempotency_key"), ("team_not_listed", None),
+    ("tagged", "tagged"), ("child_call", "child_call"), ("billed_oauth", "billed_oauth"),
+    ("routed_child", "deferred_settle"), ("store_unavailable", "take_refused"),
 ])
-async def test_every_other_call_keeps_its_own_hold(org_id, store, monkeypatch, why):
+async def test_every_other_call_keeps_its_own_hold_and_a_listed_team_logs_why(
+        org_id, store, monkeypatch, skip_lines, why, reason):
     caller, mk, meta, call_ref, allow = await _caller(org_id), _call(org_id), CallMeta(tags={}), "c-1", True
     if why == "not_allowed_by_the_caller":
         allow = False
@@ -976,6 +999,21 @@ async def test_every_other_call_keeps_its_own_hold(org_id, store, monkeypatch, w
     assert mk.allowance_epoch is None and mk.call_id == call_ref
     assert await _per_call_holds(org_id) == [call_ref]
     assert store.counters == {}
+    assert skip_lines() == ([] if reason is None else [_skip(org_id, reason, 1)])
+
+
+def test_skips_are_logged_once_a_minute_per_team_and_reason_with_their_count(
+        monkeypatch, skip_lines):
+    org_id = 7
+    clock = [1000.0]
+    monkeypatch.setattr(call_reserve.time, "monotonic", lambda: clock[0])
+    for _ in range(3):
+        call_reserve._note_allowance_skip(org_id, "idempotency_key")
+    call_reserve._note_allowance_skip(org_id, "tagged")
+    clock[0] += call_reserve._SKIP_LOG_EVERY_S
+    call_reserve._note_allowance_skip(org_id, "idempotency_key")
+    assert skip_lines() == [_skip(org_id, "idempotency_key", 1), _skip(org_id, "tagged", 1),
+                            _skip(org_id, "idempotency_key", 3)]
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):

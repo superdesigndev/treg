@@ -318,7 +318,7 @@ it creates no other money movement. A `/tasks/` poll is an ordinary call and set
 ## Allowance: one hold for many calls
 
 Off by default: `money_allowance_org_ids` lists the teams, and the shared key-value store must be
-configured. For a listed team, an eligible call (`reserve._allowance_eligible`) reserves with one
+configured. For a listed team, an eligible call (`reserve._allowance_skip` returns None) reserves with one
 atomic take from the team's allowance counter and touches no balance row, so its calls no longer
 queue on the team's money lease twice each.
 
@@ -328,6 +328,14 @@ outside the trial pools, an endpoint any credit may pay for, and a price above z
 call keeps its own hold, because something reads that hold: the tag and member rows written with
 it, the async task or routed parent that closes it later, the idempotency check that asks whether
 money moved, the purchased-credit gate.
+
+A listed team's call that keeps its own hold logs why, as one JSON line on its own logger
+(`treg.allowance_skips`): `allowance_skipped {"org_id":..,"reason":..,"calls":..}`, with the reason `_allowance_skip` named (`child_call`, `idempotency_key`, `tagged`, `async`, ...)
+or `take_refused` when an eligible call's take returned it to the exact path. The first skip of a
+team and reason is logged at once, then one line a minute per process with the count since the
+last line, so a listed team whose calls never reach the allowance says which rule kept them out.
+`calls` counts calls sent to the exact path, before its reserve runs: a call that path then
+refuses (short balance, a cap) is counted too, so it is not the number of holds written.
 
 `application/call/allowance.py` is the whole runtime:
 
