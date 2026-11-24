@@ -944,14 +944,6 @@ def _marketplace_pricing(
     else:
         unit = (_usd_to_micro(cost["usd"])
                 if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
-    if endpoint_id in ("icypeas.bulk.search", "icypeas.people.email.find") and credit_rate:
-        # The answer is an id ({file} / {item: {_id}}) with no rows, so this reserve IS the bill: one
-        # row per bulk `data` entry at its task's rate, one for a single search.
-        # ponytail: a search row is billed as if found; per-found billing needs a settle on job end.
-        doc = _json_object(body)
-        rows = doc.get("data") if isinstance(doc.get("data"), list) else []
-        credits = 0.1 if doc.get("task") == "email-verification" else 1
-        return _usd_to_micro(max(1, min(len(rows), 5000)) * credits * credit_rate), unit
     if provider == "quickenrich":
         credit = _usd_to_micro(float(cost.get("usd") or 0))
         if endpoint_id == "quickenrich.people.search.domain":

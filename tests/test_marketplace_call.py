@@ -3827,13 +3827,19 @@ def test_icypeas_profile_url_miss_settles_at_zero():
 
 @pytest.mark.parametrize("task,rows,credits", [
     ("email-verification", 3, 0.3), ("email-search", 3, 3), ("domain-search", 1, 1)])
-def test_icypeas_bulk_search_bills_its_rows_at_the_task_rate(task, rows, credits):
-    """The start answer has no rows, so the reserve is the bill: never the 20-row default."""
+def test_icypeas_bulk_search_holds_its_rows_and_bills_the_finished_files_counts(task, rows, credits):
+    """The start answer has no rows, so the hold is every row at its task's rate, and the finished
+    file's counts settle it: found rows for a search, tested rows for a verification."""
+    from treg.domain.money import settlement
     body = {"name": "x", "task": task, "data": [["a@example.com"]] * rows}
-    mk, estimate, credit = _priced("icypeas.bulk.search", None, body, request_data={"body": body})
-    assert estimate == round(credits * credit)
-    assert call_settle._observed_cost_micro(
-        mk, b'{"success":true,"status":"in_progress","file":"f"}') in (None, estimate)
+    ep = catalog_store.load().by_id["icypeas.bulk.search"]
+    pricing = call_resolution.price_call(ep, call_resolution.QueryValues(()), json.dumps(body).encode(), set())
+    credit = _usd_to_micro_for_test(catalog_store.load().credit_rates["icypeas"])
+    assert pricing.estimate_micro == round(credits * credit)
+    assert pricing.settlement_basis["when"] == "terminal"
+    finished = {"files": [{"task": task, "total": rows, "found": 1, "done": rows, "finished": True}]}
+    billed = 0.1 * rows if task == "email-verification" else 1
+    assert settlement.settle(pricing.settlement_basis, {"terminal": finished}) == round(billed * credit)
 
 
 def test_icypeas_single_email_search_bills_one_credit_not_a_page():
