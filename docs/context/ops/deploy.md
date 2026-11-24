@@ -395,7 +395,10 @@ an id restores the hold path for that org's new calls; no migration is needed.
 
 `TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
-it needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
+`TREG_MONEY_ALLOWANCE_ALL_ORGS=true` puts every org on it instead, and
+`TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` (default `[]`) keeps the orgs it lists off either way, so
+one team is taken off without turning the rest back. Skip reasons are logged only for the orgs in
+`TREG_MONEY_ALLOWANCE_ORG_IDS`. The allowance needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
 to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
 `TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert.
 `TREG_MONEY_ALLOWANCE_REFILL_WINDOW_S` (default `0`, off) sizes a refill to what the team took

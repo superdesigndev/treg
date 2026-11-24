@@ -438,8 +438,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     balance row. A tagged call keeps its hold,
     because the tag rows written with it count toward `calls_per_day`.
 
-    `allow_allowance` lets an eligible call (`_allowance_skip` is None) of a team listed in
-    `money_allowance_org_ids` reserve from the team's allowance counter instead: no hold, no
+    `allow_allowance` lets an eligible call (`_allowance_skip` is None) of a team on the allowance
+    (`allowance_runtime.listed`) reserve from the team's allowance counter instead: no hold, no
     balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
     `mark_in_flight` (a call holding an Idempotency-Key claim) first marks the call as running in
     the shared store, the one sign of it a stale claim can read; unmarked, it keeps its hold.
@@ -473,7 +473,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
     mk.allowance_epoch, mk.allowance_marked = None, False
-    listed = retry_short and caller.org_id in get_settings().money_allowance_org_ids
+    listed = retry_short and allowance_runtime.listed(caller.org_id)
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
     # Marked before the take: from the take on, the mark is all a stale claim can see of the call.
     if skip is None and mark_in_flight and not await idempotency.mark_in_flight(call_ref):
@@ -497,7 +497,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         skip = "take_refused"
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
-    if listed:
+    # Logged for the teams named one by one: with every team on, one line per team and reason
+    # a minute is noise nobody asked to watch.
+    if listed and caller.org_id in get_settings().money_allowance_org_ids:
         _note_allowance_skip(caller.org_id, skip)
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.

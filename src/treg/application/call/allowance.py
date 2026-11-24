@@ -78,9 +78,18 @@ def refills(org_id: int) -> int:
     return _refills.get(org_id, 0)
 
 
+def listed(org_id: int) -> bool:
+    """Whether the operator put the team on the allowance: every team when
+    `money_allowance_all_orgs`, else the ones in `money_allowance_org_ids`, never an excluded
+    one."""
+    settings = get_settings()
+    if org_id in settings.money_allowance_excluded_org_ids:
+        return False
+    return settings.money_allowance_all_orgs or org_id in settings.money_allowance_org_ids
+
+
 def enabled_for(org_id: int) -> bool:
-    return (org_id in get_settings().money_allowance_org_ids and kv.configured()
-            and _database_supported())
+    return listed(org_id) and kv.configured() and _database_supported()
 
 
 def _database_supported() -> bool:
