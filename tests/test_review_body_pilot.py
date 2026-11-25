@@ -14,6 +14,9 @@ from treg.domain.feedback import body_view, review_codes
 from treg.infra.db import session_maker
 from treg.infra.judge import Reply
 from treg.models import CallRecord, CallReview
+from test_marketplace_call import platform_on  # noqa: F401 - pytest fixture
+from test_routing import enrichment_on  # noqa: F401 - pytest fixture
+from test_route_verify import verifiers_on  # noqa: F401 - pytest fixture
 
 V = review_codes.CODEBOOK_VERSION
 
@@ -62,10 +65,10 @@ def _review(org, ref, code, *, reason=REASON, secondary=None, routed=False):
                       codebook_version=V, routed_via="people.search" if routed else None)
 
 
-def _record(org, ref, key=None, *, status=200, tier="platform"):
+def _record(org, ref, key=None, *, status=200, tier="platform", hit=None):
     return CallRecord(org_id=org, user_email="a@example.dev", tool_name="apollo.people.search",
                       method="POST", path="/call/apollo.people.search", status_code=status, call_ref=ref,
-                      endpoint_id="apollo.people.search", credential_tier=tier,
+                      endpoint_id="apollo.people.search", credential_tier=tier, hit=hit,
                       archive_key_hash=key, archive_content_hash=key and f"c-{key}")
 
 
@@ -147,6 +150,56 @@ async def test_routed_review_reads_its_successful_attempt(clients, monkeypatch):
     assert out["coded"] == 1 and out["same_primary"] == 1
     item = seen[0]["reviews"][0]
     assert item["routed"] is True and json.loads(item["response"]["body"]) == {"results": []}
+
+
+async def test_routed_review_compares_only_an_answer_the_caller_got(clients, monkeypatch):
+    # A waterfall that moved on from a miss returned its last attempt's answer; a confirmed find
+    # (a hit, then its confirmer) returned the finder's while crediting the confirmer, so it is
+    # counted and never compared.
+    org = await _org(clients)
+    await _add(_review(org, "wf", "EMPTY", routed=True), _record(org, "wf", tier="routed"),
+               _record(org, "wf:r1", "wf-miss", hit=False), _record(org, "wf:r2", "wf-hit", hit=True),
+               _review(org, "cf", "EMPTY", routed=True), _record(org, "cf", tier="routed"),
+               _record(org, "cf:r1", "finder", hit=True), _record(org, "cf:r2", "confirmer", hit=False))
+    _archive(monkeypatch, {"wf-miss": "{}", "wf-hit": json.dumps({"email": "x"}),
+                           "finder": "{}", "confirmer": "{}"})
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "ACCURACY"})
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
+    assert out["answer_unconfirmed"] == 1 and out["coded"] == 1
+    assert [json.loads(r["response"]["body"]) for r in seen[0]["reviews"]] == [{"email": "x"}]
+
+
+async def test_a_confirmed_find_through_the_router_is_never_compared(clients, verifiers_on, monkeypatch):
+    """End to end: Tomba finds the email and is returned, Hunter answers no email and is credited.
+    The pilot must not hand Jev Hunter's empty answer for a review of Tomba's."""
+    import asyncio
+
+    from treg.application.call import service as call_service
+    from test_route_confirm import ON, _hunter
+    from test_route_verify import ASK, FIND, TOMBA_HIT, _relay
+
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT], "hunter": [_hunter(None)]}, []))
+    first = await clients.post(f"/call/{FIND}", json=ASK, headers=ON)
+    assert first.status_code == 200, first.text
+    assert first.json()["_treg"]["served_by"] == "tomba.people.email.find"
+    for _ in range(100):  # the call record is written after the answer
+        review = await clients.post("/reviews", json={"call_id": first.headers["X-Treg-Call-Id"],
+                                                      "usefulness": "not_useful", "reason": REASON})
+        if review.status_code != 404:
+            break
+        await asyncio.sleep(0.02)
+    assert review.status_code == 201, review.text
+    async with session_maker() as db:
+        row = (await db.execute(select(CallReview))).scalar_one()
+        assert row.endpoint_id == "hunter.people.email.find"
+        row.primary_code, row.codebook_version = "EMPTY", V
+        await db.commit()
+    _archive(monkeypatch, {})
+    seen = _jev(monkeypatch)
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
+    assert out["answer_unconfirmed"] == 1 and out["no_body"] == 0 and seen == []
 
 
 async def test_vague_noreason_review_is_asked_and_a_blank_one_is_not(clients, monkeypatch):

@@ -26,7 +26,7 @@ from ..domain.feedback import body_view, review_codes
 from ..infra.db import session_maker
 from ..models import CallRecord, CallReview
 from ..timeutil import utcnow_naive
-from .feedback import answering_child
+from .feedback import served_attempt
 from .review_judge import NEGATIVE, _ask, configured
 
 WINDOW_DAYS = 28
@@ -54,13 +54,20 @@ async def _candidates(since, after: tuple | None, limit: int) -> list:
         return (await db.execute(page)).all()
 
 
-async def _answer(r) -> dict | None:
+UNCONFIRMED = "unconfirmed"
+
+
+async def _answer(r) -> dict | str | None:
     """The answer the reviewed call got, from the archive. A routed call has no archive link of
-    its own: its answer is that of the attempt the review is attributed to
-    (`feedback.answering_child`), in the review's own team."""
+    its own: its answer is that of the attempt the audit rows show was returned
+    (`feedback.served_attempt`), in the review's own team. `UNCONFIRMED` when they cannot show it
+    (a confirmed find returns the finder's answer while the review is credited to the confirmer):
+    such a review is counted, never compared against an answer the agent may not have seen."""
     async with session_maker() as db:
         if r.routed_via is not None:
-            record = await answering_child(db, org_id=r.org_id, call_id=r.call_id)
+            record = await served_attempt(db, org_id=r.org_id, call_id=r.call_id)
+            if record is False:
+                return UNCONFIRMED
         else:
             record = (await db.execute(select(CallRecord).where(
                 CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
@@ -95,7 +102,7 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
     deadline = time.monotonic() + max_seconds
     by_id = catalog_store.load().by_id
     since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
-    out = {"candidates": 0, "no_reason": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
+    out = {"candidates": 0, "no_reason": 0, "answer_unconfirmed": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
            "failed_requests": 0, "read_not_asked": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0, "changed": 0,
            "stopped_by_deadline": False}
     pairs, reason_codes, body_codes = Counter(), Counter(), Counter()
@@ -162,6 +169,9 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
                 out["no_reason"] += 1
                 continue
             found = await _answer(r)
+            if found == UNCONFIRMED:
+                out["answer_unconfirmed"] += 1
+                continue
             if found is None:
                 out["no_body"] += 1
                 continue

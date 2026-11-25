@@ -100,19 +100,38 @@ async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict
     return record
 
 
-async def answering_child(db, *, org_id: int, call_id: str) -> CallRecord | None:
-    """The routed call's last successful attempt in its own team: the vendor a review of the call
-    is attributed to, and whose answer the agent saw.
-
-    A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>` on the
-    provider's job endpoint, which is not what was asked, so they are left out."""
+def _successful_attempts(org_id: int, call_id: str):
+    """A routed call's successful attempts in its own team. A waterfall attempt is `<call>:r<n>`;
+    an async attempt's polls are `<call>:r<n>:p<k>` on the provider's job endpoint, which is not
+    what was asked, so they are left out."""
     escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
-    return (await db.execute(select(CallRecord).where(
+    return select(CallRecord).where(
         CallRecord.org_id == org_id,
         CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
         CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
         CallRecord.status_code >= 200, CallRecord.status_code < 300,
-    ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+    )
+
+
+async def answering_child(db, *, org_id: int, call_id: str) -> CallRecord | None:
+    """The routed call's last successful attempt in its own team: the vendor a review of the call
+    is attributed to. With X-Treg-Route-Confirm that is the confirmer, whose answer is not the one
+    returned (`served_attempt`)."""
+    return (await db.execute(_successful_attempts(org_id, call_id)
+                             .order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+
+
+async def served_attempt(db, *, org_id: int, call_id: str) -> CallRecord | None | bool:
+    """The routed call's attempt whose answer the caller got, when the audit rows prove it: the
+    last successful attempt, provided every earlier successful one was a miss (`hit` false), which
+    a waterfall moves on from. False when that cannot be shown (a confirmed find, where a hit is
+    followed by its confirmer, or an earlier attempt of unknown outcome); None with no success.
+    The route's `served_by` is in the answer and the call event, not on these rows."""
+    attempts = (await db.execute(_successful_attempts(org_id, call_id)
+                                 .order_by(CallRecord.id.asc()))).scalars().all()
+    if not attempts:
+        return None
+    return attempts[-1] if all(a.hit is False for a in attempts[:-1]) else False
 
 
 async def submit_review(
