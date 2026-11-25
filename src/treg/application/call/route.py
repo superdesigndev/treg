@@ -2033,7 +2033,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     paging_note = ""
     if getattr(cand.adapter, "paging", None) and not merged_from and output:
         # One provider's list continues only through that provider: a treg cursor replaces its token.
-        output = {**output, "next_cursor": _next_cursor(cand, output.get("next_cursor"), given)}
+        # A token longer than CURSOR_MAX cannot be issued; leave it for _long_cursor to name on
+        # _treg. Replacing it with null here would look like exhaustion and drop the raw path.
+        issued = _next_cursor(cand, output.get("next_cursor"), given)
+        token = output.get("next_cursor")
+        if issued is not None or not (isinstance(token, str) and len(token) > CURSOR_MAX):
+            output = {**output, "next_cursor": issued}
     elif not resume and not merged_from and output and _list_field(plan.contract) and output.get(_list_field(plan.contract)):
         # A list from a provider that cannot page: say which candidates for this question can,
         # rather than let a null cursor read as "no more rows".
