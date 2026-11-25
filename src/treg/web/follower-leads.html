@@ -184,7 +184,6 @@
   .resbar .note { font: 400 12.5px var(--mono); color: var(--grey); }
 
   /* the money: one test scan */
-  .data { padding-top: 100px; }
   .fx { max-width: 1000px; margin: 40px auto 0; display: flex; align-items: center; gap: 18px; }
   .fx .fh { margin: 0; display: flex; align-items: center; gap: 14px; flex: none; }
   .fx .fh strong { font: 400 56px/1 var(--pixel); letter-spacing: -.02em; color: #e64fc4; background: linear-gradient(90deg, #f05bc8, #b277f0 50%, #22a7ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
@@ -337,20 +336,20 @@
 
     <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 32px">
       <div style="display: flex; flex-direction: column; gap: 10px">
-        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 88px; line-height: 0.9; letter-spacing: 0"><span data-f="rate"></span></div>
+        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
         <div style="display: flex; align-items: center; gap: 10px">
           <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
           <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">lead rate</div>
         </div>
       </div>
       <div style="position: relative; flex-shrink: 0">
-        <svg width="320" height="320" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
+        <svg width="240" height="240" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
           <circle cx="32" cy="32" r="31" fill="#FFFFFF"></circle>
           <circle cx="32" cy="32" r="15.5" fill="none" stroke="#111111" stroke-width="31" id="pieSlice"></circle>
         </svg>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 380px">
-        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 88px; line-height: 0.9; letter-spacing: 0"><span data-f="revenue"></span></div>
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px">
+        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
         <div style="display: flex; align-items: center; gap: 10px">
           <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
           <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
@@ -374,18 +373,6 @@
   </section>
 </header>
 
-<section class="data wrap" id="price">
-  <div class="fx">
-    <p class="fh"><strong>$0.48</strong><span>=</span></p>
-    <div class="fg">
-      <div><b>956</b><span>bios read</span></div>
-      <div><b>723</b><span>profiles judged by Jev</span></div>
-      <div><b>144</b><span>leads</span></div>
-      <div><b>137</b><span>decision makers</span></div>
-    </div>
-  </div>
-</section>
-
 <section class="how-s wrap" id="how">
   <h2 class="cap">How it works.<small>The money goes where the evidence is thin, and nowhere else.</small></h2>
   <ol class="how">
@@ -394,6 +381,15 @@
     <li style="--c:var(--cyan)"><b>3</b><h3>Jev judges each one</h3><p>treg works out what you sell from your own profile, website and posts. Jev, a small decision model, then scores every follower against it: 0 not a buyer, 1 would use it, 2 picks and pays. A lead scores 1.5 or more.</p></li>
     <li style="--c:var(--green)"><b>4</b><h3>Enrich, then Jev decides again</h3><p>When a bio is too thin to judge, treg enriches it with the person's latest posts and the company behind their website. Jev then decides again on the fuller picture. No email, phone or LinkedIn lookups.</p></li>
   </ol>
+  <div class="fx" id="price">
+    <p class="fh"><strong>$0.48</strong><span>=</span></p>
+    <div class="fg">
+      <div><b>956</b><span>bios read</span></div>
+      <div><b>723</b><span>profiles judged by Jev</span></div>
+      <div><b>144</b><span>leads</span></div>
+      <div><b>137</b><span>decision makers</span></div>
+    </div>
+  </div>
 </section>
 
 <section class="final" id="agent">
