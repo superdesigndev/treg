@@ -794,7 +794,8 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'body.mode': 'sync'}, True),
     ({'body.mode': 'async'}, False),        # outside the declared enum
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
-    ({'body.realtime': None}, False),       # absence applies to query parameters only
+    ({'body.realtime': None}, True),        # a declared body field may be absent-only too
+    ({'body.missing': None}, False),        # an absent-only body field is a declared one
     ({'headers.x-key': None}, False),
     ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
     ({'pathParams.model': 'stable'}, True),
