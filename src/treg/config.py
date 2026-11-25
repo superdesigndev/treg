@@ -372,8 +372,11 @@ class Settings(BaseSettings):
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.
     # Empty keeps read_session_maker on the existing primary pool.
     read_database_url: str = ""
+    # The background pool's own route to `database_url`'s database: a transaction-pooling PgBouncer.
+    # Empty keeps it on `database_url`. SQLite has no pools and ignores it.
+    background_database_url: str = ""
 
-    @field_validator("database_url", "read_database_url")
+    @field_validator("database_url", "read_database_url", "background_database_url")
     @classmethod
     def _async_pg_driver(cls, v: str) -> str:
         # Some hosts inject a bare `postgres://`/`postgresql://` URL, but
@@ -403,6 +406,13 @@ class Settings(BaseSettings):
         if v and not v.startswith(("sqlite+aiosqlite://", "postgresql+asyncpg://")):
             raise ValueError("read_database_url must use sqlite+aiosqlite or postgresql+asyncpg, or be empty")
         return v
+
+    @model_validator(mode="after")
+    def _background_database(self):
+        if (self.background_database_url and not self.database_url.startswith("sqlite")
+                and not self.background_database_url.startswith("postgresql+asyncpg://")):
+            raise ValueError("background_database_url must be a PostgreSQL URL")
+        return self
 
     # Pool sizing overrides, e.g. "admin.pool_size=4,background.pool_size=12". Empty = the defaults
     # in `infra.db.POOL_SPECS`. This exists because pool sizing can only be validated in production:
