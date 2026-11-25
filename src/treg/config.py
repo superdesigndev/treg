@@ -786,6 +786,11 @@ class Settings(BaseSettings):
     # take. It runs from a cron, so its wait is not a caller's.
     review_judge_batch: int = Field(default=25, ge=1, le=100)
     review_judge_timeout_s: float = 60.0
+    # A negative review whose direct call still has its answer on file is coded with the answer in
+    # view: this many per Jev request (an answer is far longer than a reason), each answer shortened to
+    # this many characters (`body_view.shrink`, at least its MIN_BUDGET).
+    review_judge_answer_batch: int = Field(default=5, ge=1, le=25)
+    review_judge_answer_chars: int = Field(default=4000, ge=22, le=20000)
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall

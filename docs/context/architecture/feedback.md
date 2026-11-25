@@ -439,8 +439,14 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
 - Privacy: each quotable reason gets `person_p` and `privacy_judged_at`.
 - Attribution: each `partly` or `not_useful` review gets `primary_code`, an optional `secondary_code`
   and `codebook_version` (`domain.feedback.review_codes`, a fixed codebook the vendor report cards
-  aggregate per endpoint). A review with no reason is `NOREASON` without asking. A new codebook
-  version re-judges only reviews coded under an older one.
+  aggregate per endpoint). A review of a direct call whose answer is still on file is asked with the
+  request and the shortened answer beside its reason (`application.review_answers`,
+  `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
+  `review_judge_answer_chars`; a routed call's review (its rows cannot prove which answer the caller
+  got), or one whose answer is gone, from its reason alone. The worker opens the archive's object
+  store; without its credentials it logs that and judges from the reasons alone. A review with no
+  reason is `NOREASON` without asking. A new codebook version re-judges only reviews coded under an
+  older one; `2026-11-25.1` brought the answer in, so it re-judges every review in the window.
 
 Each answer is validated on its own (a Noul must be a number in [0, 1], a Choice one of the codes);
 a failed request or an unreadable answer leaves that review unjudged for the next run, and one pass

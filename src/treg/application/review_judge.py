@@ -8,8 +8,8 @@ pass.
   probability it names or identifies a person. The catalog quotes only reasons judged below
   `verdicts.PERSON_P_MAX`; an unjudged reason is never quoted.
 - Attribution: every `partly` or `not_useful` review gets the codebook's `primary_code` and
-  optional `secondary_code` under `CODEBOOK_VERSION`. A review without a reason is `NOREASON`
-  without asking.
+  optional `secondary_code` under `CODEBOOK_VERSION`, judged with the call's answer in view when it
+  is a direct call whose answer is on file. A review without a reason is `NOREASON` without asking.
 
 Run by `treg-worker reviews judge`. The table is small (one row per rated call), so each pass reads
 its whole window's unjudged rows and writes back in batches of `review_judge_batch`.
@@ -31,6 +31,7 @@ from ..infra import judge
 from ..infra.db import session_maker
 from ..models import CallReview
 from ..timeutil import utcnow_naive
+from .review_answers import answer_of, view
 
 log = logging.getLogger("treg.review_judge")
 
@@ -106,39 +107,52 @@ async def judge_privacy(*, deadline: float) -> dict:
 
 
 async def judge_codes(*, deadline: float) -> dict:
+    """Code every negative review not yet coded under `CODEBOOK_VERSION`. A direct call's review
+    whose answer is still on file (`review_answers.answer_of`) is asked with the request and the
+    shortened answer beside its reason (`review_codes.body_code_question`), a few per request; any
+    other (a routed call, whose served answer the rows cannot prove, or an answer gone) from its
+    reason alone, as before."""
     since = utcnow_naive() - timedelta(days=verdicts.WINDOW_DAYS)
     version = review_codes.CODEBOOK_VERSION
+    s = get_settings()
     async with session_maker() as db:
         rows = (await db.execute(
-            select(CallReview.id, CallReview.reason, CallReview.usefulness, CallReview.endpoint_id,
-                   CallReview.routed_via)
+            select(CallReview.id, CallReview.org_id, CallReview.call_id, CallReview.reason,
+                   CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via)
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
             .order_by(CallReview.created_at.desc()))).all()
-    out = {"pending": len(rows), "judged": 0, "no_reason": 0, "already_judged": 0, "failed_requests": 0,
-           "unreadable": 0, "tokens_in": 0}
+    out = {"pending": len(rows), "judged": 0, "with_answer": 0, "no_reason": 0, "already_judged": 0,
+           "failed_requests": 0, "unreadable": 0, "tokens_in": 0}
     blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
     out["no_reason"] = await _write_codes(blank)
     out["already_judged"] += len(blank) - out["no_reason"]
     rows = [r for r in rows if r.id not in blank]
     by_id = catalog_store.load().by_id
-    for batch in _batches(rows, get_settings().review_judge_batch):
-        if time.monotonic() >= deadline:
-            break
-        state = {"reviews": [{
-            "i": i, "usefulness": r.usefulness, "reason": r.reason.strip(), "endpoint": r.endpoint_id,
-            "capability": (by_id.get(r.endpoint_id) or {}).get("capability") or "",
-            "routed": r.routed_via is not None,
-        } for i, r in enumerate(batch)]}
-        reply = await _ask(state, {f"a{i}": review_codes.code_question(i) for i in range(len(batch))})
+
+    def capability(r) -> str:
+        return (by_id.get(r.endpoint_id) or {}).get("capability") or ""
+
+    async def ask(batch: list[tuple], with_answer: bool) -> None:
+        if with_answer:
+            state = {"reviews": [item for _, item in batch]}
+            questions = {f"a{i}": review_codes.body_code_question(i) for i in range(len(batch))}
+        else:
+            state = {"reviews": [{
+                "i": i, "usefulness": r.usefulness, "reason": r.reason.strip(), "endpoint": r.endpoint_id,
+                "capability": capability(r), "routed": r.routed_via is not None,
+            } for i, (r, _) in enumerate(batch)]}
+            questions = {f"a{i}": review_codes.code_question(i) for i in range(len(batch))}
+        reply = await _ask(state, questions)
         if reply.answers is None:
             out["failed_requests"] += 1
             log.warning("review code judge abstained: %s", reply.error)
-            continue
+            return
         out["tokens_in"] += reply.tokens_in or 0
+        answers = reply.answers if isinstance(reply.answers, dict) else {}
         values = {}
-        for i, r in enumerate(batch):
-            codes = review_codes.codes_from(reply.answers.get(f"a{i}"))
+        for i, (r, _) in enumerate(batch):
+            codes = review_codes.codes_from(answers.get(f"a{i}"))
             if codes is None:
                 out["unreadable"] += 1
                 continue
@@ -146,6 +160,28 @@ async def judge_codes(*, deadline: float) -> dict:
         written = await _write_codes(values)
         out["judged"] += written
         out["already_judged"] += len(values) - written
+        if with_answer:
+            out["with_answer"] += written
+
+    plain: list[tuple] = []
+    read: list[tuple] = []
+    for r in rows:
+        if time.monotonic() >= deadline:
+            break
+        found = await answer_of(r) if r.routed_via is None else None
+        if found is not None:
+            read.append((r, view(len(read), r, found, capability(r), s.review_judge_answer_chars)))
+            if len(read) == s.review_judge_answer_batch:
+                await ask(read, True)
+                read = []
+        else:
+            plain.append((r, None))
+            if len(plain) == s.review_judge_batch:
+                await ask(plain, False)
+                plain = []
+    for batch, with_answer in ((read, True), (plain, False)):
+        if batch and time.monotonic() < deadline:
+            await ask(batch, with_answer)
     return out
 
 

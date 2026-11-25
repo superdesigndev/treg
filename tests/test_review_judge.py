@@ -94,7 +94,7 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
         return {"choice": "SOMETHING_ELSE"}
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_codes(deadline=float("inf"))
-    assert out == {"pending": 3, "judged": 1, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
+    assert out == {"pending": 3, "judged": 1, "with_answer": 0, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
                    "unreadable": 1, "tokens_in": 10}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.CODES)
     rows = await _all()
@@ -230,3 +230,38 @@ def test_off_topic_hits_are_wrong_not_context_and_boilerplate_is_noreason():
     assert "boilerplate" in review_codes.CODES["NOREASON"]
     # Versions order as strings, so a same-day revision still re-judges the earlier one.
     assert review_codes.CODEBOOK_VERSION > "2026-11-23"
+
+
+async def test_a_direct_review_with_its_answer_on_file_is_coded_with_it(clients, monkeypatch):
+    """Direct calls whose answer is on file are asked with the answer in view, a few per request;
+    a routed call, or one whose answer is gone, from its reason alone."""
+    import json as _json
+
+    from test_review_body_pilot import PEOPLE, _add, _archive, _org, _record, _review
+
+    org = await _org(clients)
+    rows = [_review(org, f"d-{i}", None) for i in range(3)] + [_record(org, f"d-{i}", f"k{i}") for i in range(3)]
+    rows += [_review(org, "gone", None), _record(org, "gone", "kg"),
+             _review(org, "rt", None, routed=True), _record(org, "rt", tier="routed"),
+             _record(org, "rt:r1", "kr")]
+    await _add(*rows)
+    async with session_maker() as db:  # the helper codes them; here they wait for the judge
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.codebook_version = None
+        await db.commit()
+    _archive(monkeypatch, {"k0": PEOPLE, "k1": PEOPLE, "k2": PEOPLE, "kr": PEOPLE})
+    monkeypatch.setattr(get_settings(), "review_judge_answer_batch", 2)
+    seen = _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY" if "response" in state["reviews"][int(q[1:])]
+                                                      else "WRONG"})
+
+    out = await review_judge.judge_codes(deadline=float("inf"))
+    assert out["judged"] == 5 and out["with_answer"] == 3 and out["failed_requests"] == 0
+    with_answer = [state for state, _ in seen if "response" in state["reviews"][0]]
+    assert [len(s["reviews"]) for s in with_answer] == [2, 1]
+    assert all(_json.loads(item["response"]["body"])["people"] for s in with_answer for item in s["reviews"])
+    plain, = [state for state, _ in seen if "response" not in state["reviews"][0]]
+    assert {item["routed"] for item in plain["reviews"]} == {True, False} and len(plain["reviews"]) == 2
+    codes = {r.call_id: (r.primary_code, r.codebook_version) for r in (await _all()).values()}
+    assert codes["d-0"] == ("EMPTY", review_codes.CODEBOOK_VERSION)
+    assert codes["gone"][0] == codes["rt"][0] == "WRONG"
+
