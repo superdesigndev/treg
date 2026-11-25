@@ -204,9 +204,8 @@
 
   /* how it works */
   .how-s { padding-top: 100px; }
-  .gets { list-style: none; padding: 0 0 0 12px; margin: 48px auto 0; max-width: 1000px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .gets { list-style: none; padding: 0; margin: 40px auto 0; max-width: 1000px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .gets li { display: flex; flex-direction: column; padding: 24px 22px 24px; border-radius: 16px; background: #fafaf9; position: relative; }
-  .gets li::before { content: ""; position: absolute; top: -12px; left: -12px; width: 56px; height: 56px; border-radius: 15px; background: var(--c); transform: rotate(-8deg); }
   .gets h3, .gets p { position: relative; }
   .gets h3 b { font-weight: 600; font-size: 1.6em; letter-spacing: -.03em; line-height: 1; }
   .gets h3 { margin: 0 0 8px; font-size: 23px; font-weight: 600; letter-spacing: -.015em; }
@@ -224,14 +223,14 @@
   .gets .gxc em { font-style: normal; font-weight: 400; color: var(--grey); margin-left: 3px; }
   .gets blockquote { margin: 0; font-size: 14.5px; line-height: 1.45; font-weight: 500; }
   @media (max-width: 860px) { .gets { grid-template-columns: 1fr; } }
-  .how { list-style: none; padding: 0; margin: 40px auto 0; max-width: 1000px; display: grid; gap: 40px; }
-  .how li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; align-items: center; padding: 20px 22px; border-radius: 16px; background: #fafaf9; }
+  .how { list-style: none; padding: 0; margin: 40px auto 0; max-width: 1000px; display: grid; gap: 30px; }
+  .how li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; align-items: center; padding: 10px 22px; border-radius: 16px; background: #fafaf9; }
   .how .st { display: flex; flex-direction: column; justify-content: center; }
-  .how li:not(:last-child)::after { content: "↓"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); height: 40px; display: grid; place-items: center; font: 400 20px/1 var(--pixel); color: var(--grey); }
+  .how li:not(:last-child)::after { content: "↓"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); height: 30px; display: grid; place-items: center; font: 400 20px/1 var(--pixel); color: var(--grey); }
   @media (max-width: 760px) { .how li { grid-template-columns: 1fr; gap: 12px; } }
   .how h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
   .how p { margin: 0; color: var(--grey); font-weight: 400; font-size: 14.5px; line-height: 1.55; }
-  .how .viz { min-height: 150px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .how .viz { min-height: 96px; padding: 6px 16px; display: flex; align-items: center; justify-content: center; gap: 12px; }
   .how .viz svg { display: block; max-width: 100%; height: auto; }
   .how .viz .vt { font: 400 10.5px var(--mono); fill: var(--grey); }
   .how .vk { margin: 12px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font: 400 11px var(--mono); }
