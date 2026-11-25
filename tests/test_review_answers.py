@@ -154,3 +154,24 @@ async def test_a_database_copy_that_no_longer_matches_its_hash_waits(clients):
     assert damaged != PEOPLE
     await _key((1, damaged.encode(), "db"), answer=PEOPLE.encode())
     assert (await review_answers.answer_of(review)).state == "unreadable"
+
+
+async def test_the_judge_reads_the_answer_the_caller_got_byte_for_byte(clients):
+    # Within the budget the body is the delivered text; numbers are never rounded or overflowed.
+    review = await _reviewed(clients)
+    delivered = '{"price": 123.1234567890123456789, "big": 1e400, "n": 12345678901234567890123}'
+    await _key((1, delivered.encode(), "db"))
+    found = (await review_answers.answer_of(review)).found
+    item = review_answers.view(0, review, found, "people.search", 4000)
+    assert item["response"]["body"] == delivered
+
+
+def test_a_shortened_answer_keeps_the_numbers_it_shows_as_written():
+    import json
+
+    from treg.domain.feedback import body_view
+
+    text = json.dumps({"items": [{"price": "x"} for _ in range(50)]}).replace('"x"', "123.1234567890123456789")
+    out = body_view.shrink(text.replace("123.1234567890123456789", "1e400", 1), 300)
+    assert len(out) <= 300 and out.count("1e400") == 1 and "123.1234567890123456789" in out
+    assert "Infinity" not in out and "123.12345678901235" not in out
