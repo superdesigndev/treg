@@ -2,9 +2,11 @@
 reason-only codes, writing nothing; and the shortened answer the judge reads."""
 import json
 
+import pytest
+
 from sqlmodel import select
 
-from treg import archive
+from treg import archive, worker
 from treg.application import review_body_pilot, review_judge
 from treg.config import get_settings
 from treg.domain.feedback import body_view, review_codes
@@ -33,6 +35,20 @@ def test_shrink_strips_html_and_cuts_text():
 
 REASON = "Half of the requested fields came back empty for these people."
 PEOPLE = json.dumps({"people": [{"email": None}] * 30})
+
+
+@pytest.mark.parametrize("budget", [0, -5])
+def test_shrink_refuses_a_non_positive_budget(budget):
+    with pytest.raises(ValueError):
+        body_view.shrink("word " * 2000, budget)
+
+
+@pytest.mark.parametrize("flag", ["--budget", "--sample", "--batch"])
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_cli_refuses_non_positive_numbers(flag, value, capsys):
+    with pytest.raises(SystemExit):
+        worker.main(["reviews", "body-pilot", flag, value])
+    assert "must be >= 1" in capsys.readouterr().err
 
 
 async def _org(clients) -> int:

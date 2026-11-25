@@ -44,6 +44,8 @@ def shrink(text: str | None, budget: int) -> str:
     always stays valid JSON: past the last cut, deeper levels are replaced by their counts
     (`{"_items": n}`, `{"_keys": n}`) rather than the text being sliced, so a cut never reads as
     the vendor's malformed output."""
+    if budget < 1:
+        raise ValueError("budget must be a positive number of characters")
     if not text:
         return ""
     try:

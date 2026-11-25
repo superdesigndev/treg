@@ -953,9 +953,9 @@ def main(argv: list[str] | None = None) -> int:
     revp = revsub.add_parser("body-pilot", help="dry run: code recent negative reviews with the call's "
                              "request and answer in view and compare with the reason-only codes; "
                              "writes nothing, prints aggregates only")
-    revp.add_argument("--sample", type=int, default=200)
-    revp.add_argument("--batch", type=int, default=5)
-    revp.add_argument("--budget", type=int, default=4000, help="characters of each answer Jev reads")
+    revp.add_argument("--sample", type=_positive_int, default=200)
+    revp.add_argument("--batch", type=_positive_int, default=5)
+    revp.add_argument("--budget", type=_positive_int, default=4000, help="characters of each answer Jev reads")
     revp.add_argument("--max-seconds", type=float, default=1200.0)
     revp.set_defaults(fn=_reviews_body_pilot)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
