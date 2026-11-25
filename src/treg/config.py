@@ -796,10 +796,9 @@ class Settings(BaseSettings):
     # An answer not readable yet is tried again, backing off from an hour to a week; after this many
     # tries its review keeps the codes from its reason.
     review_judge_answer_attempts: int = Field(default=10, ge=1)
-    # Calls before this moment are never read back as their archived answer: rows before migration
-    # 0128 do not say whether they came through `/table/`, whose caller got a reshaped answer. treg.to
-    # never had `/table/` on before 0128, so it leaves this unset; a deployment that had should set
-    # it to when 0128 was deployed.
+    # Calls before this moment are never read back as their archived answer: older call rows do not
+    # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
+    # had `/table/` on before `callrecord.surface` existed sets it to when that column was added.
     review_answer_surface_since: datetime | None = None
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
