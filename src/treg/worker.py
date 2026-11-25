@@ -391,11 +391,22 @@ async def _shadow_collect(args) -> int:
 
 
 async def _reviews_judge(args) -> int:
+    import logging
+    from contextlib import AsyncExitStack
+
     from .infra.db import verify_db
     from .application import review_judge
+    from .bootstrap import archive_object_store
 
-    await verify_db()
-    print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
+    async with AsyncExitStack() as stack:
+        # Answers in object storage need its credentials. A cron without them still judges, from
+        # the reasons alone: an answer it cannot read counts as one not on file.
+        try:
+            await stack.enter_async_context(archive_object_store())
+        except RuntimeError as exc:
+            logging.getLogger("treg.review_judge").warning("archive object store unavailable: %s", exc)
+        await verify_db()
+        print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
     return 0
 
 

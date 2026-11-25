@@ -265,3 +265,19 @@ async def test_a_direct_review_with_its_answer_on_file_is_coded_with_it(clients,
     assert codes["d-0"] == ("EMPTY", review_codes.CODEBOOK_VERSION)
     assert codes["gone"][0] == codes["rt"][0] == "WRONG"
 
+
+
+async def test_the_judge_runs_from_reasons_when_object_storage_is_unavailable(clients, monkeypatch, capsys):
+    import argparse
+
+    from treg import bootstrap, worker
+
+    def broken():
+        raise RuntimeError("Archive R2 is enabled but its endpoint, bucket or credentials are missing/invalid")
+
+    async def run(*, max_seconds):
+        return {"codes": {"judged": 0}}
+    monkeypatch.setattr(bootstrap, "archive_object_store", broken)
+    monkeypatch.setattr(review_judge, "run", run)
+    assert await worker._reviews_judge(argparse.Namespace(max_seconds=5)) == 0
+    assert '"judged": 0' in capsys.readouterr().out
