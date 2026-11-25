@@ -5159,6 +5159,44 @@ async def test_routed_children_on_the_allowance_hold_nothing_and_only_the_hit_is
     assert ([call_id] in routed_allowance_on.cleared_batches) == bool(key), "only a keyed root is marked"
 
 
+async def test_a_tagged_call_through_call_queues_its_tags_and_the_fold_attributes_them(
+    clients: AsyncClient, routed_allowance_on, monkeypatch,
+):
+    from treg.domain import money as ledger
+    from treg.domain.money import allowance as money_allowance
+    from treg.models import CallCharge, Hold, LedgerEntry, TagSpend
+
+    monkeypatch.setattr(get_settings(), "money_allowance_tagged_all_orgs", True)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "findymail",
+                                    "X-Treg-Meta": "customer=cust_1"})
+    assert r.status_code == 200, r.text
+    call_id, cost = r.headers["X-Treg-Call-Id"], int(r.headers["X-Treg-Cost-Micro"])
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold))).scalars().all()
+        charges = (await db.execute(select(CallCharge))).scalars().all()
+    assert [h.allowance for h in holds] == [True]
+    child = charges[0].call_id if charges else ""
+    assert child.startswith(f"{call_id}:r")
+    assert [(c.call_id, c.amount_micro, c.meta["tags"]) for c in charges] == [
+        (child, cost, {"customer": "cust_1"})]
+    async with session_maker() as db:
+        await money_allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+    async with session_maker() as db:
+        rows = (await db.execute(select(TagSpend))).scalars().all()
+        settle = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == child, LedgerEntry.kind == "settle"))).scalar_one()
+        by_tag = await ledger.spend_by_tag(db, org_id, "customer", ledger._day_start())
+    assert [(t.dim, t.val, t.hold_id, t.amount_micro, t.settled) for t in rows] == [
+        ("customer", "cust_1", child, cost, True)]
+    assert settle.amount_micro == -cost and by_tag == {"cust_1": cost}
+
+
 async def test_a_routed_root_the_store_will_not_mark_keeps_its_children_on_holds(
     clients: AsyncClient, routed_allowance_on, monkeypatch,
 ):
