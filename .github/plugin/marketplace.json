@@ -35,7 +35,7 @@
     {
       "name": "follower-signal",
       "source": "./plugins/workflows/follower-signal",
-      "description": "Use when someone wants to know who their followers on X, Instagram or TikTok are, with how many are potential customers, their background and role, what they care about at work and as people, and their pain points, plus a shareable card and a tagged network map they can search.",
+      "description": "Use when someone wants to know who their followers on X, Instagram or TikTok are, with their roles, seniority, where they are, the topics they care about and their pain points, how many are potential customers, plus a shareable card and a tagged network map they can search.",
       "category": "productivity"
     },
     {
