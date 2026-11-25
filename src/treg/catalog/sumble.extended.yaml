@@ -23,26 +23,14 @@ endpoints:
         required: true
   docs_url: https://docs.sumble.com/api/api
   kind: utility
-  cost:
-    type: per_success
-    value: 1
-    currency: credit
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    display: {unit: success}
-    sumble:
-      mode: single
+  price: {value: '1', currency: credit, unit: call, display: {unit: success}}
+  miss: {when: {path: response.technologies, op: empty}}
   test_request:
     body:
       query: kubernetes
   verified: '2026-09-09'
   added: '2026-09-10'
   example_response: examples/sumble.technologies.find.json
-  tier: extended
 - id: sumble.technologies.lookup
   platform: companies
   scope: any_account
@@ -66,25 +54,9 @@ endpoints:
       tested separately.
   docs_url: https://docs.sumble.com/api/api
   kind: utility
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 100
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
-      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
-      tested separately.
-    display: {unit: matches, grouped: true, round_up: true}
-    sumble:
-      mode: lookup
-      records: technologies
-      block_size: 100
-      max_records: 1000
+  price: {value: '1', per: 100, round: up, currency: credit, unit: record, display: {unit: matches, grouped: true, round_up: true}, note: "1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also tested separately."}
+  reserve: {entities: {from: body.technologies, max: 1000}}
+  miss: {when: {path: response.matched_count, op: equals, value: 0}}
   test_request:
     body:
       technologies:
@@ -93,7 +65,6 @@ endpoints:
   verified: '2026-09-09'
   added: '2026-09-10'
   example_response: examples/sumble.technologies.lookup.json
-  tier: extended
 - id: sumble.technologies.categories.lookup
   platform: companies
   scope: any_account
@@ -117,25 +88,9 @@ endpoints:
       tested separately.
   docs_url: https://docs.sumble.com/api/api
   kind: utility
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 100
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
-      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
-      tested separately.
-    display: {unit: matches, grouped: true, round_up: true}
-    sumble:
-      mode: lookup
-      records: technology_categories
-      block_size: 100
-      max_records: 1000
+  price: {value: '1', per: 100, round: up, currency: credit, unit: record, display: {unit: matches, grouped: true, round_up: true}, note: "1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also tested separately."}
+  reserve: {entities: {from: body.technology_categories, max: 1000}}
+  miss: {when: {path: response.matched_count, op: equals, value: 0}}
   test_request:
     body:
       technology_categories:
@@ -143,7 +98,6 @@ endpoints:
   verified: '2026-09-09'
   added: '2026-09-10'
   example_response: examples/sumble.technologies.categories.lookup.json
-  tier: extended
 - id: sumble.job_functions.lookup
   platform: companies
   scope: any_account
@@ -175,25 +129,10 @@ endpoints:
       tested separately.
   docs_url: https://docs.sumble.com/api/api
   kind: utility
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 100
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
-      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
-      tested separately.
-    display: {unit: matches, grouped: true, round_up: true}
-    sumble:
-      mode: lookup
-      records: titles
-      block_size: 100
-      max_records: 1000
+  price: {value: '1', per: 100, round: up, currency: credit, unit: record, display: {unit: matches, grouped: true, round_up: true}, note: "1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also tested separately."}
+  reserve: {entities: {from: body.titles, max: 1000}}
+  platform_request: {body.file_name: null}
+  miss: {when: {path: response.matched_count, op: equals, value: 0}}
   test_request:
     body:
       titles:
@@ -202,7 +141,6 @@ endpoints:
   verified: '2026-09-09'
   added: '2026-09-10'
   example_response: examples/sumble.job_functions.lookup.json
-  tier: extended
 - id: sumble.projects.lookup
   platform: companies
   scope: any_account
@@ -226,25 +164,9 @@ endpoints:
       tested separately.
   docs_url: https://docs.sumble.com/api/api
   kind: utility
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 100
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
-      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
-      tested separately.
-    display: {unit: matches, grouped: true, round_up: true}
-    sumble:
-      mode: lookup
-      records: projects
-      block_size: 100
-      max_records: 1000
+  price: {value: '1', per: 100, round: up, currency: credit, unit: record, display: {unit: matches, grouped: true, round_up: true}, note: "1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also tested separately."}
+  reserve: {entities: {from: body.projects, max: 1000}}
+  miss: {when: {path: response.matched_count, op: equals, value: 0}}
   test_request:
     body:
       projects:
@@ -252,7 +174,6 @@ endpoints:
   verified: '2026-09-09'
   added: '2026-09-10'
   example_response: examples/sumble.projects.lookup.json
-  tier: extended
 - id: sumble.documentation.search
   platform: companies
   scope: any_account
@@ -277,16 +198,8 @@ endpoints:
         required: false
   docs_url: https://docs.sumble.com/api/api
   kind: utility
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
+  price: {value: '0', currency: USD, unit: call}
+  settle: null
   test_request:
     queryParams:
       query: technology lookup
@@ -294,7 +207,6 @@ endpoints:
   verified: '2026-09-09'
   added: '2026-09-10'
   example_response: examples/sumble.documentation.search.json
-  tier: extended
 - id: sumble.contact_lists.list
   added: '2026-09-10'
   platform: people
@@ -307,20 +219,8 @@ endpoints:
     note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
       live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
-      live workspace mutation or support message was performed.
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no live workspace mutation or support message was performed."}
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -341,19 +241,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -381,19 +271,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -421,20 +301,8 @@ endpoints:
     note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
       live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
-      live workspace mutation or support message was performed.
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no live workspace mutation or support message was performed."}
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -456,20 +324,8 @@ endpoints:
     note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
       live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
-      live workspace mutation or support message was performed.
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no live workspace mutation or support message was performed."}
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -490,19 +346,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -534,20 +380,8 @@ endpoints:
     note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
       live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
-      live workspace mutation or support message was performed.
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no live workspace mutation or support message was performed."}
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -574,19 +408,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -611,19 +435,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -657,19 +471,9 @@ endpoints:
         required: false
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -694,19 +498,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -843,20 +637,8 @@ endpoints:
     note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
       live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
-      live workspace mutation or support message was performed.
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no live workspace mutation or support message was performed."}
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -953,20 +735,8 @@ endpoints:
     note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
       live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
-      live workspace mutation or support message was performed.
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no live workspace mutation or support message was performed."}
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -996,19 +766,9 @@ endpoints:
         required: true
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -1026,19 +786,9 @@ endpoints:
     body: {}
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -1074,19 +824,9 @@ endpoints:
         required: false
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -1115,19 +855,9 @@ endpoints:
         required: false
     note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
   docs_url: https://docs.sumble.com/api/api
-  tier: extended
   kind: account
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  price: {value: '0', currency: USD, unit: call, note: "Free account operation. BYOK only; no live workspace mutation or support message was performed."}
+  settle: null
   platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.

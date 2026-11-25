@@ -8,6 +8,9 @@ pricing_url: https://sumble.com/pricing
 proposed_capabilities:
   companies.teams.search: Find and enrich teams within organizations
   companies.intelligence_brief: Retrieve an account intelligence brief
+defaults:
+  provenance: {source: docs, source_url: 'https://docs.sumble.com/api/api', checked: '2026-11-25', confidence: documented}
+  settle: {reported: {path: response.credits_used, unit: credit, missing: 0}}
 endpoints:
 - id: sumble.organizations
   platform: companies
@@ -264,64 +267,10 @@ endpoints:
       ICP/CRM fields and exploded/all metrics require BYOK.
   docs_url: https://docs.sumble.com/api/api
   capability: companies.enrich
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 base + 1 per paid attribute + 1 per requested entity metric per match. Unmatched inputs free. Explicitly
-      select id/name/url; live responses do not always include them. Platform supports match mode, explicit safe
-      attributes and explicit metrics on technology/job_function/project or aggregate categories; advanced queries,
-      ICP/CRM fields and exploded/all metrics require BYOK.
-    display: {unit: result, variable: true}
-    sumble:
-      mode: compose
-      records: organizations
-      base: 1
-      attribute: 1
-      metric: 1
-      free_attributes:
-      - id
-      - name
-      - slug
-      - url
-      - sumble_url
-      - account_status
-      safe_attributes:
-      - id
-      - slug
-      - name
-      - url
-      - employee_count
-      - industry
-      - jobs_count
-      - teams_count
-      - jobs_count_rollup
-      - jobs_count_no_rollup
-      - teams_count_rollup
-      - teams_count_no_rollup
-      - people_count_rollup
-      - people_count_no_rollup
-      - headquarters_country
-      - sumble_url
-      - parent_id
-      - subsidiary_ids
-      - tags
-      - status
-      - status_reason
-      - funding_total_raised
-      - funding_valuation
-      - funding_last_round_raised
-      - funding_last_round_type
-      - funding_last_round_date
-      max_records: 1000
-      default_limit: 10
-      max_limit: 200
+  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "1 base + 1 per paid attribute + 1 per requested entity metric per match. Unmatched inputs free. Explicitly select id/name/url; live responses do not always include them. Platform supports match mode, explicit safe attributes and explicit metrics on technology/job_function/project or aggregate categories; advanced queries, ICP/CRM fields and exploded/all metrics require BYOK."}
+  reserve: {plugin: sumble.organization_credits, max: '1200'}
+  platform_request: {body.filter: null, body.include_closed: null, body.order_by_column: null, body.order_by_job_function: null, body.order_by_advanced_query: null, body.match_source: null}
+  miss: {when: {path: response.matched_count, op: equals, value: 0}}
   test_request:
     body:
       organizations:
@@ -353,18 +302,7 @@ endpoints:
       BYOK only.
   docs_url: https://docs.sumble.com/api/api
   capability: companies.intelligence_brief
-  cost:
-    type: per_success
-    value: 50
-    currency: credit
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 50 per completed brief; 202 pending is free. Retry same URL after Retry-After. Account-tailored brief;
-      BYOK only.
+  price: {value: '50', currency: credit, unit: call, note: "50 per completed brief; 202 pending is free. Retry same URL after Retry-After. Account-tailored brief; BYOK only."}
   platform_blocked: Account-tailored intelligence brief; use your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -401,17 +339,7 @@ endpoints:
     note: 1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only.
   docs_url: https://docs.sumble.com/api/api
   capability: companies.news
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only.
+  price: {value: '1', currency: credit, unit: record, note: "1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only."}
   platform_blocked: Account signal configuration and CRM context can appear in responses; use your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -432,22 +360,8 @@ endpoints:
       cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate.
   docs_url: https://docs.sumble.com/api/api
   capability: companies.tech_stack
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 per technology in business_functions[].categories[].technologies, not evidence. No documented result
-      cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate.
-    display: {unit: technology}
-    sumble:
-      mode: results
-      reserve_results: 100
+  price: {value: '1', currency: credit, unit: record, display: {unit: technology}, note: "1 per technology in business_functions[].categories[].technologies, not evidence. No documented result cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate."}
+  reserve: {plugin: sumble.tech_stack_hold, max: '100'}
   test_request:
     pathParams:
       organization_id: 1726684
@@ -682,21 +596,7 @@ endpoints:
       charge recovery.'
   docs_url: https://docs.sumble.com/api/api
   capability: people.search
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 'Async POST: start with people/filter; poll the SAME endpoint with request_id alone. First succeeded poll
-      charges once; later polls report zero. 1 base + paid attributes (name free), related people 1 each; email
-      reveal 10, phone 80, successful email resolution 20 extra. Contact reveal repeats/misses free. All/scores
-      may include account ICP. treg does not meter BYOK. Platform disabled pending POST-poll ownership and durable
-      charge recovery.'
+  price: {value: '1', currency: credit, unit: record, note: "Async POST: start with people/filter; poll the SAME endpoint with request_id alone. First succeeded poll charges once; later polls report zero. 1 base + paid attributes (name free), related people 1 each; email reveal 10, phone 80, successful email resolution 20 extra. Contact reveal repeats/misses free. All/scores may include account ICP. treg does not meter BYOK. Platform disabled pending POST-poll ownership and durable charge recovery."}
   platform_blocked: POST polling with first-success-only charge needs durable settlement/ownership support; use
     your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
@@ -890,41 +790,9 @@ endpoints:
       attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK.
   docs_url: https://docs.sumble.com/api/api
   capability: companies.jobs.search
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 base + 1 per paid attribute (title free) + 1 per related person returned. Platform requires explicit
-      attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK.
-    display: {unit: result, variable: true}
-    sumble:
-      mode: compose
-      records: jobs
-      base: 1
-      attribute: 1
-      metric: 1
-      free_attributes:
-      - title
-      safe_attributes:
-      - title
-      - description
-      - location
-      - posted_date
-      - organization
-      - technologies
-      - teams
-      - job_functions
-      - job_levels
-      - projects
-      max_records: 1000
-      default_limit: 10
-      max_limit: 200
+  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "1 base + 1 per paid attribute (title free) + 1 per related person returned. Platform requires explicit attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK."}
+  reserve: {plugin: sumble.job_credits, max: '1200'}
+  miss: {when: {any: [{path: response.matched_count, op: equals, value: 0}, {path: response.jobs, op: empty}]}}
   test_request:
     body:
       filter:
@@ -1146,39 +1014,9 @@ endpoints:
       queries require BYOK.
   docs_url: https://docs.sumble.com/api/api
   capability: companies.teams.search
-  cost:
-    type: per_result
-    value: 1
-    currency: credit
-    per: 1
-    unit: record
-    source: docs
-    source_url: https://docs.sumble.com/api/api
-    checked: '2026-09-09'
-    confidence: documented
-    note: 1 base + 1 per paid attribute + 1 per related person + 1 per job post returned. Platform requires explicit
-      attributes excluding score, list mode or organization_ids-only filtering. Related people/job posts and advanced
-      queries require BYOK.
-    display: {unit: result, variable: true}
-    sumble:
-      mode: compose
-      records: teams
-      base: 1
-      attribute: 1
-      metric: 1
-      free_attributes: []
-      safe_attributes:
-      - organization
-      - breadcrumbs
-      - jobs_count
-      - technology_list
-      - job_function_list
-      - location_list
-      - first_activity
-      - last_activity
-      max_records: 1000
-      default_limit: 10
-      max_limit: 200
+  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "1 base + 1 per paid attribute + 1 per related person + 1 per job post returned. Platform requires explicit attributes excluding score, list mode or organization_ids-only filtering. Related people/job posts and advanced queries require BYOK."}
+  reserve: {plugin: sumble.team_credits, max: '500'}
+  miss: {when: {any: [{path: response.matched_count, op: equals, value: 0}, {path: response.teams, op: empty}]}}
   test_request:
     body:
       filter:

@@ -1289,7 +1289,6 @@ adapters:
     cost_units: "3"
     out: {name: "organizations[0].attributes.name", domain: "organizations[0].attributes.url",
           employees: "organizations[0].attributes.employee_count", industry: "organizations[0].attributes.industry"}
-    miss: "matched_count == 0"
   crawl4ai.companies.enrich:
     accepts: [[domain], [linkedin_url], [linkedin_handle], [name]]
     in:  {domain: queryParams.domain, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, name: queryParams.name}
