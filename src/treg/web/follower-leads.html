@@ -202,9 +202,10 @@
 
   /* how it works */
   .how-s { padding-top: 100px; }
-  .gets { list-style: none; padding: 0; margin: 40px auto 0; max-width: 1000px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-  .gets li { display: flex; flex-direction: column; padding: 20px 20px 22px; border-radius: 16px; background: #fafaf9; box-shadow: inset 0 3px 0 var(--c); }
-  .gets em { align-self: flex-start; font: 400 10.5px var(--mono); font-style: normal; color: var(--grey); border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: #fff; }
+  .gets { list-style: none; padding: 0 12px 0 0; margin: 48px auto 0; max-width: 1000px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .gets li { display: flex; flex-direction: column; padding: 20px 20px 22px; border-radius: 16px; background: #fafaf9; position: relative; }
+  .gets li::before { content: ""; position: absolute; top: -12px; right: -12px; width: 46px; height: 46px; border-radius: 13px; background: var(--c); transform: rotate(8deg); }
+  .gets em { align-self: flex-start; max-width: calc(100% - 34px); font: 400 10.5px var(--mono); font-style: normal; color: var(--grey); border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: #fff; }
   .gets h3 { margin: 14px 0 6px; font-size: 19px; font-weight: 600; letter-spacing: -.015em; }
   .gets p { margin: 0; color: var(--grey); font-weight: 400; font-size: 14.5px; line-height: 1.55; }
   @media (max-width: 860px) { .gets { grid-template-columns: 1fr; } }
@@ -416,9 +417,9 @@
 <section class="how-s wrap" id="get">
   <h2 class="cap">What you get.<small>Three answers about the people who follow you.</small></h2>
   <ul class="gets">
-    <li style="--c:var(--pink)"><em>X on this page · all three with your agent</em><h3>Your lead signal</h3><p>How many of your followers are potential buyers, and which ones, across X, Instagram and TikTok.</p></li>
-    <li style="--c:var(--cyan)"><em>with your agent</em><h3>Who your followers are</h3><p>Their job, role and seniority, where they are, and the traits that shape a buying decision.</p></li>
-    <li style="--c:var(--green)"><em>with your agent</em><h3>Their pain points</h3><p>What they struggle with, what they need and what they care about, each backed by their own words.</p></li>
+    <li style="--c:var(--pink)"><em>X on this page · all three with your agent</em><h3>Your lead signal</h3><p>How many followers could buy, and which ones.</p></li>
+    <li style="--c:var(--cyan)"><em>with your agent</em><h3>Who your followers are</h3><p>Their job, seniority and where they are.</p></li>
+    <li style="--c:var(--green)"><em>with your agent</em><h3>Their pain points</h3><p>What they struggle with, in their own words.</p></li>
   </ul>
 </section>
 
