@@ -1381,6 +1381,20 @@ async def test_all_orgs_holdless_except_the_excluded(
         ["reserve", "settle"] if excluded else [])
 
 
+async def test_keyed_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(
+            f"/call/{FREE_EP}", json=FREE_BODY, headers={"Idempotency-Key": "free-keyed-1"})
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == ["reserve", "release"]
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == ["reserve", "settle"]
+
+
 async def test_tagged_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
     await _allow_holdless(clients, monkeypatch)
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]

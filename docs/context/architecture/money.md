@@ -992,7 +992,8 @@ its children take from the allowance (`routed_allowance`): a free child is never
 parent has nothing to decide for it, and a keyed root is then marked in flight, which is what a
 stale idempotency claim reads while no child holds anything. For an org listed in
 `holdless_free_org_ids` (default `[]`: none), or every org with `holdless_free_all_orgs` except
-`holdless_free_excluded_org_ids` (the excluded list wins), and with no caller tags (`X-Treg-Meta`
+`holdless_free_excluded_org_ids` (the excluded list wins), with no `Idempotency-Key` (its $0
+hold is what a stale claim reads while the call runs) and with no caller tags (`X-Treg-Meta`
 or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
 LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap and
 member-limit reads run, so a team past its cap, or a member past their limit, is still refused.

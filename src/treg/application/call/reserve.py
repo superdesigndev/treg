@@ -564,7 +564,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     dimension here would be a second place that could disagree about who pays.
 
     `allow_holdless` admits a `holdless_eligible` call from an untagged caller of a team
-    `_holdless_listed` without a hold: a $0 reserve and its release only queued on the org's
+    `_holdless_listed`, unless it holds an Idempotency-Key claim (`mark_in_flight`), without a hold: a $0 reserve and its release only queued on the org's
     balance row. A tagged call keeps its hold,
     because the tag rows written with it count toward `calls_per_day`.
 
@@ -580,7 +580,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
     the balance gate already, so only a hold that covers the worst case bounds them."""
-    if (allow_holdless and mk.holdless_eligible and not meta.tags
+    if (allow_holdless and not mark_in_flight and mk.holdless_eligible and not meta.tags
             and _holdless_listed(caller.org_id)):
         await _holdless_reserve(mk, caller)
         return
