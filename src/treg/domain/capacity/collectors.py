@@ -600,9 +600,10 @@ async def _hunter(c, key):
 
 
 async def _getprospect(c, key):
-    # GET /v2/credits is free. Two independent pools: email credits (finds, reveals) and a USD wallet
-    # (verifications). Reported together in USD at the fx.yaml credit rate, so the provider reads as
-    # exhausted only when BOTH are empty; one empty pool shows up as that route's own 402.
+    # GET /v2/credits is free. Two non-interchangeable pools: email credits (finds, reveals) and a USD
+    # wallet (verifications, $0.0008 each). They cannot become one provider-wide exhaustion number, and a
+    # usable wallet can sit below any cent threshold, so the reading is informational: an empty pool
+    # shows up as that route's own 402, which is never charged.
     d = await _get(c, "https://api.getprospect.com/v2/credits", headers={"x-api-key": key})
     data = d.get("data") if isinstance(d, dict) and d.get("success") is True else None
     emails = ((data or {}).get("email_search") or {}).get("available")
@@ -610,8 +611,9 @@ async def _getprospect(c, key):
     for v in (emails, wallet):
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
             raise ValueError("GetProspect returned no valid credit and wallet balances")
-    return {"value": round(emails * 0.049 + wallet, 2), "unit": "USD",
-            "note": f"{emails} email credits (at $0.049) + ${wallet} wallet, renews {data.get('reset_at')}"}
+    return {"value": None, "unit": "credit pools", "informational": True,
+            "note": f"email credits: {emails}; wallet: ${wallet}; renews {data.get('reset_at')}; "
+                    "informational: independent pools"}
 
 
 async def _trykitt(c, key):
