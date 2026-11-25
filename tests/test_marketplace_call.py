@@ -3827,9 +3827,18 @@ def test_icypeas_profile_url_miss_settles_at_zero():
 
 def test_every_catalog_row_prices_an_empty_request():
     """Pricing runs on every tier before the credential is chosen, so a row whose fx rate is
-    `usd: null` (own-key only) must price at an informational zero, never raise."""
+    `usd: null` (own-key only) must price at an informational zero, never raise. A
+    platform-eligible row with a missing rate still raises, which fails this test."""
     cat = catalog_store.load()
     for ep in cat.endpoints:
+        call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
+
+
+def test_platform_eligible_row_with_a_null_rate_still_raises(monkeypatch):
+    cat = catalog_store.load()
+    ep = cat.by_id["semrush.google.keywords.volume"]
+    monkeypatch.setattr(type(cat), "platform_eligible", lambda self, endpoint: True)
+    with pytest.raises(TypeError):
         call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
 
 
