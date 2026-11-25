@@ -51,6 +51,22 @@ reported in `_treg.ordered_by`. `X-Treg-Route-Upgrade: <key>` re-asks this endpo
 alone when the hit carries it (an email's answer naming a LinkedIn URL), as a linked routed child
 `:u` ordered by quality; its answer replaces the first only when it is a hit about the same person,
 reported in `_treg.upgrade`. Both are opt-in.
+
+The parent's audit row names the child whose answer the caller received
+(`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>`
+(for an async provider the submission: the finalizer archives the terminal answer under that ref,
+read with `archive.load_terminal_responses`; the polls' own rows carry no archive link), an
+upgrade's own served child `:u:r<m>`, under a merge the answer whose body is `raw` (not
+`served_by`, the first contributor). It names a child only when that child's body is the `raw`
+returned: a miss or failure names none, nor does an answer the router wrote itself (a declared-miss
+status, a failed async task, a non-JSON body: `raw` is `{}`), nor an answer over `SERVED_CHECK_MAX`
+(not checked, to keep the call path's cost bounded), nor an answer whose value the re-serialized
+`raw` changes (a float past 15 significant digits, a repeated key), nor a pending call's submission
+ticket (the answer later filed under that ref is not what was delivered), nor an answer an overflow
+aggregator served (its row shares the child's ref with the direct attempt's). So NULL means no
+usable link was recorded, not that no answer was served; rows written before 0127 are NULL too.
+Review credit (`route_summary.credited`) is a separate decision and stays the latest successful
+attempt.
 """
 
 from __future__ import annotations
@@ -63,6 +79,7 @@ import json
 import re
 import logging
 import unicodedata
+from decimal import Decimal
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -1088,6 +1105,10 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
 # A routed call parses each child's answer, so it holds the whole of it, as settlement does: an
 # anonymous or own-key child would otherwise stream any size into memory.
 ROUTED_BODY_MAX = 8 * 1024 * 1024
+# The largest answer the router checks before linking it (`_delivered_as_received`). The check
+# parses the body again on the request path; past this size it would cost more than a millisecond
+# of event-loop time, so a larger answer is served exactly as before and simply not linked.
+SERVED_CHECK_MAX = 64 * 1024
 
 
 class _ChildTooLarge(Exception):
@@ -1416,6 +1437,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
     errored: list[tuple[Attempt, str]] = []     # answered-but-failed attempts and their child call ids
+    answered_by: dict[int, str] = {}   # id(candidate) -> the child call ref whose answer it holds
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
     # measured quality the providers left are ordered by once the first attempt has not decided.
@@ -1483,6 +1505,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         deadline = started + cancel_s if cancel_s is not None else None
         try:
             response = await _bounded(deadline, execute_child(child, upstream_client))
+            if child.credential_tier == "platform-overflow":
+                # Served through an overflow aggregator: the direct attempt's row and the
+                # overflow's row share this call ref, so the ref cannot name one answer. No link.
+                answered_by.pop(id(cand), None)
+            else:
+                answered_by[id(cand)] = child.call_ref
             _note_call(parent, plan, cand, child, tried)
             if 200 <= response.status < 300:
                 # The latest successful attempt (never its async polls, `:p<k>`): the endpoint a
@@ -1645,6 +1673,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     await _remember_pending_task(parent, cand.endpoint["id"], descriptor,
                                                  waited.task_id, kickoff_raw)
                 _summarize(parent, served_by=cand.endpoint["id"], tried_count=len(tried))
+                # No link: the caller got the submission's ticket, and the answer filed later
+                # under this ref is not what was delivered.
                 _audit_parent(parent, ep, 202, spent, audit_client)
                 return _json(body_out, 202, {
                     "X-Treg-Served-By": cand.endpoint["id"],
@@ -1670,6 +1700,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                  response.status, charged, "asynchronous task failed", ignored=ignored))
             if options.waterfall:
                 continue
+            answered_by.pop(id(cand), None)   # the router writes this `raw`, not the provider
             winner = (cand, {}, {}, raw)
             break
         outcome = child_outcome(cand.endpoint, plan.contract, cand.adapter, response.status, raw,
@@ -1684,6 +1715,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged, ignored=ignored))
             if options.waterfall:
                 continue
+            answered_by.pop(id(cand), None)   # the router writes this `raw`, not the provider
             winner = (cand, {}, {}, raw)
             break
         if outcome.kind == "not_found":
@@ -1774,6 +1806,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     if weak_hits > MAX_WEAK_FALLBACKS:
                         break
                 continue
+            if doc is None:
+                answered_by.pop(id(cand), None)   # not JSON: the caller gets the router's `{}`
             winner = (cand, doc if doc is not None else {}, {}, raw)
             break
         # A HIT that answers thinly is not the end of the search. `min_results` lets the caller say
@@ -1939,13 +1973,21 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # The waterfall-off miss: the same rule as an all-miss walk (see the no-winner branch).
         incomplete, spent = True, _refund_errors(errored, pending, spent)
     upgrade, provider = None, cand.endpoint["provider"]
+    served_ref = answered_by.get(id(cand))
+    # The exact bytes this call hands back as `raw`, hashed as the archive hashes a body
+    # (`archive.content_hash`): a reader takes an archived answer for this call only when its
+    # `content_hash` is this one.
+    if served_ref and (not isinstance(raw, bytes) or len(raw) > SERVED_CHECK_MAX
+                       or not _delivered_as_received(raw, doc)):
+        served_ref = None   # `raw` is delivered re-serialized; a value that changes breaks the link
+    served_hash = hashlib.sha256(raw).hexdigest() if served_ref and isinstance(raw, bytes) else None
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
         upgrade, better, upgrade_cost = await _run_upgrade(parent, ep, options.upgrade, output, remaining,
                                                            execute_child, upstream_client)
         spent += upgrade_cost
         if better is not None:
-            output, doc, served = better
+            output, doc, served, served_ref, served_hash = better
             provider = served.split(".")[0]
     merged_from: list[str] = []
     if options.merge and len(answers) > 1:
@@ -1965,6 +2007,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     output["count"] = len(rows)
                 merged_from = contributed
                 served = merged_from[0]
+                # `raw` stays the winner's body, so the link stays the winner's too: a reader of
+                # the served answer must find the bytes the caller received, not the first rows.
     # Holders of the asked role now first, past holders last (`row.rank_by_role`), merged or not.
     if plan.contract.row_rank and output and isinstance(output.get(plan.contract.row_of), list):
         output = {**output, plan.contract.row_of: plan.contract.rank_rows(plan.identity, output[plan.contract.row_of])}
@@ -2071,6 +2115,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
+    parent.served_call_ref, parent.served_content_hash = served_ref, served_hash if served_ref else None
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
@@ -2187,7 +2232,7 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     this same routed endpoint again by that key alone, its providers in order of measured quality.
     Its answer replaces the first only when it is a hit about the same person (the contract's name
     agrees); otherwise the first, already-paid answer stands. Returns (`_treg.upgrade`, the
-    replacing (output, raw, served_by) or None, money it moved). A failure costs the first answer nothing."""
+    replacing (output, raw, served_by, served child call ref, its body hash) or None, money it moved). A failure costs the first answer nothing."""
     value = output.get(key)
     if not isinstance(value, str) or not value.strip():
         return {"upgraded": False, "via": key, "reason": f"no_{key}"}, None, 0
@@ -2212,7 +2257,8 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     if "full_name" in output and _name_key(found.get("full_name")) != _name_key(output.get("full_name")):
         return {**view, "upgraded": False, "reason": "other_name"}, None, cost
     return {**view, "upgraded": True}, ({**output, **{k: v for k, v in found.items() if v is not None}},
-                                        doc.get("raw"), meta.get("served_by")), cost
+                                        doc.get("raw"), meta.get("served_by"), child.served_call_ref,
+                                        child.served_content_hash), cost
 
 
 def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallContext, tried: list) -> None:
@@ -2242,6 +2288,33 @@ def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallCont
     _summarize(parent, route_rule=route)
 
 
+class _DuplicateKey(ValueError):
+    pass
+
+
+def _unique_keys(pairs: list) -> dict:
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise _DuplicateKey(keys)
+    return dict(pairs)
+
+
+def _delivered_as_received(raw: bytes, doc) -> bool:
+    """Whether the `raw` this call delivers (`doc` serialized again by `_json`) has the same value
+    as the provider's bytes, read exactly: numbers as Decimal, any encoding `json.loads` accepts,
+    and no repeated key (parsing keeps only the last). A float past 15 significant digits
+    (`9007199254740993.0` comes back `...992.0`), an overflow (`1e400` as `Infinity`) or a dropped
+    duplicate fails it. Only then does an archived copy of these bytes stand for what the caller
+    received (`CallRecord.served_content_hash`). Never raises: anything it cannot decide is False,
+    which costs the link, never the call."""
+    try:
+        received = json.loads(raw, parse_float=Decimal, object_pairs_hook=_unique_keys)
+        delivered = json.loads(jsontext.dumps_bytes(doc, separators=(",", ":")), parse_float=Decimal)
+        return bool(received == delivered)
+    except Exception:  # noqa: BLE001 - an undecidable body only loses its link
+        return False
+
+
 def _summarize(parent: CallContext, **outcome) -> None:
     """What the router decided, for the parent's call event (service.py `_routed_event`)."""
     parent.route_summary = {**(parent.route_summary or {}), **outcome}
@@ -2257,6 +2330,9 @@ def _audit_parent(parent: CallContext, ep: dict, status: int, charged: int, clie
                       # routed parent row without its pin would hide the caller's own call.
                       telemetry={"call_ref": parent.call_ref, "endpoint_id": ep["id"], "provider": "treg",
                                  "credential_tier": "routed", "cost_charged_micro": charged,
+                                 # Which child's answer the caller received; None for a miss/failure.
+                                 "served_call_ref": parent.served_call_ref,
+                                 "served_content_hash": parent.served_content_hash,
                                  **_tag_telemetry(parent.meta)})
 
 
