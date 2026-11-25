@@ -404,8 +404,9 @@ registration can later resolve to `169.254.169.254` or localhost. The other serv
 user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
 same switch) just before sending: the health probe (`health._probe`), the owner webhook
 (`health._notify`), the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
-code exchange (`HTTPXOAuthExchangePort.exchange_code`), and the MCP OAuth client-id metadata fetch
-(`mcp_oauth.fetch_client_id_metadata`). The blocking `host_is_public` is for sync callers only; an
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). The MCP OAuth client-id metadata fetch
+(`mcp_oauth.fetch_client_id_metadata`) uses the same lookup but checks always, whatever
+`proxy_ssrf_check` says: its URL comes from any client on the internet. The blocking `host_is_public` is for sync callers only; an
 async path never calls it directly. Registration
 (`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
 `proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
