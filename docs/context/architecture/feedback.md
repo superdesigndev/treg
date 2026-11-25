@@ -452,18 +452,20 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
   `review_judge_answer_chars`. The judge sees what this call's delivery is known to have had: its own
   status and the body (`review_answers.as_delivered`), without the provider-reported charge the
-  endpoint declares (whether this delivery kept it is not on file), read from any version of that
-  answer that kept its bytes (`archive.resolve_result(prefer_bytes=True)` tries database copies, then
-  object storage). No answer can be shown, and the reason codes become `reason_final`, when there is
-  no archive link, every copy is gone or was a hash only, the text is not UTF-8, the call came
-  through `/table` (`CallRecord.surface`: a reshaped answer), or it predates
-  `review_answer_surface_since`. Anything else not read now (a failed read, object storage in use but
-  not configured, the database unreachable, a corrupt snapshot) is tried again from
-  `answer_retry_at`, an hour doubling to a week (`answer_attempts`), and after
+  endpoint declares (whether this delivery kept it is not on file), read from a version of that
+  answer that kept its bytes (`archive.resolve_result(prefer_bytes=True)`). The reason codes become
+  `reason_final` at once only on facts that will not change: the call row has no archive link, it
+  came through `/table` (`CallRecord.surface`: a reshaped answer; one idempotency key never replays
+  across surfaces), it predates `review_answer_surface_since`, or the bytes are not UTF-8 text.
+  Anything else that does not read now (the archive not written yet, a hash-only or gone answer, a
+  failed read, object storage not configured here, the database unreachable, a corrupt snapshot) is
+  tried again from `answer_retry_at`, an hour doubling to a week (`answer_attempts`), and after
   `review_judge_answer_attempts` tries the reason codes stand; a review waiting its turn is not read,
-  so it never holds back the others. The worker opens the archive's object store, and without its
-  credentials logs that and runs on. Each read gets only the time left before reading stops, which
-  leaves a request's worth before the deadline, so what was read is sent; no request starts after it.
+  so it never holds back the others. Answer codes may replace this version's `reason_final`, so a run
+  that read the answer wins over one that meanwhile gave up. The worker opens the archive's object
+  store, and without its credentials logs that and runs on. Each read gets only the time left before
+  reading stops, which leaves a request's worth before the deadline, so what was read is sent; a read
+  cut by that budget waits six hours without spending a try. No request starts after the deadline.
 
 Each answer is validated on its own (a Noul must be a number in [0, 1], a Choice one of the codes);
 a failed request or an unreadable answer leaves that review unjudged for the next run, and one pass
