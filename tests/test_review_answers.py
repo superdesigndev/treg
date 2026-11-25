@@ -1,10 +1,12 @@
 """What a judge reads of a reviewed call's answer: read, absent for good, or unreadable now (left for
 a later run), against the real archive tables."""
+import pytest
 from sqlalchemy.exc import OperationalError
 from sqlmodel import select
 
 from treg import archive, archive_bodies
 from treg.application import review_answers
+from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import ArchiveKey, ArchiveSnapshot, CallReview
 from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
@@ -76,3 +78,18 @@ async def test_a_database_disconnect_waits_and_a_corrupt_read_does_not(clients, 
     monkeypatch.setattr(archive, "resolve_result", corrupt)
     answer = await review_answers.answer_of(review)
     assert (answer.state, answer.error) == ("absent", True)
+
+
+async def test_a_table_caller_is_judged_from_the_reason(clients, monkeypatch):
+    # /table reshapes the answer and the call row does not say which surface was used.
+    review = await _reviewed(clients)
+    await _key((1, PEOPLE.encode(), "db"))
+    monkeypatch.setattr(get_settings(), "table_enabled", True, raising=False)
+    assert (await review_answers.answer_of(review)).state == "absent"
+
+
+@pytest.mark.parametrize("body", ['{"a":1}'.encode("utf-16le")])
+async def test_text_in_another_encoding_is_absent(clients, body):
+    review = await _reviewed(clients)
+    await _key((1, body, "db"))
+    assert (await review_answers.answer_of(review)).state == "absent"

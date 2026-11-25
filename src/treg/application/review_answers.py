@@ -16,7 +16,8 @@ from sqlmodel import select
 from .. import archive, archive_bodies
 from ..domain.feedback import body_view
 from ..infra.db import session_maker
-from ..models import CallRecord
+from ..models import CallRecord, Org
+from . import table as table_app
 
 log = logging.getLogger("treg.review_answers")
 
@@ -47,7 +48,8 @@ async def answer_of(r) -> Answer:
     """The answer the reviewed direct call got (`r.routed_via` is None; the caller counts routed
     reviews apart: their rows cannot prove which attempt's answer was returned).
 
-    `absent` when none is on file for good. `unreadable` when the
+    `absent` when none is on file for good, or when what the caller received cannot be told from
+    the archive (a team on the `/table` surface gets a reshaped answer). `unreadable` when the
     bytes may be on file but were not read now: storage or the database failed, a read failed,
     or object storage is in use but not configured here. A read that raises anything else (a
     corrupt snapshot) is `absent` with `error`, so one bad row never stops the others."""
@@ -56,7 +58,10 @@ async def answer_of(r) -> Answer:
             record = (await db.execute(select(CallRecord).where(
                 CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
             ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
+            slug = (await db.execute(select(Org.slug).where(Org.id == r.org_id))).scalar_one_or_none()
         if record is None or record.archive_key_hash is None or record.archive_content_hash is None:
+            return ABSENT
+        if table_app.enabled_for(slug or "", getattr(r, "user_email", "") or ""):
             return ABSENT
         link = (record.archive_key_hash, record.archive_content_hash)
         report: dict = {}
@@ -65,7 +70,7 @@ async def answer_of(r) -> Answer:
             return ABSENT
         if found["stored"]:
             text = found["response"]["body_text"]
-            if text is None:  # not UTF-8 text
+            if text is None or "\x00" in text:  # not UTF-8 text, or text in another encoding
                 return ABSENT
             return Answer("read", as_delivered(found, record.status_code, record.endpoint_id,
                                                record.cost_charged_micro))
