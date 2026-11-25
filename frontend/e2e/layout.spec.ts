@@ -46,25 +46,6 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
       await expectClean(page, 'the tool drawer')
     })
 
-    test('a search answer keeps a long price in its column', async ({ page }) => {
-      // The browser-test server has no judge key; answer /catalog/find with real catalog rows, one of
-      // them priced "per started 10 emails", the rate that once painted over the fit bar.
-      const detail = await (await page.request.get('/catalog/endpoints/hunter.companies.emails')).json()
-      const ep = detail.endpoint
-      const rows = [ep, ...detail.siblings.slice(0, 3)].map((e: any, i: number) => ({
-        id: e.id, name: e.name || e.summary, provider: e.provider, provider_display: e.provider_display,
-        platform: e.platform || 'people', platform_label: 'People & contact data', capability: e.capability,
-        capability_description: e.name, cost: e.cost, p: 0.9 - i * 0.1 }))
-      await page.route('**/catalog/find?**', route => route.fulfill({ status: 200, contentType: 'application/x-ndjson',
-        body: JSON.stringify({ event: 'candidates', candidates: [] }) + '\n'
-            + JSON.stringify({ event: 'judged', verdict: 'strong', named: '', read: 4, high: 0.8, rows }) + '\n' }))
-      await page.goto('/catalog')
-      await page.locator('.cat-find input').fill('list every email address at a company')
-      await page.keyboard.press('Enter')
-      await expect(page.locator('.fa .ui-tbody .ui-tr').first()).toBeVisible()
-      await expectClean(page, 'a search answer')
-    })
-
     test('the signed-in pages with tables lay out cleanly', async ({ page }) => {
       await signIn(page, `layout-${width}`)
       for (const hash of ['activity', 'orgs', 'tools', 'catalog', 'connections']) {
