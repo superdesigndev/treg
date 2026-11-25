@@ -567,11 +567,11 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        domains: {type: "array[string]", required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
         registration: {type: boolean, required: false, note: "registrar, creation and expiry dates, domain age, status codes, name servers and DNSSEC. Default true, no extra charge", example: true}
         profile: {type: boolean, required: false, note: "email provider, SPF and DMARC, hosting, page tech, DNS-verified services and mail senders, meta, organization record and social links. Default true, no extra charge", example: true}
         links: {type: boolean, required: false, note: "the homepage's links to pricing, about, team, contact, careers and the rest. Default true, no extra charge", example: true}
-        only_states: {type: "array[string]", required: false, note: "return rows only for these verdicts, for example [PARKED, DEAD_DNS]"}
+        only_states: {type: array, items: {type: string}, required: false, note: "return rows only for these verdicts, for example [PARKED, DEAD_DNS]"}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per input domain with state, score and reason, plus registration, certificate, dns, hosting, tech, page, organization and social blocks. An input that could not be checked comes back as an error item and is not charged"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -596,7 +596,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        domains: {type: "array[string]", required: true, note: "website domains or URLs, one per entry; each ranked domain is one web_rank event", example: ["honeybook.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "website domains or URLs, one per entry; each ranked domain is one web_rank event", example: ["honeybook.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per domain: popularity (top_sites_world, top_countries), link_rank (commoncrawl with history, majestic), speed, domain_facts and site. A domain no source ranks comes back uncharged and says so"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -621,7 +621,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        queries: {type: "array[object]", required: true, note: "one lookup per entry: {query: a company name or a registration number, jurisdiction: a two-letter country code or a US state such as us-de}", example: [{"query": "00445790", "jurisdiction": "gb"}]}
+        queries: {type: array, items: {type: object}, required: true, note: "one lookup per entry: {query: a company name or a registration number, jurisdiction: a two-letter country code or a US state such as us-de}", example: [{"query": "00445790", "jurisdiction": "gb"}]}
         max_candidates: {type: integer, required: false, note: "the most shortlist candidates a name search returns in total; default 50", example: 50}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. A registration number returns one record item (registry_record). A name returns candidate items under one registry_search event. A query no register answers comes back uncharged"
@@ -648,11 +648,11 @@ endpoints:
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
         mode: {type: string, required: false, note: "company (default) | inventor | search | document", example: "company"}
-        queries: {type: "array[string]", required: true, note: "one per entry, read in the mode above: company names, inventor names, search phrases or publication numbers", example: ["Mobileye Vision Technologies Ltd"]}
+        queries: {type: array, items: {type: string}, required: true, note: "one per entry, read in the mode above: company names, inventor names, search phrases or publication numbers", example: ["Mobileye Vision Technologies Ltd"]}
         max_results: {type: integer, required: false, note: "cap on patent rows per query; each row is one patent_record event; default 100", example: 1}
         granted_only: {type: boolean, required: false, note: "keep granted patents only; default false", example: false}
         one_per_family: {type: boolean, required: false, note: "one row per patent family; default false", example: false}
-        countries: {type: "array[string]", required: false, note: "keep publications from these offices only: US, EP, WO, CN, JP, KR, IL, DE, GB and others"}
+        countries: {type: array, items: {type: string}, required: false, note: "keep publications from these offices only: US, EP, WO, CN, JP, KR, IL, DE, GB and others"}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. A summary item per query (one patent_search event) followed by one item per patent (patent_record)"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -677,7 +677,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        companies: {type: "array[string]", required: true, note: "company websites, domains or LinkedIn company URLs, one per entry; each answered company is one company_funding event", example: ["honeybook.com"]}
+        companies: {type: array, items: {type: string}, required: true, note: "company websites, domains or LinkedIn company URLs, one per entry; each answered company is one company_funding event", example: ["honeybook.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per company: rounds (each with sources), totals, the latest round and any exit. One company per call fits treg's 90-second timeout"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -702,7 +702,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        companies: {type: "array[string]", required: true, note: "a domain, a website URL, a LinkedIn company URL or a company name, one per entry", example: ["linear.app"]}
+        companies: {type: array, items: {type: string}, required: true, note: "a domain, a website URL, a LinkedIn company URL or a company name, one per entry", example: ["linear.app"]}
         tier: {type: string, required: false, note: "basic (company_basic) | full (company_full)", example: "basic"}
         maxAgeDays: {type: integer, required: false, note: "full tier only: refresh a record older than this many days"}
       bodyType: json
@@ -729,10 +729,10 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        queries: {type: "array[string]", required: true, note: "a domain, a website URL or a careers or ATS board URL, one per entry; each company is one company_search event", example: ["notion.so"]}
+        queries: {type: array, items: {type: string}, required: true, note: "a domain, a website URL or a careers or ATS board URL, one per entry; each company is one company_search event", example: ["notion.so"]}
         max_jobs: {type: integer, required: false, note: "cap on job rows per company; each row is one job_record event; default 200", example: 1}
         include_description: {type: boolean, required: false, note: "full description text and html on every row; default true", example: false}
-        keywords: {type: "array[string]", required: false, note: "keep roles whose title contains any of these words"}
+        keywords: {type: array, items: {type: string}, required: false, note: "keep roles whose title contains any of these words"}
         country: {type: string, required: false, note: "two-letter code; keep roles located there"}
         remote_only: {type: boolean, required: false, note: "keep roles the employer marks remote", example: false}
       bodyType: json
@@ -759,7 +759,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        profileUrls: {type: "array[string]", required: true, note: "LinkedIn profile URLs (https://www.linkedin.com/in/<slug>) or bare slugs; each is one profile-processed event", example: ["https://www.linkedin.com/in/gergelyorosz"]}
+        profileUrls: {type: array, items: {type: string}, required: true, note: "LinkedIn profile URLs (https://www.linkedin.com/in/<slug>) or bare slugs; each is one profile-processed event", example: ["https://www.linkedin.com/in/gergelyorosz"]}
         mode: {type: string, required: false, note: "enrich (each URL on its own, default) | team (2-10 URLs as one team)", example: "enrich"}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per profile under `person`. A profile that cannot be read comes back uncharged"
@@ -785,7 +785,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        companies: {type: "array[string]", required: true, note: "company websites, domains or LinkedIn company URLs, one per entry; each answered company is one company_markets event", example: ["covergenius.com"]}
+        companies: {type: array, items: {type: string}, required: true, note: "company websites, domains or LinkedIn company URLs, one per entry; each answered company is one company_markets event", example: ["covergenius.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per company with its markets, each with size estimates (value, year, CAGR, publisher)"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -810,7 +810,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        markets: {type: "array[string]", required: true, note: "market names in plain words, one per entry; each answered market is one market_by_name event", example: ["embedded insurance"]}
+        markets: {type: array, items: {type: string}, required: true, note: "market names in plain words, one per entry; each answered market is one market_by_name event", example: ["embedded insurance"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per market with its estimates (value, year, CAGR, forecast year, publisher)"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -835,10 +835,10 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        keywords: {type: "array[string]", required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["data engineer"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["data engineer"]}
         max_jobs: {type: integer, required: false, note: "cap on the job rows returned, newest first; each row is one job_record event; default 200", example: 1}
         max_per_company: {type: integer, required: false, note: "cap on the rows one employer contributes; 0 for no cap; default 5", example: 5}
-        exclude: {type: "array[string]", required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
+        exclude: {type: array, items: {type: string}, required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
         country: {type: string, required: false, note: "two-letter code (US, GB, DE, IN); keep roles with a location in that country"}
         remote_only: {type: boolean, required: false, note: "keep roles the employer marks remote; default false", example: false}
         department: {type: string, required: false, note: "keep roles whose department contains this word (Engineering, Sales)"}
@@ -868,10 +868,10 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        keywords: {type: "array[string]", required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["account executive"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["account executive"]}
         max_jobs: {type: integer, required: false, note: "cap on the job rows returned, newest first; each row is one job_record event; default 200", example: 1}
         max_per_company: {type: integer, required: false, note: "cap on the rows one employer contributes; 0 for no cap; default 5", example: 5}
-        exclude: {type: "array[string]", required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
+        exclude: {type: array, items: {type: string}, required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
         country: {type: string, required: false, note: "two-letter code (US, GB, DE, IN); keep roles with a location in that country"}
         remote_only: {type: boolean, required: false, note: "keep roles the employer marks remote; default false", example: false}
         department: {type: string, required: false, note: "keep roles whose department contains this word (Engineering, Sales)"}
@@ -901,10 +901,10 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        keywords: {type: "array[string]", required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["software engineer"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["software engineer"]}
         max_jobs: {type: integer, required: false, note: "cap on the job rows returned, newest first; each row is one job_record event; default 200", example: 1}
         max_per_company: {type: integer, required: false, note: "cap on the rows one employer contributes; 0 for no cap; default 5", example: 5}
-        exclude: {type: "array[string]", required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
+        exclude: {type: array, items: {type: string}, required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
         country: {type: string, required: false, note: "two-letter code (US, GB, DE, IN); keep roles with a location in that country"}
         remote_only: {type: boolean, required: false, note: "keep roles the employer marks remote; default false", example: false}
         department: {type: string, required: false, note: "keep roles whose department contains this word (Engineering, Sales)"}
@@ -934,10 +934,10 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        keywords: {type: "array[string]", required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["product manager"]}
+        keywords: {type: array, items: {type: string}, required: true, note: "keep roles whose title contains any of these words or phrases, as whole words ('java' does not match 'javascript'). At least one", example: ["product manager"]}
         max_jobs: {type: integer, required: false, note: "cap on the job rows returned, newest first; each row is one job_record event; default 200", example: 1}
         max_per_company: {type: integer, required: false, note: "cap on the rows one employer contributes; 0 for no cap; default 5", example: 5}
-        exclude: {type: "array[string]", required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
+        exclude: {type: array, items: {type: string}, required: false, note: "drop roles whose title contains any of these words, for example intern or senior"}
         country: {type: string, required: false, note: "two-letter code (US, GB, DE, IN); keep roles with a location in that country"}
         remote_only: {type: boolean, required: false, note: "keep roles the employer marks remote; default false", example: false}
         department: {type: string, required: false, note: "keep roles whose department contains this word (Engineering, Sales)"}
@@ -967,7 +967,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        queries: {type: "array[string]", required: true, note: "a company number (00445790, SC123456, OC301234) or a company name, one per entry. A number finds the one company, a name returns the best match or a ranked shortlist", example: ["00445790"]}
+        queries: {type: array, items: {type: string}, required: true, note: "a company number (00445790, SC123456, OC301234) or a company name, one per entry. A number finds the one company, a name returns the best match or a ranked shortlist", example: ["00445790"]}
         max_candidates: {type: integer, required: false, note: "the most companies a name that fits several returns as a shortlist; default 10", example: 10}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One record item per answered query (registry_record), with candidates when a name fits several companies. A query the register does not answer comes back uncharged"
@@ -993,7 +993,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        queries: {type: "array[string]", required: true, note: "a SIREN (552032534) or a SIRET or a company name, one per entry. A number finds the one company, a name returns the best match or a ranked shortlist", example: ["356000000"]}
+        queries: {type: array, items: {type: string}, required: true, note: "a SIREN (552032534) or a SIRET or a company name, one per entry. A number finds the one company, a name returns the best match or a ranked shortlist", example: ["356000000"]}
         max_candidates: {type: integer, required: false, note: "the most companies a name that fits several returns as a shortlist; default 10", example: 10}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One record item per answered query (registry_record), with candidates when a name fits several companies. A query the register does not answer comes back uncharged"
@@ -1019,7 +1019,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        domains: {type: "array[string]", required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per domain with a registration block (registrar, created, expires, domain_age_days, status, nameservers, dnssec) beside the verdict, dns and certificate blocks. An input that could not be checked comes back uncharged"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -1044,7 +1044,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        domains: {type: "array[string]", required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per domain with domain_expires, days_to_expiry and cert_expires at the top level, plus the registration and certificate blocks. An input that could not be checked comes back uncharged"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -1069,7 +1069,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        domains: {type: "array[string]", required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per domain with tech (cms, framework, analytics, marketing, other, verified_with, email_senders) and hosting (cdn_or_host, server, dns_host) blocks, plus page, organization and social. An input that could not be checked comes back uncharged"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
@@ -1094,7 +1094,7 @@ endpoints:
         memory: {type: integer, required: false, enum: [256], note: "MB of run memory. 256 is the Actor's default", example: 256}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds", example: 90}
       body:
-        domains: {type: "array[string]", required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
+        domains: {type: array, items: {type: string}, required: true, note: "a domain, a website URL or an email address (the domain part is used), one per entry; each is one domain_check event", example: ["stripe.com"]}
       bodyType: json
       note: "the response is the dataset items array directly, no run envelope. One item per domain with a dns block (has_mx, mx_hosts, email_provider, spf_present, spf_record, dmarc_policy, dmarc_record, email_auth) and tech.email_senders. An input that could not be checked comes back uncharged"
     platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
