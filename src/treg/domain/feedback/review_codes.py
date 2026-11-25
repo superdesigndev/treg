@@ -124,11 +124,12 @@ def person_p_from(answer: object) -> float | None:
 
 
 def codes_from(answer: object) -> tuple[str, str | None] | None:
-    """`(primary, secondary)` from a Choice answer, or None when it is not one of the codes. A
-    probability that is not a number is ignored, never fatal."""
-    if not isinstance(answer, dict) or answer.get("choice") not in CODES:
+    """`(primary, secondary)` from a Choice answer, or None when it is not one of the codes (a
+    choice that is a list or an object included). A probability that is not a number is ignored,
+    never fatal."""
+    primary = answer.get("choice") if isinstance(answer, dict) else None
+    if not isinstance(primary, str) or primary not in CODES:
         return None
-    primary = answer["choice"]
     raw = answer.get("probabilities")
     probs = {k: p for k, v in (raw.items() if isinstance(raw, dict) else ())
              if k in CODES and k != primary and (p := probability(v)) is not None}

@@ -103,9 +103,10 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
         if reply.answers is None:
             out["failed_requests"] += 1
             return
+        answers = reply.answers if isinstance(reply.answers, dict) else {}
         out["tokens_in"] += reply.tokens_in or 0
         for i, (r, item) in enumerate(items):
-            codes = review_codes.codes_from(reply.answers.get(f"a{i}"))
+            codes = review_codes.codes_from(answers.get(f"a{i}"))
             if codes is None:
                 out["unreadable"] += 1
                 continue

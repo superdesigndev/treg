@@ -161,6 +161,19 @@ async def test_vague_noreason_review_is_asked_and_a_blank_one_is_not(clients, mo
     assert out["pairs"] == {"NOREASON->EMPTY": 1} and out["body_codes"] == {"EMPTY": 1}
 
 
+async def test_one_malformed_answer_is_unreadable_and_the_rest_count(clients, monkeypatch):
+    org = await _org(clients)
+    await _add(_review(org, "good", "PARTIAL"), _review(org, "bad", "PARTIAL", reason=REASON + " Bad."),
+               _record(org, "good", "kg"), _record(org, "bad", "kb"))
+    _archive(monkeypatch, {"kg": PEOPLE, "kb": PEOPLE})
+    _jev(monkeypatch, lambda q, item: {"choice": ["PARTIAL"]} if item["reason"].endswith("Bad.")
+         else {"choice": "PARTIAL"})
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
+    assert out["coded"] == 1 and out["unreadable"] == 1 and out["same_primary"] == 1
+    assert review_codes.codes_from({"choice": {"code": "EMPTY"}}) is None
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {
