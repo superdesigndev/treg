@@ -29,7 +29,11 @@ depends_on: str | Sequence[str] | None = None
 COLUMNS = ("served_call_ref", "served_content_hash")
 
 
-def _present() -> set[str]:
+def _present() -> set[str] | None:
+    """The columns already there, or None when generating SQL offline (`--sql`), where there is
+    no database to look at and the DDL follows from the starting revision alone."""
+    if op.get_context().as_sql:
+        return None
     return {c["name"] for c in sa.inspect(op.get_bind()).get_columns("callrecord")}
 
 
@@ -39,13 +43,15 @@ def upgrade() -> None:
     # the columns that are missing.
     present = _present()
     for name in COLUMNS:
-        if name not in present:
+        if present is None or name not in present:
             op.add_column("callrecord", sa.Column(name, sa.String(), nullable=True))
 
 
 def downgrade() -> None:
+    # A plain DROP COLUMN per column (SQLite has one since 3.35), never a batch table rebuild: an
+    # interrupted rebuild leaves `_alembic_tmp_callrecord` behind and every rerun fails on it.
+    # Like upgrade, a rerun drops only what is still there.
     present = _present()
-    with op.batch_alter_table("callrecord") as batch:
-        for name in reversed(COLUMNS):
-            if name in present:
-                batch.drop_column(name)
+    for name in reversed(COLUMNS):
+        if present is None or name in present:
+            op.drop_column("callrecord", name)
