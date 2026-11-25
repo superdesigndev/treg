@@ -9,6 +9,9 @@ sources:
   - src/treg/domain/feedback/reviews.py
   - src/treg/domain/feedback/marks.py
   - src/treg/domain/feedback/verdicts.py
+  - src/treg/domain/feedback/body_view.py
+  - src/treg/application/review_body_pilot.py
+  - tests/test_review_body_pilot.py
   - src/treg/domain/feedback/comparisons.py
   - src/treg/application/compare.py
   - src/treg/hints.py
@@ -438,6 +441,13 @@ a failed request or an unreadable answer leaves that review unjudged for the nex
 failing never stops the other. A judgement is written only onto a review still unjudged, or coded
 under an older codebook version (`domain.feedback.reviews`), so overlapping runs never replace or
 downgrade an answer; no database connection is held across a Jev request.
+
+`treg-worker reviews body-pilot` (`application.review_body_pilot`) is a dry run of coding with the
+answer in view: it takes the newest negative reviews already coded under the current codebook whose
+call still has its answer on file, asks Jev the codebook again with the request and the answer
+shortened by `body_view.shrink` (long strings cut, long lists kept to their first items and a count),
+and prints how its codes compare with the reason-only ones. It writes nothing and prints only counts,
+code pairs and review ids, never a reason, request or answer.
 
 Without `typesafe_api_key`, or with the cron suspended, nothing new is judged: new reasons are not
 quoted, but reasons already judged clean keep being quoted. To stop quoting those too, revert the
