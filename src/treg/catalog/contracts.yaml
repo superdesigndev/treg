@@ -59,6 +59,7 @@ contracts:
     # `X-Treg-Route-Confirm`: a hit counts only once a second provider returns the same address.
     # Finders that guess from the same name patterns can still agree on a wrong one.
     confirm: email
+    ad_hashes: email
 
   people.email.find.personal:
     summary: "Find someone's personal email from their LinkedIn URL or work email — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"

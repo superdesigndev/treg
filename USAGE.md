@@ -314,6 +314,13 @@ with `X-Treg-Route-Waterfall: 0`, or on a routed tool without a confirm field, t
 refused (422, unbilled). Agreement is not delivery: combine it with `X-Treg-Route-Verify` to also
 check the mailbox.
 
+`X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find` adds the hit's email as the hashes ad
+platforms match customer lists on: `_treg.ad_hashes: {hashed: true, linkedin, meta, google}`, each
+the SHA-256 of the address as that platform normalizes it (lowercase, no spaces; for Google, a
+gmail.com or googlemail.com address also loses its dots and `+tag`). treg computes them, so there
+is no extra charge, and `output` is not altered. A miss says `{hashed: false, reason: no_hit}`. On
+another routed tool the header is refused (422, unbilled).
+
 `X-Treg-Route-Domain-Match: strict` on `treg.people.email.find` keeps looking past a hit at another
 mail domain than the `domain` you sent: that hit is `weak`, and the waterfall goes on, each attempt
 at its own price inside `X-Treg-Route-Max-Cost`, for at most two more off-domain hits. The first

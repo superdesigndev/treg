@@ -91,6 +91,8 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                               "each attempt at its own price." if contract.advice_domain_mismatch else "")
                            + (f" X-Treg-Route-Verify: true also checks a hit with {contract.check.endpoint}, "
                               "at that call's own price, in _treg.verification." if contract.check else "")
+                           + (f" X-Treg-Route-Ad-Hashes: true adds the hit's {contract.ad_hashes} as LinkedIn, Meta and "
+                              "Google audience-upload hashes in _treg.ad_hashes, at no extra charge." if contract.ad_hashes else "")
                            + (f" X-Treg-Route-Confirm: true counts a hit only once a second provider returns the same "
                               f"{contract.confirm}, each attempt at its own price, in _treg.confirmation."
                               if contract.confirm else "")

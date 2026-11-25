@@ -8,6 +8,7 @@ sources:
   - src/treg/domain/catalog/results.py
   - src/treg/domain/catalog/rankings.py
   - src/treg/domain/catalog/routing/__init__.py
+  - src/treg/domain/catalog/routing/ad_hashes.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
@@ -1013,6 +1014,11 @@ hands back the nested call's own), so the archived answer can be read later by e
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
   422 before planning.
+- `ad_hashes` (opt-in via `X-Treg-Route-Ad-Hashes`) names the output field holding an email. After
+  a hit, `route._ad_hashes` adds `_treg.ad_hashes`: `domain/catalog/routing/ad_hashes.hashes` gives
+  the SHA-256 of the address as LinkedIn, Meta and Google each normalize it. No call and no charge;
+  `output` is not altered; a miss or a hit without an address says `hashed: false` with `no_hit` or
+  `no_email`. The header on a contract without `ad_hashes` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
