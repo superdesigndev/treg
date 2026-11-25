@@ -31,7 +31,7 @@ from ..infra import judge
 from ..infra.db import session_maker
 from ..models import CallReview
 from ..timeutil import utcnow_naive
-from .review_answers import answer_of, view
+from .review_answers import ABSENT, Answer, answer_of, view
 
 log = logging.getLogger("treg.review_judge")
 
@@ -109,9 +109,10 @@ async def judge_privacy(*, deadline: float) -> dict:
 async def judge_codes(*, deadline: float) -> dict:
     """Code every negative review not yet coded under `CODEBOOK_VERSION`. A direct call's review
     whose answer is still on file (`review_answers.answer_of`) is asked with the request and the
-    shortened answer beside its reason (`review_codes.body_code_question`), a few per request; any
-    other (a routed call, whose served answer the rows cannot prove, or an answer gone) from its
-    reason alone, as before."""
+    shortened answer beside its reason (`review_codes.body_code_question`), a few per request; a
+    routed call's (the rows cannot prove which answer it returned) or one whose answer is gone for
+    good, from its reason alone. One whose answer is on file but unreadable now (object storage
+    unavailable or a failed read) is left uncoded, so a later run codes it with the answer."""
     since = utcnow_naive() - timedelta(days=verdicts.WINDOW_DAYS)
     version = review_codes.CODEBOOK_VERSION
     s = get_settings()
@@ -122,7 +123,7 @@ async def judge_codes(*, deadline: float) -> dict:
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
             .order_by(CallReview.created_at.desc()))).all()
-    out = {"pending": len(rows), "judged": 0, "with_answer": 0, "no_reason": 0, "already_judged": 0,
+    out = {"pending": len(rows), "judged": 0, "with_answer": 0, "answer_unreadable": 0, "answer_errors": 0, "no_reason": 0, "already_judged": 0,
            "failed_requests": 0, "unreadable": 0, "tokens_in": 0}
     blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
     out["no_reason"] = await _write_codes(blank)
@@ -168,9 +169,20 @@ async def judge_codes(*, deadline: float) -> dict:
     for r in rows:
         if time.monotonic() >= deadline:
             break
-        found = await answer_of(r) if r.routed_via is None else None
-        if found is not None:
-            read.append((r, view(len(read), r, found, capability(r), s.review_judge_answer_chars)))
+        answer = await answer_of(r) if r.routed_via is None else ABSENT
+        if answer.state == "unreadable":  # on file but not readable now: left for a later run
+            out["answer_unreadable"] += 1
+            continue
+        item = None
+        if answer.state == "read":
+            try:
+                item = view(len(read), r, answer.found, capability(r), s.review_judge_answer_chars)
+            except Exception:  # a body that cannot be shortened fails that review only
+                log.warning("review answer could not be shortened: review %s", r.id, exc_info=True)
+                answer = Answer("absent", error=True)
+        out["answer_errors"] += answer.error
+        if item is not None:
+            read.append((r, item))
             if len(read) == s.review_judge_answer_batch:
                 await ask(read, True)
                 read = []

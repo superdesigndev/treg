@@ -123,10 +123,11 @@ async def run(*, pairs: list[tuple[int, str, str | None]], model: str, max_usd: 
         if out["usd"] >= max_usd:
             out["stopped_by_cost"] = True
             break
-        found = await answer_of(r)
-        if found is None:
+        answer = await answer_of(r)
+        if answer.state != "read":
             out["no_body"] += 1
             continue
+        found = answer.found
         capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
         item = view(0, r, found, capability, budget)
         reason_coding, body_coding = (r.primary_code, r.secondary_code), (body_primary, body_secondary)

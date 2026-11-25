@@ -129,10 +129,11 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             if r.routed_via is not None:  # which attempt's answer it got is not provable (`_answer`)
                 out["answer_unconfirmed"] += 1
                 continue
-            found = await answer_of(r)
-            if found is None:
+            answer = await answer_of(r)
+            if answer.state != "read":
                 out["no_body"] += 1
                 continue
+            found = answer.found
             capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
             ready.append((r, view(len(ready), r, found, capability, budget)))
             if len(ready) == batch:

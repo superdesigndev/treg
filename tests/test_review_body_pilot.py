@@ -403,5 +403,5 @@ async def test_the_judge_sees_the_status_and_body_the_caller_got(clients, monkey
                         lambda endpoint_id, body, headers: body.replace(b',"credits_charged":2', b""))
     async with session_maker() as db:
         review = (await db.execute(select(CallReview))).scalar_one()
-    found = await review_answers.answer_of(review)
+    found = (await review_answers.answer_of(review)).found
     assert found["response"]["status_code"] == 206 and "credits_charged" not in found["response"]["body_text"]

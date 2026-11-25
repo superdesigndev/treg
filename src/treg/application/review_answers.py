@@ -5,6 +5,9 @@ of a review's answer sees the same thing.
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
+
 from sqlmodel import select
 
 from .. import archive
@@ -12,28 +15,51 @@ from ..domain.feedback import body_view
 from ..infra.db import session_maker
 from ..models import CallRecord
 
+log = logging.getLogger("treg.review_answers")
+
 REQUEST_BUDGET = 800
 
 
-async def answer_of(r) -> dict | None:
-    """The answer the reviewed call got, from the archive, for a direct call (`r.routed_via` is
-    None; the caller counts routed reviews apart). A routed call has no archive link of its own,
-    and its audit rows cannot prove which attempt's answer was returned: with
-    X-Treg-Route-Confirm the review is credited to the confirmer while the finder's answer is
-    returned, an upgrade returns another vendor's answer, and a miss returns none. The route's
-    `served_by` is in the answer and the call event, not on the rows."""
+@dataclass(frozen=True)
+class Answer:
+    """`read`: `found` is the answer as delivered. `absent`: none is on file for good (no archive
+    link, the key or answer expired, a hash-only version, or bytes that cannot be decoded), so the
+    reason is all a judge has. `unreadable`: the bytes are on file but could not be read now (object
+    storage unavailable or a failed read), so the review should wait for a later run."""
+    state: str
+    found: dict | None = None
+    error: bool = False
+
+
+ABSENT = Answer("absent")
+
+
+async def answer_of(r) -> Answer:
+    """The answer the reviewed direct call got (`r.routed_via` is None; the caller counts routed
+    reviews apart: their rows cannot prove which attempt's answer was returned). A read that raises
+    (a corrupt snapshot) is `absent` with `error`, so one bad row never stops the others."""
     async with session_maker() as db:
         record = (await db.execute(select(CallRecord).where(
             CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
         ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
-        link = (record.archive_key_hash, record.archive_content_hash) if record is not None else (None, None)
-        delivered = (record.status_code, record.endpoint_id, record.cost_charged_micro) if record is not None else None
-    if None in link:
-        return None
-    found = await archive.resolve_result(*link)
-    if not found or not found["stored"] or found["response"]["body_text"] is None:
-        return None
-    return as_delivered(found, *delivered)
+    if record is None or record.archive_key_hash is None or record.archive_content_hash is None:
+        return ABSENT
+    link = (record.archive_key_hash, record.archive_content_hash)
+    try:
+        found = await archive.resolve_result(*link)
+        if found is None:
+            return ABSENT
+        if found["stored"]:
+            if found["response"]["body_text"] is None:  # not UTF-8 text
+                return ABSENT
+            return Answer("read", as_delivered(found, record.status_code, record.endpoint_id,
+                                               record.cost_charged_micro))
+        async with session_maker() as db:
+            on_file = await archive.bytes_on_file(db, {link})
+    except Exception:  # one unreadable snapshot is that review's problem only
+        log.warning("review answer unreadable: review %s", r.id, exc_info=True)
+        return Answer("absent", error=True)
+    return Answer("unreadable") if on_file else ABSENT
 
 
 def as_delivered(found: dict, status_code: int, endpoint_id: str | None, charged: int | None) -> dict:

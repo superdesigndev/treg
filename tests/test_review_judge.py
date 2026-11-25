@@ -94,7 +94,8 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
         return {"choice": "SOMETHING_ELSE"}
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_codes(deadline=float("inf"))
-    assert out == {"pending": 3, "judged": 1, "with_answer": 0, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
+    assert out == {"pending": 3, "judged": 1, "with_answer": 0, "answer_unreadable": 0, "answer_errors": 0,
+                   "no_reason": 1, "already_judged": 0, "failed_requests": 0,
                    "unreadable": 1, "tokens_in": 10}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.CODES)
     rows = await _all()
@@ -281,3 +282,46 @@ async def test_the_judge_runs_from_reasons_when_object_storage_is_unavailable(cl
     monkeypatch.setattr(review_judge, "run", run)
     assert await worker._reviews_judge(argparse.Namespace(max_seconds=5)) == 0
     assert '"judged": 0' in capsys.readouterr().out
+
+
+async def test_an_answer_unreadable_now_waits_and_a_corrupt_one_does_not_block(clients, monkeypatch):
+    """Bytes on file that cannot be read now (object storage down) leave the review for a later run,
+    which codes it with the answer; a snapshot whose read raises is coded from its reason and the
+    reviews after it carry on."""
+    from treg import archive
+    from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
+
+    org = await _org(clients)
+    await _add(_review(org, "later", None), _record(org, "later", "kl"),
+               _review(org, "broken", None), _record(org, "broken", "kb"),
+               _review(org, "rt", None, routed=True), _record(org, "rt", tier="routed"))
+    async with session_maker() as db:
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.codebook_version = None
+        await db.commit()
+    readable = {"now": False}
+
+    async def resolve(key_hash, content_hash):
+        if key_hash == "kb":
+            raise ValueError("Error -3 while decompressing data")
+        stored = readable["now"]
+        return {"stored": stored, "request": {"method": "POST", "url": "u", "body_text": "{}"},
+                "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 9,
+                             "body_text": PEOPLE if stored else None}}
+
+    async def on_file(db, pairs):
+        return set(pairs)
+    monkeypatch.setattr(archive, "resolve_result", resolve)
+    monkeypatch.setattr(archive, "bytes_on_file", on_file)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY" if "response" in state["reviews"][int(q[1:])]
+                                               else "WRONG"})
+
+    out = await review_judge.judge_codes(deadline=float("inf"))
+    assert (out["answer_unreadable"], out["answer_errors"], out["judged"]) == (1, 1, 2)
+    codes = {r.call_id: r.primary_code for r in (await _all()).values()}
+    assert codes == {"later": None, "broken": "WRONG", "rt": "WRONG"}
+
+    readable["now"] = True
+    again = await review_judge.judge_codes(deadline=float("inf"))
+    assert again["pending"] == 1 and again["with_answer"] == 1
+    assert (await _all())["later"].primary_code == "EMPTY"
