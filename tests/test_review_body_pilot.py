@@ -339,6 +339,32 @@ async def test_a_tail_batch_read_past_the_deadline_says_so(clients, monkeypatch)
     assert seen == [] and out["read_not_asked"] == 1 and out["stopped_by_deadline"] is True
 
 
+@pytest.mark.parametrize("reviews,page,sample", [(1, 200, 1), (2, 1, 1), (1, 200, 5)])
+async def test_the_tail_batch_goes_out_without_another_page(clients, monkeypatch, reviews, page, sample):
+    # A short page is the window's last, and a full sample needs no more rows: either way the
+    # ready tail is sent before any further query, which here would cross the deadline.
+    org = await _org(clients)
+    await _add(*[_review(org, f"t-{i}", "PARTIAL") for i in range(reviews)],
+               *[_record(org, f"t-{i}", f"k{i}") for i in range(reviews)])
+    _archive(monkeypatch, {f"k{i}": PEOPLE for i in range(reviews)})
+    monkeypatch.setattr(review_body_pilot, "PAGE", page)
+    now = [0.0]
+    monkeypatch.setattr(review_body_pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    real, pages = review_body_pilot._candidates, []
+
+    async def candidates(*args):
+        pages.append(args)
+        if len(pages) > 1:
+            now[0] += 100
+        return await real(*args)
+    monkeypatch.setattr(review_body_pilot, "_candidates", candidates)
+    _jev(monkeypatch)
+
+    out = await review_body_pilot.run(sample=sample, batch=5, budget=500, max_seconds=60)
+    assert len(pages) == 1 and out["asked"] == min(reviews, sample) and out["read_not_asked"] == 0
+    assert out["stopped_by_deadline"] is False
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {

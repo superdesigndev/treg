@@ -180,6 +180,10 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             if len(ready) == batch:
                 await ask(ready)
                 ready = []
+        # No further page when this one filled the sample or was the window's last: the ready tail
+        # goes out now, not after a query that could carry it past the deadline.
+        if out["asked"] + len(ready) >= sample or len(page) < PAGE:
+            break
     if ready:
         await ask(ready)
     out["pairs"] = dict(pairs.most_common())
