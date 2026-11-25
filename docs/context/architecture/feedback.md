@@ -15,6 +15,8 @@ sources:
   - src/treg/domain/feedback/body_view.py
   - src/treg/application/review_body_pilot.py
   - tests/test_review_body_pilot.py
+  - src/treg/application/review_body_audit.py
+  - tests/test_review_body_audit.py
   - src/treg/domain/feedback/comparisons.py
   - src/treg/application/compare.py
   - src/treg/hints.py
@@ -457,6 +459,13 @@ confirmer, `feedback.answering_child`; an upgrade returns another vendor's; a mi
 and the route's `served_by` is not stored on them. A blank
 reason is skipped; no Jev request starts after the deadline. It writes nothing and prints only
 counts, code pairs and review ids, never a reason, request or answer.
+
+`treg-worker reviews body-audit --pairs id:CODE[:CODE],...` (`application.review_body_audit`)
+checks the pilot's changed codes with a stronger judge: for each review, Claude through the AI
+Gateway (`ai_gateway_api_key`) sees the reason, request, shortened answer and codebook and picks
+between the review's reason-only coding and the pilot's body coding, shown as A and B in an order
+fixed by the review id. It writes nothing, prints winners per code change and review ids only, and
+starts no request once its spend reaches `--max-usd`.
 
 Without `typesafe_api_key`, or with the cron suspended, nothing new is judged: new reasons are not
 quoted, but reasons already judged clean keep being quoted. To stop quoting those too, revert the
