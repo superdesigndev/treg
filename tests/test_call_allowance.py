@@ -1545,6 +1545,34 @@ async def test_a_tagged_call_no_budget_limits_takes_and_its_fold_writes_its_tag_
     assert by_tag == {"c1": 450} and calls == {"find": 1}
 
 
+async def test_a_budget_set_after_tagged_takes_counts_their_queued_charges(
+        org_id, store, tagged_on, monkeypatch):
+    caller = await _caller(org_id)
+    for n in range(3):
+        mk = _call(org_id)
+        await call_reserve._platform_reserve(
+            mk, caller, await _tag_meta(caller, {"customer": "c1"}), f"t-{n}",
+            allow_allowance=True)
+        assert mk.allowance_epoch
+        await call_settle._platform_settle(mk, 200, observed_override=100)
+    assert await _queued(org_id) == 3
+    async with session_maker() as db:
+        day = ledger._day_start()
+        assert await ledger.tag_spent_since(db, org_id, "customer", "c1", day) == 300
+        assert await ledger.tag_calls_since(db, org_id, "customer", "c1", day) == 3
+        assert await ledger.tag_spent_since(db, org_id, "customer", "c2", day) == 0
+        await db.execute(update(TagBudget).where(TagBudget.org_id == org_id).values(
+            auto=False, calls_per_day=3))
+        await db.commit()
+    with pytest.raises(ReservationFailed) as refused:
+        await _tag_meta(caller, {"customer": "c1"})
+    assert refused.value.detail["error"] == "tag_call_cap_reached"
+    await _fold(org_id)
+    async with session_maker() as db:
+        assert await ledger.tag_calls_since(db, org_id, "customer", "c1", day) == 3
+        assert await ledger.tag_spent_since(db, org_id, "customer", "c1", day) == 300
+
+
 async def test_an_unbilled_tagged_take_writes_no_tag_rows(org_id, store, tagged_on):
     caller = await _caller(org_id)
     mk = _call(org_id)

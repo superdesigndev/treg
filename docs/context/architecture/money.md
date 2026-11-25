@@ -370,8 +370,9 @@ every tagged call does (`tagged`). A tagged call that took carries its tags on i
 `TagSpend` rows with its `settle` entry, settled at what the blocks gave, stamped with the fold's
 instant, the entry's meta naming the tags as a reserve entry's does. Per-tag spend, call counts
 and invoices therefore read the same as on the exact path once the charge is folded; a call never
-billed writes none, as a release deletes them. A budget set later counts such a call only from
-its fold, a lag the soft caps already allow for.
+billed writes none, as a release deletes them. Until the fold the cap reads count the queued
+charge itself (`tag_spent_since`, `tag_calls_since` match `CallCharge.meta["tags"]`), so a budget
+set after such calls sees them at once.
 
 Every listed team's call that keeps its own hold is counted by why, on its own logger
 (`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `tag_budget`, `async`,

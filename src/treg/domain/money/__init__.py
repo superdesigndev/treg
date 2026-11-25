@@ -959,7 +959,17 @@ async def tag_calls_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
             TagSpend.created_at >= since)
     )).scalar() or 0
-    return int(total)
+    queued = (await db.execute(
+        select(func.count()).select_from(CallCharge).where(
+            *_queued_tag(org_id, dim, val, since)))).scalar() or 0
+    return int(total) + int(queued)
+
+
+def _queued_tag(org_id: int, dim: str, val: str, since: datetime) -> list:
+    """A tagged allowance call's charge still in the queue: its tag rows are written when it is
+    folded, so until then a cap reads it here."""
+    return [CallCharge.org_id == org_id, CallCharge.created_at >= since,
+            CallCharge.meta[("tags", dim)].as_string() == val]
 
 
 async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime) -> dict[str, int]:
@@ -1001,7 +1011,10 @@ async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
             TagSpend.created_at >= since)
     )).scalar() or 0
-    return int(total)
+    queued = (await db.execute(
+        select(func.coalesce(func.sum(CallCharge.amount_micro), 0)).where(
+            *_queued_tag(org_id, dim, val, since)))).scalar() or 0
+    return int(total) + int(queued)
 
 
 async def tag_invoice_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:
