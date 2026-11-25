@@ -23,20 +23,12 @@ limits: |
   refused with 401 without one. The write path is prepare-only — it returns
   unsigned transactions and cannot sign, broadcast or move value.
 
-# New platform and capability family. DeFi / on-chain liquidity is not represented
-# in the catalogue yet; these are proposed for review.
-proposed_capabilities:
-  defi.liquidity.stats: Aggregate catalogue totals, per-chain breakdown and the deepest pairs by volume and position count
-  defi.liquidity.chains: List supported networks, engine addresses and the tokens a position can be built from
-  defi.liquidity.list: List open maker positions, filterable by network and pair
-  defi.liquidity.detail: Get one maker position by its strategy hash
-  defi.liquidity.quote: Simulate a swap against one position and return a price or a gate reason
-  defi.liquidity.badge: Return a shields.io payload with live catalogue metrics
-  defi.liquidity.prepare_position: Return the unsigned transactions that create a maker position
-  defi.liquidity.prepare_swap: Simulate a swap and return the unsigned transactions for the caller's wallet
+# The capability family for these rows (defi.liquidity.*) lives in
+# capabilities.yaml; the rows below are its endpoints.
 endpoints:
   - id: trdefi.liquidity.stats
     added: '2026-09-25'
+    platform_auth: anonymous
     domain: defi
     capability: defi.liquidity.stats
     platform: defi
@@ -66,6 +58,7 @@ endpoints:
 
   - id: trdefi.liquidity.chains
     added: '2026-09-25'
+    platform_auth: anonymous
     domain: defi
     capability: defi.liquidity.chains
     platform: defi
@@ -93,6 +86,7 @@ endpoints:
 
   - id: trdefi.liquidity.list
     added: '2026-09-25'
+    platform_auth: anonymous
     domain: defi
     capability: defi.liquidity.list
     platform: defi
@@ -142,6 +136,7 @@ endpoints:
 
   - id: trdefi.liquidity.detail
     added: '2026-09-25'
+    platform_auth: anonymous
     domain: defi
     capability: defi.liquidity.detail
     platform: defi
@@ -175,6 +170,7 @@ endpoints:
 
   - id: trdefi.liquidity.quote
     added: '2026-09-25'
+    platform_auth: anonymous
     domain: defi
     capability: defi.liquidity.quote
     platform: defi
@@ -225,6 +221,7 @@ endpoints:
 
   - id: trdefi.liquidity.badge
     added: '2026-09-25'
+    platform_auth: anonymous
     domain: defi
     capability: defi.liquidity.badge
     platform: defi

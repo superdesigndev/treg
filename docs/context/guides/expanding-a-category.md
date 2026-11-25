@@ -116,8 +116,13 @@ rejects on HTTP status by default.
   provider (or add a path injector). Adbeat.
 - **No free probe.** POST an empty body; a valid key 400s, an invalid 401s → `probe_reject_statuses=(401,403)`.
   Coresignal.
-- **API accepts ANY key** (returns success for garbage). You cannot validate at connect — **drop it**; don't
+- **API accepts ANY key** (returns success for garbage). You cannot validate at connect - **drop it**; don't
   ship a provider whose key can't be checked. ScrapeCreators.
+- **A public read surface cannot verify a key.** TRDEFI's catalogue answers 200 whatever key is pasted, so
+  the read path cannot be the probe; its write path answers a payment request (402) rather than a rejection
+  when no usable key is present, so the probe posts an empty body there - a valid key answers 400 (the body
+  is invalid) and an unusable one answers 402 - and only 402 is treated as a bad key. The free public GET
+  stays as `probe_path`, because it is also the tool's health check.
 - **Cheapest check is off-host** → `probe_url`. Semrush, Diffbot.
 - **A gateway 504 that still bills.** influencers.club (2026-08-21) fronts slow enrichment with an nginx
   60s cutoff: the first call for a handle took 54–61s, several came back as a 504 HTML page, and the
