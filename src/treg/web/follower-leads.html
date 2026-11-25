@@ -339,14 +339,15 @@
       <div id="cHandle" style="font-size: 40px; font-weight: 700; letter-spacing: -0.5px"></div>
     </div>
 
-    <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 32px">
+    <div style="flex: 1; display: flex; align-items: center">
+    <div style="width: 100%; height: 240px; display: flex; align-items: baseline; justify-content: space-between; gap: 32px">
       <div style="display: flex; align-items: center; margin-left: 24px">
         <div style="position: relative">
           <div id="rateNum" style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 160px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
           <div style="position: absolute; top: 100%; left: 0; margin-top: 14px; white-space: nowrap">
           <div style="display: flex; align-items: center; gap: 10px">
             <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
-            <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">lead rate</div>
+            <div style="font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: -0.5px; color: #3F3F3F">lead rate</div>
           </div>
           </div>
         </div>
@@ -360,12 +361,13 @@
       </div>
       <div style="display: flex; flex-direction: column; gap: 10px; max-width: 460px; margin-right: 24px">
         <div id="revNum" style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
-        <div style="display: flex; align-items: center; gap: 10px">
-          <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
-          <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
+        <div style="display: flex; align-items: flex-start; gap: 10px">
+          <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 5px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
+          <div style="font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: -0.5px; text-align: left; color: #3F3F3F">potential<br>revenue / year</div>
         </div>
         <div style="font-size: 15px; font-weight: 500; line-height: 1.4; color: #5E5E5E"><span data-f="math"></span></div>
       </div>
+    </div>
     </div>
   </div>
 </div>
@@ -375,7 +377,7 @@
     <div class="stat"><b id="sLeads">0</b><span>leads</span></div>
     <div class="stat"><b id="sDm">0</b><span>decision makers</span></div>
     <div class="stat"><b id="sScanned">0</b><span>followers scanned</span></div>
-    <div class="stat"><b id="sCost">USD 0</b><span>spent</span></div>
+    <div class="stat"><b id="sCost">$0</b><span>spent</span></div>
   </div>
   <div class="roles" id="roles"></div>
   <p class="resnote" id="resNote"></p>
@@ -826,7 +828,7 @@
     $('sLeads').textContent = leads.length;
     $('sDm').textContent = leads.filter(function (r) { return r.tier === 'decision maker'; }).length;
     $('sScanned').textContent = all.length.toLocaleString('en-US');
-    $('sCost').textContent = usd(spent, 2);
+    $('sCost').textContent = '$' + (spent / 1e6).toFixed(2);
     var by = {}; leads.forEach(function (r) { by[r.role] = (by[r.role] || 0) + 1; });
     $('roles').innerHTML = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return '<span>' + esc(ROLE_LABEL[k] || k) + ' · ' + by[k] + '</span>'; }).join('');
     $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min. Followers with no bio count as misses.';
