@@ -761,6 +761,12 @@ def _usd_to_micro(usd: float) -> int:
     return whole + 1 if raw > whole else whole
 
 
+def _rate_micro(usd: float | None) -> int:
+    """A catalog rate in RAW micro-USD, 0 for one fx.yaml leaves `usd: null`. Such a row is never
+    platform-eligible, so the figure is only the informational price of an own-key call."""
+    return 0 if usd is None else _usd_to_micro(usd)
+
+
 def _truthy(value) -> bool:
     """Provider query/body booleans arrive as strings or JSON booleans; interpret both."""
     return value is True or (isinstance(value, str) and value.strip().lower() in ("1", "true", "yes"))
@@ -2482,7 +2488,7 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     request_data = settlement_basis.request_evidence(
         query.multi_items(), body, path_names=consumed)
     unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
-    unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
+    unit_micro = _rate_micro(unit_view.get("usd") if unit_view else None)
     usage_unit_micro = None
     usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
     if usage_unit == "credit":
@@ -2491,7 +2497,7 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     elif usage_unit and usage_unit != "usd":
         # Freeze a provider-native meter just like a credit rate so a later rate-card edit cannot
         # re-price a task already in flight.
-        usage_unit_micro = _usd_to_micro(cat.unit_rates.get(service, {}).get(usage_unit))
+        usage_unit_micro = _rate_micro(cat.unit_rates.get(service, {}).get(usage_unit))
     reported_charge_unit_micro = 0
     if raw_cost.get("currency") == "credit" or \
             (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
@@ -2499,7 +2505,7 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
         # already in flight. USD reported charges use their fixed micro-USD conversion directly.
         # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
         # `unit_micro`, which is a whole call on a per_success row.
-        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+        reported_charge_unit_micro = _rate_micro(cat.credit_rates.get(service))
     basis = settlement_basis.derive_basis(
         raw_cost, request=request_data, input_schema=ep.get("input") or {},
         unit_micro=unit_micro, terminal=bool(ep.get("async")),

@@ -3825,6 +3825,14 @@ def test_icypeas_profile_url_miss_settles_at_zero():
             mk, b'{"success":true,"result":"https://www.linkedin.com/in/x","status":"FOUND"}') is None
 
 
+def test_every_catalog_row_prices_an_empty_request():
+    """Pricing runs on every tier before the credential is chosen, so a row whose fx rate is
+    `usd: null` (own-key only) must price at an informational zero, never raise."""
+    cat = catalog_store.load()
+    for ep in cat.endpoints:
+        call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
+
+
 @pytest.mark.parametrize("task,rows,credits", [
     ("email-verification", 3, 0.3), ("email-search", 3, 3), ("domain-search", 1, 1)])
 def test_icypeas_bulk_search_holds_its_rows_and_bills_the_finished_files_counts(task, rows, credits):
