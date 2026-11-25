@@ -358,10 +358,11 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
     member_cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None
     if team_cap or member_cap:
         async with session_maker() as db:
-            if team_cap:
-                await _enforce_platform_daily_cap(caller, 0, db)
+            # The member first, as on the hold path: its refusal gives back the member's call slot.
             if member_cap:
                 await _enforce_member_spend_cap(caller, 0, db, reap=False)
+            if team_cap:
+                await _enforce_platform_daily_cap(caller, 0, db)
 
 
 def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,

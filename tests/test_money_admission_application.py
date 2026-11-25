@@ -1440,6 +1440,27 @@ async def test_free_platform_call_still_honours_a_members_spent_limit(
         probe.close()
 
 
+async def test_free_call_past_both_limits_is_refused_for_the_member_first(
+        clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    from treg.domain.governance import budgets as budget_policy
+
+    monkeypatch.setattr(budget_policy, "member_daily_spend_cap", lambda _member, _org: 500)
+    monkeypatch.setattr(budget_policy, "_effective_daily_cap", lambda _org: 100)
+
+    async def member_spent(_db, _membership_id, _since):
+        return 1_000
+
+    async def team_spent(_db, _org_id):
+        return 101
+
+    monkeypatch.setattr(ledger, "member_spent_since", member_spent)
+    monkeypatch.setattr(money_allowance, "committed_today", team_spent)
+    response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+    assert response.status_code == 429, response.text
+    assert "member_spend_cap_reached" in response.text
+
+
 async def test_cancelled_untagged_free_call_does_not_return_to_the_money_queue(
         clients, icypeas_platform_on, monkeypatch):
     await _allow_holdless(clients, monkeypatch)
