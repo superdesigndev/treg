@@ -12,9 +12,13 @@ every lookup the old one did (a team's rows, the next team number), so the old o
 revision 0091 did for other prefix-covered indexes.
 
 The queue is short-lived and small, so the build runs here, CONCURRENTLY in an autocommit block
-with a bounded lock wait; INVALID debris from a killed build is dropped first. Rollback floor:
-a build before this revision runs unchanged against the new index (every query it makes leads
-with `org_id`), so rolling the code back needs no downgrade; `downgrade` restores the old index.
+with a bounded lock wait; INVALID debris from a killed build is dropped first.
+
+Rollback floor: 0126. A process of an earlier build would run against the new index (every
+query it makes leads with `org_id`), but an earlier build's deploy cannot start: its
+`python -m treg upgrade` refuses a schema newer than itself. To go back to one process folding
+every team, set `TREG_MONEY_ALLOWANCE_FOLD_SHARDS=1` on this build. To withdraw the code, ship a
+forward release that reverts it and keeps this revision. `downgrade` restores the old index.
 """
 from collections.abc import Sequence
 
