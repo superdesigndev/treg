@@ -110,7 +110,7 @@
 
   /* run + results */
   .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-  .runbox { max-width: 720px; margin: 28px auto 0; text-align: left; border: 1px solid var(--line); border-radius: 22px; padding: 22px; background: #fff; box-shadow: var(--shadow); }
+  .runbox { max-width: 720px; margin: 0 auto; text-align: left; border: 1px solid var(--line); border-radius: 22px; padding: 22px; background: #fff; box-shadow: var(--shadow); }
   .runbox .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .runbox .top b { font: 400 20px var(--pixel); }
   .runbox .top .note { font: 400 12.5px var(--mono); color: var(--grey); }
@@ -164,7 +164,10 @@
   .runbox .actions { display: flex; gap: 10px; margin-top: 14px; }
   .runbox .actions .pill { padding: 8px 16px; font-size: 13px; }
 
-  .results { padding-top: 80px; }
+  .results { max-width: 760px; margin: 0 auto; }
+  .resnote { margin: 4px auto 0; max-width: 640px; text-align: center; font: 400 12.5px var(--mono); color: var(--grey); line-height: 1.6; }
+  .again { text-align: center; margin-top: 14px; }
+  .again .pill, #again2 { padding: 8px 16px; font-size: 13px; }
   .cap { margin: 0; text-align: center; font-weight: 500; font-size: clamp(30px, 3.6vw, 52px); letter-spacing: -.025em; line-height: 1.15; }
   .cap small { display: block; margin: 14px auto 0; max-width: 620px; font-size: 17px; font-weight: 400; letter-spacing: 0; line-height: 1.55; color: var(--grey); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 36px 0 18px; }
@@ -308,13 +311,10 @@
       <li data-s="judge"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><g class="gavel"><rect x="13" y="7" width="5" height="1" fill="#8f8b85"/><rect x="13" y="8" width="1" height="1" fill="#8f8b85"/><rect x="14" y="8" width="3" height="1" fill="#cfccc7"/><rect x="17" y="8" width="1" height="1" fill="#8f8b85"/><rect x="13" y="9" width="5" height="1" fill="#8f8b85"/><rect x="2" y="10" width="11" height="1" fill="#ffbb40"/><rect x="13" y="10" width="1" height="1" fill="#8f8b85"/><rect x="14" y="10" width="3" height="1" fill="#cfccc7"/><rect x="17" y="10" width="1" height="1" fill="#8f8b85"/><rect x="2" y="11" width="11" height="1" fill="#ffbb40"/><rect x="13" y="11" width="1" height="1" fill="#8f8b85"/><rect x="14" y="11" width="3" height="1" fill="#cfccc7"/><rect x="17" y="11" width="1" height="1" fill="#8f8b85"/><rect x="13" y="12" width="5" height="1" fill="#8f8b85"/><rect x="13" y="13" width="1" height="1" fill="#8f8b85"/><rect x="14" y="13" width="3" height="1" fill="#cfccc7"/><rect x="17" y="13" width="1" height="1" fill="#8f8b85"/><rect x="13" y="14" width="5" height="1" fill="#8f8b85"/></g><g class="spark"><rect x="20" y="12" width="1" height="1" fill="#fdb5ec"/><rect x="8" y="13" width="1" height="1" fill="#ffbb40"/><rect x="23" y="14" width="1" height="1" fill="#ffbb40"/></g><rect x="9" y="15" width="14" height="1" fill="#36d08a"/><rect x="9" y="16" width="14" height="1" fill="#36d08a"/></svg>Jev judges each profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
       <li data-s="fill"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><rect x="2" y="2" width="13" height="1" fill="#8f8b85"/><rect x="3" y="3" width="11" height="1" fill="#cfccc7"/><rect x="3" y="4" width="11" height="1" fill="#cfccc7"/><rect x="3" y="5" width="11" height="1" fill="#cfccc7"/><rect x="3" y="6" width="11" height="1" fill="#cfccc7"/><rect x="3" y="7" width="11" height="1" fill="#cfccc7"/><rect x="3" y="8" width="11" height="1" fill="#cfccc7"/><rect x="3" y="9" width="11" height="1" fill="#cfccc7"/><rect x="3" y="10" width="11" height="1" fill="#cfccc7"/><rect x="3" y="11" width="11" height="1" fill="#cfccc7"/><rect x="3" y="12" width="11" height="1" fill="#cfccc7"/><rect x="3" y="13" width="4" height="1" fill="#cfccc7"/><rect x="7" y="13" width="2" height="1" fill="#8f8b85"/><rect x="9" y="13" width="5" height="1" fill="#cfccc7"/><rect x="3" y="14" width="4" height="1" fill="#cfccc7"/><rect x="7" y="14" width="2" height="1" fill="#8f8b85"/><rect x="9" y="14" width="5" height="1" fill="#cfccc7"/><rect x="3" y="15" width="4" height="1" fill="#cfccc7"/><rect x="7" y="15" width="2" height="1" fill="#8f8b85"/><rect x="9" y="15" width="5" height="1" fill="#cfccc7"/><rect x="3" y="16" width="4" height="1" fill="#cfccc7"/><rect x="7" y="16" width="2" height="1" fill="#8f8b85"/><rect x="9" y="16" width="5" height="1" fill="#cfccc7"/><rect class="win" x="5" y="5" width="2" height="2" fill="#ffbb40" style="animation-delay:0s"/><rect class="win" x="9" y="5" width="2" height="2" fill="#ffbb40" style="animation-delay:0.5s"/><rect class="win" x="5" y="9" width="2" height="2" fill="#ffbb40" style="animation-delay:1s"/><rect class="win" x="9" y="9" width="2" height="2" fill="#ffbb40" style="animation-delay:0.3s"/><g class="bubble"><rect x="15" y="1" width="7" height="1" fill="#22c7ff"/><rect x="15" y="2" width="1" height="1" fill="#22c7ff"/><rect x="16" y="2" width="1" height="1" fill="#ffffff"/><rect x="17" y="2" width="1" height="1" fill="#22c7ff"/><rect x="18" y="2" width="1" height="1" fill="#ffffff"/><rect x="19" y="2" width="1" height="1" fill="#22c7ff"/><rect x="20" y="2" width="1" height="1" fill="#ffffff"/><rect x="21" y="2" width="1" height="1" fill="#22c7ff"/><rect x="15" y="3" width="7" height="1" fill="#22c7ff"/><rect x="16" y="4" width="1" height="1" fill="#22c7ff"/></g></svg>Posts or company, only where the bio is thin<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
     </ul>
-    <div class="actions"><button class="pill" id="stop">Stop</button></div>
+    <div class="actions"><button class="pill" id="stop">Stop</button><button class="pill" id="again2" hidden>Scan again</button></div>
     <div class="runmsg" id="runErr"></div>
   </section>
-</header>
-
-<section class="results wrap" id="results" hidden>
-  <h2 class="cap">Your leads.<small id="resNote"></small></h2>
+  <section class="results" id="results" hidden>
   <div class="card" id="card"><div class="cardscale" id="cardNode">
 <div style="width: 1200px; height: 675px; box-sizing: border-box; padding: 44px 52px; background: #FFFFFF; font-family: 'Inter', system-ui, sans-serif; color: #111111; display: flex; gap: 40px; position: relative; overflow: hidden">
 
@@ -369,7 +369,10 @@
     <div class="stat"><b id="sCost">USD 0</b><span>spent</span></div>
   </div>
   <div class="roles" id="roles"></div>
-</section>
+  <p class="resnote" id="resNote"></p>
+    <div class="again"><button class="pill" id="again">Scan again</button></div>
+  </section>
+</header>
 
 <section class="data wrap" id="price">
   <div class="fx">
@@ -730,7 +733,8 @@
   function scan(handle, want) {
     stopped = false; spent = 0; leads = []; all = [];
     var Q, product, bandP, started = Date.now();
-    $('run').disabled = true; $('run').classList.add('busy'); $('progress').hidden = false; $('progress').classList.add('live'); $('results').hidden = true; $('runErr').textContent = '';
+    $('run').disabled = true; $('run').classList.add('busy'); $('form').hidden = true; $('progress').hidden = false; $('progress').classList.add('live'); $('results').hidden = true; $('runErr').textContent = '';
+    $('stop').hidden = false; $('again2').hidden = true;
     $('progTitle').textContent = 'Scanning @' + handle;
     document.querySelectorAll('#steps li').forEach(function (li) { li.className = ''; li.lastElementChild.textContent = ''; });
     bar(0); $('spent').textContent = usd(0);
@@ -800,12 +804,16 @@
     }).catch(function (e) {
       if (!(e instanceof Stop) && window.console) console.warn('follower-leads: scan stopped', e);
       $('runErr').textContent = e instanceof Stop ? e.message : 'Something went wrong and the scan stopped. Try again in a minute.';
-    }).then(function () { $('run').disabled = false; $('run').classList.remove('busy'); $('progress').classList.remove('live'); refreshBalance(); });
+    }).then(function () { $('run').disabled = false; $('run').classList.remove('busy'); $('progress').classList.remove('live');
+      if ($('results').hidden) { $('stop').hidden = true; $('again2').hidden = false; } refreshBalance(); });
   }
+  $('again').onclick = $('again2').onclick = function () {
+    $('results').hidden = true; $('progress').hidden = true; $('form').hidden = false; $('handle').focus();
+  };
   $('stop').onclick = function () { stopped = true; $('runErr').textContent = 'Stopping: finishing the calls already in flight…'; };
 
   function show(judged, ms, band) {
-    $('results').hidden = false;
+    $('progress').hidden = true; $('results').hidden = false;
     $('sLeads').textContent = leads.length;
     $('sDm').textContent = leads.filter(function (r) { return r.tier === 'decision maker'; }).length;
     $('sJudged').textContent = judged;
