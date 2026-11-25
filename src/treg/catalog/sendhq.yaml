@@ -1,0 +1,287 @@
+# SendHQ is an email API reached with the workspace's own key: it sends from the domains that
+# workspace has verified and reads the mail that workspace sent and received. A key only ever
+# answers for its own workspace, so every row is scope own_account.
+#
+# Billing is by subscription plan, not per call. No route has a per-call charge. A send counts each
+# To, Cc and Bcc recipient as one email of the plan's monthly allowance; reads count nothing. The
+# plan, its allowance and the emails used this period are on GET /account (`usage`, `plans`).
+#
+# Four rows carry `untestable:` and no test_request. The send row needs a From address on a domain
+# the calling workspace has verified, and it delivers real mail. The three read rows take the id of
+# a message in the calling workspace. No fixed request for any of them works under another key.
+provider: sendhq
+source:
+  docs: https://sendhq.cc/docs
+  openapi: https://sendhq.cc/openapi.json
+  curated: '2026-11-25'
+limits: "Subscription plans: 50,000 emails/month and 25 verified domains on Starter, 200,000 and 100 on Scale. No overage: a send past the allowance is refused. A paid workspace also has a daily recipient cap that starts at 1,000 and rises in steps to 50,000."
+pricing_url: https://sendhq.cc/pricing
+proposed_capabilities:
+  # No capability covers sending or reading email on the caller's own domains; slack.message.send
+  # and instagram.message.send post to one chat platform.
+  email.message.send: "Send an email from your own verified domain"
+  email.messages.list: "List or search your sent and received email"
+  email.message.get: "Read one email with its body and attachment list"
+  email.message.delivery: "Check whether a sent email was delivered, delayed or bounced"
+  email.thread.get: "Read every message in an email conversation"
+  email.senders.list: "List the addresses and domains you can send from"
+  email.senders.reputation: "Check which of your From addresses are throttled or paused"
+  email.domains.list: "List your sending domains and their DNS verification state"
+  email.inboxes.list: "List the addresses that receive email for you"
+  email.templates.list: "List your hosted email templates"
+  email.deliverability.stats: "Get your 30-day sent, delivered, bounce and complaint totals"
+  email.content.score: "Score an email's content for spam-filter risks before sending"
+  email.diagnostics: "Find out why your email is not sending or arriving"
+defaults:
+  price: {value: '0', currency: USD, per: 1, unit: call, note: "No per-call charge: a read uses none of the plan's email allowance."}
+  provenance: {source: docs, source_url: 'https://sendhq.cc/pricing', checked: '2026-11-25', confidence: documented}
+
+endpoints:
+  - id: sendhq.account.usage
+    added: '2026-11-25'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /account
+    name: "SendHQ plan, emails used this period and limits"
+    summary: "Read your SendHQ plan and subscription state, the emails used this period against the plan's allowance, and the domains used against its limit."
+    input:
+      note: "Takes no parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/account#get-account
+
+  - id: sendhq.email.diagnostics
+    added: '2026-11-25'
+    capability: email.diagnostics
+    platform: email
+    scope: own_account
+    method: GET
+    path: /account/diagnostics
+    name: "Diagnose why email is not sending or arriving"
+    summary: "List what is wrong with sending or receiving in your workspace: unverified domains, paused senders, reached limits, high bounce rates, and the messages of the last 30 days that were not sent, with reasons."
+    input:
+      note: "Takes no parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/account#get-account-diagnostics
+
+  - id: sendhq.email.senders.list
+    added: '2026-11-25'
+    capability: email.senders.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /sending-identities
+    name: "List the addresses and domains you can send from"
+    summary: "List the verified domains and sender addresses your workspace can use as From."
+    input:
+      note: "Takes no parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/drafts#get-sending-identities
+
+  - id: sendhq.email.domains.list
+    added: '2026-11-25'
+    capability: email.domains.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /domains
+    name: "List your sending domains with DNS verification state"
+    summary: "List your sending domains with their verification status, the DNS records each one needs and whether it can receive mail."
+    input:
+      note: "Takes no parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/domains#get-domains
+
+  - id: sendhq.email.inboxes.list
+    added: '2026-11-25'
+    capability: email.inboxes.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /inboxes
+    name: "List your receiving email addresses"
+    summary: "List the addresses that receive email in your workspace, with status and forwarding target."
+    input:
+      queryParams:
+        domain_id: {type: string, required: false, note: "only addresses on this domain; a domain id from sendhq.email.domains.list"}
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/inbound#get-inboxes
+
+  - id: sendhq.email.message.send
+    added: '2026-11-25'
+    kind: action
+    capability: email.message.send
+    platform: email
+    scope: own_account
+    method: POST
+    path: /emails
+    name: "Send an email from your verified domain"
+    summary: "Send one email as HTML, plain text or a published hosted template, or reply inside an existing conversation; returns the email id and thread id."
+    input:
+      headers:
+        Idempotency-Key: {type: string, required: false, maxLength: 200, note: "makes a retry safe: the same key with the same body does not send twice, and the same key with a changed body answers 409", example: "order-1042-receipt"}
+      body:
+        from: {type: string, required: true, note: "an address on a domain your workspace has verified, optionally with a display name; sendhq.email.senders.list returns the valid ones", example: "Acme <hello@example.com>"}
+        to: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 100, note: "To, Cc and Bcc together take at most 100 addresses", example: ["customer@example.net"]}
+        cc: {type: array, items: {type: string}, required: false}
+        bcc: {type: array, items: {type: string}, required: false}
+        subject: {type: string, required: false, note: "a hosted template supplies its own", example: "Your receipt"}
+        text: {type: string, required: false, note: "one of text, html or template is required", example: "Thanks for your order."}
+        html: {type: string, required: false, example: "<p>Thanks for your order.</p>"}
+        template: {type: object, required: false, note: "a published hosted template in place of text and html: {id or key, data}. Takes exactly one To address and no Cc or Bcc"}
+        reply_to: {type: string, format: email, required: false}
+        headers: {type: object, required: false, note: "extra custom headers with string values"}
+        message_class: {type: string, required: false, enum: [transactional, marketing], default: transactional, note: "marketing must be enabled for the plan or the sender domain, and adds unsubscribe handling"}
+        reply_to_email_id: {type: string, required: false, note: "id of the email being answered; files the reply in its conversation"}
+        thread_id: {type: string, required: false}
+        labels: {type: array, items: {type: string}, required: false, maxItems: 10, note: "label names or ids to file the message under"}
+        draft_id: {type: string, required: false, note: "sends the attachments stored on this draft"}
+      bodyType: json
+    untestable: "Sends real email, and the From address must be on a domain the calling workspace has verified, so no fixed request works under another key."
+    price: {value: '0', currency: USD, per: 1, unit: call, note: "No per-call charge. Sending needs an active plan: each To, Cc and Bcc recipient counts as one email of its monthly allowance, 50,000 on Starter and 200,000 on Scale. A send past the allowance is refused, not billed."}
+    note: "A 201 means the email was accepted, not delivered: read sendhq.email.message.delivery for the outcome."
+    docs_url: https://sendhq.cc/docs/api-reference/emails#post-emails
+
+  - id: sendhq.email.messages.list
+    added: '2026-11-25'
+    capability: email.messages.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /emails
+    name: "List or search your sent and received email"
+    summary: "List your sent and received email newest first, filtered by direction, sender, recipient, date, label or a text search; each row carries the body, status and thread id."
+    input:
+      queryParams:
+        direction: {type: string, required: false, enum: [in, out], note: "in for received, out for sent", example: "in"}
+        query: {type: string, required: false, maxLength: 200, note: "searches subjects, bodies, addresses and attachment filenames"}
+        from: {type: string, required: false, note: "sender address contains this value"}
+        to: {type: string, required: false, note: "recipient address contains this value"}
+        unread: {type: boolean, required: false}
+        archived: {type: boolean, required: false, note: "false returns received mail that is not archived"}
+        category: {type: string, required: false, note: "primary, updates or spam for received mail; comma-separated to match any"}
+        include_spam: {type: boolean, required: false, note: "spam is left out unless this is true or category is spam"}
+        important: {type: boolean, required: false}
+        outcome: {type: string, required: false, note: "sent mail that ended as bounced, complained, failed or rejected; comma-separated to match any"}
+        status: {type: string, required: false, note: "exact message status, such as delivered"}
+        domain: {type: string, required: false, note: "comma-separated to match any"}
+        inbox_id: {type: string, required: false, note: "an id from sendhq.email.inboxes.list"}
+        label: {type: string, required: false, note: "label id or name; comma-separated to match any"}
+        after: {type: string, required: false, note: "ISO 8601 time; only email created after it", example: "2026-11-01T00:00:00Z"}
+        before: {type: string, required: false, note: "ISO 8601 time; only email created before it"}
+        limit: {type: integer, required: false, min: 1, max: 200, default: 50, example: 25}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://sendhq.cc/docs/api-reference/emails#get-emails
+
+  - id: sendhq.email.message.get
+    added: '2026-11-25'
+    capability: email.message.get
+    platform: email
+    scope: own_account
+    method: GET
+    path: /emails/{id}
+    name: "Read one email by id, with body and attachments"
+    summary: "Read one sent or received email by id, with its sender and recipients, body, status and attachment list."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "email id from sendhq.email.messages.list or a send", example: "em_123"}
+    untestable: "Takes the id of an email in the calling workspace; no id exists under every key."
+    docs_url: https://sendhq.cc/docs/api-reference/emails#get-emails-id
+
+  - id: sendhq.email.message.delivery
+    added: '2026-11-25'
+    capability: email.message.delivery
+    platform: email
+    scope: own_account
+    method: GET
+    path: /emails/{id}/delivery
+    name: "Check delivery of a sent email by id"
+    summary: "Read the delivery timeline of one sent email: queued, sent, delivered, delayed, bounced, complained or failed, with the bounce type and reason."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "email id from sendhq.email.messages.list or a send", example: "em_123"}
+    untestable: "Takes the id of an email in the calling workspace; no id exists under every key."
+    docs_url: https://sendhq.cc/docs/api-reference/emails#get-emails-id-delivery
+
+  - id: sendhq.email.thread.get
+    added: '2026-11-25'
+    capability: email.thread.get
+    platform: email
+    scope: own_account
+    method: GET
+    path: /threads/{id}
+    name: "Read an email conversation by thread id"
+    summary: "Read every sent and received message of one conversation in time order, each with its body and attachment list."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "the threadId of any email in the conversation", example: "em_123"}
+    untestable: "Takes the id of a conversation in the calling workspace; no id exists under every key."
+    docs_url: https://sendhq.cc/docs/api-reference/emails#get-threads-id
+
+  - id: sendhq.email.templates.list
+    added: '2026-11-25'
+    capability: email.templates.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /templates
+    name: "List your hosted email templates"
+    summary: "List your hosted email templates with their key, publish state and usage."
+    input:
+      queryParams:
+        lifecycle: {type: string, required: false, enum: [active, archived, all], default: active}
+        query: {type: string, required: false, maxLength: 120, note: "searches template names and keys"}
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/templates#get-templates
+
+  - id: sendhq.email.deliverability.stats
+    added: '2026-11-25'
+    capability: email.deliverability.stats
+    platform: email
+    scope: own_account
+    method: GET
+    path: /deliverability/stats
+    name: "30-day delivery, bounce and complaint totals for your email"
+    summary: "Read your workspace's last 30 days of email: sent, delivered, bounce, complaint, reject, open and click counts and the delivery rate."
+    input:
+      note: "Takes no parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/deliverability#get-deliverability-stats
+
+  - id: sendhq.email.senders.reputation
+    added: '2026-11-25'
+    capability: email.senders.reputation
+    platform: email
+    scope: own_account
+    method: GET
+    path: /deliverability/reputation
+    name: "Check which From addresses are throttled or paused"
+    summary: "List the sending status of your From addresses (active, throttled or paused), with each one's daily limit and the reason."
+    input:
+      note: "Takes no parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://sendhq.cc/docs/api-reference/deliverability#get-deliverability-reputation
+
+  - id: sendhq.email.content.score
+    added: '2026-11-25'
+    capability: email.content.score
+    platform: email
+    scope: own_account
+    method: POST
+    path: /deliverability/score
+    name: "Score an email's content before sending"
+    summary: "Score an email's subject and body from 0 to 100 for what mail filters look at, with each deduction and a suggestion to fix it."
+    input:
+      body:
+        subject: {type: string, required: false, example: "Your receipt"}
+        html: {type: string, required: false, maxLength: 2000000, note: "the HTML as written"}
+        text: {type: string, required: false, maxLength: 2000000, example: "Thanks for your order. Your receipt is attached."}
+        from: {type: string, required: false, maxLength: 320, note: "the sender address or domain; links to other sites are judged against it", example: "example.com"}
+        format: {type: string, required: false, enum: [designed, plain], note: "for an email of an automation: how that automation sends its emails"}
+      bodyType: json
+    test_request: {body: {from: "example.com", subject: "Your receipt", text: "Thanks for your order. Your receipt is attached."}}
+    note: "Scores content only and stores or sends nothing; sender reputation and authentication are not part of the score."
+    docs_url: https://sendhq.cc/docs/api-reference/deliverability#post-deliverability-score

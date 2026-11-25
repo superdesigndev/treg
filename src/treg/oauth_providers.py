@@ -4605,6 +4605,37 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+# SendHQ: an email API reached with the workspace's own key. Every route answers for that one
+# workspace, so the catalog rows are all scope own_account.
+SENDHQ = OAuthProvider(
+    service="sendhq",
+    display_name="SendHQ",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="re_…",
+    # Bearer header, the documented form. The API reads no key from a query parameter.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://sendhq.cc/app#/keys",
+    setup_action_label="Get your SendHQ API key",
+    setup_steps=(
+        "Sign in to SendHQ and open API keys in the dashboard.",
+        "Create a key and copy it when it is shown; the full value is not shown again.",
+    ),
+    setup_note=(
+        "You can create a key before paying. Sending needs an active subscription; each "
+        "recipient counts as one email of the plan's monthly allowance."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Community",
+    summary="Send email from your verified domains and read received mail, threads and delivery results.",
+    base_url="https://sendhq.cc/api/v1",
+    docs_url="https://sendhq.cc/docs",
+    probe_path="/account",  # free; a bad or missing key gets a 401
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4635,6 +4666,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Email: send and receive on the caller's own workspace key
+        SENDHQ,
     )
 }
 
