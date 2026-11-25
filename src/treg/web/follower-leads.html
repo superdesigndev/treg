@@ -172,13 +172,13 @@
   .results { max-width: 760px; margin: 0 auto; }
   .resnote { margin: 4px auto 0; max-width: 640px; text-align: center; font: 400 12.5px var(--mono); color: var(--grey); line-height: 1.6; }
   .again { text-align: center; margin-top: 14px; }
-  .again .pill, #again2 { padding: 8px 16px; font-size: 13px; }
+  #again2 { padding: 8px 16px; font-size: 13px; }
   .cap { margin: 0; text-align: center; font-weight: 500; font-size: clamp(30px, 3.6vw, 52px); letter-spacing: -.025em; line-height: 1.15; }
   .cap small { display: block; margin: 14px auto 0; max-width: 620px; font-size: 17px; font-weight: 400; letter-spacing: 0; line-height: 1.55; color: var(--grey); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 36px 0 18px; }
   .stat { border-radius: 18px; padding: 20px; background: #fafaf9; }
   .stat b { display: block; font: 400 44px/1 var(--pixel); letter-spacing: -.02em; }
-  .stat:first-child b { color: #118453; }
+  .stat b { width: fit-content; margin: 0 auto; color: #e64fc4; background: linear-gradient(90deg, #f05bc8, #b277f0 50%, #22a7ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
   .stat span { display: block; margin-top: 8px; font-size: 13px; color: var(--grey); font-weight: 400; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
   .roles { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 18px; }
@@ -340,21 +340,26 @@
     </div>
 
     <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 32px">
-      <div style="display: flex; flex-direction: column; gap: 10px">
-        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
-        <div style="display: flex; align-items: center; gap: 10px">
-          <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
-          <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">lead rate</div>
+      <div style="display: flex; align-items: center; margin-left: 24px">
+        <div style="position: relative">
+          <div id="rateNum" style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 160px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
+          <div style="position: absolute; top: 100%; left: 0; margin-top: 14px; white-space: nowrap">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
+            <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">lead rate</div>
+          </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; margin-left: 18px; margin-right: -6px" aria-hidden="true"><div style="width: 10px; height: 10px; border-radius: 999px; background: #111111"></div><div style="width: 60px; height: 3px; background: #111111"></div></div>
+        <div style="position: relative; flex-shrink: 0">
+          <svg width="240" height="240" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
+            <circle cx="32" cy="32" r="31" fill="#FFFFFF"></circle>
+            <circle cx="32" cy="32" r="15.5" fill="none" stroke="#111111" stroke-width="31" id="pieSlice"></circle>
+          </svg>
         </div>
       </div>
-      <div style="position: relative; flex-shrink: 0">
-        <svg width="240" height="240" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
-          <circle cx="32" cy="32" r="31" fill="#FFFFFF"></circle>
-          <circle cx="32" cy="32" r="15.5" fill="none" stroke="#111111" stroke-width="31" id="pieSlice"></circle>
-        </svg>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px">
-        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 460px; margin-right: 24px">
+        <div id="revNum" style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
         <div style="display: flex; align-items: center; gap: 10px">
           <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
           <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
@@ -369,7 +374,7 @@
   <div class="stats">
     <div class="stat"><b id="sLeads">0</b><span>leads</span></div>
     <div class="stat"><b id="sDm">0</b><span>decision makers</span></div>
-    <div class="stat"><b id="sJudged">0</b><span>followers judged</span></div>
+    <div class="stat"><b id="sScanned">0</b><span>followers scanned</span></div>
     <div class="stat"><b id="sCost">USD 0</b><span>spent</span></div>
   </div>
   <div class="roles" id="roles"></div>
@@ -820,7 +825,7 @@
     $('progress').hidden = true; $('results').hidden = false;
     $('sLeads').textContent = leads.length;
     $('sDm').textContent = leads.filter(function (r) { return r.tier === 'decision maker'; }).length;
-    $('sJudged').textContent = judged;
+    $('sScanned').textContent = all.length.toLocaleString('en-US');
     $('sCost').textContent = usd(spent, 2);
     var by = {}; leads.forEach(function (r) { by[r.role] = (by[r.role] || 0) + 1; });
     $('roles').innerHTML = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return '<span>' + esc(ROLE_LABEL[k] || k) + ' · ' + by[k] + '</span>'; }).join('');
@@ -867,10 +872,15 @@
     set('revenue', money(c.revenue));
     set('math', c.leads + ' of ' + c.scanned.toLocaleString('en-US') + ' followers scanned are leads · ' + c.total.toLocaleString('en-US') +
       ' followers × ' + pct(c.rate) + ' × 2% close × $' + c.usd.toLocaleString('en-US') + ' a year');
+    var rl = pct(c.rate).length;
+    $('rateNum').style.fontSize = (rl <= 2 ? 160 : rl === 3 ? 136 : 112) + 'px';
     var r = 15.5, circ = 2 * Math.PI * r, share = Math.min(c.rate * 100, 100), slice = $('pieSlice');
     slice.setAttribute('stroke-dasharray', (share * circ / 100).toFixed(2) + ' ' + circ.toFixed(2));
     slice.setAttribute('transform', 'rotate(' + (180 - share * 1.8).toFixed(1) + ' 32 32)');
     $('pie').setAttribute('aria-label', c.leads + ' of ' + c.scanned + ' followers scanned are leads');
+    var rev = $('revNum'), span = rev.firstElementChild, size = 120;
+    rev.style.fontSize = size + 'px';
+    while (size > 72 && span.offsetLeft + span.offsetWidth > 1096 - 24) { size -= 4; rev.style.fontSize = size + 'px'; }
   }
   /* Google Fonts subset to the card's own characters, inlined so the PNG draws the same type */
   function cardFontCss() {
