@@ -809,7 +809,7 @@ async def get_call(
     if row is None and caller.membership.pinned_tags:
         owned = (await db.execute(select(LedgerEntry.id).where(
             LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref,
-            LedgerEntry.kind.in_(("reserve", "settle")),
+            LedgerEntry.kind == "reserve",
             *pinned_tag_predicates(LedgerEntry.meta["tags"], caller.membership.pinned_tags),
         ).limit(1))).scalar_one_or_none()
         if owned is None:

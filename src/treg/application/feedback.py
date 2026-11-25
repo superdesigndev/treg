@@ -48,9 +48,8 @@ async def submit(
             ))).scalars())
             verified.update((await db.execute(select(LedgerEntry.call_id).where(
                 LedgerEntry.org_id == org_id, LedgerEntry.call_id.in_(call_ids),
-                # The reserve entry carries `meta.tags`, or for an allowance call its settle
-                # entry, so a pinned reporter matches on them.
-                *([LedgerEntry.kind.in_(("reserve", "settle")),
+                # Only the reserve entry carries `meta.tags`, so a pinned reporter matches on it.
+                *([LedgerEntry.kind == "reserve",
                    *pinned_tag_predicates(LedgerEntry.meta["tags"], pinned_tags)] if pinned_tags else []),
             ))).scalars())
         row = feedback.add(
