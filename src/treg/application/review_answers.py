@@ -61,7 +61,7 @@ async def answer_of(r) -> Answer:
             slug = (await db.execute(select(Org.slug).where(Org.id == r.org_id))).scalar_one_or_none()
         if record is None or record.archive_key_hash is None or record.archive_content_hash is None:
             return ABSENT
-        if table_app.enabled_for(slug or "", getattr(r, "user_email", "") or ""):
+        if table_app.enabled_for(slug or "", r.user_email or ""):
             return ABSENT
         link = (record.archive_key_hash, record.archive_content_hash)
         report: dict = {}
@@ -112,6 +112,7 @@ def view(i: int, r, found: dict, capability: str, budget: int) -> dict:
         "request": {"method": req["method"],
                     "url": body_view.shrink(req["url"], REQUEST_BUDGET),
                     "body": body_view.shrink(req["body_text"], REQUEST_BUDGET)},
-        "response": {"status_code": res["status_code"], "media_type": res["media_type"],
-                     "size_bytes": res["size_bytes"], "body": body_view.shrink(res["body_text"], budget)},
+        # Only what this call's delivery is known to have had: its own status and the body. The
+        # stored media type and size describe whichever call first fetched these bytes.
+        "response": {"status_code": res["status_code"], "body": body_view.shrink(res["body_text"], budget)},
     }

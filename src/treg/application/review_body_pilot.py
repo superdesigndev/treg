@@ -36,7 +36,7 @@ PAGE = 200
 async def _candidates(since, after: tuple | None, limit: int) -> list:
     """One page of reviews to try, newest first in a stable order (created_at, then id), after the
     last row of the previous page."""
-    page = (select(CallReview.id, CallReview.created_at, CallReview.org_id, CallReview.call_id,
+    page = (select(CallReview.id, CallReview.created_at, CallReview.org_id, CallReview.user_email, CallReview.call_id,
                    CallReview.reason, CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via)
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    CallReview.reason.is_not(None))

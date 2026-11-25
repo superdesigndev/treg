@@ -118,7 +118,7 @@ async def judge_codes(*, deadline: float) -> dict:
     s = get_settings()
     async with session_maker() as db:
         rows = (await db.execute(
-            select(CallReview.id, CallReview.org_id, CallReview.call_id, CallReview.reason,
+            select(CallReview.id, CallReview.org_id, CallReview.user_email, CallReview.call_id, CallReview.reason,
                    CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via)
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))

@@ -111,7 +111,7 @@ async def run(*, pairs: list[tuple[int, tuple, tuple]], model: str, max_usd: flo
         return {"skipped": "no_gateway_key"}
     async with session_maker() as db:
         rows = {r.id: r for r in (await db.execute(
-            select(CallReview.id, CallReview.org_id, CallReview.call_id, CallReview.reason,
+            select(CallReview.id, CallReview.org_id, CallReview.user_email, CallReview.call_id, CallReview.reason,
                    CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via)
             .where(CallReview.id.in_([p[0] for p in pairs])))).all()}
     by_id = catalog_store.load().by_id

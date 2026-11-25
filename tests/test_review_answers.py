@@ -93,3 +93,19 @@ async def test_text_in_another_encoding_is_absent(clients, body):
     review = await _reviewed(clients)
     await _key((1, body, "db"))
     assert (await review_answers.answer_of(review)).state == "absent"
+
+
+async def test_the_view_shows_only_what_this_delivery_is_known_to_have_had(clients):
+    review = await _reviewed(clients)
+    await _key((1, PEOPLE.encode(), "db"))
+    found = (await review_answers.answer_of(review)).found
+    item = review_answers.view(0, review, found, "people.search", 500)
+    assert set(item["response"]) == {"status_code", "body"}
+
+
+async def test_a_table_user_is_judged_from_the_reason(clients, monkeypatch):
+    review = await _reviewed(clients)
+    await _key((1, PEOPLE.encode(), "db"))
+    monkeypatch.setattr(get_settings(), "table_enabled", True, raising=False)
+    monkeypatch.setattr(get_settings(), "table_users", review.user_email, raising=False)
+    assert (await review_answers.answer_of(review)).state == "absent"
