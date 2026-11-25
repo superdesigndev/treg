@@ -108,11 +108,15 @@ class Eligibility:
 
 def eligible(route: OverflowRoute, *, our_cost: dict | None, platform_eligible: bool,
              policy: CapacityPolicy | None, now: datetime | None = None,
-             our_usd: float | None = None) -> Eligibility:
+             our_usd: float | None = None, async_job: bool = False) -> Eligibility:
     """The whole enable rule, in one place, in the order a maintainer would ask the questions."""
     now = now or utcnow_naive()
     if not platform_eligible:
         return Eligibility(False, "endpoint not platform-eligible")
+    if async_job:
+        # The task would live on the aggregator's account: neither the caller nor the settlement
+        # worker can poll it with our key, so its hold could never close on the real outcome.
+        return Eligibility(False, "async job: its task lives on the account that accepted it")
     if policy is not None and not policy.overflow_allowed:
         return Eligibility(False, f"policy for {route.provider} disallows overflow")
     kind = our_unit_kind(our_cost)
@@ -245,7 +249,7 @@ async def apply_sync(db: AsyncSession, candidates: list[dict], *, catalog, now: 
         verdict = eligible(row, our_cost=ep.get("cost") if ep else None,
                            platform_eligible=bool(ep and catalog.platform_eligible(ep)),
                            policy=policies.get(row.provider), now=now,
-                           our_usd=(cost or {}).get("usd"))
+                           our_usd=(cost or {}).get("usd"), async_job=bool(ep and ep.get("async")))
         row.enabled, row.disabled_reason, row.updated_at = verdict.enabled, verdict.reason, now
         if verdict.enabled:
             enabled += 1

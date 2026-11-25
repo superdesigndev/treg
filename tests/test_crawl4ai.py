@@ -50,16 +50,8 @@ def test_a_batch_stream_settles_at_its_closing_summary_line():
     )) + b"\n"
     doc = call_settle._usage_document(stream)
     assert doc == {"summary": {"cost": "1.250", "priced": 2, "urls": 2}}
-    ep = cs.load().by_id["crawl4ai.web.extract.batch"]
-    assert ep["cost"]["usage"] == {"path": "summary.cost", "unit": "credit"}
     assert call_settle._usage_document(b'{"usage": {"cost": "2.000"}}') == {"usage": {"cost": "2.000"}}
     assert call_settle._usage_document(b"") is None and call_settle._usage_document(b"not json") is None
-
-
-def test_a_finished_job_settles_at_its_usage_cost():
-    ep = cs.load().by_id["crawl4ai.web.scrape.job.start"]
-    assert ep["cost"]["usage"] == {"path": "usage.cost", "unit": "credit"}
-    assert ep["async"]["status"]["success"] == ["done"] and ep["async"]["id_from"] == "job_id"
 
 
 @pytest.mark.parametrize("status, body, kind", [

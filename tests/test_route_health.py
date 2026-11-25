@@ -226,3 +226,28 @@ async def test_a_failing_child_is_kept_when_it_is_the_only_one_within_the_ceilin
     failing.health = "ok"
     await call_route._apply_health(cands, dropped, probe=True, max_cost_micro=10_000)
     assert cands == [dear] and dropped[0]["health"] == "failing"
+
+
+@pytest.mark.parametrize("error,counted", [
+    ("PoolTimeout", 0),   # treg's own connection pool was full: the request never left
+    ("ConnectError", 1),  # the provider could not be reached
+])
+async def test_a_local_pool_wait_is_not_the_provider_failing(clients, enrichment_on, monkeypatch,
+                                                             error, counted):
+    import httpx
+    scripted = _relay_by_provider({"tomba": [TOMBA_MISS]}, [])
+
+    async def relay(request, upstream_url, *args, **kwargs):
+        if "leadmagic" in upstream_url:
+            relay_module.ON_SEND.get()()   # relay marks the send before httpx waits for a pool slot
+            raise getattr(httpx, error)("no connection")
+        return await scripted(request, upstream_url, *args, **kwargs)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    r = await clients.post(f"/call/{ROUTED}", json={"email": "a@example.com"}, headers=HEADERS)
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["tried"][0]["provider"] == "leadmagic"
+    await asyncio.sleep(0)   # the background store writes
+    route_health.reset()
+    assert (await route_health.read([LEADMAGIC]))[LEADMAGIC].failed == counted
+    await _no_holds()

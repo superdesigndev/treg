@@ -1005,6 +1005,14 @@ def test_params_say_shared_prose_once_and_lead_with_the_endpoint_rule():
         "per-param examples are not a request: `call` is the runnable one"
 
 
+def test_a_parameter_applied_only_as_a_hint_says_so_first():
+    view = catalog_views.params_view({"queryParams": {
+        "location": {"type": "string", "applied": "soft", "note": "rows from other countries come back"},
+        "language": {"type": "string", "note": "two letters"}}})
+    notes = {r["name"]: r["note"] for r in view["params"]}
+    assert notes == {"location": "a hint, not a filter · rows from other countries come back", "language": "two letters"}
+
+
 def test_a_credit_price_reads_as_dollars_with_the_credits_behind_it():
     """A bare credit count is not a price — a reader cannot compare "1 credit" to "$0.001". When
     the server priced the credit, dollars lead; only an unpriced credit shows alone."""
@@ -1518,7 +1526,7 @@ def test_login_forwards_the_install_links_ad_code(monkeypatch, tmp_path):
     cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
 
     assert opened and opened[0].startswith("https://treg.to/login?cli=" + "L" * 24)
-    assert "&ad=k7x2qp" in opened[0] and opened[0].endswith("#code=ABCD")
+    assert opened[0].endswith("&ad=k7x2qp") and "ABCD" not in opened[0]
     assert not (tmp_path / "ad-link").exists()
 
 
@@ -1546,3 +1554,21 @@ def test_login_ignores_a_malformed_ad_link_file(monkeypatch, tmp_path):
     cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
 
     assert opened and "ad=" not in opened[0]
+
+
+def test_onboard_catalog_never_tells_a_keyless_public_api_to_connect(monkeypatch, capsys):
+    """A keyless public API the server has not enabled has nothing to connect: the server sends an
+    empty connect_command and the CLI prints its reason, not a connect command that would fail."""
+    c = _onboard_catalog(monkeypatch, {"tier": "none", "connect_command": "",
+                                       "detail": "board.jobs is a keyless public API that this server has not enabled"})
+    out = capsys.readouterr().out
+    assert "not enabled" in out and "connections connect" not in out
+    assert not any(s.startswith("GET /call/") for s in c.seen)
+
+
+def test_onboard_catalog_calls_a_served_keyless_route(monkeypatch, capsys):
+    """An enabled keyless public route is served now: say so and make the call."""
+    c = _onboard_catalog(monkeypatch, {"tier": "anonymous", "detail": "no provider key needed"})
+    out = capsys.readouterr().out
+    assert "free, no key needed" in out and "not yet" not in out
+    assert any(s.startswith("GET /call/") for s in c.seen)

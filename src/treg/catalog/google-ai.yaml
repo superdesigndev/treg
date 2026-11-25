@@ -11,6 +11,7 @@ proposed_capabilities:
   voice-gen.gemini-3-8-flash-lite-tts.generate: "Gemini 3.8 Flash-Lite TTS"
   music-gen.lyria-3-5.generate: "Lyria 3.5 (full song)"
   music-gen.lyria-3-clip.generate: "Lyria 3 Clip (30-second clip)"
+  video-understand.gemini-3-8-flash.generate: "Gemini 3.8 Flash (video understanding)"
 limits: "Synchronous: one generateContent call takes about 25-70 seconds and answers with the image inline as base64 (`candidates[0].content.parts[].inlineData.data`), not a URL. A 2K answer is about 9 MB and a 4K one about 23 MB, most of it a `thoughtSignature` that only multi-turn editing needs; add `fields=candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback` to receive about 4 MB (2K) instead. Rate limits and a spend cap per 10 minutes follow the Google Cloud billing account's tier; 429 RESOURCE_EXHAUSTED is that limit, 503 UNAVAILABLE is Google-side demand and is worth a later retry."
 endpoints:
   - id: google-ai.image-gen.gemini-3-pro-image
@@ -20,6 +21,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3-pro-image, gemini-3-pro-image-preview]}
     name: "Google: Gemini 3 Pro Image (Nano Banana Pro)"
     summary: "Generate or edit one image with Gemini 3 Pro Image at 1K, 2K or 4K on Google's own API, from a prompt and optional reference image URLs; the image returns inline as base64."
     # The image arrives inline, so a 2K/4K answer is far above the 8 MiB settlement buffer: the
@@ -27,12 +29,13 @@ endpoints:
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3-pro-image, gemini-3-pro-image-preview], example: gemini-3-pro-image, note: "gemini-3-pro-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3-pro-image, note: "treg's key runs gemini-3-pro-image, the stable model, or its -preview alias, the same model at the same price; your own key can name another model."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask. The example drops the multi-megabyte thoughtSignature and roughly halves the answer; keep usageMetadata in any mask you send."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
           note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}} (a 10 MB request carrying a 7.5 MB image worked live). Up to 14 references; each bills 258 input tokens whatever its size."
@@ -40,7 +43,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone. [TEXT, IMAGE] permits a text part but does not guarantee one: a live [TEXT, IMAGE] call asking for a one-sentence description returned only the image."}
+            responseModalities: {type: array, items: {type: string}, required: false, example: [IMAGE], note: "[IMAGE] for the image alone. [TEXT, IMAGE] permits a text part but does not guarantee one: a live [TEXT, IMAGE] call asking for a one-sentence description returned only the image."}
             imageConfig:
               type: object
               required: false
@@ -85,17 +88,19 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.1-flash-image, gemini-3.1-flash-image-preview]}
     name: "Google: Gemini 3.1 Flash Image (Nano Banana 2)"
     summary: "Generate or edit one image with Gemini 3.1 Flash Image at 512px, 1K, 2K or 4K on Google's own API, from a prompt and optional reference images; the image returns inline as base64."
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.1-flash-image, gemini-3.1-flash-image-preview], example: gemini-3.1-flash-image, note: "gemini-3.1-flash-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3.1-flash-image, note: "treg's key runs gemini-3.1-flash-image, the stable model, or its -preview alias, the same model at the same price; your own key can name another model."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
           note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}}."
@@ -103,7 +108,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
+            responseModalities: {type: array, items: {type: string}, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
             imageConfig:
               type: object
               required: false
@@ -153,16 +158,18 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.1-flash-lite-image]}
     name: "Google: Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)"
     summary: "Generate or edit one 1K image with Gemini 3.1 Flash Lite Image on Google's own API, the cheapest Gemini image model; the image returns inline as base64."
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.1-flash-lite-image], example: gemini-3.1-flash-lite-image, note: "gemini-3.1-flash-lite-image is the stable model; the -preview alias is the same model at the same price."}
+        model: {type: string, required: true, example: gemini-3.1-flash-lite-image, note: "treg's key runs only gemini-3.1-flash-lite-image; your own key can name another model."}
       queryParams:
         fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
           note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}}."
@@ -170,7 +177,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
+            responseModalities: {type: array, items: {type: string}, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
             imageConfig:
               type: object
               required: false
@@ -213,15 +220,17 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.8-flash-tts]}
     name: "Google: Gemini 3.8 Flash TTS"
     summary: "Speak a text in one of 30 prebuilt voices, or a two-speaker dialogue, with Gemini 3.8 Flash TTS on Google's own API; the audio returns inline as base64 WAV (24 kHz mono)."
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.8-flash-tts], example: gemini-3.8-flash-tts}
+        model: {type: string, required: true, example: gemini-3.8-flash-tts, note: "treg's key runs only gemini-3.8-flash-tts; your own key can name another model."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
           note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
@@ -229,7 +238,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
+            responseModalities: {type: array, items: {type: string}, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
             speechConfig:
               type: object
               required: true
@@ -270,15 +279,17 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.8-flash-lite-tts]}
     name: "Google: Gemini 3.8 Flash-Lite TTS"
     summary: "Speak a text in one of 30 prebuilt voices, or a two-speaker dialogue, with Gemini 3.8 Flash-Lite TTS on Google's own API; the audio returns inline as base64 WAV (24 kHz mono)."
     spooled_response: true
     input:
       pathParams:
-        model: {type: string, required: true, enum: [gemini-3.8-flash-lite-tts], example: gemini-3.8-flash-lite-tts}
+        model: {type: string, required: true, example: gemini-3.8-flash-lite-tts, note: "treg's key runs only gemini-3.8-flash-lite-tts; your own key can name another model."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
           note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
@@ -286,7 +297,7 @@ endpoints:
           type: object
           required: true
           properties:
-            responseModalities: {type: array, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
+            responseModalities: {type: array, items: {type: string}, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
             speechConfig:
               type: object
               required: true
@@ -327,6 +338,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [lyria-3.5]}
     name: "Google: Lyria 3.5"
     summary: "Compose a full song (about three minutes) from a text prompt with Lyria 3.5 on Google's own API; the MP3 returns inline as base64 with its lyrics or section markers."
     spooled_response: true
@@ -334,10 +346,11 @@ endpoints:
     expect: {json_path: candidates.0.finishReason, equals: STOP}
     input:
       pathParams:
-        model: {type: string, required: true, enum: [lyria-3.5], example: lyria-3.5}
+        model: {type: string, required: true, example: lyria-3.5, note: "treg's key runs only lyria-3.5; your own key can name another model."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords."}]}]
           note: "One user turn: {parts: [{text: prompt}]}. Describe genre, mood, instruments and tempo; ask for an instrumental or supply lyrics in the prompt. The answer carries an MP3 part (inlineData, audio/mpeg) and a text part with the lyrics or section markers."
@@ -368,6 +381,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [lyria-3-clip-preview]}
     name: "Google: Lyria 3 Clip"
     summary: "Compose a 30-second music clip from a text prompt with Lyria 3 Clip on Google's own API; the MP3 returns inline as base64."
     spooled_response: true
@@ -375,10 +389,11 @@ endpoints:
     expect: {json_path: candidates.0.finishReason, equals: STOP}
     input:
       pathParams:
-        model: {type: string, required: true, enum: [lyria-3-clip-preview], example: lyria-3-clip-preview}
+        model: {type: string, required: true, example: lyria-3-clip-preview, note: "treg's key runs only lyria-3-clip-preview; your own key can name another model."}
       body:
         contents:
           type: array
+          items: {type: object}
           required: true
           example: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords."}]}]
           note: "One user turn: {parts: [{text: prompt}]}. Describe genre, mood, instruments and tempo; ask for an instrumental or supply lyrics in the prompt. The answer carries an MP3 part (inlineData, audio/mpeg) and a text part with the lyrics or section markers."
@@ -401,3 +416,62 @@ endpoints:
     added: '2026-09-29'
     example_response: examples/google-ai.music-gen.lyria-3-clip.json
     docs_url: https://ai.google.dev/gemini-api/docs/music-generation
+
+  - id: google-ai.video-understand.gemini-3-8-flash
+    capability: video-understand.gemini-3-8-flash.generate
+    platform: video-understand
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    platform_request: {pathParams.model: [gemini-3.8-flash]}
+    name: "Google: Gemini 3.8 Flash (video understanding)"
+    summary: "Answer a prompt about a public video with Gemini 3.8 Flash on Google's own API, from a https video URL or a public YouTube URL; the answer is text or JSON."
+    input:
+      pathParams:
+        model: {type: string, required: true, example: gemini-3.8-flash, note: "treg's key runs only gemini-3.8-flash; your own key can name another model."}
+      body:
+        contents:
+          type: array
+          items: {type: object}
+          required: true
+          example: [{parts: [{fileData: {fileUri: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}}, {text: "Shot list as JSON: shot, start, end, framing, camera_move, visual, dialogue_sfx."}]}]
+          note: "One user turn, video part first, then the text prompt. A video part is {fileData: {mimeType, fileUri}}. fileUri is a public https URL Google fetches (15 MB per file; set mimeType, video/mp4 for an mp4; `treg host <file>` prints a URL) or a public YouTube URL (preview; private and unlisted videos are refused; mimeType may be omitted). A file already uploaded with this same key is a File API URI, and a file under 100 MB can be {inlineData: {mimeType, data: <base64>}}. Up to 10 videos. On the video part: videoMetadata {fps, startOffset, endOffset} samples more or fewer frames than 1 a second and clips the video (offsets like \"5s\"); mediaProcessing is STATIC (default) or AGENTIC (the model loads only the segments it needs); mediaResolution is {level: MEDIA_RESOLUTION_LOW|MEDIA_RESOLUTION_MEDIUM|MEDIA_RESOLUTION_HIGH}. The default, 1 frame a second at low resolution, is about 100 tokens a second with audio and suits a summary; it places cuts within about 0.3 s and can read an animated number mid-count. A shot list or on-screen text wants fps 5 at MEDIA_RESOLUTION_HIGH, about 1,350 tokens a second. Above 1 frame a second, refer to a moment as MM:SS.sss, else MM:SS."
+        generationConfig:
+          type: object
+          required: false
+          properties:
+            responseMimeType: {type: string, required: false, example: application/json, note: "application/json for a structured answer such as a shot list."}
+            mediaResolution: {type: string, required: false, enum: [MEDIA_RESOLUTION_LOW, MEDIA_RESOLUTION_MEDIUM, MEDIA_RESOLUTION_HIGH], example: MEDIA_RESOLUTION_LOW, note: "Applies to every media part. A part's own mediaResolution.level overrides it."}
+            thinkingConfig:
+              type: object
+              required: false
+              properties:
+                thinkingLevel: {type: string, required: false, enum: [low, medium, high], example: low, note: "Default for this model is medium. Do not also send thinkingBudget."}
+      bodyType: json
+    test_request:
+      pathParams: {model: gemini-3.8-flash}
+      body: {contents: [{parts: [{fileData: {fileUri: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}}, {text: "Summarize this video in one sentence."}]}], generationConfig: {thinkingConfig: {thinkingLevel: low}}}
+    price:
+      value: '0.1'
+      currency: USD
+      per: 1
+      unit: call
+      note: 'Standard paid-tier rates for gemini-3.8-flash through 2026-12-31: input $0.75/M, output including thinking $3.75/M. From 2027-01-01 those rates are $1.50/M and $7.50/M. Static video is about 100 tokens/s at the default (low) resolution and about 300 tokens/s otherwise, so 60 s is about 6,000 input tokens ($0.0045). AGENTIC bills loaded frames, audio and transcript on toolUsePromptTokenCount (input) and navigation on thoughtsTokenCount (output). A YouTube URL is a preview input the video page lists as available at no extra charge; whatever usageMetadata reports still settles at these rates, and Google says that preview pricing may change. Batch, flex and context-cache prices are not these rates. The $0.10 hold is about 75 s at fps 5 and high resolution (~100,000 input tokens) with a shot list; usageMetadata settles, below the hold for a summary at the default and above it for a longer or denser video.'
+    provenance:
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: '2026-11-03'
+      confidence: documented
+    settle:
+      usage:
+        unit: usd
+        terms:
+          - {path: response.usageMetadata.promptTokenCount, rate: '0.00000075'}
+          - {path: response.usageMetadata.toolUsePromptTokenCount, rate: '0.00000075'}
+          - {path: response.usageMetadata.candidatesTokenCount, rate: '0.00000375'}
+          - {path: response.usageMetadata.thoughtsTokenCount, rate: '0.00000375'}
+    verified: 2026-11-05
+    added: '2026-11-03'
+    example_response: examples/google-ai.video-understand.gemini-3-8-flash.json
+    docs_url: https://ai.google.dev/gemini-api/docs/generate-content/video-understanding

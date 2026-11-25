@@ -69,14 +69,21 @@ def test_a_coalesce_miss_reads_as_today_on_every_list_or_missing_value(names):
 @pytest.mark.parametrize("expr", ["coalesce(" + " ," * 50_000 + ") == []", "coalesce(a," + " " * 50_000 + "x) == []",
                                   "coalesce(" + ", [" * 30_000 + ") == []", "coalesce(" + "a," * 50_000 + "[]) == []"])
 def test_a_long_adversarial_coalesce_is_judged_in_linear_time(expr):
+    import gc
     import time
 
-    started = time.perf_counter()
+    # CPU time with no collection: a loaded runner once took 1.08 s of wall time for ~20 ms of work.
+    gc.collect()
+    gc.disable()
     try:
-        codemod.predicate(expr, [])
-    except codemod.Refused:
-        pass
-    assert time.perf_counter() - started < 1
+        started = time.process_time()
+        try:
+            codemod.predicate(expr, [])
+        except codemod.Refused:
+            pass
+        assert time.process_time() - started < 1
+    finally:
+        gc.enable()
 
 
 @pytest.mark.parametrize("expr", ["coalesce(a, [], []) == []", "coalesce(, []) == []", "coalesce([]) == []",
@@ -143,7 +150,7 @@ def test_a_per_success_row_with_an_expect_keeps_its_error_envelope_out_of_the_er
     assert any("stats and archive admission stop calling a truthy `error`" in w for w in change.warnings)
 
 
-@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
+@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array", "items": {"type": "string"}}])
 def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
     change = codemod.rewrite({"id": "demo.x", "input": {"body": {"domain": spec, "roles": {"type": "string"}}},
                               "cost": {"type": "per_result", "value": 1, "reserve": {"entities": {}},
@@ -347,6 +354,14 @@ def test_a_fallback_beside_its_equal_value_folds_its_note_into_the_price():
     assert change.keys["price"] == {"value": "0.0005", "note": "Settles at usage.cost. a small ceiling"}
     with pytest.raises(codemod.Refused, match="cost.fallback beside a different cost.value"):
         codemod.rewrite({"id": "demo.x", "cost": {**cost, "value": 0.001}}, provider="demo", check_branches=False)
+
+
+def test_a_worst_case_moves_beside_its_settle_form():
+    cost = {"type": "per_call", "value": 0.0005, "settle": "usage", "worst_case": 0.01,
+            "usage": {"path": "usage.cost", "unit": "usd"}, "source": "docs",
+            "source_url": "https://example.com", "checked": "2026-09-23", "confidence": "verified"}
+    change = codemod.rewrite({"id": "demo.x", "cost": cost}, provider="demo", check_branches=False)
+    assert change.keys["settle"] == {"usage": {"unit": "usd", "path": "response.usage.cost"}, "worst_case": "0.01"}
 
 
 @pytest.mark.parametrize("provider", ["hunter", "tikhub"])

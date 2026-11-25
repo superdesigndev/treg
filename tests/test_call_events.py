@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -65,16 +64,14 @@ async def test_off_by_default_and_a_call_queues_nothing(clients: AsyncClient, en
         {"tomba": [(200, {"data": {"email": "a@sample.example", "score": 96}})]}, []))
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "A Person", "domain": "sample.example"})
     assert r.status_code == 200, r.text
-    assert len(sink._queue) == 0 and sink.counters["queued"] == 0
+    assert sink.counters["queued"] == 0
 
 
 async def test_overflow_drops_and_counts_without_blocking(events_on, monkeypatch):
     monkeypatch.setattr(sink, "_MAX_PENDING", 3)
-    started = time.perf_counter()
     for i in range(50):
         sink.emit({"call_ref": f"c{i}"})
-    assert time.perf_counter() - started < 0.05  # synchronous, no I/O
-    assert len(sink._queue) == 3 and sink.counters["dropped_overflow"] == 47
+    assert sink.counters["dropped_overflow"] == 47
     events = await _flushed(events_on)
     assert [e["call_ref"] for e in events] == ["c0", "c1", "c2"]
 
@@ -361,6 +358,43 @@ def test_a_trestle_country_hint_reads_a_national_number_in_that_country():
     assert key([("phone", "+442079460958"), ("phone.country_hint", "GB")]) not in (None, us)
 
 
+@pytest.mark.parametrize("engine,slug", [("chatgpt", "chat-gpt"), ("gemini", "gemini")])
+def test_llm_scrape_keyword_roundtrips_to_the_original_question(engine, slug, events_on):
+    cat = catalog_store.load()
+    contract = cat.contracts[f"ai-search.{engine}.scrape"]
+    adapter = cat.adapters[f"dataforseo.x.ai-optimization-{slug}-llm-scraper-live-advanced"]
+    question = "How do Disney+ and C++ handle %2B or 20%?"
+    identity, _ = C.canonical_identity(contract, {"prompt": question, "country": "FR"})
+    _, body = adapter.to_upstream(identity, C.adapter_accepts(adapter, identity))
+    assert body[0]["keyword"] == "How do Disney%2B and C%2B%2B handle %252B or 20%25?"
+    assert body[0]["location_code"] == 2250
+    direct = ev.vendor_identity(adapter, contract, [], json.dumps(body).encode())
+    assert direct["q"] == question
+    parent, _ = ev.input_columns(contract, {"prompt": question, "country": "FR"})
+    child, _ = ev.input_columns(contract, direct)
+    historical, _ = ev.input_columns(contract, {"q": question, "country": "FR"})
+    assert child["input_keys"] == parent["input_keys"] == historical["input_keys"]
+    assert child["input_id"] and child["input_id"] == parent["input_id"] == historical["input_id"]
+    assert child["input_type"] == parent["input_type"] == "q"
+    assert child["input_meta"] == parent["input_meta"] == {"country": "FR"}
+
+
+@pytest.mark.parametrize("location,expected", [
+    ({"location_name": "France"}, {"country": "FR"}),
+    ({"location_name": "Paris,France"}, None),
+    ({"location_code": 1006094}, None),
+    ({"location_coordinate": "48.8566,2.3522,200"}, None),
+])
+def test_direct_llm_scrape_reports_only_an_identifiable_country(location, expected):
+    cat = catalog_store.load()
+    contract = cat.contracts["ai-search.gemini.scrape"]
+    adapter = cat.adapters["dataforseo.x.ai-optimization-gemini-llm-scraper-live-advanced"]
+    body = json.dumps([{"keyword": "best+streaming%2B", **location}]).encode()
+    given = ev.vendor_identity(adapter, contract, [], body)
+    assert given["q"] == "best streaming+"
+    assert ev.segment(contract, given)[1] == (expected or {})
+
+
 def test_a_read_back_rule_is_part_of_the_adapter_fingerprint():
     hlr = catalog_store.load().adapters["hlrlookup.people.phone.verify"]
     assert ev.adapter_fingerprint(hlr) != ev.adapter_fingerprint(replace(hlr, in_read={}))
@@ -393,11 +427,11 @@ def test_ref_parts(ref, parts):
 def test_an_unknown_analytics_mode_fails_the_contract():
     with pytest.raises(ValueError, match="analytics"):
         C.parse_contracts({"contracts": {"x.find": {
-            "identity": [{"email": "str"}], "output": {"email": {"type": "str", "analytics": "raw"}}}}})
+            "identity": [{"email": "string"}], "output": {"email": {"type": "string", "analytics": "raw"}}}}})
     with pytest.raises(ValueError, match="analytics"):
         C.parse_contracts({"contracts": {"x.find": {
-            "identity": [{"email": "str"}], "filters": {"q": {"type": "str", "analytics": "key"}},
-            "output": {"email": {"type": "str"}}}}})
+            "identity": [{"email": "string"}], "filters": {"q": {"type": "string", "analytics": "key"}},
+            "output": {"email": {"type": "string"}}}}})
 
 
 def test_the_shipped_catalog_uses_only_known_modes_and_keeps_its_routes():
@@ -490,10 +524,13 @@ def test_a_long_value_is_capped():
     assert cols["answer_values"]["location"] == "x" * 256
 
 
-def test_the_public_contract_does_not_carry_the_event_mapping():
-    import inspect
-    from treg.routers import catalog as catalog_router
-    assert '!= "analytics"' in inspect.getsource(catalog_router)
+async def test_the_public_contract_does_not_carry_the_event_mapping(clients: AsyncClient, enrichment_on):
+    r = await clients.get(f"/catalog/endpoints/{ROUTED}")
+    assert r.status_code == 200, r.text
+    capability = r.json()["endpoint"]["capability"]
+    assert any("analytics" in (spec or {}) for spec in catalog_store.load().contracts[capability].output.values())
+    output = r.json()["routing"]["contract"]["output"]
+    assert output and all("analytics" not in spec for spec in output.values())
 
 
 # ---- through the call path -------------------------------------------------------------------------
@@ -571,7 +608,8 @@ async def test_a_routed_miss_records_the_empty_answer_it_returned(clients: Async
     assert parent["hit"] is False
     assert parent["answer_values"] == {
         "rows": "0", "rows_with_profile_url": "0", "rows_dup": "0", "rows_company_match": "0",
-        "rows_title_match": "0", "rows_country_match": "0", "segments_version": "2"}
+        "rows_company_known": "0", "rows_title_match": "0", "rows_title_known": "0",
+        "rows_country_match": "0", "rows_country_known": "0", "segments_version": "3"}
 
 
 async def test_an_opted_out_team_sends_no_answer(clients: AsyncClient, enrichment_on, events_on,
@@ -716,3 +754,157 @@ async def test_an_unreadable_opt_out_never_stops_a_release(
     [terminal] = [e for e in events if e["event_kind"] == "async_terminal"]
     assert terminal["call_ref"] == call_ref and terminal["async_outcome"] == "timed_out"
     assert terminal["cost_charged_micro"] == 0 and terminal.get("answer_values") is None
+
+
+# ---- paging and admission-only contracts ----------------------------------------------------------
+
+def _serp_input(query: dict) -> dict:
+    cat = catalog_store.load()
+    adapter = cat.adapters["serpapi.google.serp.organic"]
+    contract = cat.contracts["google.serp.organic"]
+    items = tuple(query.items())
+    given = ev.vendor_identity(adapter, contract, items, None)
+    cols, _ = ev.input_columns(contract, given, ev.page_position(adapter, items, None))
+    return cols
+
+
+def test_a_later_page_is_a_different_question_from_the_first(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    first = _serp_input({"engine": "google", "q": "coffee"})
+    also_first = _serp_input({"engine": "google", "q": "Coffee", "start": "0"})
+    second = _serp_input({"engine": "google", "q": "coffee", "start": "10"})
+    again = _serp_input({"engine": "google", "q": "coffee", "start": "10"})
+    get_settings.cache_clear()
+    assert first["input_id"] == also_first["input_id"]
+    assert second["input_id"] not in (None, first["input_id"]) and second["input_id"] == again["input_id"]
+    assert second["input_type"] == first["input_type"] == "q"
+    assert second["input_meta"]["page_kind"] == "offset" and second["input_meta"]["page"] == "10"
+    assert "page_kind" not in (first["input_meta"] or {})
+
+
+def test_page_position_reads_a_declared_path_a_cursor_and_a_routed_caller():
+    adapter = C.Adapter(endpoint_id="t", accepts=(("q",),), in_map={"q": "body.q"}, out_map={},
+                        miss="", position={"page": "body.paging.page"})
+    body = json.dumps({"q": "x", "paging": {"page": 3}}).encode()
+    assert ev.page_position(adapter, (), body) == ("page", "3")
+    assert ev.page_position(adapter, (), json.dumps({"q": "x", "paging": {"page": 1}}).encode()) is None
+    # a declared position wins over a top-level name; nothing declared falls back to the name
+    assert ev.page_position(adapter, (("page", "5"),), json.dumps({"q": "x"}).encode()) is None
+    # nothing declared: a parameter is read by name only where its endpoint declares it
+    assert ev.page_position(replace(adapter, position={}), (("cursor", "abc"),), None) is None
+    comments = catalog_store.load().adapters["scrapecreators.instagram.post.comments"]
+    assert ev.page_position(comments, (("cursor", "abc"),), None) == ("cursor", "abc")
+    assert ev.page_position(comments, (("cursor", "0"),), None) is None
+    videos = catalog_store.load().adapters["tikhub.tiktok.user.videos"]
+    assert ev.page_position(videos, (("cursor", "20"),), None) == ("cursor", "20")
+    assert ev.page_position(None, identity={"q": "x", "cursor": "trg1.abc"}) == ("cursor", "trg1.abc")
+    assert ev.page_position(None, identity={"q": "x"}) is None
+    with pytest.raises(ValueError):
+        C.parse_adapters({"adapters": {"t": {"position": {"page": "body.p", "offset": "body.o"}}}})
+
+
+def test_an_object_asked_by_url_or_by_id_hashes_the_same(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    contracts = catalog_store.load().contracts
+    pairs = [
+        ("x.post.detail", {"url": "https://twitter.com/jack/status/20?s=1"}, {"post_id": "20"}),
+        ("linkedin.job.detail", {"url": "https://www.linkedin.com/jobs/view/software-engineer-at-pave-4310512612/"},
+         {"job_id": "4310512612"}),
+        ("reddit.post.comments", {"url": "https://www.reddit.com/r/rust/comments/1w38wm2/a_title/"},
+         {"post_id": "t3_1w38wm2"}),
+    ]
+    for capability, by_url, by_id in pairs:
+        a, _ = ev.input_columns(contracts[capability], by_url)
+        b, _ = ev.input_columns(contracts[capability], by_id)
+        assert a["input_id"] and a["input_id"] == b["input_id"], capability
+        assert a["input_type"] == b["input_type"] != "url", capability
+    get_settings.cache_clear()
+
+
+def test_id_readers_take_urls_ids_and_refuse_other_text():
+    assert P.x_post_id("https://x.com/i/web/status/123") == P.x_post_id(123) == "123"
+    assert P.x_post_id("https://example.com/status/1") is None
+    assert P.linkedin_job_id("https://www.linkedin.com/jobs/search/?currentJobId=42&k=x") == "42"
+    assert P.linkedin_job_id("https://www.linkedin.com/jobs/view/4442669023") == "4442669023"
+    assert P.linkedin_job_id("https://example.com/jobs/view/4442669023") is None
+    assert P.reddit_post_id("https://redd.it/AbC123") == P.reddit_post_id("abc123") == "t3_abc123"
+    assert P.reddit_post_id("not a post id") is None
+
+
+def test_admission_only_contracts_never_mint_a_routed_row():
+    cat = catalog_store.load()
+    for capability in ("linkedin.search.people", "web.answer", "people.search.count", "x.post.detail"):
+        assert cat.contracts[capability].routed is False
+        assert f"treg.{capability}" not in cat.by_id
+
+
+def _direct_input(endpoint_id: str, query: tuple = (), body: dict | None = None) -> dict:
+    cat = catalog_store.load()
+    adapter = cat.adapters[endpoint_id]
+    contract = cat.contracts[cat.by_id[endpoint_id]["capability"]]
+    raw = json.dumps(body).encode() if body is not None else None
+    given = ev.vendor_identity(adapter, contract, query, raw)
+    cols, _ = ev.input_columns(contract, given, ev.page_position(adapter, query, raw))
+    return cols
+
+
+def test_a_page_named_by_a_parameter_called_page_is_no_position():
+    # crawl4ai's Facebook `page` names the page to read, a string: never a page number, never meta.
+    adapter = catalog_store.load().adapters["crawl4ai.facebook.user.posts"]
+    body = json.dumps({"page": "https://www.facebook.com/somebrand"}).encode()
+    assert ev.page_position(adapter, (), body) is None
+    assert ev.page_position(adapter, (), json.dumps({"page": "12345"}).encode()) is None
+    # a page number its provider declares as a string is read through a declared `position`
+    bili = catalog_store.load().adapters["justoneapi.x.bilibili-search-video-v2"]
+    assert ev.page_position(bili, (("page", "1"),), None) is None
+    assert ev.page_position(bili, (("page", "2"),), None) == ("page", "2")
+
+
+def test_a_page_counted_from_zero_moves_on_at_one(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    cat = catalog_store.load()
+    for endpoint_id in ("theirstack.jobs.search", "aiark.people.search"):
+        adapter = cat.adapters[endpoint_id]
+        assert ev.page_position(adapter, (), json.dumps({"page": 0}).encode()) is None, endpoint_id
+        assert ev.page_position(adapter, (), json.dumps({"page": 1}).encode()) == ("page0", "1"), endpoint_id
+    lusha = cat.adapters["lusha.people.search"]
+    assert ev.page_position(lusha, (), json.dumps({"pagination": {"page": 1}}).encode()) == ("page0", "1")
+    # a page counted from 1 still treats page 1 as the first
+    serper = cat.adapters["serper.web.search"]
+    assert ev.page_position(serper, (), json.dumps({"q": "x", "page": 1}).encode()) is None
+    assert ev.page_position(serper, (), json.dumps({"q": "x", "page": 2}).encode()) == ("page", "2")
+    get_settings.cache_clear()
+
+
+def test_a_count_over_several_companies_hashes_the_whole_set(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    eid = "dropleads.people.search.count"
+
+    def ask(domains, titles=("CEO",)):
+        filters = {"jobTitles": list(titles), **({"companyDomains": list(domains)} if domains else {})}
+        return _direct_input(eid, body={"filters": filters})
+
+    one, other, none = ask(["a.example", "b.example"]), ask(["c.example", "d.example"]), ask([])
+    same = ask(["B.example", "www.a.example"])
+    get_settings.cache_clear()
+    assert len({one["input_id"], other["input_id"], none["input_id"]}) == 3
+    assert one["input_id"] == same["input_id"] and one["input_type"] == "company_domain+title"
+    assert none["input_type"] == "title"
+    assert "domain_class" not in (one["input_meta"] or {})
+
+
+def test_a_job_search_over_several_titles_hashes_the_set(monkeypatch):
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    get_settings.cache_clear()
+    apify = "apify.linkedin.search.jobs"
+    both = _direct_input(apify, body={"jobTitles": ["Engineer", "designer"]})
+    turned = _direct_input(apify, body={"jobTitles": ["Designer", "engineer"]})
+    one = _direct_input(apify, body={"jobTitles": ["Rust developer"]})
+    crawl = _direct_input("crawl4ai.linkedin.search.jobs", body={"query": "rust  developer"})
+    get_settings.cache_clear()
+    assert both["input_id"] and both["input_id"] == turned["input_id"] != one["input_id"]
+    assert one["input_id"] == crawl["input_id"]

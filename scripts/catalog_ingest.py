@@ -335,7 +335,20 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
         default_flow_style=False,
     )
     out.write_text("\n".join(header) + "\n\n" + body)
+    one_vocabulary(out)
     return out
+
+
+def one_vocabulary(path: Path) -> None:
+    """Rewrite a generated file's parameter declarations into the one type vocabulary, by the
+    rules `scripts/catalog_param_types.py` applies to the catalog."""
+    try:
+        from catalog_param_types import File, Report  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        from scripts.catalog_param_types import File, Report
+    samples: dict = {}
+    File(path, Report(), samples).collect()
+    path.write_text(File(path, Report(), samples).rewrite(), encoding="utf-8")
 
 
 # path segment after /api/v1/ → platform slug. Absent = use the segment as-is.
@@ -947,10 +960,16 @@ def ingest_dataforseo(refresh: bool) -> tuple[Path, dict]:
         stem = "/".join(seg[: seg.index("live")]) if "live" in seg else (
             "/".join(seg[:-1]) if seg[-1] == "task_post" else path)
         families.setdefault(stem, []).append(path)
+    # A task_post already listed beside its live twin was added on purpose (the cheaper Standard
+    # queue); keep it, or a regeneration drops it and its reader.
+    current = CATALOG / "dataforseo.extended.yaml"
+    listed = {ep.get("path") for ep in (yaml.safe_load(current.read_text()) or {}).get("endpoints") or []
+              } if current.is_file() else set()
     chosen: list[str] = []
     for paths in families.values():
         live = [p for p in paths if "/live" in p]
-        chosen += live or paths
+        kept = [p for p in paths if p.endswith("/task_post") and p.removeprefix("/v3") in listed]
+        chosen += (live + kept) if live else paths
 
     skip = core_routes("dataforseo")
     endpoints = []
@@ -1363,6 +1382,7 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
            "async": async_default, "endpoints": generated["endpoints"]}
     header, _, _ = out.read_text().partition("provider:")
     out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
+    one_vocabulary(out)
     return out, {"models": len(endpoints)}
 
 
@@ -1576,14 +1596,15 @@ def _anyapi_flat_floor(api: dict) -> float:
 
 
 def anyapi_cost_note(lanes: int, ceiling: float) -> str:
-    """The row's `price.note`: how far a failover can take one charge, what settles it and how a
-    caller caps it. A caller reads it; how the listed price was measured stays in `_anyapi_price`.
+    """The row's `price.note`: how far a failover can take one charge, what settles it, how a
+    caller caps it, and that a miss is billed (the `bill` default in anyapi.yaml). A caller reads it; how the listed price was measured stays in `_anyapi_price`.
     The hand-curated core rows in anyapi.yaml use the same sentences."""
     serve = (f"{lanes} sources serve this, cheapest first; a failed attempt retries on the next, up "
              f"to ${ceiling:g} at the dearest." if lanes > 1 else
              f"One source serves this, at up to ${ceiling:g} a call.")
     return (f"{serve} The charge follows the answer's `costUsd`, not the listed price. Send "
-            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling.")
+            "X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or "
+            "empty answer is billed too, at its own `costUsd`.")
 
 
 def ingest_anyapi(refresh: bool = False):

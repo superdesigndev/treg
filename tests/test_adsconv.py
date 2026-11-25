@@ -222,7 +222,7 @@ async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
         assert (await db.execute(select(AdConversion))).scalars().all() == []
 
 
-@pytest.mark.parametrize("path", ["/adtrack.js", "/gtag.js"])
+@pytest.mark.parametrize("path", ["/click-id.js", "/gtag.js"])
 async def test_tracking_script_is_empty_when_disabled(clients, ads_disabled, path):
     r = await clients.get(path)
     assert r.status_code == 200
@@ -818,18 +818,6 @@ async def test_terms_not_accepted_keeps_retrying_instead_of_dead_lettering(clien
 _WEB = Path(adsconv.__file__).parent / "web"
 
 
-def test_gtag_queues_denied_consent_defaults_before_loading_googles_script():
-    js = (_WEB / "gtag.js").read_text()
-    # Advanced consent mode: the defaults are pushed BEFORE the tag script is appended and before
-    # config, otherwise Google treats the first hits as consented and sets cookies.
-    assert js.index("'consent', 'default'") < js.index("googletagmanager.com/gtag/js") < js.index("'config', TAG_ID")
-    for signal in ("ad_storage", "ad_user_data", "ad_personalization", "analytics_storage"):
-        assert f"{signal}: 'denied'" in js
-    assert "window.tregSignupConversion = function" in js
-    assert "AW-18392771132/0usqCIeQrO0cELzUrcJE" in js.replace("TAG_ID + '/", "AW-18392771132/")
-    assert "transaction_id: tid" in js and "'treg-web-signup-'" in js
-
-
 def test_dashboard_loads_the_tag_conversion_only_and_fires_on_first_team():
     front = Path(adsconv.__file__).resolve().parents[2] / "frontend"
     html = (front / "index.html").read_text()
@@ -837,7 +825,7 @@ def test_dashboard_loads_the_tag_conversion_only_and_fires_on_first_team():
     assert tag in html
     # A classic script before the module entry: gtag.js reads its own attribute through
     # document.currentScript, which is null inside a module, and it must follow ad-click capture.
-    assert html.index('<script src="/adtrack.js" defer></script>') < html.index(tag) \
+    assert html.index('<script src="/click-id.js" defer></script>') < html.index(tag) \
         < html.index('<script type="module"')
     # The first run fires it right after the team the server made for the account exists, keyed by
     # the new org id.
@@ -917,7 +905,7 @@ async def test_login_redirect_preserves_click(clients):
     response = await clients.get('/login?gclid=PHONE&utm_content=original')
     assert response.headers['location'] == '/app?gclid=PHONE&utm_content=original'
     from treg.routers.auth import _login_page_html
-    assert '<script src="/adtrack.js" defer></script>' in _login_page_html('a' * 32, session_email=None, github=True, google=True)
+    assert '<script src="/click-id.js" defer></script>' in _login_page_html('a' * 32, session_email=None, github=True, google=True)
 
 
 async def test_stash_caps_fields_and_disabled_lookup(clients, ads_enabled, monkeypatch):

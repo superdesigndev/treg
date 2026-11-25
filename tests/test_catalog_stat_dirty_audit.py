@@ -35,10 +35,11 @@ def _fields(call_id="synthetic-call", *, endpoint=EP, org_id=1, at=NOW, **overri
                 call_ref=call_id, created_at=at, **overrides)
 
 
-def _correction(call_id="synthetic-call", *, endpoint=EP, org_id=1, hit=True):
+def _correction(call_id="synthetic-call", *, endpoint=EP, org_id=1, hit=True, charged_micro=None):
     return (audit._AsyncHitUpdate,
             dict(call_id=call_id, endpoint_id=endpoint, org_id=org_id, hit=hit,
-                 verdict="valid" if hit else "not_found"))
+                 verdict=None if hit is None else "valid" if hit else "not_found",
+                 charged_micro=charged_micro))
 
 
 async def _seed(*fields):
@@ -156,14 +157,25 @@ async def test_terminal_before_audit_insert_uses_durable_verdict_without_phantom
         session.add(AsyncTaskRecord(
             call_id="synthetic-call", org_id=1, provider="synthetic", endpoint_id=EP,
             reserved_micro=0, next_check_at=NOW, created_at=NOW, status="settled",
-            completed_at=NOW, hit=True, verdict="valid"))
+            completed_at=NOW, hit=True, verdict="valid", settled_micro=1234))
         await session.commit()
-    assert await audit._write_batch([_correction()])
+    assert await audit._write_batch([_correction(charged_micro=1234)])
     assert await _markers() == []
     assert await audit._write_batch([(CallRecord, _fields(_async_submission=True))])
     async with db.session_maker() as session:
         record = (await session.execute(sa.select(CallRecord))).scalar_one()
         assert record.hit is True and record.verdict == "valid"
+        assert record.cost_charged_micro == 1234
+    assert await _markers() == []
+
+
+async def test_a_charge_alone_updates_the_record_without_a_stats_recount(clean_store):
+    await _seed(_fields(hit=True, verdict="valid"))
+    assert await audit._write_batch([_correction(hit=None, charged_micro=0)])
+    async with db.session_maker() as session:
+        record = (await session.execute(sa.select(CallRecord))).scalar_one()
+        assert record.cost_charged_micro == 0
+        assert record.hit is True and record.verdict == "valid"  # the verdict is not cleared
     assert await _markers() == []
 
 

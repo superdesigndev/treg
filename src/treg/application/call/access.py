@@ -6,6 +6,8 @@ platform service tiers satisfy an endpoint.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,7 @@ from ...domain.identity.access import Caller
 from .resolve import (
     _authorization_method,
     _anonymous_offer,
+    _anonymous_refusal,
     _enforce_catalog_status,
     _marketplace_pricing,
     _marketplace_secret,
@@ -147,23 +150,25 @@ async def catalog_endpoint_access(
             "estimated_cost_usd": ledger.usd(estimate),
             **({"estimated_cost_usd_min": low} if isinstance(low, (int, float)) else {}),
         }
-    return _missing_access(endpoint, registry_provider, provider, methods, service)
+    return _missing_access(endpoint, registry_provider, provider, methods, service, org=caller.org)
 
 
 def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
     """Estimate the catalog's runnable example, including provider-specific request pricing."""
-    if schema.is_v2(endpoint):
-        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
-    if service != "openmart":
-        return _platform_estimate_micro(cost, {})
     test_request = endpoint.get("test_request") or {}
     body_value = test_request.get("body")
     body = json.dumps(body_value).encode() if body_value is not None else b""
     query = dict(test_request.get("query") or {})
-    estimate, _unit = _marketplace_pricing(
-        service, endpoint["id"], cost, query, body,
-    )
-    return estimate
+    if schema.is_v2(endpoint):
+        return _marketplace_pricing(service, endpoint["id"], cost, {}, b"")[0]
+    if service == "openmart":
+        estimate, _unit = _marketplace_pricing(
+            service, endpoint["id"], cost, query, body,
+        )
+        return estimate
+    # Match the RUN IT example: empty body would fall through to the page-size default (20) and
+    # print a 20× hold next to a 1-target/1-limit example (Moz quota_rows and similar).
+    return _platform_estimate_micro(cost, query, body)
 
 
 async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
@@ -177,6 +182,18 @@ async def _routed_access(endpoint: dict, caller: Caller, catalog) -> dict:
             trial = await build_plan(
                 endpoint, {key: "example" for key in variant}, caller, options,
             )
+            if trial.candidates:
+                plan = trial
+                break
+    if not plan.candidates:
+        # a placeholder value cannot reach a child gated on a real one (a derive on a known board
+        # system): ask with each child's own verified test identity too
+        for child_id in endpoint.get("routed_children") or []:
+            adapter = catalog.adapters.get(child_id)
+            sample = dict(getattr(adapter, "test_identity", None) or {})
+            if not sample:
+                continue
+            trial = await build_plan(endpoint, sample, caller, options)
             if trial.candidates:
                 plan = trial
                 break
@@ -233,7 +250,13 @@ async def _direct_access(
     endpoint: dict, provider, service: str, caller: Caller, db: AsyncSession,
     billed_note: str,
 ) -> dict | None:
-    probe = provider.base_url.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
+    base = provider.base_url
+    if endpoint.get("host") and provider.catalog_targets:  # as resolve: only an approved second host moves the call
+        try:
+            base = provider.profile_for_catalog_host(endpoint["host"]).base_url
+        except ValueError:
+            base = urlsplit(base)._replace(netloc=endpoint["host"]).geturl()
+    probe = base.rstrip("/") + "/" + (endpoint["path"] or "/").lstrip("/")
     for url in provider.tool_lookup_urls(probe):
         try:
             target = await resolve_call_target(url, caller, _resolve_call)
@@ -252,7 +275,8 @@ async def _direct_access(
                 }
             if exc.status_code != 404:
                 raise
-    if await _marketplace_secret(service, caller.org_id, db) is not None:
+    if getattr(provider, "auth_kind", "") != "public" and (
+            await _marketplace_secret(service, caller.org_id, db) is not None):
         return {
             "tier": "credential",
             "metered": bool(billed_note),
@@ -263,7 +287,7 @@ async def _direct_access(
 
 def _missing_access(
     endpoint: dict, registry_provider, provider, methods: tuple[str, ...], service: str,
-    *, existing: bool = False,
+    *, existing: bool = False, org=None,
 ) -> dict:
     specification = (
         connection_authorization.method_spec(registry_provider, methods[0]) if methods else None
@@ -271,14 +295,16 @@ def _missing_access(
     capability = connection_authorization.connect_capability(
         registry_provider, endpoint, specification,
     )
-    connect = f"treg connections connect --provider {service}"
-    if capability:
+    public = getattr(registry_provider, "auth_kind", "") == "public"
+    connect = "" if public else f"treg connections connect --provider {service}"
+    if capability and not public:
         connect += f" --capability {capability}"
     hint = (
         f"connect with: {connect}" if not provider.uses_pasted_secret else
         f"connect with: {connect}, or treg secret add {service} …"
     )
     detail = (
+        f"{endpoint['id']} {_anonymous_refusal(endpoint, org)}" if public else
         f"the connected {service} authorization needs more access — reconnect with: {connect}"
         if existing else f"no {service} credential in this org yet — {hint}"
     )

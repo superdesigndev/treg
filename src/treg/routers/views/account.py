@@ -94,13 +94,17 @@ def balance(b: dict, *, team: str, autotopup: dict | None) -> str:
         for h in holds:
             lines.append(f"    {usd(h['amount_micro']):>10}  {h.get('endpoint_id') or '-'}")
     if autotopup and autotopup.get("enabled"):
+        cap = f"cap {usd(autotopup['monthly_cap_micro'])}/mo" if autotopup.get("monthly_cap_micro") else "no monthly cap"
         lines.append(f"  auto top-up  on - add {usd(autotopup['amount_micro'])} when it drops "
-                     f"below {usd(autotopup['threshold_micro'])}  (cap {usd(autotopup['monthly_cap_micro'])}/mo, "
+                     f"below {usd(autotopup['threshold_micro'])}  ({cap}, "
                      f"{usd(autotopup['month_spend_micro'])} used)")
     elif autotopup and autotopup.get("disabled_reason"):
         lines.append(f"  auto top-up off - {autotopup['disabled_reason']}. Run `treg topup --auto on` after "
                      f"fixing your card.")
-    items = (b.get("entries") or {}).get("items") or []
+    entries = b.get("entries") or {}
+    items = entries.get("items") or []
+    if not items and entries.get("withheld"):
+        return "\n".join([*lines, "", "  the ledger is shown to team admins - `treg calls` lists this team's calls.", "", ""])
     if not items:
         return "\n".join([*lines, "", "  no ledger activity yet - nothing has been spent.", "", ""])
     lines += ["", "  recent ledger"]

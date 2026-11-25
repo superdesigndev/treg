@@ -590,6 +590,208 @@ async def test_owned_terminal_poll_finalizes_original_task_before_response(
     assert (await task_app.settle_due()).claimed == 0
 
 
+@pytest.mark.parametrize(("email", "settled_micro"), [
+    ("person@example.com", 234_000),
+    (None, 208_000),
+])
+async def test_apollo_platform_phone_poll_is_owned_and_settles_reported_credits_once(
+    clients: AsyncClient, monkeypatch, email: str | None, settled_micro: int,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    request_id = "1039995589705121900"
+    try:
+        async def submit(*args, **kwargs):
+            return _response(200, {
+                "person": {"id": "example-person-id", "email": email},
+                "phone_enrichment": {"status": "pending"},
+                "request_id_str": request_id,
+            })
+
+        monkeypatch.setattr(call_service, "relay", submit)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?name=Example%20Person&domain=example.com"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        call_id = sent.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "pending" and task.reserved_micro >= 234_000
+            assert task.settlement_basis.get("submission_charge_micro") == (26_000 if email else None)
+            assert await db.get(Hold, call_id) is not None
+
+        polled_count = 0
+
+        async def poll(*args, **kwargs):
+            nonlocal polled_count
+            polled_count += 1
+            if polled_count == 1:
+                return _response(404, {"error_code": "result_pending", "retry_after_seconds": 2})
+            return _response(200, {
+                "request_id": request_id,
+                "webhook_status": "skipped",
+                "request_type": "phone",
+                "webhook_result": {
+                    "status": "success", "credits_consumed": 8,
+                    "people": [{"id": "example-person-id", "phone_numbers": [
+                        {"sanitized_number": "+12025550116", "type_cd": "work_direct"}]}],
+                },
+            })
+
+        monkeypatch.setattr(call_service, "relay", poll)
+        other = await verified_signup(clients, json={"email": "phone-stranger@example.com"})
+        assert other.status_code == 200, other.text
+        denied = await clients.get(
+            f"/call/apollo.people.phone.result?request_id={request_id}",
+            headers={"X-Treg-Token": other.json()["token"]})
+        assert denied.status_code == 403 and polled_count == 0
+
+        pending = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert pending.status_code == 404 and pending.json()["error_code"] == "result_pending"
+        async with session_maker() as db:
+            assert (await db.get(AsyncTaskRecord, call_id)).status == "pending"
+            assert await db.get(Hold, call_id) is not None
+
+        received = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert received.status_code == 200, received.text
+        assert received.json()["webhook_result"]["people"][0]["phone_numbers"][0]["type_cd"] == "work_direct"
+        assert polled_count == 2
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "settled" and task.settled_micro == settled_micro
+            assert await db.get(Hold, call_id) is None
+        repeated = await clients.get(f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert repeated.status_code == 200
+        async with session_maker() as db:
+            entries = (await db.execute(select(LedgerEntry).where(
+                LedgerEntry.call_id == call_id, LedgerEntry.kind == "settle"))).scalars().all()
+            assert len(entries) == 1
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_apollo_platform_phone_no_task_releases_hold(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    try:
+        async def no_match(*args, **kwargs):
+            return _response(200, {
+                "person": {"id": "unmatched-stub", "match_confidence": "none"},
+                "phone_enrichment": {"status": "not_attempted"},
+                "request_id_str": "1039995589705121900",
+            })
+
+        monkeypatch.setattr(call_service, "relay", no_match)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?name=No%20Such%20Person&domain=example.com"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        assert sent.headers["X-Treg-Cost-Micro"] == "0"
+        call_id = sent.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            assert await db.get(AsyncTaskRecord, call_id) is None
+            assert await db.get(Hold, call_id) is None
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_apollo_platform_phone_matched_without_pending_job_charges_person_enrichment(
+    clients: AsyncClient, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    try:
+        async def matched(*args, **kwargs):
+            return _response(200, {
+                "person": {"id": "example-person-id", "email": "person@example.com",
+                           "match_confidence": "high"},
+                "phone_enrichment": {"status": "not_attempted"},
+            })
+
+        monkeypatch.setattr(call_service, "relay", matched)
+        sent = await clients.post(
+            "/call/apollo.people.phone.find?name=Example%20Person&domain=example.com"
+            "&reveal_phone_number=true&poll_only=true")
+        assert sent.status_code == 200, sent.text
+        assert sent.headers["X-Treg-Cost-Micro"] == "26000"
+        call_id = sent.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            assert await db.get(AsyncTaskRecord, call_id) is None
+            assert await db.get(Hold, call_id) is None
+            entries = (await db.execute(select(LedgerEntry).where(
+                LedgerEntry.call_id == call_id, LedgerEntry.kind == "settle"))).scalars().all()
+            assert len(entries) == 1
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_apollo_platform_phone_validation_reserves_plan_ceiling_and_settles_usage(
+    clients: AsyncClient, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apollo")
+    get_settings.cache_clear()
+    request_id = "5139398567364803549"
+    sent_upstream = 0
+    try:
+        async def submit(*args, **kwargs):
+            nonlocal sent_upstream
+            sent_upstream += 1
+            return _response(202, {
+                "request_id": request_id, "status": "accepted", "accepted_count": 1,
+                "results": [{"status": "accepted", "record_id": "record-1"}],
+            })
+
+        monkeypatch.setattr(call_service, "relay", submit)
+        body = {"action": "phone_verifier", "action_type": "tool",
+                "input_attributes": [{"phone_number": "+12025550143"}], "poll_only": True}
+        for invalid in (
+            {**body, "input_attributes": [{"phone_number": "+12025550143"},
+                                            {"phone_number": "+12025550144"}]},
+            {**body, "action": "email_verifier"},
+            {**body, "webhook_url": "https://example.invalid"},
+        ):
+            refused = await clients.post("/call/apollo.people.phone.validate", json=invalid)
+            assert refused.status_code == 400
+        assert sent_upstream == 0
+
+        submitted = await clients.post("/call/apollo.people.phone.validate", json=body)
+        assert submitted.status_code == 202, submitted.text
+        call_id = submitted.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "pending" and task.reserved_micro == 520_000
+            assert await db.get(Hold, call_id) is not None
+
+        async def poll(*args, **kwargs):
+            return _response(200, {
+                "request_id": request_id, "webhook_status": "skipped",
+                "webhook_result": {
+                    "status": "success", "credits_consumed": 8,
+                    "results": [{"id": "record-1", "phone": "+12025550143",
+                                 "validation_status": "not_validated", "validator": "trestle"}],
+                },
+            })
+
+        monkeypatch.setattr(call_service, "relay", poll)
+        wrong_tool = await clients.get(
+            f"/call/apollo.people.phone.result?request_id={request_id}")
+        assert wrong_tool.status_code == 403
+        result = await clients.get(
+            f"/call/apollo.people.phone.validate.result?request_id={request_id}")
+        assert result.status_code == 200, result.text
+        assert result.json()["webhook_result"]["results"][0]["validation_status"] == "not_validated"
+        async with session_maker() as db:
+            task = await db.get(AsyncTaskRecord, call_id)
+            assert task.status == "settled" and task.settled_micro == 208_000
+            assert await db.get(Hold, call_id) is None
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_firecrawl_crawl_poll_settles_reported_credits_once(clients: AsyncClient, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")
@@ -979,6 +1181,35 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
     get_settings.cache_clear()
 
 
+@pytest.mark.parametrize(("provider", "kind", "method", "path", "body"), [
+    ("leadsforge", "followers_job", "GET", "leadsforge.linkedin.company.followers.job.results?jobID=old-job", None),
+    ("leadsforge", "enrichment_job", "GET", "leadsforge.people.enrich.job.status?jobID=old-job", None),
+    ("companyenrich", "job", "GET", "companyenrich.companies.enrich.bulk.status?jobId=old-job", None),
+    ("icypeas", "search", "POST", "icypeas.search.results.read", {"id": "old-job"}),
+    ("icypeas", "bulk_file", "POST", "icypeas.bulk.results.read", {"mode": "bulk", "file": "old-job"}),
+])
+async def test_a_job_started_before_its_tool_went_async_stays_readable(
+    clients: AsyncClient, monkeypatch, provider, kind, method, path, body,
+):
+    """A job submitted before its start row gained `async:` has only its ownership record, no task
+    row. Its status and results stay readable by the team that paid for it."""
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    get_settings.cache_clear()
+
+    async def fake_relay(*args, **kwargs):
+        return _response(200, {"status": "completed"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    async with session_maker() as db:
+        db.add(AsyncResourceRecord(org_id=1, provider=provider, resource_kind=kind,
+                                   resource_id="old-job", source_call_id="before-the-deploy"))
+        await db.commit()
+    response = await clients.request(method, f"/call/{path}", json=body)
+    assert response.status_code == 200, response.text
+    get_settings.cache_clear()
+
+
 async def test_apify_actor_start_needs_own_key(
     clients: AsyncClient, monkeypatch, legacy_async_platform,
 ):
@@ -1160,6 +1391,28 @@ async def test_worker_backs_off_unknown_status(
         hold.created_at = utcnow_naive() - timedelta(seconds=ledger.hold_ttl_s() + 1)
         await db.commit()
         assert await ledger.reap_stale_holds(db, org_id=row.org_id) == 0
+        assert await db.get(Hold, call_id) is not None
+
+
+async def test_worker_treats_declared_pending_http_envelope_as_progress(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    call_id = await _due_submission(clients, monkeypatch, {"status": "processing"})
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.descriptor = {**row.descriptor, "pending_response": {
+            "status": 404, "path": "error_code", "equals": "result_pending"}}
+        await db.commit()
+
+    async def pending_poll(row, client):
+        return 404, b'{"error_code":"result_pending"}'
+
+    monkeypatch.setattr(task_app, "_poll", pending_poll)
+    result = await task_app.settle_due()
+    assert result.backed_off == 1
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == "pending" and row.consecutive_failures == 0
         assert await db.get(Hold, call_id) is not None
 
 
@@ -1473,6 +1726,45 @@ def test_times_multiplier_is_bounded_by_the_input_schema():
     assert price(float("inf")) == 6_000_000 and price("5") == 250_000  # strings coerce by type
 
 
+def test_usage_terms_in_credits_settle_at_the_frozen_credit_rate():
+    basis = {"amount": {"kind": "usage", "unit": "credit", "unit_micro": 19_000, "terms": [
+        {"path": "files[task=email-search].found", "rate": 1},
+        {"path": "files[task=email-verification].done", "rate": 0.1}]}, "reserve_micro": 95_000_000}
+    found = {"files": [{"task": "email-search", "found": 3, "done": 5}]}
+    tested = {"files": [{"task": "email-verification", "found": 2, "done": 10}]}
+    assert settlement.settle(basis, {"terminal": found}) == 57_000
+    assert settlement.settle(basis, {"terminal": tested}) == 19_000
+
+
+def test_a_usage_meter_declared_missing_zero_settles_an_absent_field_at_zero():
+    """LeadsForge leaves `consumedCredits` out of a finished job that used none: `missing: 0`
+    settles that at zero, while an unreadable value is still unobserved (the reserve)."""
+    basis = {"amount": {"kind": "usage", "path": "consumedCredits", "unit": "credit",
+                        "unit_micro": 24_500, "missing": 0}, "reserve_micro": 2_450_000}
+    assert settlement.settle(basis, {"terminal": {"status": "completed"}}) == 0
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": 3}}) == 73_500
+    assert settlement.settle(basis, {"terminal": {"consumedCredits": "lots"}}) == 2_450_000
+    plain = {**basis, "amount": {k: v for k, v in basis["amount"].items() if k != "missing"}}
+    assert settlement.settle(plain, {"terminal": {"status": "completed"}}) == 2_450_000
+
+
+def test_a_catch_all_row_prices_by_a_number_or_a_list_length_inside_its_bounds():
+    """A job holds what its size says: `limit` x price, or one price per item of a list, never
+    beyond the declared bounds (outside them the fallback prices it)."""
+    schema = {"body": {"limit": {"type": "integer", "min": 1, "max": 300},
+                       "rows": {"type": "array", "minItems": 1, "maxItems": 3}}}
+    by_limit = {"table": [{"when": {}, "value": 1, "times": "body.limit"}], "fallback": {"value": 300}}
+    by_rows = {"table": [{"when": {}, "value": 1, "times": "body.rows"}], "fallback": {"value": 3}}
+
+    def price(cost, body):
+        return settlement.table_amount_micro(cost, {"body": body}, schema, 1_000)
+
+    assert price(by_limit, {"limit": 2}) == 2_000 and price(by_limit, {"limit": 300}) == 300_000
+    assert price(by_limit, {"limit": 301}) == price(by_limit, {}) == 300_000
+    assert price(by_rows, {"rows": ["a", "b"]}) == 2_000
+    assert price(by_rows, {"rows": []}) == price(by_rows, {"rows": ["a"] * 4}) == 3_000
+
+
 async def test_worker_ignores_terminal_looking_fields_on_error_responses(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):
@@ -1495,13 +1787,70 @@ def test_poll_target_follows_the_declared_location_and_encodes_path_values():
         task_id="a?view=admin/../x", reserved_micro=1, next_check_at=utcnow_naive(),
         descriptor={"poll": {"endpoint": "minimax.video-gen.v2.task.status",
                              "param": {"in": "pathParams", "name": "task_id"}}})
-    method, url, query = task_app._poll_target(row)
-    assert (method, query) == ("GET", [])
+    method, url, query, body = task_app._poll_target(row)
+    assert (method, query, body) == ("GET", [], b"")
     assert url == "https://api.minimax.io/v2/query/video_generation/a%3Fview%3Dadmin%2F..%2Fx"
     row.descriptor = {"poll": {"endpoint": "minimax.video-gen.task.status",
                                "param": {"in": "pathParams", "name": "task_id"}}}
     with pytest.raises(RuntimeError):
         task_app._poll_target(row)  # declared as a path parameter, but the target has no placeholder
+
+
+def test_a_body_poll_sends_the_task_id_as_its_json_object_and_says_so_in_its_resume_line():
+    assert asynctasks.poll_inputs({"in": "body", "name": "id"}, "f-1") == ((), {"id": "f-1"})
+    assert asynctasks.poll_inputs({"in": "queryParams", "name": "task_id"}, 7) == ((("task_id", "7"),), None)
+    assert asynctasks.poll_command("icypeas.search.results.read", {"in": "body", "name": "id"}, "x'; rm") == \
+        """treg call icypeas.search.results.read --data '{"id": "x'"'"'; rm"}'"""
+    assert asynctasks.poll_command("vendor.status", {"in": "pathParams", "name": "id"}, "t 1") == \
+        "treg call vendor.status -p 'id=t 1'"
+
+
+async def test_body_parameter_poll_posts_the_task_id_as_json(monkeypatch):
+    """Icypeas reads a search by POST /bulk-single-searchs/read {"id": ...}: the worker sends that
+    body to the poll endpoint's own method, never a query string the provider ignores."""
+    seen = {}
+
+    async def fake_relay(request, url, tool, *args, **kwargs):
+        seen.update(url=url, method=request.method, query=request.query_items,
+                    headers=dict(request.raw_headers), body=b"".join([c async for c in request.body_stream()]))
+
+        async def stream():
+            yield b'{"items": [{"status": "DEBITED"}]}'
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, (), stream(), close)
+
+    monkeypatch.setattr(task_app, "relay", fake_relay)
+    row = AsyncTaskRecord(
+        call_id="b-1", org_id=1, provider="icypeas", endpoint_id="icypeas.people.email.find",
+        task_id="mP6hHKABeMoKaEB1K1HF", reserved_micro=1, next_check_at=utcnow_naive(),
+        descriptor={"poll": {"endpoint": "icypeas.search.results.read",
+                             "param": {"in": "body", "name": "id"}}})
+    status, _ = await task_app._poll(row, None)
+    assert status == 200 and seen["method"] == "POST" and seen["query"] == ()
+    assert seen["url"].endswith("/bulk-single-searchs/read")
+    assert json.loads(seen["body"]) == {"id": "mP6hHKABeMoKaEB1K1HF"}
+    assert seen["headers"][b"content-type"] == b"application/json"
+
+
+async def test_a_task_look_posts_a_body_poll_and_resumes_with_data():
+    """A look at a task whose poll reads a body id (`treg call --await`'s twin on MCP) POSTs that
+    id as JSON and drops a caller content type that no longer describes the body."""
+    from treg.application import tasks as task_looks
+    from treg.models import CallTask
+    task = CallTask(call_id="c-1", org_id=1, endpoint_id="icypeas.people.email.find", task_id="s-9",
+                    descriptor={"poll": {"endpoint": "icypeas.search.results.read",
+                                         "param": {"in": "body", "name": "id"}}})
+    look = task_looks.poll_input(task, ((b"content-type", b"text/plain"),), None, "127.0.0.1")
+    assert look.method == "POST" and look.query_items == ()
+    assert json.loads(await look.body.read()) == {"id": "s-9"}
+    assert dict(look.raw_headers)[b"content-type"] == b"application/json"
+    assert task_looks._resume(task) == """treg call icypeas.search.results.read --data '{"id": "s-9"}'"""
+    task.descriptor = {"poll": {"endpoint": "vendor.status", "param": {"in": "pathParams", "name": "id"}}}
+    look = task_looks.poll_input(task, (), None, "127.0.0.1")
+    assert look.method == "GET" and look.query_items == (("id", "s-9"),)
 
 
 def test_fetch_command_and_shown_neutralise_provider_strings():

@@ -1,0 +1,40 @@
+{
+  "id": "2b82e4e…",
+  "type": "salary_…",
+  "state": "finishe…",
+  "progress": 1.0,
+  "created_at": "2026-11…",
+  "updated_at": "2026-11…",
+  "started_at": "2026-11…",
+  "completed_at": "2026-11…",
+  "user_id": "0000000…",
+  "error": null,
+  "error_code": null,
+  "retryable": null,
+  "worker_id": "surfra_…",
+  "priority": 0,
+  "notify": false,
+  "input": {
+    "job_title": "Data Sc…",
+    "salary_range": {
+      "min": 140000.0,
+      "max": 180000.0,
+      "currency": "USD",
+      "period": "yearly"
+    },
+    "geo_locations": [
+      {
+        "city": "New Yor…",
+        "region": "New Yor…",
+        "country": "United …"
+      }
+    ],
+    "days_ago": 90,
+    "include_expired": true,
+    "notify": false,
+    "job_titles": [
+      "Data Sc…"
+    ]
+  },
+  "…": "1 more field(s) truncated"
+}

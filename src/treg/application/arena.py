@@ -99,6 +99,16 @@ def _track(run_id, task):
     task.add_done_callback(lambda t: _owners.pop(key, None) if _owners.get(key) is t else None)
 
 
+def routed_state(status: int, meta: dict) -> str:
+    """An attempt's state from a routed answer's `_treg`: a weak answer (one only nothing better
+    replaced, such as a wall page) is no result, so a miss, not an error."""
+    outcome = meta.get("outcome")
+    if outcome == "pending":
+        return "pending"
+    if status < 400 and outcome == "hit":
+        return "hit"
+    return "miss" if outcome in ("miss", "weak") else "error"
+
 async def _locked_owned(db, run_id, caller):
     await db.execute(update(ArenaRun).where(ArenaRun.id == run_id,
         ArenaRun.org_id == caller.org_id, ArenaRun.user_id == caller.user.id)
@@ -650,13 +660,18 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                     async def poll_task(task_id: str, poll_number: int):
                         if poll_ep is None:
                             raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
-                        name = str((poll_rule.get("param") or {}).get("name") or "id")
+                        query, document = asynctasks_rules.poll_inputs(
+                            poll_rule.get("param") or {"name": "id"}, task_id)
+                        payload = json.dumps(document).encode() if document is not None else b""
                         poll_headers = ((b"x-treg-client", b"enrich-arena"),
                                         (b"cache-control", b"no-cache"))
+                        if payload:
+                            poll_headers += ((b"content-type", b"application/json"),
+                                             (b"content-length", str(len(payload)).encode()))
                         poll_context = service.create_call_context(CallInput(
                             method=poll_ep["method"], raw_rest=poll_ep["id"], raw_headers=poll_headers,
-                            query_items=((name, task_id),), raw_query=urlencode({name: task_id}),
-                            body=route._Bytes(b""), caller=current, client_ip=client_ip))
+                            query_items=query, raw_query=urlencode(query),
+                            body=route._Bytes(payload), caller=current, client_ip=client_ip))
                         poll_context.quota_admissions = context.quota_admissions | {
                             (current.org_id, poll_ep["id"])}
                         poll_response = await service.execute_call(poll_context, client)
@@ -702,9 +717,7 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                         a["charged_micro"] = 0 if a["tier"] != "platform" else reserved
                 if a.get("routed"):
                     meta = doc.get("_treg", {}) if isinstance(doc, dict) else {}
-                    outcome = ("pending" if meta.get("outcome") == "pending" else
-                               "hit" if response.status < 400 and meta.get("outcome") == "hit" else
-                               "miss" if meta.get("outcome") == "miss" else "error")
+                    outcome = routed_state(response.status, meta)
                     output = doc.get("output", {}) if outcome == "hit" else {}
                     a["tried"] = meta.get("tried", [])
                     if outcome == "pending":

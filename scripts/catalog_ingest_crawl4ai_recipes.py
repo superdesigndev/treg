@@ -414,8 +414,9 @@ TEXT: dict[str, dict] = {
                   "limit": "at most 12: a larger limit gives the same 12, marked partial"},
     },
     "instagram-profile": {
-        "summary": "Get one public Instagram account: full name, biography, follower, following and post counts, "
-                   "verified flag and external link.",
+        "summary": "Get one public Instagram account: full name, follower and post counts and verified flag.",
+        "note": "biography and external_url are null on every answer: for the bio or link use "
+                "treg.instagram.user.profile.",
         "input": {"username": "the account: @name or an instagram.com URL"},
     },
     "instagram-reels": {
@@ -748,8 +749,7 @@ TEXT: dict[str, dict] = {
     },
 }
 TYPES = {"string": "string", "integer": "integer", "int": "integer", "number": "number", "float": "number",
-         "boolean": "boolean", "bool": "boolean", "list": "array[string]",
-         "array": "array[string]", "object": "object"}
+         "boolean": "boolean", "bool": "boolean", "list": "array", "array": "array", "object": "object"}
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"\+\d[\d ()-]{7,}\d")
 # In a comment or review sample the people who wrote them are private individuals: their names,
@@ -805,6 +805,8 @@ def endpoint(r: dict, text: dict, cap: str, today: str, captured: dict | None) -
     body = {}
     for name, spec in inputs.items():
         field = {"type": TYPES.get(str(spec.get("type")), "string"), "required": bool(spec.get("required"))}
+        if field["type"] == "array":
+            field["items"] = {"type": "string"}
         note = (text.get("input") or {}).get(name) or spec.get("about") or spec.get("description") or spec.get("note")
         default = spec.get("default")
         if default is not None and default != "":

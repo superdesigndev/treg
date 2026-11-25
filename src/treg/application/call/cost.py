@@ -9,6 +9,7 @@ from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from ...domain import plugins
 from ...domain.catalog import outcome as outcomes
+from ...domain.catalog import params
 from ...domain.catalog.schema.paths import holds, leaf_paths, parse_path, relative, select
 from ...domain.money import settlement as settlement_basis
 from .types import ResolutionFailed
@@ -144,8 +145,7 @@ def require_request(ep: dict, request_data: dict) -> None:
     for block in ("queryParams", "pathParams"):
         for name, value in (request_data.get(block) or {}).items():
             spec = declared.get(name)
-            if isinstance(value, list) and isinstance(spec, dict) and "array" not in str(spec.get("type")) \
-                    and spec.get("type") != "list":
+            if isinstance(value, list) and isinstance(spec, dict) and not params.takes_list(spec):
                 raise _invalid(ep, name, "repeat", f"{ep['id']} takes {name} once")
     rule = (ep.get("reserve") or {}).get("rows")
     if rule and rule.get("param"):
@@ -271,6 +271,15 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
     credit_unit = (settlement_basis._micro(credit, 1_000_000)
                    if credit and "credit" in (price_.get("currency"), (reported or {}).get("unit")) else 0)
     return hold, unit, credit_unit, terms
+
+
+def worst_case_micro(ep: dict, cat) -> int:
+    """RAW micro-USD of a v2 row's `settle.worst_case` in its price's currency, 0 when it declares
+    none or the currency has no rate."""
+    worst = (ep.get("settle") or {}).get("worst_case")
+    price_ = ep.get("price") or {}
+    rate = currency_micro(cat, ep["provider"], price_.get("currency", "USD"), price_.get("unit"))
+    return 0 if worst is None or rate is None else _micro_up(Decimal(worst) * rate)
 
 
 def _reads_request(ep: dict) -> bool:
@@ -492,7 +501,7 @@ def evidence_paths(ep: dict) -> tuple[str, ...]:
     paths = [rule[form]["path"] for rule, form in ((settle, "count"), (settle, "reported"))
              if form in rule and "path" in rule[form]]
     for rule in (ep.get("expect"), (ep.get("error") or {}).get("when"), (ep.get("miss") or {}).get("when"),
-                 (ep.get("bill") or {}).get("free_when")):
+                 (ep.get("miss") or {}).get("ok_when"), (ep.get("bill") or {}).get("free_when")):
         if rule is not None:
             paths += [p for p in leaf_paths(rule) if p.startswith("response")]
     return tuple(dict.fromkeys(p for p in roots + [_answer_path(p) for p in paths] if p))

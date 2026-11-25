@@ -62,6 +62,7 @@ endpoints:
             max: 1
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '1:1'
             required: false
@@ -82,6 +83,7 @@ endpoints:
             default: false
             required: false
           output_format:
+            type: string
             description: Format of the output images.
             default: jpg
             required: false
@@ -113,14 +115,17 @@ endpoints:
             required: true
           input_images:
             type: array
+            items: {type: string}
             description: List of input images for image-to-image generation. Maximum 10 images. Must be jpeg, png, gif, or webp.
             default: []
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image. Use 'match_input_image' to match the first input image's aspect ratio.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: 'Resolution in megapixels. Up to 4 MP is possible, but 2 MP or below is recommended. The maximum image size is 2048x2048, which means that high-resolution images may not respect the resolution if aspect ratio is not 1:1.
 
 
@@ -170,6 +175,7 @@ endpoints:
             max: 10
             required: false
           output_format:
+            type: string
             description: Format of the output images.
             default: webp
             required: false
@@ -208,14 +214,17 @@ endpoints:
             required: true
           images:
             type: array
+            items: {type: string}
             description: List of input images for image-to-image generation. Maximum 5 images. Must be jpeg, png, gif, or webp.
             default: []
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image. Use 'match_input_image' to match the aspect ratio of the first input image.
             default: '1:1'
             required: false
           output_megapixels:
+            type: string
             description: Resolution of the output image in megapixels
             default: '1'
             required: false
@@ -229,6 +238,7 @@ endpoints:
             default: false
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: jpg
             required: false
@@ -272,14 +282,17 @@ endpoints:
             required: true
           input_images:
             type: array
+            items: {type: string}
             description: List of input images for image-to-image generation. Maximum 8 images. Must be jpeg, png, gif, or webp.
             default: []
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image. Use 'match_input_image' to match the first input image's aspect ratio.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: 'Resolution in megapixels. Up to 4 MP is possible, but 2 MP or below is recommended. The maximum image size is 2048x2048, which means that high-resolution images may not respect the resolution if aspect ratio is not 1:1.
 
 
@@ -310,6 +323,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images.
             default: webp
             required: false
@@ -348,14 +362,17 @@ endpoints:
             required: true
           input_images:
             type: array
+            items: {type: string}
             description: List of input images for image-to-image generation. Maximum 8 images. Must be jpeg, png, gif, or webp.
             default: []
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image. Use 'match_input_image' to match the first input image's aspect ratio.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: 'Resolution in megapixels. Up to 4 MP is possible, but 2 MP or below is recommended. The maximum image size is 2048x2048, which means that high-resolution images may not respect the resolution if aspect ratio is not 1:1.
 
 
@@ -386,6 +403,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images.
             default: webp
             required: false
@@ -423,6 +441,7 @@ endpoints:
             description: Prompt for generated image
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '1:1'
             required: false
@@ -463,6 +482,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -506,6 +526,7 @@ endpoints:
             max: 3
             required: false
           megapixels:
+            type: string
             description: Approximate number of megapixels for generated image
             default: '1'
             required: false
@@ -544,6 +565,7 @@ endpoints:
             description: Prompt for generated image
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '1:1'
             required: false
@@ -584,6 +606,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -605,6 +628,7 @@ endpoints:
             default: true
             required: false
           megapixels:
+            type: string
             description: Approximate number of megapixels for generated image
             default: '1'
             required: false
@@ -631,10 +655,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image. Use 'match_input_image' to match the aspect ratio of the input image.
             default: match_input_image
             required: false
           output_format:
+            type: string
             description: Output format for the generated image
             default: png
             required: false
@@ -685,10 +711,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image. Use 'match_input_image' to match the aspect ratio of the input image.
             default: match_input_image
             required: false
           output_format:
+            type: string
             description: Output format for the generated image
             default: png
             required: false
@@ -739,10 +767,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '1:1'
             required: false
           output_format:
+            type: string
             description: Format of the output images.
             default: webp
             required: false
@@ -856,6 +886,7 @@ endpoints:
             max: 5
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for expansion. Either aspect_ratio or canvas_size with original_image_size/location must be provided. Can be a predefined string like '1:1', '16:9' etc. or a custom float between 0.5 and 3.0
             default: '1:1'
             required: false
@@ -894,6 +925,7 @@ endpoints:
             description: Negative prompt for image generation
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for expansion. Either aspect_ratio or canvas_size with original_image_size/location must be provided. Can be a predefined string like '1:1', '16:9' etc. or a custom float between 0.5 and 3.0
             default: '1:1'
             required: false
@@ -940,10 +972,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Image aspect ratio. Set to 'custom' to specify width and height.
             default: '16:9'
             required: false
           size:
+            type: string
             description: Big images will have their longest dimension be 2048px. Small images will have their shortest dimension be 512px. Regular images will always be 1 megapixel. Ignored if aspect ratio is custom.
             default: regular
             required: false
@@ -1004,14 +1038,17 @@ endpoints:
             required: true
           image_input:
             type: array
+            items: {type: string}
             description: Input image(s) for image-to-image generation. List of 1-14 images for single or multi-reference generation.
             default: []
             required: false
           size:
+            type: string
             description: 'Image resolution: 2K (2048px), 4K (4096px), or ''custom'' for specific dimensions. Note: 1K resolution is not supported in Seedream 4.5.'
             default: 2K
             required: false
           aspect_ratio:
+            type: string
             description: Image aspect ratio. Only used when size is not 'custom'. Use 'match_input_image' to automatically match the input image's aspect ratio.
             default: match_input_image
             required: false
@@ -1030,6 +1067,7 @@ endpoints:
             max: 4096
             required: false
           sequential_image_generation:
+            type: string
             description: Group image generation mode. 'disabled' generates a single image. 'auto' lets the model decide whether to generate multiple related images (e.g., story scenes, character variations).
             default: disabled
             required: false
@@ -1073,14 +1111,17 @@ endpoints:
             required: true
           image_input:
             type: array
+            items: {type: string}
             description: Input image(s) for image-to-image generation. List of 1-10 images for single or multi-reference generation.
             default: []
             required: false
           size:
+            type: string
             description: 'Image resolution: 1K (1024px), 2K (2048px), 4K (4096px), or ''custom'' for specific dimensions.'
             default: 2K
             required: false
           aspect_ratio:
+            type: string
             description: Image aspect ratio. Only used when size is not 'custom'. Use 'match_input_image' to automatically match the input image's aspect ratio.
             default: match_input_image
             required: false
@@ -1099,6 +1140,7 @@ endpoints:
             max: 4096
             required: false
           sequential_image_generation:
+            type: string
             description: Group image generation mode. 'disabled' generates a single image. 'auto' lets the model decide whether to generate multiple related images (e.g., story scenes, character variations).
             default: disabled
             required: false
@@ -1142,18 +1184,22 @@ endpoints:
             required: true
           image_input:
             type: array
+            items: {type: string}
             description: Input image(s) for image-to-image generation. List of 1-14 images for single or multi-reference generation.
             default: []
             required: false
           size:
+            type: string
             description: 'Image resolution: 2K (2048px) or 3K (3072px).'
             default: 2K
             required: false
           aspect_ratio:
+            type: string
             description: Image aspect ratio. Use 'match_input_image' to automatically match the input image's aspect ratio.
             default: match_input_image
             required: false
           sequential_image_generation:
+            type: string
             description: Group image generation mode. 'disabled' generates a single image. 'auto' lets the model decide whether to generate multiple related images (e.g., story scenes, character variations).
             default: disabled
             required: false
@@ -1165,6 +1211,7 @@ endpoints:
             max: 15
             required: false
           output_format:
+            type: string
             description: Output image format.
             default: png
             required: false
@@ -1195,14 +1242,17 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '1:1'
             required: false
           safety_filter_level:
+            type: string
             description: block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked
             default: block_only_high
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1233,14 +1283,17 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '1:1'
             required: false
           safety_filter_level:
+            type: string
             description: block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked
             default: block_only_high
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1271,14 +1324,17 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '1:1'
             required: false
           safety_filter_level:
+            type: string
             description: block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked
             default: block_only_high
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1309,18 +1365,22 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '1:1'
             required: false
           image_size:
+            type: string
             description: Resolution of the generated image
             default: 1K
             required: false
           safety_filter_level:
+            type: string
             description: block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked
             default: block_only_high
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1351,18 +1411,22 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '1:1'
             required: false
           image_size:
+            type: string
             description: Resolution of the generated image
             default: 1K
             required: false
           safety_filter_level:
+            type: string
             description: block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked
             default: block_only_high
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1394,14 +1458,17 @@ endpoints:
             required: true
           image_input:
             type: array
+            items: {type: string}
             description: Input images to transform or use as reference (supports up to 14 images)
             default: []
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: match_input_image
             required: false
           resolution:
+            type: string
             description: Resolution of the generated image. Higher resolutions take longer to generate.
             default: 1K
             required: false
@@ -1416,6 +1483,7 @@ endpoints:
             default: false
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1447,14 +1515,17 @@ endpoints:
             required: true
           image_input:
             type: array
+            items: {type: string}
             description: Input images to transform or use as reference (supports multiple images)
             default: []
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: match_input_image
             required: false
           output_format:
+            type: string
             description: Format of the output image
             default: jpg
             required: false
@@ -1481,18 +1552,22 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
@@ -1540,18 +1615,22 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
@@ -1599,18 +1678,22 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
@@ -1646,18 +1729,22 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
@@ -1697,14 +1784,17 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
@@ -1717,11 +1807,13 @@ endpoints:
             description: A black and white image. Black pixels are inpainted, white pixels are preserved. The mask will be resized to match the image size.
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
           style_reference_images:
             type: array
+            items: {type: string}
             description: A list of images to use as style references.
             required: false
           seed:
@@ -1730,6 +1822,7 @@ endpoints:
             max: 2147483647
             required: false
           style_preset:
+            type: string
             description: Apply a predefined artistic style to the generated image (V3 models only).
             default: None
             required: false
@@ -1760,14 +1853,17 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
@@ -1780,11 +1876,13 @@ endpoints:
             description: A black and white image. Black pixels are inpainted, white pixels are preserved. The mask will be resized to match the image size.
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
           style_reference_images:
             type: array
+            items: {type: string}
             description: A list of images to use as style references.
             required: false
           seed:
@@ -1793,6 +1891,7 @@ endpoints:
             max: 2147483647
             required: false
           style_preset:
+            type: string
             description: Apply a predefined artistic style to the generated image (V3 models only).
             default: None
             required: false
@@ -1823,14 +1922,17 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored if a resolution or inpainting image is given.
             default: '1:1'
             required: false
           resolution:
+            type: string
             description: Resolution. Overrides aspect ratio. Ignored if an inpainting image is given.
             default: None
             required: false
           magic_prompt_option:
+            type: string
             description: Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages.
             default: Auto
             required: false
@@ -1843,11 +1945,13 @@ endpoints:
             description: A black and white image. Black pixels are inpainted, white pixels are preserved. The mask will be resized to match the image size.
             required: false
           style_type:
+            type: string
             description: The styles help define the specific aesthetic of the image you want to generate.
             default: None
             required: false
           style_reference_images:
             type: array
+            items: {type: string}
             description: A list of images to use as style references.
             required: false
           seed:
@@ -1856,6 +1960,7 @@ endpoints:
             max: 2147483647
             required: false
           style_preset:
+            type: string
             description: Apply a predefined artistic style to the generated image (V3 models only).
             default: None
             required: false
@@ -1886,14 +1991,17 @@ endpoints:
             description: Text prompt for generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output image
             default: '16:9'
             required: false
           generation_mode:
+            type: string
             description: Generation mode
             default: standard
             required: false
           contrast:
+            type: string
             description: Contrast level
             default: medium
             required: false
@@ -1910,6 +2018,7 @@ endpoints:
             max: 8
             required: false
           style:
+            type: string
             description: Style to use for the output image
             default: none
             required: false
@@ -1936,6 +2045,7 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '16:9'
             required: false
@@ -2012,6 +2122,7 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: '16:9'
             required: false
@@ -2068,6 +2179,7 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Image aspect ratio
             default: '1:1'
             required: false
@@ -2122,15 +2234,18 @@ endpoints:
             description: Your OpenAI API key (optional - uses proxy if not provided)
             required: false
           aspect_ratio:
+            type: string
             description: The aspect ratio of the generated image
             default: '1:1'
             required: false
           input_fidelity:
+            type: string
             description: Control how much effort the model will exert to match the style and features, especially facial features, of input images
             default: low
             required: false
           input_images:
             type: array
+            items: {type: string}
             description: A list of images to use as input for the generation
             required: false
           number_of_images:
@@ -2141,10 +2256,12 @@ endpoints:
             max: 10
             required: false
           quality:
+            type: string
             description: The quality of the generated image
             default: auto
             required: false
           background:
+            type: string
             description: Set whether the background is transparent or opaque or choose automatically
             default: auto
             required: false
@@ -2156,10 +2273,12 @@ endpoints:
             max: 100
             required: false
           output_format:
+            type: string
             description: Output format
             default: webp
             required: false
           moderation:
+            type: string
             description: Content moderation level
             default: auto
             required: false
@@ -2190,14 +2309,17 @@ endpoints:
         required: true
         properties:
           speed_mode:
+            type: string
             description: Speed optimization level
             default: Extra Juiced 🔥 (more speed)
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output image
             default: '1:1'
             required: false
           output_format:
+            type: string
             description: Output format
             default: jpg
             required: false
@@ -2264,10 +2386,12 @@ endpoints:
             default: fast
             required: false
           speed_mode:
+            type: string
             description: Speed optimization level
             default: Extra Juiced 🚀 (even more speed)
             required: false
           resolution:
+            type: string
             description: Output resolution
             default: 1024 × 1024 (Square)
             required: false
@@ -2282,6 +2406,7 @@ endpoints:
             default: -1
             required: false
           output_format:
+            type: string
             description: Output format
             default: webp
             required: false
@@ -2324,6 +2449,7 @@ endpoints:
             description: Text prompt for image generation.
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image.
             default: '16:9'
             required: false
@@ -2395,6 +2521,7 @@ endpoints:
             description: Text prompt for image generation.
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image.
             default: '16:9'
             required: false
@@ -2471,10 +2598,12 @@ endpoints:
             default: false
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '16:9'
             required: false
           megapixels:
+            type: string
             description: Approximate number of megapixels for generated image
             default: 2
             required: false
@@ -2483,6 +2612,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: jpg
             required: false
@@ -2557,6 +2687,7 @@ endpoints:
             default: false
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: jpg
             required: false
@@ -2640,6 +2771,7 @@ endpoints:
             required: false
           references:
             type: array
+            items: {type: string}
             description: Optional reference images (PNG, JPEG, or WebP) to guide generation. Arrow 1.1 supports up to 4; Arrow 1.1 Max supports up to 16.
             default: []
             required: false
@@ -2697,6 +2829,7 @@ endpoints:
             required: false
           references:
             type: array
+            items: {type: string}
             description: Optional reference images (PNG, JPEG, or WebP) to guide generation. Arrow 1.1 supports up to 4; Arrow 1.1 Max supports up to 16.
             default: []
             required: false
@@ -2767,10 +2900,12 @@ endpoints:
             required: false
           extra_lora_weights:
             type: array
+            items: {type: string}
             description: Additional LoRA weights as an array of URLs. Same formats supported as lora_weights (e.g., ['https://huggingface.co/flymy-ai/qwen-image-lora/resolve/main/pytorch_lora_weights.safetensors', 'https://huggingface.co/flymy-ai/qwen-image-realism-lora/resolve/main/flymy_realism.safetensors'])
             required: false
           extra_lora_scale:
             type: array
+            items: {type: string}
             description: Scales for additional LoRAs as an array of numbers (e.g., 0.5, 0.7). Must match the number of weights in extra_lora_weights.
             required: false
           image:
@@ -2790,10 +2925,12 @@ endpoints:
             default: ' '
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '16:9'
             required: false
           image_size:
+            type: string
             description: Image size for the generated image
             default: optimize_for_quality
             required: false
@@ -2821,6 +2958,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -2859,14 +2997,17 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: Not set
             required: false
           size:
+            type: string
             description: Width and height of the generated image. Size is ignored if an aspect ratio is set.
             default: 1024x1024
             required: false
           style:
+            type: string
             description: Style of the generated image.
             default: any
             required: false
@@ -2897,14 +3038,17 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: Not set
             required: false
           size:
+            type: string
             description: Width and height of the generated image. Size is ignored if an aspect ratio is set.
             default: 1024x1024
             required: false
           style:
+            type: string
             description: Style of the generated image.
             default: any
             required: false
@@ -2939,10 +3083,12 @@ endpoints:
             description: Text prompt for image generation (up to 10,000 characters)
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: Not set
             required: false
           size:
+            type: string
             description: Width and height of the generated image. Size is ignored if an aspect ratio is set.
             default: 2048x2048
             required: false
@@ -2973,10 +3119,12 @@ endpoints:
             description: Text prompt for image generation (up to 10,000 characters)
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: Not set
             required: false
           size:
+            type: string
             description: Width and height of the generated image. Size is ignored if an aspect ratio is set.
             default: 2048x2048
             required: false
@@ -3007,10 +3155,12 @@ endpoints:
             description: Text prompt for image generation (up to 10,000 characters)
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: Not set
             required: false
           size:
+            type: string
             description: Width and height of the generated image. Size is ignored if an aspect ratio is set.
             default: 2048x2048
             required: false
@@ -3021,9 +3171,11 @@ endpoints:
             required: false
           style_reference_images:
             type: array
+            items: {type: string}
             description: PNG, JPG, or WEBP reference images used to create a private style for this generation. Supports 1-10 images. Mutually exclusive with style_id.
             required: true
           style_match:
+            type: string
             description: How closely the generated image should follow the style.
             default: precise
             required: false
@@ -3054,10 +3206,12 @@ endpoints:
             description: Text prompt for image generation (up to 10,000 characters)
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image
             default: Not set
             required: false
           size:
+            type: string
             description: Width and height of the generated image. Size is ignored if an aspect ratio is set.
             default: 1024x1024
             required: false
@@ -3089,30 +3243,37 @@ endpoints:
             required: true
           init_images:
             type: array
+            items: {type: string}
             description: 'Optional init images (i2i). URLs or uploads. Pro: up to 10, Fast: up to 4.'
             required: false
           super_resolution_refs:
             type: array
+            items: {type: string}
             description: Optional reference images for detail fix (up to 4). Used in i2i and refsr.
             required: false
           resolution:
+            type: string
             description: 'Target resolution: 1K, 2K, or 4K.'
             default: 1K
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio for output. auto uses model choice.
             default: auto
             required: false
           output_format:
+            type: string
             description: Output image format. API returns webp; png will be converted in Python.
             default: webp
             required: false
           font_urls:
             type: array
+            items: {type: string}
             description: Optional font URLs (ttf/otf/woff/woff2). Up to 2.
             required: false
           font_texts:
             type: array
+            items: {type: string}
             description: Text strings matching font_urls (≤300 chars each).
             required: false
           transparency:
@@ -3160,10 +3321,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: The aspect ratio of your output image. This value is ignored if you are using an input image.
             default: '1:1'
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -3220,10 +3383,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: The aspect ratio of your output image. This value is ignored if you are using an input image.
             default: '1:1'
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -3280,10 +3445,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: The aspect ratio of your output image. This value is ignored if you are using an input image.
             default: '1:1'
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -3344,6 +3511,7 @@ endpoints:
             description: Text prompt for image generation
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio for the generated image
             default: '1:1'
             required: false
@@ -3357,6 +3525,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           output_format:
+            type: string
             description: Format of the output images
             default: webp
             required: false
@@ -3400,10 +3569,12 @@ endpoints:
             required: true
           images:
             type: array
+            items: {type: string}
             description: Input images for editing, style transfer, or multi-reference generation (up to 9 images, jpg/png/bmp/webp). When provided, the model operates in image editing mode.
             default: []
             required: false
           size:
+            type: string
             description: Output image resolution. '1K', '2K', and '4K' auto-size based on input images. 4K is only available for text-to-image.
             default: 2K
             required: false
@@ -3456,10 +3627,12 @@ endpoints:
             required: true
           images:
             type: array
+            items: {type: string}
             description: Input images for editing, style transfer, or multi-reference generation (up to 9 images, jpg/png/bmp/webp). When provided, the model operates in image editing mode.
             default: []
             required: false
           size:
+            type: string
             description: Output image resolution. '1K' and '2K' auto-size based on input images.
             default: 2K
             required: false
@@ -3515,6 +3688,7 @@ endpoints:
             description: Input image for editing. When provided, the model edits this image based on the prompt. Supports jpg, jpeg, png, webp.
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated image. Ignored when editing an image.
             default: '1:1'
             required: false
@@ -3550,14 +3724,17 @@ endpoints:
             description: First-frame image to animate. When provided, the model runs in image-to-video mode. Accepts jpg/png/bmp/webp, ≤10MB, aspect ratio between 1:2.5 and 2.5:1, each side ≥300px.
             required: false
           resolution:
+            type: string
             description: Output video resolution
             default: 1080p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video. Only applies to text-to-video - when an image is provided, the image's aspect ratio is used.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the generated video in seconds
             default: 5
             required: false
@@ -3594,18 +3771,22 @@ endpoints:
             required: false
           images:
             type: array
+            items: {type: string}
             description: Input images. Provide no images for text-to-video, one image to animate it as the first frame (image-to-video), or multiple images (up to 9) for reference-to-video. Accepts jpg/png/bmp/webp, <=10MB each, aspect ratio between 1:2.5 and 2.5:1, each side >=300px.
             default: []
             required: false
           resolution:
+            type: string
             description: Output video resolution
             default: 1080p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video. Only applies to text-to-video and reference-to-video. When a single image is provided (image-to-video), the image's aspect ratio is used.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the generated video in seconds
             default: 5
             required: false
@@ -3651,10 +3832,12 @@ endpoints:
             default: ''
             required: false
           resolution:
+            type: string
             description: Output video resolution
             default: 1080p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video. 'adaptive' lets the model choose the best ratio for the prompt. Ignored when an image is provided (the input image's aspect ratio is used).
             default: adaptive
             required: false
@@ -3733,14 +3916,17 @@ endpoints:
         required: true
         properties:
           resolution:
+            type: string
             description: Video resolution
             default: 1080p
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio. Ignored if an image is used.
             default: '16:9'
             required: false
           fps:
+            type: string
             description: Frame rate (frames per second)
             default: 24
             required: false
@@ -3791,14 +3977,17 @@ endpoints:
         required: true
         properties:
           resolution:
+            type: string
             description: Video resolution
             default: 1080p
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio. Ignored if an image is used.
             default: '16:9'
             required: false
           fps:
+            type: string
             description: Frame rate (frames per second)
             default: 24
             required: false
@@ -3872,10 +4061,12 @@ endpoints:
             max: 12
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio. Ignored if an image is used.
             default: '16:9'
             required: false
           fps:
+            type: string
             description: Frame rate (frames per second)
             default: 24
             required: false
@@ -3929,16 +4120,19 @@ endpoints:
             required: false
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images (up to 9) for character consistency, style guidance, and scene composition. Cannot be used together with first/last frame images. You can reference them in your prompt as [Image1], [Image2], etc.
             default: []
             required: false
           reference_videos:
             type: array
+            items: {type: string}
             description: Reference videos (up to 3, total duration max 15s) for motion transfer, style reference, and editing. Reference them in your prompt as [Video1], [Video2], etc.
             default: []
             required: false
           reference_audios:
             type: array
+            items: {type: string}
             description: Reference audio files (up to 3, total duration max 15s) for audio-driven generation and lip-sync. Requires at least one reference image or video. Reference them in your prompt as [Audio1], [Audio2], etc.
             default: []
             required: false
@@ -3950,10 +4144,12 @@ endpoints:
             max: 15
             required: false
           resolution:
+            type: string
             description: Video resolution.
             default: 720p
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio. Set to 'adaptive' to let the model choose the best ratio based on inputs.
             default: '16:9'
             required: false
@@ -4004,16 +4200,19 @@ endpoints:
             required: false
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images (up to 9) for character consistency, style guidance, and scene composition. Cannot be used together with first/last frame images. You can reference them in your prompt as [Image1], [Image2], etc.
             default: []
             required: false
           reference_videos:
             type: array
+            items: {type: string}
             description: Reference videos (up to 3, total duration max 15s) for motion transfer, style reference, and editing. Reference them in your prompt as [Video1], [Video2], etc.
             default: []
             required: false
           reference_audios:
             type: array
+            items: {type: string}
             description: Reference audio files (up to 3, total duration max 15s) for audio-driven generation and lip-sync. Requires at least one reference image or video. Reference them in your prompt as [Audio1], [Audio2], etc.
             default: []
             required: false
@@ -4025,10 +4224,12 @@ endpoints:
             max: 15
             required: false
           resolution:
+            type: string
             description: Video resolution. 4K outputs 10-bit H.265/HEVC at high bitrate.
             default: 720p
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio. Set to 'adaptive' to let the model choose the best ratio based on inputs.
             default: '16:9'
             required: false
@@ -4073,10 +4274,12 @@ endpoints:
             description: Input image to start generating from. Ideal images are 16:9 or 9:16 and 1280x720 or 720x1280, depending on the aspect ratio you choose.
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Video duration in seconds
             default: 5
             required: false
@@ -4111,10 +4314,12 @@ endpoints:
             description: Text prompt for video generation
             required: true
           aspect_ratio:
+            type: string
             description: Video aspect ratio
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Video duration in seconds
             default: 8
             required: false
@@ -4127,6 +4332,7 @@ endpoints:
             description: Description of what to exclude from the generated video
             required: false
           resolution:
+            type: string
             description: Resolution of the generated video
             default: 1080p
             required: false
@@ -4166,10 +4372,12 @@ endpoints:
             description: Text prompt for video generation
             required: true
           aspect_ratio:
+            type: string
             description: Video aspect ratio
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Video duration in seconds
             default: 8
             required: false
@@ -4183,6 +4391,7 @@ endpoints:
             required: false
           reference_images:
             type: array
+            items: {type: string}
             description: 1 to 3 reference images for subject-consistent generation (reference-to-video, or R2V). Reference images only work with 16:9 aspect ratio and 8-second duration. Last frame is ignored if reference images are provided.
             default: []
             required: false
@@ -4191,6 +4400,7 @@ endpoints:
             description: Description of what to exclude from the generated video
             required: false
           resolution:
+            type: string
             description: Resolution of the generated video
             default: 1080p
             required: false
@@ -4230,10 +4440,12 @@ endpoints:
             description: Text prompt for video generation
             required: true
           aspect_ratio:
+            type: string
             description: Video aspect ratio
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Video duration in seconds
             default: 8
             required: false
@@ -4246,6 +4458,7 @@ endpoints:
             description: Description of what to exclude from the generated video
             required: false
           resolution:
+            type: string
             description: Resolution of the generated video
             default: 1080p
             required: false
@@ -4294,6 +4507,7 @@ endpoints:
             required: false
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images for elements, scenes, or styles (up to 7 without video, 4 with video). Supports .jpg/.jpeg/.png.
             required: false
           reference_video:
@@ -4301,6 +4515,7 @@ endpoints:
             description: Reference video for style, camera movement, or as base for editing. Supports .mp4/.mov, 3-10s duration, max 200MB.
             required: false
           video_reference_type:
+            type: string
             description: 'How to use the reference video: ''feature'' for style/camera reference, ''base'' for video editing.'
             default: feature
             required: false
@@ -4310,14 +4525,17 @@ endpoints:
             default: true
             required: false
           mode:
+            type: string
             description: Video generation mode. 'std' is cost-effective, 'pro' has higher quality.
             default: pro
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video. Required for text-to-video. Ignored when using first frame image or video editing.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: 'Video duration in seconds. For text/image-to-video: 5 or 10. With video reference (feature type): 3-10. Ignored for video editing (base type).'
             default: 5
             required: false
@@ -4344,10 +4562,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored if start_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4373,6 +4593,7 @@ endpoints:
             required: true
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images to use in video generation (up to 4 images). Also known as scene elements.
             required: false
           start_image:
@@ -4402,10 +4623,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored if start_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4427,6 +4650,7 @@ endpoints:
             required: true
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images to use in video generation (up to 4 images). Also known as scene elements.
             required: false
           start_image:
@@ -4456,10 +4680,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored if start_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4506,10 +4732,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored if start_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4549,10 +4777,12 @@ endpoints:
         required: true
         properties:
           mode:
+            type: string
             description: Standard has a resolution of 720p, pro is 1080p. Both are 24fps.
             default: standard
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4613,10 +4843,12 @@ endpoints:
             description: Last frame of the video
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored if start_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4664,10 +4896,12 @@ endpoints:
             description: First frame of the video
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored if start_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
@@ -4712,6 +4946,7 @@ endpoints:
             required: false
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images for elements, scenes, or styles. Supports .jpg/.jpeg/.png. Max 7 without video, 4 with video.
             required: false
           reference_video:
@@ -4719,6 +4954,7 @@ endpoints:
             description: Reference video (.mp4/.mov). Duration 3-10s, resolution 720-2160px per side, max 200MB.
             required: false
           video_reference_type:
+            type: string
             description: 'How to use reference video: ''feature'' for style/camera reference, ''base'' for video editing.'
             default: feature
             required: false
@@ -4733,10 +4969,12 @@ endpoints:
             default: false
             required: false
           mode:
+            type: string
             description: '''standard'' generates 720p, ''pro'' generates 1080p, ''4k'' generates 4K. 4K does not support reference_video.'
             default: pro
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio. Required when not using start frame or video editing.
             default: '16:9'
             required: false
@@ -4791,10 +5029,12 @@ endpoints:
             description: Last frame image. Requires start_image. Supports .jpg/.jpeg/.png, max 10MB, min 300px.
             required: false
           mode:
+            type: string
             description: '''standard'' generates 720p, ''pro'' generates 1080p, ''4k'' generates 4K.'
             default: pro
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio. Ignored when start_image is provided.
             default: '16:9'
             required: false
@@ -4837,22 +5077,27 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video. Ignored if image is provided.
             default: '16:9'
             required: false
           vibe_style:
+            type: string
             description: Style for the overall vibe of the video. Ignored if image is provided.
             default: None
             required: false
           lighting_style:
+            type: string
             description: Style for the lighting of the video. Ignored if image is provided.
             default: None
             required: false
           shot_type_style:
+            type: string
             description: Style for the shot type of the video. Ignored if image is provided.
             default: None
             required: false
           color_theme_style:
+            type: string
             description: Style for the color theme of the video. Ignored if image is provided.
             default: None
             required: false
@@ -4901,6 +5146,7 @@ endpoints:
         required: true
         properties:
           mode:
+            type: string
             description: 'How closely the output should follow the source video. Adhere: very close, for subtle enhancements. Flex: allows more stylistic change while keeping recognizable elements. Reimagine: loosely follows the source, for dramatic or transformative changes.'
             default: adhere_1
             required: false
@@ -4947,15 +5193,18 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video
             default: '16:9'
             required: false
           concepts:
             type: array
+            items: {type: string}
             description: 'List of camera concepts to apply to the video generation. Concepts include: truck_left, pan_right, pedestal_down, low_angle, pedestal_up, selfie, pan_left, roll_right, zoom_in, over_the_shoulder, orbit_right, orbit_left, static, tiny_planet, high_angle, bolt_cam, dolly_zoom, overhead, zoom_out, handheld, roll_left, pov, aerial_drone, push_in, crane_down, truck_right, tilt_down, elevator_doors, tilt_up, ground_level, pull_out, aerial, crane_up, eye_level'
             required: false
           end_image:
@@ -5006,15 +5255,18 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video
             default: '16:9'
             required: false
           concepts:
             type: array
+            items: {type: string}
             description: 'List of camera concepts to apply to the video generation. Concepts include: truck_left, pan_right, pedestal_down, low_angle, pedestal_up, selfie, pan_left, roll_right, zoom_in, over_the_shoulder, orbit_right, orbit_left, static, tiny_planet, high_angle, bolt_cam, dolly_zoom, overhead, zoom_out, handheld, roll_left, pov, aerial_drone, push_in, crane_down, truck_right, tilt_down, elevator_doors, tilt_up, ground_level, pull_out, aerial, crane_up, eye_level'
             required: false
           end_image:
@@ -5069,14 +5321,17 @@ endpoints:
             description: Text prompt describing the video. Be specific about subject, motion, camera movement, lighting, and pacing.
             required: true
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video. Ignored when start_image or end_image is set - the model derives the ratio from the anchor frame(s).
             default: '16:9'
             required: false
           resolution:
+            type: string
             description: Output resolution. 540p is not available when hdr is true.
             default: 720p
             required: false
           duration:
+            type: string
             description: Video duration in seconds. 10s is not supported with hdr, start_image, end_image, or loop.
             default: 5
             required: false
@@ -5128,15 +5383,18 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video
             default: '16:9'
             required: false
           concepts:
             type: array
+            items: {type: string}
             description: 'List of camera concepts to apply to the video generation. Concepts include: truck_left, pan_right, pedestal_down, low_angle, pedestal_up, selfie, pan_left, roll_right, zoom_in, over_the_shoulder, orbit_right, orbit_left, static, tiny_planet, high_angle, bolt_cam, dolly_zoom, overhead, zoom_out, handheld, roll_left, pov, aerial_drone, push_in, crane_down, truck_right, tilt_down, elevator_doors, tilt_up, ground_level, pull_out, aerial, crane_up, eye_level'
             required: false
           end_image:
@@ -5187,15 +5445,18 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds
             default: 5
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video
             default: '16:9'
             required: false
           concepts:
             type: array
+            items: {type: string}
             description: 'List of camera concepts to apply to the video generation. Concepts include: truck_left, pan_right, pedestal_down, low_angle, pedestal_up, selfie, pan_left, roll_right, zoom_in, over_the_shoulder, orbit_right, orbit_left, static, tiny_planet, high_angle, bolt_cam, dolly_zoom, overhead, zoom_out, handheld, roll_left, pov, aerial_drone, push_in, crane_down, truck_right, tilt_down, elevator_doors, tilt_up, ground_level, pull_out, aerial, crane_up, eye_level'
             required: false
           end_image:
@@ -5246,10 +5507,12 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds. 10 seconds is only available for 768p resolution.
             default: 6
             required: false
           resolution:
+            type: string
             description: Pick between standard 512p, 768p, or pro 1080p resolution. The pro model is not just high resolution, it is also higher quality.
             default: 1080p
             required: false
@@ -5293,10 +5556,12 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds. 10 seconds is only available for 768p resolution.
             default: 6
             required: false
           resolution:
+            type: string
             description: Pick between 768p or 1080p resolution. 1080p supports only 6-second duration.
             default: 768p
             required: false
@@ -5336,10 +5601,12 @@ endpoints:
         required: true
         properties:
           duration:
+            type: string
             description: Duration of the video in seconds. 10 seconds is only available for 768p resolution.
             default: 6
             required: false
           resolution:
+            type: string
             description: Pick between 768p or 1080p resolution. 1080p supports only 6-second duration.
             default: 768p
             required: false
@@ -5500,14 +5767,17 @@ endpoints:
             description: An optional image to use as the first frame of the video. The image must be the same aspect ratio as the video.
             required: false
           seconds:
+            type: string
             description: Duration of the video in seconds
             default: 4
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video
             default: portrait
             required: false
           resolution:
+            type: string
             description: Resolution quality. Standard is 720p (1280x720 landscape, 720x1280 portrait). High is 1024p (1792x1024 landscape, 1024x1792 portrait).
             default: standard
             required: false
@@ -5546,10 +5816,12 @@ endpoints:
             description: An optional image to use as the first frame of the video. The image must be the same aspect ratio as the video.
             required: false
           seconds:
+            type: string
             description: Duration of the video in seconds
             default: 4
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Portrait is 720x1280, landscape is 1280x720
             default: portrait
             required: false
@@ -5588,18 +5860,22 @@ endpoints:
             description: Use to generate a video that transitions from the first image to the last image. Must be used with image.
             required: false
           quality:
+            type: string
             description: Resolution of the video. 360p and 540p cost the same, but 720p and 1080p cost more. See the README for details.
             default: 540p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds. 8 second videos cost twice as much as 5 second videos. (1080p does not support 8 second duration)
             default: 5
             required: false
           motion_mode:
+            type: string
             description: Motion mode for the video. Smooth videos generate more frames, so they cost twice as much. (smooth is only available when using a 5 second duration, 1080p does not support smooth motion)
             default: normal
             required: false
@@ -5613,10 +5889,12 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           style:
+            type: string
             description: Style of the video
             default: None
             required: false
           effect:
+            type: string
             description: Special effect to apply to the video. Does not work with last_frame_image.
             default: None
             required: false
@@ -5664,18 +5942,22 @@ endpoints:
             description: Use to generate a video that transitions from the first image to the last image. Must be used with image.
             required: false
           quality:
+            type: string
             description: Resolution of the video. 360p and 540p cost the same, but 720p and 1080p cost more. See the README for details.
             default: 540p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds. 8 second videos cost twice as much as 5 second videos. (1080p does not support 8 second duration)
             default: 5
             required: false
           motion_mode:
+            type: string
             description: Motion mode for the video. Smooth videos generate more frames, so they cost twice as much. (smooth is only available when using a 5 second duration, 1080p does not support smooth motion)
             default: normal
             required: false
@@ -5689,10 +5971,12 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           style:
+            type: string
             description: Style of the video
             default: None
             required: false
           effect:
+            type: string
             description: Special effect to apply to the video. Does not work with last_frame_image.
             default: None
             required: false
@@ -5740,14 +6024,17 @@ endpoints:
             description: Use to generate a video that transitions from the first image to the last image. Must be used with image.
             required: false
           quality:
+            type: string
             description: Resolution of the video. Higher resolutions cost more. See pricing for details.
             default: 540p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds. 10 second videos are only available for 360p, 540p, and 720p.
             default: 5
             required: false
@@ -5766,6 +6053,7 @@ endpoints:
             default: false
             required: false
           thinking_type:
+            type: string
             description: Prompt reasoning enhancement. Controls whether the system enhances your prompt with internal reasoning and optimization.
             default: auto
             required: false
@@ -5804,14 +6092,17 @@ endpoints:
             description: Use to generate a video that transitions from the first image to the last image. Must be used with image.
             required: false
           quality:
+            type: string
             description: Resolution of the video. 360p and 540p cost the same, but 720p and 1080p cost more. V5 supports 1080p with 8 second duration.
             default: 540p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds. 8 second videos cost twice as much as 5 second videos. V5 supports 1080p with 8 second duration.
             default: 5
             required: false
@@ -5825,6 +6116,7 @@ endpoints:
             description: Random seed. Set for reproducible generation
             required: false
           effect:
+            type: string
             description: Special effect to apply to the video. V5 supports effects. Does not work with last_frame_image.
             default: None
             required: false
@@ -5863,14 +6155,17 @@ endpoints:
             description: Use to generate a video that transitions from the first image to the last image. Must be used with image.
             required: false
           quality:
+            type: string
             description: Resolution of the video. Higher resolutions cost more. See pricing for details.
             default: 540p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Only used for text-to-video. Ignored when image or last_frame_image is provided.
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the video in seconds. Billing is per second.
             default: 5
             required: false
@@ -5929,10 +6224,12 @@ endpoints:
             default: ''
             required: false
           resolution:
+            type: string
             description: 'Target ~megapixel budget: 720p ≈ 1 MP, 1080p ≈ 2 MP (aspect ratio preserved).'
             default: 720p
             required: false
           target_fps:
+            type: string
             description: Target FPS for the working video.
             default: original
             required: false
@@ -5992,6 +6289,7 @@ endpoints:
             description: Input image (first frame). Supports jpg, jpeg, png, webp.
             required: true
           resolution:
+            type: string
             description: Resolution of the video.
             default: 720p
             required: false
@@ -6000,6 +6298,7 @@ endpoints:
             description: Optional uploaded audio to drive avatar speech. If provided, this is used instead of voice_script and voice settings.
             required: false
           voice:
+            type: string
             description: Voice to use when generating speech from voice_script.
             default: Zephyr (Female)
             required: false
@@ -6014,6 +6313,7 @@ endpoints:
             default: Say the following.
             required: false
           voice_language:
+            type: string
             description: Language/accent target for generated speech.
             default: English (US)
             required: false
@@ -6099,14 +6399,17 @@ endpoints:
             max: 20
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. Ignored when an input image is provided.
             default: '16:9'
             required: false
           resolution:
+            type: string
             description: Resolution of the video.
             default: 720p
             required: false
           fps:
+            type: string
             description: Frames per second of the video.
             default: 24
             required: false
@@ -6170,10 +6473,12 @@ endpoints:
             description: Optional initial image for video generation (first frame). If not provided, video will be generated from text only.
             required: false
           aspect_ratio:
+            type: string
             description: Video aspect ratio
             default: '16:9'
             required: false
           duration:
+            type: string
             description: Duration of the output video in seconds
             default: 5
             required: false
@@ -6212,6 +6517,7 @@ endpoints:
             description: Audio to generate video from
             required: true
           resolution:
+            type: string
             description: Resolution of the generated video
             default: 720p
             required: false
@@ -6257,10 +6563,12 @@ endpoints:
             max: 16
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video. Only used in text-to-video mode (ignored when images are provided).
             default: '16:9'
             required: false
           resolution:
+            type: string
             description: Resolution of the output video.
             default: 720p
             required: false
@@ -6300,14 +6608,17 @@ endpoints:
             description: Text prompt describing what you want to generate
             required: true
           aspect_ratio:
+            type: string
             description: Video aspect ratio
             default: '16:9'
             required: false
           frame_num:
+            type: string
             description: Video duration in frames (based on standard 16fps playback)
             default: 81
             required: false
           resolution:
+            type: string
             description: Video resolution
             default: 480p
             required: false
@@ -6379,6 +6690,7 @@ endpoints:
             max: 100
             required: false
           resolution:
+            type: string
             description: Resolution of video. 832x480px corresponds to 16:9 aspect ratio, and 480x832px is 9:16
             default: 480p
             required: false
@@ -6449,6 +6761,7 @@ endpoints:
             max: 121
             required: false
           resolution:
+            type: string
             description: Resolution of video. 16:9 corresponds to 832x480px, and 9:16 is 480x832px
             default: 480p
             required: false
@@ -6542,10 +6855,12 @@ endpoints:
             max: 121
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of video. 16:9 corresponds to 832x480px, and 9:16 is 480x832px
             default: '16:9'
             required: false
           resolution:
+            type: string
             description: Resolution of video. 16:9 corresponds to 832x480px, and 9:16 is 480x832px
             default: 480p
             required: false
@@ -6623,10 +6938,12 @@ endpoints:
         required: true
         properties:
           resolution:
+            type: string
             description: Video resolution
             default: 720p
             required: false
           duration:
+            type: string
             description: Duration of the generated video in seconds
             default: 5
             required: false
@@ -6696,10 +7013,12 @@ endpoints:
             description: Audio file (wav/mp3, 3-30s, ≤15MB) for voice/music synchronization
             required: false
           resolution:
+            type: string
             description: Video resolution
             default: 720p
             required: false
           duration:
+            type: string
             description: Duration of the generated video in seconds
             default: 5
             required: false
@@ -6748,10 +7067,12 @@ endpoints:
             description: Audio file (wav/mp3, 3-30s, ≤15MB) for voice/music synchronization
             required: false
           size:
+            type: string
             description: Video resolution and aspect ratio
             default: 1280*720
             required: false
           duration:
+            type: string
             description: Duration of the generated video in seconds
             default: 5
             required: false
@@ -6800,10 +7121,12 @@ endpoints:
             description: Audio file (wav/mp3, 3-30s, ≤15MB) for voice/music synchronization
             required: false
           size:
+            type: string
             description: Video resolution and aspect ratio
             default: 1280*720
             required: false
           duration:
+            type: string
             description: Duration of the generated video in seconds
             default: 5
             required: false
@@ -6865,6 +7188,7 @@ endpoints:
             default: ''
             required: false
           resolution:
+            type: string
             description: Output video resolution
             default: 1080p
             required: false
@@ -6912,11 +7236,13 @@ endpoints:
             required: true
           reference_images:
             type: array
+            items: {type: string}
             description: Reference images of the character/object to feature in the video (jpg/png/bmp/webp)
             default: []
             required: false
           reference_videos:
             type: array
+            items: {type: string}
             description: Reference videos of the character/object to feature in the video (mp4/mov)
             default: []
             required: false
@@ -6926,10 +7252,12 @@ endpoints:
             default: ''
             required: false
           resolution:
+            type: string
             description: Output video resolution
             default: 1080p
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the generated video
             default: '16:9'
             required: false
@@ -6941,6 +7269,7 @@ endpoints:
             max: 10
             required: false
           shot_type:
+            type: string
             description: Shot structure of the generated video
             default: single
             required: false
@@ -7002,6 +7331,7 @@ endpoints:
             default: ''
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video.
             default: '16:9'
             required: false
@@ -7010,6 +7340,7 @@ endpoints:
             description: Image for use as the initial frame of the video.
             required: true
           fast_mode:
+            type: string
             description: Speed up generation with different levels of acceleration. Faster modes may degrade quality somewhat. The speedup is dependent on the content, so different videos may see different speedups.
             default: Balanced
             required: false
@@ -7086,6 +7417,7 @@ endpoints:
             default: ''
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video.
             default: '16:9'
             required: false
@@ -7094,6 +7426,7 @@ endpoints:
             description: Image for use as the initial frame of the video.
             required: true
           fast_mode:
+            type: string
             description: Speed up generation with different levels of acceleration. Faster modes may degrade quality somewhat. The speedup is dependent on the content, so different videos may see different speedups.
             default: Balanced
             required: false
@@ -7161,10 +7494,12 @@ endpoints:
         required: true
         properties:
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video.
             default: '16:9'
             required: false
           fast_mode:
+            type: string
             description: Speed up generation with different levels of acceleration. Faster modes may degrade quality somewhat. The speedup is dependent on the content, so different videos may see different speedups.
             default: Balanced
             required: false
@@ -7250,10 +7585,12 @@ endpoints:
             default: ''
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video.
             default: '16:9'
             required: false
           fast_mode:
+            type: string
             description: Speed up generation with different levels of acceleration. Faster modes may degrade quality somewhat. The speedup is dependent on the content, so different videos may see different speedups.
             default: Balanced
             required: false
@@ -7336,10 +7673,12 @@ endpoints:
             max: 15
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the output video. Defaults to the input image's native aspect ratio when 'auto' is selected.
             default: auto
             required: false
           resolution:
+            type: string
             description: Resolution of the video.
             default: 720p
             required: false
@@ -7387,10 +7726,12 @@ endpoints:
             max: 15
             required: false
           aspect_ratio:
+            type: string
             description: Aspect ratio of the video. For text-to-video, defaults to 16:9. For image-to-video, defaults to the input image's native aspect ratio. Ignored when editing a video.
             default: auto
             required: false
           resolution:
+            type: string
             description: Resolution of the video. Ignored when editing a video.
             default: 720p
             required: false

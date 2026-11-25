@@ -383,6 +383,21 @@ def answer_bar(routing: dict | None) -> dict:
             if contract.get("complete") else None}
 
 
+def type_label(spec: dict) -> str | None:
+    """A declared type in a few words: `array of string`, `boolean or object`, `string (url)`."""
+    declared = spec.get("type")
+    if isinstance(declared, list):
+        label = " or ".join(str(t) for t in declared)
+    elif not declared:
+        return None
+    else:
+        label = str(declared)
+        items = spec.get("items")
+        if declared == "array" and isinstance(items, dict) and (inner := type_label(items)):
+            label = f"array of {inner}"
+    return f"{label} ({spec['format']})" if spec.get("format") else label
+
+
 def params_view(inp: dict) -> dict:
     """What to send, by location, required first. A nested object becomes dotted names; prose that
     three or more params share is said once, in `params_shared`."""
@@ -395,7 +410,7 @@ def params_view(inp: dict) -> dict:
             if isinstance(props, dict) and props:
                 walk(props, where, f"{prefix}{name}.")
                 continue
-            rows.append({"in": where, "name": f"{prefix}{name}", "type": str(spec.get("type") or "") or None,
+            rows.append({"in": where, "name": f"{prefix}{name}", "type": type_label(spec),
                          "required": bool(spec.get("required")), "_prose": (spec.get("note") or "").strip(),
                          "_spec": spec})
 
@@ -413,15 +428,22 @@ def params_view(inp: dict) -> dict:
     for r in rows:
         spec, parts = r.pop("_spec"), []
         prose = r.pop("_prose")
+        if spec.get("applied") == "soft":
+            parts.append("a hint, not a filter")
         if prose and prose not in shared:
             parts.append(prose)
+        items = spec.get("items") if isinstance(spec.get("items"), dict) else {}
         if isinstance(spec.get("enum"), list) and spec["enum"]:
             parts.append("one of: " + " | ".join(as_sent(v) for v in spec["enum"]))
+        if isinstance(items.get("enum"), list) and items["enum"]:
+            parts.append("each one of: " + " | ".join(as_sent(v) for v in items["enum"]))
         if "default" in spec:
             parts.append(f"default {as_sent(spec['default'])}")
-        lo, hi = spec.get("min"), spec.get("max")
-        if lo is not None or hi is not None:
-            parts.append(f"range {lo if lo is not None else '…'}-{hi if hi is not None else '…'}")
+        for word, low, high in (("range", "min", "max"), ("length", "minLength", "maxLength"),
+                                ("items", "minItems", "maxItems")):
+            lo, hi = spec.get(low), spec.get(high)
+            if lo is not None or hi is not None:
+                parts.append(f"{word} {lo if lo is not None else '…'}-{hi if hi is not None else '…'}")
         r["note"] = " · ".join(p.rstrip(".") if i else p for i, p in enumerate(parts) if p) or None
     return {"params_note": inp.get("note"),
             "params_shared": [{"params": ", ".join(names), "note": prose} for prose, names in shared.items()] or None,
@@ -443,8 +465,8 @@ def price_table_view(cost) -> dict:
             price += f" × {str(row['times']).split('.', 1)[-1]}"
             if row.get("times_min") is not None:
                 price += f" (from {row['times_min']})"
-        rows.append({"when": " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items()),
-                     "price": price})
+        when = " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items())
+        rows.append({"when": when or "any request", "price": price})
     fb = cost.get("fallback") or {}
     if isinstance(fb, dict) and fb.get("value") is not None:
         rows.append({"when": "fallback (ceiling)", "price": money(float(fb["value"]))})
@@ -466,7 +488,10 @@ def async_view(desc) -> dict | None:
     poll, status, result = desc.get("poll") or {}, desc.get("status") or {}, desc.get("result") or {}
     every = f"every ~{desc.get('interval', 10)} s"
     if poll.get("endpoint"):
-        poll_how = f"treg call {poll['endpoint']} -p {(poll.get('param') or {}).get('name')}=<task id>, {every}"
+        param = poll.get("param") or {}
+        how = (f"--data '{{\"{param.get('name')}\": \"<task id>\"}}'" if param.get("in") == "body"
+               else f"-p {param.get('name')}=<task id>")
+        poll_how = f"treg call {poll['endpoint']} {how}, {every}"
     elif poll.get("url_from"):
         poll_how = f"the URL in response field {poll['url_from']} (hosts: {', '.join(poll.get('url_hosts') or [])}), {every}"
     else:

@@ -101,8 +101,23 @@ def test_migrations_fail_fast_rather_than_queueing_the_world():
     migrations so a contended deploy fails cleanly instead."""
     from importlib.resources import files
 
+    from treg.config import Settings
+
     env_src = files("treg").joinpath("alembic", "env.py").read_text()
-    assert "lock_timeout = '5s'" in env_src
+    assert "SET lock_timeout = '{lock_ms}ms'" in env_src
     assert "statement_timeout = '120s'" in env_src
-    assert env_src.index("lock_timeout = '5s'") < env_src.index("run_sync(_run_migrations)"), (
-        "the timeout must be set BEFORE Alembic migrations run")
+    assert env_src.index("in _session_timeouts():\n                await") < env_src.index(
+        "run_sync(_run_migrations)"), "the timeout must be set BEFORE Alembic migrations run"
+    assert Settings.model_fields["migration_lock_timeout_s"].default <= 5
+
+
+def test_the_budget_reports_what_a_process_retains_while_idle():
+    """A pool keeps up to `pool_size` returned connections open and closes overflow on return, so
+    after a busy spell every process, old ones during a deploy included, holds `pool_size`."""
+    from treg.infra import db
+
+    budget = db.connection_budget(workers=3)
+    floor = sum(db.POOL_SPECS[name]["pool_size"] for name in ("api", "admin", "background"))
+    assert budget["retained_per_process"] == floor
+    assert budget["retained_per_instance"] == floor * 3
+    assert budget["retained_per_instance"] <= budget["per_instance"]

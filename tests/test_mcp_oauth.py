@@ -24,7 +24,7 @@ from treg.config import Settings, get_settings
 
 # The MCP transport helpers live with the MCP tests; a token is only interesting here because it can
 # drive a tool, so reuse them rather than keeping a second copy that can drift.
-from test_mcp import _call_tool, mcp_session
+from test_mcp import _call_tool, _rpc, mcp_session
 
 
 
@@ -593,7 +593,7 @@ async def test_the_consent_page_cannot_be_framed(clients):
 
 # ---- the token has to WORK, not merely validate ---------------------------------------------
 
-async def _grant(clients, email):
+async def _grant(clients, email, scope=None):
     """Run the whole flow and return the access token, plus the team it was granted for."""
     client_id = await _register(clients)
     cookie, org_id = await _signed_in(clients, email)
@@ -601,6 +601,8 @@ async def _grant(clients, email):
     params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
               "response_type": "code", "code_challenge": challenge,
               "code_challenge_method": "S256", "resource": mcp_oauth.mcp_resource_url()}
+    if scope is not None:
+        params["scope"] = scope
     r = await clients.post("/oauth/authorize", data={**params, "org_id": org_id, "decision": "allow"},
                            follow_redirects=False)
     code = r.headers["location"].split("code=")[1].split("&")[0]
@@ -833,6 +835,75 @@ async def test_omitting_the_resource_is_fine(clients):
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "balance", {}, token=tok.json()["access_token"])
     assert "balance_usd" in out, "the default audience must be the one the MCP server accepts"
+
+
+async def _new_account_cookie(clients, email):
+    """A verified account that has not reached the dashboard yet: no team, not onboarded. This is
+    who a connector's sign-in brings back to consent, because the parked authorization resumes
+    straight after sign-in."""
+    from conftest import verified_identity
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    await verified_identity(clients, email)
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        cookie = session.make_session(user.id, token_version=user.token_version)
+    clients.cookies.set("treg_session", cookie)
+
+
+async def test_a_new_account_gets_its_first_team_at_consent(clients):
+    """Refusing "not a member of any team" ended every first connection from a new account, the
+    connector's most likely user. Consent names the team approval will make, and makes it."""
+    client_id = await _register(clients)
+    await _new_account_cookie(clients, "jane@newco-consent.test")
+    verifier, challenge = _pkce()
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge,
+              "code_challenge_method": "S256"}
+    shown = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["teams"] == [] and shown.json()["new_team"] == "Newco Consent"
+    page = await clients.get("/oauth/authorize", params=params)
+    assert "Allowing creates your team, <b>Newco Consent</b>" in page.text
+    assert 'name="org_id" value="0"' in page.text
+
+    r = await clients.post("/oauth/authorize", data={**params, "org_id": 0, "decision": "allow"},
+                           follow_redirects=False)
+    assert r.status_code == 302 and "code=" in r.headers["location"], r.text
+    code = r.headers["location"].split("code=")[1].split("&")[0]
+    tok = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": "https://client.test/cb",
+        "client_id": client_id, "code_verifier": verifier})
+    assert tok.status_code == 200, tok.text
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=tok.json()["access_token"])
+    assert out.get("team_name") == "Newco Consent", out
+
+    again = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert [t["slug"] for t in again.json()["teams"]] == [out["team"]] and again.json()["new_team"] is None
+
+
+async def test_an_onboarded_account_without_a_team_is_still_refused(clients):
+    """Someone who left every team already had their first run; consent does not make another."""
+    from sqlalchemy import update
+
+    from treg.infra.db import session_maker
+    from treg.models import User
+
+    client_id = await _register(clients)
+    await _new_account_cookie(clients, "left@oldco-consent.test")
+    async with session_maker() as db:
+        await db.execute(update(User).where(User.email == "left@oldco-consent.test").values(onboarded=True))
+        await db.commit()
+    _, challenge = _pkce()
+    r = await clients.get("/oauth/authorize", params={
+        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": challenge, "code_challenge_method": "S256", "state": "s"},
+        follow_redirects=False)
+    assert r.status_code == 302 and "error=access_denied" in r.headers["location"]
 
 
 async def test_a_null_origin_from_a_redirect_chain_is_not_treated_as_cross_site(clients):
@@ -1349,3 +1420,231 @@ async def test_a_moved_grant_keeps_retired_token_team_provenance(clients, monkey
         "client_id": client_id})
     assert replay.status_code == 400 and "already used" in replay.json()["error_description"]
     assert recorded["org_id"] == original_org_id
+
+
+# ---- scope: a grant does only what it was granted ------------------------------------------
+
+def test_the_granted_scope_is_what_was_asked_for_and_nothing_unknown():
+    full = "treg:catalog treg:call treg:read"
+    assert mcp_oauth.granted_mcp_scope("treg:catalog") == "treg:catalog"
+    assert mcp_oauth.granted_mcp_scope("treg:read treg:catalog openid") == "treg:catalog treg:read"
+    assert mcp_oauth.granted_mcp_scope("") == full, "a client that names no scope asks for the whole access"
+    assert mcp_oauth.granted_mcp_scope("openid profile") == full
+    assert mcp_oauth.granted_mcp_scope("treg:directory", "v1") == full, "the v2 marker is not a v1 scope"
+    assert mcp_oauth.granted_mcp_scope("treg:directory", "v2") == full + " treg:directory"
+    assert mcp_oauth.granted_mcp_scope("treg:catalog treg:directory", "v2") == "treg:catalog treg:directory"
+    # a grant recorded before normalization was consented as full access
+    assert mcp_oauth.mcp_permissions("") == frozenset(mcp_oauth.BASE_SCOPES)
+    assert mcp_oauth.mcp_permissions("treg:catalog") == {"treg:catalog"}
+
+
+async def test_a_catalog_only_grant_cannot_spend_or_read_the_team(clients):
+    access, _ = await _grant(clients, "catalog-only@superdesign.dev", scope="treg:catalog")
+    assert mcp._oauth_claims(access)["scope"] == "treg:catalog"
+    async with mcp_session(clients) as c:
+        for name, args in (("call", {"endpoint_id": "exa.search", "params": {"query": "x"}}),
+                           ("call_media", {"endpoint_id": "exa.search"}),
+                           ("balance", {}), ("my_tools", {}), ("resources_list", {}),
+                           ("call_result", {}), ("compare", {}),
+                           ("compare", {"comparison_id": 1, "choice": "1"})):
+            out = await _call_tool(c, name, args, token=access)
+            assert out.get("error") == "insufficient_scope", (name, out)
+        searched = await _call_tool(c, "catalog_search", {"query": "web search"}, token=access)
+    assert searched.get("error") != "insufficient_scope", searched
+
+
+async def test_a_grant_that_names_no_scope_keeps_the_whole_access(clients):
+    access, _ = await _grant(clients, "no-scope@superdesign.dev", scope="")
+    assert mcp._oauth_claims(access)["scope"] == "treg:catalog treg:call treg:read"
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=access)
+    assert "balance_usd" in out, out
+
+
+async def test_the_token_response_reports_the_scope_actually_granted(clients):
+    client_id = await _register(clients)
+    _, org_id = await _signed_in(clients, "granted@superdesign.dev")
+    verifier, challenge = _pkce()
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge, "code_challenge_method": "S256",
+              "resource": mcp_oauth.mcp_resource_url(), "scope": "treg:read admin:everything"}
+    shown = await clients.get("/oauth/authorize", params=params, headers={"Accept": "application/json"})
+    assert shown.json()["scope"] == "treg:read"
+    r = await clients.post("/oauth/authorize", data={**params, "org_id": org_id, "decision": "allow"},
+                           follow_redirects=False)
+    code = r.headers["location"].split("code=")[1].split("&")[0]
+    tok = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": "https://client.test/cb",
+        "client_id": client_id, "code_verifier": verifier})
+    assert tok.json()["scope"] == "treg:read"
+
+
+async def test_the_consent_page_lists_only_what_the_scope_grants(clients):
+    client_id = await _register(clients)
+    await _signed_in(clients, "narrow-consent@superdesign.dev")
+    _, challenge = _pkce()
+    page = (await clients.get("/oauth/authorize", params={
+        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": challenge, "code_challenge_method": "S256", "scope": "treg:catalog"})).text
+    assert "Search the catalog and read prices" in page
+    assert "spends the team's balance" not in page
+    assert "without seeing them" not in page
+    assert "Read the team's balance" not in page
+
+
+def test_every_mcp_tool_names_the_scope_it_needs():
+    import asyncio
+    for server, required in ((mcp.mcp, mcp._V1_TOOL_SCOPES), (mcp.directory_mcp, mcp._V2_TOOL_SCOPES)):
+        names = {t.name for t in asyncio.run(server.list_tools())}
+        assert names == set(required), sorted(names ^ set(required))
+        assert set(required.values()) <= set(mcp_oauth.BASE_SCOPES)
+
+
+_TRAVERSALS = ("../../orgs/{org}/balance", "..%2F..%2Forgs%2F{org}%2Fbalance",
+               "%2E%2E/%2E%2E/orgs/{org}/balance", "x/../../../orgs/{org}/balance", "..")
+
+
+async def test_catalog_get_cannot_walk_off_the_catalog_route(clients):
+    access, org_id = await _grant(clients, "walk@superdesign.dev", scope="treg:catalog")
+    async with mcp_session(clients) as c:
+        for shape in _TRAVERSALS:
+            out = await _call_tool(c, "catalog_get", {"endpoint_id": shape.format(org=org_id)}, token=access)
+            assert "balance_usd" not in json.dumps(out), (shape, out)
+            assert out.get("error", "").startswith("unknown endpoint"), (shape, out)
+
+
+def test_ids_formatted_into_internal_paths_are_one_plain_segment():
+    assert mcp._segment_url("/catalog/endpoints", "limadata.google.serp.organic") == \
+        "/catalog/endpoints/limadata.google.serp.organic"
+    assert mcp._segment_url("/hub/tools", "acme.brief@2") == "/hub/tools/acme.brief@2"
+    for bad in ("", ".", "..", "a/b", "a%2Fb", "../orgs", "a?b", "a#b", "a\\b", "%2E%2E"):
+        assert mcp._segment_url("/catalog/endpoints", bad) is None, bad
+
+
+async def test_a_missing_scope_is_a_403_challenge_naming_it(clients):
+    access, _ = await _grant(clients, "challenge@superdesign.dev", scope="treg:catalog")
+    async with mcp_session(clients) as c:
+        r = await _rpc(c, "tools/call", {"name": "balance", "arguments": {}}, access)
+        ok = await _rpc(c, "tools/call", {"name": "catalog_search", "arguments": {"query": "x"}}, access)
+    assert r.status_code == 403, r.text
+    www = r.headers["www-authenticate"]
+    assert 'error="insufficient_scope"' in www
+    assert 'scope="treg:catalog treg:read"' in www, "the scope to ask for, keeping what was granted"
+    assert "resource_metadata=" in www
+    assert r.json()["error"] == "insufficient_scope"
+    assert ok.status_code == 200, ok.text
+
+
+async def test_a_call_only_grant_is_never_shown_a_comparison(clients):
+    """A comparison shows the team's past inputs and answers: riding on `call` must not give a
+    `treg:call` grant what the `compare` tool's `treg:read` refuses it."""
+    call_only, _ = await _grant(clients, "call-only-compare@superdesign.dev", scope="treg:call")
+    full, _ = await _grant(clients, "full-compare@superdesign.dev", scope="")
+    assert mcp._may_read_comparisons(call_only) is False
+    assert await mcp._inline_comparison(call_only) is None
+    assert mcp._may_read_comparisons(full) is True
+    assert mcp._may_read_comparisons("not-an-oauth-token") is True
+
+
+async def test_a_call_only_grant_gets_no_prior_review(clients, monkeypatch):
+    """`prior` rides on `call` but writes a review: it needs the review tool's scope too."""
+    from treg.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "mcp_prior_review_rate", 1)
+    call_only, _ = await _grant(clients, "call-only@superdesign.dev", scope="treg:call")
+    full, _ = await _grant(clients, "full@superdesign.dev", scope="")
+    assert mcp._shows_prior({"authorization": f"Bearer {call_only}"}) is False
+    assert mcp._shows_prior({"authorization": f"Bearer {full}"}) is True
+
+
+# ---- a CIMD client fetched at authorize time ---------------------------------------------------
+
+def _cimd_doc(url):
+    return {"client_id": url, "client_name": "Metadata client", "client_uri": "", "logo_uri": "",
+            "redirect_uris": ["https://client.test/cb"], "scope": ""}
+
+
+def _cimd_authorize(clients, url):
+    return clients.get("/oauth/authorize", params={
+        "client_id": url, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": "x", "code_challenge_method": "S256"}, follow_redirects=False)
+
+
+async def test_cimd_fetch_at_authorize_holds_no_db_connection(clients, monkeypatch, connections_held_here):
+    """A burst of reconnecting clients waits on DNS and HTTP for their documents; each must not
+    also sit on a pooled connection while it waits."""
+    import asyncio
+
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthClient
+
+    url = "https://cimd-pool.test/client.json"
+    held, started, release = [], asyncio.Event(), asyncio.Event()
+
+    async def fetch(client_id):
+        held.append(connections_held_here())
+        started.set()
+        await release.wait()
+        return _cimd_doc(client_id)
+
+    monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
+    request = asyncio.create_task(_cimd_authorize(clients, url))
+    await asyncio.wait_for(started.wait(), 5)
+    release.set()
+    r = await request
+    assert held == [0]
+    assert r.status_code != 400, r.text
+    async with session_maker() as db:
+        rows = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == url))).scalars().all()
+    assert [row.client_name for row in rows] == ["Metadata client"]
+
+
+async def test_cimd_first_sight_race_stores_one_row(clients, monkeypatch):
+    import asyncio
+
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthClient
+
+    url = "https://cimd-race.test/client.json"
+    arrived, both = [], asyncio.Event()
+
+    async def fetch(client_id):
+        arrived.append(client_id)
+        if len(arrived) == 2:
+            both.set()
+        await asyncio.wait_for(both.wait(), 5)
+        return _cimd_doc(client_id)
+
+    monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
+    first, second = await asyncio.gather(_cimd_authorize(clients, url), _cimd_authorize(clients, url))
+    assert len(arrived) == 2
+    assert first.status_code == second.status_code != 400, (first.text, second.text)
+    async with session_maker() as db:
+        rows = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == url))).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_cimd_refresh_failure_keeps_the_stale_copy(clients, monkeypatch):
+    from datetime import timedelta
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthClient
+    from treg.timeutil import utcnow_naive
+
+    url = "https://cimd-stale.test/client.json"
+    async with session_maker() as db:
+        db.add(OAuthClient(client_id=url, kind="cimd", client_name="Stale copy",
+                           redirect_uris=["https://client.test/cb"],
+                           refreshed_at=utcnow_naive() - timedelta(seconds=mcp_oauth._CIMD_REFRESH_S + 60)))
+        await db.commit()
+
+    async def fetch(client_id):
+        return None
+
+    monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
+    r = await _cimd_authorize(clients, url)
+    assert r.status_code != 400, r.text

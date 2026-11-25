@@ -1,0 +1,13 @@
+{
+  "name": "doomscroll",
+  "version": "0.32.0",
+  "description": "Use when the user wants to know what people are posting about a topic right now or since a recent point in time - the last few hours, today, since a launch, since their last check - such as the best clips, tips, reactions, launches, drama or sentiment on X, TikTok, YouTube, Reddit, Hacker News or Product Hunt. Also for \"catch me up on X\", \"what's the internet saying about X\", \"what did I miss\", or keeping up with a live event.",
+  "author": {
+    "name": "Superdesign dev, Inc.",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg",
+  "license": "Apache-2.0"
+}

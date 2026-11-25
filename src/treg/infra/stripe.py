@@ -8,6 +8,9 @@ import stripe as stripe_sdk
 
 
 CUSTOMER_CREATE = "Customer.create"
+CUSTOMER_RETRIEVE = "Customer.retrieve"
+CUSTOMER_MODIFY = "Customer.modify"
+PAYMENT_METHOD_RETRIEVE = "PaymentMethod.retrieve"
 PAYMENT_INTENT_RETRIEVE = "PaymentIntent.retrieve"
 EVENT_LIST = "Event.list"
 CHECKOUT_SESSION_CREATE = "checkout.Session.create"
@@ -34,6 +37,9 @@ StripeError = stripe_sdk.StripeError
 def _operation(name: str) -> Callable:
     operations = {
         CUSTOMER_CREATE: stripe_sdk.Customer.create,
+        CUSTOMER_RETRIEVE: stripe_sdk.Customer.retrieve,
+        CUSTOMER_MODIFY: stripe_sdk.Customer.modify,
+        PAYMENT_METHOD_RETRIEVE: stripe_sdk.PaymentMethod.retrieve,
         PAYMENT_INTENT_RETRIEVE: stripe_sdk.PaymentIntent.retrieve,
         EVENT_LIST: stripe_sdk.Event.list,
         CHECKOUT_SESSION_CREATE: stripe_sdk.checkout.Session.create,
@@ -65,6 +71,38 @@ async def schedule_subscription_cancel(subscription_id: str, *, api_key: str) ->
     result = await anyio.to_thread.run_sync(lambda: stripe_sdk.Subscription.modify(
         subscription_id, api_key=api_key, cancel_at_period_end=True))
     return result.to_dict() if isinstance(result, stripe_sdk.StripeObject) else result
+
+
+# Crypto deposit addresses and on-chain PaymentIntent verification exist only in these preview API
+# versions, as Stripe's machine-payments guides use them.
+CRYPTO_DEPOSIT_VERSION = "2026-07-29.preview"
+CRYPTO_PAYMENT_VERSION = "2026-05-27.preview"
+
+
+def _raw(api_key: str, version: str, method: str, path: str, **params) -> dict:
+    client = stripe_sdk.StripeClient(api_key, stripe_version=version)
+    return client.deserialize(client.raw_request(method, path, **params), api_mode="V1").to_dict()
+
+
+async def create_crypto_deposit_address(network: str, *, api_key: str) -> dict:
+    """A reusable address on `network` (`tempo`, `base`) whose deposits Stripe converts to fiat."""
+    return await anyio.to_thread.run_sync(lambda: _raw(
+        api_key, CRYPTO_DEPOSIT_VERSION, "post", "/v1/crypto/deposit_addresses", network=network))
+
+
+async def record_crypto_payment(*, amount_cents: int, network: str, transaction_hash: str,
+                                api_key: str, metadata: dict[str, str] | None = None) -> dict:
+    """Record an on-chain payment to a deposit address as a PaymentIntent. The transaction hash
+    is the idempotency key, so a retry records it once."""
+    return await anyio.to_thread.run_sync(lambda: _raw(
+        api_key, CRYPTO_PAYMENT_VERSION, "post", "/v1/payment_intents",
+        amount=amount_cents, currency="usd", confirm=True,
+        payment_method_data={"type": "crypto"}, payment_method_types=["crypto"],
+        payment_method_options={"crypto": {
+            "mode": "transaction_verification",
+            "transaction_verification_options": {
+                "network": network, "transaction_hash": transaction_hash}}},
+        metadata=metadata or {}, idempotency_key=f"agentpay:{transaction_hash}"))
 
 
 def verify_event(payload: bytes, signature: str, secret: str) -> dict:

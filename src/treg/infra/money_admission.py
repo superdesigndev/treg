@@ -31,7 +31,7 @@ _OPERATIONS = frozenset({"close", "deferred", "async", "hub", "reserve", "releas
 # Sessions that update an org balance row. A missing org must not fall through into checkout.
 _BALANCE_OPS = frozenset({"reserve", "release"})
 _MODES = frozenset({"disabled", "redis", "fallback"})
-_REASONS = frozenset({"wait_timeout", "kv_unavailable", "kv_not_configured",
+_REASONS = frozenset({"wait_timeout", "kv_unavailable", "kv_store_down", "kv_not_configured",
                       "lease_lost", "missing_identity", "gate_error"})
 _BOUNDS_MS = (10, 50, 100, 250, 1000, 5000)
 _SETTLE_WAIT_LEASES = 2
@@ -40,6 +40,20 @@ _local_loop = None
 _clock = time.monotonic
 _metrics_lock = threading.Lock()
 _opened = _clock()
+# After a store failure, skip the store for this long so later operations fall back at once
+# instead of each waiting out the store timeout (same pattern as fair_share._STORE_DOWN_S).
+_STORE_DOWN_S = 5.0
+_store_down_until = 0.0
+_background: set[asyncio.Task] = set()
+
+
+def _store_down() -> bool:
+    return _clock() < _store_down_until
+
+
+def _mark_store_down() -> None:
+    global _store_down_until
+    _store_down_until = _clock() + _STORE_DOWN_S
 
 
 @dataclass
@@ -122,7 +136,7 @@ class _Observation:
             with _metrics_lock:
                 row = _windows.setdefault((self.operation, self.mode), _Window())
                 row.completed += 1
-                rejected = isinstance(exc, ReserveAdmissionTimeout)
+                rejected = isinstance(exc, AdmissionTimeout)
                 row.rejected += rejected
                 row.failed += exc is not None and not rejected
                 row.cancelled += isinstance(exc, asyncio.CancelledError)
@@ -186,6 +200,8 @@ class _Gate:
                     self.local.append(lock)
                 if not kv.configured():
                     return "kv_not_configured"
+                if _store_down():
+                    return "kv_store_down"
                 self.store = kv.store()
                 for org_id in ids:
                     key, token = f"money-admission:org:{org_id}", uuid.uuid4().hex
@@ -249,6 +265,11 @@ class _Gate:
             self.observation.lease_lost = 1
             self.lost = True
 
+    def release_local(self) -> None:
+        for lock in reversed(self.local):
+            lock.release()
+        self.local.clear()
+
     async def release(self) -> None:
         if self.renewer is not None:
             self.renewer.cancel()
@@ -270,16 +291,18 @@ class _Gate:
             self.attempted.clear()
             self.leases.clear()
             self.valid_until.clear()
-            for lock in reversed(self.local):
-                lock.release()
-            self.local.clear()
+            self.release_local()
 
 
 class AdmissionRefused(Exception):
     """Reserve or release refused before checkout: no positive org id. Not an HTTP status."""
 
 
-class ReserveAdmissionTimeout(Exception):
+class AdmissionTimeout(Exception):
+    """The acquisition budget expired and the caller asked not to fall back. Not a store failure."""
+
+
+class ReserveAdmissionTimeout(AdmissionTimeout):
     """The reserve acquisition budget expired before checkout. Not a store failure."""
 
 
@@ -327,8 +350,11 @@ def _wait_budget(operation: str, settings, max_wait_s: float | None) -> float:
 
 @asynccontextmanager
 async def admit(org_ids: Iterable[int | None], *, operation: str,
-                max_wait_s: float | None = None) -> AsyncIterator[None]:
-    """`max_wait_s` caps a non-reserve wait for a caller with its own deadline."""
+                max_wait_s: float | None = None,
+                refuse_on_timeout: bool = False) -> AsyncIterator[None]:
+    """`max_wait_s` caps a non-reserve wait for a caller with its own deadline.
+    `refuse_on_timeout` is for work that can come back later: a non-reserve wait that runs out
+    raises `AdmissionTimeout` before the database, as a reserve's does, instead of falling back."""
     raw = list(org_ids)
     if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
         # Do not yield. `async with admit(), session()` must not open the session.
@@ -359,15 +385,30 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
                     observation.kv_errors += 1
                     reason = "gate_error"
                 if reason:
-                    reject = operation == "reserve" and reason == "wait_timeout"
+                    reject = ((operation == "reserve" or refuse_on_timeout)
+                              and reason == "wait_timeout")
                     if not reject:
                         observation.reason = reason
                     mode = "fallback"
-                    await _release_safely(gate)
+                    if reason in ("kv_unavailable", "gate_error"):
+                        # Never queue the next operation behind the failing store's cleanup;
+                        # the lease TTL bounds a lease the cleanup does not remove.
+                        _mark_store_down()
+                        gate.release_local()
+                        task = asyncio.create_task(gate.release())
+                        _background.add(task)
+                        task.add_done_callback(_background.discard)
+                    elif reason == "kv_store_down":
+                        # Nothing reached the store, so there is no lease to clean up. Free the
+                        # team's local lock now; same-team waiters spend their wait budget on it.
+                        gate.release_local()
+                    else:
+                        await _release_safely(gate)
                     gate = None
                     if reject:
                         # Cleanup precedes rejection; never yield into a reserve DB session.
-                        raise ReserveAdmissionTimeout("wait_timeout")
+                        raise (ReserveAdmissionTimeout if operation == "reserve"
+                               else AdmissionTimeout)("wait_timeout")
                 else:
                     mode = "redis"
         observation.enter(mode)

@@ -4,7 +4,10 @@
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
     treg-worker idempotency prune [--dry-run]       # expired completed replay answers
+    treg-worker archive retain [--dry-run]           # delete archive questions no one asked for in N days
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
+    treg-worker agentpay reconcile [--limit 50]      # resolve agent payments whose settlement went unanswered
+    treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
     treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
@@ -14,11 +17,15 @@
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
+    treg-worker reviews judge [--max-seconds 600]    # Jev: new review reasons' privacy and codes (hourly)
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
     treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
+    treg-worker admin card-sync --org <id> [--org <id>] [--apply]  # adopt a newer portal card treg missed
+    treg-worker admin reencrypt-credentials [--dry-run]    # re-seal stored Fernet credentials under KMS
+    treg-worker admin rotate-fernet [--dry-run]            # re-encrypt Fernet payloads under the first key
     treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
     treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
@@ -28,7 +35,9 @@
 Not the light `treg` CLI: these need the server extra (DB, platform keys in the env) and make
 outbound calls to third parties, so they run as Render cron jobs with the server's env — never as
 dataplane lifespan work (refactor plan §2.2). The worker never originates a money movement. It may
-complete a hold opened by the request path, settling or releasing it with full call and org attribution.
+complete a hold opened by the request path, settling or releasing it with full call and org attribution,
+and it may complete an agent payment the request path verified but could not confirm: the `topup` for
+a transfer the chain shows landed, under the same reference the request would have used.
 
 The audit-table analytics commands exist so that no web process walks `callrecord` next to the money path:
 each is a bounded incremental pass over the audit table that a cron repeats, and the request path
@@ -250,6 +259,20 @@ async def _overflow_verify(args) -> int:
     return 0
 
 
+async def _deliver_owed_freezes() -> None:
+    """A command that settled a call past its hold (the async settle tick, a hub check's child
+    calls) left its team's allowance freeze to a task of its own. The process ends with the
+    command, so it waits here, a bounded time and before the store is closed."""
+    if "treg.application.call.allowance" not in sys.modules:
+        return  # the command never touched the call runtime: nothing can be owed
+    try:
+        lost = await sys.modules["treg.application.call.allowance"].deliver_owed_freezes()
+    except Exception:  # noqa: BLE001 - preserve the command's result/failure
+        return
+    if lost:
+        print(f"{lost} allowance freeze(s) did not reach the store before exit", file=sys.stderr)
+
+
 async def _asynctasks_settle(args) -> int:
     from .infra.db import verify_db
     from .application.asynctasks import settle_due
@@ -264,6 +287,30 @@ async def _asynctasks_settle(args) -> int:
     finally:
         await call_events.drain()  # the terminal events this tick observed
     print(json.dumps(result.__dict__, sort_keys=True))
+    return 0
+
+
+async def _agentpay_reconcile(args) -> int:
+    from .application import agent_payments
+    from .bootstrap import configure_agent_payments
+    from .infra.db import verify_db
+
+    await verify_db()
+    configure_agent_payments()
+    if not agent_payments.enabled():
+        print(json.dumps({"skipped": "agent payments are off"}))
+        return 0
+    result = await agent_payments.reconcile(limit=args.limit)
+    print(json.dumps(result.__dict__, sort_keys=True))
+    return 0
+
+
+async def _agentpay_stripe_address(args) -> int:
+    from .application import agent_payments
+
+    address = await agent_payments.create_stripe_deposit_address(args.network)
+    print(json.dumps({k: address.get(k) for k in ("id", "network", "address", "supported_tokens",
+                                                   "livemode")}, sort_keys=True))
     return 0
 
 
@@ -338,6 +385,27 @@ async def _shadow_collect(args) -> int:
         await verify_db()
         result = await shadow.collect(max_seconds=args.max_seconds)
     print(shadow.dumps(result))
+    return 0
+
+
+async def _reviews_judge(args) -> int:
+    from .infra.db import verify_db
+    from .application import review_judge
+
+    await verify_db()
+    print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
+    return 0
+
+
+async def _compare_collect(args) -> int:
+    from .infra.db import verify_db
+    from .application import compare
+    from .bootstrap import archive_object_store
+
+    async with archive_object_store():
+        await verify_db()
+        result = await compare.collect(max_seconds=args.max_seconds)
+    print(compare.dumps(result))
     return 0
 
 
@@ -551,6 +619,55 @@ async def _admin_erase_archive(args) -> int:
     return 0
 
 
+async def _admin_reencrypt_credentials(args) -> int:
+    """Re-seal stored Fernet credentials under KMS (application/credential_reencrypt)."""
+    from .application import credential_reencrypt
+    from .infra.db import verify_db
+
+    await verify_db()
+    try:
+        result = await credential_reencrypt.reencrypt(batch_size=args.batch_size, dry_run=args.dry_run)
+    except credential_reencrypt.KmsWritesOff as exc:
+        print(json.dumps({"error": str(exc)}, sort_keys=True))
+        return 1
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result.get("error") else 0
+
+
+async def _admin_rotate_fernet(args) -> int:
+    """Re-encrypt stored Fernet payloads under TREG_SECRET_KEY's first key (application/fernet_rotation)."""
+    from .application import fernet_rotation
+    from .infra.db import verify_db
+
+    await verify_db()
+    result = await fernet_rotation.rotate(batch_size=args.batch_size, dry_run=args.dry_run)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result.get("error") else 0
+
+
+async def _archive_retain(args) -> int:
+    """Delete archive questions no one asked for (application/archive_retention). Does nothing
+    unless TREG_ARCHIVE_RETENTION_ENABLED; `--dry-run` counts what would go either way."""
+    from . import bootstrap
+    from .application import archive_retention
+    from .infra.db import verify_db
+
+    await verify_db()
+    from .infra.db import read_session_maker
+
+    options = dict(dry_run=args.dry_run, days=args.days, batch=args.batch_size,
+                   pause_s=args.pause_seconds, max_seconds=args.max_seconds,
+                   max_keys=args.max_keys, after=args.after)
+    if args.dry_run:
+        # A dry run only reads: on the replica when one is configured, never the primary's load.
+        result = await archive_retention.run(**options, session_factory=read_session_maker)
+    else:
+        async with bootstrap.archive_object_store():
+            result = await archive_retention.run(**options)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result["stopped"] in ("error", "failures") else 0
+
+
 async def _admin_revoke_refund(args) -> int:
     """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
     missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
@@ -560,6 +677,24 @@ async def _admin_revoke_refund(args) -> int:
     await verify_db()
     print(json.dumps(await billing.revoke_refunded_payment(args.payment_intent), sort_keys=True))
     return 0
+
+
+async def _admin_card_sync(args) -> int:
+    """Adopt each team's newer Stripe default card that treg never heard of. Reports only unless
+    `--apply`; one JSON line per team."""
+    from .application import billing
+    from .infra.db import verify_db
+
+    await verify_db()
+    failed = 0
+    for org_id in args.org:
+        try:
+            result = await billing.sync_card_from_stripe(org_id, apply=args.apply)
+        except Exception as e:  # noqa: BLE001 — one team's Stripe error must not stop the rest
+            failed += 1
+            result = {"org_id": org_id, "action": "error", "error": type(e).__name__}
+        print(json.dumps(result, sort_keys=True))
+    return 1 if failed else 0
 
 
 async def _enterprise_reconcile(args) -> int:
@@ -717,6 +852,7 @@ async def _run_command(args) -> int:
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:
+                    await _deliver_owed_freezes()
                     await kv.close()
     finally:
         try:
@@ -757,6 +893,16 @@ def main(argv: list[str] | None = None) -> int:
     settle = tasksub.add_parser("settle", help="poll due tasks and complete their existing holds")
     settle.add_argument("--limit", type=int, default=50)
     settle.set_defaults(fn=_asynctasks_settle)
+    pay = sub.add_parser("agentpay", help="agent payments (MPP, x402)")
+    paysub = pay.add_subparsers(dest="cmd", required=True)
+    rec = paysub.add_parser("reconcile", help="credit or fail payments whose settlement went unanswered; "
+                                              "close expired credit proofs, crediting any settled anyway; "
+                                              "record settled payments to Stripe when they settle there")
+    rec.add_argument("--limit", type=_positive_int, default=50)
+    rec.set_defaults(fn=_agentpay_reconcile)
+    addr = paysub.add_parser("stripe-address", help="create a Stripe crypto deposit address (prints it)")
+    addr.add_argument("--network", choices=("tempo", "base"), required=True)
+    addr.set_defaults(fn=_agentpay_stripe_address)
     hub = sub.add_parser("hub", help="the tool hub")
     hubsub = hub.add_subparsers(dest="cmd", required=True)
     chk = hubsub.add_parser("check", help="run every live hub tool's check.json once, as its maker (spends the maker's balance at step prices)")
@@ -777,6 +923,19 @@ def main(argv: list[str] | None = None) -> int:
     shr = shsub.add_parser("report", help="print the comparison report as JSON")
     shr.add_argument("--days", type=int, default=1)
     shr.set_defaults(fn=_shadow_report)
+    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_pairs and "
+                         "compare_max_per_day are set)")
+    cmpsub = cmp.add_subparsers(dest="cmd", required=True)
+    cmpc = cmpsub.add_parser("collect", help="ask the other vendor of a pair the input of sampled "
+                             "recent routed calls")
+    cmpc.add_argument("--max-seconds", type=float, default=600.0)
+    cmpc.set_defaults(fn=_compare_collect)
+    reviews = sub.add_parser("reviews", help="agent reviews of call results")
+    revsub = reviews.add_subparsers(dest="cmd", required=True)
+    revj = revsub.add_parser("judge", help="ask Jev whether new review reasons name a person and what "
+                             "negative ones blame (off without typesafe_api_key)")
+    revj.add_argument("--max-seconds", type=float, default=600.0)
+    revj.set_defaults(fn=_reviews_judge)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")
@@ -861,9 +1020,28 @@ def main(argv: list[str] | None = None) -> int:
     erase.add_argument("--include-sole-public", action="store_true",
                        help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
+    reseal = adminsub.add_parser("reencrypt-credentials",
+                                 help="re-seal stored Fernet credentials under KMS")
+    reseal.add_argument("--batch-size", type=_positive_int, default=200,
+                        help="credentials per batch (default 200)")
+    reseal.add_argument("--dry-run", action="store_true",
+                        help="count what would be re-sealed or flagged; write nothing, call no KMS")
+    reseal.set_defaults(fn=_admin_reencrypt_credentials)
+    rotate = adminsub.add_parser("rotate-fernet",
+                                 help="re-encrypt stored Fernet payloads under TREG_SECRET_KEY's first key")
+    rotate.add_argument("--batch-size", type=_positive_int, default=200,
+                        help="rows per batch (default 200)")
+    rotate.add_argument("--dry-run", action="store_true", help="count what would be re-encrypted; write nothing")
+    rotate.set_defaults(fn=_admin_rotate_fernet)
     revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
     revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
     revoke.set_defaults(fn=_admin_revoke_refund)
+    cardsync = adminsub.add_parser("card-sync",
+                                   help="adopt a team's newer Stripe default card that treg missed")
+    cardsync.add_argument("--org", type=_positive_int, action="append", required=True,
+                          help="team id; repeat for several")
+    cardsync.add_argument("--apply", action="store_true", help="write the change (default: report only)")
+    cardsync.set_defaults(fn=_admin_card_sync)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")
@@ -875,6 +1053,20 @@ def main(argv: list[str] | None = None) -> int:
     purge_audit = enterprisesub.add_parser("purge-audit", help="delete expired enterprise access evidence")
     purge_audit.add_argument("--days", type=_positive_int, default=400)
     purge_audit.set_defaults(fn=_enterprise_purge_audit)
+    arch = sub.add_parser("archive", help="archive row maintenance")
+    archsub = arch.add_subparsers(dest="cmd", required=True)
+    retain = archsub.add_parser("retain", help="delete archive questions no one asked for in N days")
+    retain.add_argument("--dry-run", action="store_true",
+                        help="count the keys, snapshots, marks and objects that would go; delete nothing")
+    retain.add_argument("--days", type=_positive_int, help="default TREG_ARCHIVE_RETENTION_DAYS (30)")
+    retain.add_argument("--batch-size", type=_positive_int,
+                        help="key ids per batch, at most 10000; default TREG_ARCHIVE_RETENTION_BATCH (1000)")
+    retain.add_argument("--pause-seconds", type=float, help="sleep between batches")
+    retain.add_argument("--max-seconds", type=float, help="time budget for this run")
+    retain.add_argument("--max-keys", type=_positive_int,
+                        help="keys deleted per run at most; default TREG_ARCHIVE_RETENTION_MAX_KEYS (200000)")
+    retain.add_argument("--after", type=int, help="start after this key id instead of the saved cursor")
+    retain.set_defaults(fn=_archive_retain)
     idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
     idemsub = idem.add_subparsers(dest="cmd", required=True)
     prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")

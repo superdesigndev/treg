@@ -21,7 +21,7 @@ async def test_start_is_served_noindex_and_measurable(clients: AsyncClient):
     assert '<meta name="robots" content="noindex">' in html
     assert "{BASE}" not in html and "{ENDPOINTS}" not in html
     assert 'data-page="start"' in html
-    for script in ("/sitetrack.js", "/adtrack.js"):
+    for script in ("/sitetrack.js", "/click-id.js"):
         assert f'<script src="{script}"></script>' in html
     # An ad destination is not a search page: no canonical, not in the sitemap.
     assert 'rel="canonical"' not in html

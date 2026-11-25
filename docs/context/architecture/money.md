@@ -9,6 +9,14 @@ sources:
   - src/treg/domain/money/__init__.py
   - tests/test_free_credit_video.py
   - src/treg/domain/money/settlement.py
+  - src/treg/domain/money/allowance.py
+  - tests/test_money_allowance.py
+  - src/treg/infra/kv.py
+  - tests/test_kv_allowance.py
+  - src/treg/application/call/allowance.py
+  - src/treg/application/allowance_sweep.py
+  - tests/test_call_allowance.py
+  - tests/test_allowance_sized_refill_postgres.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
@@ -42,6 +50,9 @@ sources:
   - src/treg/domain/governance/budgets.py
   - src/treg/infra/__init__.py
   - src/treg/infra/money_admission.py
+  - src/treg/alembic/versions/0109_callcharge.py
+  - src/treg/alembic/versions/0110_hold_allowance.py
+  - src/treg/alembic/versions/0111_callcharge_overrun.py
   - src/treg/infra/money_session.py
   - src/treg/application/hub/runner.py
   - src/treg/infra/stripe.py
@@ -115,6 +126,175 @@ display-only `*_usd` twin: **never compute against the USD field.**
 `Org.balance_micro` (materialized), `CreditBlock` (one funding event and what is left of it), `Hold`
 (an open reservation), `LedgerEntry` (append-only journal).
 
+`CallCharge` (revision 0109) is a queue beside them: what one call cost, keyed by `call_id`, held
+until the transaction that applies it to the blocks deletes it. `allowance.record_charges`
+(`domain/money/allowance.py`) queues a batch in one statement, applies the margin (a call whose
+real cost was never learned is charged what it set aside, as at `settle`), and skips a `call_id`
+already queued. `allowance.fold_charges_in_transaction` applies up to a batch of one
+team's queued rows: it locks the team's allowance hold, deletes the rows it claims, draws each
+charge from the blocks in the usual order, and writes that call's `settle` entry stamped with the
+fold's instant (not the call's, so a reader that pages the ledger by time never has a row appear
+behind its cursor). What the calls set aside comes out of the allowance hold; their overruns, and what the hold
+cannot cover, come straight out of the balance, as an overrun does at `settle`. A charge names
+the hold its call set money aside from (`callcharge.hold_created_at`, revision 0111), and only
+that hold pays for it: a charge written late, after its hold was closed and another opened,
+comes out of the balance whole, because the hold in its place stands behind the calls it
+admitted. The balance gate of `reserve` and the daily figure count such a charge the same way
+before it is applied (`_charge_parts`). A charge can also land after its team was deleted.
+It is then nobody's (`allowance.team_exists`): the charge writer neither queues it nor
+writes its paid-question mark, and a fold drops one already queued (`Folded.orphaned`, logged)
+instead of writing a ledger entry for a team that is not there. A team's deletion also
+retires its counter in the shared store, which admits calls by the team's number alone. If
+the deletion then does not commit, the hold is still there and the store will take nothing
+more for it. A refill that sees a counter of a later epoch than the hold adds nothing to it
+and returns nothing from it, and leaves its deadline where it was: calls admitted before the
+retiring still stand on that money. The team's calls take the exact path until the idle sweep
+closes the hold, and the refill after that opens a new one. A
+queue row's primary key stops
+a second recording only until the row is folded. Only a rewrite of charges whose first write went
+unconfirmed can record a call twice, and it takes back, in its own transaction, any row it has
+just queued whose call already has a `settle` entry (`drop_settled_charges`): the entry was
+committed before that insert could succeed, and the new row is the rewrite's own until it
+commits (its insert waits for a fold of the first row that is still in progress). So a settled
+call is never left queued: a fold applies every row it claims, and the readers of the queue
+(`committed_today`, `_queued_unbacked`) count every row, with no lookup in the ledger. That
+lookup was one index probe per queued row on random call ids, the larger share of a fold's
+time. A row left queued by a build whose rewrite did not do this is removed by the upgrade
+(revision 0114); deploy.md states what an upgrade from such a build needs. The daily counter moves as it does at `settle`: consumed goes in, and
+the covered part comes out only when the hold was opened today.
+
+The allowance runs on PostgreSQL only (`enabled_for` is false elsewhere). It leans on row locks
+to order a refill, a fold, a charge write and a team's deletion, and on a team's number never
+being given to another team; SQLite offers neither.
+
+A team's allowance is one `Hold` row (`allowance:<org id>`, `allowance` true; revision 0110), so the
+invariant below counts it like any other hold. `allowance.refill_allowance_in_transaction` folds
+what its caller asks for (`fold_limit`, or the whole queue with `fold_all`), then moves an amount from the balance into that row with `reserve`'s conditional UPDATE and
+a `reserve` entry, opening the row when there is none (an insert that ignores a conflict decides
+between two openers). With `grow_to_micro` it may move more, within the limits the Allowance
+section gives (`balance_percent`, `ceiling_micro`, measured against the hold); that takes
+`current_team`, the caller's locked read of the team's cap and balance. A balance that cannot cover the amount adds nothing and raises nothing: the
+fold stands and the caller reads `added_micro == 0`. The row keeps its `created_at` for life, and
+the refill returns it as the `epoch` an outside counter must carry. A hold opened on an earlier
+UTC day is not in today's counter, so its top-ups stay out too and its folds add what they
+consume. `allowance.close_allowance_in_transaction` folds everything queued and returns money with
+a `release` entry: all of it, deleting the row, or at most a given amount, keeping the row so
+calls already admitted finish against what is left. Every allowance operation locks the allowance
+hold first, then blocks, then the org row, and locks the blocks once: a close claims its whole
+backlog in batches and only then applies it, because locking the blocks again per batch could meet
+one funded in between, out of primary-key order, and deadlock with a settle that holds it. For the
+same reason a transaction folds once. `settle`, `release` and the stale-hold sweep skip a hold
+marked `allowance`. Each refill writes in `heartbeat_at` the instant until which calls may be
+admitted against the hold (now plus `money_allowance_fresh_s`, never earlier than the one
+already there). `allowance.close_stale_allowance_in_transaction` closes in full only a hold whose
+instant passed before a given one, checked under the hold's lock so a refill that lands first
+keeps it;
+`allowance.stale_allowance_orgs` lists the candidates.
+
+The hold is the authority; the shared store (`infra/kv.py`) only mirrors what of it is still
+unspent, as one hash per team: `avail`, the hold's `epoch`, the instant `until` which takes are
+admitted, two counts, `frozen` and `thawed`, `run`, the run of the store's server that
+built the hash, and `filled` and `filled_at`, what the counter held right after the last add
+and when, by the store's clock. The operations are atomic scripts:
+
+- `allowance_take` subtracts an amount and returns the epoch, when the counter holds that much, is
+  not frozen (`frozen == thawed`) and the store's clock is not past `until`.
+  Given a lead time and a low mark, it negates the epoch for one caller at a time once the
+  counter is that close to `until` or that low: the take stands, and the caller refills.
+  `asked` holds when it last did and `asked_for` the `until` it asked about; an add of more
+  than nothing clears `asked`.
+- `allowance_give_back` returns part of a take, only to a counter of the same epoch.
+- `allowance_add` adds what a refill just committed to the hold. It sets `until` from the instant
+  the refill wrote on the hold, never from when the add lands, and never moves it back: a refill
+  published late admits calls for less time or none. It thaws the counter only up to the freeze
+  count its caller read before its transaction, so a freeze that landed since stays in force,
+  and only when that count lies between the hash's own two counts. The counts of a new hash
+  start at a random number, not at zero: the store can lose a hash and build it again under
+  the same epoch, and a count read from the lost one is then not a count of the new one, so it
+  neither thaws a freeze of the new hash nor leaves it frozen for good. No clock is involved
+  in that. Each add, of any amount, also writes `filled` and `filled_at`.
+- `allowance_state_and_pace` is `allowance_state` read in the same atomic step as what the
+  counter is down by since the last add (`filled` less `avail`: takes net of give-backs) and
+  how many ms ago that add was, by the store's clock; both 0 when either note or the `epoch`
+  is missing. A refill sized to the team's spend reads it in place of `allowance_state`, so it
+  asks the store nothing a refill to the chunk does not; nothing on a call's way reads it.
+  `allowance_drop` and `allowance_take_up_to` remove money nobody spent, so they delete the
+  note; the hash a restart strips loses it with `avail`.
+- `allowance_freeze` raises the freeze count: what the counter holds is kept, but no call is
+  admitted until an add whose caller read the count after this. A freeze that finds no hash
+  leaves one holding only the count: a refill may have committed and not yet published, and
+  the counter its add builds then starts frozen.
+- `allowance_state` reads `avail`, the two counts and the store's run, for a refill.
+- `allowance_drop` empties the counter of a given epoch, returns what it held and freezes it,
+  keeping the epoch: that figure can be released from the hold of that epoch, which stays
+  while calls already admitted keep theirs. The release names the epoch too
+  (`close_allowance_in_transaction(epoch=)`) and is checked under the hold's lock, so a drain
+  that stalls between the two steps returns nothing from a hold opened since.
+- `allowance_take_up_to` takes an amount or all the counter holds when that is less.
+- `allowance_retire` ends the counter of a hold being deleted, returning what it held and leaving
+  the next epoch, with the old freezes, behind for a given time.
+
+The counter is only as good as the store's memory of it. A store that loses a hash is
+handled: the counts above, and a refill that rebuilds from the hold. A store that goes BACK to
+an earlier state of the same hash would undo the takes and freezes of the lost interval and
+offer that money a second time, and it does so by starting again: a restart can come back
+without the last writes it acknowledged, a restore from a snapshot starts a server on it, a
+promoted replica is another server. Each start is a new run (`run_id`), so a hash names the
+run that built it (`run`), and every operation first strips, in its own atomic step, a hash
+that names another run or none of what it offers (`avail`, `epoch`, `until`), leaving its
+two counts under the present run. A counter from before a restart is therefore a lost one:
+takes find nothing, a refill reads no counter, adds a whole chunk to the hold and builds the
+counter from that alone, and what the old counter had not spent stays in the hold until a
+close. The counts stay because a hash that names no run may be a freeze a process of an
+earlier build wrote a moment ago, in this run, after a refill had read the team's debts:
+an add that cleared it would publish over that debt. Keeping a freeze that is no longer
+needed costs one refill that folds the queue before it thaws.
+A refill that starts after the restart does not need the freezes it undid: its
+transaction reads what queued overruns owe (`_queued_unbacked`), and a freeze sent after it
+lands on the new hash. A refill that read the counter BEFORE the restart does need them: a
+freeze sent after its transaction read the debts may be among the writes the restart
+dropped, and its add would then build an unfrozen counter. So `allowance_state` reports the run with the counter, the add names
+it, and an add that arrives in another run is refused as `"stale"`: the money stays in the
+hold, and the next refill reads the debts again. A store that cannot report its run answers
+no operation, and calls take the hold path.
+
+A refill that leaves the counter with nothing to offer leaves the hold's deadline where it
+was: it added nothing, and the counter is gone or shows nothing. The deadline is until when
+calls may be admitted, and such a refill admits none; calls admitted earlier are covered by
+the stamp they were admitted under, and a deadline moved on by every failed attempt would
+keep the sweep from returning what is in the hold for as long as calls arrive. That is the
+team whose credit was all in its hold when the counter went, and it stays so after a refill
+that needed nothing (the one ahead of the deadline) has published an empty counter for the
+hold: until the sweep closes the hold its calls see only the balance.
+
+What this does not see is a server that goes back to older data without starting again: a
+reload in place, or one that kept running, took older data from another primary and became
+primary again, where the hashes it built before still name it. Nor does a process of a
+build from before this check anything. There the old reasoning stands, and nothing bounds it: calls in flight
+under the same epoch still give back to the stale hash, refills still add to it and move
+`until` on, a refill takes back only what the counter holds above the whole hold, and a
+charge the team's credit blocks cannot cover is taken only as far as they go
+(`block_shortfall_micro`), which leaves the platform paying the provider for the rest. That
+state ends only when the hold is closed and its counter retired; [deploy](../ops/deploy.md)
+has the conditions for listing a team again.
+
+A counter speaks only for the hold it was built for. A refill reads the counter's epoch with
+what it shows, and what it shows counts toward the refill only when the hold it then finds has
+that epoch; a hold it opens, or one the counter was never built for, gets a whole chunk, and
+publishing it replaces the old counter. So a counter the sweep could not retire (it closed
+the hold and the write did not reach the store) neither keeps a team off the allowance nor
+shrinks the next hold by a figure nothing stands behind.
+
+Epochs only grow (a later hold has a later `created_at`), and that is the fence: an add replaces
+a counter of an older epoch, and is refused as `"stale"` when the stored epoch is newer, so a
+refill whose add arrives after its hold was closed and another opened cannot put the closed hold's
+money back on offer. The fence lasts as long as the hash. Each operation returns `None` when the
+store cannot answer, and the in-process store always does: a per-process figure cannot be the one
+every process spends from. Add to the counter only after the refill's commit. In that order a
+failure between the two leaves money in the hold that no counter offers, which a close returns;
+the other order would offer money the hold does not have. The same is true of a counter that
+expired or was lost: its unspent part stays in the hold until a close.
+
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
 The balance is a column because `reserve` must be one conditional UPDATE. Every operation writes its
@@ -133,6 +313,400 @@ first revision.
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
 it creates no other money movement. A `/tasks/` poll is an ordinary call and settles as one
 ([tasks](tasks.md)).
+
+
+## Allowance: one hold for many calls
+
+Off by default: `money_allowance_org_ids` lists the teams, or `money_allowance_all_orgs` puts
+every team on; `money_allowance_excluded_org_ids` keeps a team off either way
+(`allowance.listed`). The shared key-value store must be configured. For a listed team, an eligible call (`reserve._allowance_skip` returns None) reserves with one
+atomic take from the team's allowance counter and touches no balance row, so its calls no longer
+queue on the team's money lease twice each.
+
+Eligible: a direct call (not a child of a route, a hub run or overflow; a routed child under the
+next paragraph), synchronous, on treg's
+platform key, untagged (a tagged call under the paragraph after next), a member with no daily spend limit, a provider outside the trial
+pools, an endpoint any credit may pay for, and a price above zero. Every other call keeps its own
+hold, because something reads that hold: the tag rows a budget counts and the member rows written with it, the async task
+or routed parent that closes it later, the purchased-credit gate. A call with an `Idempotency-Key`
+is eligible too: its claim's stale check, which asks whether money moved, reads the call's
+in-flight mark and queued charge where it would read a hold ("Idempotency and retries").
+
+**Routed children.** Off by default: `money_allowance_routed_org_ids` lists the teams, or
+`money_allowance_routed_all_orgs` turns it on for every team on the allowance. The routed call at the root
+decides once (`route._allow_children`) and hands the answer to every routed descendant on its
+`CallContext`; a hub step's routed call never does. A child whose reference is the root's plus
+routed segments only (`rN`, a check `v`, an upgrade `u`) is then judged by the direct-call rules
+less the deferred settle (`reserve._allowance_skip`), so a tagged parent's children, an async
+child, a poll, an overflow rung keep their holds. An eligible child takes like a direct call; at
+its settle (`_platform_settle`) a child that bills nothing gives its take back at once, and a
+billable one hands its epoch to the parent's `deferred_settles` in a `DeferredSettle`, in the same
+step that clears it from the child, so the take always has exactly one owner. The parent finishes
+every take in `close_deferred` (`_finish_takes`) before closing the holds: queued charge when the
+routed call answers, give back when it fails or the child was unbilled, so a failed routed call
+still charges nothing. A take older than `hold_ttl_s()` at the close is given back, as the reaper
+releases a hold that old. The close runs in a task a second cancellation cannot stop halfway
+(`route._close`). A keyed root is marked in flight before its first child; a store that will not
+mark it keeps every child on its own hold. The charge writer keeps that one mark for all the
+root's charges, a nested routed check's or upgrade's included (`hold_mark`, `mark_id`,
+`CallContext.allowance_mark`), and clears it once the last is written and the root has released
+it. A root cancelled after a child's charge was queued keeps its claim pending
+(`CallContext.allowance_charged`). A process that dies before the close leaves the takes in the
+allowance hold, unspent and uncharged, until the hold is closed.
+
+**Tagged calls.** Off by default: `money_allowance_tagged_org_ids` lists the teams, or
+`money_allowance_tagged_all_orgs` turns it on for every team on the allowance
+(`allowance.tagged_listed`). A call tagged by `X-Treg-Meta` is then judged like an untagged one
+when no tag budget limits any of its tags: the pre-flight pass
+(`reserve._enforce_tag_budgets`, run by `intake.prepare_call_intake` before the idempotency
+replay) resolves each declared dimension's budget as it always does and reports whether any
+resolved row caps spend or counts calls (`daily_cap_micro`, `monthly_cap_micro`, `calls_per_day`
+of 0 or more). A registry row (`auto`) and a row with no limit do not; a tag on an undeclared key
+never has a budget. The answer rides on the call's `CallMeta.tag_limited`, which is True until that
+pass says otherwise, so a call that never ran it keeps its hold, and every pass writes its own
+answer, so a routed child's pass replaces what its parent's found. A limited call keeps its own hold
+(`tag_budget`), because its caps read the tag rows the hold writes at reserve; with the switch off
+every tagged call does (`tagged`). A pinned token's call keeps its hold too (`pinned`). When the
+audit row is gone, a pinned reader finds a call by the tags on its `reserve` entry or, for an
+allowance call, on its `settle` entry. A tagged call that took carries its tags on its charge
+(`MarketplaceCall.allowance_tags` into `CallCharge.meta["tags"]`), and the fold writes its
+`TagSpend` rows with its `settle` entry, settled at what the blocks gave, stamped with the fold's
+instant, the entry's meta naming the tags as a reserve entry's does. Per-tag spend, call counts
+and invoices therefore read the same as on the exact path once the charge is folded; a call never
+billed writes none, as a release deletes them. Until the fold the cap reads count the queued
+charge itself (`tag_spent_since`, `tag_calls_since` match `CallCharge.meta["tags"]`), so a budget
+set after such calls sees them at once. They read every queued charge whenever it queued, since its
+rows will carry the fold's later instant, and read it in the same statement as the tag rows, so a
+fold committing in between cannot hide it from both.
+
+Every listed team's call that keeps its own hold is counted by why, on its own logger
+(`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `tag_budget`, `pinned`, `async`,
+`member_spend_cap`, ...; a routed child its root lets take is counted under these too), with any other child call named by its own suffix (`child_call:routed` for a
+routed child `:rN`, `child_call:overflow`, `child_call:hub_step` for `:sN`, `child_call:other` for
+polls and verifications), `in_flight_unmarked`, or `take_refused` when an eligible call's take
+returned it to the exact path.
+
+Each process writes one line per reason a minute for every team together:
+`allowance_skips {"reason":..,"calls":..,"held_micro":..,"orgs":..,"window_s":..,"top":[[org_id,calls,held_micro],..]}`,
+where `calls` counts every call sent to the exact path, `held_micro` only what the holds that path
+then committed reserved (with margin), `orgs` how many teams sent them and `top` the five that
+held the most (a team that held nothing is never in it). A child of a routed call (every segment
+after the root `rN`, `v` or `u`; never a poll, an overflow rung or a hub step) is also judged as
+if it were a direct call (`reserve._as_direct`: the same rules less the deferred settle every
+routed child has), and its line adds `"as_direct":{"<reason>":[calls,held_micro],..}`, with
+`eligible` for a child nothing else would keep off the allowance: how much of the routed
+children's money the allowance could carry if a child's take were finished by its parent. A call is counted once, when its reserve is decided: with its hold when the
+session's commit event fired, even if a cancellation then reached `commit()` before it returned,
+or with nothing held when it is refused or cancelled first. Its call and its money land in the same minute, and a call that got
+the counter back and was tried again counts once, under its first reason. The line is written by the first skip of that reason after the
+minute is up, so a reason that stops leaves its last minute unwritten until it recurs. A minute
+that would name more than `_SKIP_TEAMS_MAX` teams is written early and a new one starts, so the
+per-team counts a process holds stay bounded. The limit reuses the allowance's prune threshold
+(`_TEAM_STATE_PRUNE_AT`) as a hard cap; the allowance's own maps only prune idle entries there. A line
+per team and reason for every team would grow with the number of teams; the aggregate's totals
+and its `top` answer how much each reason costs and who drives it at a fixed volume.
+
+A team named in `money_allowance_org_ids` also gets lines of its own,
+`allowance_skipped {"org_id":..,"reason":..,"calls":..}`: the first skip of a team and reason at
+once, then one line a minute per process with the count since the last, so a team under watch
+says which rule kept each call out. With `money_allowance_all_orgs` on, naming a team there only
+adds these lines. `calls` counts calls sent to the exact path: a call that path then refuses
+(short balance, a cap) is counted too, so it is not the number of holds written.
+
+A process keeps a little state per team it has refilled for: its money lock, a refill count and,
+after a refused refill, a short cooldown. Once any of those maps reaches `_TEAM_STATE_PRUNE_AT`
+teams, the idle entries go (an expired cooldown; a lock nobody holds or waits for; the count of a
+team with neither and no take in progress, since a caller compares the count before and after its
+take), so with every team on they follow the busy teams, not every team the process
+has met. The next prune waits until the maps hold twice what the last one kept, so busy teams
+past the bound do not make every new team scan them.
+
+`application/call/allowance.py` is the whole runtime:
+
+- **take.** `store.allowance_take`. On a miss, one process takes a short lease and refills; the
+  others retry the take for a bounded time. Anything else (the store cannot answer, the wait
+  ran out, the refill failed) returns the call to the exact path, which is always correct.
+- **A busy team is refilled before a call has to wait.** A take that leaves the counter within
+  half its lifetime of the deadline, or under a quarter of a chunk, answers its epoch negated:
+  the call has its money, and that one caller (the store asks one at a time, and again only
+  after a pause, which is for a counter that stays low or a refill that failed: a deadline it
+  has not asked about yet asks at once, since a refill opens a window that may be shorter than
+  the pause, and so does the take that brings the counter from at or above the low mark to
+  below it, or any low take after an add that brought money) starts a refill beside itself. Nobody waits on
+  that refill, so it waits for the team's lease far longer than a call does. It asks for no
+  amount of its own: it brings the counter back to a chunk, and a balance that cannot pay for
+  that leaves the counter with what it has, where an in-line refill that cannot serve its call
+  drains the allowance. The call that asked was served, so its price is no measure of the next
+  one, and setting it aside again would take that much out of every other call's reach. The
+  store asks one caller once, so the process must not lose an ask: one that arrives while the
+  team's refill is still running (it may already have published its add) is kept, and the same
+  task refills again when it is done; what follows a refill, the auto top-up read, runs on its
+  own and holds nothing back.
+- **A refill reads the daily cap again.** The cap a refill is handed is the one its call saw,
+  and a refill can wait some time for its turn. `refill_allowance_in_transaction` therefore
+  also reads the team's cap in its own transaction, where it reads the day's spend, and keeps
+  to the stricter of the two. The read locks the team's row, with the lock an update of it
+  takes and no stronger (`FOR NO KEY UPDATE`): the fold before it may already have updated the
+  row, and a top-up holds a key-share lock on it from its credit block's foreign key while it
+  waits to update the balance, so asking for the full row lock would have each wait for the
+  other. A cap change still open in
+  another transaction would otherwise be missed, because the refill's balance update waits for
+  that change and then checks only the balance. The row is the last lock in money's order
+  (hold, blocks, team), and the day's spend read after it is under the same lock. Without it every call of a busy team met a
+  lapsed counter at once each time the lifetime ran out, the ones that did not get the lease
+  left for the exact path, and the refill then queued behind them on the money admission lease:
+  the exact path serves one call at a time, so the team stayed there.
+- **refill.** Under the money admission lease, like a reserve: reap stale holds, then
+  `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`
+  (or further, for a team that spends faster: the next bullet);
+  after the commit, `store.allowance_add`. A refill does not fold: calls wait on it, and the
+  queue is the background loop's. Only a frozen counter's refill folds, and then the whole
+  queue, so the balance it reads is the true one. What a refill may add is judged as an exact
+  reserve judges it, against the balance less what the queue will take from it
+  (`_queued_unbacked`), read after the debit: a charge queued for more than its call set aside
+  is owed from the moment it is queued, and its freeze can reach the counter after the next
+  refill. A refill that finds the balance short of that undoes its debit exactly (the day's
+  counter is taken back from the day it was counted on, not by the clock), adds nothing, and
+  the counter is drained.
+  A team with a daily cap
+  gets no refill that could take the day past it. The number a cap is checked against is
+  `allowance.committed_today`, one statement over the rows themselves: today's counter, plus all
+  of an allowance hold opened on an earlier day (it is not in today's counter, only what a fold
+  consumes from it is, yet all of it can be spent today), plus the overruns of queued charges,
+  plus what queued charges set aside beyond what the hold has left. The refill reads it after its fold, under the hold's lock, and adds the amount asked
+  for. The exact path's cap check reads the same number for every team, listed or not: a hold
+  and its queued charges outlive the switch. When the counter
+  still cannot cover
+  the call (balance or cap), or the worst case already exceeds the cap, the counter is emptied and that amount released back to the balance,
+  the call takes the exact path, and the team is not tried again for a few seconds. A team with
+  less than a chunk left is therefore served by the exact path.
+- **A busy team's refill is sized to its spend.** With a fixed chunk, a team whose calls set
+  aside a large amount, or that calls often, empties the counter within a second or two and
+  is back on its money lease with a refill each time. Off by default:
+  `money_allowance_refill_window_s` at 0 keeps the chunk, and nothing else changes. Above 0,
+  the refill reads the counter with `store.allowance_state_and_pace` (the same one round trip,
+  under the same store timeout, as the state alone), and `allowance.paced_target` scales what
+  the counter went down by to the window. The reading runs from the last add, and one shorter
+  than half the window counts as half the window: a refill at most doubles what the counter
+  went down by, so a burst raises the target by twice its size at the most, and only spend
+  kept up over half a window or more reaches the window (a team starting from the chunk
+  doubles its counter a few times, a few seconds apart, before refills settle at about one per
+  half lifetime). The target is never below the floor (the chunk, or what the waiting call
+  needs) and never above `money_allowance_refill_max_micro`. The reading is always recent:
+  while calls come the counter is refilled at least every half lifetime, and a team that
+  stopped calling is read over a time that includes the pause, which brings it back to the
+  floor. A window longer than `money_allowance_fresh_s` buys nothing more, and one at least
+  that long lets the deadline, half a lifetime ahead, ask for the next refill rather than the
+  low mark (still a quarter of a chunk).
+
+  Only the growth beyond what the floor adds is limited, so a refill never adds less than it
+  would with the chunk. The limits are on the allowance hold after the refill, read under its
+  lock: it carries what the counter shows, what calls in flight took, and what a counter lost
+  with the store left behind. The growth stops where the hold would carry more than
+  `money_allowance_refill_max_micro`, more than `money_allowance_refill_balance_percent` of the
+  balance (read from the team's row in the same locked statement that reads its daily cap: no
+  extra statement), or more than that same share of what the daily cap has left, so calls on
+  the exact path, whose cap check counts all of the hold as spent, keep the rest of the day.
+  When the queue's claims leave the balance short of the growth (`free` below zero after the
+  debit), the undo gives back the growth alone if that leaves the rest covered. The
+  conditional debit and the `free` check are unchanged, so a refill still never sets aside
+  money the team does not have.
+
+  Money set aside this way is out of the balance's sight. A call on the exact path that the
+  balance alone cannot pay for (`reserve_in_transaction` refuses it) therefore asks for the
+  team's counter back (`give_back_for_exact_path`, handed what the call is short of), at as
+  little cost to a refusal as it can. It reads the counter first, without the team's lease,
+  and leaves it alone unless it holds at least the shortfall, so a team out of money that keeps
+  calling costs the store one read per refusal. It asks for the team's lease once: a refill or
+  a fold holding it means the call is refused as before, not kept waiting. Then `_give_back`
+  takes the team's money admission first, for no longer than a call waits for a refill and
+  refusing rather than falling back, and only then empties the counter and returns what it
+  held, in that same transaction: a timeout or a cancel before then leaves the counter as it
+  was. After the drop, a release that fails (no connection in time, a cancel, a statement that
+  errs) has committed nothing, so the money goes back on the counter it came from, which the
+  drop froze, and no call spends it before a refill has read the balance again; a commit that
+  fails proves nothing about whether it landed, so then the money stays in the hold for the
+  idle sweep. The call then tries once more; the counter is frozen by the drop, so the next call on
+  the allowance refills it from the balance, the queue folded first (the refill's own drain,
+  `_drain`, keeps its order). Auto top-up reads the balance too, so for a team with sized refills it
+  fires while the hold still carries up to that share of the team's money. A counter lost with
+  the store leaves its money in the hold while the team keeps calling, out of every call's
+  reach (the growth limits count it, so refills stay at the chunk while it is past them), and
+  the idle sweep returns it once the team stops: with the default settings about five to six
+  minutes after its last refill (that refill's deadline, `money_allowance_fresh_s` on, plus
+  `hold_ttl_s()` and the clocks' margin, at the next pass of the sweep). A team that stops
+  calling leaves what its counter held there for the same time.
+- **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
+  is cleared first). A billable call queues its charge, then gives back what it did not use; a
+  call that is not billable gives everything back and writes nothing. Charges of calls finishing
+  within `money_allowance_linger_ms` share one insert, with the archive's paid-question marks,
+  and each call waits for its batch to commit before it answers. The charge is queued before
+  anything is awaited, so a cancel cannot lose it. A write that raises twice proves nothing
+  about whether it committed, so such rows are never treated as "not charged": the call is
+  told the charge, its money stays out of the counter, and the writer keeps writing them in
+  the background until they land (recording a call twice charges it once). A batch is answered
+  a team at a time: only the teams whose write or freeze failed are written again and reported
+  unconfirmed, and a team whose rows are committed has its calls confirmed at once, without
+  waiting for another team's retry. With the confirmation the writer says whether a charge of
+  the team in that batch took from the balance; a call told so answers with what the ledger
+  took for it even when the counter is no longer frozen, since a refill can fold the queue and
+  lift the freeze before the call is told. The rewrite marks
+  the paid question of each row that was new to it and whose call has no `settle` entry yet (a
+  row is also new when the first attempt's row was applied and deleted since, and that attempt
+  marked it). While any charge is unconfirmed the process admits no new call to the allowance.
+  A call takes a place before its take is awaited and hands it to the writer, which keeps it
+  until the row is known written; a call is admitted only while places remain, so no admitted
+  call's charge is ever cut from a queue. The take is recorded on the call before anything else
+  is awaited, so a cancel finds it and returns it with its place. If the process dies first, the charge is lost and its money stays in
+  the hold until the hold is closed.
+- **A call that cost more than it set aside.** The charge row keeps that part apart
+  (`callcharge.overrun_micro`, revision 0111). A fold takes from the hold only what calls set
+  aside; an overrun comes out of the balance, as at `settle`, so the hold keeps what other calls
+  in flight set aside and a later give-back is still backed. The balance may not have it, so the
+  counter is frozen, and only a refill that has applied that charge and read the balance
+  afterwards may let calls spend again. Three things make that hold. The charge writer, not the
+  call, freezes the counter, after the charge is committed and before the call is told: a refill
+  may thaw only the freezes it read before its transaction, and only a transaction that starts
+  after the commit can have read this one, so it has the charge in front of it; a call cancelled
+  while it waited changes nothing, and a charge written late freezes when it lands. The
+  writer freezes the same way for a charge its own hold no longer backs, whatever it cost: that
+  charge too comes out of the balance. It learns which in the transaction that writes the
+  rows, reading the teams' hold rows under a key-share lock first (`allowance.holds_behind`), so
+  a close that deletes the hold waits for the write and applies the charge to its own hold, or
+  is done and the charge is known to owe the balance. A fold and a refill only update the row
+  and take the lock an update takes (NO KEY UPDATE), which that key-share lock does not
+  conflict with: PostgreSQL lets a later sharer pass a waiting exclusive lock, so a fold asking
+  for the full row lock under a steady stream of charge writes would wait for a gap between
+  them, holding its connection, and every charge write would wait for each fold. What the
+  write reads is the hold's creation instant, which no update changes. On SQLite, which has no row locks and begins a
+  transaction only at its first write, the rows are inserted first and the holds read under
+  the write lock that took. The write runs in a money session, so a writer that stalls
+  holding hold rows is ended like any stalled money transaction; and a team's deletion locks
+  the allowance hold before it deletes the team's queued charges, the writer's order
+  (`teams.lock_allowance_holds`). The writer writes one team per transaction, so it never
+  holds two teams' hold rows and no order between them exists for a deletion of several teams
+  to contradict; and it freezes a team's counter as soon as that team's rows are committed,
+  not when the whole batch is. A team whose write or freeze fails does not stop the others in
+  the batch from being written. A freeze
+  that does not reach the store leaves that team's rows unconfirmed, to be gone through again. A
+  refill of a frozen counter folds the whole queue, not one batch. And a refill that then finds
+  the balance below zero adds nothing and drains the counter back to the balance, so the exact
+  path's balance gate decides: the stop the next reserve is after an overrun there. Each refill
+  also compares the counter with the hold it just committed and takes back anything above it.
+- **A settlement outside the allowance that took more than its hold** (a tagged call, a routed
+  child on its own hold, an async task) freezes the counter the same way, after its commit: it may have used
+  the team's last credit, and calls admitted from the counter would not meet the balance gate
+  its own next reserve does. Whether to freeze is read in the settlement's own transaction,
+  after its ledger write: the team has an allowance hold (`allowance.has_allowance`). The hold
+  row decides, not the process's list of teams, which two processes can read differently
+  while a setting rolls out; and a refill that has not committed yet waits for the same
+  balance row, so it reads the balance after the overrun. The freeze is owed from the line
+  after the commit: asking for it is not a coroutine, it hands the freeze to a task of its own
+  before the request awaits anything, so a cancelled request has still handed it over. The
+  task sends until the store has taken it, and the process admits no call from that team's
+  counter meanwhile. There is a task per team, so a team the store keeps refusing does not
+  hold up another's freeze; and a freeze asked while the task waits to try again is tried at
+  once, so the settlement that asked waits for one attempt, never for the pause. One freeze taken stands for every settlement that asked before it was
+  sent and for none that asked while it was on its way; those get another. A process that
+  dies first loses the freezes it owed.
+- **The exact path and a queued charge.** A charge that is committed and not yet folded has
+  not moved the balance. `reserve`'s gate subtracts what the queue will take from the balance
+  (overruns, and what was set aside beyond the hold), so a call on the exact path cannot set
+  that money aside again while the fold is pending.
+- **What a call is told it was charged.** Normally the charge: its money was set aside, so the
+  ledger will take exactly that. While the counter is frozen that may not be true, because the
+  team's credit may not cover every queued charge. A call that ends then (the one that overran,
+  and any other that reads the counter frozen once its charge is written) folds the team's queue
+  at once and answers with what its `settle` entry took, which is less than the charge when the
+  blocks ran out (`block_shortfall_micro`). When another process holds the team's lease it is
+  folding too, and the call waits a bounded time for its entry; past that, or when the entry
+  cannot be read, it answers with the charge and logs it. Once its charge is queued a call is
+  never answered as free because something later failed.
+- **Auto top-up** is asked after a refill, the only moment the balance moved. A refill a call
+  started beside itself commits after the call has its take, so the reserve hands it the ask
+  and it is made, in a task of its own, once that refill has committed and given up the lease.
+
+- **One place per share folds the queue.** `application/allowance_sweep.py` runs a loop wherever
+  background work runs. The teams are split into `money_allowance_fold_shards` shares by their
+  numbers (`org_id % count`), and one process at a time runs the pass over a share: the pass
+  holds that share's lease in the store (`_pass_lease`, the count in the key, so processes run
+  with different counts never share one), renewed while a long pass runs. A process takes one
+  share at most, trying them from a random one, and a process that finds every share taken
+  pauses. With one share the lease keeps the name it had before shares, so a deploy that runs
+  older processes beside new ones still has one pass at a time. One process folding every team
+  in turn falls behind once teams queue charges faster than one process applies them, and the
+  oldest charge then waits longer with every pass. Shares fold side by side, and the read of the queue and the
+  connections folding uses stay bounded by the number of shares, not of processes. After an idle pass the holder keeps the lease through the pause instead of releasing
+  it, so the pause is shared: processes waking at different moments do not each take a turn.
+  Every pass lists the teams with queued charges, a read over a queue that is written and
+  deleted all day; run by every process every second it cost the database more than the folding
+  did. When the store cannot answer, every process runs its pass, as before the lease; a renewal
+  the store could not answer is asked again sooner, within what is left of the lease, and a pass
+  whose lease is known to be gone stops at the next team. Since one process folds for a whole
+  share, a fold or idle close skips a team whose lock a request in the same process holds, and
+  waits at most `_LOCK_WAIT_MS` for a team's row locks (`lock_timeout`) before giving that team
+  up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass lists the teams of its share with queued charges, listed or
+  not, the team whose oldest charge has waited longest first (a walk of the queue's team numbers
+  on `ix_callcharge_org_id_created_at`, one probe per queued team and one more per team of the
+  share, so a share reads none of the rows other shares' teams have queued; revision 0126. The
+  walk grows with the number of teams that have a queue, in every share: with very many of them,
+  more shares shorten each share's list, not its walk). A pass works on at most
+  `_TEAMS_PER_PASS` of them, not counting a team it committed nothing of (another process or a
+  session of its own holds it, or its rows stayed locked), so teams stuck at the front never use
+  up a pass (the next pass comes back for the rest); it reads the list `_TEAMS_LISTED` at a
+  time and reads on while it has places left, so a full list of such teams does not end it, and folds them a team at a time, a batch per
+  transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once. An idle share pauses for
+  every process (its holder keeps the lease through the pause), and the process goes on to the
+  other shares; it pauses only once every share is taken or pausing. Request processes only queue charges: neither a refill nor the charge writer folds.
+  So the connections folding uses are one per process running a pass, at most one per share,
+  whatever the traffic and however many teams are busy, and none of them comes from the pool requests use. A team
+  another process is working on (its lease is taken) is skipped, not waited for; so is a team
+  whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
+  short wait instead of falling back), and the next pass comes back to it. The idle sweep
+  waits no longer than that either: it runs first in the same loop, due on each share's own
+  clock, which every process shares (a lease in the store taken for the sweep period and never
+  given back, so a share handed to another process is not swept again within it), and it too goes through every idle hold of the share a page of teams at a time. A pass
+  leaves a team after a few batches so one long queue does not keep the others waiting. Calls
+  keep taking from the counter meanwhile, since a fold moves only money their takes already
+  removed from it: until its charge is folded, a call's money stays in the hold. A call's
+  `settle` entry, and every report read from the ledger (today's spend among them), therefore
+  trails the call by about a pass, longer while a team queues faster than a batch is applied.
+  A daily cap does not trail: `committed_today` counts the queue. Three folds run outside the
+  loop, on the request pool, each because the next step needs the balance with every charge
+  applied: a call that finishes on a frozen counter and must answer with what the ledger took
+  for it (`_settled`); a frozen counter's refill; and a drain, which folds the team's whole
+  queue before it returns the counter's money to the balance (a refill found no room, by
+  balance or daily cap, and the team goes back to the exact path). A long queue makes that one
+  request slow; the order, fold then return, is what keeps the returned money from being spent
+  twice.
+
+- **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
+  hold and then write it. All of them hold one lease in the store for the team
+  (`allowance.money_key`), and a per-team lock inside the process. PostgreSQL would make them
+  wait on the hold's row lock anyway; on SQLite, which has no row locks, the lease is what keeps
+  two processes from both reading before either writes. A session that outlives the lease is
+  still safe on PostgreSQL and is not on SQLite. When the store cannot answer nobody can take
+  the lease: the sweep still writes on PostgreSQL and puts the write off on SQLite.
+
+What can go wrong lands on one side only. A take the process never finishes (a crash), a give-back
+the store did not apply, or a counter lost with the store leaves money in the allowance hold that
+no counter offers: unavailable, not spent and not charged, until the hold is closed. Nothing here
+offers money the hold does not have.
+
+**The idle sweep** (the same loop in `application/allowance_sweep.py`, once every sweep interval,
+listed teams or not) is what returns that money. A refill writes on the hold the instant
+until which calls may take from the counter and publishes that same instant to the counter, and
+a call lives at most `hold_ttl_s()`, so a hold whose instant passed that long ago, plus a margin,
+has nobody spending from it. The margin covers only the difference between clocks (the
+processes' and the store's). The sweep reads the instant from the row and never recomputes it
+from its own settings, so processes running different `money_allowance_fresh_s` during a deploy
+agree, and a process that stalls between a refill's commit and its publish cannot widen the
+window. The sweep closes each
+such hold in full (`close_stale_allowance_in_transaction`, under the release lease), then retires
+its counter so a late writer is refused. A charge recorded after that still finds no hold and
+comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
+in it stays there; the team's balance is lower by up to a refill's target (a chunk, unless
+refills are sized to the team's spend) plus that, and the hold is in `/balance`.
 
 ## The six operations (`domain/money`)
 
@@ -174,6 +748,22 @@ UPDATE org SET balance_micro = balance_micro - :est WHERE id = :org AND balance_
 The WHERE is the check and the SET the debit, so the database decides who gets the last cent.
 `rowcount 0` is `InsufficientBalance`, a 402 the agent can act on. No SELECT-then-UPDATE, no
 application lock: N concurrent callers against a balance that affords K get exactly K successes.
+
+A team with an allowance can also owe money the balance column does not show yet: what its
+queued call charges (`CallCharge`, below) will take when they are applied, their overruns and
+what they set aside beyond what the allowance hold has left. A reserve must not set that aside
+a second time, and it must decide on a balance and a queue that belong to one moment. So the
+order is: the gate above debits, which also holds the team's row until the transaction ends;
+then the queue's team index is read once. With nothing queued, which is nearly every reserve,
+that is all. With something queued, one statement reads the debited balance less what the
+queue owes; below zero, the debit is put back in the same transaction and the reserve is
+refused with a 402 carrying what was free; a reserve of nothing (a call estimated at zero and
+charged what it turns out to cost) is checked the same way, and the gate's own refusal
+reports the same figure, the balance less what the queue owes. Reading the queue before the debit, or inside the
+debit's own statement, would not do: PostgreSQL's READ COMMITTED rechecks a row the statement
+waited for against the snapshot it began with, so the queue could be older than the balance,
+letting a reserve spend a refund that a queued overrun already owes, or refusing one because a
+fold was counted in both. A charge queued after the read is one the reserve was ahead of.
 
 **Block consumption order** follows `_KIND_ORDER`: the free kinds (promotional, referral, bonus)
 first, then `earned`, then purchased, oldest first within a kind. Promo
@@ -253,7 +843,9 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   answers this same 429 rather than asking the next provider (catalog.md § Routing). Every other
   operation, on a missing identity, unavailable Redis, store error, lease loss or expired budget,
   releases partial gates and runs the original database path; it never raises, because settlement
-  and cleanup must run.
+  and cleanup must run. One caller opts out: work that can simply come back later (the allowance
+  fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
+  before the database, counted as `rejected`.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before
@@ -262,6 +854,14 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   age - hold_grace_s / 2`. The async worker passes what remains of the row's processing deadline. A
   settlement that enters the database without the lease queues on the CreditBlock lock while
   holding a pooled connection, which is why these bounds exist.
+- **A silent store costs one timeout, not one per operation.** After a store failure
+  (`kv_unavailable` or `gate_error`) the process skips the store for `_STORE_DOWN_S` (5 s, the
+  `fair_share` pattern) and every operation in that window takes the database path at once, counted
+  as `kv_store_down`. Only a real store failure opens or extends the window; a skip never does, or
+  steady traffic would keep one failure's window open until the process restarts. A
+  failed gate frees its process-local locks before the lease cleanup runs, and the cleanup runs as a
+  background task, so a stuck cleanup never holds the next operation; the lease TTL bounds a lease it
+  does not remove.
 - Renewal and deletion are owner-checked, so an old holder cannot extend or delete a newer owner's
   lease. TTL cannot prove an old database transaction has stopped, which is why database locks stay
   the correctness mechanism. Fallbacks preserve correctness but not isolation and are counted
@@ -326,10 +926,22 @@ stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the fi
 - `settle: usage` reserves what the rate-card table says THIS request costs and settles the reported
   figure, which may exceed the reserve: the ledger takes the difference, the next reserve is the
   gate, and `reconcile.async_task_settlement` lists every `overrun` and every
-  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). A success with no usage figure settles
-  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling. The unit's
+  `absorbed_shortfalls` settle (`block_shortfall_micro > 0`). The next reserve gates only calls in
+  sequence; calls in flight together all passed the balance gate already. So a row whose reported
+  figure can exceed the estimate declares its worst case (`cost.worst_case`, `settle.worst_case` in
+  v2; `Pricing.worst_case_micro`, `MarketplaceCall.worst_case_micro`), and `_platform_reserve` holds
+  the higher of the estimate and the worst case, through the tag, member and daily-cap gates as
+  well. The settle is unchanged and the unused part of the hold goes back. The estimate stays the
+  basis's `reserve_micro`: a success with no usage figure settles
+  at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling or the worst case.
+  The validator warns on a usage row with no worst case. The unit's
   micro-USD worth is frozen as `amount.unit_micro` at reserve, so a later rate edit never re-prices a
   task in flight; a non-USD basis without a frozen rate settles at the reserve.
+  A row may declare `cost.non_deferred_charge: {path, value}` for data present in a 2xx
+  submission. A truthy response path settles that frozen charge immediately when no task starts;
+  for a deferred usage task it is frozen in `submission_charge_micro` and added to an observed
+  terminal meter. An unobserved terminal meter still settles at the reserve, which already
+  includes the submission estimate.
 
 For a tier-4 endpoint carrying `async`, a successful submission keeps its hold and writes an
 `AsyncTaskRecord` whose `settlement_basis` freezes the price rule with its request, so settlement
@@ -338,7 +950,9 @@ replays from the row alone. BYOK creates neither hold nor row. A caller poll and
 success or billed failure without required usage only records result ownership; a failure or a
 state past the window releases. Only the winning finalizer archives terminal evidence. The same
 transaction stores the adapter hit verdict and verdict word on the task; the audit path copies them
-to the submission row whichever is written first. A 2xx that is not an accepted submission
+to the submission row whichever is written first, with the amount the task closed at as the row's
+`cost_charged_micro` (0 on a release or a timeout), so a sum over `callrecord` counts async charges.
+A charge alone does not mark the endpoint's stats for a recount. A 2xx that is not an accepted submission
 (`_submission_rejected`: not JSON, fails `expect`, no task id or an off-allow-list poll URL) never
 becomes a row and settles at the provider-reported charge, else zero. If the row cannot be
 persisted, the request path releases with `async_task_not_recorded` and an ERROR alert.
@@ -351,9 +965,10 @@ pending result with the reservation open, and the worker later settles or releas
 The worker selects due rows, takes provider/global concurrency slots, then claims each still-due row;
 `attempts` fences stale workers, and `CLAIM_LEASE_S` exceeds `PROCESS_TIMEOUT_S`. Polls have a
 `POLL_TIMEOUT_S` total deadline including body consumption, use the normal credential injector (a
-static poll's parameter rides as `query_items` or a declared, percent-encoded path substitution; the
-relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
-evidence only from a 2xx. HTTP errors, invalid JSON and timeouts back off
+static poll's parameter rides as `query_items`, a declared, percent-encoded path substitution, or
+the whole JSON body of a POST poll; the relay forwards no URL-embedded query), cap the body at `MAX_POLL_BODY_BYTES`, and take terminal
+evidence only from a 2xx. A non-2xx matching the descriptor's `pending_response` stays in progress;
+other HTTP errors, invalid JSON and timeouts back off
 (`next_failure_check`: 2, 4, 8, then 15 minutes); there is no provider-wide circuit breaker. The
 worker never lets one row abort a tick, and loads the catalog once in a thread before polling so the
 poll timeout measures the provider alone. **At the deadline (`MAX_AGE`, or the descriptor's shorter
@@ -439,6 +1054,33 @@ discounts are excluded so the invoice charges exactly the refill. Each write has
 idempotency key derived from the credited-purchase count and invoice generation, unchanged across
 midnight or an uncertain Stripe reply.
 
+**The card it charges is the payer's latest choice.** A card is chosen in treg (top-up Checkout,
+card setup) or in the Customer Portal, which changes the customer's
+`invoice_settings.default_payment_method` and reports it only as `customer.updated`. Every choice
+goes through `_set_default_pm` with its time on Stripe's clock, kept in `stripe_default_pm_at`. The
+comparison and the write are one conditional UPDATE: an older choice that arrives late, again or
+alongside never replaces a newer one, and on a tie the portal wins. Each accepted choice is then
+written to the Stripe customer's default, after the transaction ends, with metadata naming the card
+and its time (`treg_card`, `treg_card_chosen_at`). Stripe reports that write as a
+`customer.updated` stamped later; the metadata keeps the time of the choice, so treg's own write
+never beats a portal choice made in between, and writing a portal choice back repairs Stripe's
+default if an older treg write landed after it. Those writes run after commit and can finish out of
+order, so a `customer.updated` reporting a card other than the stored one, once it has lost, writes
+the stored choice back (`_repair_stripe_default`); that write's own echo matches and settles. A transient failure fails the delivery
+(`CardSyncPending`) so Stripe redelivers it; a redelivery older than a newer choice sends nothing.
+An automatic top-up's own payment is no new choice. `payment_method.detached` forgets the stored
+card (`no_card`), finding the org by that card because the event names no customer, with an UPDATE
+conditioned on that card, and a portal card re-arms a policy waiting
+for one. The org is found by the customer's `treg_org_id` metadata when present. Before charging,
+with no database connection open, `attempt_auto_topup` checks that the stored card is still
+attached to the customer, so a late or lost detach event never charges a removed card; a Stripe
+error there charges nothing and is not a failed attempt. The webhook endpoint must subscribe to
+both events. A row from before `stripe_default_pm_at` has no time, so its first timed choice wins. A portal
+change made before treg handled `customer.updated` sends nothing later; `treg-worker admin card-sync
+--org <id> [--apply]` (`sync_card_from_stripe`) adopts the Stripe default only when it is attached, a
+different physical card (fingerprint) and created after the stored card, reports without `--apply`,
+and writes through `_set_default_pm` as a portal choice made now.
+
 Before a new charge, `attempt_auto_topup` pages the customer's invoices (listing, not Stripe's delayed
 search index) since one day before the last credited automatic top-up, or the full history before
 the first, to recover a draft, open or paid attempt:
@@ -473,8 +1115,10 @@ money. Invoice creation may be priced separately by Stripe, and Stripe invoice e
 dashboard's "Successful payments" customer-email setting; treg's receipt email is independent.
 
 The invoice address needs `billing_address_collection="required"` **plus**
-`customer_update={"address": "auto", "name": "auto"}` on the same session: the first asks, the second
-persists the answer onto the Customer. Collecting without `customer_update` stores nothing.
+`customer_update={"address": "auto"}` on the same session: the first asks, the second persists the
+address onto the Customer. `customer_update.name` stays unset so a payer's Checkout name cannot
+replace the team's billing name on the Customer. Stripe copies the Customer name to an invoice when
+it finalizes; changing the Customer later does not change that finalized invoice.
 
 **A promotion code discounts the price, it does not bonus the balance.** `allow_promotion_codes=True`
 puts the field on Checkout, and the webhook credits `amount_total`, what Stripe collected. A 100%-off
@@ -487,7 +1131,9 @@ never a Stripe coupon.
 purchased block stays exactly what the card paid: purchased credit is a refundable liability, the
 bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up.
 The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which `topup_history` joins
-to show `bonus_micro`.
+to show `bonus_micro`. The partner offer of the affiliate program is another `bonus` grant naming its
+payment (`source: affiliate_bonus`, [affiliates](affiliates.md) "Partner offer"), so a refund revokes
+it the same way; `topup_history` does not show it.
 
 `_grant_topup_bonus` grants per payment, not per first delivery: every delivery, and the inline
 auto-top-up credit, grants when no `topup_bonus` entry names the PaymentIntent. A lock on the
@@ -528,17 +1174,22 @@ newly saved). A deliberate off (reason `None`, consent on file) stays off; a red
 not switch it back on.
 
 **Auto top-up is guarded in depth**: recorded consent (the PSD2/SCA mandate, a compliance
-requirement), a monthly cap, a cooldown stamped in the DB *before* the charge, a consecutive-failure
+requirement), a monthly cap when the team set one, a cooldown stamped in the DB *before* the charge, a consecutive-failure
 limit, and an idempotency key from the threshold crossing, so a burst of calls that all notice the
 low balance produces ONE charge.
+
+The call path asks for a refill after a reserve commits and after a refused one. Only for a team
+with auto top-up on, the committed path reloads the Org on its own session once the money lease is
+released and hands it to `maybe_schedule_autotopup`; a team without it pays no read, and a failed
+read is logged without failing the call.
 
 - The stamp is a compare-and-set on `autotopup_last_attempt_at`: `_lock` is per process, so only the
   first process to match the value it read proceeds and the rest return `cooldown` before any Stripe
   call. Without it, losers got 409s that counted as failures and switched auto top-up off while the
   real payment went through. A 409 that still arrives (`stripe_busy`) is logged, not a failure.
 - The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`) and refuses a charge that
-  would pass it (`autotopup_cap_reached`). A stored 0 resolves to `TOPUP_MAX_USD` (the default); a cap
-  below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
+  would pass it (`autotopup_cap_reached`). A stored 0 is no cap, which is the default: nothing holds the
+  month's automatic charges but the per-hour limit; a chosen cap below one refill is refused. The cap is the team's own limit, validated by `validate_monthly_cap_usd`
   with no business ceiling: `AUTOTOPUP_MONTHLY_CAP_MAX_USD` only keeps micro-USD exact and inside
   `BIGINT`. `TOPUP_MAX_USD` bounds one refill, not the month.
 - The wait between charges (`billing.autotopup_wait_s`) is `autotopup_cooldown_s` after a failed
@@ -593,7 +1244,8 @@ cumulative target per block (the bonus target is `bonus * refunded // paid`).
 `_billing_org` (every `/billing/*` route) requires **admin or owner**: cards, spend policy and
 invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure and in-flight
 holds (a machine identity must read the balance it spends, and every 402 already carries
-`balance_micro`); credit blocks and the ledger stay admin+.
+`balance_micro`); credit blocks and the ledger stay admin+, and `entries.withheld` says when an
+empty ledger was withheld rather than empty.
 
 `get_payment_history` builds top-up rows from our own `CreditBlock` rows, so history can never show a
 payment the balance disagrees with. Stripe is asked only for links, in two list calls (`Charge.list`
@@ -642,8 +1294,8 @@ dashboard and refuses an org without `stripe_customer_id` rather than minting on
 
 `_enforce_platform_daily_cap` is a per-org, per-UTC-day limit on platform spend, applied only when
 one is set. When it applies it is **fail-closed**, unlike the per-user call cap: a query that cannot
-answer refuses the call. When none applies, the prepaid balance and the auto-top-up monthly cap bound
-spend. An endpoint with an unknown price never reaches this path (`platform_eligible` requires a
+answer refuses the call. When none applies, the prepaid balance bounds spend, and auto top-up refills
+it at the team's per-hour limit, up to its monthly cap if it set one. An endpoint with an unknown price never reaches this path (`platform_eligible` requires a
 computable `usd`, see [catalog](catalog.md)).
 
 `budget_policy._effective_daily_cap` is the team's `Org.daily_cap_micro` when set, else the
@@ -775,8 +1427,8 @@ afterwards: the reserve IS the charge, and a wrong count is a wrong bill. A row 
 `cost.reserve` skips that inference and its counted settle is capped at the hold.
 
 `_platform_settle` uses its own short session and never turns a served response into a 500. A pool
-timeout or PostgreSQL deadlock (`DBAPIError` with `orig.sqlstate == "40P01"`, never message matching)
-gets one retry of the whole settlement/release transaction, including overflow spend, in a fresh
+timeout, a PostgreSQL deadlock (`DBAPIError` with `orig.sqlstate == "40P01"`, never message
+matching) or a refused connection (`DB_BUSY_ERRORS`) gets one retry of the whole settlement/release transaction, including overflow spend, in a fresh
 session. A second failure leaves the hold to the reaper and preserves the upstream response. No
 upstream retry or extra ledger operation is introduced.
 
@@ -821,7 +1473,7 @@ row.
   up` bills whole `per` blocks, in the hold and in a count. Amounts round up to whole micro-USD.
 - **The request it can price.** On every tier, before anything is held, `price_call` refuses with
   `catalog_parameter_invalid` (400) a query or path parameter sent more than once when its declared
-  type is not a list (an undeclared one is not judged), and a `reserve.rows` count the request
+  type is not an array (an undeclared one is not judged), and a `reserve.rows` count the request
   carries that is not a whole number from 1 to `max` (a JSON integer or ASCII digits; an absent one
   takes the default). The refusal names the parameter, never its value.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
@@ -835,7 +1487,7 @@ row.
   maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
   unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
   `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
-  hold; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
+  estimate, and are held up to a declared `settle.worst_case`; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). An answer that would be billed is released when it carries a
   capacity signature.
@@ -909,15 +1561,47 @@ still pay the provider twice.
   (`scope_shared_idempotency_key`), so two customers' identical labels never resolve to one upstream
   job; BYOK labels pass verbatim.
 - A short transaction claims a pending row before relay; the unique constraint arbitrates (loser
-  409); reusing a label with another fingerprint is 422.
+  409, naming the holder's `call_id` with `Retry-After`); reusing a label with another fingerprint
+  is 422. A JSON body enters the fingerprint as its canonical serialization (`_canonical_json`), so
+  key order and whitespace do not make a retry a different request; a body over
+  `_CANONICAL_MAX_BYTES`, or one whose parse could merge two requests, keeps its raw bytes.
 - Metered successes keep status, body, charge and call id for 24 hours.
   `response_retention: forbidden` keeps a body-free 410 receipt instead, for BYOK too. Uncharged
   failures (including every routed failure), other BYOK calls and owned free polls release the label
   at once.
 - Replays return `X-Treg-Idempotent-Replay: true`, `X-Treg-Cost-Micro: 0` and the first figure in
   `X-Treg-Original-Cost-Micro`; MCP returns `replayed: true`.
-- Refusal and cancellation cleanup return an acquired label; expired entries are swept lazily per
-  caller at claim time, skipping locked rows.
+- Refusal and cancellation cleanup return an acquired label, except a cancelled call whose
+  allowance charge was already handed to the charge writer (`allowance_charged`): that charge is
+  written whatever happens to the request, so the label stays pending for the stale check.
+  Expired entries are swept lazily per caller at claim time, skipping locked rows.
+- A stale claim's money (`_money_of`) is read from the owner's holds, its ledger entries and the
+  queued `CallCharge` rows under its prefix (its own and its routed children's), read before the ledger: a call on the allowance has no hold of its own,
+  and its charge waits in the queue until a fold writes its settle. A queued charge with no settle
+  yet is money in flight (409): its amount is what the team owes, and the fold may take less when
+  the credit runs short, so the receipt waits for the settle.
+  The ledger read is bounded to the owner's lifetime, except by exact id (the `call_id` index):
+  the owner's own entries, its queued charges', its async tasks' and those of every id a routed
+  child of it could carry (`_routed_child_ids`: `rN` below its plan's widest possible size, `v`,
+  `u`, and their attempts) are read past it, since a fold delayed by a backlog (which deletes the
+  queued row it settles) or a task's worker can settle later.
+- An allowance call has no hold to show it is still running, so a stale claim also asks the shared
+  store for the owner's in-flight mark (`kv.call_in_flight`, `IN_FLIGHT_MARK_MS`): a mark, or a
+  store that cannot answer, is money in flight (409) like an open hold, unless the ledger already
+  speaks for the owner: an entry of its own (a reserve, so it took a hold; a settle, so its
+  allowance charge is folded) or of a hub step (a hub run's steps never take the allowance). Its
+  money is then all in the database, and a store fault does not hold up its receipt. An overflow
+  child's or a routed child's (`rN`, `v`, `u`) entries do not count: the parent's own charge, or
+  another routed child's, may be unwritten. The mark is read before the database, since it is cleared only
+  once the charge is written. `_platform_reserve` with
+  `mark_in_flight` sets the mark before the take and clears it when the take is refused; a call
+  the store would not mark keeps its own hold (`in_flight_unmarked`). The claim's lease task
+  renews it (only while it is there). A call charged nothing clears it in `allowance.finish`; a
+  charge hands it to the charge writer, which sets every mark it holds again on its own clock
+  (`_MARK_RENEW_S`), queued, being written or unconfirmed alike (set, not only extended, so a
+  store that restarted gets them back within one period), and clears one only once its charge
+  is known written, even after the call has answered or been cancelled.
+  A process that dies leaves it to expire before the claim reads stale.
 - A reserve admission 429 never reaches `_store_idempotent`; `_stamp_call_exit` releases its pending
   claim (both MCP surfaces too). If that cleanup fails twice, the row stays pending until the
   stale-claim resolver stores 410 `idempotency_outcome_unknown` when no money evidence exists.
@@ -947,7 +1631,8 @@ in declaration order refuses, naming the dimension. `domain.governance.budgets` 
 dimension selection; `application.call.reserve` owns the call-side caps; a newly observed tag returns
 `created` without committing, and the caller commits.
 
-**`TagSpend`**: `ledger.reserve` writes one row per tag in the balance transaction, each carrying the
+**`TagSpend`**: `ledger.reserve` writes one row per tag in the balance transaction (a tagged call on
+the allowance: the fold of its charge, settled at once; "Allowance"), each carrying the
 **full** call amount (cost-allocation-tag semantics: summing within a dimension reconciles to the org
 total, across dimensions double-counts, so every report names its key). `amount_micro` tracks the
 hold: estimate in flight, consumed figure at settle, deleted on release. Hence two deliberately
@@ -981,6 +1666,9 @@ reserve entry outlives the hold and proves ownership for `/calls/{call_ref}` whe
 symmetric credit bonuses (`config.referral_*`). Cash payouts and a platform-wide payout budget are not
 implemented, so the per-referrer cap does not bound platform-wide exposure.
 
+- A team that arrived through an affiliate's Dub link, or with a typed Dub partner's code, is not
+  redeemed at all, so one signup is never paid by both programs
+  ([affiliates](affiliates.md)).
 - A referral is redeemed at first team creation and qualifies when cumulative purchased credit
   reaches `referral_min_topup_micro`. `qualify` checks referrer availability, the card fingerprint
   against earlier qualified/paid referrals, and the referrer's lifetime cap. A default-false
@@ -1077,13 +1765,28 @@ maximum). The payer's `settle` meta names `payee_org_id`; the payee's `grant` me
 `payer_org_id` and the run. It does not commit (the hub runner owns the transaction) and is the only
 cross-team money movement in treg.
 
+## Agent payer top-ups
+
+A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-payments.md)) is a
+payer team per wallet address and network. A payment confirmed on chain is an ordinary `topup` on that team,
+`payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
+transaction; then the call reserves, settles or releases as any team's call. The topup is booked
+only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
+has not received. A wallet whose existing credit covers the call proves itself instead of paying
+(MPP: a zero-amount proof; x402: a payment that is not settled) and books nothing. When the settlement answer never arrives, `treg-worker agentpay reconcile` reads the chain
+later and books the same topup (same reference, so at most once) only for a transfer that landed.
+No money entry is added. With `TREG_AGENT_PAYMENTS_SETTLEMENT=stripe` the transfers go to Stripe
+crypto deposit addresses and each settled payment is also recorded as a Stripe PaymentIntent; the
+ledger is the same.
+
 ## Response evidence size and free final downloads
 
 Settlement evidence must be complete. The 8 MiB buffer raises a typed 502 on overflow and closes
 upstream; the call releases its hold and idempotency claim. Partial JSON never falls back to an
 estimate or settles as success.
 
-An authorized, explicitly free final result GET with no body-evidence consumers streams unbuffered
+An authorized, explicitly free final result GET, or a free `utility` reference list with no
+ownership rule, has no body-evidence consumers and streams unbuffered
 (`MarketplaceCall.streamable_free_result`), closing its settlement with an explicit zero before
 returning the stream (a no-op for a holdless call, above). It is not stored for idempotent replay. MIME type never decides billability.
 

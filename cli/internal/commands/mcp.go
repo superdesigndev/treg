@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json/v2"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -168,6 +169,9 @@ func (e *Env) mcpInstall(name string, oauth bool) error {
 		s.arrow("Claude Code: /mcp, pick treg, Authenticate")
 		s.arrow("Codex: codex mcp login " + name)
 		s.arrow("Cursor / opencode: follow the client's sign-in prompt for treg")
+		if slices.ContainsFunc(out.Results, func(r agents.Result) bool { return r.Display == agents.CopilotDisplay }) {
+			s.arrow("GitHub Copilot: follow its sign-in prompt for treg")
+		}
 		return nil
 	}
 	e.kv("agents", fmt.Sprintf("%d registered; restart an agent to pick the server up", ok))

@@ -6,26 +6,31 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel, ValidationError
+from pydantic_core import PydanticCustomError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import convert as _convert
-from .. import crypto, health, sandbox as demo_sandbox
+from .. import health, sandbox as demo_sandbox
 from .. import providers as _providers
 from .. import skills as _skills
 from ..application import connect as connect_use_cases
 from ..config import get_settings
+from ..domain.connections import refresh as connection_refresh
+from ..infra import credential_cipher
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
 from ..domain.governance import sandbox as sandbox_policy
 from ..domain.tools import SecretOwnershipError, ToolConfigError
 from ..domain.tools import bindings as binding_rules
 from ..domain.tools import bundles as bundle_rules
+from ..domain.tools import names as name_rules
 from ..domain.identity.access import (
     Caller,
     _can_manage,
@@ -53,15 +58,25 @@ def _require_tool_use_http(caller: Caller, tool: Tool) -> None:
         raise HTTPException(status_code=403, detail=exc.detail) from exc
 
 
+def _check_name(name: str) -> str:
+    try:
+        return name_rules.check_name(name)
+    except ValueError as exc:
+        raise PydanticCustomError("name", str(exc)) from exc
+
+
+Name = Annotated[str, AfterValidator(_check_name)]
+
+
 class SecretIn(BaseModel):
-    name: str
+    name: Name
     value: str
     kind: str = "env"
     bundle_id: int | None = None
 
 
 class SecretUpdate(BaseModel):
-    name: str | None = None
+    name: Name | None = None
     value: str | None = None
     kind: str | None = None
 
@@ -95,9 +110,12 @@ async def create_secret(
         raise HTTPException(status_code=422, detail=(
             f"the sandbox is limited to {exc.cap} {exc.noun} — sign up for more")) from exc
     await _validate_bundle_id(body.bundle_id, caller.org_id, db)
+    await db.commit()  # seal with no transaction held: KMS is network I/O
+    sealed = await credential_cipher.seal(body.value, org_id=caller.org_id)
     secret = Secret(
         org_id=caller.org_id, name=body.name, owner=caller.email, kind=body.kind,
-        value=crypto.encrypt(body.value), bundle_id=body.bundle_id,
+        value=sealed, bundle_id=body.bundle_id,
+        refreshable=connection_refresh.refreshable_flag(body.kind, body.value),
     )
     db.add(secret)
     await db.commit()
@@ -128,6 +146,7 @@ async def update_secret(
     if not _can_manage(caller, secret):
         raise HTTPException(status_code=403, detail="only the creator or an admin can edit this secret")
     _require_not_live_demo_secret(caller, secret)
+    await db.commit()  # open and seal with no transaction held: KMS is network I/O
     fields = body.model_dump(exclude_unset=True)
     # A connection's name is also its tools' names; renaming only the secret strands them.
     if secret.provider and fields.get("name", secret.name) != secret.name:
@@ -140,15 +159,22 @@ async def update_secret(
     # JSON value (else the tool silently 502s later) and reset the now-meaningless health verdict.
     if "kind" in fields and fields["kind"] != secret.kind:
         if fields["kind"] in ("oauth", "secret_file"):
-            raw = fields["value"] if "value" in fields else crypto.decrypt(secret.value)
+            raw = (fields["value"] if "value" in fields
+                   else await credential_cipher.unseal(secret.value, org_id=secret.org_id))
             try:
                 json.loads(raw)
             except (ValueError, TypeError):
                 # from None: a JSONDecodeError keeps the whole document, here the decrypted secret
                 raise HTTPException(status_code=422, detail=f"kind {fields['kind']!r} needs a JSON value") from None
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
+    if "kind" in fields or "value" in fields:
+        kind = fields.get("kind", secret.kind)
+        plaintext = (fields["value"] if "value" in fields else
+                     await credential_cipher.unseal(secret.value, org_id=secret.org_id)
+                     if kind == "oauth" else "")
+        secret.refreshable = connection_refresh.refreshable_flag(kind, plaintext)
     if "value" in fields:
-        fields["value"] = crypto.encrypt(fields["value"])  # re-encrypt on rotate
+        fields["value"] = await credential_cipher.seal(fields["value"], org_id=secret.org_id)
         # The value is exactly what health measures — a rotation invalidates the prior verdict.
         secret.health_status, secret.health_detail, secret.health_checked_at = "unknown", "", None
     for k, v in fields.items():
@@ -200,7 +226,7 @@ def _secret_view(s: Secret) -> dict:
 
 
 class ToolIn(BaseModel):
-    name: str
+    name: Name
     base_url: str
     bundle_id: int | None = None
     # Multi-binding (explicit) — each: {secret_id, injector, location, name, format, secret_field}
@@ -219,7 +245,7 @@ class ToolIn(BaseModel):
 
 
 class ToolUpdate(BaseModel):
-    name: str | None = None  # a rename; a connection's tool renames the connection with it
+    name: Name | None = None  # a rename; a connection's tool renames the connection with it
     base_url: str | None = None
     bindings: list[dict] | None = None
     health_check: dict | None = None
@@ -265,11 +291,17 @@ def _require_not_live_demo_tool(caller: Caller, tool: Tool) -> None:
             "the live stripe demo endpoint is part of the sandbox — add your own endpoints instead"))
 
 
+def _require_admin_for_dotted_names(caller: Caller, names) -> None:
+    if any("." in n for n in names) and not _role_at_least(caller.role, "admin"):
+        raise HTTPException(status_code=403, detail=(
+            "a tool name containing a dot needs the admin or owner role"))
+
+
 def _require_public_base_url(base_url: str) -> None:
     """A tool's base_url is fetched server-side by the proxy — reject internal / loopback / cloud-metadata
     targets so a member can't turn `treg call` into an SSRF (e.g. base_url=169.254.169.254). Reuses the
     same block-list the webhook path already uses. DNS names are allowed (best-effort)."""
-    if not health.safe_webhook_url(base_url):
+    if not health.safe_webhook_url(base_url, fold_trailing_dot=get_settings().proxy_ssrf_check):
         raise HTTPException(status_code=422, detail=(
             "base_url must be a public http(s) address — loopback, private, link-local, and cloud-"
             "metadata hosts are refused"))
@@ -320,22 +352,12 @@ async def _validate_cli_secrets(cli: dict | None, caller: Caller, db: AsyncSessi
         raise HTTPException(status_code=422, detail=exc.detail) from exc
 
 
-def _allowed_server_bins() -> set[str]:
-    """The commands `treg run --server` may execute: catalog-known CLIs + an admin allow-list. Blocks a
-    member naming `bash`/`python` to run arbitrary code as the server user."""
-    from . import providers as prov
-    bins = {(e.get("cli") or {}).get("bin") for e in prov.CATALOG}
-    bins.discard(None)
-    extra = get_settings().run_allowed_bins
-    bins |= {b.strip() for b in extra.split(",") if b.strip()}
-    return bins  # type: ignore[return-value]
-
-
 @app.post("/tools")
 async def create_tool(
     body: ToolIn, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> dict:
     _require_can_register(caller)
+    _require_admin_for_dotted_names(caller, [body.name])
     try:
         await sandbox_policy.enforce_sandbox_cap(
             sandbox=demo_sandbox.is_sandbox(caller.org), org_id=caller.org_id,
@@ -480,13 +502,13 @@ class BundleUpdate(BaseModel):
 
 
 class SkillSecretIn(BaseModel):
-    local_name: str  # name within the skill; bindings reference it by this
+    local_name: Name  # name within the skill; bindings reference it by this
     value: str
     kind: str = "env"
 
 
 class SkillToolIn(BaseModel):
-    name: str
+    name: Name
     base_url: str
     bindings: list[dict] = []  # each binding's "secret" is a local_name, resolved server-side
     health_check: dict | None = None  # optional {method, path, expect_status}
@@ -495,7 +517,7 @@ class SkillToolIn(BaseModel):
 
 
 class SkillIn(BaseModel):
-    name: str
+    name: Name
     recipe: str = ""  # the SKILL.md text
     files: dict[str, str] = {}  # companion files {relpath: content} — the rest of the skill folder
     secrets: list[SkillSecretIn] = []
@@ -539,20 +561,26 @@ async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession
     _require_can_register(caller)
     if demo_sandbox.is_sandbox(caller.org):  # a skill import would create unlimited tools/secrets, past the cap
         raise HTTPException(status_code=403, detail="skill import is disabled in the sandbox")
+    _require_admin_for_dotted_names(caller, [t.name for t in body.tools])
     names = [s.local_name for s in body.secrets]  # bindings reference secrets by local_name
     dupes = sorted({n for n in names if names.count(n) > 1})
     if dupes:  # a duplicate would silently orphan the first secret (only the last id is kept)
         raise HTTPException(status_code=422, detail=f"duplicate secret local_name(s): {dupes}")
     files = _sanitize_bundle_files(body.files)  # drop unsafe paths / secrets before persisting
+    # Credentials are sealed with no transaction held (KMS is network I/O), so the bundle's rows
+    # still commit together below.
+    await db.commit()
+    sealed = [await credential_cipher.seal(s.value, org_id=caller.org_id) for s in body.secrets]
     bundle = Bundle(org_id=caller.org_id, name=body.name, owner=caller.email, recipe=body.recipe, files=files)
     db.add(bundle)
     await db.flush()  # assign bundle.id without committing yet
 
     local_to_id: dict[str, int] = {}
-    for s in body.secrets:
+    for s, value in zip(body.secrets, sealed):
         secret = Secret(
             org_id=caller.org_id, name=s.local_name, owner=caller.email, kind=s.kind,
-            value=crypto.encrypt(s.value), bundle_id=bundle.id,
+            value=value, bundle_id=bundle.id,
+            refreshable=connection_refresh.refreshable_flag(s.kind, s.value),
         )
         db.add(secret)
         await db.flush()
@@ -671,7 +699,7 @@ async def analyze_skill_folder(
             for s in d.secrets:
                 if s.get("file"):
                     secs.append({"name": s["name"], "source": "file", "ref": s["file"],
-                                 "present": (Path(d.path) / s["file"]).is_file()})
+                                 "present": sk_mod.secret_file_present(Path(d.path), s["file"])})
                 elif s.get("env"):
                     secs.append({"name": s["name"], "source": "env", "ref": s["env"],
                                  "present": s["env"] in env_names})
@@ -736,6 +764,9 @@ async def import_skill_folder(
                 results.append({"name": d.name, "ok": True, "kind": d.kind})
             except HTTPException as exc:
                 results.append({"name": d.name, "ok": False, "error": str(exc.detail)})
+            except ValidationError as exc:
+                results.append({"name": d.name, "ok": False,
+                                "error": "; ".join(e["msg"] for e in exc.errors(include_input=False))})
             except Exception:  # noqa: BLE001 -- report per-skill, never 500 the batch
                 # A generic message — a raw exception string could echo a fragment of an uploaded secret.
                 results.append({"name": d.name, "ok": False, "error": "registration failed"})

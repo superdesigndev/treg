@@ -247,7 +247,6 @@ endpoints:
         type: integer
         required: false
         min: 1
-        max: 10
         note: 'Requested result count, 1 to 10. A best-effort hint: Google may return fewer rows, and results are
           never padded.'
       as_dt:
@@ -1624,8 +1623,6 @@ endpoints:
       next_page_token:
         type: string
         required: false
-        minLength: 16
-        maxLength: 4096
         note: Opaque continuation token returned by a previous Maps Posts response.
       hl:
         type: string
@@ -3716,7 +3713,6 @@ endpoints:
       timeout:
         type: number
         required: false
-        max: 90.0
         note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
           is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
           On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
@@ -3745,7 +3741,8 @@ endpoints:
         example: main
         note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
       set_cookies:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-100 cookies in Set-Cookie syntax (name=value; Path=/; Domain=...), one line each, up
           to 4,096 characters.
@@ -3757,12 +3754,14 @@ endpoints:
         note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
           own.
       inject_page_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in the main
           frame.
       inject_frame_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in every frame.
       page_timeout:
@@ -3796,7 +3795,7 @@ endpoints:
         note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
           is a successful capture.
       viewport:
-        type: dict
+        type: object
         required: false
         note: 'POST only. Browser viewport; width and height are required. Default: 1280 x 1280.'
       robots_txt:
@@ -3916,7 +3915,7 @@ endpoints:
         max: 10000000
         note: Integer 1-10,000,000. Reject the page when its token count exceeds the budget.
       markdown:
-        type: dict
+        type: object
         required: false
         note: Turndown options Jina exposes as X-Md-* headers.
       markdown_chunking:
@@ -4145,7 +4144,8 @@ endpoints:
         example: main
         note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
       set_cookies:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-100 cookies in Set-Cookie syntax (name=value; Path=/; Domain=...), one line each, up
           to 4,096 characters.
@@ -4157,12 +4157,14 @@ endpoints:
         note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
           own.
       inject_page_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in the main
           frame.
       inject_frame_script:
-        type: list
+        type: array
+        items: {type: string}
         required: false
         note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in every frame.
       page_timeout:
@@ -4196,7 +4198,7 @@ endpoints:
         note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
           is a successful capture.
       viewport:
-        type: dict
+        type: object
         required: false
         note: 'POST only. Browser viewport; width and height are required. Default: 1280 x 1280.'
       robots_txt:

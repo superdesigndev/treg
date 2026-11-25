@@ -21,7 +21,7 @@ from ..call import cost as call_cost
 from ..call.resolve import MarketplaceCall, QueryValues, _spool_evidence_paths, price_call
 from ..call.route import child_outcome
 from ..call.service import submission_state
-from ..call.settle import _observed_cost_micro, decide_settle
+from ..call.settle import decide_settle, rejected_submission_charge_micro
 from . import records
 
 GROUPS = ("reserve", "settle", "outcome", "adapter", "routing", "stats", "async")
@@ -66,7 +66,8 @@ def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str],
     return MarketplaceCall(
         tool=None, upstream="", consumed=consumed, endpoint_id=ep["id"], provider=ep["provider"],
         tier="platform", cost_type=str(cost.get("type") or "per_call"),
-        estimate_micro=pricing.estimate_micro, unit_micro=pricing.unit_micro,
+        estimate_micro=pricing.estimate_micro, worst_case_micro=pricing.worst_case_micro,
+        unit_micro=pricing.unit_micro,
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         cost_terms=pricing.terms,
@@ -74,7 +75,7 @@ def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str],
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
         call_id="replay", payer_org_id=0,
-        reserved_micro=ledger.with_margin(pricing.estimate_micro),
+        reserved_micro=ledger.with_margin(max(pricing.estimate_micro, pricing.worst_case_micro)),
         deferred=[] if routed_child else None,
     )
 
@@ -98,8 +99,8 @@ def _settle(mk: MarketplaceCall, status: int, raw: bytes, headers: httpx.Headers
         return {"deferred": True}
     if rejected:
         # The call site's arguments for a 2xx that is not an accepted submission.
-        reported = _observed_cost_micro(mk, raw, headers)
-        decision = decide_settle(mk, status, raw, observed_override=reported or 0, reason=rejected)
+        reported = rejected_submission_charge_micro(mk, raw, headers)
+        decision = decide_settle(mk, status, raw, observed_override=reported, reason=rejected)
     else:
         decision = decide_settle(mk, status, raw, headers=headers,
                                  reason=f"provider_failed_{status}" if status >= 500 else "")
@@ -111,7 +112,8 @@ def _settle(mk: MarketplaceCall, status: int, raw: bytes, headers: httpx.Headers
 def _outcome(endpoint_id: str, status: int, raw: bytes) -> dict:
     result = catalog_results.classify(endpoint_id, status, raw)
     return {"state": result.state, "reason": result.reason, "hit": result.hit,
-            "verdict": catalog_results.verdict(endpoint_id, status, raw)}
+            "verdict": catalog_results.verdict(endpoint_id, status, raw),
+            "judged": catalog_results.judged_outcome(endpoint_id, status, raw)}
 
 
 def _adapter(ep: dict, status: int, raw: bytes) -> dict | None:
@@ -147,7 +149,7 @@ def _stats(endpoint_id: str, status: int, settle: dict | None, outcome: dict | N
         status_code=status, created_at=_FOLDED_AT, duration_ms=None,
         hit=(outcome or {}).get("hit"), cost_observed_micro=(settle or {}).get("observed_micro"),
         refused_by=None, verdict=(outcome or {}).get("verdict"),
-        empty_fails=catalog_store.empty_is_failure(endpoint_id))
+        empty_fails=catalog_store.empty_is_failure(endpoint_id), outcome=(outcome or {}).get("judged"))
     return {"counted": counted, "moved": [c for c in _COUNTERS if getattr(tally, c)]}
 
 

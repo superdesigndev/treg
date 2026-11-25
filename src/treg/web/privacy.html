@@ -9,18 +9,18 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/legal.css"/>
 </head>
 <body>
 
 <div class="topbar"><div class="in">
-  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <a class="brand" href="/"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</a>
   <span class="sp"></span>
-  <a class="nav" href="/terms">terms</a>
-  <a class="nav on" href="/privacy">privacy</a>
-  <a class="nav" href="/support">support</a>
-  <a class="nav" href="/tutorial">docs</a>
+  <a class="nav" href="/terms">Terms</a>
+  <a class="nav on" href="/privacy">Privacy</a>
+  <a class="nav" href="/support">Support</a>
+  <a class="nav" href="/tutorial">Docs</a>
 </div></div>
 
 <div class="page">
@@ -29,7 +29,7 @@
   <div class="eyebrow">Legal</div>
   <h1>Treg Privacy Policy</h1>
   <div class="stamp">
-    <span>Last updated: 19 October 2026</span>
+    <span>Last updated: 19 November 2026</span>
     <span>Effective: 22 July 2026</span>
   </div>
 
@@ -38,8 +38,7 @@
     <ul>
       <li><b>We collect almost nothing about you.</b> An email address to sign in, the teams you're in, and a log of which tools were called. That's the account.</li>
       <li><b>Your credentials are encrypted and never returned.</b> No stored secret value is ever sent back to a client, shown in the dashboard, or read by us.</li>
-      <li><b>We don't store what flows through the proxy.</b> A call's request and response bodies pass through and are gone. We keep the method, path, status code, and timestamp — not the content.</li>
-      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. Every page loads Google's gtag.js with all consent signals denied: it sets no advertising cookie and reads none; it sends Google cookieless pings (page views on marketing pages, and one signup event when you create your first team) that Google uses only to estimate whether its ads lead to signups. When you sign up, make your first call, or make your first payment, we also send Google Ads a SHA-256 hash of your email address (Enhanced Conversions) so Google can match that event to an ad you saw or clicked, on any device; Google matches the hash only against its own signed-in accounts and never for personalised advertising. There is no analytics on the dashboard itself.</li>
+      <li><b>Minimal tracking.</b> We use product analytics and a support chat, and no advertising cookies. Every page loads Google's gtag.js with all consent signals denied: it sets no advertising cookie and reads none; it sends Google cookieless pings (page views on marketing pages, and one signup event when you create your first team) that Google uses only to estimate whether its ads lead to signups. When you sign up, make your first call, or make your first payment, we also send Google Ads a SHA-256 hash of your email address (Enhanced Conversions) so Google can match that event to an ad you saw or clicked, on any device; Google matches the hash only against its own signed-in accounts and never for personalised advertising.</li>
       <li><b>No training, no selling.</b> Your credentials, skills, and connected-account data are never sold and never used to train models.</li>
     </ul>
   </div>
@@ -54,7 +53,7 @@
     instance is the controller.</p>
   </div>
   <p>Contact for anything privacy-related:
-  <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>.</p>
+  <a href="mailto:jason@treg.to">jason@treg.to</a>.</p>
 
   <h2 class="sec" id="s2"><span class="n">02</span>What we collect</h2>
 
@@ -66,8 +65,8 @@
     <li><b>Token hashes.</b> We store a SHA-256 hash of each access token, never the token itself.</li>
     <li>Short-lived sign-in codes and rate-limit counters, which expire automatically.</li>
   </ul>
-  <p>We do not ask for your name, phone number, address, photo, date of birth, or payment details —
-  the Service is free and we take no payment data at all.</p>
+  <p>We do not ask for your name, phone number, address, photo, or date of birth. Card payments are
+  handled by Stripe; we never see your card number.</p>
 
   <h3>Credentials and connections</h3>
   <ul>
@@ -84,14 +83,11 @@
   <ul>
     <li>For each proxied or local-run call: the caller's email, the tool name, HTTP method, request
       path, status code, and timestamp.</li>
-    <li>For each server-side CLI run: the caller's email, the tool name, the command arguments, exit
-      code, and duration. Secret values are injected as environment variables, never as command-line
-      arguments, so they don't appear here.</li>
   </ul>
   <div class="note">
-    <p><b>We do not record request or response bodies.</b> The data you fetch from an upstream API
-    passes through the proxy and is not written down. What survives a call is the metadata listed
-    above — enough for a team admin to see who used what, and no more.</p>
+    <p>We may keep a copy of a provider's answer so the same question can be answered without a new
+    call, and, for a call that fails, the request and error for a short time to investigate it. A team
+    admin can turn storing answers off.</p>
   </div>
 
   <h3>Content you create</h3>
@@ -108,7 +104,9 @@
     <tr><th>Data</th><th>Purpose</th><th>Basis (GDPR Art. 6)</th></tr>
     <tr><td>Email, team membership</td><td>Provide the account; sign-in; invitations</td><td>Contract</td></tr>
     <tr><td>Stored credentials, OAuth tokens</td><td>Execute the calls you ask for; keep them valid</td><td>Contract</td></tr>
-    <tr><td>Call and run audit records</td><td>Show teams who used what; enforce caps; investigate abuse</td><td>Legitimate interests / Contract</td></tr>
+    <tr><td>Call records</td><td>Show teams who used what; enforce caps; investigate abuse</td><td>Legitimate interests / Contract</td></tr>
+    <tr><td>Payment records</td><td>Take payments; keep accounting records</td><td>Contract / Legal obligation</td></tr>
+    <tr><td>Product analytics, support chat</td><td>Improve the product; answer support questions</td><td>Legitimate interests</td></tr>
     <tr><td>Server logs, rate-limit counters</td><td>Security, abuse prevention, service reliability</td><td>Legitimate interests</td></tr>
     <tr><td>Skills and tool definitions</td><td>Store and share what you asked us to share</td><td>Contract</td></tr>
   </table></div>
@@ -118,11 +116,8 @@
     <li>We never <b>sell</b> personal data, credentials, or anything reached through them.</li>
     <li>We never use your credentials, connected-account data, or skill content to <b>train machine
       learning models</b> — ours or anyone else's.</li>
-    <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Pages load
-      Google's gtag.js for ad-conversion measurement only, with every consent signal denied (no
-      advertising cookies; the dashboard sends Google's cookieless consent ping on load and one signup
-      event when you create your first team) — there is no Google
-      Analytics property, no pixel, and no session replay anywhere.</li>
+    <li>We never put <b>advertising pixels or advertising cookies</b> on the Service. Pages load
+      Google's gtag.js for ad-conversion measurement only, with every consent signal denied.</li>
     <li>We never use your stored credentials for anything other than the call you or a permitted
       teammate initiated, plus automated health checks and token refreshes.</li>
   </ul>
@@ -188,7 +183,7 @@
       <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
       including the Limited Use requirements.</li>
     <li><b>How to stop.</b> Uninstall the add-on in Google Sheets, and sign out in its panel.</li>
-    <li><b>Contact.</b> <a href="mailto:unclecode@superdesign.dev">unclecode@superdesign.dev</a></li>
+    <li><b>Contact.</b> <a href="mailto:jason@treg.to">jason@treg.to</a></li>
   </ul>
   <p>The same commitments apply to every other provider you connect (LinkedIn, Slack, X, or an API
   you register yourself).</p>
@@ -199,9 +194,18 @@
   <div class="tw"><table>
     <tr><th>Recipient</th><th>What they get</th><th>Why</th><th>Where</th></tr>
     <tr><td>Render</td><td>Application hosting and the managed database — all stored data</td><td>Runs the Service</td><td>USA (Oregon)</td></tr>
+    <tr><td>Amazon Web Services</td><td>Encryption keys and secrets</td><td>Key management</td><td>USA (Oregon)</td></tr>
+    <tr><td>Cloudflare</td><td>Traffic to treg.to; stored data</td><td>Edge network and storage</td><td>USA</td></tr>
+    <tr><td>Stripe</td><td>Payment details when your team adds funds</td><td>Payments</td><td>USA</td></tr>
+    <tr><td>PostHog</td><td>Usage of the site and dashboard, including your email address once you sign in</td><td>Product analytics</td><td>European Union</td></tr>
+    <tr><td>Intercom</td><td>Your email address and support messages</td><td>Support chat</td><td>USA</td></tr>
+    <tr><td>Grafana</td><td>Service logs, without credentials</td><td>Monitoring</td><td>USA</td></tr>
+    <tr><td>Vercel AI Gateway</td><td>Requests to language-model features</td><td>Language models</td><td>USA</td></tr>
+    <tr><td>WorkOS</td><td>Your sign-in identity, if your company uses single sign-on</td><td>Enterprise sign-in</td><td>USA</td></tr>
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
+    <tr><td>Dub</td><td>Only if you arrived through an affiliate's link: the click id, your team's id, your email address, and your team's payments as Stripe reports them</td><td>Runs our affiliate program: credits and pays the affiliate who sent you</td><td>USA</td></tr>
     <tr><td>Google Ads</td><td>A conversion event (signup, first call, or first payment) with your click id if you arrived via a Google Ads click, and a SHA-256 hash of your email address (Enhanced Conversions for Leads); never the address itself</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
   </table></div>
   <p><b>Referrals.</b> If you sign up through someone's referral link, <b>your email address is
@@ -229,11 +233,18 @@
   after a sign-in detour (a few minutes). The second holds a referral code if you arrived through
   someone's invite link, so we can credit them when you create a team (30 days). Neither identifies
   you, and neither is used for advertising.</p>
+  <p><code>treg_dub</code>: HTTP-only with the same flags, set only when you arrive through an
+  affiliate's link. It holds the click id that link added to the address, so the affiliate can be
+  credited when you create a team (90 days). It is not used for advertising.</p>
+  <p><code>treg_partner</code>: HTTP-only with the same flags, set only when a <code>treg login --ref</code>
+  sign-in opens in your browser. It holds the affiliate partner code you typed, so that partner can be
+  credited when you create a team (90 days). It is not used for advertising.</p>
   <p><code>treg_utm</code>: set by our own <code>/sitetrack.js</code> on your first page — if the link
   you arrived by carried campaign tags (<code>utm_*</code>) or a referring site, it remembers that source
-  so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier
-  and is never sent to a third party.</p>
-  <p><code>treg_ad</code>: set by our own <code>/adtrack.js</code>, not a Google script — if you arrive
+  so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier.</p>
+  <p>Our product analytics (PostHog) and support chat (Intercom) set their own cookies. They are not
+  used for advertising.</p>
+  <p><code>treg_ad</code>: set by our own <code>/click-id.js</code>, not a Google script — if you arrive
   from a Google Ads click, it records which ad click led to your visit (the click id and the landing
   page), retained for <b>90 days</b>. It exists to tell us whether an ad turned into a signup, an active
   agent, or a paying team, so we can tell which ads to keep running. It is <b>first-party</b> (set by
@@ -245,7 +256,7 @@
   address itself is never sent, and we tell Google the hash may not be used for personalised
   advertising. Google's own tag runs with every consent signal denied, so it sets no advertising
   cookie; it only sends cookieless pings Google uses to estimate conversions. There is no advertising
-  pixel, no third-party cookie, and no cross-site tracking script anywhere on the Service.</p>
+  pixel and no cross-site advertising tracker anywhere on the Service.</p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>How we protect it</h2>
   <ul>
@@ -255,7 +266,6 @@
       tokens.</li>
     <li>All traffic is over <b>HTTPS</b>. Every record is scoped to an organization, and access is
       checked per request against your membership, role, and per-member tool list.</li>
-    <li>Server-side runs execute in a <b>sandbox</b> with filesystem and network egress restrictions.</li>
     <li>Bumping your token version <b>revokes every token you hold</b> at once, immediately.</li>
   </ul>
   <p>No system is perfectly secure. If we become aware of a breach affecting your personal data,
@@ -267,8 +277,8 @@
     <tr><td>Account, teams, memberships</td><td>Until you delete the account</td></tr>
     <tr><td>Credentials and OAuth tokens</td><td>Until you delete them, disconnect the provider, or delete the team</td></tr>
     <tr><td>Skills and tool definitions</td><td>Until deleted by you or a team admin</td></tr>
-    <tr><td>Call and run audit records</td><td>While the owning team exists; deleted with it</td></tr>
-    <tr><td>Answers stored for your team so a repeat question can be served without a new call</td><td>While the owning team exists; deleted with it, or earlier on request. A team admin can stop the storing at any time in the team's settings</td></tr>
+    <tr><td>Call records</td><td>While the owning team exists; deleted with it</td></tr>
+    <tr><td>Copies of answers kept to serve a repeat question</td><td>Until no longer needed, or earlier on request. A team admin can stop the storing at any time in the team's settings</td></tr>
     <tr><td>Sign-in codes, rate-limit counters</td><td>Minutes — expired rows are swept automatically</td></tr>
     <tr><td>Invitations</td><td>Until accepted, revoked, or expired</td></tr>
     <tr><td>Hosting server logs</td><td>Our provider's default window (short)</td></tr>
@@ -284,13 +294,13 @@
   <ul>
     <li><b>Self-serve:</b> the dashboard lets you delete credentials, tools, skills, and whole teams,
       revoke all your tokens, and stop answers being stored for a team.</li>
-    <li><b>Everything else:</b> email <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>.
+    <li><b>Everything else:</b> email <a href="mailto:jason@treg.to">jason@treg.to</a>.
       We'll respond within 30 days and won't charge you or treat you differently for asking.</li>
   </ul>
   <p>California residents: we do not sell or share personal information as those terms are defined by
   the CPRA, and we have not done so in the preceding 12 months.</p>
   <p>EEA/UK residents: you also have the right to lodge a complaint with your local supervisory
-  authority. Data is processed in the United States; where a transfer mechanism is required, we rely
+  authority. Data is processed mainly in the United States; where a transfer mechanism is required, we rely
   on the Standard Contractual Clauses offered by our processors.</p>
 
   <h2 class="sec" id="s11"><span class="n">11</span>Children</h2>
@@ -304,11 +314,11 @@
 
   <h2 class="sec" id="s13"><span class="n">13</span>Contact</h2>
   <p>Privacy questions, requests, or complaints:
-  <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>. Security vulnerabilities:
+  <a href="mailto:jason@treg.to">jason@treg.to</a>. Security vulnerabilities:
   <a href="https://github.com/superdesigndev/treg/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>.</p>
 
   <hr/>
-  <p style="font-size:12.5px;color:var(--ink55)">See also the
+  <p style="font-size:12.5px;color:var(--muted)">See also the
   <a href="/terms">Terms of Service</a>. Treg is open source — if you'd rather verify than trust, the
   <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">code that does all of the above</a>
   is public.</p>
@@ -334,14 +344,14 @@
 </div>
 
 <footer><div class="foot-in">
-  <span class="brand"><span class="glyph">▚</span> treg</span>
-  <span class="muted">— 100% open source</span>
+  <span class="brand"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</span>
+  <span class="muted">100% open source</span>
   <span class="sp"></span>
-  <a href="/support">support</a>
-  <a href="/terms">terms</a>
-  <a href="/privacy">privacy</a>
-  <a href="/tutorial">docs</a>
-  <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github ↗</a>
+  <a href="/support">Support</a>
+  <a href="/terms">Terms</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/tutorial">Docs</a>
+  <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a>
 </div></footer>
 
 <script>

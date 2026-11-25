@@ -213,7 +213,7 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
 <script src="/media/compare/signin.js" defer></script>
 <script src="/sitetrack.js"></script>
 <script src="/media/signin-sso.js" defer></script>
-<script src="/adtrack.js"></script>
+<script src="/click-id.js"></script>
 <script src="/gtag.js"></script>
 </body>
 </html>"""
@@ -499,7 +499,7 @@ def _hub_body() -> str:
 
 HUB_TITLE = "Compare treg: MCP and API gateways for AI agents"
 HUB_DESC = ("treg is like OpenRouter for tools. Honest comparisons with Composio, Zapier MCP, Apify, Clay, "
-            "Apollo, RapidAPI, AnyAPI and more.")
+            "RapidAPI, AnyAPI and more.")
 
 
 @router.get("/compare", include_in_schema=False)

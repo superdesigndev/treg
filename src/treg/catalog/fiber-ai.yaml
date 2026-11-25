@@ -134,6 +134,52 @@ endpoints:
     untestable: "A real answer is a person's private address; the example is a structural fixture with reserved fake contact data."
     docs_url: https://api.fiber.ai/ai-docs/syncQuickContactReveal.md
 
+  - id: fiber-ai.people.phone.find
+    domain: contacts
+    capability: people.phone.find
+    miss:
+      status: 404
+      means: "`Profile not found` — the LinkedIn URL does not resolve to a known person, an expected outcome and free; do not retry the same URL"
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/contact-details/single
+    name: "Find a person's phone number by LinkedIn URL"
+    summary: "Phone numbers only, from a LinkedIn profile"
+    platform_request: {body.enrichmentType.getWorkEmails: false, body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: true}
+    input:
+      bodyType: json
+      body:
+        linkedinUrl: {type: string, required: true, note: "full LinkedIn URL, bare slug, Sales Navigator URN, or numeric user id", example: "https://www.linkedin.com/in/williamhgates/"}
+        enrichmentType:
+          type: object
+          required: true
+          note: "exactly these three flags on treg's key: phone only, the price this row is metered at (the all-on default bills the 5-credit bundle)"
+          properties:
+            getWorkEmails: {type: boolean, required: true, enum: [false]}
+            getPersonalEmails: {type: boolean, required: true, enum: [false]}
+            getPhoneNumbers: {type: boolean, required: true, enum: [true]}
+      note: "The phone split of syncQuickContactReveal. Pay only when a phone number comes back; an empty phoneNumbers list is free."
+    test_request:
+      body:
+        linkedinUrl: "https://www.linkedin.com/in/williamhgates/"
+        enrichmentType: {getWorkEmails: false, getPersonalEmails: false, getPhoneNumbers: true}
+    cost:
+      type: per_success
+      value: 3
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.fiber.ai/ai-docs/syncQuickContactReveal.md
+      checked: '2026-11-23'
+      confidence: verified
+      note: "Phone 3 credits on a hit; a found profile with no number and an unknown profile (404) are free."
+    added: '2026-11-23'
+    example_response: examples/fiber-ai.people.phone.find.json
+    untestable: "A real answer is a person's private phone number; the example is a structural fixture with a reserved fake number."
+    docs_url: https://api.fiber.ai/ai-docs/syncQuickContactReveal.md
+
   - id: fiber-ai.people.contacts.turbo
     added: '2026-08-20'
     domain: contacts
@@ -397,7 +443,7 @@ endpoints:
       bodyType: json
       body:
         searchParams: {type: object, required: false, note: "typed people filters. Titles use seniority groups (founder, c-suite, vp, director, …) not regex. Full schema at the docs URL"}
-        currentCompanies: {type: "array[object]", required: false, note: "pin to current employers by domain or LinkedIn slug/URL — top-level, not inside searchParams", example: [{domain: "stripe.com"}]}
+        currentCompanies: {type: array, items: {type: object}, required: false, note: "pin to current employers by domain or LinkedIn slug/URL — top-level, not inside searchParams", example: [{domain: "stripe.com"}]}
         pageSize: {type: integer, required: false, note: "1-1000, default 25 — 1 credit per profile returned", example: 1}
         cursor: {type: string, required: false}
       note: "operationId peopleSearch. Returns people, not emails/phones. Pipe LinkedIn URLs into fiber-ai.people.contacts.reveal."
@@ -463,7 +509,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        people: {type: "array[object]", required: true, note: "1-1000 items of {githubUsername, customerProvidedId?}. Spec field is githubUsername", example: [{githubUsername: "torvalds"}]}
+        people: {type: array, items: {type: object}, required: true, note: "1-1000 items of {githubUsername, customerProvidedId?}. Spec field is githubUsername", example: [{githubUsername: "torvalds"}]}
         outputType: {type: string, required: false, note: "linkedin (default) | email | both. 'both' is 2 credits/person; linkedin-only is 1", example: "linkedin"}
         overallContext: {type: string, required: false, note: "shared descriptor (e.g. 'Linux kernel maintainers') to disambiguate similar names"}
       note: "operationId githubToLinkedInTrigger. Async. Response output.githubAgentRunId is the id you poll with fiber-ai.people.github.to_linkedin.poll. Charges on successful resolution; polling is free. Match rate is not 100% — skip unresolved handles, do not retry."

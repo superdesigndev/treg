@@ -4,18 +4,17 @@
 and sets the first-touch `treg_utm` cookie. A page without it is not "under-tracked": it emits
 nothing, so its visitors, signups, activations and top-ups cannot be attributed to it, and no
 error ever says so. That is exactly how `/grokbot` shipped: a launch landing page behind its own
-route, hand-written HTML outside the `_page()` shell, carrying `/adtrack.js` and `/gtag.js` but not
+route, hand-written HTML outside the `_page()` shell, carrying `/click-id.js` and `/gtag.js` but not
 this — a week of launch traffic with zero pageviews (found 2026-09-07 while comparing landing
 routes, when the route simply did not appear in the data).
 
 The guard is a file-level invariant that needs no maintenance: any hand-written page in `web/`
-that is instrumented for ads (`/adtrack.js` or `/gtag.js`) is a marketing page, and a marketing page
+that is instrumented for ads (`/click-id.js` or `/gtag.js`) is a marketing page, and a marketing page
 is instrumented for analytics too. A new standalone landing page copied from an existing one is in
 scope the moment it exists.
 
-The server-rendered `_page()` shell is deliberately OUT of scope: it carries `/adtrack.js` but not
-`/sitetrack.js`, a product/legal call documented on `_page` itself. This file guards the
-hand-written surface only.
+The server-rendered `_page()` shell carries both tags itself; `test_agent_pages` guards it. This
+file guards the hand-written surface only.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ WEB_DIR = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
 # path with a trailing slash or a sub-directory, and it makes the tag invisible to a plain
 # `"/sitetrack.js" in text` check — the same check the other guards use.
 SITETRACK_TAG = re.compile(r'<script\s+src="/sitetrack\.js"')
-AD_TAG = re.compile(r'<script\s+src="/(?:adtrack|gtag)\.js"')  # a tag, not prose about one (privacy.html)
+AD_TAG = re.compile(r'<script\s+src="/(?:click-id|gtag)\.js"')  # a tag, not prose about one (privacy.html)
 
 
 def test_every_ad_instrumented_page_is_also_analytics_instrumented():
@@ -49,7 +48,7 @@ def test_every_ad_instrumented_page_is_also_analytics_instrumented():
             missing.append(page.name)
     assert not missing, (
         f"pages with ad tracking but no analytics: {missing}. Add "
-        '`<script src="/sitetrack.js"></script>` before `/adtrack.js`.'
+        '`<script src="/sitetrack.js"></script>` before `/click-id.js`.'
     )
 
 
@@ -57,7 +56,7 @@ def test_no_page_loads_a_tracking_script_by_relative_path():
     """`src="sitetrack.js"` (no leading slash) resolves only by luck of the route's shape."""
     bad = []
     for page in sorted(WEB_DIR.glob("*.html")):
-        for m in re.finditer(r'<script\s+src="([^"]*track\.js|[^"]*gtag\.js)"', page.read_text()):
+        for m in re.finditer(r'<script\s+src="([^"]*(?:track|click-id|gtag)\.js)"', page.read_text()):
             if not m.group(1).startswith("/"):
                 bad.append(f"{page.name}: {m.group(0)}")
     assert not bad, f"relative tracking script paths: {bad}"

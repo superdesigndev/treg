@@ -104,6 +104,16 @@ def test_the_outcome_is_judged_in_order_status_expect_error_204_miss():
     assert outcome.judge(two, 200, {"items": []}).state == "miss" and outcome.declares_miss(two)
 
 
+def test_ok_when_beside_a_status_makes_both_a_4xx_and_an_empty_2xx_a_miss():
+    ep = row(miss={"status": [404], "ok_when": {"path": "response", "op": "empty"}})
+    assert outcome.judge(ep, 404, {"detail": "Not found."}) == outcome.Outcome("miss", "status")
+    assert outcome.judge(ep, 200, []) == outcome.Outcome("miss", "miss")
+    assert outcome.judge(ep, 200, [{"phone_number": "+15555550100"}]) == outcome.Outcome("hit")
+    assert outcome.judge(ep, 400, {}) == outcome.Outcome("error", "status")
+    with pytest.raises(ValueError, match="ok_when judges a 2xx beside status"):
+        row(miss={"when": {"path": "response.a", "op": "absent"}, "ok_when": {"path": "response", "op": "empty"}})
+
+
 def test_an_outcome_plugin_that_raises_is_false(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.boom = lambda request, answer: 1 / 0
@@ -173,7 +183,7 @@ def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
 ])
 def test_a_request_repeating_a_single_value_or_with_an_unreadable_count_is_refused(query, body, refused):
     from treg.application.call.types import ResolutionFailed
-    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array[string]"},
+    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}},
                                     "limit": {"type": "integer"}}}
     ep = row(input_schema, price={"value": "1", "currency": "credit", "per": 10, "round": "up"},
              reserve={"rows": {"param": "query.limit", "default": {"value": 10, "source": "docs"}, "max": 100}})
@@ -342,6 +352,18 @@ def test_usage_meters_settle_from_the_frozen_basis_and_may_exceed_the_hold():
     assert call(ep, answer={"usage": {"in": 10, "details": [{"kind": "TXT", "n": 5}, {"kind": "IMG", "n": 3}]}})[1] \
         .actual_micro == 40000
     assert call(ep, answer={"other": 1})[1].actual_micro == 10000
+
+
+def test_a_declared_worst_case_is_held_while_a_missing_meter_settles_at_the_estimate():
+    ep = row(price={"value": "1", "currency": "credit"},
+             settle={"usage": {"path": "response.cost", "unit": "credit"}, "worst_case": "15"})
+    assert ep["cost"]["worst_case"] == 15
+    assert cost.worst_case_micro(ep, Rates()) == 300000
+    assert cost.worst_case_micro(row(settle={"usage": {"path": "response.cost", "unit": "credit"}}), Rates()) == 0
+    hold, decision = call(ep, answer={"other": 1})
+    assert hold == 20000 and decision.actual_micro == 20000
+    with pytest.raises(ValueError, match="worst_case belongs beside"):
+        row(settle={"count": {"path": "response.items"}, "worst_case": "15"})
 
 
 def test_a_header_report_is_scaled_and_a_settle_plugin_without_evidence_is_the_hold(monkeypatch):

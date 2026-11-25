@@ -13,8 +13,9 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      from the Cookie header too (the dashboard's `credentials:'include'` Try-it would otherwise leak
      our session token to the upstream); any other caller cookies are preserved.
   3. the credential(s) the tool's bindings inject — overwrite only their target header, query
-     parameter or top-level JSON field. A JSON binding buffers, parses and reserializes the object;
-     it is semantic JSON relay, not byte-faithful, and is forbidden for raw-body-signature APIs.
+     parameter or top-level JSON field, or fill their own `{name}` path segment. A JSON binding
+     buffers, parses and reserializes the object; it is semantic JSON relay, not byte-faithful, and
+     is forbidden for raw-body-signature APIs.
   4. on treg's SHARED key only (tier 4), the caller's `Idempotency-Key` is re-scoped per org by
      `scope_shared_idempotency_key` before the request is built. Every org shares one provider
      account there, so a provider that honors the header would hand org B the job org A created
@@ -49,11 +50,13 @@ from contextvars import ContextVar
 
 import httpx
 
-from ... import crypto, jsontext, oauth_providers
+from ... import jsontext, oauth_providers
+from .. import credential_cipher
 from ...application.call.types import GatewayFailed, UpstreamRequest, UpstreamResponse
 from ...config import TREG_USER_AGENT, get_settings
 from ...models import Secret, Tool
-from . import injectors
+from . import injectors, pathsegment
+from .ssrf import AddressLookupTimedOut
 
 # Connection-level headers that belong to a single hop and must NOT be forwarded as-is.
 _HOP_BY_HOP = frozenset(
@@ -228,6 +231,7 @@ async def relay(
         json_body = parsed
 
     # Apply every binding (a request may need several credentials at once).
+    path_values: dict[str, str] = {}
     for binding in tool.bindings:
         # A PLATFORM binding injects one of treg's own credentials (Google Ads' developer token),
         # read from settings rather than an org secret. Keeping it out of the org's secret store
@@ -241,16 +245,18 @@ async def relay(
                     "injection_failed", status_code=502,
                     detail=f"this server has no {setting} configured")
             try:
-                injectors.inject(headers, params, binding, value, json_body=json_body)
+                injectors.inject(headers, params, binding, value, json_body=json_body,
+                                 path_values=path_values)
             except ValueError as exc:
                 raise GatewayFailed(
                     "injection_failed", status_code=502,
                     detail=f"credential injection failed: {exc}") from exc
             continue
         secret = secrets[binding["secret_id"]]
-        raw = crypto.decrypt(secret.value)
+        raw = credential_cipher.opened(secret)
         try:
-            injectors.inject(headers, params, binding, raw, json_body=json_body)
+            injectors.inject(headers, params, binding, raw, json_body=json_body,
+                             path_values=path_values)
         except ValueError as exc:
             raise GatewayFailed(
                 "injection_failed", status_code=502,
@@ -259,6 +265,14 @@ async def relay(
         if proof := oauth_providers.connection_appsecret_proof(secret, binding, raw, upstream_url):
             params[:] = [(k, v) for (k, v) in params if k != "appsecret_proof"]
             params.append(("appsecret_proof", proof))
+
+    # A path binding fills only its own `{name}` segment of the upstream path.
+    try:
+        upstream_url = pathsegment.fill(upstream_url, path_values)
+    except ValueError as exc:
+        raise GatewayFailed(
+            "injection_failed", status_code=502,
+            detail=f"credential injection failed: {exc}") from exc
 
     # Only carry a body when the caller actually sent one — otherwise passing an (unsized) stream
     # makes httpx frame the request `Transfer-Encoding: chunked`, putting a bogus body-frame on a
@@ -285,10 +299,17 @@ async def relay(
     # Call-time SSRF guard: resolve the upstream host NOW and refuse an internal target — defeats DNS
     # rebinding (base_url was public at registration, its DNS now points at 169.254.169.254 / localhost).
     from . import health
-    if get_settings().proxy_ssrf_check and not health.host_is_public(upstream_req.url.host):
-        raise GatewayFailed(
-            "ssrf_refused", status_code=502,
-            detail="upstream host resolves to a non-public address")
+    if get_settings().proxy_ssrf_check:
+        try:
+            public = await health.host_is_public_async(upstream_req.url.host, health.host_is_public)
+        except AddressLookupTimedOut:
+            raise GatewayFailed(
+                "ssrf_refused", status_code=502,
+                detail="upstream host address lookup timed out") from None
+        if not public:
+            raise GatewayFailed(
+                "ssrf_refused", status_code=502,
+                detail="upstream host resolves to a non-public address")
     if before_outbound is not None:
         await before_outbound()
     if (on_send := ON_SEND.get()) is not None:

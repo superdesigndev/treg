@@ -177,16 +177,20 @@ class Usage(Model):
 
 
 class Settle(Model):
-    """Absent: the hold."""
+    """Absent: the hold. `worst_case`, beside a reported or usage settle, is the most one call can
+    settle at, in the price's currency: the hold is never below it."""
 
     count: Count | None = None
     reported: Reported | None = None
     usage: Usage | None = None
     plugin: PluginName | None = None
+    worst_case: Money | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Settle:
         _one_of(self, ("count", "reported", "usage", "plugin"))
+        if self.worst_case is not None and self.reported is None and self.usage is None:
+            raise ValueError("settle.worst_case belongs beside settle.reported or settle.usage")
         return self
 
 
@@ -213,9 +217,14 @@ ClientErrors = Annotated[list[Annotated[int, Field(ge=400, le=499)]], Field(min_
 
 
 class MissRule(Model):
+    """`status` lists the 4xx answers that are a miss (narrowed by `when` or `plugin`); without
+    `status`, `when` or `plugin` judges a 2xx. `ok_when`, beside `status`, judges a 2xx too, for a
+    provider that answers one miss with a 404 and another with an empty 2xx."""
+
     status: ClientErrors | None = None
     when: ResponsePredicate | None = None
     plugin: PluginName | None = None
+    ok_when: ResponsePredicate | None = None
     means: str | None = None
 
     @model_validator(mode="after")
@@ -223,6 +232,8 @@ class MissRule(Model):
         _one_of(self, ("when", "plugin"), at_most=True)
         if not {"status", "when", "plugin"} & self.model_fields_set:
             raise ValueError("a miss rule needs status, when or plugin")
+        if self.ok_when is not None and self.status is None:
+            raise ValueError("ok_when judges a 2xx beside status; without status, use when")
         return self
 
 
@@ -385,6 +396,8 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
         out["usage"] = {"unit": usage["unit"], **(
             {"terms": [{"path": relative(t["path"]), "rate": float(t["rate"])} for t in usage["terms"]]}
             if "terms" in usage else {"path": relative(usage["path"])})}
+    if settle.get("worst_case") is not None:
+        out["worst_case"] = _number(settle["worst_case"])
     out.update(provenance)
     if "note" in price:
         out["note"] = price["note"]

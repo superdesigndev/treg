@@ -15,6 +15,7 @@ regexes = [
   '''sk_live_DEMO0000PLACEHOLDER''',      # src/treg/sandbox.py — demo starter (credential to nothing)
   '''phx_DEMO0000PLACEHOLDER''',          # src/treg/sandbox.py — demo starter (credential to nothing)
   '''sk_live_ABCDEFGHIJKLMNOP1234''',     # tests/test_localrun.py — proves output redaction masks a key
+  '''sk-live-0123456789abcdef''',         # tests/test_catalog_params.py — proves a refusal never quotes the value
   '''sk_test_123''',                      # tests/*.py — generic fake test key
   # IndexNow site keys are PUBLIC BY DESIGN: the protocol requires publishing the key at
   # https://<site>/<key>.txt, so anyone can read it — proving site ownership is its whole job.

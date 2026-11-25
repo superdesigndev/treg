@@ -72,6 +72,19 @@ def test_eligibility_rule_in_order():
     assert "free for us" in R.eligible(_route(ratio=None, agg_price_micro=20_000), our_cost=free, platform_eligible=True, policy=None, our_usd=0).reason
 
 
+def test_an_async_job_never_overflows():
+    """A job started at an aggregator lives on its account: our key cannot poll it, so the hold
+    could never close on the real outcome. The sync disables the row, and the view drops it even
+    before the next sync does."""
+    from treg.domain.capacity.routes_view import RouteView
+    cost = {"type": "per_success", "value": 1, "unit": "call"}
+    verdict = R.eligible(_route(), our_cost=cost, platform_eligible=True, policy=None, async_job=True)
+    assert not verdict.enabled and verdict.reason.startswith("async job")
+    view = RouteView()
+    view._routes = [_route(endpoint_id="icypeas.people.email.find", enabled=True)]
+    assert view.for_endpoint("icypeas.people.email.find") == []
+
+
 def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
     ours = [{"endpoint_id": "hunter.people.email.find", "provider": "hunter", "method": "GET",
              "path": "/email-finder", "base_url": "https://api.hunter.io/v2"},
@@ -123,7 +136,8 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     # What was verified but is NOT on, and why — every reason is one the rule names.
     off = {k: by[k].disabled_reason for k in verified - on}
     allowed = ("ratio ", "unit mismatch", "endpoint not platform-eligible",
-               "policy for scrapecreators disallows overflow", "no price on one side", "free for us")
+               "policy for scrapecreators disallows overflow", "no price on one side", "free for us",
+               "async job")
     assert all(r.startswith(allowed) for r in off.values()), off
     # a route with ratio 6.5 in the seed never enables, and a re-sync without it disables it
     bad = {**seed[0], "endpoint_id": "findymail.search.business-profile", "aggregator": "monid",
@@ -222,7 +236,30 @@ _OUT_OF_CREDITS = [
      b'{"message":"linkedinURL must be a valid URL"}'),
     ("orbisearch", 403, b'{"detail":"Insufficient credits: 0 available, 0.2 needed"}',
      b'{"detail":"Not authenticated"}'),
+    ("trykitt", 418, b'{"message":"Our system thinks your activity may be violating our fair use policy. (CASE 001) '
+     b'Please open a support ticket to get unblocked","response_code":418}',
+     b'{"message":"I\'m a teapot","response_code":418}'),
+    ("apify", 403, b'{"error":{"type":"platform-feature-disabled","message":"You\'ve reached your monthly usage limit '
+     b'of $100.00, so Actor runs and other Apify services are blocked until your monthly usage cycle resets."}}',
+     b'{"error":{"type":"insufficient-permissions","message":"You do not have permission to run this Actor."}}'),
 ]
+
+
+def test_a_plan_period_cap_is_a_quota_and_a_concurrency_cap_a_burst():
+    day = (b'{"error":"limit: 1000 search per 86400s for plan pro","metric":"search",'
+           b'"window_secs":86400,"cap":1000,"retry_after_s":3600}')
+    sig = S.classify("crawl4ai", 429, {"retry-after": "3600"}, day)
+    assert sig.kind == "quota" and sig.resets_at is not None
+    at_once = (b'{"error":"limit: 10 concurrent parallel for plan pro","metric":"concurrent",'
+               b'"window_secs":0,"cap":10,"retry_after_s":1}')
+    assert S.classify("crawl4ai", 429, {"retry-after": "1"}, at_once).kind == "burst"
+    pace = (b'{"error":"limit: 60 search per 60s for plan pro","metric":"search",'
+            b'"window_secs":60,"cap":60,"retry_after_s":5}')
+    assert S.classify("crawl4ai", 429, {"retry-after": "5"}, pace).kind == "burst"
+    one_client = (b'{"error":"limit: 500 search per 86400s for this client","metric":"search",'
+                  b'"window_secs":86400,"cap":500,"retry_after_s":3600}')
+    assert not S.is_exhausting(S.classify("crawl4ai", 429, {"retry-after": "3600"}, one_client)), \
+        "a cap on one client never locks the endpoint for every team"
 
 
 @pytest.mark.parametrize("provider, status, out, _", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
@@ -234,6 +271,25 @@ def test_an_out_of_credits_answer_is_a_balance_signature(provider, status, out, 
 @pytest.mark.parametrize("provider, status, _, other", _OUT_OF_CREDITS, ids=[r[0] for r in _OUT_OF_CREDITS])
 def test_the_same_status_with_another_body_is_no_capacity_signal(provider, status, _, other):
     assert S.classify(provider, status, {}, other) is None
+
+
+def test_a_forager_throttle_is_a_burst_not_a_lock():
+    burst = S.classify("forager", 429, {"retry-after": "1"},
+                       b'{"detail":"Request was throttled. Expected available in 1 second."}')
+    assert burst.kind == "burst" and not S.is_exhausting(burst)
+
+
+def test_jobspipe_spent_credits_lock_but_a_plan_gate_and_a_rate_limit_do_not():
+    spent = S.classify("jobspipe", 402, {"retry-after": "1296000"},
+                       b'{"error":"Monthly request quota exceeded","message":"Upgrade to continue.",'
+                       b'"upgrade_url":"https://jobspipe.dev/pricing"}')
+    assert spent.kind == "balance" and S.is_exhausting(spent)
+    gate = S.classify("jobspipe", 402, {}, b'{"error":"Monitors need the Builder package or above '
+                                           b'(they deliver to webhooks)"}')
+    assert gate.kind == "unknown" and not S.is_exhausting(gate)
+    for headers in ({"retry-after": "1"}, {}):
+        burst = S.classify("jobspipe", 429, headers, b'{"error":"Rate limit exceeded"}')
+        assert burst.kind == "burst" and not S.is_exhausting(burst)
 
 
 def test_a_dropcontact_batch_larger_than_a_funded_balance_never_locks():
@@ -381,8 +437,9 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "descovo",  # funded plan credits remain; its 402 error code is undocumented and unobserved
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
-    "apify", "branddev", "brightdata", "coresignal", "crustdata", "dataforseo",
+    "branddev", "brightdata", "coresignal", "crustdata",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
@@ -395,6 +452,7 @@ _UNRECORDED_SIGNATURE = {
     "firecrawl",  # credit balance remains; documented 402 was not deliberately forced
     "search1api",  # funded credits remain; documented generic 402 was not deliberately forced
     "bravesearch",  # prepaid credits remain; no empty-credit response was deliberately forced
+    "localfalcon",  # invoiced per request, no prepaid balance to exhaust; no empty-credit response exists to record
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
@@ -408,6 +466,7 @@ _UNRECORDED_SIGNATURE = {
     "financialdatasets",
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
+    "fundable",  # unlimited API account; an exhausted-credit response was not forced
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
@@ -425,6 +484,7 @@ _UNRECORDED_SIGNATURE = {
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
     "theirstack",  # funded API credits remain; the documented 402 body was not observed
+    "forager",  # funded plan credits remain; the out-of-credits answer is undocumented and unobserved
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
 }
@@ -484,6 +544,8 @@ def test_orthogonal_build_wraps_the_vendor_request_unchanged():
                         "query": {"limit": "1", "domain": "stripe.com"}, "body": {"name": "Patrick"}}
     req2 = orthogonal.build(_route(agg_path="/api/v1/{id}/x"), "K", [], None, {"id": "42"})
     assert req2.json == {"api": "findymail", "path": "/api/v1/42/x"}
+    req3 = orthogonal.build(_route(agg_path="/api/v1/{id}/x"), "K", [], None, {"id": "a/../b?c#d"})
+    assert req3.json["path"] == "/api/v1/a%2F..%2Fb%3Fc%23d/x"
 
 
 def test_orthogonal_parse_success_price_upstream_error_and_contract():

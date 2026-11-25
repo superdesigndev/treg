@@ -75,6 +75,12 @@ def test_no_dead_internal_link(field: str):
 USECASE = "/use-cases/find-professional-emails"
 
 
+async def test_use_case_note_heading_keeps_decimal_prices_together(clients: AsyncClient):
+    response = await clients.get("/use-cases/how-ai-answers-mention-your-brand")
+    assert response.status_code == 200
+    assert "costs about $0.003 to $0.004.</h4><p>The DataForSEO example" in response.text
+
+
 async def test_non_canonical_casing_redirects_to_the_one_spelling(clients: AsyncClient):
     """Lookups are case-insensitive, but the request's own bytes must never be rendered into the
     canonical / alternate / breadcrumb (CodeQL py/reflective-xss) — and `/agents/ChatGPT` serving a
@@ -177,18 +183,19 @@ def test_every_workflow_step_capability_and_endpoint_exist():
             assert ep_id in {e["id"] for e in eps}, (key, name, ep_id)
 
 
-async def test_pages_off_the_shared_shell_carry_adtrack(clients: AsyncClient):
-    """Every page rendered through `_page()` must load `/adtrack.js` exactly once.
+async def test_pages_off_the_shared_shell_carry_attribution(clients: AsyncClient):
+    """Every page rendered through `_page()` loads `/sitetrack.js` and `/click-id.js` exactly once.
 
-    Without it no `treg_ad` cookie is set, so `org.ad_gclid` stays NULL and `adsconv.queue()`
-    no-ops: a paid click can sign up and make its first call and Google never hears about it,
+    Without `/click-id.js` no `treg_ad` cookie is set, so `org.ad_gclid` stays NULL and
+    `adsconv.queue()` no-ops: a paid click can sign up and make its first call and Google never
+    hears about it. Without `/sitetrack.js` a search visitor landing here sends no pageview and gets
+    no `treg_utm` cookie, and the next page they open counts them as direct traffic. Both fail
     silently. `_page()` is the one shell, so one of its callers stands for all of them.
-
-    `/sitetrack.js` is deliberately NOT asserted here; see `_page()`'s docstring.
     """
     r = await clients.get("/use-cases/verify-an-email")
     assert r.status_code == 200
-    assert r.text.count('<script src="/adtrack.js"></script>') == 1
+    assert r.text.count('<script src="/sitetrack.js"></script>') == 1
+    assert r.text.count('<script src="/click-id.js"></script>') == 1
 
 
 async def test_possessive_slug_redirects_hold_in_every_shape_they_were_live(clients: AsyncClient):

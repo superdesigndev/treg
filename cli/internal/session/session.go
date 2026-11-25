@@ -38,6 +38,7 @@ type Proc struct {
 var sessionVars = map[string][]string{
 	"claude-code": {"CLAUDE_CODE_SESSION_ID"},
 	"codex":       {"CODEX_THREAD_ID", "CODEX_SESSION_ID"},
+	"copilot-cli": {"COPILOT_AGENT_SESSION_ID"},
 }
 
 var presenceVars = []struct {
@@ -47,6 +48,18 @@ var presenceVars = []struct {
 	{"claude-code", []string{"CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "CLAUDE_PID"}},
 	{"codex", []string{"CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_CI"}},
 	{"gemini-cli", []string{"GEMINI_CLI"}},
+	{"copilot-cli", []string{"COPILOT_AGENT_SESSION_ID", "COPILOT_CLI"}},
+	{"copilot-vscode", []string{"COPILOT_AGENT"}},
+}
+
+// VS Code runs its Copilot agent's commands in a hidden terminal it marks, and the terminal's
+// ancestors are VS Code's own processes, which name no agent. With no nearer agent on the tree, the
+// mark decides.
+var hostVars = []struct {
+	agent string
+	key   string
+}{
+	{"copilot-vscode", "COPILOT_AGENT"},
 }
 
 var safeID = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
@@ -80,6 +93,14 @@ func Resolve(configPath string, env map[string]string, procs []Proc) Session {
 		if a := agentOf(procs[i], env); a != "" {
 			agent, process = a, &procs[i]
 			break
+		}
+	}
+	if agent == "" && len(procs) > 0 {
+		for _, h := range hostVars {
+			if env[h.key] != "" {
+				agent = h.agent
+				break
+			}
 		}
 	}
 	if agent == "" && len(procs) == 0 {
@@ -129,6 +150,8 @@ func agentOf(p Proc, env map[string]string) string {
 		return "opencode"
 	case p.Name == "gemini" || (p.Name == "node" && env["GEMINI_CLI"] == "1"):
 		return "gemini-cli"
+	case p.Name == "copilot":
+		return "copilot-cli"
 	}
 	return ""
 }

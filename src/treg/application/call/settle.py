@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import update
-from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError
 
 from ... import adsconv, archive
 from ...config import get_settings
@@ -27,7 +27,7 @@ from ...domain import money as ledger
 from ...domain.asynctasks import json_path
 from ...domain.money import settlement as settlement_basis
 from ...domain.catalog import store as catalog_store
-from ...infra.db import session_maker
+from ...infra.db import DB_BUSY_ERRORS, is_db_busy, session_maker
 from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
@@ -35,6 +35,7 @@ from ...infra.money_trace import mark_money, money_stage
 from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
 from .idempotency import _release_idempotent_claim
+from . import allowance as allowance_runtime
 from . import cost as call_cost
 from . import keyslots
 from .resolve import MarketplaceCall, _openmart_credits, _usd_to_micro
@@ -615,7 +616,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         rows = doc.get("accounts")
         row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
         return _rows_billed_micro(mk, ep, row_count)
-    if provider == "contactout" and cost:
+    if provider == "contactout" and cost and cost.get("contactout"):
         from . import contactout
         return contactout.observed(cost, mk.request_data, doc)
     if provider == "millionverifier" and mk.endpoint_id == "millionverifier.people.email.verify":
@@ -708,6 +709,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             except Exception:  # noqa: BLE001 — a predicate that cannot decide settles at the estimate
                 pass
     return None
+
+
+def rejected_submission_charge_micro(mk: MarketplaceCall, body: bytes, headers) -> int:
+    """The amount a 2xx response with no accepted task settles at on the call path."""
+    if (mk.settlement_basis.get("amount") or {}).get("non_deferred_charge"):
+        return settlement_basis.non_deferred_charge_micro(
+            mk.settlement_basis, call_cost.document(body))
+    return _observed_cost_micro(mk, body, headers) or 0
 
 
 def _dig(doc, dotted: str):
@@ -1101,7 +1110,8 @@ def _decide_legacy(mk: MarketplaceCall, status_code: int | None, body: bytes, he
     terminal = None
     if billable and (mk.settlement_basis.get("amount") or {}).get("kind") == "usage" and body:
         terminal = _usage_document(body)
-    actual = ((0 if observed == 0 else settlement_basis.settle(
+    actual = ((observed_override if observed_override is not None else
+               0 if observed == 0 else settlement_basis.settle(
         mk.settlement_basis, {"observed_micro": observed, "terminal": terminal})) if billable else None)
     return billable, reason, observed, actual
 
@@ -1153,8 +1163,42 @@ async def _platform_settle(
     # the caller because the aggregator's prepaid account still incurred the cost.
     call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
     charged = 0
-    if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
-            and status_code is not None):
+    deferrable = (mk.deferred is not None and billable and overflow_spend is None
+                  and observed_override is None and status_code is not None)
+    meta = {"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
+            "cost_source": ("provider" if observed is not None else
+                            mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
+            **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
+               if cached_hit else {})}
+    if mk.allowance_epoch is not None and mk.allowance_tags:
+        meta["tags"] = dict(mk.allowance_tags)
+    if mk.allowance_epoch is not None and deferrable:
+        # A routed child that took from the allowance: its parent charges or gives back the take
+        # (`close_deferred`), as it settles or releases a deferred hold.
+        epoch, mk.allowance_epoch = mk.allowance_epoch, None
+        mk.allowance_marked = False
+        mk.deferred.append(DeferredSettle(
+            call_id=call_id, billable=billable, actual_micro=actual, archive_use=archive_use,
+            payer_org_id=mk.payer_org_id, reserved_micro=mk.reserved_micro,
+            reserved_at=mk.reserved_at, reason=reason or f"not_billable_{status_code}",
+            meta=meta, epoch=epoch, endpoint_id=mk.endpoint_id))
+        if finalized is not None:
+            finalized()
+        return decision.charged_micro, observed
+    if mk.allowance_epoch is not None:
+        # Reserved from the team's allowance: there is no hold to close. The charge is queued
+        # and the unused part goes back to the counter; a release writes nothing at all.
+        epoch, mk.allowance_epoch = mk.allowance_epoch, None
+        marked, mk.allowance_marked = mk.allowance_marked, False
+        mk.allowance_charged = billable
+        charged = await allowance_runtime.finish(
+            mk.payer_org_id, call_id, epoch, mk.reserved_micro or 0, endpoint_id=mk.endpoint_id,
+            billable=billable, actual_micro=actual, archive_use=archive_use if billable else None,
+            marked=marked, meta=meta)
+        if finalized is not None:
+            finalized()
+        return charged, observed
+    if deferrable:
         # A routed child: the parent decides whether the caller pays (a routed call that fails
         # charges nothing). Leave the hold open, hand the parent what this settle WOULD do, and
         # tell the child it is finished. The parent closes it exactly once (`close_deferred`);
@@ -1166,11 +1210,7 @@ async def _platform_settle(
             call_id=call_id, billable=billable, actual_micro=actual, archive_use=archive_use,
             payer_org_id=mk.payer_org_id, reserved_micro=mk.reserved_micro,
             reserved_at=mk.reserved_at, reason=reason or f"not_billable_{status_code}",
-            meta={"provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
-                  "cost_source": ("provider" if observed is not None else
-                                  mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
-                  **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
-                     if cached_hit else {})}))
+            meta=meta))
         if finalized is not None:
             finalized()
         return decision.charged_micro, observed
@@ -1219,19 +1259,26 @@ async def _platform_settle(
                         with money_stage(db, "overflow_spend"):
                             await overflow_spend_ledger.add_in_transaction(
                                 db, overflow_spend[0], overflow_spend[1], overflow_spend[2])
+                    overran = await allowance_runtime.overran(
+                        db, mk.payer_org_id, charged, mk.reserved_micro)
                 with timing.phase("commit"):
                     await db.commit()
+                frozen = allowance_runtime.freeze(mk.payer_org_id) if overran else None
                 if finalized is not None:
                     finalized()
-                return charged
+            if frozen is not None:
+                await asyncio.shield(frozen)
+            return charged
 
     try:
         try:
             charged = await _close()
-        except (PoolTimeoutError, DBAPIError) as exc:
+        except (*DB_BUSY_ERRORS, DBAPIError) as exc:
             # asyncpg deadlocks arrive as SQLAlchemy DBAPIError with SQLSTATE on its orig wrapper.
-            # Retry only 40P01, never an error-message match or an arbitrary database failure.
-            if isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01":
+            # Retry only 40P01 and a refused connection (raised before any statement ran), never
+            # an error-message match or an arbitrary database failure.
+            if (isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01"
+                    and not is_db_busy(exc)):
                 raise
             # _close has exited its session, rolling back all staged money/overflow writes.
             # One fresh transaction gets the same bounded retry as a pool timeout; another failure
@@ -1247,7 +1294,8 @@ async def _platform_settle(
 
 @dataclass
 class DeferredSettle:
-    """One routed child's hold, left open for its parent to close (`close_deferred`)."""
+    """One routed child's hold, or its allowance take (`epoch`), left open for its parent to
+    close (`close_deferred`)."""
 
     call_id: str
     billable: bool
@@ -1258,6 +1306,8 @@ class DeferredSettle:
     payer_org_id: int | None = None
     reserved_micro: int | None = None
     reserved_at: float | None = None
+    epoch: int | None = None
+    endpoint_id: str = ""
 
 
 def hold_admission_wait_s(reserved_at: list[float | None]) -> float | None:
@@ -1270,14 +1320,24 @@ def hold_admission_wait_s(reserved_at: list[float | None]) -> float | None:
     return ledger.hold_ttl_s() - age - get_settings().hold_grace_s / 2
 
 
-async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str = "") -> int:
+async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str = "",
+                         mark: str | None = None) -> int:
     """Close every hold a routed call's children left open, exactly once each, in one transaction.
     `charge=True` settles each billable one as its own settle would have; `charge=False` releases all
     of them, because a routed call that fails charges the caller nothing. Returns what was charged.
-    Never raises: a hold that fails to close is released later by the reaper, in the caller's favour."""
+    Never raises: a hold that fails to close is released later by the reaper, in the caller's favour.
+
+    A child's allowance take is finished the same way, before the holds: its charge queued or the
+    take given back (`_finish_takes`). `mark` is the routed root's in-flight mark, which every
+    queued charge keeps until it is written."""
     if not items:
         return 0
     pending, items[:] = list(items), []
+    takes = [d for d in pending if d.epoch is not None]
+    pending = [d for d in pending if d.epoch is None]
+    taken = await _finish_takes(takes, charge=charge, why=why, mark=mark) if takes else 0
+    if not pending:
+        return taken
     # One session closes every hold. A batch that draws blocks stays `deferred` and also leases
     # orgs that this same session only refunds. A batch that only releases or refunds is `release`.
     consumes = any(_consumes_blocks(
@@ -1311,14 +1371,40 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
                     if uses:
                         with money_stage(db, "archive_use"):
                             await archive.note_org_uses_in_transaction(db, uses)
+                    overran = sorted({
+                        d.payer_org_id for d, amount in zip(pending, amounts)
+                        if await allowance_runtime.overran(
+                            db, d.payer_org_id, amount, d.reserved_micro)})
                 with timing.phase("commit"):
                     await db.commit()
+                frozen = [allowance_runtime.freeze(org_id) for org_id in overran]
+        for tried in frozen:
+            if tried is not None:
+                await asyncio.shield(tried)
     except Exception as exc:
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,
             exc_info=True)
-        return 0
-    return total
+        return taken
+    return taken + total
+
+
+async def _finish_takes(takes: list[DeferredSettle], *, charge: bool, why: str,
+                        mark: str | None) -> int:
+    """Finish each child's take once: charge a billable one when the routed call answers, give
+    back every other. A take older than `hold_ttl_s()` is given back as the reaper releases a
+    hold that old, in the caller's favour: the allowance hold it came from may be closed by now."""
+    oldest = time.monotonic() - ledger.hold_ttl_s()
+    calls = []
+    for d in takes:
+        billable = charge and d.billable and (d.reserved_at is None or d.reserved_at > oldest)
+        calls.append(allowance_runtime.finish(
+            d.payer_org_id, d.call_id, d.epoch, d.reserved_micro or 0, endpoint_id=d.endpoint_id,
+            billable=billable, actual_micro=d.actual_micro,
+            archive_use=d.archive_use if billable else None,
+            marked=billable and mark is not None, mark_id=mark if billable else None,
+            meta=d.meta if billable else {**d.meta, "reason": why or d.reason}))
+    return sum(await asyncio.gather(*calls))
 
 
 async def _finish_cancelled_call(
@@ -1358,6 +1444,19 @@ async def _finish_cancelled_call(
                     ) if possible])
         if mk is not None and mk.metered:
             mk.call_id = None
+        if mk is not None and mk.allowance_epoch is not None:
+            # The parent reserved from the allowance, so it has no hold: return the take (or
+            # charge it, when the purchase was already sent). An overflow child keeps its hold.
+            epoch, mk.allowance_epoch = mk.allowance_epoch, None
+            marked, mk.allowance_marked = mk.allowance_marked, False
+            mk.allowance_charged = charge_hold
+            hold_ids = [hold_id for hold_id in hold_ids if hold_id != call_ref]
+            await allowance_runtime.finish(
+                mk.payer_org_id, call_ref, epoch, mk.reserved_micro or 0,
+                endpoint_id=mk.endpoint_id, billable=charge_hold, marked=marked,
+                meta={"provider": mk.provider, "cost_type": mk.cost_type, "status_code": None,
+                      "reason": "call_cancelled_after_purchase_sent",
+                      **({"tags": dict(mk.allowance_tags)} if mk.allowance_tags else {})})
         if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release
@@ -1390,6 +1489,10 @@ async def _finish_cancelled_call(
             except (Exception, asyncio.CancelledError):
                 logging.getLogger("treg.ledger").error(
                     "cancellation release failed for call %s", call_ref, exc_info=True)
+        if mk is not None and mk.allowance_charged:
+            # The charge stands, so the key must not run again: the claim stays pending for a
+            # retry to resolve from the charge once it is written (`_resolve_stale_claim`).
+            return
         try:
             await _release_idempotent_claim(claim)
         except (Exception, asyncio.CancelledError):

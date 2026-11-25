@@ -16,12 +16,13 @@ from urllib.parse import quote
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import delete, func, tuple_, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import audit, crypto, email as email_sender, ratestore
 from ..application.onboard import demo as demo_seed
+from ..application.onboard import first_run
 from ..infra import db as database
 from ..infra import turnstile
 from ..config import get_settings
@@ -221,6 +222,8 @@ class OAuthAuthorizationView:
     client_kind: str
     user_email: str
     teams: list[dict]
+    scope: str = ""
+    new_team: str = ""   # a new account: the first team approving makes, by its likely name
 
 
 async def _check_browser(
@@ -313,19 +316,26 @@ async def verify_email_login(
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
     async with database.session_maker() as db:
-        entry = await ratestore.kv_get(db, OTP_NS, email)
-        if entry is None:
+        # Like approve_cli_login: UPDATE serializes on PostgreSQL and SQLite (where FOR UPDATE is
+        # ignored). Keep the lock through the compare and the attempt decrement.
+        row = (await db.execute(update(Ephemeral).where(
+            Ephemeral.ns == OTP_NS, Ephemeral.k == email,
+        ).values(k=Ephemeral.k).returning(Ephemeral)
+          .execution_options(synchronize_session=False))).scalar_one_or_none()
+        if row is None or row.expires_at < _utcnow_naive():
+            if row is not None:
+                await db.delete(row)
             await db.commit()
             raise EmailAuthError("invalid_code")
+        entry = row.v
         if not hmac.compare_digest(entry["hash"], crypto.hash_token(code.strip())):
-            entry["attempts"] -= 1
-            if entry["attempts"] <= 0:
-                await ratestore.kv_pop(db, OTP_NS, email)
+            if entry["attempts"] <= 1:
+                await db.delete(row)
             else:
-                await ratestore.kv_put(db, OTP_NS, email, entry, ttl_s=None)
+                row.v = {**entry, "attempts": entry["attempts"] - 1}
             await db.commit()
             raise EmailAuthError("invalid_code")
-        await ratestore.kv_pop(db, OTP_NS, email)
+        await db.delete(row)
         created: set[int] = set()
         proven: set[int] = set()
         try:
@@ -923,6 +933,42 @@ def _sheets_client() -> OAuthClient | None:
                        redirect_uris=uris, scope=mcp_oauth.SHEETS_SCOPE)
 
 
+def _m365_client() -> OAuthClient | None:
+    """"Microsoft 365 Copilot", the first-party confidential client of treg's declarative agent.
+    Not a table row: its one redirect URI is Microsoft's, and it exists only while
+    `m365_client_secret` is set."""
+    if not get_settings().m365_client_secret:
+        return None
+    return OAuthClient(client_id=mcp_oauth.M365_CLIENT_ID, kind="first_party",
+                       client_name=_FIRST_PARTY_NAMES[mcp_oauth.M365_CLIENT_ID], client_uri="",
+                       logo_uri="", redirect_uris=[mcp_oauth.M365_REDIRECT_URI], scope="")
+
+
+def _vendor_console_client() -> OAuthClient | None:
+    """The vendor console, a first-party confidential client that only reads who signed in. Not a
+    table row: it exists only while both its secret and its one redirect URI are set."""
+    s = get_settings()
+    uri = s.vendor_console_redirect_uri.strip()
+    if not s.vendor_console_client_secret or not mcp_oauth.valid_redirect_uri(uri):
+        return None
+    return OAuthClient(client_id=mcp_oauth.VENDOR_CONSOLE_CLIENT_ID, kind="first_party",
+                       client_name=_FIRST_PARTY_NAMES[mcp_oauth.VENDOR_CONSOLE_CLIENT_ID],
+                       client_uri="", logo_uri="", redirect_uris=[uri],
+                       scope=mcp_oauth.VENDOR_CONSOLE_SCOPE)
+
+
+_FIRST_PARTY_NAMES = {mcp_oauth.SHEETS_CLIENT_ID: "treg for Sheets",
+                      mcp_oauth.M365_CLIENT_ID: "Microsoft 365 Copilot",
+                      mcp_oauth.VENDOR_CONSOLE_CLIENT_ID: "treg vendor console"}
+
+
+def _authenticate_client(issued_to: str, client_secret: str) -> None:
+    """A confidential client proves itself with its secret on every token request; a public client
+    has none, its code is bound by PKCE, and a secret it sends is ignored."""
+    if mcp_oauth.client_secret_matches(issued_to, client_secret) is False:
+        raise OAuthServerError("invalid_client", "client authentication failed", status=401)
+
+
 async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient | None:
     """One client row, whichever door it came through.
 
@@ -932,6 +978,10 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
     """
     if client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return _sheets_client()
+    if client_id == mcp_oauth.M365_CLIENT_ID:
+        return _m365_client()
+    if client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        return _vendor_console_client()
     row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
            ).scalar_one_or_none()
     fresh_enough = row is not None and (
@@ -942,19 +992,35 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
         return row
     if not client_id.startswith("https://"):
         return row  # a dcr client we do not know is simply unknown
+    await db.commit()  # the metadata fetch below holds no pooled connection
     doc = await mcp_oauth.fetch_client_id_metadata(client_id)
     if doc is None:
         return row  # keep a stale copy over nothing: a transient fetch failure is not a revocation
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if row is None:
-        row = OAuthClient(client_id=client_id, kind="cimd")
-        db.add(row)
-    row.kind, row.refreshed_at = "cimd", now
-    row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
-    row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
-    await db.commit()
-    await db.refresh(row)
-    return row
+    return await _store_cimd_client(client_id, doc, db)
+
+
+async def _store_cimd_client(client_id: str, doc: dict, db: AsyncSession) -> OAuthClient:
+    """Write a fetched document onto its row. Two first sights of one client_id may both insert;
+    the loser of the unique constraint updates the winner's row instead."""
+    for attempt in range(2):
+        row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
+               ).scalar_one_or_none()
+        if row is None:
+            row = OAuthClient(client_id=client_id, kind="cimd")
+            db.add(row)
+        row.kind, row.refreshed_at = "cimd", datetime.now(timezone.utc).replace(tzinfo=None)
+        row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
+        row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if attempt:
+                raise
+            continue
+        await db.refresh(row)
+        return row
+    raise AssertionError("unreachable")
 
 
 def _wrong_resource(resource: str) -> str | None:
@@ -1004,10 +1070,26 @@ def _client_resource(client: OAuthClient, resource: str, scope: str) -> str:
         return mcp_oauth.sheets_resource_url()
     if mcp_oauth.is_sheets_resource(resource):
         raise _redirect_refusal("invalid_target", "this resource is only for treg for Sheets")
+    if client.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        if resource and not mcp_oauth.is_vendor_console_resource(resource):
+            raise _redirect_refusal(
+                "invalid_target",
+                f"the vendor console issues tokens for {mcp_oauth.vendor_console_resource_url()} only")
+        return mcp_oauth.vendor_console_resource_url()
+    if mcp_oauth.is_vendor_console_resource(resource):
+        raise _redirect_refusal("invalid_target", "this resource is only for the vendor console")
     effective = _effective_mcp_resource(resource, scope)
     if (bad_target := _wrong_resource(effective)) is not None:
         raise _redirect_refusal("invalid_target", bad_target)
     return effective
+
+
+def _granted_scope(client: OAuthClient, resource: str, requested: str) -> str:
+    if client.client_id == mcp_oauth.SHEETS_CLIENT_ID:
+        return requested
+    if client.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        return mcp_oauth.VENDOR_CONSOLE_SCOPE
+    return mcp_oauth.granted_mcp_scope(requested, mcp_oauth.mcp_resource_version(resource) or "v1")
 
 
 def _same_mcp_resource(a: str, b: str) -> bool:
@@ -1067,7 +1149,7 @@ async def prepare_oauth_authorization(
             raise _redirect_refusal(
                 "invalid_request", "PKCE with code_challenge_method=S256 is required",
             )
-        _client_resource(client, resource, scope)
+        granted = _granted_scope(client, _client_resource(client, resource, scope), scope)
 
         user = await _user_from_session(session_cookie, db)
         if user is None:
@@ -1085,7 +1167,9 @@ async def prepare_oauth_authorization(
                 # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
                 teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
                               "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
-        if not teams:
+        new_team = (first_run.team_names(user.email)[0]
+                    if _first_team_due(client, user, memberships, sso_org_id) else "")
+        if not teams and not new_team:
             raise _redirect_refusal(
                 "access_denied", "this account is not a member of any team",
             )
@@ -1096,13 +1180,23 @@ async def prepare_oauth_authorization(
             client_kind=client.kind,
             user_email=user.email,
             teams=teams,
+            scope=granted,
+            new_team=new_team,
         )
+
+
+def _first_team_due(client: OAuthClient, user: User, memberships: list, sso_org_id: int | None) -> bool:
+    """A brand-new account reaches consent before the dashboard has made its first team (the parked
+    authorization resumes straight after sign-in), so consent makes it, as the dashboard would."""
+    return (not memberships and not user.onboarded and sso_org_id is None
+            and client.client_id != mcp_oauth.SHEETS_CLIENT_ID)
 
 
 async def approve_oauth_authorization(
     *, decision: str, client_id: str, redirect_uri: str, response_type: str, scope: str,
     code_challenge: str, code_challenge_method: str, resource: str, org_id: int,
-    session_cookie: str,
+    session_cookie: str, ad_cookie: str = "", utm_cookie: str = "", referral_cookie: str = "",
+    affiliate_cookie: str = "", ref_code: str = "", client_country: str = "",
 ) -> str:
     async with database.session_maker() as db:
         client = await _authorize_request(
@@ -1121,9 +1215,24 @@ async def approve_oauth_authorization(
         if user is None:
             raise OAuthServerError("access_denied", "not signed in", status=401)
         sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
-        if client.client_id == mcp_oauth.SHEETS_CLIENT_ID and not org_id:
+        memberships = (await db.execute(
+            select(Membership).where(Membership.user_id == user.id))).scalars().all()
+        first_team_due = not org_id and _first_team_due(client, user, memberships, sso_org_id)
+    if first_team_due:
+        # Outside the session above: the first run opens and commits its own.
+        try:
+            made = await first_run.first_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie,
+                                              referral_cookie=referral_cookie,
+                                              affiliate_cookie=affiliate_cookie,
+                                              ref_code=ref_code, client_country=client_country)
+        except signup.SignupError as exc:
+            raise _redirect_refusal("access_denied", f"could not create your team ({exc.kind})") from exc
+        org_id = made.get("org_id") or 0
+    async with database.session_maker() as db:
+        if client.client_id in (mcp_oauth.SHEETS_CLIENT_ID, mcp_oauth.VENDOR_CONSOLE_CLIENT_ID) and not org_id:
             # A Sheets grant names no team at consent: each request picks one with X-Treg-Org. The
             # token still carries a DEFAULT team, the person's first, for a request that names none.
+            # The vendor console's token is the person's too: it lists every team they may use.
             candidates = (await db.execute(select(Membership).where(Membership.user_id == user.id)
                                            .order_by(Membership.id))).scalars().all()
             org_id = 0
@@ -1143,7 +1252,7 @@ async def approve_oauth_authorization(
             code=_secrets.token_urlsafe(32), client_id=client.client_id, user_id=user.id, org_id=org_id,
             redirect_uri=redirect_uri, code_challenge=code_challenge,
             resource=effective_resource,
-            scope=scope,
+            scope=_granted_scope(client, effective_resource, scope),
             sso_org_id=sso_org_id,
             expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
             + timedelta(seconds=AUTH_CODE_TTL_S))
@@ -1152,7 +1261,8 @@ async def approve_oauth_authorization(
         return code.code
 
 
-async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -> dict:
+async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str,
+                         client_secret: str) -> dict:
     """Exchange a refresh token for a new access token, ROTATING the refresh token as we go.
 
     The retired row is kept, not deleted. That is what makes a replay recognisable: a deleted token
@@ -1166,6 +1276,8 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
             OAuthRefresh.token_hash == crypto.hash_token(refresh_token)))).scalar_one_or_none()
         if row is None:
             raise OAuthServerError("invalid_grant", "unknown refresh token")
+        # Before the replay check: without the secret, a copied refresh token cannot even revoke.
+        _authenticate_client(row.client_id, client_secret)
 
         if row.retired_at is not None:
             # Already spent. Either a client retried after a dropped response, or someone else has a
@@ -1254,11 +1366,12 @@ async def _refresh_grant(*, refresh_token: str, client_id: str, resource: str) -
 
 async def exchange_oauth_token(
     *, grant_type: str, code: str, redirect_uri: str, client_id: str, code_verifier: str,
-    resource: str, refresh_token: str,
+    resource: str, refresh_token: str, client_secret: str = "",
 ) -> dict:
     if grant_type == "refresh_token":
         return await _refresh_grant(
             refresh_token=refresh_token, client_id=client_id, resource=resource,
+            client_secret=client_secret,
         )
     if grant_type != "authorization_code":
         raise OAuthServerError(
@@ -1280,6 +1393,7 @@ async def exchange_oauth_token(
             raise OAuthServerError("invalid_grant", "code expired")
         if client_id and client_id != row.client_id:
             raise OAuthServerError("invalid_grant", "code was issued to a different client")
+        _authenticate_client(row.client_id, client_secret)
         if redirect_uri != row.redirect_uri:
             raise OAuthServerError(
                 "invalid_grant", "redirect_uri does not match the one the code was issued for",
@@ -1307,6 +1421,10 @@ async def exchange_oauth_token(
             user_id=row.user_id, org_id=row.org_id, scope=row.scope,
             audience=mcp_oauth.normalize_resource(row.resource),  # heal pre-normalization spellings
             token_version=user.token_version, sso_org_id=row.sso_org_id)
+        if row.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+            # It reads the identity once and keeps its own session: no grant is left behind.
+            return {"access_token": token, "token_type": "Bearer",
+                    "expires_in": mcp_oauth.ACCESS_TTL_SECONDS, "scope": row.scope}
         refresh = await _issue_refresh(family_id=_secrets.token_urlsafe(16), client_id=row.client_id,
                                        user_id=row.user_id, org_id=row.org_id, resource=row.resource,
                                        scope=row.scope, db=db, sso_org_id=row.sso_org_id)
@@ -1314,6 +1432,28 @@ async def exchange_oauth_token(
         return {"access_token": token, "token_type": "Bearer",
                 "expires_in": mcp_oauth.ACCESS_TTL_SECONDS, "scope": row.scope,
                 "refresh_token": refresh}
+
+
+async def vendor_console_identity(bearer: str) -> dict | None:
+    """Who a vendor console token names: the address, whether it is verified, and every team the
+    person may act for there (role included, so the console can require an owner or admin). None
+    for any token that is not a live vendor console token."""
+    claims = mcp_oauth.read_access_token(
+        bearer, expected_audience=mcp_oauth.vendor_console_resource_url()) if bearer else None
+    if claims is None:
+        return None
+    async with database.session_maker() as db:
+        user = await db.get(User, claims["sub"])
+        if user is None or user.suspended or user.demo or user.token_version != claims["tv"]:
+            return None
+        rows = (await db.execute(
+            select(Membership, Org).join(Org, Org.id == Membership.org_id)
+            .where(Membership.user_id == user.id).order_by(Membership.id))).all()
+        teams = [{"id": org.id, "slug": org.slug, "name": org.name, "role": m.role}
+                 for m, org in rows
+                 if not org.suspended and not org.demo
+                 and await sso_team_allowed(db, m, claims.get("sso_org_id"))]
+        return {"email": user.email, "email_verified": bool(user.email_verified_at), "teams": teams}
 
 
 async def revoke_oauth_token(token: str) -> None:
@@ -1348,7 +1488,7 @@ async def list_oauth_grants(user_id: int) -> list[dict]:
             out.append({
                 "grant": row.family_id,
                 "client": (client.client_name if client else "")
-                          or ("treg for Sheets" if row.client_id == mcp_oauth.SHEETS_CLIENT_ID else row.client_id),
+                          or _FIRST_PARTY_NAMES.get(row.client_id, row.client_id),
                 "team": org.slug if org else None,
                 "team_name": org.name if org else None,
                 "granted": grant.granted_at.isoformat(timespec="seconds") if grant else None,

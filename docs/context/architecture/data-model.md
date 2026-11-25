@@ -31,6 +31,7 @@ sources:
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0100_idempotentcall_archive_live_index.py
+  - src/treg/alembic/versions/0122_archive_retention_cursor.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
@@ -57,6 +58,11 @@ sources:
   - src/treg/alembic/versions/0056_searchlog_verdict.py
   - src/treg/alembic/versions/0065_call_verdict.py
   - src/treg/alembic/versions/0066_endpointdaystat_verdicts.py
+  - src/treg/alembic/versions/0112_callrecord_outcome.py
+  - src/treg/alembic/versions/0116_stamped_baseline_indexes.py
+  - tests/test_stamped_baseline_indexes_migration.py
+  - src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py
+  - tests/test_callrecord_drop_unused_indexes_migration.py
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
@@ -134,7 +140,9 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `ArenaVerificationSnapshot` | `application.arena_verification_insights.publish_snapshot` |
 | `RankingsSnapshot` | `application.rankings.refresh`, replacing the row whole |
 | `AdClickStash` | `application.signup.stash_ad_click` |
-| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py` ([archive](archive.md)) |
+| `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py`; deletes through `governance.teams` for erasure and row retention ([archive](archive.md)) |
+| `ArchiveRetentionCursor` | `application/archive_retention.py` (`treg-worker archive retain`) |
+| `ArchiveObjectPending` | `application/archive_retention.py` (`treg-worker archive retain`); the recorder only reads it `FOR SHARE` |
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |
@@ -153,6 +161,8 @@ Rollups and analytics tables are optional read models: they never determine a mo
 - **`Secret`**: expiry (`expires_at`, `last_refresh_at`, `last_error`) is a separate axis from
   `health_status`; a non-refreshable token stays healthy until it silently dies.
   `authorization_method` selects a grant's method; never infer it from the token's shape.
+  `refreshable` is recorded with every oauth write so lists never open the credential
+  ([auth-secrets](auth-secrets.md), Encryption).
 - **`PendingOAuth`** carries every per-provider quirk through the redirect so the callback
   exchanges the code exactly as the consent URL was built.
 - **`ProviderResource`** deletes tombstone the row, preserving retry authorization and audit.
@@ -171,10 +181,29 @@ Rollups and analytics tables are optional read models: they never determine a mo
   same transaction as its terminal update, and the worker acknowledges only an unchanged revision.
 - **`Ephemeral`** is the DB home for state that must survive restarts and stay correct across
   instances (OTPs, rate windows, CLI pairing); see [api](../interface/api.md), "CLI pairing".
+  `rate_check` reads and rewrites a key's hit list without a lock unless called with `atomic=True`
+  (agent payments), which locks the row through an upsert until the commit.
   `_prune_handshakes` deletes at most 100 expired pairing rows per CLI start, so physical removal
   can lag while reads still enforce expiry.
 - **`AdConversion`**: unique `(org_id, action)` is the sole idempotency mechanism, not a
   check-then-insert; rows are written synchronously in the firing transaction, unlike audit.
+- **`AffiliateLead`**: one per team (unique `org_id`), staged in the team-creation transaction; it is
+  both the Dub lead outbox and the record that the team is affiliate-attributed
+  ([affiliates](affiliates.md)). A check constraint keeps exactly one source: `click_id` (a link
+  click) or `partner_code` (a typed code, with the `country` Dub requires for it). Only a
+  `verified_at` row attributes; `stripe_synced_at` records that an existing Stripe customer was
+  brought in line. No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateBonus`**: one per paid top-up of a partner-brought team (unique `payment_intent`),
+  staged with the credit and decided by the affiliate worker: `outcome` records what the partner
+  offer paid and why, `block_id` the granted `bonus` block ([affiliates](affiliates.md) "Partner
+  offer"). No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateCardClaim`**: a card (Stripe's opaque `fingerprint`) that already earned a fixed
+  partner offer, unique. No `org_id`: it outlives team deletion, so a deleted team never frees its
+  card to earn the offer again.
+- **`AffiliateClaim`**: the person a partner brought, by `promo_inbox`, staged with the lead. No
+  `org_id` and no foreign key: like `SignupPromoClaim` it outlives the team and the user, so a deleted
+  team never makes its creator attributable again. Not unique, so a racing second team leaves a second
+  row rather than failing the signup.
 - **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
   delete. `delete_project` sweeps rules naming the project.
 - **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer
@@ -191,6 +220,14 @@ Rollups and analytics tables are optional read models: they never determine a mo
 - **Arena** tables have no audit foreign key because audit retention is independent; none stores
   raw requests, responses, contacts or credentials. `RankingsSnapshot` holds no team, key or money,
   so team deletion has nothing to remove.
+
+- **`AgentPayer` / `AgentPayment`**: the payer team of one agent-payments wallet address on one
+  network (primary key `(network, address)`), and each payment it presented (`proof_id` UNIQUE,
+  status `credit|settling|settled|failed|expired`; an MPP zero-amount proof leaves no row). `asset`,
+  `pay_to` and `expires_at` let the reconciler find the transfer on chain; `stripe_payment_intent` is
+  set once a payment settled to Stripe is recorded there. `governance.teams.make_payer_team` stages
+  `AgentPayer`; `application.agent_payments` is the only writer of `AgentPayment`. Team deletion
+  removes both ([agent payments](agent-payments.md)).
 
 ## Org flow control configuration storage
 
@@ -241,9 +278,11 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   find the rows after the cursor.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
-- A database that predates Alembic was stamped at the baseline and may lack baseline indexes
-  (`ix_callrecord_call_ref` is the known case, rebuilt by `0072`). Check `pg_indexes` before
-  relying on one.
+- A database that predates Alembic was stamped at the baseline and lacked every baseline index on a
+  column the old `init_db` added by `ALTER TABLE ... ADD COLUMN`. `0072` builds
+  `ix_callrecord_call_ref`; `0116` builds the ones on `org`, `invite`, `denyrule`, `secret` and
+  `tool`; `0117` drops the six single-column `callrecord` indexes no query used, so every database
+  matches the stamped ones. Check `pg_indexes` before relying on one.
 - A covering index on `callrecord` for reports was rejected: it would copy wide string columns and
   slow every audit insert. Reports read rollups instead.
 
@@ -260,13 +299,16 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
 
 - `kind`: `call`, `local_run`, or `async_poll` (an authorized free status read, excluded from
   `/calls` before pagination).
-- `refused_by`: a treg refusal's mechanism; null for an upstream answer. `endpoint_stats` excludes
+- `refused_by`: a treg refusal's mechanism; null for an upstream answer (`payment` is an
+  agent-payments 402 asking a keyless caller to pay or prove its wallet). `endpoint_stats` excludes
   refused rows.
 - `call_ref` is the `X-Treg-Call-Id` and the ledger's `call_id` on a metered call: one value joins
   audit, money and the builder's records.
 - `upstream_ms`: from sending the request until the answer is read (or headers arrive, when it
   streams on); excludes token refresh, archive lookup, retry sleeps and treg's work.
 - `verdict`: one word from the contract's closed list, never content ([catalog](catalog.md)).
+- `outcome`: what a v2 row's own declaration judged the answer (`hit`, `miss`, `error`,
+  `not_found`); null where the status rule decides. Reliability reads it first ([catalog](catalog.md)).
 - `archive_key_hash` / `archive_content_hash`: the link for `GET /calls/{id}/result`
   ([archive](archive.md)).
 
@@ -292,6 +334,9 @@ Redaction in `application.call.evidence` is security-sensitive and order matters
 A caller-scoped replay cache keyed by `(membership_id, key)`. `delete_membership` removes it
 explicitly and the FK cascades as a backstop, so token revocation never 500s on a cached answer.
 
+- `request_fingerprint` hashes method, path, query and body, a JSON body as its canonical
+  serialization (`_canonical_json`); a row stored with the raw-bytes fingerprint still matches
+  the same bytes (`_raw_request_fingerprint`). A 409 on a live `pending` row names its `call_ref`.
 - A `pending` row is a lease owned by one call's `call_ref`: the owner renews `created_at` every
   `IDEMPOTENCY_LEASE_RENEW_S`, and every store, release and renewal is fenced on `call_ref`.
 - A lease older than `IDEMPOTENCY_STALE_PENDING_S` with no open hold or pending async task under
@@ -305,7 +350,8 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
 - `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
   `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
-  `archive.bytes_on_file` confirms and whose own sha256 matches. The row keeps `archive_key_hash` /
+  `archive.bytes_on_file` confirms and whose own sha256 matches; after hashing it holds those keys `FOR SHARE SKIP
+  LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
   `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
   closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
 
@@ -354,7 +400,8 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   `timeutil.as_naive`.
 - `verify_db()` is the read-only lifespan and worker guard: it refuses a missing Fernet key on a
   real database, requires the stamp at head, refuses a known older revision, and warns but serves
-  on an unknown newer one so an additive release can roll back.
+  on an unknown newer one (all digits and above this build's head, `db._is_newer_revision`) so an
+  additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
 - `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
@@ -370,8 +417,9 @@ All production schema execution goes through `maintenance._upgrade_schema`. An e
 database runs `alembic upgrade head`; a non-empty unstamped database is refused without inspection
 (it must pass through adoption release 0.14.x); an unknown newer revision is refused. Scripts ship
 inside the wheel; Alembic runs through `asyncio.to_thread` because `env.py` owns its own
-`asyncio.run`. On Postgres `env.py` sets `lock_timeout = 5s` and commits each revision separately,
-so `maintenance`'s bounded retry resumes at the revision that timed out.
+`asyncio.run`. On Postgres `env.py` sets `lock_timeout` from `TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s) and
+commits each revision separately, so `maintenance`'s bounded retry resumes at the revision that
+timed out ([deploy](../ops/deploy.md), PostgreSQL lock queueing).
 
 - The drift guard upgrades to head, autogenerates against `SQLModel.metadata` and requires an
   empty diff (SQLite in the suite, Postgres in CI).

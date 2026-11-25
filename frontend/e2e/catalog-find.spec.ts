@@ -55,12 +55,14 @@ test('an empty auto answer is one line, never a page', async ({ page }) => {
 })
 
 test('a platform name being typed filters the shelves and gets an answer above them; one character does not ask', async ({ page }) => {
+  await page.clock.install()
   const asked = await answer(page, { verdict: 'strong', rows: [row('hunter.people.email.find', 0.9)] })
   const everyCard = await page.locator('.cat-card').count()
   await box(page).fill('t')
-  await page.waitForTimeout(1200)
+  await page.clock.runFor(2000)                                              // well past the typing pause
   expect(asked, 'one character does not ask').toEqual([])
   await box(page).fill('tiktok')
+  await page.clock.runFor(2000)
   await expect.poll(() => asked).toEqual(['tiktok'])
   await expect(page.locator('.fa .ui-tbody .ui-tr')).toHaveCount(1)
   const names = await page.locator('.cat-card .cat-name b').allTextContents()
@@ -113,4 +115,18 @@ test('a result opened from the Catalog page leads to its job, and Back returns t
   await expect(page.locator('.pl.cat h1')).toContainText('tools for agents')      // the Catalog page, not "Your own tools"
   await expect(box(page)).toHaveValue('find a work email')
   await expect(page.locator('.fa .ui-tbody .ui-tr')).toHaveCount(1)                 // the answer is still there
+})
+
+test('the search page gives cards to vendors any agent can call and folds own-key-only vendors into one line', async ({ page }) => {
+  const extract = (id: string, eligible: boolean) => ({ ...row(id, 0.91), platform: 'web',
+    platform_label: 'Open web & SEO data', capability: 'web.extract',
+    capability_description: 'Extract clean content from web pages', platform_eligible: eligible })
+  await page.route('**/catalog/find?**', route => route.fulfill({ status: 200, contentType: 'application/x-ndjson',
+    body: JSON.stringify({ event: 'candidates', candidates: [] }) + '\n'
+        + JSON.stringify({ event: 'judged', verdict: 'strong', named: '', read: 3, high: 0.7, rows: [
+          extract('vendor-a.web.scrape', true), extract('vendor-b.web.scrape', false),
+          extract('vendor-c.web.extract', false), extract('vendor-d.web.fetch', true)] }) + '\n' }))
+  await page.goto('/search?q=scraping')
+  await expect(page.locator('.sp-card .sp-vendor')).toHaveText(['vendor-a', 'vendor-d'])
+  await expect(page.locator('.sp-folded')).toHaveText(/2 more providers need your own API key\.\s*See them all/)
 })

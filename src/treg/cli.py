@@ -521,6 +521,8 @@ def _show_failure_diagnostics(resp: httpx.Response) -> None:
     print(line, file=sys.stderr)
     if notice:
         print(f"treg: {notice}", file=sys.stderr)
+    elif relayed and (review := headers.get("X-Treg-Review-Pending-Text")):
+        print(f"treg: {review}", file=sys.stderr)
     if resp.status_code == 401 and not relayed and os.environ.get("TREG_TOKEN"):
         print("treg: TREG_TOKEN was rejected, and it overrides `treg login`: set it to a current key",
               file=sys.stderr)
@@ -640,9 +642,9 @@ def cmd_login(args, cfg) -> None:
     # session with one click, else offers every configured door (GitHub / Google / email code).
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
-    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The browser
-    # must echo the code back before it finishes, so a login you didn't start — someone mailing you a
-    # /login?cli=… link — can't be approved into a token for them. If the server is too old to know
+    # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The person
+    # types the code from this terminal on the sign-in page, so a login you didn't start — someone
+    # mailing you a /login?cli=… link — can't be approved into a token for them. If the server is too old to know
     # /start, fall back to a locally-minted id (no code) so login still works.
     code = None
     start_exc = None
@@ -666,16 +668,13 @@ def cmd_login(args, cfg) -> None:
             f"  then retry `treg login`.\n"
             f"  (error: {start_exc})"
         )
-    # The code rides in the URL FRAGMENT (never sent to the server, so it stays out of request logs):
-    # the /login page displays it for a visual match against this terminal instead of making the user
-    # type it. The server still validates the code at approve time — the guard itself is unchanged.
     ad_link = _pending_ad_link()
-    url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "") + (f"#code={code}" if code else "")
+    url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "")
     # flush=True for non-TTY agent shells where stdout is block-buffered — the pairing code must
     # appear immediately so an agent driving a browser can see and verify it.
     print(f"Opening your browser to sign in…\nIf it doesn't open, visit:\n  {url}\n", flush=True)
     if code:
-        print(f"  The sign-in page shows this code — check it matches:  {_B}{_TEAL}{code}{_R}\n", flush=True)
+        print(f"  Type this code on the sign-in page:  {_B}{_TEAL}{code}{_R}\n", flush=True)
     print("Waiting for authorization…", flush=True)
     try:
         webbrowser.open(url)
@@ -922,7 +921,7 @@ def _splash() -> None:
         import tty
     except ImportError:
         return
-    title, sub = "tools-registry", " — the tool catalog for your agent"
+    title, sub = "treg", " - the tool catalog for your agent"
     chars = ([("▚", f"{_A}{_B}"), (" ", "")] + [(c, _B) for c in title] + [(c, _M) for c in sub])
     frames = _dither_frames(chars)
 
@@ -947,7 +946,7 @@ def _splash() -> None:
         sys.stdout.flush()
 
 
-def _brand(sub: str) -> None: print(f"\n{_A}{_B}▚ tools-registry{_R} {_M}— {sub}{_R}")
+def _brand(sub: str) -> None: print(f"\n{_A}{_B}▚ treg{_R} {_M}- {sub}{_R}")
 def _ok(t: str) -> None: print(f"  {_G}✓{_R} {t}")
 def _dim(t: str) -> None: print(f"{_M}{t}{_R}")
 
@@ -1208,6 +1207,8 @@ def _run_catalog(cfg: dict, args) -> None:
     if tier == "platform":
         _kv("served", "on treg's key — you need no account with this provider")
         _kv("price", f"~${a.get('estimated_cost_usd', 0):g} per call, from your team balance")
+    elif tier == "anonymous":
+        _kv("served", "free, no key needed — a verified public route")
     elif tier in ("tool", "credential"):
         if a.get("metered"):
             # An oauth-billed provider (X): the credential is the team's, the upstream bill is
@@ -1219,9 +1220,12 @@ def _run_catalog(cfg: dict, args) -> None:
     else:
         _kv("served", "not yet")
         _dim(f"  {detail}")
-        _tip("Nobody on your team has a key for this provider, and treg is not serving it on its "
-             "own key. Connect one and this same call works:")
-        _cmd(f"treg connections connect --provider {ep.get('provider') or '<provider>'}")
+        # an older server sends no connect_command; a keyless public API sends it empty: nothing to connect
+        connect = a.get("connect_command", f"treg connections connect --provider {ep.get('provider') or '<provider>'}")
+        if connect:
+            _tip("Nobody on your team has a key for this provider, and treg is not serving it on its "
+                 "own key. Connect one and this same call works:")
+            _cmd(connect)
         return
 
     _section("③ Make the call")
@@ -1918,11 +1922,13 @@ def _import_env(args, cfg, env_path: str) -> None:
                     val = values.get(a.secret_name)
                     if not val:
                         print(f"  ✗ {a.tool_name}: {a.secret_name} has no value in the env — skipped"); continue
-                if a.tool_name in existing_tools:               # already registered → skip (or replace) BEFORE writing a secret
+                legacy = prov._legacy_slug(a.detection.provider or "")
+                found = a.tool_name if a.tool_name in existing_tools else (legacy if legacy in existing_tools else None)
+                if found:                                       # already registered → skip (or replace) BEFORE writing a secret
                     if not args.replace:
-                        print(f"  · {a.tool_name}: already registered (use --replace)")
-                        print(f"    ↗ {_detail_url(cfg, 'tool', a.tool_name)}"); continue
-                    c.delete(f"/tools/{existing_tools[a.tool_name]}")
+                        print(f"  · {found}: already registered (use --replace)")
+                        print(f"    ↗ {_detail_url(cfg, 'tool', found)}"); continue
+                    c.delete(f"/tools/{existing_tools[found]}")
                     if a.secret_name in existing_secrets:
                         c.delete(f"/secrets/{existing_secrets[a.secret_name]}")
                 elif a.secret_name in existing_secrets:         # stale orphan secret from a prior failed run
@@ -2075,12 +2081,11 @@ def _import_add_cli(args, cfg) -> None:
         rt = c.post("/tools", json={"name": name, "base_url": base_url, "bindings": bindings, "cli": profile})
         if rt.status_code >= 400:
             sys.exit(f"tool failed ({rt.status_code}) {rt.text[:120]}")
-    # An unknown bin is NOT on the server allow-list (the RCE guard), so it runs LOCALLY; server-run needs
-    # an admin to allow-list the bin. If a key was bound it's also a callable HTTP tool.
+    # The CLI runs locally; if a key was bound it's also a callable HTTP tool.
     print(f"✓ Registered '{name}'. Run it locally: `treg cli run {name}`.")
     print(f"  ↗ {_detail_url(cfg, 'tool', name)}")
     if bindings:
-        print(f"  (key stored — also a callable API tool; to run '{bin_}' on the SERVER too, an admin adds it to TREG_RUN_ALLOWED_BINS.)")
+        print("  (key stored — also a callable API tool.)")
     import json as _json
     entry = {"provider": name.title(), "tokens": [envvar.split("_")[0]] if envvar else [], "base_url": base_url,
              "auth": {"shape": "bearer"},
@@ -2253,6 +2258,8 @@ def _import_llm(c, unknowns: list, env_path: str, args) -> None:
             tool_name = f"{prov._slug(e.get('provider') or var)}-{n}"; n += 1
         if args.replace and var in existing_secrets:      # replace: clear the old secret + tool first
             existing_tools.get(tool_name) and c.delete(f"/tools/{existing_tools[tool_name]}")
+            legacy = prov._legacy_slug(e.get("provider") or var)
+            legacy != tool_name and existing_tools.get(legacy) and c.delete(f"/tools/{existing_tools[legacy]}")
             c.delete(f"/secrets/{existing_secrets[var]}")
         elif var in existing_secrets:
             print(f"  · {var}: already registered (use --replace)"); continue
@@ -2542,15 +2549,14 @@ from .domain.asynctasks import ExtractionError as _AsyncExtractionError  # noqa:
 from .domain.asynctasks import artifact as _async_artifact  # noqa: E402
 from .domain.asynctasks import extract_submission as _extract_submission  # noqa: E402
 from .domain.asynctasks import fetch_command as _async_fetch_command  # noqa: E402
+from .domain.asynctasks import poll_command as _async_poll_command  # noqa: E402
+from .domain.asynctasks import poll_inputs as _async_poll_inputs  # noqa: E402
 from .domain.asynctasks import shown as _shown  # noqa: E402
 from .domain.asynctasks import classify_terminal as _classify_terminal  # noqa: E402
 from .domain.asynctasks import finished_on_submission as _finished_on_submission  # noqa: E402
 from .domain.asynctasks import max_age as _async_max_age  # noqa: E402
 from .domain.asynctasks import json_path as _json_path  # noqa: E402
-
-
-def _async_param(rule: dict) -> tuple[str, str]:
-    return str(rule["in"]), str(rule["name"])
+from .domain.asynctasks import is_pending_response as _is_pending_response  # noqa: E402
 
 
 def _clock_report(clock, message: str) -> None:
@@ -2587,11 +2593,12 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
         return {"code": 1, "response": submission, "error": str(exc)}
     task_id = extracted.task_id
     poll = descriptor["poll"]
+    poll_body = None
     if poll.get("endpoint"):
-        _, param_name = _async_param(poll["param"])
         target = poll["endpoint"]
-        params = [(param_name, task_id)]
-        recovery = f"treg call {target} -p {shlex.quote(param_name + '=' + task_id)}"
+        query, poll_body = _async_poll_inputs(poll["param"], task_id)
+        params = list(query)
+        recovery = _async_poll_command(target, poll["param"], task_id)
     else:
         target = extracted.poll_url
         params = []
@@ -2614,7 +2621,7 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
                         "error": "timed out while waiting for the async task"}
             clock.sleep(interval if failures == 0 else min(60.0, interval * (2 ** (failures - 1))))
             try:
-                response = call_fn(target, params)
+                response = call_fn(target, params) if poll_body is None else call_fn(target, params, poll_body)
             except (httpx.RequestError, OSError) as exc:
                 failures += 1
                 _clock_report(clock, f"async poll retry {failures}/5 after a network error: {exc}")
@@ -2622,6 +2629,17 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
                     return {"code": 3, "task_id": str(task_id), "recovery": recovery,
                             "error": f"polling failed five consecutive times: {exc}"}
                 continue
+            if response.status_code >= 400:
+                try:
+                    pending_document = response.json()
+                except ValueError:
+                    pending_document = None
+                if _is_pending_response(descriptor, response.status_code, pending_document):
+                    failures = 0
+                    _clock_report(clock, f"async task {_shown(task_id)}: "
+                                         f"{_shown(descriptor['pending_response']['equals'])} "
+                                         f"({int(clock.monotonic() - start)}s elapsed)")
+                    continue
             if response.status_code >= 500:
                 failures += 1
                 _clock_report(clock, f"async poll retry {failures}/5 after HTTP {response.status_code}")
@@ -2700,6 +2718,8 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
         meta["replay"] = True
     if upstream_failed := headers.get("X-Treg-Upstream-Failed"):
         meta["upstream_failed"] = upstream_failed
+    if review := headers.get("X-Treg-Review-Pending-Text"):
+        meta["review_pending"] = review
     if headers.get(CAPACITY_HEADER) == EXHAUSTED:
         meta["capacity"] = EXHAUSTED
     if headers.get("X-Treg-Async"):
@@ -2707,7 +2727,7 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
     if kind := headers.get("X-Treg-Hint"):
         meta["hint"] = kind
     if routed := headers.get("X-Treg-Routed-Tool"):
-        meta["routed_tool"] = routed
+        meta["routed_alternative"] = routed
     return {"result": result, "_treg": meta}
 
 
@@ -2890,10 +2910,11 @@ def cmd_call(args, cfg) -> None:
         except (TypeError, ValueError):
             sys.exit("treg: X-Treg-Async is not valid JSON")
 
-        def call_fn(target, poll_params):
+        def call_fn(target, poll_params, poll_body=None):
             # Dynamic poll URLs still travel THROUGH treg. Calling the absolute upstream URL from
             # the CLI would bypass server-side credential injection and the host safety check.
-            polled = c.get(f"/call/{target}", params=poll_params)
+            polled = (c.get(f"/call/{target}", params=poll_params) if poll_body is None
+                      else c.post(f"/call/{target}", params=poll_params, json=poll_body))
             _note(status_class=f"{polled.status_code // 100}xx")
             return polled
 
@@ -2910,8 +2931,7 @@ def cmd_call(args, cfg) -> None:
             task_id = extracted.task_id
             poll = descriptor.get("poll") or {}
             if poll.get("endpoint"):
-                _, resume_name = _async_param(poll["param"])
-                recovery = f"treg call {poll['endpoint']} -p {shlex.quote(resume_name + '=' + task_id)}"
+                recovery = _async_poll_command(poll["endpoint"], poll["param"], task_id)
             elif extracted.poll_url:
                 recovery = f"treg call {shlex.quote(extracted.poll_url)}"
         if task_id not in (None, ""):
@@ -2919,7 +2939,7 @@ def cmd_call(args, cfg) -> None:
             if recovery:
                 print(f"resume: {recovery}", file=sys.stderr)
         if reserved := submission.headers.get("X-Treg-Cost-Micro"):
-            print(f"generation reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
+            print(f"async task reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
         try:
             outcome = await_async_task(
                 descriptor, submission, call_fn, _CliAwaitClock(), getattr(args, "timeout", None)
@@ -4464,13 +4484,18 @@ def cmd_balance(args, cfg) -> None:
     # failing — so it gets said even though it costs a second request.
     auto = _billing_autotopup(cfg)
     if auto and auto.get("enabled"):
+        cap = f"cap {_usd(auto['monthly_cap_micro'])}/mo" if auto.get("monthly_cap_micro") else "no monthly cap"
         print(f"  {_M}auto top-up{_R}  on — add {_usd(auto['amount_micro'])} when it drops "
-              f"below {_usd(auto['threshold_micro'])}  {_M}(cap {_usd(auto['monthly_cap_micro'])}/mo, "
+              f"below {_usd(auto['threshold_micro'])}  {_M}({cap}, "
               f"{_usd(auto['month_spend_micro'])} used){_R}")
     elif auto and auto.get("disabled_reason"):
         print(f"  {_AM}auto top-up off — {auto['disabled_reason']}. Run `treg topup --auto on` after "
               f"fixing your card.{_R}")
-    items = (b.get("entries") or {}).get("items") or []
+    entries = b.get("entries") or {}
+    items = entries.get("items") or []
+    if not items and entries.get("withheld"):  # below admin: an empty list is withheld, not "nothing spent"
+        print(f"\n  {_M}the ledger is shown to team admins — `treg calls` lists this team's calls.{_R}\n")
+        return
     if not items:
         print(f"\n  {_M}no ledger activity yet — nothing has been spent.{_R}\n")
         return
@@ -4592,8 +4617,11 @@ def _topup_auto(args, cfg) -> None:
     print(f"\n  {_G}Auto top-up is on.{_R} Add {_usd(auto.get('amount_micro') or 0)} whenever the "
           f"balance drops below {_usd(auto.get('threshold_micro') or 0)}, at most "
           f"{auto.get('per_hour') or 5} times per hour.")
-    print(f"  {_M}Monthly ceiling {_usd(auto.get('monthly_cap_micro') or 0)} — we stop there, "
-          f"whatever happens.{_R}\n")
+    if auto.get("monthly_cap_micro"):
+        print(f"  {_M}Monthly ceiling {_usd(auto['monthly_cap_micro'])} — we stop there, "
+              f"whatever happens.{_R}\n")
+    else:
+        print(f"  {_M}No monthly ceiling. Set one with --cap.{_R}\n")
 
 
 def _confirm_consent() -> bool:
@@ -7005,7 +7033,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="with --auto on: how many dollars to add on each automatic refill")
     tu.add_argument("--cap", dest="auto_cap", type=float, default=None,
                     help="with --auto on: the most auto top-up may charge in a calendar month "
-                         "(default 2000; 0 restores the default)")
+                         "(default: no cap; 0 removes one)")
     tu.add_argument("--per-hour", dest="auto_per_hour", type=int, default=None,
                     help="with --auto on: how many automatic refills may run in one hour (1-60, default 5)")
     tu.set_defaults(fn=cmd_topup)

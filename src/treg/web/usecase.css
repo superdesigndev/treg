@@ -53,10 +53,13 @@ code{font-family:var(--mono);font-size:.9em;background:var(--panel2);
   font-size:15px;color:var(--ink)}
 .brand:hover{text-decoration:none}
 .brand .glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;
-  background:var(--inverse);color:var(--inverse-ink);font-size:14px}
+  background:var(--inverse);color:var(--inverse-ink)}
+/* the SVG mark, same geometry as favicon.svg and the dashboard's BrandMark */
+.glyph svg{width:57%;height:57%;display:block;fill:currentColor}
 .nav .links{margin-left:auto;display:flex;align-items:center;gap:22px}
-.nav .links a{font-size:13.5px;font-weight:500;color:var(--muted)}
-.nav .links a:hover{color:var(--ink);text-decoration:none}
+/* :not(.candy): the CTA sits in .links too, and this selector outranks .candy's colour */
+.nav .links a:not(.candy){font-size:13.5px;font-weight:500;color:var(--muted)}
+.nav .links a:not(.candy):hover{color:var(--ink);text-decoration:none}
 @media(max-width:640px){.nav .links a.hidem{display:none}}
 
 /* ---------- buttons ---------- */

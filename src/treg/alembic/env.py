@@ -38,6 +38,19 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _session_timeouts() -> tuple[str, ...]:
+    lock_ms = round(get_settings().migration_lock_timeout_s * 1000)
+    return (f"SET lock_timeout = '{lock_ms}ms'", "SET statement_timeout = '120s'")
+
+
+def _restore_session_timeouts(ctx, step, heads, run_args) -> None:
+    # An index revision raises these for its CONCURRENTLY build and restores fixed values; the
+    # next revision in the same run must still wait no longer than the setting.
+    if ctx.connection.dialect.name == "postgresql":
+        for statement in _session_timeouts():
+            ctx.connection.execute(text(statement))
+
+
 def _run_migrations(connection) -> None:
     # Each revision commits on its own, so a lock timeout in one leaves every earlier revision
     # applied and stamped; `maintenance` retries the upgrade and it resumes where it stopped.
@@ -45,6 +58,7 @@ def _run_migrations(connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         transaction_per_migration=True,
+        on_version_apply=_restore_session_timeouts,
     )
 
     with context.begin_transaction():
@@ -64,8 +78,8 @@ async def _run_migrations_online() -> None:
         if connection.dialect.name == "postgresql":
             # A contended deploy fails fast and clean instead of queueing the world behind an
             # ACCESS EXCLUSIVE lock, and no migration statement runs unbounded.
-            await connection.execute(text("SET lock_timeout = '5s'"))
-            await connection.execute(text("SET statement_timeout = '120s'"))
+            for statement in _session_timeouts():
+                await connection.execute(text(statement))
             await connection.commit()
         await connection.run_sync(_run_migrations)
 

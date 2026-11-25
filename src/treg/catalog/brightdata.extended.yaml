@@ -61,6 +61,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Instagram post URL
         example:
@@ -107,6 +108,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Instagram post URL to fetch its comments
         example:
@@ -147,6 +149,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Instagram reel URL
         example:
@@ -187,6 +190,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a TikTok profile URL, documented pattern https://www.tiktok.com/@username
         example:
@@ -234,6 +238,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a TikTok video URL
         example:
@@ -274,6 +279,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a TikTok video URL to fetch its comments
         example:
@@ -314,6 +320,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a TikTok Shop product URL
         example:
@@ -355,6 +362,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a LinkedIn company page URL
         example:
@@ -396,6 +404,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a LinkedIn post URL
         example:
@@ -437,6 +446,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a LinkedIn job listing URL
         example:
@@ -476,6 +486,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Facebook profile or Page URL
         example:
@@ -523,6 +534,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Facebook Page URL to fetch its recent posts
         example:
@@ -563,6 +575,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a single Facebook post URL
         example:
@@ -604,6 +617,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Facebook post URL to fetch its comments
         example:
@@ -644,6 +658,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Facebook Marketplace listing URL
         example:
@@ -685,6 +700,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Amazon product (dp) URL
         example:
@@ -729,6 +745,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Amazon product URL to fetch its reviews
         example:
@@ -769,6 +786,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Amazon seller storefront URL
         example:
@@ -809,6 +827,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an X/Twitter profile URL
         example:
@@ -855,6 +874,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an X/Twitter post URL
         example:
@@ -895,6 +915,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a YouTube channel URL
         example:
@@ -941,6 +962,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a YouTube video URL
         example:
@@ -981,6 +1003,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a YouTube video URL to fetch its comments
         example:
@@ -1022,6 +1045,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Reddit post (thread) URL
         example:
@@ -1062,6 +1086,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Reddit post URL to fetch its comments
         example:
@@ -1069,6 +1094,7 @@ endpoints:
     bodyType: json
     note: same generic runner as brightdata.web.scrape.structured with dataset_id fixed to this dataset (see that entry and brightdata.instagram.user.profile in the core file for the pattern). >1 minute falls back to HTTP 202 + snapshot_id — use brightdata.web.scrape.job.start for anything beyond a handful of URLs. Exact required body fields were not individually re-confirmed per dataset here; verify against the dataset's own quickstart page before high-volume use.
   price: {value: '0.0015', currency: USD, unit: record, note: "$1.50 per 1000 records delivered, pay-per-success — the general Web Scraper API rate documented for this product family; some datasets carry different published rates, confirm on brightdata.com/pricing before volume use"}
+  miss: {when: {path: response, op: empty}}
   test_request:
     queryParams: {dataset_id: gd_lvzdpsdlw09j6t702, format: json}
     body: [{"url": "https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/"}]
@@ -1102,6 +1128,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Walmart product URL
         example:
@@ -1142,6 +1169,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Walmart product URL to fetch its reviews
         example:
@@ -1183,6 +1211,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an eBay listing URL
         example:
@@ -1224,6 +1253,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Yelp business page URL
         example:
@@ -1264,6 +1294,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Yelp business page URL to fetch its reviews
         example:
@@ -1304,6 +1335,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Trustpilot business profile URL
         example:
@@ -1344,6 +1376,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Google Play app listing URL
         example:
@@ -1388,6 +1421,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Google Play app listing URL to fetch its reviews
         example:
@@ -1428,6 +1462,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Apple App Store app listing URL
         example:
@@ -1467,6 +1502,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an Apple App Store app listing URL to fetch its reviews
         example:
@@ -1508,6 +1544,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — an IMDb title URL
         example:
@@ -1549,6 +1586,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Threads profile URL
         example:
@@ -1591,6 +1629,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Crunchbase company page URL
         example:
@@ -1632,6 +1671,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Glassdoor company page URL
         example:
@@ -1673,6 +1713,7 @@ endpoints:
     body:
       input:
         type: array
+        items: {type: object}
         required: true
         note: one object per target — a Glassdoor company page URL to fetch its reviews
         example:

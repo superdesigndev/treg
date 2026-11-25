@@ -31,8 +31,8 @@ from .application.onboard.sandbox import (
     gc as gc,
     is_sandbox_user as is_sandbox_user,
 )
-from . import crypto
-from .infra.upstream import injectors
+from .infra import credential_cipher
+from .infra.upstream import injectors, pathsegment
 from .models import Org, Secret, Tool
 from .sandbox_identity import visitor_name as visitor_name
 
@@ -74,11 +74,13 @@ def synthesize(method: str, upstream_url: str, tool: Tool, secrets: dict[int, Se
     response - never touching the network. This is the sandbox's stand-in for `relay()`."""
     headers: dict[str, str] = {}
     params: list[tuple[str, str]] = list(query or [])
+    path_values: dict[str, str] = {}
     for b in tool.bindings:
         sec = secrets.get(b.get("secret_id"))
         if sec is None:
             continue
-        injectors.inject(headers, params, b, crypto.decrypt(sec.value))
+        injectors.inject(headers, params, b, credential_cipher.opened(sec), path_values=path_values)
+    upstream_url = pathsegment.fill(upstream_url, path_values)
     injected_h = dict(headers)
     injected_q = [(k, v) for (k, v) in params if (k, v) not in (query or [])]
     data = SAMPLE_BODIES.get(tool.host,

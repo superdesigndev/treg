@@ -4,6 +4,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -26,6 +27,10 @@ import (
 
 const NoticeHeader = "X-Treg-Client-Notice"
 
+// Hints are the invitations this binary shows (output.hintLine); the registry offers no other
+// kind. A call that cannot show a comparison drops compare (commands.withoutCompare).
+const Hints = "review,mark,feedback,compare"
+
 // Request is one registry request. Path is relative to the registry, e.g. "/call/stripe/v1/charges".
 type Request struct {
 	Method  string
@@ -36,6 +41,9 @@ type Request struct {
 	Cookies []*http.Cookie
 	// NoAuth sends no token: the registry's login routes and the installer.
 	NoAuth bool
+	// Timeout bounds this request alone (0: the client's own limits), for a best-effort read
+	// such as the comparison printed beside a call.
+	Timeout time.Duration
 }
 
 // Response is a whole registry answer; the CLI never prints a partial body.
@@ -152,6 +160,11 @@ func (c *Client) send(r Request, encoded bool) (*Response, error) {
 	if body == nil {
 		req.Body, req.ContentLength = http.NoBody, 0
 	}
+	if r.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(req.Context(), r.Timeout)
+		defer cancel()
+		req = req.WithContext(ctx)
+	}
 	c.setHeaders(req, r, encoded)
 	for _, ck := range r.Cookies {
 		req.AddCookie(ck)
@@ -175,6 +188,8 @@ func (c *Client) setHeaders(req *http.Request, r Request, encoded bool) {
 	h.Set("ngrok-skip-browser-warning", "1")
 	h.Set("X-Treg-Client", Runtime())
 	h.Set("X-Treg-Client-Version", buildinfo.Version)
+	// The invitations this binary shows (output.hintLine); the registry offers no other kind.
+	h.Set("X-Treg-Hints", Hints)
 	h.Set("X-Treg-Key-Protocol", "1")
 	if telemetry.Enabled() {
 		s := session.Current(config.Path())
@@ -230,6 +245,10 @@ func Runtime() string {
 		{"GEMINI_CLI", "gemini-cli"},
 		{"PI_CODING_AGENT", "pi"},
 		{"GITHUB_COPILOT_AGENT", "copilot"},
+		// Copilot CLI sets these on the shell its tool runs; VS Code sets COPILOT_AGENT only on the
+		// hidden terminals its Copilot agent runs, never on a person's.
+		{"COPILOT_CLI", "copilot-cli"}, {"COPILOT_AGENT_SESSION_ID", "copilot-cli"},
+		{"COPILOT_AGENT", "copilot-vscode"},
 	} {
 		if os.Getenv(m[0]) != "" {
 			return m[1]

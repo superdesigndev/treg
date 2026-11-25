@@ -54,6 +54,42 @@ SHEETS_CLIENT_ID = "treg-sheets"
 SHEETS_SCOPE = "treg:table"
 
 
+# "treg for Microsoft 365 Copilot" (treg's declarative agent, docs/context/architecture/mcp-oauth.md):
+# a first-party CONFIDENTIAL client of the team MCP. Microsoft's token store sends every plugin's
+# code to one shared redirect URI, so that URI cannot tell treg's agent from anyone else's; the
+# client secret is what does.
+M365_CLIENT_ID = "treg-m365-copilot"
+M365_REDIRECT_URI = "https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect"
+
+
+# The vendor console (a separate service where API vendors apply to be listed): a first-party
+# CONFIDENTIAL client that only learns who signed in. Its token has its own resource and scope, is
+# accepted only by `GET /vendor-console/me`, and comes without a refresh token, because the console
+# reads the identity once and keeps its own session.
+VENDOR_CONSOLE_CLIENT_ID = "treg-vendor-console"
+VENDOR_CONSOLE_SCOPE = "treg:identity"
+
+
+def client_secret_matches(client_id: str, presented: str) -> bool | None:
+    """None when `client_id` is a public client (PKCE alone binds its code); otherwise whether the
+    presented secret is that confidential client's."""
+    if client_id == M365_CLIENT_ID:
+        expected = get_settings().m365_client_secret
+    elif client_id == VENDOR_CONSOLE_CLIENT_ID:
+        expected = get_settings().vendor_console_client_secret
+    else:
+        return None
+    return bool(expected) and hmac.compare_digest(presented.encode(), expected.encode())
+
+
+def vendor_console_resource_url() -> str:
+    return get_settings().public_url.rstrip("/") + "/vendor-console"
+
+
+def is_vendor_console_resource(resource: str) -> bool:
+    return bool(resource) and resource.rstrip("/") == vendor_console_resource_url()
+
+
 def sheets_resource_url() -> str:
     return get_settings().public_url.rstrip("/") + "/table"
 
@@ -68,6 +104,28 @@ def scopes_for_resource(version: str = "v1") -> list[str]:
     if version == "v2":
         return [*BASE_SCOPES, DIRECTORY_SCOPE]
     raise ValueError(f"unknown MCP resource version {version!r}")
+
+CATALOG_SCOPE, CALL_SCOPE, READ_SCOPE = BASE_SCOPES
+
+
+def granted_mcp_scope(requested: str, version: str = "v1") -> str:
+    """The scope string an MCP grant records: the supported scopes the client asked for, in canonical
+    order. A request naming none of the permission scopes (no `scope`, or only names treg does not
+    issue) is a request for treg's whole access, which is what MCP clients that omit `scope` expect."""
+    supported = scopes_for_resource(version)
+    asked = set((requested or "").split())
+    granted = [s for s in supported if s in asked]
+    if not any(s in BASE_SCOPES for s in granted):
+        granted = [s for s in supported if s in BASE_SCOPES or s in asked]
+    return " ".join(granted)
+
+
+def mcp_permissions(scope: str) -> frozenset[str]:
+    """The permission scopes an MCP token carries. A grant recorded before scopes were normalized
+    may hold an empty or foreign string; it was consented as full access and keeps it."""
+    held = frozenset(s for s in (scope or "").split() if s in BASE_SCOPES)
+    return held or frozenset(BASE_SCOPES)
+
 
 # Session cookies and identity tokens share this HMAC construction; the marker keeps them apart.
 _TOKEN_TYPE = "treg-mcp-at"
@@ -354,7 +412,12 @@ async def fetch_client_id_metadata(url: str) -> dict | None:
     u = urlsplit(url)
     if u.scheme != "https" or not u.hostname:
         return None
-    if not health.safe_webhook_url(url) or not health.host_is_public(u.hostname):
+    if not health.safe_webhook_url(url):
+        return None
+    try:
+        if not await health.host_is_public_async(u.hostname, health.host_is_public):
+            return None
+    except health.AddressLookupTimedOut:
         return None
     try:
         async with httpx.AsyncClient(timeout=_CIMD_TIMEOUT_S, follow_redirects=False) as c:

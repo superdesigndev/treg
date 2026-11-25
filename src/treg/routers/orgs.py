@@ -72,8 +72,8 @@ from ..models import (
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from . import view
-from .auth_helpers import _is_https, require_managed_cli
-from .signup_cookies import REFERRAL_COOKIE
+from .auth_helpers import require_managed_cli, trusted_public_base
+from .signup_cookies import REFERRAL_COOKIE, _client_country, _forget_affiliate, _take_affiliate_click, _take_partner_code
 from .views import account as account_views
 from .views import toon
 
@@ -90,6 +90,9 @@ sys.modules.setdefault("treg.routers.providers", _providers)
 
 class OrgIn(BaseModel):
     name: str
+    # An affiliate partner's code typed at a CLI or agent signup (`treg org create --ref`): a Dub
+    # partner's link key, allowlisted. Never a friend-referral code; that comes only from `?ref=`.
+    ref: str = ""
 
 
 class InviteIn(BaseModel):
@@ -446,8 +449,11 @@ async def create_org(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
+            ref_code=body.ref or _take_partner_code(request), client_country=_client_country(request),
         )
         response.headers["Cache-Control"] = "no-store"
+        _forget_affiliate(response)
         return result
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc
@@ -570,15 +576,13 @@ async def create_invite(
     await db.commit()
     org = await db.get(Org, org_id)  # for the invite email's team name
     if not email.endswith("@" + demo_seed.DEMO_DOMAIN):  # don't email the onboarding's fake teammate domain
-        scheme = "https" if _is_https(request) else request.url.scheme
-        host = request.headers.get("host", "")
         shared = ""  # share-born invite → the email leads with what was shared
         if body.landing:
             kind, _, name = body.landing.removeprefix("/app/").partition("/")
             shared = f'the {"skill" if kind == "skills" else "tool"} “{name}”'
         await email_sender.send_invite(  # best-effort; the code is also returned for out-of-band relay
             email, caller.email, (org.name if org else email), body.role, code, email_token,
-            expires_at.isoformat(), link_base=(f"{scheme}://{host}" if host else ""), shared=shared,
+            expires_at.isoformat(), link_base=trusted_public_base(request), shared=shared,
         )
     return {"code": code, "email": email, "role": body.role, "org_id": org_id,
             "expires_at": expires_at.isoformat()}  # email_token deliberately NOT returned (inbox-only)

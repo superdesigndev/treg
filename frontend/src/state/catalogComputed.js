@@ -5,6 +5,10 @@ import { isJobQuery } from './find.js'
 const byTitle = new Intl.Collator()
 // How many of a shelf's most used items lead as cards: two rows at the widest layout.
 const PLAT_TOP = 6
+const isPlumbing = e => e.kind === 'account' || e.kind === 'utility'
+// A comparison lists the endpoints that do the job, not the router and not plumbing (a poll that
+// reads a submitted job's result shares the job's capability but takes no input of the job's own).
+const isCompared = e => e.kind !== 'routed' && !isPlumbing(e)
 const byUse = (a, b) => (b.usage - a.usage) || (b.provN - a.provN) || byTitle.compare(a.title, b.title)
 
 // What each comparison column means, on hover or focus of its heading (comparisonColumns).
@@ -16,7 +20,11 @@ const COL_TIPS = {
 }
 
 export default {
-mkProvider(){ return this.providers.find(p=>p.service===this.mkService)||null; },
+mkProvider(){ const p=this.providers.find(p=>p.service===this.mkService); if(p) return p;
+      // a keyless public provider is not in the Connect listing: its page reads the catalog's record
+      // a paused provider keeps the paused page (the Connect listing leaves paused providers out too)
+      const d=this.mkToolData, c=d && d.provider;
+      return c && c.auth_kind==='public' && !this.mkPaused ? {...c, configured:true} : null; },
 mkPaused(){ return this.providerPaused(this.mkService); },
 mkAccounts(){ return this.connAccounts.filter(a=>a.service===this.mkService); },
 // Which capabilities ANY account here already holds — a page-level "you have this" summary,
@@ -130,7 +138,7 @@ platProviders(){  // providers with endpoints here, in catalog order
           // agents and stays whole (the card's hover). The server picks `name` over `summary` where a
           // curated name exists; the clip guards the rows where one does not yet.
           title:this.clip(r.title||r.description, 90),
-          mgmt: eps.every(e=>e.kind==='account'||e.kind==='utility'),
+          mgmt: eps.every(isPlumbing),
           hay: ((r.title||'')+' '+r.description+' '+r.domain+' '+(r.capability||'')+' '+eps.map(e=>
                  e.provider+' '+(e.provider_display||'')+' '+(e.name||'')+' '+e.path+' '+e.summary).join(' ')).toLowerCase()});
       }
@@ -141,7 +149,7 @@ platProviders(){  // providers with endpoints here, in catalog order
     // Plumbing (account/utility) stays folded at the foot.
     platComparisons(){
       return this.platRowsAll.filter(r=>r.compare).map(r=>{
-        const direct=r.endpoints.filter(e=>e.kind!=='routed'), provs=[...new Set(direct.map(e=>e.provider))];
+        const direct=r.endpoints.filter(isCompared), provs=[...new Set(direct.map(e=>e.provider))];
         const range=this.priceRange(direct);
         return {job:true, key:r.capability, slug:r.compare, row:r, title:r.title, hint:r.description, hay:r.hay, logos:provs.slice(0,5), logosFew:provs.slice(0,3), range,
                 routed:r.endpoints.find(e=>e.kind==='routed')||null, provN:provs.length,
@@ -153,16 +161,15 @@ platProviders(){  // providers with endpoints here, in catalog order
 // What the shelf's lists filter by as you type: a name or a word. A described job is not a filter
     // (no row contains a sentence); the finder answers it above the lists, which stay whole.
     platFilterQ(){ return isJobQuery(this.platQ) ? '' : this.platQ.trim().toLowerCase(); },
-// Every endpoint on the shelf that is not part of a comparison card, one line each, built once per
+// Every endpoint on the shelf that no comparison card lists (a compared job's plumbing included), one line each, built once per
     // shelf; the search box only filters it.
     platToolIndex(){
       const out=[];
       for(const r of this.platRowsAll){
-        if(r.compare) continue;
         for(const e of r.endpoints){
-          if(e.kind==='routed') continue;
+          if(e.kind==='routed' || r.compare && !isPlumbing(e)) continue;
           const title=r.endpoints.length===1 ? r.title : this.clip(e.name||e.summary||r.description, 90);
-          out.push({id:e.id, title, e, mgmt:r.mgmt, usage:this.callsOf(e), provN:1,
+          out.push({id:e.id, title, e, mgmt:!!r.compare || r.mgmt, usage:this.callsOf(e), provN:1,
                     hay:(title+' '+e.provider+' '+(e.provider_display||'')+' '+(e.summary||'')+' '+e.id).toLowerCase()}); } }
       return out.sort(byUse); },
 // The shelf itself, most used first, whether one provider serves an item or several: the head of it
@@ -202,7 +209,7 @@ platComparisonData(){ const i=this.platComparisonLead && this.epInfo[this.platCo
 platAccepts(){ const m={}; for(const p of (((this.platComparisonData||{}).routing)||{}).plan||[]) m[p.endpoint_id]=p.accepts; return m; },
 platComparisonRows(){
       const row=this.platCapRow; if(!row) return [];
-      const eps=row.endpoints.filter(e=>e.kind!=='routed');
+      const eps=row.endpoints.filter(isCompared);
       const perProv={}; for(const e of eps) perProv[e.provider]=(perProv[e.provider]||0)+1;
       const rows=eps.map(e=>{ const o=this.platObserved[e.id];
         return {e, id:e.id, twin:perProv[e.provider]>1, takes:this.takesLabel(this.platAccepts[e.id]),
@@ -238,11 +245,13 @@ drawerIds(){
     drawerNext(){ const e=this.drawerEp; if(!e) return '';
       if(this.providerPaused(e.provider)) return 'paused';
       if(this.catEndpointConnected(e)) return 'copy';
+      // a public provider this server has not enabled: nothing to copy or try, its calls are refused
+      if(this.endpointAccessLabel(e)==='Not enabled on this server') return 'off';
       if(this.provAuthKind(e.provider)==='oauth') return 'connect';
       return e.platform_eligible===false ? 'key' : 'copy'; },
 // Everything else worth knowing, as one quiet line instead of a row of chips.
     drawerFacts(){ const e=this.drawerEp; if(!e) return '';
-      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
+      const access={'Platform + BYOK':"treg's key or yours", 'Platform access':"treg's key", 'BYOK only':'your own key only', 'Free, no key':'free, no key needed', 'Not enabled on this server':'not enabled on this server: refused unless your team registered its own tool for its host'}[this.endpointAccessLabel(e)] || this.endpointAccessLabel(e);
       return [access, e.verified ? 'verified live '+this.verdictDate(e.verified) : 'not yet verified live',
               e.scope==='own_account' ? 'reads the account you connect' : e.scope==='any_account' ? 'any public account' : ''].filter(Boolean).join(' · '); },
 // A provider's tools by platform (GET /catalog/providers/<service>), for its provider page.
@@ -336,9 +345,9 @@ epTryCliCall(){ if(!this.epTry) return '';
       for(const p of this.epTryVisibleParams.filter(p=>p.location==='header'&&String(p.value)!==''))
         s+=` --header ${p.name}=${JSON.stringify(String(p.value))}`;
       if(this.epTryBodyType==='multipart'){
-        for(const p of this.epTryMultipart.filter(p=>!String(p.type).includes('file')&&String(p.value)!==''))
+        for(const p of this.epTryMultipart.filter(p=>!p.file&&String(p.value)!==''))
           s+=` --form ${p.name}=${JSON.stringify(String(p.value))}`;
-        for(const p of this.epTryMultipart.filter(p=>String(p.type).includes('file')))
+        for(const p of this.epTryMultipart.filter(p=>p.file))
           s+=` --upload ${p.name}=@${p.name==='voices'?'<reference-audio>':'<file>'}`;
       }else if(method!=='GET' && this.epTryBody.trim()) s+=` --data ${this.epTryShellBody}`;
       if(this.epTry.id==='fishaudio.tts.s2-1-pro') s+=' > speech.mp3';
@@ -355,10 +364,10 @@ epTryCurl(){ if(!this.epTry) return '';
       let s=`curl -X ${method} "${url}" \\\n  -H "X-Treg-Token: ${tok}"`;
       if(this.sessionMode && this.activeSlugNow) s+=` \\\n  -H "X-Treg-Org: ${this.activeSlugNow}"`;  // minted identity token needs the org header
       if(this.epTryAuthMethod) s+=` \\\n  -H "X-Treg-Authorization-Method: ${this.epTryAuthMethod}"`;
-      for(const p of this.epTryVisibleParams.filter(p=>p.location==='header'&&String(p.value)!=='')) s+=` \\\n  -H "${p.name}: ${String(p.value).replace(/"/g,'\\"')}"`;
+      for(const p of this.epTryVisibleParams.filter(p=>p.location==='header'&&String(p.value)!=='')) s+=` \\\n  -H "${p.name}: ${String(p.value).replace(/["\\]/g,'\\$&')}"`;
       if(this.epTryBodyType==='multipart'){
-        for(const p of this.epTryMultipart.filter(p=>!String(p.type).includes('file')&&String(p.value)!=='')) s+=` \\\n  -F "${p.name}=${String(p.value).replace(/"/g,'\\"')}"`;
-        for(const p of this.epTryMultipart.filter(p=>String(p.type).includes('file'))) s+=` \\\n  -F "${p.name}=@${p.name==='voices'?'<reference-audio>':'<file>'}"`;
+        for(const p of this.epTryMultipart.filter(p=>!p.file&&String(p.value)!=='')) s+=` \\\n  -F "${p.name}=${String(p.value).replace(/["\\]/g,'\\$&')}"`;
+        for(const p of this.epTryMultipart.filter(p=>p.file)) s+=` \\\n  -F "${p.name}=@${p.name==='voices'?'<reference-audio>':'<file>'}"`;
       }else if(method!=='GET' && this.epTryBody.trim()) s+=` \\\n  -H "Content-Type: application/json" \\\n  --data ${this.epTryShellBody}`;
       if(this.epTry.id==='fishaudio.tts.s2-1-pro') s+=' \\\n  --output speech.mp3';
       return s; },

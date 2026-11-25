@@ -64,11 +64,17 @@ class Usage(Model):
     unit: str
     path: str | None = None
     terms: list[UsageTerm] | None = None
+    missing: int | None = None  # 0: the provider omits a zero meter (LeadsForge `consumedCredits`)
 
 
 class ReportedCharge(Model):
     path: str
     unit: str
+
+
+class NonDeferredCharge(Model):
+    path: Annotated[str, Field(min_length=1)]
+    value: Annotated[Number, Field(gt=0)]
 
 
 class Presence(Model):
@@ -108,6 +114,8 @@ class Cost(Model):
         | SettleCount | None = None
     usage: Usage | None = None
     reported_charge: ReportedCharge | None = None
+    non_deferred_charge: NonDeferredCharge | None = None
+    worst_case: Number | None = None
     presence: Presence | None = None
     modifiers: dict[str, Modifier] | None = None
     quantity: Quantity | None = None

@@ -362,11 +362,11 @@ endpoints:
         company_domain: {type: string, required: false, note: "single-company lookup", example: "leadmagic.io"}
         company_name: {type: string, required: false}
         linkedin_url: {type: string, required: false}
-        industries: {type: "array[string]", required: false}
+        industries: {type: array, items: {type: string}, required: false}
         min_employees: {type: integer, required: false}
         max_employees: {type: integer, required: false}
-        country_codes: {type: "array[string]", required: false}
-        tech_stack: {type: "array[string]", required: false}
+        country_codes: {type: array, items: {type: string}, required: false}
+        tech_stack: {type: array, items: {type: string}, required: false}
         sort_by: {type: string, required: false, note: "linkedin_followers | total_funding | linkedin_employee_count | revenue_min | revenue_max | founded_year | total_contacts"}
         limit: {type: integer, required: false, note: "max 50", example: 1}
         cursor: {type: string, required: false, note: "opaque pagination token from a previous response"}
@@ -402,10 +402,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        titles.include: {type: "array[string]", required: false, example: ["Software Engineer"]}
-        companies.include: {type: "array[string]", required: false, note: "company domains", example: ["leadmagic.io"]}
-        location.countries: {type: "array[string]", required: false, example: ["US"]}
-        seniority: {type: "array[string]", required: false}
+        titles.include: {type: array, items: {type: string}, required: false, example: ["Software Engineer"]}
+        companies.include: {type: array, items: {type: string}, required: false, note: "company domains", example: ["leadmagic.io"]}
+        location.countries: {type: array, items: {type: string}, required: false, example: ["US"]}
+        seniority: {type: array, items: {type: string}, required: false}
         hasRemote: {type: boolean, required: false}
         postedWithin: {type: integer, required: false, note: "days", example: 30}
         limit: {type: integer, required: false, example: 1}

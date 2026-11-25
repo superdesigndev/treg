@@ -25,7 +25,12 @@ from ..domain import money, referrals as referral_domain
 from ..models import ArchiveEndpointStat, ArchiveSnapshot, Bundle, CallRecord, EndpointDayStat, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
-from ..domain.governance.teams import cascade_delete_org, delete_membership, drop_member_deny_rules
+from ..domain.governance.teams import (
+    cascade_delete_org,
+    delete_membership,
+    drop_member_deny_rules,
+    lock_allowance_holds,
+)
 
 
 app = APIRouter()
@@ -867,6 +872,7 @@ async def admin_delete_user(
     for m in mem:
         await delete_membership(db, m, actor_email=principal)
     await db.flush()
+    await lock_allowance_holds(db, list(affected))  # every team this may delete, in one order
     emptied = []
     for oid in affected:
         survivors = (

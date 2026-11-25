@@ -23,6 +23,10 @@ from pathlib import Path
 # Tests and their CLI subprocesses must never emit production analytics.
 os.environ["TREG_TELEMETRY"] = "0"
 
+# A deployment's Secrets Manager source outranks the environment, so a shell that names one would
+# hand the suite production credentials and its database URL. Tests that need it set it themselves.
+os.environ.pop("TREG_AWS_SECRET_ID", None)
+
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
 # TREG_TEST_DB_URL (not TREG_DATABASE_URL - a stray production URL in a shell must never become the
@@ -99,7 +103,6 @@ os.environ["TREG_HOLDLESS_FREE_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
-os.environ["TREG_RUN_ALLOWED_BINS"] = "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"  # allow the test CLIs for --server run tests
 os.environ["TREG_PROXY_SSRF_CHECK"] = "false"
 # The production default is OFF. The established connector tests and committed route snapshots test
 # the enabled product surface; dedicated tests below also prove the disabled deployment shape.
@@ -323,6 +326,15 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
         if request.query_params.get("platform") != "instagram":
             return {"data": []}
         return {"data": [{"id": "IG-CONVERSATION-1", "page_id": page_id}]}
+
+    @up.post("/v25.0/{ig_user_id}/media")
+    async def instagram_media_container(ig_user_id: str, request: Request):
+        # Graph's answer while the app lacks Advanced Access for publishing: the token holds the
+        # scope, the app does not.
+        return JSONResponse({"error": {
+            "message": "Application does not have permission for this action",
+            "type": "IGApiException", "code": 10, "fbtrace_id": "TRACE",
+        }}, status_code=403)
 
     @up.get("/v25.0/{page_id}/posts")
     async def facebook_page_posts(page_id: str, request: Request):
@@ -573,6 +585,37 @@ async def drain_background_writes():
     await media_app.drain()
 
 
+@pytest.fixture
+def connections_held_here():
+    """How many pooled connections the calling asyncio task holds right now, across every engine.
+
+    `pool.checkedout()` counts the whole process: a background write (audit, a key's last-used
+    stamp) holding a connection at that instant reads as the call's own, and on SQLite every engine
+    is one pool. This counts only checkouts made by the task that asks."""
+    from sqlalchemy import event
+    from treg.infra.db import _engines
+
+    held: dict[asyncio.Task | None, int] = {}
+
+    def checkout(_dbapi, record, _proxy):
+        task = record.info["held_by"] = asyncio.current_task()
+        held[task] = held.get(task, 0) + 1
+
+    def checkin(_dbapi, record):
+        if "held_by" in record.info:
+            task = record.info.pop("held_by")
+            held[task] -= 1
+
+    pools = {id(e.sync_engine.pool): e.sync_engine.pool for e in _engines}.values()
+    for pool in pools:
+        event.listen(pool, "checkout", checkout)
+        event.listen(pool, "checkin", checkin)
+    yield lambda: held.get(asyncio.current_task(), 0)
+    for pool in pools:
+        event.remove(pool, "checkout", checkout)
+        event.remove(pool, "checkin", checkin)
+
+
 @pytest.fixture(autouse=True)
 async def _drain_around_each_test():
     """Every test starts and ends with no background write in flight. A fixture that calls
@@ -619,31 +662,23 @@ def _reset_call_path_caches():
     """The call path keeps in-process copies of ratestore state (the capacity view: 'provider X is
     exhausted' for 60 s), the overflow route view and per-provider rate buckets. `reset_db()` wipes
     the tables, not process memory — so a test that relays a vendor 402 would otherwise leave the
-    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28).
-    Each cache is optional: the modules land in successive PRs of the capacity stack."""
+    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28)."""
     def _clear() -> None:
-        try:
-            from treg.domain.capacity.view import view as capacity_view
-            capacity_view.invalidate()
-            capacity_view._states = {}
-            capacity_view._locks = {}
-            from treg.domain.capacity import marks as capacity_marks
-            capacity_marks._last_probe.clear()
-        except ImportError:
-            pass
-        try:
-            from treg.domain.capacity.routes_view import view as routes_view
-            routes_view.invalidate()
-            routes_view._routes = []
-        except ImportError:
-            pass
-        try:
-            from treg.infra.upstream.limiter import limiter
-            limiter.reset()
-            from treg.application.call import keyslots
-            keyslots._rotation.clear()
-        except ImportError:
-            pass
+        from treg.domain.capacity.view import view as capacity_view
+        capacity_view.invalidate()
+        capacity_view._states = {}
+        capacity_view._locks = {}
+        from treg.domain.capacity import marks as capacity_marks
+        capacity_marks._last_probe.clear()
+        from treg.domain.capacity.routes_view import view as routes_view
+        routes_view.invalidate()
+        routes_view._routes = []
+        from treg.infra.upstream.limiter import limiter
+        limiter.reset()
+        from treg.application.call import keyslots
+        keyslots._rotation.clear()
+        from treg.application import review_targets
+        review_targets.reset()
         # The shared store's in-process fallback (the review-invitation budget): org ids restart
         # with every reset_db(), so a counter left over would ration the NEXT test's team.
         from treg.infra import kv

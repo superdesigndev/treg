@@ -49,6 +49,9 @@ class LeaseStore:
         self.lose_on_renew = False
         self.renewed = asyncio.Event()
 
+    async def call_in_flight(self, call_ref):
+        return False
+
     async def acquire_lease(self, key, token, ttl_ms):
         self.calls.append(("acquire", key))
         if self.unavailable:
@@ -93,6 +96,7 @@ def gate(monkeypatch):
     monkeypatch.setattr(admission, "_local_loop", None)
     monkeypatch.setattr(admission, "_windows", {})
     monkeypatch.setattr(admission, "_current", {})
+    monkeypatch.setattr(admission, "_store_down_until", 0.0)
     return settings, store
 
 
@@ -824,16 +828,16 @@ async def test_metrics_are_fixed_dimension_and_execution_excludes_wait_and_clean
 async def test_non_reserve_keeps_waiting_past_the_reserve_budget_for_the_lease(gate, operation):
     settings, store = gate
     settings.money_admission_wait_s = 0.02
-    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.1)
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 0.15)
     started = time.monotonic()
     async with admission.admit([7], operation=operation):
-        assert time.monotonic() - started >= 0.09
+        assert time.monotonic() - started >= 0.14
         assert store.values["money-admission:org:7"][0] != "another-owner"
     assert not store.values
     [row] = completed()
     assert row["mode"] == "redis" and row["operation"] == operation
     assert row["fallback_wait_timeout"] == 0
-    assert row["wait_max_ms"] >= 90 and row["wait_bucket_le_100_ms"] == 0
+    assert row["wait_max_ms"] >= 140 and row["wait_bucket_le_100_ms"] == 0
 
 
 @pytest.mark.parametrize("operation", ["close", "deferred", "release", "async", "hub"])
@@ -873,6 +877,18 @@ async def test_caller_cap_is_a_hard_bound_on_the_extended_wait(gate, max_wait_s,
     assert floor <= elapsed < settings.money_admission_wait_s
     [row] = completed()
     assert row["mode"] == "fallback" and row["fallback_wait_timeout"] == 1
+
+
+async def test_a_caller_that_can_come_back_is_refused_at_its_cap_instead_of_falling_back(gate):
+    settings, store = gate
+    store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    with pytest.raises(admission.AdmissionTimeout, match="wait_timeout"):
+        async with admission.admit([7], operation="close", max_wait_s=0.05,
+                                   refuse_on_timeout=True):
+            pytest.fail("a refused wait must not enter its money session")
+    assert store.values["money-admission:org:7"][0] == "another-owner"
+    [row] = completed()
+    assert row["rejected"] == 1 and row["failed"] == row["fallback_wait_timeout"] == 0
 
 
 async def test_settlement_wait_leaves_half_the_hold_grace_for_the_session(gate):
@@ -967,3 +983,103 @@ async def test_only_the_local_head_waiter_polls_during_the_extended_wait(gate, m
     assert pollers[-1] is second and set(pollers[:-1]) == {first}
     [row] = completed()
     assert row["completed"] == 2 and row["fallback_wait_timeout"] == 0
+
+
+class SilentStore(LeaseStore):
+    """A store that accepts the request and never answers, then reports `unavailable` at its timeout."""
+
+    def __init__(self, timeout_s):
+        super().__init__()
+        self.timeout_s = timeout_s
+        self.release_started = asyncio.Event()
+        self.release_gate = asyncio.Event()
+
+    async def acquire_lease(self, key, token, ttl_ms):
+        self.calls.append(("acquire", key))
+        await asyncio.sleep(self.timeout_s)
+        return "unavailable"
+
+    async def release_lease(self, key, token):
+        self.calls.append(("release", key))
+        self.release_started.set()
+        await self.release_gate.wait()
+        return "unavailable"
+
+
+async def test_silent_store_costs_one_timeout_then_later_operations_fall_back_at_once(gate, monkeypatch):
+    settings, _ = gate
+    settings.money_admission_wait_s = 5.0
+    store = SilentStore(timeout_s=0.2)
+    monkeypatch.setattr(kv, "store", lambda: store)
+
+    started = time.monotonic()
+    async with admission.admit([7], operation="reserve"):
+        pass
+    assert time.monotonic() - started >= 0.2  # the first operation pays the store timeout once
+    # Its cleanup is stuck; a following operation neither waits on it nor on the store.
+    await asyncio.wait_for(store.release_started.wait(), 1)
+    acquires = [call for call in store.calls if call[0] == "acquire"]
+
+    started = time.monotonic()
+    async with admission.admit([7], operation="close"):
+        pass
+    async with admission.admit([7], operation="reserve"):
+        pass
+    assert time.monotonic() - started < 0.1
+    assert [call for call in store.calls if call[0] == "acquire"] == acquires
+
+    store.release_gate.set()
+    await asyncio.gather(*admission._background)
+
+
+async def test_skipped_operations_do_not_extend_the_breaker_window(gate, monkeypatch):
+    _, store = gate
+    now = [1000.0]
+    monkeypatch.setattr(admission, "_clock", lambda: now[0])
+    store.unavailable = True
+    async with admission.admit([7], operation="close"):
+        pass
+    await asyncio.gather(*admission._background)
+    store.unavailable = False
+    # Steady traffic inside the window takes the database path without reopening the window.
+    for _ in range(int(admission._STORE_DOWN_S)):
+        now[0] += 1.0
+        store.calls.clear()
+        async with admission.admit([7], operation="close"):
+            if admission._store_down():
+                assert store.calls == []
+    assert not admission._store_down()
+    store.calls.clear()
+    async with admission.admit([7], operation="close"):
+        assert ("acquire", "money-admission:org:7") in store.calls
+    reasons = {key: value for row in admission.snapshot() for key, value in row.items()
+               if key.startswith("fallback_") and value}
+    assert reasons == {"fallback_kv_unavailable": 1,
+                       "fallback_kv_store_down": int(admission._STORE_DOWN_S) - 1}
+
+
+async def test_same_team_reserves_inside_the_breaker_window_are_not_refused(gate, monkeypatch):
+    settings, store = gate
+    settings.money_admission_wait_s = 0.005
+    admission._mark_store_down()
+
+    async def reserve():
+        async with admission.admit([7], operation="reserve"):
+            pass
+
+    results = await asyncio.gather(*[reserve() for _ in range(200)], return_exceptions=True)
+    assert [r for r in results if r is not None] == []
+    assert store.calls == []
+
+
+async def test_the_store_is_tried_again_after_the_breaker_window(gate, monkeypatch):
+    _, store = gate
+    store.unavailable = True
+    async with admission.admit([7], operation="close"):
+        pass
+    await asyncio.gather(*admission._background)
+    store.unavailable = False
+    monkeypatch.setattr(admission, "_store_down_until", time.monotonic() - 1)
+    store.calls.clear()
+    async with admission.admit([7], operation="close"):
+        assert ("acquire", "money-admission:org:7") in store.calls

@@ -1,0 +1,34 @@
+{
+  "version": "0.1.20261103",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.0713 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "11162217-2171-0548-0000-16d4b779a59e",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.0417 sec.",
+      "cost": 0,
+      "result_count": 5316,
+      "path": [
+        "v3",
+        "… 3 more item(s) truncated"
+      ],
+      "data": {
+        "api": "business_data",
+        "function": "categories"
+      },
+      "result": [
+        {
+          "category_name": "restaurant",
+          "business_count": 6598693
+        },
+        "… 5315 more item(s) truncated"
+      ]
+    }
+  ]
+}

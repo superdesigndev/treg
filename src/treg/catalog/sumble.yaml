@@ -20,6 +20,8 @@ endpoints:
     bodyType: json
     body:
       organizations:
+        type: array
+        items: {type: object}
         anyOf:
         - items:
             properties:
@@ -59,6 +61,7 @@ endpoints:
         description: List of organizations to resolve and enrich. Mutually exclusive with `filter`.
         required: false
       filter:
+        type: object
         anyOf:
         - properties:
             query:
@@ -131,6 +134,7 @@ endpoints:
                   description: 'The entity term: a technology name, job function, project, category, or advanced
                     query string.'
                 metrics:
+                  type: [array, string]
                   anyOf:
                   - items:
                       type: string
@@ -140,6 +144,7 @@ endpoints:
                   - type: 'null'
                   description: Metric names valid for `type`, or "all". Required for every type.
                 granularity:
+                  type: string
                   anyOf:
                   - type: string
                     enum:
@@ -150,6 +155,7 @@ endpoints:
                     the category up into one set of counts; `exploded` decomposes into per-component-technology
                     counts.'
                 since:
+                  type: string
                   anyOf:
                   - type: string
                   - type: 'null'
@@ -171,19 +177,20 @@ endpoints:
         required: true
       limit:
         type: integer
-        maximum: 200.0
-        minimum: 1.0
+        max: 200.0
+        min: 1.0
         description: Maximum number of results to return.
         default: 10
         required: false
       offset:
         type: integer
-        maximum: 10000.0
-        minimum: 0.0
+        max: 10000.0
+        min: 0.0
         description: Number of results to skip.
         default: 0
         required: false
       order_by_column:
+        type: string
         anyOf:
         - type: string
           enum:
@@ -213,6 +220,7 @@ endpoints:
           `source_data_url` is omitted for all three, since the listing page cannot reproduce their ordering.'
         required: false
       order_by_direction:
+        type: string
         anyOf:
         - type: string
           enum:
@@ -222,6 +230,7 @@ endpoints:
         description: Direction to order by (filter mode only).
         required: false
       order_by_job_function:
+        type: string
         anyOf:
         - type: string
         - type: 'null'
@@ -229,6 +238,7 @@ endpoints:
           or `order_by_column="people_count_growth_1y"`.
         required: false
       order_by_advanced_query:
+        type: string
         anyOf:
         - type: string
         - type: 'null'
@@ -374,6 +384,8 @@ endpoints:
         required: true
     queryParams:
       technology_slugs:
+        type: array
+        items: {type: string}
         anyOf:
         - type: array
           items:
@@ -454,6 +466,8 @@ endpoints:
     bodyType: json
     body:
       people:
+        type: array
+        items: {type: object}
         anyOf:
         - items:
             properties:
@@ -496,6 +510,7 @@ endpoints:
           with `filter`.
         required: false
       filter:
+        type: object
         anyOf:
         - properties:
             organization_ids:
@@ -534,6 +549,7 @@ endpoints:
       select:
         properties:
           attributes:
+            type: [array, string]
             anyOf:
             - items:
                 type: string
@@ -562,6 +578,7 @@ endpoints:
               its cost grows — as new attributes are added to the endpoint.
             default: []
           related_people:
+            type: object
             anyOf:
             - properties:
                 direction:
@@ -613,19 +630,20 @@ endpoints:
         required: false
       limit:
         type: integer
-        maximum: 200.0
-        minimum: 1.0
+        max: 200.0
+        min: 1.0
         description: Maximum number of people to return (filter mode only; ignored when `people` is provided).
         default: 10
         required: false
       offset:
         type: integer
-        maximum: 10000.0
-        minimum: 0.0
+        max: 10000.0
+        min: 0.0
         description: Number of results to skip (filter mode only; ignored when `people` is provided).
         default: 0
         required: false
       order_by_column:
+        type: string
         anyOf:
         - type: string
           enum:
@@ -640,6 +658,7 @@ endpoints:
           order. Default: Sumble''s standard people ordering.'
         required: false
       order_by_direction:
+        type: string
         anyOf:
         - type: string
           enum:
@@ -649,6 +668,7 @@ endpoints:
         description: Sort direction; DESC when omitted.
         required: false
       request_id:
+        type: string
         anyOf:
         - type: string
         - type: 'null'
@@ -693,6 +713,8 @@ endpoints:
     bodyType: json
     body:
       jobs:
+        type: array
+        items: {type: object}
         anyOf:
         - items:
             properties:
@@ -712,6 +734,7 @@ endpoints:
           with `filter`.
         required: false
       filter:
+        type: object
         anyOf:
         - properties:
             organization_ids:
@@ -749,6 +772,7 @@ endpoints:
       select:
         properties:
           attributes:
+            type: [array, string]
             anyOf:
             - items:
                 type: string
@@ -770,6 +794,7 @@ endpoints:
               Off by default. Note that 'all' grows — and its cost grows — as new attributes are added to the endpoint.
             default: []
           related_people:
+            type: object
             anyOf:
             - properties:
                 attributes:
@@ -849,15 +874,15 @@ endpoints:
         required: true
       limit:
         type: integer
-        maximum: 200.0
-        minimum: 1.0
+        max: 200.0
+        min: 1.0
         description: Maximum number of jobs to return (filter mode only; ignored when `jobs` is provided).
         default: 10
         required: false
       offset:
         type: integer
-        maximum: 10000.0
-        minimum: 0.0
+        max: 10000.0
+        min: 0.0
         description: Number of results to skip (filter mode only; ignored when `jobs` is provided).
         default: 0
         required: false
@@ -925,6 +950,8 @@ endpoints:
     bodyType: json
     body:
       teams:
+        type: array
+        items: {type: integer}
         anyOf:
         - items:
             type: integer
@@ -936,6 +963,7 @@ endpoints:
           exclusive with `filter`.
         required: false
       filter:
+        type: object
         anyOf:
         - properties:
             organization_ids:
@@ -973,6 +1001,7 @@ endpoints:
       select:
         properties:
           attributes:
+            type: [array, string]
             anyOf:
             - items:
                 type: string
@@ -995,6 +1024,7 @@ endpoints:
               the endpoint.
             default: []
           related_people:
+            type: object
             anyOf:
             - properties:
                 attributes:
@@ -1034,6 +1064,7 @@ endpoints:
             description: Also return the people associated with each team, with a person-team match score. Available
               in both modes. Each related person returned costs 1 credit.
           job_posts:
+            type: object
             anyOf:
             - properties:
                 components:
@@ -1075,19 +1106,20 @@ endpoints:
         required: true
       limit:
         type: integer
-        maximum: 200.0
-        minimum: 1.0
+        max: 200.0
+        min: 1.0
         description: Maximum number of teams to return (filter mode only; ignored when `teams` is provided).
         default: 10
         required: false
       offset:
         type: integer
-        maximum: 10000.0
-        minimum: 0.0
+        max: 10000.0
+        min: 0.0
         description: Number of results to skip (filter mode only; ignored when `teams` is provided).
         default: 0
         required: false
       order_by_column:
+        type: string
         anyOf:
         - type: string
           enum:
@@ -1100,6 +1132,7 @@ endpoints:
           Default: jobs_count.'
         required: false
       order_by_direction:
+        type: string
         anyOf:
         - type: string
           enum:

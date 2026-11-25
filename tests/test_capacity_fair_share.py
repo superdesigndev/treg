@@ -6,6 +6,7 @@ charged. Own keys are never gated."""
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 from httpx import AsyncClient
@@ -206,9 +207,9 @@ async def test_a_freed_shared_place_goes_to_the_team_with_the_fewest_calls_in_pr
     elsewhere = await one.acquire("p", 9, 2)
     heavy = await two.acquire("p", 1, 2)                      # the account is full
     heavy_again = asyncio.create_task(two.acquire("p", 1, 2, max_wait_s=1))  # queues first...
-    await asyncio.sleep(0.05)
+    await _turns()
     light = asyncio.create_task(two.acquire("p", 2, 2, max_wait_s=1))        # ...the light team after
-    await asyncio.sleep(0.05)
+    await _turns()
     elsewhere.release()                                       # a place frees in the OTHER process
     slot = await asyncio.wait_for(light, 1)
     assert not heavy_again.done(), "the light team gets the shared place first"
@@ -288,11 +289,62 @@ async def test_a_full_provider_refuses_with_share_busy_and_charges_nothing(
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 429, r.text
     assert "share_busy" in r.text and "not charged" in r.text
+    assert r.headers["Retry-After"] == "2"
     assert await _balance(clients) == before
     other_team.release()
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
     assert fair_share._pools["tikhub"].active == 0, "the place is returned after the answer"
+
+
+async def test_a_team_ceiling_refusal_says_so_and_charges_nothing(
+    clients: AsyncClient, platform_on, gated, monkeypatch,
+):
+    async def over_ceiling(provider, team, cap, **kwargs):
+        raise ShareBusy(provider, team, 4, 0.0, reason="team_ceiling")
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    monkeypatch.setattr(fair_share, "acquire", over_ceiling)
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 429, r.text
+    detail = r.json()
+    detail = detail.get("detail", detail)
+    assert detail["error"] == "share_busy"
+    assert detail["message"] == ("your team holds its largest share of tikhub's places; "
+                                 "not charged, try again shortly")
+    assert await _balance(clients) == before
+
+
+async def test_a_team_over_its_ceiling_through_the_call_path_is_refused_with_retry_after(
+    clients: AsyncClient, platform_on, shared, monkeypatch,
+):
+    monkeypatch.setattr(capacity_view, "concurrency", lambda provider: 5 if provider == "tikhub" else 0)
+    monkeypatch.setenv("TREG_FAIR_SHARE_WAIT_S", "0.5")
+    monkeypatch.setenv("TREG_FAIR_SHARE_TEAM_CEILING_PERCENT", "80")
+    get_settings.cache_clear()
+    hold, entered = asyncio.Event(), []
+    inner = _fake_relay(200, b'{"ok":true}')
+
+    async def slow_relay(*args, **kwargs):
+        entered.append(1)
+        await hold.wait()
+        return await inner(*args, **kwargs)
+
+    monkeypatch.setattr(call_service, "relay", slow_relay)
+    running = [asyncio.create_task(clients.get(f"/call/{EP}?aweme_id={n}")) for n in range(4)]
+    try:
+        while len(entered) < 4:
+            await asyncio.sleep(0.01)
+        r = await clients.get(f"/call/{EP}?aweme_id=9")  # the fifth call of a team capped at 4 of 5
+        assert r.status_code == 429, r.text
+        assert r.headers["Retry-After"] == "2"
+        assert "largest share" in r.text and "not charged" in r.text
+    finally:
+        hold.set()
+        done = await asyncio.gather(*running)
+        get_settings.cache_clear()
+    assert [d.status_code for d in done] == [200] * 4
 
 
 async def test_own_key_calls_are_never_gated(clients: AsyncClient, platform_on, gated, monkeypatch):
@@ -344,3 +396,308 @@ def test_every_endpoint_concurrency_family_names_catalog_endpoints_of_one_provid
         providers = {by_id[endpoint_id]["provider"] for endpoint_id in row["endpoints"]}
         assert len(providers) == 1 and family.startswith(f"{providers.pop()}."), family
         assert family not in _CONCURRENCY, family
+
+
+# ---- one team's ceiling across processes --------------------------------------------------------
+
+async def test_a_team_over_its_ceiling_is_refused_and_another_team_still_gets_a_place(shared):
+    one, two = FairShare(), FairShare()
+    held = [await one.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(4)]
+    held += [await two.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(4)]
+    with pytest.raises(ShareBusy):
+        await one.acquire("p", 1, 10, max_wait_s=0.05, team_ceiling_percent=80)
+    assert shared.held("p") == 8 and shared.held("p:team:1") == 8
+    light = await two.acquire("p", 2, 10, max_wait_s=0.05, team_ceiling_percent=80)
+    assert shared.held("p") == 9
+    for s in (*held, light):
+        s.release()
+    await _turns()
+    assert shared.held("p") == 0 and shared.held("p:team:1") == 0 and shared.held("p:team:2") == 0
+
+
+async def test_the_ceiling_is_off_by_default_and_for_a_cap_it_cannot_reduce(shared):
+    gate = FairShare()
+    slots = [await gate.acquire("p", 1, 10) for _ in range(10)]
+    assert shared.held("p:team:1") == 0
+    for s in slots:
+        s.release()
+    (await gate.acquire("q", 1, 4, team_ceiling_percent=80)).release()  # ceil(3.2) = 4 = the cap
+    await _turns()
+    assert not any("team" in k for k in shared.owners)
+
+
+async def test_a_refused_wait_returns_the_team_place(shared):
+    one, two = FairShare(), FairShare()
+    held = await one.acquire("p", 9, 5)
+    others = [await one.acquire("p", 9, 5) for _ in range(4)]
+    with pytest.raises(ShareBusy):
+        await two.acquire("p", 1, 5, max_wait_s=0.05, team_ceiling_percent=80)
+    await _turns()
+    assert shared.held("p:team:1") == 0
+    for s in (held, *others):
+        s.release()
+
+
+async def test_a_failing_store_leaves_the_ceiling_open(shared):
+    shared.down = True
+    gate = FairShare()
+    slots = [await gate.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(9)]
+    assert all(s.team_lease is None for s in slots)
+    for s in slots:
+        s.release()
+
+
+class _HungStore(_SharedStore):
+    """A request sent while `hung` waits `delay`, then fails (the client's attempt timeout),
+    whatever happens meanwhile; outside it every request answers at once."""
+
+    def __init__(self, delay: float) -> None:
+        super().__init__()
+        self.hung, self.hang_delay = False, delay
+
+    async def _hang(self) -> bool:
+        if self.hung:
+            await asyncio.sleep(self.hang_delay)
+            return True
+        return False
+
+    async def acquire_slot(self, key, token, ttl_ms, limit):
+        return "unavailable" if await self._hang() else await super().acquire_slot(key, token, ttl_ms, limit)
+
+    async def renew_slot(self, key, token, ttl_ms):
+        return "unavailable" if await self._hang() else await super().renew_slot(key, token, ttl_ms)
+
+    async def release_slot(self, key, token):
+        return "unavailable" if await self._hang() else await super().release_slot(key, token)
+
+
+@pytest.mark.parametrize("period", [0.01, 0.05, 0.4])
+async def test_a_hanging_store_costs_one_wait_and_the_ceiling_returns_under_traffic(monkeypatch, period):
+    from treg.domain.capacity import fair_share as fair_share_module
+
+    store = _HungStore(0.1)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(fair_share_module, "_STORE_DOWN_S", 0.4)
+    delay, hang = store.hang_delay, (0.3, 1.8)             # several store windows long
+    # A request sent just before recovery fails one delay later and may open one more window; the
+    # first call after it in each process asks the account, and from the second the ceiling holds.
+    ceiling_back = hang[1] + delay + 0.4 + 4 * period + 0.1
+    total_s = ceiling_back + 4 * period + 0.3
+    pools = [FairShare() for _ in range(4)]                 # four server processes, one account
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    rows: list[tuple[float, float, bool]] = []              # (started, waited, held a team place)
+    refused = 0
+
+    async def one_call(i: int) -> None:
+        nonlocal refused
+        began = loop.time() - start
+        try:
+            slot = await pools[i % 4].acquire("p", i % 3, 10, max_wait_s=1, team_ceiling_percent=80)
+        except ShareBusy:
+            refused += 1
+            return
+        rows.append((began, loop.time() - start - began, slot.team_lease is not None))
+        await asyncio.sleep(0.03)
+        slot.release()
+
+    calls, i, left_by_hang = [], 0, None
+    while loop.time() - start < total_s:
+        store.hung = hang[0] <= loop.time() - start < hang[1]
+        if left_by_hang is None and loop.time() - start >= hang[1]:
+            left_by_hang = {key: set(owners) for key, owners in store.owners.items()}
+        calls.append(asyncio.create_task(one_call(i)))
+        i += 1
+        await asyncio.sleep(period)
+    store.hung = False
+    await asyncio.gather(*calls)
+    await asyncio.sleep(0.3)                                # releases sent during the hang finish
+    await _turns()
+
+    assert refused == 0
+    during = [(round(b, 2), round(w, 3)) for b, w, _ in rows if hang[0] <= b < hang[1]]
+    assert during and not [r for r in during if r[1] > 1.5 * delay], "no call waits twice"
+    assert all(p._pools["p"].store_answered for p in pools), "every process left skip mode"
+    assert all(time.monotonic() >= p._pools["p"].store_down_until for p in pools)
+    after = [team for b, _, team in rows if b > ceiling_back]
+    assert after and all(after), "the ceiling applies again"
+    assert all(p._pools["p"].active == 0 for p in pools)
+    for key, owners in store.owners.items():               # a release the hang refused expires
+        assert owners <= left_by_hang.get(key, set()), key  # with its lease; nothing later stays
+
+
+async def test_a_team_request_without_an_answer_never_opens_the_store_window(shared, monkeypatch):
+    real = provider_concurrency.try_acquire
+    asked: list[str] = []
+
+    async def team_key_silent(account, cap):
+        asked.append(account)
+        return None if ":team:" in account else await real(account, cap)
+
+    monkeypatch.setattr(provider_concurrency, "try_acquire", team_key_silent)
+    gate = FairShare()
+    first = await gate.acquire("p", 1, 10, team_ceiling_percent=80)
+    pool = gate._pools["p"]
+    assert first.team_lease is None and first.lease is None, "served from this process's count"
+    assert asked == ["p:team:1"], "the same call does not wait on the account request too"
+    assert pool.store_down_until == 0.0, "the window belongs to the account request"
+    assert not pool.store_answered
+    second = await gate.acquire("p", 1, 10, team_ceiling_percent=80)
+    assert second.lease is not None and asked[1:] == ["p"], "the next call asks the account"
+    assert pool.store_answered and pool.store_down_until == 0.0
+    for s in (first, second):
+        s.release()
+    await _turns()
+    assert not any(shared.owners.values())
+
+
+async def test_a_slow_store_never_stretches_the_wait_past_its_setting(shared):
+    one, two = FairShare(), FairShare()
+    held = [await one.acquire("p", 9, 2) for _ in range(2)]   # the account is full elsewhere
+    shared.delay = 0.3                                        # slow, but every request answers
+    began = time.monotonic()
+    with pytest.raises(ShareBusy) as busy:
+        await two.acquire("p", 1, 2, max_wait_s=0.5, team_ceiling_percent=50)
+    assert busy.value.reason == "wait"
+    assert time.monotonic() - began < 0.5 + 0.1, "the team request's time is part of the wait"
+    shared.delay = 0.0
+    for s in held:
+        s.release()
+    await asyncio.sleep(0.4)                                  # the late account reply lands
+    await _turns()
+    assert shared.held("p") == 0 and shared.held("p:team:1") == 0
+
+
+async def test_a_call_over_its_team_ceiling_is_refused_for_that_reason(shared):
+    gate = FairShare()
+    held = [await gate.acquire("p", 1, 10, team_ceiling_percent=80) for _ in range(8)]
+    with pytest.raises(ShareBusy) as busy:
+        await gate.acquire("p", 1, 10, team_ceiling_percent=80)
+    assert busy.value.reason == "team_ceiling"
+    for s in held:
+        s.release()
+
+
+async def test_places_a_stalled_store_applies_late_are_released_again_once_it_answers(shared):
+    """A request the store never answered may still run when it resumes, after the release this
+    process already sent: the team's key must not keep those places until the lease ends."""
+    provider_concurrency._unanswered.clear()
+    late: list[tuple[str, str]] = []
+    stalled = True
+    acquire, release = shared.acquire_slot, shared.release_slot
+
+    async def acquire_slot(key, token, ttl_ms, limit):
+        if stalled:
+            late.append((key, token))
+            return "unavailable"
+        return await acquire(key, token, ttl_ms, limit)
+
+    async def release_slot(key, token):
+        return "unavailable" if stalled else await release(key, token)
+
+    shared.acquire_slot, shared.release_slot = acquire_slot, release_slot
+    gate = FairShare()
+    for _ in range(3):
+        (await gate.acquire("p", 1, 10, team_ceiling_percent=80)).release()
+    await _turns()
+    stalled = False
+    for key, token in late:  # the store resumes and runs what it had queued
+        shared.owners.setdefault(key, set()).add(token)
+    assert shared.held("p:team:1") == 1
+    gate._pools["p"].store_answered, gate._pools["p"].store_down_until = True, 0.0
+    (await gate.acquire("p", 2, 10, team_ceiling_percent=80)).release()  # the store answers again
+    await _turns()
+    assert shared.held("p:team:1") == 0
+
+
+async def test_a_release_a_stalled_store_dropped_frees_the_place_once_it_answers(shared):
+    provider_concurrency._unanswered.clear()
+    stalled = False
+    release = shared.release_slot
+
+    async def release_slot(key, token):
+        return "unavailable" if stalled else await release(key, token)
+
+    shared.release_slot = release_slot
+    gate = FairShare()
+    slots = [await gate.acquire("p", 1, 3) for _ in range(3)]
+    stalled = True
+    for s in slots:  # the calls finish during the stall; the store drops their releases
+        s.release()
+    await _turns()
+    assert shared.held("p") == 3
+    stalled = False
+    gate._pools["p"].store_down_until = 0.0
+    (await gate.acquire("p", 2, 3, max_wait_s=0.5)).release()  # the store answers again
+    await _turns()
+    assert shared.held("p") == 0
+
+
+async def test_a_place_a_store_applies_late_after_a_stall_longer_than_the_lease_is_released(shared):
+    provider_concurrency._unanswered.clear()
+    stalled, late = True, []
+    acquire = shared.acquire_slot
+
+    async def acquire_slot(key, token, ttl_ms, limit):
+        if stalled:
+            late.append((key, token))
+            return "unavailable"
+        return await acquire(key, token, ttl_ms, limit)
+
+    shared.acquire_slot = acquire_slot
+    gate = FairShare()
+    (await gate.acquire("p", 1, 3)).release()
+    await _turns()
+    stalled = False
+    for lease in provider_concurrency._unanswered:
+        lease.valid_until = 0.0  # the stall outlasted the lease on this process's clock
+    for key, token in late:  # the store runs the queued acquire and stamps it with its own clock
+        shared.owners.setdefault(key, set()).add(token)
+    assert shared.held("p") == 1
+    gate._pools["p"].store_down_until = 0.0
+    (await gate.acquire("p", 2, 3)).release()  # the store answers again
+    await _turns()
+    assert shared.held("p") == 0
+
+
+async def test_a_long_release_again_list_drains_a_few_requests_at_a_time(shared):
+    provider_concurrency._unanswered.clear()
+    flight = peak = 0
+    release = shared.release_slot
+
+    async def release_slot(key, token):
+        nonlocal flight, peak
+        flight += 1
+        peak = max(peak, flight)
+        await asyncio.sleep(0)
+        flight -= 1
+        return await release(key, token)
+
+    shared.release_slot = release_slot
+    for _ in range(400):
+        provider_concurrency._unanswered.append(provider_concurrency.Lease(shared, "p"))
+    (await FairShare().acquire("p", 1, 5)).release()  # the store answers: one drain starts
+    for _ in range(600):
+        await asyncio.sleep(0)
+    assert not provider_concurrency._unanswered
+    assert 0 < peak <= provider_concurrency._DRAIN_WORKERS + 1  # plus the call's own release
+
+
+async def test_the_drain_stops_at_the_first_request_the_store_does_not_answer(shared):
+    provider_concurrency._unanswered.clear()
+    calls = 0
+
+    async def release_slot(key, token):
+        nonlocal calls
+        calls += 1
+        return "unavailable"
+
+    shared.release_slot = release_slot
+    for _ in range(400):
+        provider_concurrency._unanswered.append(provider_concurrency.Lease(shared, "p"))
+    (await FairShare().acquire("p", 1, 5)).release()
+    for _ in range(100):
+        await asyncio.sleep(0)
+    assert calls <= provider_concurrency._DRAIN_WORKERS + 1
+    assert len(provider_concurrency._unanswered) >= 399
