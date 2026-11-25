@@ -78,8 +78,8 @@ provider you might need once, plus learning each one's API shape. It is closer t
 tools than to a data vendor: one base URL, one token, many providers behind it. `F-05`
 
 ## `S-FINAL-CTA-TRUST`
-$1.00 of free credit once per new verified account. No credit card, no provider signup. treg.to is open source
-(Apache 2.0). `F-02` `F-08` `F-10`
+$1.00 of free credit once per new verified account. No credit card, no provider signup. treg.to is source available
+(Apache 2.0 with additional terms). `F-02` `F-08` `F-10`
 
 ## `S-INSTALL`
 ```text

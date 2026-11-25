@@ -113,7 +113,7 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
   <div class="bigfoot-in">
     <div class="bf-brand">
       <span class="bfb">{_LOGO} treg</span>
-      <div class="note2">100% open source</div>
+      <div class="note2">Source available</div>
     </div>
     <nav class="bf-cols" aria-label="Site">
       <div class="bf-col"><div class="lab">Explore</div>

@@ -25,7 +25,7 @@ treg catalog get <endpoint_id>                                  # price + measur
 | `F-07` | 5xx, timeouts and network errors are never billed; `Idempotency-Key` prevents paying twice for a retry | `llms.txt` | 2026-08-17 |
 | `F-08` | Sign-in doors: GitHub, Google, email one-time code. No card required to create a team or spend the grant | treg.to sign-in modal; `ledger.grant` fires at org creation | 2026-08-17 |
 | `F-09` | Installer registers the MCP server into Claude Code, Cursor and opencode; other MCP clients connect via OAuth; anything that runs a shell can use the CLI | `llms.txt` | 2026-08-17 |
-| `F-10` | 100% open source, Apache 2.0 — github.com/superdesigndev/treg | `LICENSE`; treg.to footer | 2026-10-22 |
+| `F-10` | Source available, Apache 2.0 with additional terms — github.com/superdesigndev/treg | `LICENSE`; treg.to footer | 2026-10-22 |
 | `F-11` | Price is visible before the call (`catalog get` / `estimated_cost_usd`) | `llms.txt` | 2026-08-17 |
 | `F-12` | Out of balance returns HTTP 402 with `balance_micro`, `estimated_cost_micro` and a top-up URL | `llms.txt` | 2026-08-17 |
 | `F-13` | A team can pin a capability to one provider: `treg org pin <capability> --provider <p>` | `llms.txt` CLI reference | 2026-08-17 |
