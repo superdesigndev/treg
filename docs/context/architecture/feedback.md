@@ -454,7 +454,7 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   own number text; a leading byte order mark does not stop JSON being read as JSON). The request is
   the one the archive keeps for the question, the first call's: its query is shown sorted
   (`review_answers.request_url`), its body only when the key proves it is this call's
-  (`request_body`: none with a fractional or non-finite number or a repeated key), and
+  (`request_body`: no JSON body holding a fractional number or any object, which another call can share the key with), and
   `review_codes.REQUEST_NOTE` tells every judge, the blind audit too, that the order of parameters
   is not the agent's while every value shown is exact. The judge sees what this call's delivery is known to have had: its own
   status and the body (`review_answers.as_delivered`), without the provider-reported charge the

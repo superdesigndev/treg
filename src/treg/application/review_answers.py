@@ -110,22 +110,23 @@ def _exact(raw: str):
     raise _Unprovable(raw)
 
 
-def _no_repeats(pairs: list) -> dict:
-    if len({k for k, _ in pairs}) != len(pairs):
-        raise _Unprovable("repeated key")
-    return dict(pairs)
+def _no_object(pairs: list):
+    raise _Unprovable("object")
 
 
 def request_body(text: str | None) -> str | None:
-    """The archived request body when it is provably this call's, else None. The archive keys a
-    JSON body by its parsed form (`archive._body_digest`), so a body with a fractional or
-    non-finite number (parsed to a float, rounding away digits) or a repeated key (the last value
-    wins) can share its key with a different body, and the one kept is the first call's. Integers,
-    strings, key order and whitespace parse exactly; a body that is not JSON is keyed by its bytes."""
+    """The archived request body when it is provably this call's, else None. No request body is
+    on the call row, so the proof is the archive key alone. The key holds a JSON body by its
+    parsed form (`archive._body_digest`, which reads a leading byte order mark too), and the body
+    kept is the first call's: another call shares the key with a body whose fractional or
+    non-finite numbers round to the same floats, or whose objects repeat a key (the last value
+    wins), so a JSON body holding a fractional number or any object is not shown. Integers,
+    strings and lists parse exactly, and a body that is not JSON is keyed by its bytes."""
     if text is None:
         return None
-    try:
-        json.loads(text, parse_float=_exact, parse_constant=_exact, object_pairs_hook=_no_repeats)
+    try:  # parsed as the digest parses it: the bytes, so a byte order mark is JSON too
+        json.loads(text.encode("utf-8"), parse_float=_exact, parse_constant=_exact,
+                   object_pairs_hook=_no_object)
     except _Unprovable:
         return None
     except (ValueError, RecursionError):

@@ -205,7 +205,12 @@ def test_a_request_body_is_shown_only_when_it_is_provably_this_call_s():
     # A fractional number or a repeated key can share an archive key with another body.
     assert review_answers.request_body('{"min": 1234567890123456.7}') is None
     assert review_answers.request_body('{"a": 1, "a": 2}') is None
-    assert review_answers.request_body('{"a": [1, "x < y"], "b": null}') == '{"a": [1, "x < y"], "b": null}'
+    # The first call's plain object shares its key with a later body repeating a key.
+    assert review_answers.request_body('{"a": 2}') is None
+    # A byte order mark does not hide a rounded number: the digest reads JSON after it.
+    assert review_answers.request_body('\ufeff{"min": 1234567890123456.7}') is None
+    assert review_answers.request_body('\ufeff[1, 2]') == '\ufeff[1, 2]'
+    assert review_answers.request_body('[1, "x < y", null]') == '[1, "x < y", null]'
     assert review_answers.request_body("q=1") == "q=1"
     assert review_answers.request_body(None) is None
 
