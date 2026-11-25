@@ -954,20 +954,21 @@ async def tag_calls_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
     Counts BILLABLE calls: a team calling on its own key writes no tag row, and a released call has
     its rows deleted. That is the right grain for a reseller's plan limit — say so in the docs.
     """
-    total = (await db.execute(
+    row = (await db.execute(select(
         select(func.count()).select_from(TagSpend).where(
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
-            TagSpend.created_at >= since)
-    )).scalar() or 0
-    queued = (await db.execute(
+            TagSpend.created_at >= since).scalar_subquery(),
         select(func.count()).select_from(CallCharge).where(
-            *_queued_tag(org_id, dim, val, since)))).scalar() or 0
-    return int(total) + int(queued)
+            *_queued_tag(org_id, dim, val, since)).scalar_subquery(),
+    ))).one()
+    return int(row[0] or 0) + int(row[1] or 0)
 
 
 def _queued_tag(org_id: int, dim: str, val: str, since: datetime) -> list:
     """A tagged allowance call's charge still in the queue: its tag rows are written when it is
-    folded, so until then a cap reads it here."""
+    folded, so until then a cap reads it here. Read in the same statement as the tag rows: a fold
+    committing between two statements moves a charge from the queue into rows the first one
+    already read."""
     return [CallCharge.org_id == org_id, CallCharge.created_at >= since,
             CallCharge.meta[("tags", dim)].as_string() == val]
 
@@ -1006,15 +1007,14 @@ async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
     One indexed aggregate. That is the whole reason `TagSpend` exists as a table instead of a JSON key:
     this runs on every proxied call.
     """
-    total = (await db.execute(
+    row = (await db.execute(select(
         select(func.coalesce(func.sum(TagSpend.amount_micro), 0)).where(
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
-            TagSpend.created_at >= since)
-    )).scalar() or 0
-    queued = (await db.execute(
+            TagSpend.created_at >= since).scalar_subquery(),
         select(func.coalesce(func.sum(CallCharge.amount_micro), 0)).where(
-            *_queued_tag(org_id, dim, val, since)))).scalar() or 0
-    return int(total) + int(queued)
+            *_queued_tag(org_id, dim, val, since)).scalar_subquery(),
+    ))).one()
+    return int(row[0] or 0) + int(row[1] or 0)
 
 
 async def tag_invoice_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:
