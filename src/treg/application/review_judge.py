@@ -16,6 +16,7 @@ its whole window's unjudged rows and writes back in batches of `review_judge_bat
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -36,6 +37,7 @@ from .review_answers import ABSENT, Answer, answer_of, view
 log = logging.getLogger("treg.review_judge")
 
 NEGATIVE = ("partly", "not_useful")
+_wait_for = asyncio.wait_for  # a seam for tests that run on a fake clock
 
 
 def configured() -> bool:
@@ -123,7 +125,7 @@ async def judge_codes(*, deadline: float) -> dict:
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
             .order_by(CallReview.created_at.desc()))).all()
-    out = {"pending": len(rows), "judged": 0, "with_answer": 0, "answer_unreadable": 0, "answer_errors": 0, "no_reason": 0, "already_judged": 0,
+    out = {"pending": len(rows), "judged": 0, "with_answer": 0, "answer_unreadable": 0, "answer_deferred": 0, "answer_errors": 0, "no_reason": 0, "already_judged": 0,
            "failed_requests": 0, "unreadable": 0, "tokens_in": 0, "stopped_by_deadline": False}
     blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
     out["no_reason"] = await _write_codes(blank)
@@ -173,11 +175,24 @@ async def judge_codes(*, deadline: float) -> dict:
 
     plain: list[tuple] = []
     read: list[tuple] = []
+    # Reviews that need no archive read go first, so answers that cannot be read now never hold up
+    # the rest; after `review_judge_unreadable_limit` of those in a run, no more reads are tried.
+    rows.sort(key=lambda r: r.routed_via is None)
     for r in rows:
         if time.monotonic() >= read_until:
             out["stopped_by_deadline"] = True
             break
-        answer = await answer_of(r) if r.routed_via is None else ABSENT
+        if r.routed_via is not None:
+            answer = ABSENT
+        elif out["answer_unreadable"] >= s.review_judge_unreadable_limit:
+            out["answer_deferred"] += 1
+            continue
+        else:
+            try:  # one slow read cannot carry the run past the point where what was read is sent
+                answer = await _wait_for(answer_of(r), max(read_until - time.monotonic(), 0))
+            except TimeoutError:
+                out["stopped_by_deadline"] = True
+                break
         if answer.state == "unreadable":  # on file but not readable now: left for a later run
             out["answer_unreadable"] += 1
             continue

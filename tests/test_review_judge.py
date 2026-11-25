@@ -94,7 +94,7 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
         return {"choice": "SOMETHING_ELSE"}
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_codes(deadline=float("inf"))
-    assert out == {"pending": 3, "judged": 1, "with_answer": 0, "answer_unreadable": 0, "answer_errors": 0,
+    assert out == {"pending": 3, "judged": 1, "with_answer": 0, "answer_unreadable": 0, "answer_deferred": 0, "answer_errors": 0,
                    "no_reason": 1, "stopped_by_deadline": False, "already_judged": 0, "failed_requests": 0,
                    "unreadable": 1, "tokens_in": 10}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.CODES)
@@ -361,3 +361,72 @@ async def test_reading_answers_stops_in_time_to_send_what_was_read(clients, monk
     now[0] = 0.0
     again = await review_judge.judge_codes(deadline=1.0)
     assert again["pending"] == 6 - out["judged"] and again["judged"] > 0
+
+
+async def test_a_slow_last_read_does_not_drop_what_was_read(clients, monkeypatch):
+    """1 s to run: two reads of 0.1 s, then one of 0.9 s. The slow read is cut off, that review
+    waits, and the two read are sent before the deadline."""
+    from types import SimpleNamespace
+
+    from treg.application import review_answers
+    from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
+
+    org = await _org(clients)
+    await _add(*[_review(org, f"s-{i}", None) for i in range(3)], *[_record(org, f"s-{i}", f"k{i}") for i in range(3)])
+    async with session_maker() as db:
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.codebook_version = None
+        await db.commit()
+    now = [0.0]
+    monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    found = {"request": {"method": "POST", "url": "u", "body_text": "{}"},
+             "response": {"status_code": 200, "body_text": PEOPLE}}
+
+    limit = [None]
+
+    async def answer_of(r):
+        took = 0.9 if r.call_id == "s-0" else 0.1  # the oldest is read last, and slowly
+        if took > limit[0]:  # what asyncio.wait_for does: cut off at its timeout
+            now[0] += limit[0]
+            raise TimeoutError
+        now[0] += took
+        return review_answers.Answer("read", found)
+    monkeypatch.setattr(review_judge, "answer_of", answer_of)
+
+    async def wait_for(coro, timeout):
+        limit[0] = timeout
+        return await coro
+    monkeypatch.setattr(review_judge, "_wait_for", wait_for)
+    sent_at = []
+    _fake(monkeypatch, lambda q, spec, state: sent_at.append(now[0]) or {"choice": "EMPTY"})
+
+    out = await review_judge.judge_codes(deadline=1.0)
+    assert out["with_answer"] == 2 and out["stopped_by_deadline"] is True and max(sent_at) < 1.0
+    assert (await _all())["s-0"].primary_code is None
+
+
+async def test_unreadable_answers_never_hold_up_reviews_that_need_none(clients, monkeypatch):
+    """Many newer direct reviews whose answers cannot be read now, then a routed one: the routed
+    review is coded in the first run, and reads stop after the limit."""
+    from treg.application import review_answers
+    from test_review_body_pilot import _add, _org, _record, _review
+
+    org = await _org(clients)
+    await _add(_review(org, "rt", None, routed=True), _record(org, "rt", tier="routed"))
+    await _add(*[_review(org, f"u-{i}", None) for i in range(30)], *[_record(org, f"u-{i}", f"k{i}") for i in range(30)])
+    async with session_maker() as db:
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.codebook_version = None
+        await db.commit()
+    reads = []
+
+    async def answer_of(r):
+        reads.append(r.call_id)
+        return review_answers.Answer("unreadable")
+    monkeypatch.setattr(review_judge, "answer_of", answer_of)
+    monkeypatch.setattr(get_settings(), "review_judge_unreadable_limit", 5)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "WRONG"})
+
+    out = await review_judge.judge_codes(deadline=float("inf"))
+    assert (await _all())["rt"].primary_code == "WRONG"
+    assert len(reads) == 5 and out["answer_unreadable"] == 5 and out["answer_deferred"] == 25

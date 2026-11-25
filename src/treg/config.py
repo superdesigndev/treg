@@ -791,6 +791,9 @@ class Settings(BaseSettings):
     # this many characters (`body_view.shrink`, at least its MIN_BUDGET).
     review_judge_answer_batch: int = Field(default=5, ge=1, le=25)
     review_judge_answer_chars: int = Field(default=4000, ge=22, le=20000)
+    # After this many answers that cannot be read now, a run stops trying reads (storage is likely
+    # down) and leaves the remaining direct reviews for a later run.
+    review_judge_unreadable_limit: int = Field(default=20, ge=1)
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
