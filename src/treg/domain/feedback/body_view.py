@@ -13,12 +13,13 @@ import re
 
 from ... import jsontext
 
-CUT = "…"
+# treg's own cut, not an ellipsis: a vendor's preview may already end in "…".
+CUT = "[treg:cut]"
 MORE, MORE_KEYS, LIST, OBJECT, OMITTED = ("_treg_more", "_treg_more_keys", "_treg_list", "_treg_object",
                                           "_treg_omitted")
 # What each mark a cut leaves means, as the judge is told (`review_codes.body_code_question`).
 MARKERS = {
-    CUT: "'…' at the end of a string: the string was cut there",
+    CUT: "'[treg:cut]' at the end of a string: treg cut the string there (a plain '…' is the vendor's own)",
     MORE: '`{"_treg_more": n}` as a list\'s last item: n more items followed',
     MORE_KEYS: '`"_treg_more_keys": n` in an object: n more fields followed',
     LIST: '`{"_treg_list": n}` in place of a list: a list of n items was there',
@@ -77,7 +78,7 @@ def shrink(text: str | None, budget: int) -> str:
         value = json.loads(text)
     except ValueError:
         plain = _SPACE.sub(" ", _TAG.sub(" ", text)).strip()
-        return plain if len(plain) <= budget else plain[:budget - 1] + CUT
+        return plain if len(plain) <= budget else plain[:budget - len(CUT)] + CUT
     out = _dumps(value)
     for items, chars, keys in _STEPS:
         if len(out) <= budget:

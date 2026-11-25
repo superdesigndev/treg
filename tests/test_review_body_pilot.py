@@ -31,7 +31,7 @@ def test_shrink_keeps_structure_and_counts_cut_items():
     assert len(out) <= 1000
     value = json.loads(out)
     assert value["total"] == 40 and value["results"][-1][body_view.MORE] > 0
-    assert value["results"][0]["email"] is None and value["results"][0]["name"].endswith("…")
+    assert value["results"][0]["email"] is None and value["results"][0]["name"].endswith(body_view.CUT)
 
 
 def test_shrink_strips_html_and_cuts_text():
@@ -79,6 +79,13 @@ def test_every_mark_a_cut_leaves_is_explained_to_the_judge(example, budget):
     prompt = review_codes.body_code_question(0)["instructions"]
     assert marks <= set(body_view.MARKERS) and all(f'"{m}"' in prompt for m in marks)
     assert body_view.CUT not in out or body_view.CUT in prompt
+
+
+def test_a_vendor_ellipsis_is_not_read_as_a_cut():
+    preview = {"snippet": "Founded in 2010, the company builds…", "items": ["x" * 400] * 3}
+    out = json.loads(body_view.shrink(json.dumps(preview), 300))
+    assert out["snippet"] == preview["snippet"] and out["items"][0].endswith(body_view.CUT)
+    assert "'[treg:cut]'" in review_codes.body_code_question(0)["instructions"]
 
 
 @pytest.mark.parametrize("budget", [22, 60, 500, 4000])
