@@ -2094,6 +2094,7 @@ adapters:
     accepts: [[q]]
     in: {q: body.query}
     in_expr: {body.country: "upper(country)"}
+    position: {offset: "zero_based(body.first)"}
     out: {results: result.organicResults, count: "len(result.organicResults)"}
   # x.user.following, x.post.detail, youtube.video.captions, google.domain.competitors, xiaohongshu.search.notes:
   # one vendor with a usable fixture each (X's own API is an OAuth tool) — no waterfall yet.

@@ -803,6 +803,18 @@ def test_page_position_reads_a_declared_path_a_cursor_and_a_routed_caller():
         C.parse_adapters({"adapters": {"t": {"position": {"page": "body.p", "offset": "body.o"}}}})
 
 
+@pytest.mark.parametrize(("first", "offset"), [
+    (None, None), (1, None), (2, "1"), (11, "10"), ("11", "10"),
+    (0, None), (-2, None), (2.5, None), (True, None), ("2.5", None),
+])
+def test_one_based_result_position_matches_the_public_offset(first, offset):
+    declaration = {"position": {"offset": "zero_based(body.first)"}}
+    adapter = C.parse_adapters({"adapters": {"test": declaration}})["test"]
+    body = json.dumps({"first": first} if first is not None else {}).encode()
+    actual = ev.page_position(adapter, (), body)
+    assert actual == ev.page_position(None, identity={"offset": offset})
+
+
 def test_an_object_asked_by_url_or_by_id_hashes_the_same(monkeypatch):
     monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
     get_settings.cache_clear()

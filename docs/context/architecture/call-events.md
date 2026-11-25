@@ -112,7 +112,9 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `next_page_token`, `after`, `page`, `offset`, `start` or `skip` that the endpoint declares with
   a type it can be: a number for a page or an offset (crawl4ai's Facebook `page` is a page name), a
   string or a number for a cursor. A declared page with `default: 0`, or `min: 0` and no default
-  of 1, counts from 0 (aiark, TheirStack). A routed parent's position is the caller's `cursor`,
+  of 1, counts from 0 (aiark, TheirStack). A provider that numbers results from one declares
+  `position: {offset: "zero_based(body.first)"}` so result 11 matches offset 10.
+  A routed parent's position is the caller's `cursor`,
   `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
   whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
   first page and leave `input_id` as it was.
