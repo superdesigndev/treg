@@ -143,6 +143,7 @@ def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
 
 
 RANKING_TIERS = ("good", "bad")
+POOLER_POOLS = ("background",)
 
 
 def _parse_ranking_tiers(raw: str) -> dict[str, dict[str, str]]:
@@ -370,8 +371,14 @@ class Settings(BaseSettings):
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.
     # Empty keeps read_session_maker on the existing primary pool.
     read_database_url: str = ""
+    # A transaction-pooling PgBouncer in front of `database_url`, and the primary pools that connect
+    # through it (comma-separated). Only `background` is accepted: PgBouncer reports a full server
+    # pool by closing the client connection after its `query_wait_timeout`, so a request pool would
+    # wait that long instead of answering the typed 503. SQLite has no pools, so it ignores both.
+    database_pooler_url: str = ""
+    db_pooler_pools: str = ""
 
-    @field_validator("database_url", "read_database_url")
+    @field_validator("database_url", "read_database_url", "database_pooler_url")
     @classmethod
     def _async_pg_driver(cls, v: str) -> str:
         # Some hosts inject a bare `postgres://`/`postgresql://` URL, but
@@ -401,6 +408,22 @@ class Settings(BaseSettings):
         if v and not v.startswith(("sqlite+aiosqlite://", "postgresql+asyncpg://")):
             raise ValueError("read_database_url must use sqlite+aiosqlite or postgresql+asyncpg, or be empty")
         return v
+
+    @field_validator("db_pooler_pools")
+    @classmethod
+    def _pooler_pools(cls, v: str) -> str:
+        names = sorted({part.strip() for part in v.split(",") if part.strip()})
+        if unsupported := [name for name in names if name not in POOLER_POOLS]:
+            raise ValueError(f"db_pooler_pools accepts only {', '.join(POOLER_POOLS)}, not "
+                             f"{', '.join(unsupported)}")
+        return ",".join(names)
+
+    @model_validator(mode="after")
+    def _pooler_configuration(self):
+        if (self.db_pooler_pools and self.database_url.startswith("postgresql+asyncpg://")
+                and not self.database_pooler_url.startswith("postgresql+asyncpg://")):
+            raise ValueError("db_pooler_pools on PostgreSQL requires a PostgreSQL database_pooler_url")
+        return self
 
     # Pool sizing overrides, e.g. "admin.pool_size=4,background.pool_size=12". Empty = the defaults
     # in `infra.db.POOL_SPECS`. This exists because pool sizing can only be validated in production:

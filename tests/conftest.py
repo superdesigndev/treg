@@ -75,6 +75,16 @@ if _test_db_url and _worker and _test_db_url.startswith("postgresql"):
 os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
 # Replica tests opt in explicitly; never inherit a real replica from the shell or .env.
 os.environ["TREG_READ_DATABASE_URL"] = ""
+# The background pool goes through a pooler only when TREG_TEST_POOLER_URL names one (CONTRIBUTING.md).
+_test_pooler_url = (os.environ.get("TREG_TEST_POOLER_URL", "")
+                    if (_test_db_url or "").startswith("postgresql") else "")
+if _test_pooler_url:
+    from sqlalchemy.engine import make_url
+
+    _test_pooler_url = make_url(_test_pooler_url).set(
+        database=make_url(_test_db_url).database).render_as_string(hide_password=False)
+os.environ["TREG_DATABASE_POOLER_URL"] = _test_pooler_url
+os.environ["TREG_DB_POOLER_POOLS"] = "background" if _test_pooler_url else ""
 os.environ["TREG_WORKOS_API_KEY"] = ""
 os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""

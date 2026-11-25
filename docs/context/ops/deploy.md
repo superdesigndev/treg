@@ -206,6 +206,20 @@ never pass through because SQLAlchemy treats some as unlimited. `bootstrap.pool_
 per-pool peak, capacity and headroom: resize from measurements, one pool at a time. A larger pool
 does not repair a slow scan, lock queue or missing index.
 
+`TREG_DATABASE_POOLER_URL` with `TREG_DB_POOLER_POOLS=background` sends the background pool through
+a transaction-pooling PgBouncer in front of the same database. The API and admin pools, the read
+pool, migrations (`maintenance.py` reads `_db_url`) and startup checks keep `TREG_DATABASE_URL`.
+Behind the pooler a pool's retained connections are held by PgBouncer: the database sees the
+transactions in flight plus the server connections PgBouncer keeps until its idle timeout, and
+those count against the ceiling together with the direct pools. Nothing survives a transaction
+there, so background work uses only `SET LOCAL` and transaction-level advisory locks, and the
+pooler must support protocol-level prepared statements (PgBouncer 1.21 or later with
+`max_prepared_statements` above 0), which asyncpg uses for every statement. PgBouncer refuses the
+read pool's `default_transaction_read_only` startup parameter. It reports a full server pool only
+by closing the client connection after `query_wait_timeout`, which asyncpg raises as
+`ConnectionDoesNotExistError`: the same error as a dropped connection, and far later than
+`pool_timeout`, which is why the request pools are not accepted.
+
 A request that gets no slot within `pool_timeout` receives `503 {"treg_saturated": true}` with
 `Retry-After: 2` (`bootstrap_handlers._pool_saturated`). The database refusing a new connection
 (asyncpg `TooManyConnectionsError`, including "remaining connection slots are reserved", and

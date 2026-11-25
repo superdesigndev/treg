@@ -25,7 +25,10 @@ from . import money_trace
 # sized against the relay's concurrency so bursts don't starve the pool and time out.
 _db_url = get_settings().database_url
 _read_db_url = get_settings().read_database_url
+_pooler_url = get_settings().database_pooler_url
 _is_sqlite = _db_url.startswith("sqlite")
+_pooled_pools = frozenset() if _is_sqlite else frozenset(
+    filter(None, get_settings().db_pooler_pools.split(",")))
 
 
 # THREE PRIMARY POOLS, ONE DATABASE — a bulkhead. Each class of work can exhaust only its own slots, so
@@ -173,12 +176,13 @@ def log_connection_budget() -> None:
     logging.getLogger("treg").info(
         "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
         "instance at full load, %d retained once idle; a rolling deploy adds the new generation to "
-        "the old one on every instance it replaces; compare with the database connection ceiling",
+        "the old one on every instance it replaces; compare with the database connection ceiling%s",
         POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
         POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
         POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
         budget["per_process"], budget["workers"], budget["per_instance"],
-        budget["retained_per_instance"])
+        budget["retained_per_instance"],
+        f"; through the pooler: {', '.join(sorted(_pooled_pools))}" if _pooled_pools else "")
 
 
 def _new_engine(name: str, url: str | None = None):
@@ -190,7 +194,8 @@ def _new_engine(name: str, url: str | None = None):
     500. Slots only bound concurrent DB PHASES, which are milliseconds — a `/call/` holds no
     connection during its upstream round trip (`call_tool` commits before `relay()`)."""
     spec = POOL_SPECS[name]
-    db_url = url or _db_url
+    pooled = url is None and name in _pooled_pools
+    db_url = url or (_pooler_url if pooled else _db_url)
     kwargs: dict = {"future": True}
     is_sqlite = db_url.startswith("sqlite")
     if not is_sqlite:
@@ -203,7 +208,7 @@ def _new_engine(name: str, url: str | None = None):
         # Use a replica/read-only database role as the access boundary, not this session default.
         kwargs["connect_args"] = {"server_settings": {"default_transaction_read_only": "on"}}
     engine = create_async_engine(db_url, **kwargs)
-    money_trace.install_engine(engine.sync_engine, pool_name=name)
+    money_trace.install_engine(engine.sync_engine, pool_name=name, pooled=pooled)
     if name == "read" and is_sqlite:
         # Keep this on the dedicated reader even when both URLs name the same SQLite file.
         # Applying it to the shared primary engine would also disable application writes.

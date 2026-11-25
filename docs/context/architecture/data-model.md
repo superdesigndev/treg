@@ -493,7 +493,8 @@ Their contract for anyone changing them: they issue no SQL, add no awaits to mon
 never change a transaction boundary or swallow an exception or cancellation, and carry no SQL text,
 parameters, amounts, exception messages, keys or tokens. Org and call ids appear only in bounded
 slow-operation logs, never as aggregate dimensions. A backend PID is reusable, so join trace records
-by `app_txn_id` and time interval. PostHog is a lossy diagnostic sink, never evidence that a charge
+by `app_txn_id` and time interval. A pool behind a connection pooler records no backend PID: the
+id its client sees is the pooler's. PostHog is a lossy diagnostic sink, never evidence that a charge
 committed; short-lived workers are verified from their local exit summary. The quota fail-open
 summary is described in [org-endpoint quotas](org-endpoint-quota.md#store-contract).
 
