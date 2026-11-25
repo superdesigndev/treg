@@ -1648,6 +1648,12 @@ async def _catalog_get_impl(
             out["overflow_via"] = ep.get("overflow_via")
     if isinstance(out, dict) and (out.get("routing") or {}).get("plan"):
         out.pop("siblings", None)
+    if isinstance(out, dict) and isinstance(out.get("siblings"), list):
+        # MCP hosts cap a tool result's size, and a crowded job lists dozens of siblings: each one
+        # carries its price, not how it settles. The full cost is that sibling's own catalog_get.
+        for sibling in out["siblings"]:
+            if isinstance(sibling, dict):
+                sibling["cost"] = catalog_store.quote_cost(sibling.get("cost"))
     return out
 
 
