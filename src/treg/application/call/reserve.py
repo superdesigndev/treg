@@ -346,14 +346,20 @@ def _holdless_listed(org_id: int) -> bool:
 
 
 async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
-    """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
+    """Admit a $0 call without a hold: the daily-cap and member-limit reads, no balance row, no
+    money admission. A member already past their limit is refused, as on the hold path."""
     mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = 0
     mk.reserved_at = time.monotonic()
-    if budget_policy._effective_daily_cap(caller.org) > 0:
+    team_cap = budget_policy._effective_daily_cap(caller.org) > 0
+    member_cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None
+    if team_cap or member_cap:
         async with session_maker() as db:
-            await _enforce_platform_daily_cap(caller, 0, db)
+            if team_cap:
+                await _enforce_platform_daily_cap(caller, 0, db)
+            if member_cap:
+                await _enforce_member_spend_cap(caller, 0, db)
 
 
 def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,

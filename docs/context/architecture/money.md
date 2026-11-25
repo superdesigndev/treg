@@ -994,8 +994,8 @@ stale idempotency claim reads while no child holds anything. For an org listed i
 `holdless_free_org_ids` (default `[]`: none), or every org with `holdless_free_all_orgs` except
 `holdless_free_excluded_org_ids` (the excluded list wins), and with no caller tags (`X-Treg-Meta`
 or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
-LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap read
-runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed
+LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap and
+member-limit reads run, so a team past its cap, or a member past their limit, is still refused. `_platform_settle` then writes nothing; a computed
 charge is logged and absorbed. A tagged call keeps its $0 hold because its settled tag rows count
 toward `calls_per_day`. Overflow children always reserve, since their aggregator spend is recorded
 in the settle transaction; `_child` never inherits the parent's flags. Cancellation of a holdless
