@@ -206,6 +206,25 @@ never pass through because SQLAlchemy treats some as unlimited. `bootstrap.pool_
 per-pool peak, capacity and headroom: resize from measurements, one pool at a time. A larger pool
 does not repair a slow scan, lock queue or missing index.
 
+`TREG_BACKGROUND_DATABASE_URL` sends the background pool through a transaction-pooling PgBouncer
+in front of the same database. The API and admin pools, the read pool, migrations (`maintenance.py`
+reads `_db_url`) and startup checks keep `TREG_DATABASE_URL`. Only the background pool may go
+there: PgBouncer reports a full server pool only by closing the client connection after
+`query_wait_timeout`, which asyncpg raises as `ConnectionDoesNotExistError`, the same error as a
+dropped connection and far later than `pool_timeout`, so a request pool would wait instead of
+answering the typed 503; and PgBouncer refuses the read pool's `default_transaction_read_only`
+startup parameter. Startup (`verify_background_database`) refuses the URL when it reaches another
+database, role, schema or server, or when asyncpg's prepared statements reach the server under
+their own names: asyncpg prepares every statement, so the pooler must track prepared statements
+(PgBouncer 1.21 or later, `max_prepared_statements` above 0). Behind it the pool's retained
+connections are held by PgBouncer, so `connection_budget()` leaves the pool out: the database sees
+the transactions in flight plus the server connections PgBouncer keeps until its idle timeout,
+which count against the ceiling together with the direct pools. Keep the background cap times
+every process that can run at once, both deploy generations included, below the pooler's server
+pool, so a background checkout never waits there for a server. Nothing survives a transaction
+there: session-level state (session advisory locks, a plain `SET`, `LISTEN`, temporary tables) is
+allowed only where `tests/test_db_pooler.py` lists it.
+
 A request that gets no slot within `pool_timeout` receives `503 {"treg_saturated": true}` with
 `Retry-After: 2` (`bootstrap_handlers._pool_saturated`). The database refusing a new connection
 (asyncpg `TooManyConnectionsError`, including "remaining connection slots are reserved", and
