@@ -432,3 +432,35 @@ async def test_the_answer_pass_can_be_switched_off(clients, monkeypatch):
     assert "answers" not in out and calls == []
     monkeypatch.setattr(get_settings(), "review_judge_answers", True, raising=False)
     assert "answers" in await review_judge.run(max_seconds=5)
+
+
+async def test_a_budget_cut_never_moves_back_a_failure_another_run_recorded(clients, monkeypatch):
+    """Run A read a review at 4 failed tries; run B meanwhile records the 5th with its back-off. A's
+    read is then cut by its budget: B's count and back-off stand. Two runs failing together count
+    once."""
+    from datetime import timedelta
+
+    from treg.domain.feedback import reviews as reviews_domain
+
+    await _negatives(clients, "busy")
+    review_id = (await _all())["busy"].id
+    v = review_codes.CODEBOOK_VERSION
+    later = utcnow_naive() + timedelta(hours=16)
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_retry(db, review_id, v, None, utcnow_naive())
+        await db.commit()
+    for _ in range(3):
+        seen = (await _all())["busy"].answer_attempts
+        async with session_maker() as db:
+            assert await reviews_domain.record_answer_retry(db, review_id, v, seen, utcnow_naive())
+            await db.commit()
+    assert (await _all())["busy"].answer_attempts == 4
+    async with session_maker() as db:  # B: the 5th failure
+        assert await reviews_domain.record_answer_retry(db, review_id, v, 4, later)
+        await db.commit()
+    async with session_maker() as db:  # A, which read 4: its budget wait and its failure are refused
+        assert not await reviews_domain.record_answer_wait(db, review_id, v, 4, utcnow_naive())
+        assert not await reviews_domain.record_answer_retry(db, review_id, v, 4, utcnow_naive())
+        await db.commit()
+    row = (await _all())["busy"]
+    assert row.answer_attempts == 5 and row.answer_retry_at == later

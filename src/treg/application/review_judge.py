@@ -224,7 +224,7 @@ async def judge_answers(*, deadline: float) -> dict:
                 out["final"] += await reviews.record_answer_final(db, r.id, version)
             else:
                 out["retry_later"] += await reviews.record_answer_retry(
-                    db, r.id, version, attempts, _retry_at(utcnow_naive(), attempts))
+                    db, r.id, version, r.answer_attempts, _retry_at(utcnow_naive(), attempts))
             await db.commit()
 
     read: list[tuple] = []
@@ -239,8 +239,8 @@ async def judge_answers(*, deadline: float) -> dict:
             # the next runs reach the reviews after it.
             out["stopped_by_deadline"] = True
             async with session_maker() as db:
-                await reviews.record_answer_retry(db, r.id, version, r.answer_attempts or 0,
-                                                  utcnow_naive() + BUDGET_CUT_DELAY)
+                await reviews.record_answer_wait(db, r.id, version, r.answer_attempts,
+                                                 utcnow_naive() + BUDGET_CUT_DELAY)
                 await db.commit()
             break
         item = None

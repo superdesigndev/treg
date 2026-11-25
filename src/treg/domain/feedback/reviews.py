@@ -82,9 +82,27 @@ async def record_answer_final(db: AsyncSession, review_id: int, version: str) ->
     return result.rowcount == 1
 
 
-async def record_answer_retry(db: AsyncSession, review_id: int, version: str, attempts: int,
+def _attempts_still(seen: int | None):
+    return CallReview.answer_attempts.is_(None) if seen is None else CallReview.answer_attempts == seen
+
+
+async def record_answer_retry(db: AsyncSession, review_id: int, version: str, seen: int | None,
                               retry_at: datetime) -> bool:
-    """The answer could not be read now: try again from `retry_at`."""
-    result = await db.execute(update(CallReview).where(CallReview.id == review_id, *_upgradable(version))
-                              .values(answer_attempts=attempts, answer_retry_at=retry_at))
+    """The answer could not be read now: one more failed try, and the next from `retry_at`. Only
+    while the row still holds the `seen` tries this run read, so two runs failing together count
+    once and never move the count back."""
+    result = await db.execute(update(CallReview).where(
+        CallReview.id == review_id, *_upgradable(version), _attempts_still(seen))
+        .values(answer_attempts=(seen or 0) + 1, answer_retry_at=retry_at))
+    return result.rowcount == 1
+
+
+async def record_answer_wait(db: AsyncSession, review_id: int, version: str, seen: int | None,
+                             retry_at: datetime) -> bool:
+    """A read cut by the run's time, not failed: the next try waits until `retry_at`, the count of
+    failed tries untouched. Only while the row still holds the `seen` tries: a failure another run
+    recorded meanwhile, with its own back-off, stands."""
+    result = await db.execute(update(CallReview).where(
+        CallReview.id == review_id, *_upgradable(version), _attempts_still(seen))
+        .values(answer_retry_at=retry_at))
     return result.rowcount == 1
