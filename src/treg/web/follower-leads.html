@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find the Buyers in Your X Followers | treg</title>
-<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads your newest followers, Jev judges each one as a buyer, and you get the leads as a list and a CSV.">
+<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads your newest followers, Jev judges each one as a buyer, and you get a share card of your leads.">
 <link rel="canonical" href="{BASE}/follower-leads"/>
 <meta property="og:title" content="Find the buyers in your X followers | treg"/>
 <meta property="og:description" content="Your newest 1,000 followers, judged one by one as buyers of what you sell."/>
@@ -147,18 +147,6 @@
   .card { max-width: 760px; margin: 30px auto 16px; aspect-ratio: 1200 / 675; overflow: hidden; border-radius: 18px; box-shadow: 0 30px 80px -40px rgba(20,18,12,.35), 0 1px 2px rgba(0,0,0,.06); }
   .cardscale { width: 1200px; height: 675px; transform-origin: 0 0; }
   .resbar .note { font: 400 12.5px var(--mono); color: var(--grey); }
-  .leads { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  @media (max-width: 760px) { .leads { grid-template-columns: 1fr; } }
-  .lead { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start; border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: #fff; transition: box-shadow .2s, transform .2s; }
-  .lead:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-  .lead img { width: 44px; height: 44px; border-radius: 50%; background: var(--soft); }
-  .lead .n { font-weight: 600; }
-  .lead .h { color: var(--grey); font: 400 12.5px var(--mono); text-decoration: none; }
-  .lead p { margin: 6px 0 10px; font-size: 14px; font-weight: 400; line-height: 1.5; color: #333; overflow-wrap: anywhere; }
-  .tag { display: inline-block; font: 400 11.5px var(--mono); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
-  .tag.dm { background: var(--pink); }
-  .tag.u { background: #dff5ff; }
-  .leads + .note, .leads .note { grid-column: 1 / -1; text-align: center; font: 400 12.5px var(--mono); color: var(--grey); }
 
   /* the money: one test scan */
   .data { padding-top: 100px; }
@@ -269,12 +257,13 @@
     <div class="bar1">
       <label class="countf">
         <select id="count" aria-label="Followers to scan" aria-describedby="est">
-          <option value="1000" data-usd="0.50" selected>1,000 followers</option>
+          <option value="200" data-usd="0.10" selected>200 followers</option>
+          <option value="1000" data-usd="0.50">1,000 followers</option>
           <option value="2000" data-usd="1">2,000 followers</option>
           <option value="5000" data-usd="2.50">5,000 followers</option>
           <option value="10000" data-usd="5">10,000 followers</option>
         </select>
-        <span class="est" id="est">~$0.50 estimated</span>
+        <span class="est" id="est">~$0.10 estimated</span>
       </label>
     </div>
     <div class="bar1 row2" style="justify-content:center">
@@ -374,8 +363,6 @@
     <div class="stat"><b id="sCost">USD 0</b><span>spent</span></div>
   </div>
   <div class="roles" id="roles"></div>
-  <div class="resbar"><button class="pill dark" id="csv">Download CSV</button></div>
-  <div class="leads" id="leadList"></div>
 </section>
 
 <section class="data wrap" id="price">
@@ -819,12 +806,6 @@
     var by = {}; leads.forEach(function (r) { by[r.role] = (by[r.role] || 0) + 1; });
     $('roles').innerHTML = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return '<span>' + esc(ROLE_LABEL[k] || k) + ' · ' + by[k] + '</span>'; }).join('');
     $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min. Followers with no bio count as misses.';
-    $('leadList').innerHTML = leads.slice(0, 200).map(function (r) {
-      return '<div class="lead"><img loading="lazy" referrerpolicy="no-referrer" alt="" src="' + esc(/^https:\/\//.test(r.avatar) ? r.avatar : '') + '">' +
-        '<div><span class="n">' + esc(r.name) + '</span> <a class="h" target="_blank" rel="noopener" href="https://x.com/' + encodeURIComponent(r.handle) + '">@' + esc(r.handle) + '</a>' +
-        '<p>' + esc(r.bio || r.badge) + '</p></div>' +
-        '<span class="tag ' + (r.tier === 'decision maker' ? 'dm' : 'u') + '">' + esc(r.tier) + ' · ' + r.fit.toFixed(2) + '</span></div>';
-    }).join('') + (leads.length > 200 ? '<p class="note">Showing the top 200. The CSV has all ' + leads.length + '.</p>' : '');
     var b = BANDS[band.key];
     $('resNote').textContent += ' Revenue on the card: ' + leads.length + ' leads × 2% close × USD ' + b.usd.toLocaleString('en-US') + ' a year (' + b.label +
       (band.read ? ', as Jev read your profile' : ', the default: Jev could not read your profile') + '). What the leads could bring in, not a forecast.';
@@ -936,15 +917,6 @@
       $('cardNote').textContent = 'The card downloaded. Attach it to the post.';
     });
     window.open('https://x.com/intent/post?text=' + encodeURIComponent(shareText()), '_blank', 'noopener');
-  };
-
-  $('csv').onclick = function () {
-    var cols = ['handle', 'name', 'bio', 'followers', 'website', 'location', 'badge', 'role', 'tier', 'fit', 'source', 'company'];
-    var cell = function (v) { v = String(v == null ? '' : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
-    var csv = cols.join(',') + '\n' + leads.map(function (r) { return cols.map(function (c) { return cell(c === 'fit' ? r.fit.toFixed(2) : r[c]); }).join(','); }).join('\n');
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'follower-leads.csv'; a.click();
   };
 
   /* the estimate under the follower count */
