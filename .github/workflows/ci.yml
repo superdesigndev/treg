@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # The repository variable CI_LINUX_RUNNER names the runner label for the two test jobs;
+    # unset, they run on GitHub's own runner.
+    runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     # A throttled shared runner once turned the 5-minute suite into 20+ (log showed 68s before the
     # first test started). Die loudly instead of eating half an hour; a re-run usually lands on a
     # healthier machine.
@@ -91,7 +93,7 @@ jobs:
         run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
 
   test-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
