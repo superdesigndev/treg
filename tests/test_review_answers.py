@@ -19,14 +19,20 @@ async def _reviewed(clients, key="k"):
         return (await db.execute(select(CallReview))).scalar_one()
 
 
-async def _key(*snapshots):
+async def _key(*snapshots, answer: bytes | None = None):
+    """The call's archive key with these versions of one answer, all under the hash of `answer`
+    (the first stored body, else PEOPLE), which the call row points at."""
+    answer = answer or next((body for _, body, _ in snapshots if body is not None), PEOPLE.encode())
+    content_hash = archive.content_hash(answer)
     async with session_maker() as db:
         key = ArchiveKey(key_hash="k", endpoint_id="apollo.people.search", req_method="POST", req_url="u")
         db.add(key)
         await db.flush()
         for version, body, storage in snapshots:
-            db.add(ArchiveSnapshot(key_id=key.id, version=version, content_hash="c-k", body=body,
+            db.add(ArchiveSnapshot(key_id=key.id, version=version, content_hash=content_hash, body=body,
                                    size_bytes=len(PEOPLE), body_storage=storage))
+        for record in (await db.execute(select(CallRecord))).scalars():
+            record.archive_content_hash = content_hash
         await db.commit()
 
 
@@ -139,3 +145,12 @@ async def test_the_view_shows_only_what_this_delivery_is_known_to_have_had(clien
     found = (await review_answers.answer_of(review)).found
     item = review_answers.view(0, review, found, "people.search", 500)
     assert set(item["response"]) == {"status_code", "body"}
+
+
+async def test_a_database_copy_that_no_longer_matches_its_hash_waits(clients):
+    # Valid JSON changed in place under the same hash: never shown to the judge.
+    review = await _reviewed(clients)
+    damaged = PEOPLE.replace("a", "b", 1)
+    assert damaged != PEOPLE
+    await _key((1, damaged.encode(), "db"), answer=PEOPLE.encode())
+    assert (await review_answers.answer_of(review)).state == "unreadable"

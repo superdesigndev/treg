@@ -46,7 +46,8 @@ async def answer_of(r) -> Answer:
 
     `absent` only on facts that will not change: the call row has no archive link (nothing was
     recorded), it came through `/table` (`CallRecord.surface`: a reshaped answer), it predates
-    `review_answer_surface_since`, or the stored bytes are not UTF-8 text."""
+    `review_answer_surface_since`, or the stored bytes are not UTF-8 text. Bytes that no longer match
+    the call's content hash are a damaged copy, unreadable like any failed read."""
     try:
         async with session_maker() as db:
             record = (await db.execute(select(CallRecord).where(
@@ -62,7 +63,7 @@ async def answer_of(r) -> Answer:
         if record.surface is not None or (since is not None and record.created_at < since):
             return ABSENT
         found = await archive.resolve_result(record.archive_key_hash, record.archive_content_hash,
-                                             prefer_bytes=True)
+                                             prefer_bytes=True, verify=True)
         if found is None or not found["stored"]:
             return UNREADABLE
         text = found["response"]["body_text"]

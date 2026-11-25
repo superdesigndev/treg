@@ -1306,7 +1306,7 @@ def _decode(body: bytes | None) -> str | None:
 
 
 async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool = False,
-                         diagnostics: dict | None = None) -> dict[str, Any] | None:
+                         verify: bool = False, diagnostics: dict | None = None) -> dict[str, Any] | None:
     """The request shape and the stored answer a call row points at, or None when the key or
     that exact answer is no longer on file.
 
@@ -1317,7 +1317,9 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
 
     `prefer_bytes` reads, among the versions with that hash (the same bytes, so never another
     answer), one that kept a database copy, else one in object storage, before a newer hash-only
-    one. `diagnostics` receives the body read's report (`archive_bodies.read`)."""
+    one. `verify` checks the bytes read against `content_hash` before they are decoded: a copy that
+    no longer matches (damaged in place) reports `stored=False`, as an unreadable one does.
+    `diagnostics` receives the body read's report (`archive_bodies.read`)."""
     from sqlalchemy import case, select
 
     from .models import ArchiveKey, ArchiveSnapshot
@@ -1341,6 +1343,11 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
             return None
         pointer = await archive_bodies.pointer(session, snap, "result")
     body = await archive_bodies.read(pointer, "result", diagnostics=diagnostics)
+    if verify and body is not None and hashlib.sha256(body).hexdigest() != content_hash:
+        _log.warning("archived answer does not match its hash: snapshot %s", snap.id)
+        if diagnostics is not None:
+            diagnostics["cache_body_fallback_reason"] = "hash_mismatch"
+        body = None
     return {
         "stored": body is not None,
         "request": {"method": key.req_method or "", "url": key.req_url or "",
