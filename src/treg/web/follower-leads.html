@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find the Buyers in Your X Followers | treg</title>
-<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads your newest followers, Jev judges each one as a buyer, and you get a share card of your leads.">
+<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads a random sample of your followers, Jev judges each one as a buyer, and you get a share card of your leads.">
 <link rel="canonical" href="{BASE}/follower-leads"/>
 <meta property="og:title" content="Find the buyers in your X followers | treg"/>
-<meta property="og:description" content="Your newest 100 followers, judged one by one as buyers of what you sell."/>
+<meta property="og:description" content="100 of your followers, picked at random and judged one by one as buyers of what you sell."/>
 <meta property="og:url" content="{BASE}/follower-leads"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary"/>
@@ -295,7 +295,7 @@
       <button class="pill dark" id="run">Get your leads analysis card</button>
     </div>
     <div class="err" id="formErr"></div>
-    <p class="fnote">~$0.05 estimated for your newest 100 followers · billed per call to your treg balance</p>
+    <p class="fnote">~$0.08 estimated for 100 followers picked at random · billed per call to your treg balance</p>
   </section>
 
   <section class="runbox" id="progress" hidden>
@@ -389,7 +389,7 @@
 <section class="how-s wrap" id="how">
   <h2 class="cap">How it works.<small>The money goes where the evidence is thin, and nowhere else.</small></h2>
   <ol class="how">
-    <li style="--c:var(--pink)"><b>1</b><h3>Read your followers</h3><p>The newest first, with each one's name, follower count and company badge. Empty accounts are skipped for free.</p></li>
+    <li style="--c:var(--pink)"><b>1</b><h3>Read your followers</h3><p>Up to 500 of them, with each one's name, follower count and company badge. Empty accounts are left out, then 100 are picked at random.</p></li>
     <li style="--c:var(--yellow)"><b>2</b><h3>Read their bios</h3><p>One profile read per follower. Followers with no bio and no badge count as misses.</p></li>
     <li style="--c:var(--cyan)"><b>3</b><h3>Jev judges each one</h3><p>treg works out what you sell from your own profile, website and posts. Jev, a small decision model, then scores every follower against it: 0 not a buyer, 1 would use it, 2 picks and pays. A lead scores 1.5 or more.</p></li>
     <li style="--c:var(--green)"><b>4</b><h3>Enrich, then Jev decides again</h3><p>When a bio is too thin to judge, treg enriches it with the person's latest posts and the company behind their website. Jev then decides again on the fuller picture. No email, phone or LinkedIn lookups.</p></li>
@@ -545,7 +545,7 @@
 
   /* ---------- form ---------- */
   function cleanHandle(v) { return v.trim().replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, '').replace(/^@/, '').split(/[/?#]/)[0]; }
-  var SCAN_N = 100;
+  var SCAN_N = 100, POOL_N = 500;
   function saveDraft() { store.set(DRAFT, { handle: $('handle').value, at: Date.now() }); }
   var d = store.get(DRAFT);
   if (d && Date.now() - d.at < 3600e3) { $('handle').value = d.handle || ''; }
@@ -745,12 +745,15 @@
       product = owner.text; Q = questions(product);
       bandP = priceBand(product);
       step('site', 'done', owner.found);
-      return pullFollowers(handle, want);
+      return pullFollowers(handle, POOL_N);
     }).then(function (got) {
       if (!got.rows.length) throw new Stop('No followers came back for @' + handle + '. Check the handle; a private account cannot be read.');
-      step('pull', 'done', got.rows.length.toLocaleString('en-US') + ' followers');
-      all = got.rows; followerTotal = got.total || 0;
-      var todo = all.filter(function (r) { return !(r.default_avatar && r.followers < 5 && !r.badge); });
+      followerTotal = got.total || 0;
+      var real = got.rows.filter(function (r) { return !(r.default_avatar && r.followers < 5 && !r.badge); });
+      for (var i = real.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = real[i]; real[i] = real[j]; real[j] = t; }
+      all = real.slice(0, want);
+      var todo = all;
+      step('pull', 'done', got.rows.length.toLocaleString('en-US') + ' read · ' + all.length + ' picked at random');
       step('bio', 'on', '0 / ' + todo.length);
       return pool(todo, 8, function (r) {
         return call(EP.profile, { body: { username: r.handle }, cap: 0.002 }).then(function (res) {
@@ -758,7 +761,7 @@
           r.bio = o.description || ''; r.website = rr.website || raw.website || ''; if (!r.location) r.location = rr.location || '';
         });
       }, function (n, t) { step('bio', 'on', n + ' / ' + t); bar(0.1 + 0.4 * n / t); }).then(function () {
-        step('bio', 'done', todo.length + ' read · ' + (all.length - todo.length) + ' empty accounts skipped');
+        step('bio', 'done', todo.length + ' read · ' + (got.rows.length - real.length) + ' empty accounts left out');
         return todo.filter(function (r) { return r.bio || r.badge; });
       });
     }).then(function (judgeable) {
