@@ -136,6 +136,25 @@
   @keyframes glint { from { background-position: 100% 0; } to { background-position: -150% 0; } }
   @keyframes nudge { from { transform: translateX(-6px); opacity: .5; } }
   @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
+  .px { width: 40px; height: 30px; margin: -4px 12px -4px 0; vertical-align: middle; flex-shrink: 0; fill: currentColor; shape-rendering: crispEdges; overflow: visible; }
+  .px * { transform-box: fill-box; }
+  .steps li:not(.on) .px * { animation: none !important; }
+  .steps li .px .spark, .steps li .px .bubble { opacity: 0; }
+  .steps li.on .px .bob { animation: pxBob .8s steps(1) infinite; }
+  .steps li.on .px .scan { animation: pxScan 1.6s steps(1) infinite; }
+  .steps li.on .px .hop { animation: pxHop .9s steps(1) infinite; }
+  .steps li.on .px .scanline { animation: pxRead 1.4s steps(7) infinite; }
+  .steps li.on .px .gavel { transform-origin: 0% 50%; animation: pxGavel .7s steps(1) infinite; }
+  .steps li.on .px .spark { animation: pxSpark .7s steps(1) infinite; }
+  .steps li.on .px .win { animation: pxBlink 1.2s steps(1) infinite; }
+  .steps li.on .px .bubble { animation: pxSpark 1.6s steps(1) infinite; }
+  @keyframes pxBob { 50% { transform: translateY(-1px); } }
+  @keyframes pxScan { 25% { transform: translate(1px, -1px); } 50% { transform: translate(2px, 0); } 75% { transform: translate(1px, 1px); } }
+  @keyframes pxHop { 30% { transform: translateY(-2px); } 60% { transform: translateY(0); } }
+  @keyframes pxRead { to { transform: translateY(7px); } }
+  @keyframes pxGavel { 0% { transform: rotate(-35deg); } 40% { transform: rotate(-18deg); } 65% { transform: rotate(0); } }
+  @keyframes pxSpark { 65% { opacity: 1; } 90% { opacity: 0; } }
+  @keyframes pxBlink { 50% { opacity: .15; } }
   @keyframes hop { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
   .steps li.done span:first-child::before { content: "✓ "; color: #118453; }
   .runbox .actions { display: flex; gap: 10px; margin-top: 14px; }
@@ -232,6 +251,7 @@
     .steps .dots i { animation: none !important; opacity: 1; }
     .runbox.live .meter::after { display: none; }
     #run.busy { animation: none; }
+    .px * { animation: none !important; }
   }
 </style>
 </head>
@@ -278,11 +298,11 @@
     </div>
     <div class="meter"><i id="barFill"></i></div>
     <ul class="steps" id="steps">
-      <li data-s="site"><span>Work out what you sell, from your profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="pull"><span>Read followers<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="bio"><span>Read their bios<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="judge"><span>Jev judges each profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="fill"><span>Posts or company, only where the bio is thin<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="site"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><g class="bob"><rect x="2" y="1" width="2" height="2"/><rect x="1" y="3" width="4" height="4"/><rect x="1" y="7" width="1" height="3"/><rect x="4" y="7" width="1" height="3"/></g><g class="scan"><rect x="5" y="4" width="2" height="1"/><rect x="7" y="5" width="2" height="1"/><rect x="10" y="2" width="2" height="1"/><rect x="10" y="6" width="2" height="1"/><rect x="9" y="3" width="1" height="3"/><rect x="12" y="3" width="1" height="3"/><rect x="10" y="3" width="2" height="3" fill="#22c7ff" opacity=".6"/></g></svg>Work out what you sell, from your profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="pull"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><g class="hop" style="animation-delay:0s"><rect x="1" y="2" width="2" height="2"/><rect x="0" y="4" width="4" height="4"/><rect x="0" y="8" width="1" height="2"/><rect x="3" y="8" width="1" height="2"/></g><g class="hop" style="animation-delay:0.15s"><rect x="7" y="2" width="2" height="2"/><rect x="6" y="4" width="4" height="4"/><rect x="6" y="8" width="1" height="2"/><rect x="9" y="8" width="1" height="2"/></g><g class="hop" style="animation-delay:0.3s"><rect x="13" y="2" width="2" height="2"/><rect x="12" y="4" width="4" height="4"/><rect x="12" y="8" width="1" height="2"/><rect x="15" y="8" width="1" height="2"/></g></svg>Read followers<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="bio"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><rect x="1" y="1" width="14" height="1"/><rect x="1" y="10" width="14" height="1"/><rect x="1" y="1" width="1" height="10"/><rect x="14" y="1" width="1" height="10"/><rect x="3" y="3" width="3" height="3"/><rect x="7" y="3" width="6" height="1"/><rect x="7" y="5" width="5" height="1"/><rect x="3" y="7" width="10" height="1"/><rect class="scanline" x="2" y="2" width="12" height="1" fill="#22c7ff" opacity=".7"/></svg>Read their bios<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="judge"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><rect x="9" y="9" width="6" height="2"/><g class="gavel"><rect x="2" y="5" width="8" height="1"/><rect x="9" y="2" width="3" height="7"/></g><g class="spark" fill="#ffbb40"><rect x="7" y="8" width="1" height="1"/><rect x="15" y="7" width="1" height="1"/><rect x="12" y="7" width="1" height="1"/></g></svg>Jev judges each profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="fill"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><rect x="2" y="2" width="9" height="9"/><rect class="win" x="3" y="4" width="2" height="1" fill="#ffbb40" style="animation-delay:0s"/><rect class="win" x="7" y="4" width="2" height="1" fill="#ffbb40" style="animation-delay:0.3s"/><rect class="win" x="3" y="6" width="2" height="1" fill="#ffbb40" style="animation-delay:0.6s"/><rect class="win" x="7" y="6" width="2" height="1" fill="#ffbb40" style="animation-delay:0.2s"/><rect class="win" x="3" y="8" width="2" height="1" fill="#ffbb40" style="animation-delay:0.5s"/><rect class="win" x="7" y="8" width="2" height="1" fill="#ffbb40" style="animation-delay:0.8s"/><g class="bubble"><rect x="12" y="1" width="4" height="3"/><rect x="12" y="4" width="1" height="1"/></g></svg>Posts or company, only where the bio is thin<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
     </ul>
     <div class="actions"><button class="pill" id="stop">Stop</button></div>
     <div class="runmsg" id="runErr"></div>
