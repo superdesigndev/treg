@@ -420,7 +420,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _pooler_configuration(self):
-        if (self.db_pooler_pools and self.database_url.startswith("postgresql+asyncpg://")
+        if (self.db_pooler_pools and not self.database_url.startswith("sqlite")
                 and not self.database_pooler_url.startswith("postgresql+asyncpg://")):
             raise ValueError("db_pooler_pools on PostgreSQL requires a PostgreSQL database_pooler_url")
         return self

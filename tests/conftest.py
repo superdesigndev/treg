@@ -167,6 +167,32 @@ from treg.application import media as media_app  # noqa: E402
 
 
 @pytest.fixture
+async def load_db_module(monkeypatch):
+    """`load(**settings)` imports a fresh `treg.infra.db` built from those settings, without
+    replacing the application's imported engines and makers; each one is disposed afterwards."""
+    import importlib.util
+
+    from treg import config
+    from treg.infra import db as infra_db
+
+    modules = []
+
+    def load(**settings):
+        values = config.Settings(_env_file=None, **settings)
+        spec = importlib.util.spec_from_file_location("treg.infra._loaded_for_test", infra_db.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with monkeypatch.context() as patch:
+            patch.setattr(config, "get_settings", lambda: values)
+            spec.loader.exec_module(module)
+        modules.append(module)
+        return module
+
+    yield load
+    for module in modules:
+        await module.dispose_engine()
+
+
+@pytest.fixture
 def fake_getaddrinfo(monkeypatch):
     """Override named hosts only, leaving DB and other infrastructure DNS untouched.
 

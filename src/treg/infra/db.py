@@ -154,10 +154,14 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
     `retained_per_process` counts only `pool_size`: the most connections a process keeps open
     after its load subsides, reached once it has used that many at the same moment. It is not
     opened at startup.
+
+    A pool behind the connection pooler is excluded as well: the database sees the pooler's server
+    connections for it, not its client connections.
     """
+    direct = [name for name in _PRIMARY_POOL_NAMES if name not in _pooled_pools]
     per_process = sum(POOL_SPECS[name]["pool_size"] + POOL_SPECS[name]["max_overflow"]
-                      for name in _PRIMARY_POOL_NAMES)
-    retained_per_process = sum(POOL_SPECS[name]["pool_size"] for name in _PRIMARY_POOL_NAMES)
+                      for name in direct)
+    retained_per_process = sum(POOL_SPECS[name]["pool_size"] for name in direct)
     if workers is None:
         try:
             workers = max(1, int(os.environ.get("WEB_CONCURRENCY", "1")))
@@ -182,7 +186,8 @@ def log_connection_budget() -> None:
         POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
         budget["per_process"], budget["workers"], budget["per_instance"],
         budget["retained_per_instance"],
-        f"; through the pooler: {', '.join(sorted(_pooled_pools))}" if _pooled_pools else "")
+        f"; through the pooler, not in these totals: {', '.join(sorted(_pooled_pools))}"
+        if _pooled_pools else "")
 
 
 def _new_engine(name: str, url: str | None = None):
@@ -315,6 +320,27 @@ def _current_revision(sync_connection) -> str | None:
     return revisions[0] if len(revisions) == 1 else None
 
 
+_SERVER_IDENTITY = text("SELECT current_database(), pg_postmaster_start_time()")
+
+
+async def verify_pooler() -> None:
+    """Every pool behind the connection pooler reaches the server and database `database_url` names,
+    so a wrong pooler URL refuses to start instead of failing background writes later."""
+    if not _pooled_pools:
+        return
+    async with _engine.connect() as connection:
+        direct = tuple((await connection.execute(_SERVER_IDENTITY)).one())
+    for name, engine in zip(_POOL_NAMES, _engines):
+        if name in _pooled_pools:
+            async with engine.connect() as connection:
+                pooled = tuple((await connection.execute(_SERVER_IDENTITY)).one())
+            if pooled != direct:
+                raise RuntimeError(
+                    f"the {name} pool's TREG_DATABASE_POOLER_URL reaches database {pooled[0]!r} on a "
+                    f"server started at {pooled[1]}, not database {direct[0]!r} on the server "
+                    f"TREG_DATABASE_URL reaches (started at {direct[1]})")
+
+
 async def verify_db() -> None:
     """Verify configuration and schema compatibility without writing to the database."""
     from .. import models  # noqa: F401 - populate SQLModel.metadata for app subsystems
@@ -332,6 +358,7 @@ async def verify_db() -> None:
             "TREG_SECRET_KEY unset - using an EPHEMERAL key; stored secrets will not survive a restart."
         )
 
+    await verify_pooler()
     async with _engine.connect() as connection:
         revision = await connection.run_sync(_current_revision)
 
