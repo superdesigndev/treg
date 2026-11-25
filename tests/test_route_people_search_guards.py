@@ -93,6 +93,20 @@ async def test_cursor_pages_through_the_provider_that_served_page_one(clients, l
     assert second["output"]["next_cursor"] is None and len(second["output"]["people"]) == 3
 
 
+async def test_a_long_cursor_from_a_paging_provider_is_named_on_treg(clients, lists_on, monkeypatch):
+    """A paging child's over-long token still uses the long-cursor fallback: output.next_cursor
+    is null, raw keeps the token, and _treg.next_cursor names the path. Wrapping first and
+    dropping the token would make that null look like exhaustion."""
+    from treg.application.call import route as call_route
+    token = "Q" * (call_route.CURSOR_MAX + 1)
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"quickenrich": [(200, _qe(3, token))], "*": []}, []))
+    answer = await _page(clients, {"title": "VP Sales", "limit": 3}, "quickenrich")
+    assert answer["output"]["next_cursor"] is None
+    assert answer["raw"]["meta"]["next_cursor"] == token
+    assert answer["_treg"]["next_cursor"] == {"chars": len(token), "in_raw": "meta.next_cursor"}
+
+
 async def test_a_provider_that_cannot_page_names_the_ones_that_can(clients, lists_on, monkeypatch):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"dropleads": [(200, _dl(2, 4))], "*": []}, seen))

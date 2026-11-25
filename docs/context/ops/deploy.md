@@ -404,8 +404,11 @@ and money-worker process must use the same store and rollout settings; no migrat
 semantics are in [money](../architecture/money.md#optional-admission-before-the-settlement-session).
 
 `TREG_HOLDLESS_FREE_ORG_IDS` (default `[]`) lists orgs whose untagged free platform calls skip
-the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless"). Removing
-an id restores the hold path for that org's new calls; no migration is needed.
+the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless").
+`TREG_HOLDLESS_FREE_ALL_ORGS` (default `false`) does the same for every org except those in
+`TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS`, which never skip the hold. To put one org back on the hold
+path, add it to `TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS`; removing it from the list works only while
+the all-orgs switch is off. No migration is needed.
 
 `TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
@@ -430,7 +433,13 @@ returns that org's new calls to the hold path at once; no migration is needed. W
 on, removing an id only stops its own skip lines: the org stays on, and counted, until it is excluded. The allowance's
 background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
 closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
-the `background` pool, which is one connection larger per process for it; request processes do
+the `background` pool, which is one connection larger per process for it. At most
+`TREG_MONEY_ALLOWANCE_FOLD_SHARDS` processes (default 4) fold at once, each over its own share of
+the teams; raise it when the queue's oldest charge keeps growing and the database has room, or
+set `1` to go back to one process folding every team. The listing it folds by needs revision
+`0126`, so a build from before it cannot be deployed again once `0126` has run (its `upgrade`
+refuses the newer schema): withdraw the shares with `1`, or with a forward release that reverts
+the code and keeps the revision; request processes do
 not fold, so a deployment that turns the allowance on must run at least one process in one of
 those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
 its call was settled before. What makes that true is the charge writer, which takes back a

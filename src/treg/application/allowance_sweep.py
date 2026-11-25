@@ -2,10 +2,11 @@
 of a team that has stopped spending from it.
 
 **Folding.** A finished call's charge waits in a queue (`CallCharge`). This loop is what applies
-the queue: a team at a time, a batch per transaction, on the background pool. Request processes
-do not fold, so the connections folding uses do not grow with traffic or with the number of
-busy teams. One process at a time runs the pass (`_pass_lease`); a team another process is
-working on is skipped, not waited for.
+the queue: a team at a time, the longest-waiting first, a batch per transaction, on the
+background pool. Request processes do not fold, so the connections folding uses do not grow with
+traffic or with the number of busy teams. The teams are split into a fixed number of shares by
+their numbers, and one process at a time runs the pass over each share (`_pass_lease`); a team
+another process is working on is skipped, not waited for.
 
 **Closing.** Each refill writes on the hold the instant until which calls may take from the team's counter, and
 publishes that same instant to the counter. A call lives at most `hold_ttl_s()`. So a hold whose
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 import uuid
 from collections.abc import Callable
@@ -27,6 +29,7 @@ from datetime import timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.money import allowance
 from ..infra import db as infra_db
@@ -49,12 +52,14 @@ _FENCE_TTL_MS = 24 * 3600 * 1000
 _FOLD_BATCH = 100
 _FOLD_BATCHES_PER_PASS = 10
 _TEAMS_PER_PAGE = 50
+_TEAMS_PER_PASS = 500
+_TEAMS_LISTED = 5000
 _ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
 _PASS_KEY = "treg:money-allowance-pass:v1"
 _PASS_LEASE_MS = 30_000
-# One process folds for every team, so a fold must not sit behind one team's row locks: past
-# this wait it gives the team up for the pass and goes on to the next.
+# One process folds for a whole share of the teams, so a fold must not sit behind one team's row
+# locks: past this wait it gives the team up for the pass and goes on to the next.
 _LOCK_WAIT_MS = 1000
 
 
@@ -94,14 +99,27 @@ async def _team_lease(org_id: int):
             await store.release_lease(key, token)
 
 
-class _Pass:
-    """One process's turn at the pass. `rest_s` set by the holder keeps the lease after the pass
-    for that long, so the pause after an idle pass is shared by every process, not taken by each
-    in turn. `lost` is set once the lease is known to be gone: the pass then stops between
-    teams, so it does not run beside the process that has the lease now."""
+def fold_shards() -> int:
+    return get_settings().money_allowance_fold_shards
 
-    def __init__(self, mine: bool) -> None:
+
+def pass_key(shard: allowance.Shard) -> str:
+    """The lease of one share of the teams. The count is in the key, so processes running with
+    different counts never take each other's lease for a different share."""
+    index, count = shard
+    return _PASS_KEY if count <= 1 else f"{_PASS_KEY}:{index}/{count}"
+
+
+class _Pass:
+    """One process's turn at a pass over one share of the teams (`shard`; None = every team).
+    `rest_s` set by the holder keeps the lease after the pass for that long, so the pause after
+    an idle pass is shared by every process, not taken by each in turn. `lost` is set once the
+    lease is known to be gone: the pass then stops between teams, so it does not run beside the
+    process that has the lease now."""
+
+    def __init__(self, mine: bool, shard: allowance.Shard | None = None) -> None:
         self.mine = mine
+        self.shard = shard
         self.rest_s = 0.0
         self.lost = False
 
@@ -109,7 +127,7 @@ class _Pass:
         return not self.lost
 
 
-async def _keep_pass(store, token: str, turn: _Pass) -> None:
+async def _keep_pass(store, key: str, token: str, turn: _Pass) -> None:
     """Renew the pass lease while a long pass runs, so a second process does not start one. A
     store that cannot answer is asked again sooner, within what is left of the lease; a lease
     known to be lost, or past its time, marks the turn `lost` and ends the renewal."""
@@ -118,7 +136,7 @@ async def _keep_pass(store, token: str, turn: _Pass) -> None:
     while True:
         await asyncio.sleep(wait_s)
         asked_at = time.monotonic()
-        answer = await store.renew_lease(_PASS_KEY, token, _PASS_LEASE_MS, deadline=valid_until)
+        answer = await store.renew_lease(key, token, _PASS_LEASE_MS, deadline=valid_until)
         left_s = valid_until - time.monotonic()
         if answer == "renewed":
             valid_until, wait_s = asked_at + ttl_s, ttl_s / 3
@@ -131,17 +149,31 @@ async def _keep_pass(store, token: str, turn: _Pass) -> None:
 
 @asynccontextmanager
 async def _pass_lease():
-    """Yield this process's `_Pass`: one process at a time has it, the others pause.
+    """Yield this process's `_Pass`: at most one process at a time per share of the teams, and
+    one share per process; a process that finds every share taken pauses.
 
-    Every process runs the loop, but a pass reads every team with queued charges, so many
-    processes each reading them every second cost the database more than the folding itself.
-    When the store cannot answer every process runs its pass, as without the lease: the team
-    leases and row locks keep two writers of one team apart either way."""
-    store, token = kv.store(), uuid.uuid4().hex
-    acquired = await store.acquire_lease(_PASS_KEY, token, _PASS_LEASE_MS)
-    turn = _Pass(acquired != "busy")
-    keeper = (asyncio.create_task(_keep_pass(store, token, turn))
-              if acquired == "acquired" else None)
+    Every process runs the loop, but a pass reads the teams with queued charges, so many
+    processes each reading them every second cost the database more than the folding itself;
+    a fixed number of shares bounds that read and the connections folding uses, whatever the
+    number of processes. A process tries the shares from a random one, so the shares are spread
+    over the processes that wake. When the store cannot answer every process runs its pass over
+    every team, as without the lease: the team leases and row locks keep two writers of one team
+    apart either way."""
+    store, token, count = kv.store(), uuid.uuid4().hex, fold_shards()
+    first = random.randrange(count)
+    acquired, shard = "busy", None
+    for step in range(count):
+        candidate = ((first + step) % count, count)
+        acquired = await store.acquire_lease(pass_key(candidate), token, _PASS_LEASE_MS)
+        if acquired == "acquired":
+            shard = candidate
+            break
+        if acquired == "unavailable":
+            break
+    turn = _Pass(acquired != "busy", shard)
+    key = pass_key(shard) if shard is not None else None
+    keeper = (asyncio.create_task(_keep_pass(store, key, token, turn))
+              if key is not None else None)
     try:
         yield turn
     finally:
@@ -152,11 +184,11 @@ async def _pass_lease():
                 # this task while it waits still propagates, after the lease is given back.
                 await asyncio.gather(keeper, return_exceptions=True)
         finally:
-            if acquired == "acquired":
+            if key is not None:
                 if turn.rest_s > 0 and not turn.lost:
-                    await store.renew_lease(_PASS_KEY, token, max(1, int(turn.rest_s * 1000)))
+                    await store.renew_lease(key, token, max(1, int(turn.rest_s * 1000)))
                 else:
-                    await store.release_lease(_PASS_KEY, token)
+                    await store.release_lease(key, token)
 
 
 def idle_after_s() -> int:
@@ -169,16 +201,17 @@ def _always() -> bool:
     return True
 
 
-async def sweep_once(session_maker, *, keep_going: Callable[[], bool] = _always) -> int:
-    """Close every allowance hold idle for `idle_after_s()`, a page of teams at a time, so a
-    team is reached however many before it cannot be closed yet; stops between teams once
-    `keep_going` says so. Returns how many were closed."""
+async def sweep_once(session_maker, *, keep_going: Callable[[], bool] = _always,
+                     shard: allowance.Shard | None = None) -> int:
+    """Close every allowance hold idle for `idle_after_s()` (of the teams in `shard`, or every
+    team), a page of teams at a time, so a team is reached however many before it cannot be
+    closed yet; stops between teams once `keep_going` says so. Returns how many were closed."""
     stale_before = utcnow_naive() - timedelta(seconds=idle_after_s())
     closed, after = 0, 0
     while True:
         async with session_maker() as db:
             org_ids = await allowance.stale_allowance_orgs(
-                db, stale_before, after=after, limit=_TEAMS_PER_PAGE)
+                db, stale_before, after=after, limit=_TEAMS_PER_PAGE, shard=shard)
         for org_id in org_ids:
             if not keep_going():
                 return closed
@@ -226,32 +259,42 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
         return False
 
 
-async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _always) -> int:
-    """Fold the queue of every team that has charges queued, listed or not: a queue outlives
-    its team's listing and its hold. A pass goes through all of them, a page of teams at a
-    time, so a team is reached however many others keep queueing; it stops between teams once
-    `keep_going` says so. Returns how many charges were folded."""
-    total, after, queued_before = 0, 0, utcnow_naive()
+async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _always,
+                           shard: allowance.Shard | None = None) -> int:
+    """Fold the queue of every team (in `shard`, or every team) that has charges queued, listed
+    or not: a queue outlives its team's listing and its hold. The team whose oldest charge has
+    waited longest goes first, so the longest wait is what a pass brings down. A pass works on
+    at most `_TEAMS_PER_PASS` teams; a team it folded nothing of (another process or a session
+    of the team's own is on it, or its rows stayed locked) does not count, so teams stuck at the
+    front never use up a pass and the teams behind them are still reached. The next pass, which follows at once, comes
+    back for the rest. The teams are read `_TEAMS_LISTED` at a time, and a pass reads on while it
+    has places left, so a full list of teams it cannot have does not end it either. Stops between
+    teams once `keep_going` says so. Returns how many charges
+    were folded."""
+    total, worked, after, queued_before = 0, 0, None, utcnow_naive()
     while True:
         async with session_maker() as db:
-            org_ids = await allowance.orgs_with_queued_charges(
-                db, queued_before, after=after, limit=_TEAMS_PER_PAGE)
-        for org_id in org_ids:
-            if not keep_going():
+            page = await allowance.queued_teams(
+                db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
+        for org_id, _ in page:
+            if worked >= _TEAMS_PER_PASS or not keep_going():
                 return total
-            total += await _fold_team(session_maker, org_id)
-        if len(org_ids) < _TEAMS_PER_PAGE:
+            folded = await _fold_team(session_maker, org_id)
+            if folded is not None:
+                worked += 1
+                total += folded
+        if len(page) < _TEAMS_LISTED:
             return total
-        after = org_ids[-1]
+        after = page[-1]
 
 
-async def _fold_team(session_maker, org_id: int) -> int:
-    """A few batches of one team's queue. Stops when another process has the team, the team's
-    money sessions are busy (a request in this process holding its lock among them), or its rows
-    stay locked past `_LOCK_WAIT_MS`, and the next pass
-    comes back: the teams behind it are not kept waiting. One team failing does not stop the
-    pass."""
-    total = 0
+async def _fold_team(session_maker, org_id: int) -> int | None:
+    """A few batches of one team's queue; None when not one batch was committed. Stops when
+    another process has the team, the team's money sessions are busy (a request in this process
+    holding its lock among them), or its rows stay locked past `_LOCK_WAIT_MS`, and the next
+    pass comes back: the teams behind it are not kept waiting. One team failing does not stop
+    the pass."""
+    total, committed = 0, False
     try:
         for _ in range(_FOLD_BATCHES_PER_PASS):
             async with _team_lease(org_id) as free:
@@ -269,6 +312,7 @@ async def _fold_team(session_maker, org_id: int) -> int:
                     folded = await allowance.fold_charges_in_transaction(
                         db, org_id, limit=_FOLD_BATCH)
                     await db.commit()
+                    committed = True
             total += folded.calls
             if folded.claimed < _FOLD_BATCH:
                 break
@@ -279,40 +323,59 @@ async def _fold_team(session_maker, org_id: int) -> int:
             log.info("folding the queued charges of org %s waited too long on its rows", org_id)
         else:
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
-    return total
+    return total if committed else None
 
 
 async def run_once(session_maker, *, sweep: bool,
-                   keep_going: Callable[[], bool] = _always) -> int:
-    """One pass: the idle sweep when it is due, then the fold, one after the other, so never
-    more than one connection. Returns how many charges were folded."""
+                   keep_going: Callable[[], bool] = _always,
+                   shard: allowance.Shard | None = None) -> int:
+    """One pass over `shard` (or every team): the idle sweep when it is due, then the fold, one
+    after the other, so never more than one connection. Returns how many charges were folded."""
     if sweep:
-        await sweep_once(session_maker, keep_going=keep_going)
-    return await fold_queued_once(session_maker, keep_going=keep_going)
+        await sweep_once(session_maker, keep_going=keep_going, shard=shard)
+    return await fold_queued_once(session_maker, keep_going=keep_going, shard=shard)
+
+
+async def _sweep_due(shard: allowance.Shard | None, every_s: float,
+                     next_sweep: dict[allowance.Shard | None, float]) -> bool:
+    """Whether the share's idle sweep is due, on a clock every process shares: a lease taken for
+    the sweep period and never given back, so a share handed to another process is not swept
+    again within the period. A store that cannot answer, or a pass over every team, falls back to
+    this process's own clock."""
+    if shard is not None:
+        answer = await kv.store().acquire_lease(
+            f"{pass_key(shard)}:sweep", uuid.uuid4().hex, max(1, int(every_s * 1000)))
+        if answer != "unavailable":
+            return answer == "acquired"
+    if time.monotonic() < next_sweep.get(shard, 0.0):
+        return False
+    next_sweep[shard] = time.monotonic() + every_s
+    return True
 
 
 async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                  sweep_every_s: float = _SWEEP_EVERY_S) -> None:
-    """Fold and sweep forever on the background pool, one process at a time (`_pass_lease`). A
-    pass that folded something is followed by the next at once; an idle one by a pause every
-    process shares (the holder keeps the lease through it); a process that finds the pass taken
-    pauses too. A bad pass never kills the loop."""
-    next_sweep = 0.0
+    """Fold and sweep forever on the background pool, one process at a time per share of the
+    teams (`_pass_lease`). A pass that folded something is followed by the next at once. An idle
+    share pauses for every process (the holder keeps its lease through the pause), but the
+    process goes on to another share: it pauses only once every share is taken or pausing, or
+    when it ran over every team because the store could not answer. Each share's idle sweep is
+    due on a clock every process shares (`_sweep_due`). A bad pass never kills the loop."""
+    next_sweep: dict[allowance.Shard | None, float] = {}
     while True:
-        folded = 0
+        folded, pause = 0, True
         try:
             async with _pass_lease() as turn:
                 if turn.mine:
-                    sweep = time.monotonic() >= next_sweep
-                    if sweep:
-                        next_sweep = time.monotonic() + sweep_every_s
+                    sweep = await _sweep_due(turn.shard, sweep_every_s, next_sweep)
                     folded = await run_once(background_session_maker, sweep=sweep,
-                                            keep_going=turn.holding)
+                                            keep_going=turn.holding, shard=turn.shard)
                     if not folded:
                         turn.rest_s = fold_every_s
+                    pause = not folded and turn.shard is None
         except asyncio.CancelledError:
             raise
         except Exception:
             log.error("allowance background pass failed", exc_info=True)
-        if not folded:
+        if pause and not folded:
             await asyncio.sleep(fold_every_s)

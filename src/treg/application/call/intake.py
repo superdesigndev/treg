@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,9 +13,8 @@ from ...domain.identity.access import Caller
 from ...caller_metadata import _META_KEY_RE
 from .idempotency import (
     _claim_idempotent,
-    _claim_owner,
     _idempotency_key,
-    _in_progress,
+    _lost_claim,
     _raw_request_fingerprint,
     _replay_idempotent,
     _request_fingerprint,
@@ -42,6 +41,9 @@ class CallMeta:
 
     tags: dict[str, str]
     primary_dim: str = budget_policy.DEFAULT_PRIMARY_DIM
+    # A tag budget may limit this call. False only once the pre-flight pass found none for any of
+    # its tags (`reserve._enforce_tag_budgets`): only then may a tagged call take from the allowance.
+    tag_limited: bool = True
 
     @property
     def primary_val(self) -> str:
@@ -129,6 +131,7 @@ class IntakeResult:
     fingerprint: str
     replay: IdempotentReplay | None
     claim: tuple[int, str, str] | None
+    meta: CallMeta | None = None
 
 
 async def prepare_call_intake(
@@ -140,15 +143,20 @@ async def prepare_call_intake(
     raw_query: str,
     read_body: Callable[[], Awaitable[bytes]],
     caller: Caller,
-    enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[None]],
+    enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[bool]],
     call_ref: str,
+    surface: str | None = None,
 ) -> IntakeResult:
     """Run the pre-resolve gates in their frozen order using bounded transactions."""
     # Blocked status and the per-tag call count, BEFORE the replay below: a blocked user must neither
     # take an idempotency lock nor be handed an answer this team cached before they were blocked.
     async with session_maker() as db:
-        await enforce_tag_budgets(caller, meta, db)
+        limited = await enforce_tag_budgets(caller, meta, db)
         await db.commit()
+    # This pass decides, never an earlier one a child inherited with its parent's meta.
+    limited = limited is not False
+    if meta.tags and meta.tag_limited != limited:
+        meta = replace(meta, tag_limited=limited)
 
     # A retry the caller has labelled: answer it from what we already returned, before resolving
     # anything or reaching a provider. Nothing happens without the header.
@@ -157,22 +165,24 @@ async def prepare_call_intake(
     key = _scoped_idempotency_key(
         _idempotency_key(idempotency_header), meta, pinned_tags=caller.membership.pinned_tags)
     if not key:
-        return IntakeResult("", "", None, None)
+        return IntakeResult("", "", None, None, meta)
 
     body = await read_body()
     fingerprint = _request_fingerprint(method, rest, body, raw_query)
     async with session_maker() as db:
+        raw_fingerprint = _raw_request_fingerprint(method, rest, body, raw_query)
         replay = await _replay_idempotent(
-            key, fingerprint, caller, db,
-            raw_fingerprint=_raw_request_fingerprint(method, rest, body, raw_query))
+            key, fingerprint, caller, db, raw_fingerprint=raw_fingerprint, surface=surface)
         if replay is None:
             # Claim it now, before anything reaches a provider. Two retries can arrive together and both
             # miss the lookup above; the unique constraint is what makes the loser wait instead of making
             # a second upstream call. A check-then-act in Python would leave exactly the window this
             # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
-            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
-                raise _in_progress(key, await _claim_owner(key, caller, db))
+            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref,
+                                           surface=surface):
+                raise await _lost_claim(key, fingerprint, caller, db, raw_fingerprint=raw_fingerprint,
+                                        surface=surface)
     if replay is not None:
         # Outside the session on purpose: a trimmed row's bytes may come from object storage.
-        return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None)
-    return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref))
+        return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None, meta)
+    return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref), meta)

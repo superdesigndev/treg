@@ -180,6 +180,8 @@ jobs:
           tests/test_workbench_table_schema.py
           tests/test_redundant_index_migration.py
           tests/test_callrecord_call_ref_index_migration.py
+          tests/test_callrecord_served_call_ref_migration.py
+          tests/test_review_answer_basis_migration.py
           tests/test_enrich_arena.py
           tests/test_arena_insights.py
           tests/test_arena_verification_insights.py

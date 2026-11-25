@@ -20,7 +20,7 @@ from treg.application import allowance_sweep
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
-from treg.application.call.intake import CallMeta
+from treg.application.call.intake import CallMeta, prepare_call_intake
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
@@ -31,7 +31,9 @@ from treg.infra import db as infra_db
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity.access import Caller
-from treg.models import ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, Tool, User
+from treg.models import (
+    ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, TagBudget, TagSpend, Tool, User,
+)
 
 GRANT = 5_000_000
 CHUNK = 1_000_000
@@ -1500,6 +1502,194 @@ async def test_a_reserved_routed_child_counts_under_the_reason_it_would_have_as_
     assert other["calls"] == 1 and other["as_direct"] == {}
 
 
+@pytest.fixture
+def tagged_on(org_id, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_tagged_org_ids", [org_id])
+    monkeypatch.setattr(get_settings(), "money_allowance_tagged_all_orgs", False)
+
+
+async def _tag_meta(caller: Caller, tags: dict[str, str]) -> CallMeta:
+    """The call's tags as the pre-flight pass leaves them."""
+    async def body() -> bytes:
+        return b""
+    intake = await prepare_call_intake(
+        meta=CallMeta(tags=tags), idempotency_header=None, method="GET", rest="", raw_query="",
+        read_body=body, caller=caller, enforce_tag_budgets=call_reserve._enforce_tag_budgets,
+        call_ref="intake")
+    return intake.meta
+
+
+async def test_a_tagged_call_no_budget_limits_takes_and_its_fold_writes_its_tag_rows(
+        org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    meta = await _tag_meta(caller, {"customer": "c1", "feature": "find"})
+    assert meta.tag_limited is False
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "tagged-1", allow_allowance=True)
+    assert mk.allowance_epoch and await _per_call_holds(org_id) == []
+    assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge))).scalar_one().meta["tags"] == meta.tags
+    await _fold(org_id)
+    async with session_maker() as db:
+        rows = (await db.execute(select(TagSpend).order_by(TagSpend.dim))).scalars().all()
+        entry = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == "tagged-1", LedgerEntry.kind == "settle"))).scalar_one()
+        day = ledger._day_start()
+        by_tag = await ledger.spend_by_tag(db, org_id, "customer", day)
+        calls = await ledger.calls_by_tag(db, org_id, "feature", day)
+    assert [(r.dim, r.val, r.hold_id, r.amount_micro, r.settled) for r in rows] == [
+        ("customer", "c1", "tagged-1", 450, True), ("feature", "find", "tagged-1", 450, True)]
+    assert all(r.created_at == entry.created_at for r in rows)
+    assert entry.meta["tags"] == meta.tags and entry.amount_micro == -450
+    assert by_tag == {"c1": 450} and calls == {"find": 1}
+
+
+async def test_a_budget_set_after_tagged_takes_counts_their_queued_charges(
+        org_id, store, tagged_on, monkeypatch):
+    caller = await _caller(org_id)
+    for n in range(3):
+        mk = _call(org_id)
+        await call_reserve._platform_reserve(
+            mk, caller, await _tag_meta(caller, {"customer": "c1"}), f"t-{n}",
+            allow_allowance=True)
+        assert mk.allowance_epoch
+        await call_settle._platform_settle(mk, 200, observed_override=100)
+    assert await _queued(org_id) == 3
+    async with session_maker() as db:
+        day = ledger._day_start()
+        assert await ledger.tag_spent_since(db, org_id, "customer", "c1", day) == 300
+        assert await ledger.tag_calls_since(db, org_id, "customer", "c1", day) == 3
+        assert await ledger.tag_spent_since(db, org_id, "customer", "c2", day) == 0
+        await db.execute(update(TagBudget).where(TagBudget.org_id == org_id).values(
+            auto=False, calls_per_day=3))
+        await db.commit()
+    with pytest.raises(ReservationFailed) as refused:
+        await _tag_meta(caller, {"customer": "c1"})
+    assert refused.value.detail["error"] == "tag_call_cap_reached"
+    await _fold(org_id)
+    async with session_maker() as db:
+        assert await ledger.tag_calls_since(db, org_id, "customer", "c1", day) == 3
+        assert await ledger.tag_spent_since(db, org_id, "customer", "c1", day) == 300
+
+
+async def test_a_charge_queued_before_the_day_counts_in_todays_tag_cap(
+        org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, await _tag_meta(caller, {"customer": "c1"}), "t-late", allow_allowance=True)
+    assert mk.allowance_epoch
+    await call_settle._platform_settle(mk, 200, observed_override=500)
+    assert await _queued(org_id) == 1
+    day = ledger._day_start()
+    async with session_maker() as db:
+        await db.execute(update(CallCharge).where(CallCharge.org_id == org_id).values(
+            created_at=day - timedelta(seconds=1)))
+        await db.commit()
+        before = (await ledger.tag_spent_since(db, org_id, "customer", "c1", day),
+                  await ledger.tag_calls_since(db, org_id, "customer", "c1", day))
+    await _fold(org_id)
+    async with session_maker() as db:
+        after = (await ledger.tag_spent_since(db, org_id, "customer", "c1", day),
+                 await ledger.tag_calls_since(db, org_id, "customer", "c1", day))
+    assert before == after == (500, 1)
+
+
+async def test_an_unbilled_tagged_take_writes_no_tag_rows(org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, await _tag_meta(caller, {"customer": "c1"}), "tagged-1", allow_allowance=True)
+    assert mk.allowance_epoch
+    assert await call_settle._platform_settle(mk, 500) == (0, None)
+    await _fold(org_id)
+    async with session_maker() as db:
+        assert (await db.execute(select(TagSpend))).scalars().all() == []
+
+
+@pytest.mark.parametrize(("budget", "limited"), [
+    ({"val": "c1", "daily_cap_micro": 10_000}, True),
+    ({"val": "*", "monthly_cap_micro": 10_000}, True),
+    ({"val": "c1", "calls_per_day": 5}, True),
+    ({"val": "*", "calls_per_day": 0, "status": "active"}, True),
+    ({"val": "c1", "auto": True}, False),
+    ({"val": "c1"}, False),
+    ({"val": "*", "calls_per_day": -1}, False),
+])
+async def test_a_tag_budget_that_limits_the_call_keeps_it_on_its_own_hold(
+        org_id, store, tagged_on, skip_lines, budget, limited):
+    async with session_maker() as db:
+        db.add(TagBudget(org_id=org_id, dim="customer", **budget))
+        await db.commit()
+    caller = await _caller(org_id)
+    if limited and budget.get("calls_per_day") == 0:
+        with pytest.raises(ReservationFailed):
+            await _tag_meta(caller, {"customer": "c1"})
+        return
+    meta = await _tag_meta(caller, {"customer": "c1"})
+    assert meta.tag_limited is limited
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "c-1", allow_allowance=True)
+    assert (mk.allowance_epoch is None) is limited
+    assert await _per_call_holds(org_id) == (["c-1"] if limited else [])
+    assert skip_lines() == ([_skip(org_id, "tag_budget", 1)] if limited else [])
+
+
+async def test_a_childs_pre_flight_overrides_what_its_parents_found(org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    parent = await _tag_meta(caller, {"customer": "c1"})
+    assert parent.tag_limited is False
+    async with session_maker() as db:
+        await db.execute(update(TagBudget).where(TagBudget.org_id == org_id).values(
+            auto=False, daily_cap_micro=10_000))
+        await db.commit()
+
+    async def body() -> bytes:
+        return b""
+    child = (await prepare_call_intake(
+        meta=parent, idempotency_header=None, method="GET", rest="", raw_query="",
+        read_body=body, caller=caller, enforce_tag_budgets=call_reserve._enforce_tag_budgets,
+        call_ref="intake:r1")).meta
+    assert child.tag_limited is True
+
+
+async def test_a_pinned_tokens_call_keeps_its_hold(org_id, store, tagged_on, skip_lines):
+    caller = await _caller(org_id)
+    caller.membership.pinned_tags = {"customer": "c1"}
+    meta = await _tag_meta(caller, {"customer": "c1"})
+    assert meta.tag_limited is False
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "c-1", allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
+    assert skip_lines() == [_skip(org_id, "pinned", 1)]
+
+
+async def test_a_tag_on_an_undeclared_key_is_never_limited(org_id, store, tagged_on):
+    async with session_maker() as db:
+        db.add(TagBudget(org_id=org_id, dim="workspace", val="*", daily_cap_micro=1))
+        await db.commit()
+    assert (await _tag_meta(await _caller(org_id), {"workspace": "w1"})).tag_limited is False
+
+
+async def test_a_tagged_call_keeps_its_hold_until_its_team_is_switched_on(org_id, store, skip_lines):
+    caller = await _caller(org_id)
+    meta = await _tag_meta(caller, {"customer": "c1"})
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "c-1", allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
+    assert skip_lines() == [_skip(org_id, "tagged", 1)]
+    assert call_reserve._direct_skip(_call(org_id, reserved_micro=600), caller,
+                                     CallMeta(tags={"customer": "c1"}), True) == "tagged"
+
+
+async def test_a_tagged_meta_never_judged_by_the_pre_flight_keeps_its_hold(
+        org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    assert call_reserve._direct_skip(_call(org_id, reserved_micro=600), caller,
+                                     CallMeta(tags={"customer": "c1"}), True) == "tag_budget"
+
+
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):
     caller = await _caller(org_id)
     caller.membership.role = "member"
@@ -2131,49 +2321,127 @@ async def _run_workers(count, seconds, *, every_s, stagger_s=0.0):
             await task
 
 
-async def test_one_process_at_a_time_runs_the_pass(store, monkeypatch):
-    """Every process runs the loop, and each pass reads every team with queued charges: run by
+@pytest.mark.parametrize("shards", [1, 4])
+async def test_one_process_at_a_time_runs_the_pass_over_a_share(store, monkeypatch, shards):
+    """Every process runs the loop, and each pass reads the teams with queued charges: run by
     every process every second, that reading cost the database more than the folding. A process
-    whose store says another has the pass pauses; one whose store cannot answer still runs."""
-    passes: list[bool] = []
+    whose store says every share is taken pauses; one whose store cannot answer still runs, over
+    every team."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: shards)
+    passes: list[tuple] = []
 
-    async def counted(session_maker, *, sweep, keep_going=None):
-        passes.append(sweep)
+    async def counted(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append((sweep, shard))
         return 0
 
     monkeypatch.setattr(allowance_sweep, "run_once", counted)
-    store.leases[allowance_sweep._PASS_KEY] = "another process"
+    keys = [allowance_sweep.pass_key((index, shards)) for index in range(shards)]
+    for key in keys:
+        store.leases[key] = "another process"
     await _run_workers(1, 0.05, every_s=0.005)
     assert passes == []
-    del store.leases[allowance_sweep._PASS_KEY]
+    del store.leases[keys[-1]]
     await _run_workers(1, 0.05, every_s=0.005)
-    assert passes and passes[0] is True, "the first pass it runs is a sweep too"
+    assert passes and passes[0][0] is True, "the first pass it runs is a sweep too"
+    assert {shard for _, shard in passes} == {(shards - 1, shards)}, "only the share left free"
     passes.clear()
     store.lease_answer = "unavailable"
     await _run_workers(1, 0.05, every_s=0.005)
-    assert passes
+    assert passes and {shard for _, shard in passes} == {None}
+
+
+def test_one_share_keeps_the_lease_name_of_a_single_pass():
+    """Processes of a build before shares run beside the new ones during a deploy: with one
+    share they take the same lease."""
+    assert allowance_sweep.pass_key((0, 1)) == allowance_sweep._PASS_KEY
+    assert allowance_sweep.pass_key((1, 4)) != allowance_sweep.pass_key((1, 8))
+
+
+async def test_shares_fold_side_by_side_and_never_the_same_share_twice(store, monkeypatch):
+    """With more shares, as many processes fold at once, each over teams no other one has."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 2)
+    running: dict = {}
+    overlap, side_by_side = [], []
+
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
+        overlap.append(running.get(shard, 0) > 0)
+        running[shard] = running.get(shard, 0) + 1
+        side_by_side.append(sum(running.values()))
+        await asyncio.sleep(0.05)
+        running[shard] -= 1
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(4, 0.3, every_s=0.01, stagger_s=0.005)
+    assert overlap and not any(overlap)
+    assert max(side_by_side) == 2
+
+
+async def test_a_share_folds_only_its_teams_and_the_longest_wait_first(
+        org_id, store, monkeypatch):
+    """A pass over a share reads and folds only the teams in it, and the team whose oldest
+    charge has waited longest comes first."""
+    epoch = await runtime.take(org_id, 10)
+    await _finish(org_id, "share-only", epoch, 10, billable=True)
+    mine, other = (org_id % 2, 2), ((org_id + 1) % 2, 2)
+    assert await allowance_sweep.fold_queued_once(session_maker, shard=other) == 0
+    assert await _queued(org_id) == 1
+    assert await allowance_sweep.fold_queued_once(session_maker, shard=mine) == 1
+    assert await _queued(org_id) == 0
+
+
+async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypatch):
+    """A pass that stops early (its lease lost) has still brought down the longest wait."""
+    later = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=later, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, later, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(call, team, "e.metered", 400, reserved_micro=400)
+            for team, call in ((org_id, "newer"), (later, "older"))])
+        await db.commit()
+    async with session_maker() as db:  # the higher team number has waited longer
+        await db.execute(update(CallCharge).where(CallCharge.call_id == "older").values(
+            created_at=ledger._now() - timedelta(minutes=5)))
+        await db.commit()
+        assert await allowance.orgs_with_queued_charges(db, ledger._now()) == [later, org_id]
+    folded: list[int] = []
+    real = allowance_sweep._fold_team
+
+    async def first_only(session_maker, team):
+        folded.append(team)
+        return await real(session_maker, team)
+
+    monkeypatch.setattr(allowance_sweep, "_fold_team", first_only)
+    assert await allowance_sweep.fold_queued_once(
+        session_maker, keep_going=lambda: not folded) == 1
+    assert folded == [later] and await _queued(org_id) == 1
 
 
 async def test_the_pause_after_an_idle_pass_is_shared_by_every_process(store, monkeypatch):
     """Released at once after an idle pass, the lease would go to whichever process woke next,
     and processes waking at different moments would each scan once per pause anyway."""
-    passes: list[float] = []
+    passes: dict = {}
 
-    async def idle(session_maker, *, sweep, keep_going=None):
-        passes.append(time.monotonic())
+    async def idle(session_maker, *, sweep, keep_going=None, shard=None):
+        passes[shard] = passes.get(shard, 0) + 1
         return 0
 
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 2)
     monkeypatch.setattr(allowance_sweep, "run_once", idle)
-    await _run_workers(4, 0.3, every_s=0.05, stagger_s=0.012)
-    assert len(passes) <= 9, f"{len(passes)} passes in 0.3 s; one per pause is about 7"
+    await _run_workers(6, 0.3, every_s=0.05, stagger_s=0.008)
+    assert passes and max(passes.values()) <= 9, (
+        f"{passes} passes in 0.3 s; one per share per pause is about 7")
 
 
 async def test_a_long_pass_keeps_the_lease(store, monkeypatch):
     """A pass that outlives the lease's time would let a second process start one beside it."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
     running, overlapped = [0], []
 
-    async def slow(session_maker, *, sweep, keep_going=None):
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
         running[0] += 1
         overlapped.append(running[0] > 1)
         await asyncio.sleep(0.2)
@@ -2191,7 +2459,10 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 30)
     renewing, finish = asyncio.Event(), asyncio.Event()
 
+    renewed_keys: list[str] = []
+
     async def stubborn_renew(key, token, ttl_ms, *, deadline=None):
+        renewed_keys.append(key)
         renewing.set()
         try:
             await finish.wait()
@@ -2202,7 +2473,7 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
 
     stop = [False]
 
-    async def until_renewing(session_maker, *, sweep, keep_going=None):
+    async def until_renewing(session_maker, *, sweep, keep_going=None, shard=None):
         if stop[0]:
             raise asyncio.CancelledError
         await renewing.wait()
@@ -2221,12 +2492,17 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert stopped_on_its_own and task.cancelled()
-    assert allowance_sweep._PASS_KEY not in store.leases, "the lease is given back on the way out"
+    taken = renewed_keys[0]
+    assert taken.startswith(allowance_sweep._PASS_KEY) and not taken.endswith(":sweep")
+    held = [key for key in store.leases
+            if key.startswith(allowance_sweep._PASS_KEY) and not key.endswith(":sweep")]
+    assert taken not in store.leases and held == [], "the share's lease is given back on the way out"
 
 
 async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkeypatch):
     """A store that fails once and comes back while the lease is still valid must not leave a
     long pass without its lease."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
     answers = ["unavailable"]
     renew = store.renew_lease
@@ -2238,7 +2514,7 @@ async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkey
 
     running, overlapped = [0], []
 
-    async def slow(session_maker, *, sweep, keep_going=None):
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
         running[0] += 1
         overlapped.append(running[0] > 1)
         await asyncio.sleep(0.2)
@@ -2281,6 +2557,7 @@ async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_le
         store, monkeypatch):
     """Asked again only at the usual interval, two failed renewals in a row could miss the store
     coming back before the lease runs out."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 90)
     answers = ["unavailable", "unavailable"]
     renew = store.renew_lease
@@ -2292,7 +2569,7 @@ async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_le
 
     running, overlapped = [0], []
 
-    async def slow(session_maker, *, sweep, keep_going=None):
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
         running[0] += 1
         overlapped.append(running[0] > 1)
         await asyncio.sleep(0.25)
@@ -2362,11 +2639,11 @@ async def test_a_fold_on_postgresql_caps_its_wait_for_row_locks(monkeypatch):
     assert ran == []
 
 
-async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
+async def test_passes_reach_every_team_however_many_have_charges_queued(
         org_id, store, monkeypatch):
-    """Teams are listed a page at a time. A pass that only ever read the first page would never
-    reach the teams after it while the first ones keep queueing."""
-    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PAGE", 1)
+    """A pass folds a bounded number of teams, the longest-waiting first; the passes after it
+    reach the rest, so no team is left behind however many have charges queued."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 1)
     async with session_maker() as db:
         others = [Org(id=org_id + offset, name="later", slug=uuid4().hex) for offset in (1, 2)]
         db.add_all(others)
@@ -2377,9 +2654,83 @@ async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
             allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
             for team in (org_id, org_id + 1, org_id + 2)])
         await db.commit()
-    assert await allowance_sweep.fold_queued_once(session_maker) == 3
+    assert [await allowance_sweep.fold_queued_once(session_maker) for _ in range(4)] == [1, 1, 1, 0]
     for team in (org_id, org_id + 1, org_id + 2):
         assert await _queued(team) == 0 and (await _state(team))[0] == GRANT - 400
+
+
+async def test_teams_another_process_holds_do_not_use_up_a_pass(org_id, store, monkeypatch):
+    """A pass works on a bounded number of teams. The teams at the front, longest waiting, may
+    all be held by other processes; they must not take the places of the team behind them, pass
+    after pass."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 2)
+    teams = [org_id + offset for offset in range(3)]
+    async with session_maker() as db:
+        for team in teams[1:]:
+            db.add(Org(id=team, name="later", slug=uuid4().hex))
+        await db.flush()
+        for team in teams[1:]:
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in teams])
+        for age, team in zip((30, 20, 10), teams):
+            await db.execute(update(CallCharge).where(CallCharge.org_id == team).values(
+                created_at=ledger._now() - timedelta(minutes=age)))
+        await db.commit()
+    for team in teams[:2]:  # the two longest waits, held elsewhere for the whole test
+        store.leases[runtime.money_key(team)] = "another process"
+    for _ in range(3):
+        await allowance_sweep.fold_queued_once(session_maker)
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
+async def _three_waiting_teams(org_id: int) -> list[int]:
+    """Three teams with one queued charge each, the first the longest waiting."""
+    teams = [org_id + offset for offset in range(3)]
+    async with session_maker() as db:
+        for team in teams[1:]:
+            db.add(Org(id=team, name="later", slug=uuid4().hex))
+        await db.flush()
+        for team in teams[1:]:
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in teams])
+        for age, team in zip((30, 20, 10), teams):
+            await db.execute(update(CallCharge).where(CallCharge.org_id == team).values(
+                created_at=ledger._now() - timedelta(minutes=age)))
+        await db.commit()
+    return teams
+
+
+async def test_teams_whose_rows_stay_locked_do_not_use_up_a_pass(org_id, store, monkeypatch):
+    """A team whose fold gave up on its row locks before committing anything was not worked on:
+    it must not take the place of the team behind it."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 1)
+    teams = await _three_waiting_teams(org_id)
+    fold = allowance.fold_charges_in_transaction
+
+    async def front_locked(db, team, **kwargs):
+        if team in teams[:2]:
+            raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", front_locked)
+    for _ in range(2):
+        await allowance_sweep.fold_queued_once(session_maker)
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
+async def test_a_pass_pages_past_a_full_list_of_teams_it_cannot_have(org_id, store, monkeypatch):
+    """The list a pass reads is bounded too. When every team on it is held elsewhere, the pass
+    reads on past the last one instead of ending with nothing folded."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_LISTED", 1)
+    teams = await _three_waiting_teams(org_id)
+    for team in teams[:2]:
+        store.leases[runtime.money_key(team)] = "another process"
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
 
 
 async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
@@ -2510,13 +2861,13 @@ async def test_the_background_loop_folds_a_queue_whether_or_not_its_team_is_list
 async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(monkeypatch):
     passes, pauses, sweeps = iter([3, 2, 0]), [], []
 
-    async def fold(session_maker, *, keep_going=None) -> int:
+    async def fold(session_maker, *, keep_going=None, shard=None) -> int:
         try:
             return next(passes)
         except StopIteration:
             raise asyncio.CancelledError from None
 
-    async def sweep(session_maker, *, keep_going=None) -> int:
+    async def sweep(session_maker, *, keep_going=None, shard=None) -> int:
         sweeps.append(len(pauses))
         return 0
 
@@ -2529,6 +2880,58 @@ async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(mon
     with pytest.raises(asyncio.CancelledError):
         await allowance_sweep.worker(fold_every_s=1.5, sweep_every_s=3_600)
     assert pauses == [1.5] and sweeps == [0], "one pause, after the empty pass; one sweep so far"
+
+
+async def test_a_share_handed_to_another_process_is_not_swept_again_within_the_period(
+        store, monkeypatch):
+    """Shares move between processes from pass to pass. The process taking one over sees when
+    its sweep is due instead of sweeping it again at once, and folds what is queued right away."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 4)
+    passes: list[tuple] = []
+
+    async def counted(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append((shard, sweep))
+        await asyncio.sleep(0.002)
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", counted)
+    await _run_workers(4, 0.2, every_s=0.01, stagger_s=0.005)
+    sweeps = [shard for shard, sweep in passes if sweep]
+    assert sorted(sweeps) == [(index, 4) for index in range(4)], "one sweep per share"
+    assert len(passes) > 4 * 4, "and every other pass went straight to folding"
+
+    passes.clear()
+    store.lease_answer = "unavailable"
+    await _run_workers(1, 0.05, every_s=0.01)
+    assert [sweep for _, sweep in passes][:2] == [True, False], "its own clock without a store"
+
+
+async def test_an_idle_share_does_not_put_the_only_worker_to_sleep(store, monkeypatch):
+    """One process, four shares, one of them always busy: a pass that drew an empty share pauses
+    that share, not the process, which goes on to the busy one at once."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 4)
+    monkeypatch.setattr(allowance_sweep.random, "randrange", lambda count: 0)  # empty share first
+    busy, passes, pauses = (3, 4), [], []
+
+    async def one_busy_share(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append(shard)
+        if len(passes) >= 20:
+            raise asyncio.CancelledError
+        return 5 if shard == busy else 0
+
+    real_sleep = asyncio.sleep
+
+    async def pause(seconds: float) -> None:
+        pauses.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(allowance_sweep, "run_once", one_busy_share)
+    monkeypatch.setattr(allowance_sweep.asyncio, "sleep", pause)
+    with pytest.raises(asyncio.CancelledError):
+        await allowance_sweep.worker(fold_every_s=60, sweep_every_s=3_600)
+    assert pauses == [], "never asleep while a share has work"
+    assert passes[:4] == [(0, 4), (1, 4), (2, 4), busy]
+    assert passes[4:] == [busy] * 16, "the idle shares pause; the busy one is folded again at once"
 
 
 # ---- one money session per team, across processes ---------------------------------------------
@@ -3466,3 +3869,59 @@ async def test_a_nested_routed_close_keeps_the_root_s_mark_and_leaves_its_releas
     assert store.marks == {"root"} and runtime._charges._marked == {"root": 1}
     await runtime.release_mark("root")
     assert store.marks == set()
+
+
+@pytest.mark.parametrize("root_allows", [False, True])
+async def test_a_free_routed_child_is_holdless_only_when_its_root_lets_children_take(
+        org_id, store, monkeypatch, root_allows):
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    caller = await _caller(org_id)
+    pending: list = []
+    mk = _call(org_id, estimate=0, deferred=pending, routed_allowance=root_allows)
+    mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    if not root_allows:
+        assert not mk.holdless_eligible, "an unmarked keyed root has only its children's holds"
+        return
+    await call_reserve._platform_reserve(
+        mk, caller, CallMeta(tags={}), "root-1:r0", allow_holdless=True, allow_allowance=True)
+    assert mk.holdless and mk.allowance_epoch is None
+    assert await call_settle._platform_settle(mk, 200, b"{}") == (0, None)
+    assert pending == []
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == "root-1:r0"))).first() is None
+        assert await db.get(Hold, "root-1:r0") is None
+
+
+async def test_a_mark_is_set_only_where_a_stale_claim_reads_it(monkeypatch):
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = FakeStore()
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: False)
+    assert await idempotency.mark_in_flight("root-local") is False
+    assert store.marks == set()
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    assert await idempotency.mark_in_flight("root-shared") is True
+
+
+async def test_a_keyed_free_call_retried_after_a_give_back_still_keeps_a_hold(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(balance_micro=-1))
+        await db.commit()
+
+    async def gave_back(_org_id, _micro):
+        return True
+
+    monkeypatch.setattr(runtime, "give_back_for_exact_path", gave_back)
+    caller = await _caller(org_id)
+    mk = _call(org_id, estimate=0)
+    mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    with pytest.raises(ReservationFailed):
+        await call_reserve._platform_reserve(
+            mk, caller, CallMeta(tags={}), "keyed-free-1", allow_holdless=True,
+            allow_allowance=True, mark_in_flight=True)
+    assert not mk.holdless, "the retry kept the claim's mark_in_flight, so it never went holdless"
