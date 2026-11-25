@@ -333,9 +333,10 @@ Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`sou
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
 deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
 those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
-worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
-included; a missing entry fails validation. Both blocks must stay
-ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
+worse than an honest credit count. An own-key call to such a row still prices (pricing runs on
+every tier): its per-unit and credit figures are an informational zero, while a platform-eligible
+row with no rate still refuses to price. A v2 price in credits or a meter needs an entry, a null
+one included; a missing entry fails validation. Both blocks must stay ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
 Two treg-set kinds exist for providers with no per-call vendor price; [money](money.md) owns the
