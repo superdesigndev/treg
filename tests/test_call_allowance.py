@@ -1613,6 +1613,24 @@ async def test_a_tag_budget_that_limits_the_call_keeps_it_on_its_own_hold(
     assert skip_lines() == ([_skip(org_id, "tag_budget", 1)] if limited else [])
 
 
+async def test_a_childs_pre_flight_overrides_what_its_parents_found(org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    parent = await _tag_meta(caller, {"customer": "c1"})
+    assert parent.tag_limited is False
+    async with session_maker() as db:
+        await db.execute(update(TagBudget).where(TagBudget.org_id == org_id).values(
+            auto=False, daily_cap_micro=10_000))
+        await db.commit()
+
+    async def body() -> bytes:
+        return b""
+    child = (await prepare_call_intake(
+        meta=parent, idempotency_header=None, method="GET", rest="", raw_query="",
+        read_body=body, caller=caller, enforce_tag_budgets=call_reserve._enforce_tag_budgets,
+        call_ref="intake:r1")).meta
+    assert child.tag_limited is True
+
+
 async def test_a_tag_on_an_undeclared_key_is_never_limited(org_id, store, tagged_on):
     async with session_maker() as db:
         db.add(TagBudget(org_id=org_id, dim="workspace", val="*", daily_cap_micro=1))

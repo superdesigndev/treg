@@ -153,8 +153,10 @@ async def prepare_call_intake(
     async with session_maker() as db:
         limited = await enforce_tag_budgets(caller, meta, db)
         await db.commit()
-    if meta.tags and limited is False:
-        meta = replace(meta, tag_limited=False)
+    # This pass decides, never an earlier one a child inherited with its parent's meta.
+    limited = limited is not False
+    if meta.tags and meta.tag_limited != limited:
+        meta = replace(meta, tag_limited=limited)
 
     # A retry the caller has labelled: answer it from what we already returned, before resolving
     # anything or reaching a provider. Nothing happens without the header.
