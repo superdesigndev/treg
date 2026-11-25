@@ -20,6 +20,7 @@ sources:
   - scripts/build_plugin.py
   - .claude-plugin/marketplace.json
   - plugins/treg/.claude-plugin/plugin.json
+  - plugins/treg-claude/.claude-plugin/plugin.json
   - .agents/plugins/marketplace.json
   - plugin/.codex-plugin/plugin.json
   - plugins/treg/.cursor-plugin/plugin.json
@@ -73,6 +74,7 @@ other two: a static file cannot follow a team list or a switch.
 | installer | `install.sh` -> `treg skill bootstrap` writes the treg skill into every detected agent's skills dir | `curl {BASE}/install.sh \| sh` |
 | bare skill | generated `skills/treg/SKILL.md` at the repo root, the served page unchanged plus `version:` | `npx skills add superdesigndev/treg -s treg`, ClawHub |
 | Claude Code / Cursor plugin | `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json` -> `plugins/treg/`; workflow skills as optional plugins in `plugins/workflows/<name>/` | `/plugin marketplace add superdesigndev/treg`, the Cursor marketplace |
+| Claude plugin directory | `plugins/treg-claude/` (`CLAUDE_DIRECTORY_SKILL`, the `/mcp/v2` connector), in no marketplace | Anthropic's Claude plugin directory, which reads that one folder |
 | Codex/ChatGPT plugin | `plugin/.codex-plugin/` + `CODEX_SKILL`, via `.agents/plugins/marketplace.json` | the ChatGPT/Codex directory, `codex plugin marketplace add superdesigndev/treg` |
 | GitHub Copilot plugin | `plugins/copilot/` (Agent Plugins 1.0.0: `plugin.json`, `mcp.json`, generated skill) | `copilot plugin marketplace add superdesigndev/treg`, then `copilot plugin install treg@treg` (through `.github/plugin/marketplace.json`, which Copilot CLI reads before `.claude-plugin/`); the awesome-copilot marketplace (external-plugin submission pinned to a commit) |
 | DeepSeek Harness | root `package.json` (`dsh.bundle`) + `dsh/cordis.patch.yml` + generated `dsh/skills/treg/SKILL.md` | `dsh plugin --profile <name> add github:superdesigndev/treg` ([DSH-PLUGIN.md](../../DSH-PLUGIN.md)) |
@@ -102,6 +104,11 @@ Constraints the hosts impose, which the code cannot explain:
   path) deprecated, so the marketplace is the documented install.
 - OpenAI's plugin review refuses a skill that downloads or runs code outside the package, so the
   Codex plugin carries a connector-only skill (`CODEX_SKILL`) with no CLI and no `install.sh`.
+- Anthropic's plugin directory reads one fixed folder per submission, and its policy refuses AI
+  media generation, spending without a human in the loop, instructions fetched from outside
+  sources and download-and-run commands. So `plugins/treg-claude/` has its own connector-only
+  skill (`CLAUDE_DIRECTORY_SKILL`) for the directory connector `/mcp/v2`, and `plugins/treg/`
+  stays the full plugin for the Claude Code marketplace and Cursor.
 - dsh reads no manifest and its MCP client sends a static header with no OAuth, so its MCP row is
   disabled until `TREG_TOKEN` is set, its tools are namespaced (`mcp__treg__call`), and
   `treg mcp install` lists dsh as a manual agent pointing at the bundle.
