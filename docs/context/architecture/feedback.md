@@ -9,6 +9,9 @@ sources:
   - src/treg/domain/feedback/reviews.py
   - src/treg/domain/feedback/marks.py
   - src/treg/domain/feedback/verdicts.py
+  - src/treg/domain/feedback/review_codes.py
+  - src/treg/application/review_judge.py
+  - tests/test_review_judge.py
   - src/treg/domain/feedback/body_view.py
   - src/treg/application/review_body_pilot.py
   - tests/test_review_body_pilot.py
