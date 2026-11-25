@@ -174,7 +174,8 @@ that name `cost.*` refer to the view treg derives from your `price`, `reserve` a
 ### 7. Verify live with your own key
 
 1. Call `probe_path` with your key and with a made-up key. Record both statuses and bodies, with
-   the date.
+   the date. A valid key's answer often names the account: before it goes in the pull request,
+   replace every email, account or user id, name, IP address and balance with `<redacted>`.
 2. Run every `test_request`, fix what fails, and run again until all pass:
 
    ```bash
@@ -213,7 +214,7 @@ Contact: <a team address, e.g. partnerships@yourapi.example; the repository is p
 |---|---|---|---|---|---|---|
 | <id> | 200 | <target> | <charge> | <price> | ✅ | <charge field, rate-card endpoint, or balance before → after> |
 
-Valid key on <probe_path> (<date>): <status> <body>
+Valid key on <probe_path> (<date>): <status> <body, account details redacted>
 Invalid key on <probe_path> (<date>): <status> <body>
 Miss: <id> on <target>: <status> <body>, <latency>, <charge>   (one line per endpoint with a miss rule)
 
