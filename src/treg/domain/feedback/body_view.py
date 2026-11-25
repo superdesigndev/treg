@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 import re
 
+from ... import jsontext
+
 CUT = "…"
 MORE, MORE_KEYS, LIST, OBJECT, OMITTED = ("_treg_more", "_treg_more_keys", "_treg_list", "_treg_object",
                                           "_treg_omitted")
@@ -52,7 +54,9 @@ def _cut(value, items: int, chars: int, keys: int, depth: int = 64):
 
 
 def _dumps(value) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    # A lone UTF-16 surrogate (a vendor truncating text mid-pair) stays its `\\uXXXX` escape, so
+    # the judge's request still encodes as UTF-8 (`jsontext`).
+    return jsontext.dumps(value, separators=(",", ":"))
 
 
 # The last resort for a JSON answer, so the smallest budget that always fits; lengths are characters.

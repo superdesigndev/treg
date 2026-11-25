@@ -81,6 +81,16 @@ def test_every_mark_a_cut_leaves_is_explained_to_the_judge(example, budget):
     assert body_view.CUT not in out or body_view.CUT in prompt
 
 
+@pytest.mark.parametrize("budget", [22, 60, 500, 4000])
+def test_a_lone_surrogate_still_encodes_as_utf8(budget):
+    from test_jsontext import UPSTREAM
+    text = json.dumps({"posts": [json.loads(UPSTREAM)] * 40 + [{"text": "中文"}]})
+    out = body_view.shrink(text, budget)
+    assert len(out) <= budget
+    out.encode("utf-8")
+    json.loads(out)
+
+
 @pytest.mark.parametrize("budget", [0, -5, body_view.MIN_BUDGET - 1])
 def test_shrink_refuses_a_budget_below_its_last_resort(budget):
     with pytest.raises(ValueError):
