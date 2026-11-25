@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timezone
 
 from sqlmodel import select
 
@@ -55,6 +56,8 @@ async def answer_of(r) -> Answer:
         if record is None or record.archive_key_hash is None or record.archive_content_hash is None:
             return ABSENT
         since = get_settings().review_answer_surface_since
+        if since is not None and since.tzinfo is not None:  # call rows hold naive UTC
+            since = since.astimezone(timezone.utc).replace(tzinfo=None)
         if record.surface is not None or (since is not None and record.created_at < since):
             return ABSENT
         report: dict = {}

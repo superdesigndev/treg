@@ -92,13 +92,19 @@ async def test_a_call_through_table_is_judged_from_the_reason(clients):
 
 
 async def test_a_call_from_before_surfaces_were_recorded_can_be_kept_out(clients, monkeypatch):
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     review = await _reviewed(clients)
     await _key((1, PEOPLE.encode(), "db"))
     assert (await review_answers.answer_of(review)).state == "read"
     monkeypatch.setattr(get_settings(), "review_answer_surface_since", datetime.now() + timedelta(days=1),
                         raising=False)
+    assert (await review_answers.answer_of(review)).state == "absent"
+    # A timezone-qualified setting (`...Z`) compares with the naive UTC call rows too.
+    aware = datetime.now(timezone.utc)
+    monkeypatch.setattr(get_settings(), "review_answer_surface_since", aware - timedelta(days=1), raising=False)
+    assert (await review_answers.answer_of(review)).state == "read"
+    monkeypatch.setattr(get_settings(), "review_answer_surface_since", aware + timedelta(days=1), raising=False)
     assert (await review_answers.answer_of(review)).state == "absent"
 
 
