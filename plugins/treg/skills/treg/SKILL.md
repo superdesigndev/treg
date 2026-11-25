@@ -145,8 +145,9 @@ How a routed call works:
   sent place or company only as a hint is named in `_treg.ignored_filters`, so
   `X-Treg-Route-Strict-Filters: 1` skips it.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
-  whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
-  employer; the hit is still billed — read the flag before treating the address as current. When
+  whether the hit's mailbox host equals the domain you sent. A different host can be a staff, brand,
+  or sibling mail domain of the same company, or a former employer; the hit is still billed — inspect
+  the mailbox domain before treating the address as a miss. When
   you need an address at that domain, send `X-Treg-Route-Domain-Match: strict`: an off-domain hit
   no longer ends the call, the next providers are asked (each attempt billed at its own price), and
   the first off-domain answer comes back (`_treg.outcome: weak`) only when none is on-domain.

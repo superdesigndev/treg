@@ -1492,6 +1492,31 @@ async def test_off_domain_hit_sets_domain_match_false(clients: AsyncClient, enri
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 8_900
 
 
+
+async def test_brand_mail_domain_keeps_domain_match_false_and_does_not_call_the_hit_stale(clients: AsyncClient, enrichment_on, monkeypatch):
+    """A same-company brand mailbox (asked facebook.com, hit fb.com) is still domain_match false
+    because the comparison is exact host equality, and the child's address is unaltered. Advice
+    names staff/brand/sibling mail domains as well as a former employer, and does not tell the
+    caller to treat the hit as stale or to switch away from a domain-taking provider."""
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "mark@fb.com", "score": 90,
+                                    "verification": {"status": "valid"}}})]}, []))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Mark Zuckerberg", "domain": "facebook.com"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "mark@fb.com", "the child's answer is not rewritten"
+    assert d["_treg"]["outcome"] == "hit" and d["_treg"]["domain_match"] is False
+    assert r.headers["X-Treg-Domain-Match"] == "false"
+    advice = d["_treg"]["advice"]
+    assert "domain_match" in advice and "different domain" in advice
+    assert "staff, brand, or sibling" in advice
+    assert "LinkedIn-only" not in advice
+    assert "possible stale hit" not in advice
+    assert "prefer a provider that takes domain" not in advice
+    assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 8_900
+
+
 async def test_matching_domain_hit_sets_domain_match_true(clients: AsyncClient, enrichment_on, monkeypatch):
     """A hit whose mailbox host equals the domain the caller sent reports domain_match true; the
     unverified advice still attaches when the provider did not vouch for deliverability."""
