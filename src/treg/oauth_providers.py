@@ -4605,6 +4605,34 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+
+SELLERSONAR = OAuthProvider(
+    service="sellersonar",
+    display_name="SellerSonar",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your SellerSonar API key",
+    # The key rides in X-API-Key; a bad or missing key answers 401 {"detail": "Invalid or missing API key"}.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://api.sellersonar.com/register",
+    setup_action_label="Get your SellerSonar API key",
+    setup_steps=(
+        "Sign up at api.sellersonar.com/register; a new account gets 100 free API credits.",
+        "Complete the billing details the app asks for (a check only, nothing is charged for the free credits).",
+        "Copy your API key from the app.",
+    ),
+    setup_note="Requests spend SellerSonar API credits: product 1, offers 1 per 10 sellers, search 1 per 50 products, with a minimum of 1 also when nothing is found. The request-types endpoint used to check the key is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Amazon product data by ASIN, the sellers and Buy Box on a listing, and keyword search results across 23 Amazon marketplaces.",
+    base_url="https://api.sellersonar.com",
+    docs_url="https://api.sellersonar.com/docs/",
+    probe_path="/api/request/types",  # free metadata; a bad key gets HTTP 401 {"detail": "Invalid or missing API key"}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4629,6 +4657,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
+        # Amazon marketplace data
+        SELLERSONAR,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
