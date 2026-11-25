@@ -17,6 +17,9 @@ sources:
   - tests/test_review_body_pilot.py
   - src/treg/application/review_body_audit.py
   - src/treg/application/review_answers.py
+  - tests/test_review_answers.py
+  - src/treg/alembic/versions/0128_review_answer_basis.py
+  - tests/test_review_answer_basis_migration.py
   - tests/test_review_body_audit.py
   - src/treg/domain/feedback/comparisons.py
   - src/treg/application/compare.py
@@ -439,25 +442,28 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
 - Privacy: each quotable reason gets `person_p` and `privacy_judged_at`.
 - Attribution: each `partly` or `not_useful` review gets `primary_code`, an optional `secondary_code`
   and `codebook_version` (`domain.feedback.review_codes`, a fixed codebook the vendor report cards
-  aggregate per endpoint). A review of a direct call whose answer is still on file is asked with the
-  request and the shortened answer beside its reason (`application.review_answers`,
+  aggregate per endpoint), first from its reason alone. `code_basis` says what the codes were judged
+  from: `reason` for a direct call's review, which may still be upgraded; `reason_final` for a routed
+  call's (its rows cannot prove which answer the caller got) or one without a reason; `answer` once
+  upgraded. A review with no reason is `NOREASON` without asking. A new codebook version re-judges
+  only reviews coded under an older one, from their reasons, and the upgrade follows again.
+- Upgrade with the answer (`judge_answers`): a direct call's review coded from its reason is asked
+  again with the request and the shortened answer beside its reason (`application.review_answers`,
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
-  `review_judge_answer_chars`, as the reviewed call delivered it (`review_answers.as_delivered`: that
-  call's status, and no provider-reported charge under `strip_reported_charge`); a routed call's
-  review (its rows cannot prove which answer the caller got), or one whose answer is gone for good,
-  from its reason alone, as is a team that may use `/table` (a reshaped answer the call row does not
-  record) and text that is not UTF-8. The judge sees the call's own status and the body only, from a
-  version of that answer that kept its bytes (`archive.resolve_result(prefer_bytes=True)`). An answer
-  that may be on file but was not read now (a failed read other than a missing object, object
-  storage in use but not configured, the database or storage unreachable) leaves its review uncoded
-  for a later run (`answer_unreadable`); after `review_judge_unreadable_limit` of those a run stops
-  trying reads (`answer_deferred`), and reviews needing no read go first, so an outage never holds
-  them back. A read that raises otherwise codes that review from its reason (`answer_errors`). The
-  worker opens the archive's object store, and without its credentials logs that and runs on. Each
-  read gets only the time left before reading stops, which leaves a request's worth before the
-  deadline, so what was read is sent; no request starts after it. A review with no
-  reason is `NOREASON` without asking. A new codebook version re-judges only reviews coded under an
-  older one; `2026-11-25.1` brought the answer in, so it re-judges every review in the window.
+  `review_judge_answer_chars`. The judge sees what this call's delivery is known to have had: its own
+  status and the body (`review_answers.as_delivered`), without the provider-reported charge the
+  endpoint declares (whether this delivery kept it is not on file), read from any version of that
+  answer that kept its bytes (`archive.resolve_result(prefer_bytes=True)` tries database copies, then
+  object storage). No answer can be shown, and the reason codes become `reason_final`, when there is
+  no archive link, every copy is gone or was a hash only, the text is not UTF-8, the call came
+  through `/table` (`CallRecord.surface`: a reshaped answer), or it predates
+  `review_answer_surface_since`. Anything else not read now (a failed read, object storage in use but
+  not configured, the database unreachable, a corrupt snapshot) is tried again from
+  `answer_retry_at`, an hour doubling to a week (`answer_attempts`), and after
+  `review_judge_answer_attempts` tries the reason codes stand; a review waiting its turn is not read,
+  so it never holds back the others. The worker opens the archive's object store, and without its
+  credentials logs that and runs on. Each read gets only the time left before reading stops, which
+  leaves a request's worth before the deadline, so what was read is sent; no request starts after it.
 
 Each answer is validated on its own (a Noul must be a number in [0, 1], a Choice one of the codes);
 a failed request or an unreadable answer leaves that review unjudged for the next run, and one pass
@@ -472,7 +478,7 @@ row is coded with the answer by the hourly judge) and with the request and the a
 and a count, always valid JSON, every mark a cut leaves named in `body_view.MARKERS` and explained
 in the question), and prints how its codes compare with the reason-only ones. Routed reviews are
 counted as `answer_unconfirmed` and never compared (a batch whose second request would start after
-the deadline is not sent and counts as `half_asked`): the audit rows cannot prove which answer the
+the deadline is not sent and counts as `half_asked`; one cut before its first, `read_not_asked`): the audit rows cannot prove which answer the
 caller got (a confirmed find returns the finder's answer while the review is credited to the
 confirmer, `feedback.answering_child`; an upgrade returns another vendor's; a miss returns none),
 and the route's `served_by` is not stored on them. A blank
