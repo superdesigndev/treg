@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import timezone
+from urllib.parse import parse_qsl
 
 from sqlmodel import select
 
@@ -89,13 +90,24 @@ def as_delivered(found: dict, status_code: int, endpoint_id: str | None, charged
     return dict(found, response=response)
 
 
+def request_url(url: str) -> str:
+    """The archived request URL with its query parameters sorted. The archive keys a question by
+    its sorted query, so the URL it kept is the first call's: this call may have sent the same
+    parameters, repeated ones included, in another order. Sorted, the order shown is plainly not
+    the caller's (`review_codes.body_code_question` says so)."""
+    base, mark, query = url.partition("?")
+    if not mark:
+        return url
+    return base + "?" + "&".join(sorted(query.split("&"), key=lambda part: parse_qsl(part, keep_blank_values=True)))
+
+
 def view(i: int, r, found: dict, capability: str, budget: int) -> dict:
     req, res = found["request"], found["response"]
     return {
         "i": i, "usefulness": r.usefulness, "reason": r.reason.strip(), "endpoint": r.endpoint_id,
         "capability": capability, "routed": r.routed_via is not None,
         "request": {"method": req["method"],
-                    "url": body_view.shrink(req["url"], REQUEST_BUDGET),
+                    "url": body_view.shrink(request_url(req["url"]), REQUEST_BUDGET),
                     "body": body_view.shrink(req["body_text"], REQUEST_BUDGET)},
         # Only what this call's delivery is known to have had: its own status and the body. The
         # stored media type and size describe whichever call first fetched these bytes.

@@ -175,3 +175,13 @@ def test_a_shortened_answer_keeps_the_numbers_it_shows_as_written():
     out = body_view.shrink(text.replace("123.1234567890123456789", "1e400", 1), 300)
     assert len(out) <= 300 and out.count("1e400") == 1 and "123.1234567890123456789" in out
     assert "Infinity" not in out and "123.12345678901235" not in out
+
+
+def test_the_request_shows_its_query_sorted_since_this_call_s_order_is_not_on_file():
+    # The archive keys a question by its sorted query: the URL it kept is the first call's.
+    from treg.domain.feedback import review_codes
+
+    assert (review_answers.request_url("https://v/r?products=200&products=100&a=1")
+            == "https://v/r?a=1&products=100&products=200")
+    assert review_answers.request_url("https://v/r") == "https://v/r"
+    assert "order the agent sent" in review_codes.body_code_question(0)["instructions"]
