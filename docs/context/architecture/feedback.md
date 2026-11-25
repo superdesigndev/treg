@@ -451,9 +451,12 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   again with the request and the shortened answer beside its reason (`application.review_answers`,
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
   `review_judge_answer_chars` (JSON that fits is shown as sent, and a shortened one keeps the vendor's
-  own number text). The request's query is shown sorted (`review_answers.request_url`) and the
-  question says its order is not known: the archive keys a question by its sorted query, so the
-  URL it kept is the first call's. The judge sees what this call's delivery is known to have had: its own
+  own number text; a leading byte order mark does not stop JSON being read as JSON). The request is
+  the one the archive keeps for the question, the first call's: its query is shown sorted
+  (`review_answers.request_url`), its body only when the key proves it is this call's
+  (`request_body`: none with a fractional or non-finite number or a repeated key), and
+  `review_codes.REQUEST_NOTE` tells every judge, the blind audit too, that the order of parameters
+  is not the agent's while every value shown is exact. The judge sees what this call's delivery is known to have had: its own
   status and the body (`review_answers.as_delivered`), without the provider-reported charge the
   endpoint declares (whether this delivery kept it is not on file), read from a version of that
   answer that kept its bytes and still matches its content hash
