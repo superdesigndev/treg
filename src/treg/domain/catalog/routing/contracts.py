@@ -951,7 +951,7 @@ def _found_nothing(endpoint: dict, example: Any) -> bool:
     """Beside a status-only miss rule, a v2 row's `error` rule says what a 2xx that found nothing
     looks like, so an example it judges an error is the miss today's adapter expression read."""
     rule = endpoint.get("miss")
-    return (is_v2(endpoint) and isinstance(rule, dict) and "status" in rule
+    return (is_v2(endpoint) and isinstance(rule, dict) and "status" in rule and "ok_when" not in rule
             and outcome.judge(endpoint, 200, example, answer=answer_of(example)).state == "error")
 
 

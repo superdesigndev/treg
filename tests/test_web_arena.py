@@ -532,7 +532,7 @@ async def test_tinyfish_first_page_is_capped_for_comparison(clients, monkeypatch
             "providers": ["tinyfish"], "jev": False})
         assert response.status_code == 200, response.text
         quote = response.json()
-        assert quote["providers"][0]["estimate_micro"] == 0
+        assert quote["providers"][0]["estimate_micro"] == 990
         started = await clients.post(f"/web-arena/api/runs/{quote['id']}/start")
         assert started.status_code == 200, started.text
         worker = app._owners.get(quote["id"])
@@ -594,7 +594,7 @@ async def test_new_search_providers_join_one_ten_link_quote(clients, monkeypatch
         quote = response.json()
         assert {p["provider"] for p in quote["providers"]} == {
             "tinyfish", "serper", "spidercloud", "octen"}
-        assert next(p for p in quote["providers"] if p["provider"] == "tinyfish")["estimate_micro"] == 0
+        assert next(p for p in quote["providers"] if p["provider"] == "tinyfish")["estimate_micro"] == 990
         assert quote["required_micro"] == quote["estimate_micro"]
     finally:
         get_settings.cache_clear()

@@ -14,7 +14,7 @@ from ..domain.feedback import marks, reviews, verdicts
 from ..domain.governance.access import pinned_tag_predicates
 from ..feedback_contract import FeedbackCategory, MarkBasis, ReviewUsefulness
 from ..infra.db import session_maker
-from ..models import CallMark, CallRecord, LedgerEntry
+from ..models import CallCharge, CallMark, CallRecord, LedgerEntry
 from ..timeutil import utcnow_naive
 
 RATE_MAX = 30
@@ -46,10 +46,16 @@ async def submit(
                 CallRecord.org_id == org_id, CallRecord.call_ref.in_(call_ids),
                 *pinned_tag_predicates(CallRecord.tags, pinned_tags),
             ))).scalars())
+            # A charge still queued, read before the ledger so a fold in between cannot hide it.
+            verified.update((await db.execute(select(CallCharge.call_id).where(
+                CallCharge.org_id == org_id, CallCharge.call_id.in_(call_ids),
+                *pinned_tag_predicates(CallCharge.meta["tags"], pinned_tags),
+            ))).scalars())
             verified.update((await db.execute(select(LedgerEntry.call_id).where(
                 LedgerEntry.org_id == org_id, LedgerEntry.call_id.in_(call_ids),
-                # Only the reserve entry carries `meta.tags`, so a pinned reporter matches on it.
-                *([LedgerEntry.kind == "reserve",
+                # The reserve entry carries `meta.tags`, or for an allowance call its settle
+                # entry, so a pinned reporter matches on them.
+                *([LedgerEntry.kind.in_(("reserve", "settle")),
                    *pinned_tag_predicates(LedgerEntry.meta["tags"], pinned_tags)] if pinned_tags else []),
             ))).scalars())
         row = feedback.add(

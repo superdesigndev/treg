@@ -217,9 +217,14 @@ ClientErrors = Annotated[list[Annotated[int, Field(ge=400, le=499)]], Field(min_
 
 
 class MissRule(Model):
+    """`status` lists the 4xx answers that are a miss (narrowed by `when` or `plugin`); without
+    `status`, `when` or `plugin` judges a 2xx. `ok_when`, beside `status`, judges a 2xx too, for a
+    provider that answers one miss with a 404 and another with an empty 2xx."""
+
     status: ClientErrors | None = None
     when: ResponsePredicate | None = None
     plugin: PluginName | None = None
+    ok_when: ResponsePredicate | None = None
     means: str | None = None
 
     @model_validator(mode="after")
@@ -227,6 +232,8 @@ class MissRule(Model):
         _one_of(self, ("when", "plugin"), at_most=True)
         if not {"status", "when", "plugin"} & self.model_fields_set:
             raise ValueError("a miss rule needs status, when or plugin")
+        if self.ok_when is not None and self.status is None:
+            raise ValueError("ok_when judges a 2xx beside status; without status, use when")
         return self
 
 

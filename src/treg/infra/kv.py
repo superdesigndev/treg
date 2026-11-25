@@ -543,6 +543,27 @@ class Store(Protocol):
     async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
         """Keep a short text value for `ttl_s`; False when the store cannot answer."""
 
+    async def mark_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        """Mark a call as running for `ttl_ms`; False when the store cannot answer."""
+
+    async def renew_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        """Extend a mark that is still there; never sets one that is gone. False when it is gone
+        or the store cannot answer."""
+
+    async def clear_call_in_flight(self, call_ref: str) -> None:
+        """Remove a call's mark. Best-effort: a fault leaves it to expire."""
+
+    async def call_in_flight(self, call_ref: str) -> bool | None:
+        """Whether a call's mark is there; None when the store cannot answer."""
+
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        """`mark_call_in_flight` of each, in one round trip, setting a mark that is gone too (a
+        store that restarted lost it). Only for marks whose owner knows its call is still
+        running. Best-effort."""
+
+    async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
+        """`clear_call_in_flight` of each, in one round trip. Best-effort."""
+
     async def get_text(self, key: str) -> str | None:
         """The text value, or None when it is missing, expired or the store cannot answer."""
 
@@ -591,6 +612,29 @@ class LocalStore:
                 self._texts.clear()
         self._texts[key] = (now + ttl_s, value)
         return True
+
+    async def mark_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        self._put_value(_in_flight_key(call_ref), 1, math.ceil(ttl_ms / 1000))
+        return True
+
+    async def renew_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        if self._live_value(_in_flight_key(call_ref)) is None:
+            return False
+        return await self.mark_call_in_flight(call_ref, ttl_ms)
+
+    async def clear_call_in_flight(self, call_ref: str) -> None:
+        self._values.pop(_in_flight_key(call_ref), None)
+
+    async def call_in_flight(self, call_ref: str) -> bool | None:
+        return self._live_value(_in_flight_key(call_ref)) is not None
+
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        for call_ref in call_refs:
+            await self.mark_call_in_flight(call_ref, ttl_ms)
+
+    async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
+        for call_ref in call_refs:
+            await self.clear_call_in_flight(call_ref)
 
     async def get_text(self, key: str) -> str | None:
         expires, value = self._texts.get(key, (0.0, ""))
@@ -770,6 +814,59 @@ class RedisStore:
         except Exception as exc:  # noqa: BLE001
             _note_fault(exc)
             return False
+
+    async def mark_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.set(_in_flight_key(call_ref), "1", px=ttl_ms)
+            return True
+        except Exception as exc:  # noqa: BLE001 - unmarked, the call keeps a hold of its own
+            _note_fault(exc)
+            return False
+
+    async def renew_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                return bool(await self._client.set(_in_flight_key(call_ref), "1", px=ttl_ms, xx=True))
+        except Exception as exc:  # noqa: BLE001 - the mark expires on its own
+            _note_fault(exc)
+            return False
+
+    async def clear_call_in_flight(self, call_ref: str) -> None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.delete(_in_flight_key(call_ref))
+        except Exception as exc:  # noqa: BLE001 - the mark expires on its own
+            _note_fault(exc)
+
+    async def call_in_flight(self, call_ref: str) -> bool | None:
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                return bool(await self._client.exists(_in_flight_key(call_ref)))
+        except Exception as exc:  # noqa: BLE001 - the caller decides what an unread mark means
+            _note_fault(exc)
+            return None
+
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        if not call_refs:
+            return
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    for call_ref in call_refs:
+                        pipe.set(_in_flight_key(call_ref), "1", px=ttl_ms)
+                    await pipe.execute()
+        except Exception as exc:  # noqa: BLE001 - the marks expire on their own
+            _note_fault(exc)
+
+    async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
+        if not call_refs:
+            return
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.delete(*(_in_flight_key(call_ref) for call_ref in call_refs))
+        except Exception as exc:  # noqa: BLE001 - the marks expire on their own
+            _note_fault(exc)
 
     async def get_text(self, key: str) -> str | None:
         try:
@@ -1194,6 +1291,10 @@ def _note_fault(exc: BaseException) -> None:
 
     log.warning("kv unavailable: %s: %s", type(exc).__name__, exc)
     analytics.capture_fault(exc, component="kv")
+
+
+def _in_flight_key(call_ref: str) -> str:
+    return f"treg:call-in-flight:v1:{call_ref}"
 
 
 _store: Store | None = None

@@ -323,8 +323,22 @@ class Settings(BaseSettings):
             "money_admission_retry_after_s"))
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
-    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
+    # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
+    # orgs named here also get a line of their own.
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`.
+    money_allowance_all_orgs: bool = False
+    # Never on the allowance, whatever the two settings above say.
+    money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # A routed call's children may take from the allowance too (their parent finishes the takes):
+    # for these teams, or every team on the allowance.
+    money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_routed_all_orgs: bool = False
+    # A tagged call (`X-Treg-Meta` or a pinned token) may take from the allowance too when no tag
+    # budget limits any of its tags: for these teams, or every team on the allowance.
+    money_allowance_tagged_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_tagged_all_orgs: bool = False
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many
@@ -339,6 +353,9 @@ class Settings(BaseSettings):
     money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
     # How long finished calls wait to share one insert of their charges.
     money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+    # How many processes may fold queued charges at once, each for its own share of the teams
+    # (money.md "One place folds the queue"). 1 = one process folds for every team.
+    money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
 
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
@@ -617,6 +634,8 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_descovo: str = ""  # Bearer key; monthly plan credits, free balance on /v1/credits
+    platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
@@ -875,6 +894,8 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # A caller waiting longer than this for that lookup is refused, as an unresolvable host is.
+    ssrf_lookup_timeout_s: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible
@@ -1191,6 +1212,15 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # Where BROWSERS send analytics, when it differs from `posthog_host`: a first-party proxy such as
+    # PostHog's managed reverse proxy. Blockers drop requests to PostHog's own domains, so a page that
+    # talks to them directly loses its blocker-using visitors. Server-side capture and the install
+    # script keep `posthog_host`; nothing blocks them. Empty = browsers use `posthog_host`.
+    posthog_browser_host: str = ""
+
+    @property
+    def posthog_page_host(self) -> str:
+        return (self.posthog_browser_host or self.posthog_host).rstrip("/")
     # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
@@ -1311,6 +1341,10 @@ class Settings(BaseSettings):
     # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
     # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
     dub_default_country: str = "US"
+    # The most bonus credit one paid top-up can earn from a partner offer set in Dub, whatever the
+    # offer says. A typo in Dub ($500 for $5, 200% for 20%) is then a bounded mistake, not a free
+    # balance. The offer's minimum top-up is the friend referral's (`referral_min_topup_micro`).
+    affiliate_bonus_max_micro: int = 50_000_000  # $50
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""

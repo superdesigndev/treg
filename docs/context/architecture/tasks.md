@@ -60,9 +60,10 @@ anyone else gets 404 `task_not_found` with `X-Treg-Error: 1`, the answer an unkn
 - **`GET /tasks/{call_id}`** makes one poll: 409 `task_not_pollable` when the answer named no task,
   and `state: error` `expired` with no poll once the descriptor's `max_age` has passed since the
   call. Otherwise `routers.call.run_call_input` runs the `CallInput` `treg call` would send
-  (`GET /call/<poll endpoint>?<param>=<task id>`, or the provider's poll URL) with the caller's
-  headers, minus the look's own body and transport headers and its `Idempotency-Key` (a replay
-  key would answer every later poll with the first one's answer), asking for identity encoding,
+  (a path or query parameter on a GET, a JSON object containing the id on a POST, or a GET to
+  the provider's poll URL) with the caller's headers, minus the look's own body and transport
+  headers and its `Idempotency-Key` (a replay key would answer every later poll with the first
+  one's answer), asking for identity encoding,
   because the answer must be read. Gates, credential, hold, settle, audit row and owned-poll settlement are
   exactly a `/call/` poll's; `application.tasks` cannot hold, charge or refund. A poll treg itself
   refuses is audited through `_stamp_call_exit` and reported as the poll's answer. The poll's

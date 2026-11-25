@@ -930,6 +930,46 @@ class AffiliateLead(SQLModel, table=True):
     error: str = Field(default="")
 
 
+class AffiliateBonus(SQLModel, table=True):
+    """One paid top-up of a team a partner brought, and the bonus credit its offer earned: the
+    partner offer's outbox row (`application.affiliate_bonus`).
+
+    Written with the top-up's credit, decided later by the affiliate worker, which reads the offer
+    from Dub with no connection held. The unique `payment_intent` makes each payment decided once;
+    `outcome` records why it paid what it paid (`granted`, `no_offer`, `below_minimum`, ...), so
+    "why did I not get the bonus" has an answer. `block_id` names the granted credit block.
+    """
+
+    __table_args__ = (UniqueConstraint("payment_intent", name="uq_affiliatebonus_payment"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)
+    payment_intent: str
+    topup_micro: int = Field(sa_type=BigInteger)
+    fingerprint: str | None = None
+    created_at: NaiveUTC = Field(default_factory=_now)
+    next_attempt_at: NaiveUTC | None = Field(default=None, index=True)
+    attempts: int = Field(default=0)
+    decided_at: NaiveUTC | None = Field(default=None, index=True)
+    outcome: str = Field(default="")
+    offer: str = Field(default="")
+    bonus_micro: int = Field(default=0, sa_type=BigInteger)
+    block_id: str | None = None
+    error: str = Field(default="")
+
+
+class AffiliateCardClaim(SQLModel, table=True):
+    """A card (Stripe's opaque per-card `fingerprint`) that already earned a fixed partner offer. Like
+    `AffiliateClaim` it has no `org_id` and outlives the team: deleting a team that spent its bonus
+    never lets the same card earn it again. Unique, so a card earns it once."""
+
+    __table_args__ = (UniqueConstraint("fingerprint", name="uq_affiliatecardclaim_fingerprint"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    fingerprint: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+
+
 class AffiliateClaim(SQLModel, table=True):
     """A person a partner already brought, by inbox (`promotions.promo_inbox`): a partner earns on
     the person, once. Staged with the team's `AffiliateLead`; it has no `org_id` and outlives the
@@ -1197,8 +1237,10 @@ class CallCharge(SQLModel, table=True):
     a call can be recorded once. Owned by `domain/money`.
     """
 
+    __table_args__ = (Index("ix_callcharge_org_id_created_at", "org_id", "created_at"),)
+
     call_id: str = Field(primary_key=True)
-    org_id: int = Field(index=True)
+    org_id: int
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
     # The part of `amount_micro` the call never set aside: owed to the balance, not to the

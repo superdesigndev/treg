@@ -22,7 +22,7 @@ from ...models import (
     ShowcaseVote,
     ShowcaseWeek,
     AdConversion,
-    AffiliateLead,
+    AffiliateBonus, AffiliateLead,
     ApiKey,
     ApiKeyEvent,
     ApiKeySpendDay,
@@ -317,6 +317,7 @@ ORG_SCOPED_MODELS = (
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
     AffiliateLead,  # the team's affiliate attribution goes with it
+    AffiliateBonus,  # and the partner offer's decisions on its payments
     EnterpriseSSOIdentity, EnterpriseSSOBlock, EnterpriseDirectoryUser, EnterpriseSSOAudit, EnterpriseSSO,
     AgentPayment, AgentPayer,  # an agent payer's proofs and its address binding
     Membership,   # last: it is what makes the caller a member of the org being deleted

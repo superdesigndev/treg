@@ -376,7 +376,8 @@ def _table_floor(cost: object, input_schema: object) -> float | None:
             continue
         value = float(row["value"])
         if isinstance(row.get("times"), str):
-            low = row.get("times_min", fields.get(row["times"], {}).get("min"))
+            spec = fields.get(row["times"], {})
+            low = row.get("times_min", spec.get("minItems" if spec.get("type") == "array" else "min"))
             value *= float(low) if isinstance(low, (int, float)) and low > 0 else 1.0
         floors.append(value)
     return min(floors) if floors else None
@@ -921,7 +922,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *
         "platform_eligible": cat.platform_eligible(ep) if cat else None,
         **({"platform_auth": "anonymous"} if ep.get("platform_auth") == "anonymous" else {}),
         "platform_blocked": ep.get("platform_blocked") or None,
-        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin")}
+        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin", "ok_when")}
                  if isinstance(ep.get("miss"), dict) and "status" in ep["miss"] else None),
         **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.

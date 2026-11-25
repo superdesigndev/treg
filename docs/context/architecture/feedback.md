@@ -54,8 +54,9 @@ provider and never goes through the best-effort audit writer, so a storage failu
 success acknowledgement.
 
 `call_ids` and `endpoint_id` stay claims. `verified_call_ids` is the subset found in the submitting
-team's `CallRecord.call_ref` or `LedgerEntry.call_id`; no cross-team lookup runs. A pinned caller
-verifies only against rows carrying its own pin (on the ledger only the `reserve` entry carries
+team's `CallRecord.call_ref`, `LedgerEntry.call_id` or a still-queued `CallCharge.call_id`; no
+cross-team lookup runs. A pinned caller verifies only against rows carrying its own pin (on the
+ledger the `reserve` entry, or an allowance call's `settle` entry or queued charge, carries
 `meta.tags`), and its report is stamped with that pin (`Feedback.tags`). Missing audit records never
 reject a report, and verified provenance does not make the problem true. Intake never ranks providers
 or adjusts charges.

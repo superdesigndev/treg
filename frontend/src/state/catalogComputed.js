@@ -5,6 +5,10 @@ import { isJobQuery } from './find.js'
 const byTitle = new Intl.Collator()
 // How many of a shelf's most used items lead as cards: two rows at the widest layout.
 const PLAT_TOP = 6
+const isPlumbing = e => e.kind === 'account' || e.kind === 'utility'
+// A comparison lists the endpoints that do the job, not the router and not plumbing (a poll that
+// reads a submitted job's result shares the job's capability but takes no input of the job's own).
+const isCompared = e => e.kind !== 'routed' && !isPlumbing(e)
 const byUse = (a, b) => (b.usage - a.usage) || (b.provN - a.provN) || byTitle.compare(a.title, b.title)
 
 // What each comparison column means, on hover or focus of its heading (comparisonColumns).
@@ -134,7 +138,7 @@ platProviders(){  // providers with endpoints here, in catalog order
           // agents and stays whole (the card's hover). The server picks `name` over `summary` where a
           // curated name exists; the clip guards the rows where one does not yet.
           title:this.clip(r.title||r.description, 90),
-          mgmt: eps.every(e=>e.kind==='account'||e.kind==='utility'),
+          mgmt: eps.every(isPlumbing),
           hay: ((r.title||'')+' '+r.description+' '+r.domain+' '+(r.capability||'')+' '+eps.map(e=>
                  e.provider+' '+(e.provider_display||'')+' '+(e.name||'')+' '+e.path+' '+e.summary).join(' ')).toLowerCase()});
       }
@@ -145,7 +149,7 @@ platProviders(){  // providers with endpoints here, in catalog order
     // Plumbing (account/utility) stays folded at the foot.
     platComparisons(){
       return this.platRowsAll.filter(r=>r.compare).map(r=>{
-        const direct=r.endpoints.filter(e=>e.kind!=='routed'), provs=[...new Set(direct.map(e=>e.provider))];
+        const direct=r.endpoints.filter(isCompared), provs=[...new Set(direct.map(e=>e.provider))];
         const range=this.priceRange(direct);
         return {job:true, key:r.capability, slug:r.compare, row:r, title:r.title, hint:r.description, hay:r.hay, logos:provs.slice(0,5), logosFew:provs.slice(0,3), range,
                 routed:r.endpoints.find(e=>e.kind==='routed')||null, provN:provs.length,
@@ -157,16 +161,15 @@ platProviders(){  // providers with endpoints here, in catalog order
 // What the shelf's lists filter by as you type: a name or a word. A described job is not a filter
     // (no row contains a sentence); the finder answers it above the lists, which stay whole.
     platFilterQ(){ return isJobQuery(this.platQ) ? '' : this.platQ.trim().toLowerCase(); },
-// Every endpoint on the shelf that is not part of a comparison card, one line each, built once per
+// Every endpoint on the shelf that no comparison card lists (a compared job's plumbing included), one line each, built once per
     // shelf; the search box only filters it.
     platToolIndex(){
       const out=[];
       for(const r of this.platRowsAll){
-        if(r.compare) continue;
         for(const e of r.endpoints){
-          if(e.kind==='routed') continue;
+          if(e.kind==='routed' || r.compare && !isPlumbing(e)) continue;
           const title=r.endpoints.length===1 ? r.title : this.clip(e.name||e.summary||r.description, 90);
-          out.push({id:e.id, title, e, mgmt:r.mgmt, usage:this.callsOf(e), provN:1,
+          out.push({id:e.id, title, e, mgmt:!!r.compare || r.mgmt, usage:this.callsOf(e), provN:1,
                     hay:(title+' '+e.provider+' '+(e.provider_display||'')+' '+(e.summary||'')+' '+e.id).toLowerCase()}); } }
       return out.sort(byUse); },
 // The shelf itself, most used first, whether one provider serves an item or several: the head of it
@@ -206,7 +209,7 @@ platComparisonData(){ const i=this.platComparisonLead && this.epInfo[this.platCo
 platAccepts(){ const m={}; for(const p of (((this.platComparisonData||{}).routing)||{}).plan||[]) m[p.endpoint_id]=p.accepts; return m; },
 platComparisonRows(){
       const row=this.platCapRow; if(!row) return [];
-      const eps=row.endpoints.filter(e=>e.kind!=='routed');
+      const eps=row.endpoints.filter(isCompared);
       const perProv={}; for(const e of eps) perProv[e.provider]=(perProv[e.provider]||0)+1;
       const rows=eps.map(e=>{ const o=this.platObserved[e.id];
         return {e, id:e.id, twin:perProv[e.provider]>1, takes:this.takesLabel(this.platAccepts[e.id]),

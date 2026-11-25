@@ -44,6 +44,19 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  descovo.people.email.find:
+    # Standard mode, work email only: the 2-credit row of the reveal's price table.
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.linkedinUrl}
+    const: {body.mode: standard, body.enrichmentType.getWorkEmails: true,
+            body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: false}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: "data.profile.emails[0].email", verified: "data.profile.emails[0].status == 'valid'"}
+  millionphones.people.email.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.social_url}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: email, verified: "status == 'verified'", confidence: match_confidence}
   forager.people.email.find:
     accepts: [[first_name, last_name, domain], [linkedin_handle]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain,
@@ -460,6 +473,26 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  descovo.people.phone.find:
+    # Standard mode, phone only: the 3-credit row of the reveal's price table.
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.linkedinUrl}
+    const: {body.mode: standard, body.enrichmentType.getWorkEmails: false,
+            body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: true}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "data.profile.phoneNumbers[0].number"}
+  fiber-ai.people.phone.find:
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: body.linkedinUrl}
+    const: {body.enrichmentType: {getWorkEmails: false, getPersonalEmails: false, getPhoneNumbers: true}}
+    out: {phone: "output.profile.phoneNumbers[0].number"}
+    miss: "coalesce(output.profile.phoneNumbers, []) == []"
+  millionphones.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.social_url, first_name: queryParams.first_name,
+         last_name: queryParams.last_name, domain: queryParams.company_domain}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "phone_numbers[0]"}
   forager.people.phone.find:
     # most_coverage returns every verified number, the highest_quality ones included, for fewer credits.
     accepts: [[linkedin_handle]]
@@ -616,6 +649,15 @@ adapters:
     out: {valid: "result == 'Valid'", status: result}
     # Invalid, Risky and Unknown are useful verdicts. Only a missing verdict is a miss.
     miss: "result == null"
+  descovo.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "data.verdict == 'ok'", status: data.verdict}
+    verdicts: {ok: valid, undeliverable: invalid, inconclusive: unknown}
+  millionphones.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "result == 'valid'", status: result}
   zerobounce.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
@@ -636,10 +678,10 @@ adapters:
     accepts: [[email]]
     in: {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status}
-    # Preserve uncertain verdict words; only explicit valid confirms deliverability.
-    # Require both a successful envelope and a nonempty verdict, using existing expressions.
-    # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
-    miss: "at_least(status_code != 200, coalesce(data.status) == null)"
+    # Only explicit valid confirms deliverability. ContactOut bills valid, invalid and accept_all;
+    # unknown and disposable are unbilled, so they are misses: settlement charges nothing and a
+    # routed call goes on. at_least takes the maximum of two 0/1 predicates, so it reads as "or".
+    miss: "at_least(at_least(status_code != 200, coalesce(data.status) == null), at_least(data.status == 'unknown', data.status == 'disposable'))"
     verdicts: {accept_all: catch_all}
   crawl4ai.people.email.verify:
     accepts: [[email]]
@@ -722,6 +764,12 @@ adapters:
           title: profile.title, company: company.summary.name, company_domain: company.link.domain,
           linkedin_url: link.linkedin, location: location.default}
     miss: "profile.full_name == null"
+  descovo.people.enrich:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.identifier}
+    out: {full_name: data.profile.name, first_name: data.profile.first_name, last_name: data.profile.last_name,
+          title: data.profile.current_job.title, company: data.profile.current_job.company_name,
+          linkedin_url: data.profile.url, location: data.profile.locality}
   forager.people.enrich:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: body.linkedin_public_identifier}
@@ -730,7 +778,9 @@ adapters:
           company: "get(flagged(roles, 'is_current'), 'organization.name')",
           company_domain: "get(flagged(roles, 'is_current'), 'organization.domain')",
           linkedin_url: linkedin_info.public_profile_url, location: location.name}
+  # Not a router candidate: almost no email it is sent matches a person, so it only adds a wait.
   forager.people.enrich.by_email:
+    route: false
     accepts: [[email]]
     in: {email: body.email}
     test_identity: {email: jane.doe@example.com}

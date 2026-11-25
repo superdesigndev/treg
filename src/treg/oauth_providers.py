@@ -3651,6 +3651,60 @@ FINDYMAIL = OAuthProvider(
     token_verify_field="email",
 )
 
+DESCOVO = OAuthProvider(
+    service="descovo", display_name="Descovo", auth_kind="key",
+    token_label="API key", token_placeholder="your Descovo API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://descovo.com/app/keys",
+    setup_action_label="Get your Descovo API key",
+    setup_steps=("Sign in to Descovo (new accounts start with 500 credits) and open API keys.",
+                 "Create a key and copy it."),
+    setup_note=(
+        "Search is 1 credit per person, company or job returned; counts are free. A reveal is "
+        "charged only for the fields it finds: 2 credits for a work email, 3 for a direct phone. "
+        "A match or live profile is 2. Misses and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search people, companies and job posts, reveal a person's work email, personal email or "
+        "phone from LinkedIn, match and live-refresh profiles, and verify emails."
+    ),
+    base_url="https://api.descovo.com/v1",
+    docs_url="https://descovo.com/docs/rest",
+    # Free: 200 {"data": {"available", "used", "limit", "resetsOn"}} for a good key; 403
+    # {"error": {"code": "forbidden"}} for a bad one.
+    probe_path="/credits",
+)
+
+
+MILLIONPHONES = OAuthProvider(
+    service="millionphones", display_name="MillionPhones", auth_kind="key",
+    token_label="API key", token_placeholder="mp_live_...",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://millionphones.com/api-keys",
+    setup_action_label="Get your MillionPhones API key",
+    setup_steps=("Sign in to MillionPhones (a free account needs no card) and open API keys.",
+                 "Create a key and copy it; it starts with mp_live_."),
+    setup_note=(
+        "A found mobile number is 10 credits, a found work email 1 (free once the phone is "
+        "unlocked), a phone check 1, an email check 0.1, and each new person or company in a "
+        "search 0.1. Misses, repeats, counts, filters and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Find a person's mobile number and work email from LinkedIn or name and company, verify "
+        "phones and emails, and search people and companies."
+    ),
+    base_url="https://millionphones.com/v1",
+    docs_url="https://millionphones.com/docs",
+    # Free: 200 {"remaining", "used", "plan"} for a good key, even one with 0 credits left;
+    # 401 {"error": "Invalid API key."} for a bad one.
+    probe_path="/credits",
+)
+
+
 ANYMAILFINDER = OAuthProvider(
     service="anymailfinder", display_name="Anymail Finder", auth_kind="key",
     token_label="API key", token_placeholder="your Anymail Finder API key",
@@ -4571,7 +4625,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

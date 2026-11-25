@@ -193,6 +193,13 @@ Rollups and analytics tables are optional read models: they never determine a mo
   click) or `partner_code` (a typed code, with the `country` Dub requires for it). Only a
   `verified_at` row attributes; `stripe_synced_at` records that an existing Stripe customer was
   brought in line. No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateBonus`**: one per paid top-up of a partner-brought team (unique `payment_intent`),
+  staged with the credit and decided by the affiliate worker: `outcome` records what the partner
+  offer paid and why, `block_id` the granted `bonus` block ([affiliates](affiliates.md) "Partner
+  offer"). No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateCardClaim`**: a card (Stripe's opaque `fingerprint`) that already earned a fixed
+  partner offer, unique. No `org_id`: it outlives team deletion, so a deleted team never frees its
+  card to earn the offer again.
 - **`AffiliateClaim`**: the person a partner brought, by `promo_inbox`, staged with the lead. No
   `org_id` and no foreign key: like `SignupPromoClaim` it outlives the team and the user, so a deleted
   team never makes its creator attributable again. Not unique, so a racing second team leaves a second

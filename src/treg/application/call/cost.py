@@ -501,7 +501,7 @@ def evidence_paths(ep: dict) -> tuple[str, ...]:
     paths = [rule[form]["path"] for rule, form in ((settle, "count"), (settle, "reported"))
              if form in rule and "path" in rule[form]]
     for rule in (ep.get("expect"), (ep.get("error") or {}).get("when"), (ep.get("miss") or {}).get("when"),
-                 (ep.get("bill") or {}).get("free_when")):
+                 (ep.get("miss") or {}).get("ok_when"), (ep.get("bill") or {}).get("free_when")):
         if rule is not None:
             paths += [p for p in leaf_paths(rule) if p.startswith("response")]
     return tuple(dict.fromkeys(p for p in roots + [_answer_path(p) for p in paths] if p))

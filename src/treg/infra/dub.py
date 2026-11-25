@@ -26,6 +26,20 @@ _PERMANENT = frozenset({400, 404, 409, 410, 422})
 
 
 @dataclass(frozen=True)
+class Discount:
+    """The offer Dub resolved for a customer (link, else partner, else group), as a program owner set
+    it with the Custom provider: Dub only stores it, treg pays it as bonus credit.
+
+    `kind` is "flat" or "percentage". `amount` is in cents for "flat" (Dub's money unit) and in
+    percent for "percentage". `max_duration` is in months: 0 means the first payment only and None
+    means every payment."""
+    id: str
+    kind: str
+    amount: float
+    max_duration: int | None
+
+
+@dataclass(frozen=True)
 class Outcome:
     ok: bool
     retry: bool
@@ -33,6 +47,7 @@ class Outcome:
     detail: str = ""
     partner_id: str = ""  # the partner Dub credited (track/lead) or resolved (links/info)
     email: str = ""       # a partner's own email (GET /partners/{id})
+    discount: Discount | None = None  # the customer's offer (GET /customers), None when it has none
 
 
 def valid_click_id(value: str) -> str:
@@ -62,6 +77,21 @@ def _json(resp: httpx.Response) -> dict:
     except ValueError:
         return {}
     return body if isinstance(body, dict) else {}
+
+
+def _discount(raw) -> Discount | None:
+    """A customer's `discount`, or None for no offer or one this code cannot read. Dub's API names
+    the fixed type `flat`; its docs also say `fixed`."""
+    if not isinstance(raw, dict):
+        return None
+    kind = {"flat": "flat", "fixed": "flat", "percentage": "percentage"}.get(str(raw.get("type") or ""))
+    amount = raw.get("amount")
+    duration = raw.get("maxDuration")
+    if kind is None or isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
+        return None
+    if duration is not None and (isinstance(duration, bool) or not isinstance(duration, int) or duration < 0):
+        return None
+    return Discount(id=str(raw.get("id") or ""), kind=kind, amount=float(amount), max_duration=duration)
 
 
 def _transport_failure(exc: httpx.HTTPError) -> Outcome:
@@ -117,8 +147,9 @@ async def partner_for_code(client: httpx.AsyncClient, *, api_key: str, link_doma
 
 async def customer_partner(client: httpx.AsyncClient, *, api_key: str,
                            customer_external_id: str) -> Outcome:
-    """`GET /customers?externalId=`: the partner Dub credited for a customer it already holds. The
-    answer a deduplicated `track/lead` leaves out. `partner_id` is "" when no partner brought it."""
+    """`GET /customers?externalId=`: the partner Dub credited for a customer it already holds, and the
+    customer's offer. The partner is the answer a deduplicated `track/lead` leaves out; `partner_id`
+    is "" when no partner brought it. `discount` is None when the customer has no offer."""
     try:
         resp = await client.get(f"{API_URL}/customers", timeout=TIMEOUT_S,
                                 params={"externalId": customer_external_id,
@@ -139,7 +170,8 @@ async def customer_partner(client: httpx.AsyncClient, *, api_key: str,
         return Outcome(ok=False, retry=True, status=resp.status_code, detail="customer not found yet")
     partner = rows[0].get("partner") or {}
     return Outcome(ok=True, retry=False, status=resp.status_code,
-                   partner_id=str(partner.get("id") or "") if isinstance(partner, dict) else "")
+                   partner_id=str(partner.get("id") or "") if isinstance(partner, dict) else "",
+                   discount=_discount(rows[0].get("discount")))
 
 
 async def partner_email(client: httpx.AsyncClient, *, api_key: str, partner_id: str) -> Outcome:

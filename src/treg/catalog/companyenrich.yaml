@@ -520,19 +520,35 @@ endpoints:
     resource_ownership:
       produces:
         - {kind: job, path: job_id}
+    async:
+      id_from: job_id
+      poll:
+        endpoint: companyenrich.companies.enrich.bulk.status
+        param: {in: pathParams, name: jobId}
+      status:
+        path: status
+        progress: [pending, processing]
+        success: [completed]
+        failure: []
+        billed_failure: [failed]
+      result: {path: results_url}
+      interval: 10
     input:
       body:
-        domains: {type: array, items: {type: string}, required: true, note: "1-10,000 company domains. THIS IS THE PRICE — 1 credit per domain successfully enriched, charged on completion", example: ["anthropic.com"]}
+        domains: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 10000, note: "1-10,000 company domains. THIS IS THE PRICE — 1 credit per domain successfully enriched, charged on completion", example: ["anthropic.com"]}
         webhook_url: {type: string, required: false, note: "callback URL fired on completion. Not usable through a proxied call — poll companyenrich.companies.enrich.bulk.status instead, which is free"}
       note: "returns {job_id, status, total_domains, estimated_credits} in milliseconds and does the work in the background. Credits are charged ON COMPLETION and only for domains that actually enriched, so `estimated_credits` is an upper bound. Poll the status route (free) until status is `completed`, then download `results_url`."
     test_request:
       body: {domains: ["anthropic.com"]}
     cost:
-      type: per_result
-      value: 1
+      type: per_success
+      table:
+        - {when: {}, value: 1, times: body.domains}
+      fallback: {value: 10000, note: "10,000 domains at one credit each."}
       currency: credit
-      per: 1
       unit: record
+      settle: usage
+      usage: {path: credits_charged, unit: credit}
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -552,6 +568,8 @@ endpoints:
     path: /companies/enrich/bulk/{jobId}
     name: "Check a bulk enrichment job"
     summary: "Returns the current status of a bulk enrichment job — once completed, includes the results_url to download the enrichment results"
+    kind: utility
+    async: false
     resource_ownership:
       requires: {kind: job, param: jobId}
     input:
@@ -601,9 +619,22 @@ endpoints:
     resource_ownership:
       produces:
         - {kind: company_search_job, path: job_id}
+    async:
+      id_from: job_id
+      poll:
+        endpoint: companyenrich.companies.search.async.status
+        param: {in: pathParams, name: jobId}
+      status:
+        path: status
+        progress: [pending, processing]
+        success: [completed]
+        failure: []
+        billed_failure: [failed]
+      result: {path: results_url}
+      interval: 10
     input:
       body:
-        count: {type: integer, required: true, note: "how many companies to export, up to 50,000. THIS IS THE PRICE — credits are RESERVED at submission and settled on completion", example: 1}
+        count: {type: integer, required: true, min: 1, max: 50000, note: "how many companies to export, up to 50,000. THIS IS THE PRICE — credits are RESERVED at submission and settled on completion", example: 1}
         search: {type: object, required: false, note: "a companyenrich.companies.search filter object — supply this OR `similar`, not both", example: {technologies: ["stripe"], countries: ["US"]}}
         similar: {type: object, required: false, note: "a companyenrich.companies.similar filter object; rows then cost 5 credits each, not 1"}
         webhook_url: {type: string, required: false, note: "callback on completion; poll the free status route instead when calling through a proxy"}
@@ -611,11 +642,14 @@ endpoints:
     test_request:
       body: {count: 1, search: {technologies: ["stripe"], countries: ["US"]}}
     cost:
-      type: per_result
-      value: 1
+      type: per_success
+      table:
+        - {when: {}, value: 1, times: body.count}
+      fallback: {value: 250000, note: "50,000 rows of a similar-company export at five credits each."}
       currency: credit
-      per: 1
       unit: record
+      settle: usage
+      usage: {path: credits_charged, unit: credit}
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -635,6 +669,8 @@ endpoints:
     path: /companies/search/async/{jobId}
     name: "Check a company-search export job"
     summary: "Returns the current status of a search export job — once completed, includes the results_url to download the export results"
+    kind: utility
+    async: false
     resource_ownership:
       requires: {kind: company_search_job, param: jobId}
     input:
@@ -870,19 +906,35 @@ endpoints:
     resource_ownership:
       produces:
         - {kind: people_email_job, path: job_id}
+    async:
+      id_from: job_id
+      poll:
+        endpoint: companyenrich.people.email.bulk.status
+        param: {in: pathParams, name: jobId}
+      status:
+        path: status
+        progress: [pending, processing]
+        success: [completed]
+        failure: []
+        billed_failure: [failed]
+      result: {path: results_url}
+      interval: 10
     input:
       body:
-        items: {type: array, items: {type: object}, required: true, note: "1-1,000 objects of {person_id (required, integer), domain (optional string)}. NOTE the field is `person_id`, not `id` — using `id` is rejected with a bodyless HTTP 400", example: [{person_id: 256474769, domain: "stripe.com"}]}
+        items: {type: array, items: {type: object}, required: true, minItems: 1, maxItems: 1000, note: "1-1,000 objects of {person_id (required, integer), domain (optional string)}. NOTE the field is `person_id`, not `id` — using `id` is rejected with a bodyless HTTP 400", example: [{person_id: 256474769, domain: "stripe.com"}]}
         webhook_url: {type: string, required: false, note: "callback on completion; poll the free status route instead when calling through a proxy"}
       note: "the batch form of companyenrich.people.email. Returns {job_id, status, total_requests, estimated_credits} immediately; `estimated_credits` assumes every lookup succeeds and is charged fresh, so it is a strict upper bound. Completed jobs report found_count / not_found_count / unavailable_count separately."
     test_request:
       body: {items: [{person_id: 256474769, domain: "stripe.com"}]}
     cost:
       type: per_success
-      value: 10
+      table:
+        - {when: {}, value: 10, times: body.items}
+      fallback: {value: 10000, note: "1,000 lookups at ten credits each."}
       currency: credit
-      per: 1
       unit: record
+      settle: usage
+      usage: {path: credits_charged, unit: credit}
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -902,6 +954,8 @@ endpoints:
     path: /people/email/bulk/{jobId}
     name: "Check a bulk work-email lookup job"
     summary: "Returns the current status of a bulk person email enrichment job — once completed, includes the results_url to download the full results"
+    kind: utility
+    async: false
     resource_ownership:
       requires: {kind: people_email_job, param: jobId}
     input:
@@ -928,9 +982,22 @@ endpoints:
     resource_ownership:
       produces:
         - {kind: people_search_job, path: job_id}
+    async:
+      id_from: job_id
+      poll:
+        endpoint: companyenrich.people.search.async.status
+        param: {in: pathParams, name: jobId}
+      status:
+        path: status
+        progress: [pending, processing]
+        success: [completed]
+        failure: []
+        billed_failure: [failed]
+      result: {path: results_url}
+      interval: 10
     input:
       body:
-        count: {type: integer, required: true, note: "how many people to export, up to 50,000. THIS IS THE PRICE — 2 credits each, reserved at submission", example: 1}
+        count: {type: integer, required: true, min: 1, max: 50000, note: "how many people to export, up to 50,000. THIS IS THE PRICE — 2 credits each, reserved at submission", example: 1}
         domains: {type: array, items: {type: string}, required: false, note: "employer domains, up to 2,500", example: ["stripe.com"]}
         seniority: {type: array, items: {type: string}, required: false, note: "owner, founder, c-suite, partner, vp, head, director, manager, senior, entry, intern", example: ["c-suite"]}
         department: {type: array, items: {type: string}, required: false, note: "hierarchical department slugs"}
@@ -942,11 +1009,14 @@ endpoints:
     test_request:
       body: {count: 1, domains: ["stripe.com"], seniority: ["c-suite"]}
     cost:
-      type: per_result
-      value: 2
+      type: per_success
+      table:
+        - {when: {}, value: 2, times: body.count}
+      fallback: {value: 100000, note: "50,000 people at two credits each."}
       currency: credit
-      per: 1
       unit: record
+      settle: usage
+      usage: {path: credits_charged, unit: credit}
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
@@ -966,6 +1036,8 @@ endpoints:
     path: /people/search/async/{jobId}
     name: "Check a people-search export job"
     summary: "Returns the current status of a person search export job — once completed, includes the results_url to download the export results"
+    kind: utility
+    async: false
     resource_ownership:
       requires: {kind: people_search_job, param: jobId}
     input:

@@ -406,6 +406,47 @@ async def test_team_mcp_follows_a_held_task_by_call_id(clients, monkeypatch, rep
         assert unknown["error"]["error"] == "task_not_found" and len(script.seen) == 3
 
 
+async def test_team_mcp_posts_body_poll_and_records_zero_charge_for_a_miss(clients, monkeypatch, request):
+    from test_mcp import _call_tool, mcp_session
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "test-platform-token")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    request.addfinalizer(get_settings.cache_clear)
+
+    async def relay(request, url, *args, **kwargs):
+        if url.endswith("/email-search"):
+            return _response(200, {"success": True, "item": {"_id": "miss", "status": "NONE"}})
+        assert url.endswith("/bulk-single-searchs/read") and request.method == "POST"
+        payload = b"".join([chunk async for chunk in request.body_stream()])
+        assert json.loads(payload) == {"id": "miss"}
+        return _response(200, {"success": True, "items": [{
+            "status": "NOT_FOUND", "results": {"emails": []},
+        }]})
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as client:
+        receipt = await _call_tool(client, "call", {
+            "endpoint_id": "icypeas.people.email.find",
+            "body": {"firstname": "A", "lastname": "B", "domainOrCompany": "example.com"},
+        }, token)
+        call_id = receipt["call_id"]
+        assert receipt["task"]["state"] == "pending"
+        assert receipt["reserved_usd"] > 0 and "cost_usd" not in receipt
+        await audit.drain()
+        charge = select(CallRecord.cost_charged_micro).where(CallRecord.call_ref == call_id)
+        async with session_maker() as db:
+            assert (await db.execute(charge)).scalar_one() is None
+
+        done = await _call_tool(client, "task_status", {"call_id": call_id}, token)
+        assert (done["state"], done["status"], done["settled_usd"]) == ("succeeded", "NOT_FOUND", 0)
+
+    await audit.drain()
+    async with session_maker() as db:
+        assert (await db.execute(charge)).scalar_one() == 0
+
+
 async def test_team_mcp_routed_task_reports_child_settlement_before_and_after_audit(
     clients, monkeypatch, bounceban_on, fast_polls,
 ):

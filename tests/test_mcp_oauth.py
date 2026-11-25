@@ -1556,3 +1556,96 @@ async def test_a_call_only_grant_gets_no_prior_review(clients, monkeypatch):
     full, _ = await _grant(clients, "full@superdesign.dev", scope="")
     assert mcp._shows_prior({"authorization": f"Bearer {call_only}"}) is False
     assert mcp._shows_prior({"authorization": f"Bearer {full}"}) is True
+
+
+# ---- a CIMD client fetched at authorize time ---------------------------------------------------
+
+def _cimd_doc(url):
+    return {"client_id": url, "client_name": "Metadata client", "client_uri": "", "logo_uri": "",
+            "redirect_uris": ["https://client.test/cb"], "scope": ""}
+
+
+def _cimd_authorize(clients, url):
+    return clients.get("/oauth/authorize", params={
+        "client_id": url, "redirect_uri": "https://client.test/cb", "response_type": "code",
+        "code_challenge": "x", "code_challenge_method": "S256"}, follow_redirects=False)
+
+
+async def test_cimd_fetch_at_authorize_holds_no_db_connection(clients, monkeypatch, connections_held_here):
+    """A burst of reconnecting clients waits on DNS and HTTP for their documents; each must not
+    also sit on a pooled connection while it waits."""
+    import asyncio
+
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthClient
+
+    url = "https://cimd-pool.test/client.json"
+    held, started, release = [], asyncio.Event(), asyncio.Event()
+
+    async def fetch(client_id):
+        held.append(connections_held_here())
+        started.set()
+        await release.wait()
+        return _cimd_doc(client_id)
+
+    monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
+    request = asyncio.create_task(_cimd_authorize(clients, url))
+    await asyncio.wait_for(started.wait(), 5)
+    release.set()
+    r = await request
+    assert held == [0]
+    assert r.status_code != 400, r.text
+    async with session_maker() as db:
+        rows = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == url))).scalars().all()
+    assert [row.client_name for row in rows] == ["Metadata client"]
+
+
+async def test_cimd_first_sight_race_stores_one_row(clients, monkeypatch):
+    import asyncio
+
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthClient
+
+    url = "https://cimd-race.test/client.json"
+    arrived, both = [], asyncio.Event()
+
+    async def fetch(client_id):
+        arrived.append(client_id)
+        if len(arrived) == 2:
+            both.set()
+        await asyncio.wait_for(both.wait(), 5)
+        return _cimd_doc(client_id)
+
+    monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
+    first, second = await asyncio.gather(_cimd_authorize(clients, url), _cimd_authorize(clients, url))
+    assert len(arrived) == 2
+    assert first.status_code == second.status_code != 400, (first.text, second.text)
+    async with session_maker() as db:
+        rows = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == url))).scalars().all()
+    assert len(rows) == 1
+
+
+async def test_cimd_refresh_failure_keeps_the_stale_copy(clients, monkeypatch):
+    from datetime import timedelta
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthClient
+    from treg.timeutil import utcnow_naive
+
+    url = "https://cimd-stale.test/client.json"
+    async with session_maker() as db:
+        db.add(OAuthClient(client_id=url, kind="cimd", client_name="Stale copy",
+                           redirect_uris=["https://client.test/cb"],
+                           refreshed_at=utcnow_naive() - timedelta(seconds=mcp_oauth._CIMD_REFRESH_S + 60)))
+        await db.commit()
+
+    async def fetch(client_id):
+        return None
+
+    monkeypatch.setattr(mcp_oauth, "fetch_client_id_metadata", fetch)
+    r = await _cimd_authorize(clients, url)
+    assert r.status_code != 400, r.text

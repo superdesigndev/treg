@@ -2432,6 +2432,203 @@ async def test_an_abandoned_CHARGED_claim_answers_410_and_never_charges_twice(
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == balance
 
 
+async def test_an_abandoned_allowance_call_folded_after_its_lifetime_is_still_a_charge(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """A fold delayed by a backlog writes the owner's settle after its lease's lifetime: read by
+    exact id, it is still the charge."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "late-fold-label", status="pending")
+    await _set_claim("late-fold-label", call_ref="late-fold-owner", created_at=_ago(hours=2))
+    async with session_maker() as db:  # stamped now: an hour past the lease's lifetime
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-900,
+                           call_id="late-fold-owner", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 60)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "late-fold-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 900
+
+
+@pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
+async def test_an_abandoned_allowance_call_waits_for_its_fold_and_answers_what_it_paid(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """An owner on the team's allowance has no hold: its charge waits in the queue until a fold
+    writes its settle. Queued, the amount is only what the team owes, so the claim waits (409);
+    folded, the receipt is what the ledger took, here less than the queued figure (the row read
+    before the fold deleted it)."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import CallCharge, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "allowance-label", status="pending")
+    await _set_claim("allowance-label", call_ref="allowance-owner")
+    async with session_maker() as db:
+        db.add(CallCharge(call_id="allowance-owner", org_id=org_id, endpoint_id=EP, amount_micro=700))
+        if trail == "queued_and_folded":
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-600,
+                               call_id="allowance-owner", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "allowance-label"})
+    if trail == "queued":
+        assert r.status_code == 409, r.text
+        assert (await _claim_row("allowance-label")).status == "pending"
+        return
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 600
+
+
+@pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
+async def test_a_routed_child_s_queued_charge_keeps_its_parent_s_stale_claim(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """A routed child on the allowance has no hold: its queued charge, under the parent's
+    prefix, is money in flight until a fold writes its settle."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import CallCharge, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "routed-label", status="pending")
+    await _set_claim("routed-label", call_ref="routed-owner")
+    async with session_maker() as db:
+        db.add(CallCharge(call_id="routed-owner:r1", org_id=org_id, endpoint_id=EP, amount_micro=700))
+        if trail == "queued_and_folded":
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                               call_id="routed-owner:r1", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "routed-label"})
+    if trail == "queued":
+        assert r.status_code == 409, r.text
+        return
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
+async def test_a_routed_child_s_charge_folded_after_its_owner_s_lifetime_is_still_found(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The fold deletes the queued row and writes the settle when it runs, which a backlog can
+    push past the owner's lifetime: the child's settle is read by its id."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.models import LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "late-label", status="pending")
+    await _set_claim("late-label", call_ref="late-owner", created_at=_ago(hours=1))
+    async with session_maker() as db:
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                           call_id="late-owner:r3", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "late-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
+@pytest.mark.parametrize("key", [None, "keyed-label"])
+async def test_a_direct_call_may_use_the_allowance_and_a_keyed_one_is_marked_in_flight(
+        clients: AsyncClient, platform_on, monkeypatch, key):
+    from treg.application.call import service
+
+    seen = []
+    real = service._platform_reserve
+
+    async def spy(*args, **kwargs):
+        seen.append((kwargs.get("allow_allowance"), kwargs.get("mark_in_flight")))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(service, "_platform_reserve", spy)
+    headers = {"Idempotency-Key": key} if key else {}
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)
+    assert r.status_code == 200, r.text
+    assert seen == [(True, bool(key))]
+
+
+@pytest.mark.parametrize("mark", ["set", "unreadable", "absent"])
+async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
+        clients: AsyncClient, platform_on, monkeypatch, mark):
+    """An owner on the allowance has no hold; its mark in the shared store stands in for one. A
+    mark there, or one the store cannot read, answers 409; none lets the claim close."""
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = kv.LocalStore()
+    if mark == "set":
+        await store.mark_call_in_flight("marked-owner", idempotency.IN_FLIGHT_MARK_MS)
+    if mark == "unreadable":
+        async def unread(call_ref):
+            return None
+        monkeypatch.setattr(store, "call_in_flight", unread)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    await _seed_answer(clients, "marked-label", status="pending")
+    await _set_claim("marked-label", call_ref="marked-owner")
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "marked-label"})
+    if mark == "absent":
+        assert r.status_code == 410, r.text
+        assert r.json()["detail"]["error"] == "idempotency_outcome_unknown"
+    else:
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["call_id"] == "marked-owner"
+
+
+@pytest.mark.parametrize(("trail", "expect"), [
+    ("own_hold", (410, 400)),          # its own reserve and settle: it took a hold
+    ("folded_allowance", (410, 400)),  # only its own settle: its allowance charge is folded
+    ("hub_run", (410, 400)),           # only its steps' entries: a hub step never takes the allowance
+    ("routed_parent", (409, None)),    # a routed child's entries say nothing of another child's charge
+    ("overflow_only", (409, None)),    # an overflow child's entries say nothing of the parent's charge
+])
+async def test_an_owner_the_ledger_speaks_for_is_closed_from_it_when_the_store_cannot_answer(
+        clients: AsyncClient, platform_on, monkeypatch, trail, expect):
+    """With its money all in the ledger, a store fault does not keep the claim waiting: the
+    receipt comes from the ledger. Only an owner whose own charge could still be unwritten (an
+    allowance parent with nothing but an overflow child in the ledger, a routed parent whose
+    other children may have taken from the allowance) waits for the store."""
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = kv.LocalStore()
+
+    async def unread(call_ref):
+        return None
+    monkeypatch.setattr(store, "call_in_flight", unread)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "held-label", status="pending")
+    await _set_claim("held-label", call_ref="held-owner")
+    entry = {"own_hold": "held-owner", "folded_allowance": "held-owner",
+             "hub_run": "held-owner:s1", "routed_parent": "held-owner:r0",
+             "overflow_only": "held-owner:overflow"}[trail]
+    if trail != "folded_allowance":
+        await _ledger(org_id, entry, "reserve", amount=-500)
+    await _ledger(org_id, entry, "settle", amount=-400)
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "held-label"})
+    status, charged = expect
+    assert r.status_code == status, r.text
+    if status == 410:
+        assert r.json()["detail"]["error"] == "idempotency_response_lost"
+        assert r.json()["detail"]["charged_micro"] == charged
+
+
 async def test_an_expired_lease_with_money_in_flight_still_answers_409(
         clients: AsyncClient, platform_on):
     """An open hold under the owner's call id (or a child's) means the call or its async worker is
@@ -3201,6 +3398,23 @@ def test_contactout_contact_hits_are_per_type_per_profile(work, personal, phone,
     assert contactout.estimate(c, {}) == 650000
 
 
+@pytest.mark.parametrize("status,billed", [
+    ("valid", True), ("invalid", True), ("accept_all", True),
+    ("unknown", False), ("disposable", False), (None, False),
+])
+def test_contactout_verify_bills_only_the_verdicts_contactout_bills(status, billed):
+    eid = "contactout.people.email.verify"
+    cost = catalog_store.load().cost_view(catalog_store.load().by_id[eid]["cost"], "contactout")
+    query = call_resolution.QueryValues((("email", "a@example.test"),))
+    hold, _unit = call_resolution._marketplace_pricing("contactout", eid, cost, query, b"")
+    assert hold == 10_000
+    mk = _mk("contactout", endpoint_id=eid, cost_type="per_success", unit_micro=hold,
+             estimate_micro=hold, request_data={"queryParams": {"email": "a@example.test"}})
+    body = json.dumps({"status_code": 200, "data": {"status": status}}).encode()
+    observed = call_settle._observed_cost_micro(mk, body)
+    assert (hold if observed is None else observed) == (hold if billed else 0)
+
+
 def test_contactout_search_counts_returned_profiles_and_contacts_not_availability_or_total():
     c = _contactout_cost("people.search.reveal")
     doc = {
@@ -3613,13 +3827,19 @@ def test_icypeas_profile_url_miss_settles_at_zero():
 
 @pytest.mark.parametrize("task,rows,credits", [
     ("email-verification", 3, 0.3), ("email-search", 3, 3), ("domain-search", 1, 1)])
-def test_icypeas_bulk_search_bills_its_rows_at_the_task_rate(task, rows, credits):
-    """The start answer has no rows, so the reserve is the bill: never the 20-row default."""
+def test_icypeas_bulk_search_holds_its_rows_and_bills_the_finished_files_counts(task, rows, credits):
+    """The start answer has no rows, so the hold is every row at its task's rate, and the finished
+    file's counts settle it: found rows for a search, tested rows for a verification."""
+    from treg.domain.money import settlement
     body = {"name": "x", "task": task, "data": [["a@example.com"]] * rows}
-    mk, estimate, credit = _priced("icypeas.bulk.search", None, body, request_data={"body": body})
-    assert estimate == round(credits * credit)
-    assert call_settle._observed_cost_micro(
-        mk, b'{"success":true,"status":"in_progress","file":"f"}') in (None, estimate)
+    ep = catalog_store.load().by_id["icypeas.bulk.search"]
+    pricing = call_resolution.price_call(ep, call_resolution.QueryValues(()), json.dumps(body).encode(), set())
+    credit = _usd_to_micro_for_test(catalog_store.load().credit_rates["icypeas"])
+    assert pricing.estimate_micro == round(credits * credit)
+    assert pricing.settlement_basis["when"] == "terminal"
+    finished = {"files": [{"task": task, "total": rows, "found": 1, "done": rows, "finished": True}]}
+    billed = 0.1 * rows if task == "email-verification" else 1
+    assert settlement.settle(pricing.settlement_basis, {"terminal": finished}) == round(billed * credit)
 
 
 def test_icypeas_single_email_search_bills_one_credit_not_a_page():
