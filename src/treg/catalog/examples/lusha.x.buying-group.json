@@ -1,0 +1,67 @@
+{
+  "requestId": "00000000-0000-0000-0000-000000000000",
+  "results": [
+    {
+      "companyId": "v1.A1gXjPYd63SSPjSvxO4uwqXqE5ilJV9S",
+      "contacts": [
+        {
+          "id": "v1.example-contact-id",
+          "firstName": "Jane",
+          "lastName": "Doe",
+          "jobTitle": {
+            "title": "Head of Marketing",
+            "departments": [
+              "Marketing",
+              "Engineering & Technical"
+            ],
+            "seniority": "Non-Manager"
+          },
+          "company": {
+            "id": "v1.A1gXjPYd63SSPjSvxO4uwqXqE5ilJV9S",
+            "name": "Lusha",
+            "domain": "www.lusha.com"
+          },
+          "location": {
+            "country": "United States",
+            "city": "New York"
+          },
+          "socialLinks": {
+            "linkedin": "https://www.linkedin.com/in/example"
+          },
+          "has": [
+            "firstName",
+            "lastName",
+            "jobTitle",
+            "company",
+            "location",
+            "socialLinks",
+            "emails",
+            "jobStartDate"
+          ],
+          "canReveal": [
+            {
+              "field": "emails",
+              "credits": 1,
+              "source": "lusha",
+              "availability": "available"
+            }
+          ],
+          "roles": [
+            "potential_champion"
+          ],
+          "score": 0.9157078266143799
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "page": 0,
+    "size": 100,
+    "total": 1
+  },
+  "billing": {
+    "creditsCharged": 1,
+    "resultsReturned": 1,
+    "lowBalance": false
+  }
+}
