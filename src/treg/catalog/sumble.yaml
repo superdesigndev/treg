@@ -18,7 +18,7 @@ endpoints:
   method: POST
   path: /organizations
   name: Unified organizations endpoint
-  summary: Unified organizations endpoint
+  summary: "Match companies by domain, name or Sumble id and return the firmographics, counts and technology metrics you select"
   input:
     bodyType: json
     body:
@@ -261,13 +261,10 @@ endpoints:
           hiring location, etc.).
         default: any
         required: false
-    note: 1 base + 1 per paid attribute + 1 per requested entity metric per match. Unmatched inputs free. Explicitly
-      select id/name/url; live responses do not always include them. Platform supports match mode, explicit safe
-      attributes and explicit metrics on technology/job_function/project or aggregate categories; advanced queries,
-      ICP/CRM fields and exploded/all metrics require BYOK.
+    note: "select every attribute you need, `id`, `name` and `url` included: an attribute you do not select is not returned. On treg's key, list the organizations and select named attributes and metrics; an advanced-query search, score, ICP and CRM fields, and `all` or exploded metrics need your own Sumble key"
   docs_url: https://docs.sumble.com/api/api
   capability: companies.enrich
-  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "1 base + 1 per paid attribute + 1 per requested entity metric per match. Unmatched inputs free. Explicitly select id/name/url; live responses do not always include them. Platform supports match mode, explicit safe attributes and explicit metrics on technology/job_function/project or aggregate categories; advanced queries, ICP/CRM fields and exploded/all metrics require BYOK."}
+  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "each matched organization costs 1 credit, plus 1 per paid attribute and 1 per requested metric; `id`, `name`, `slug`, `url` and `sumble_url` are free, and an unmatched input costs 0"}
   reserve: {plugin: sumble.organization_credits, max: '1200'}
   platform_request: {body.filter: null, body.include_closed: null, body.order_by_column: null, body.order_by_job_function: null, body.order_by_advanced_query: null, body.match_source: null}
   miss: {when: {path: response.matched_count, op: equals, value: 0}}
@@ -292,17 +289,16 @@ endpoints:
   method: GET
   path: /organizations/{organization_id}/intelligence-brief
   name: Retrieve the intelligence brief for an organization
-  summary: Retrieve the intelligence brief for an organization
+  summary: "Get an account-tailored intelligence brief for one organization"
   input:
     pathParams:
       organization_id:
         type: integer
         required: true
-    note: 50 per completed brief; 202 pending is free. Retry same URL after Retry-After. Account-tailored brief;
-      BYOK only.
+    note: "a brief still being written answers 202; retry the same URL after its Retry-After"
   docs_url: https://docs.sumble.com/api/api
   capability: companies.intelligence_brief
-  price: {value: '50', currency: credit, unit: call, note: "50 per completed brief; 202 pending is free. Retry same URL after Retry-After. Account-tailored brief; BYOK only."}
+  price: {value: '50', currency: credit, unit: call, note: "50 credits per completed brief; a 202 pending answer costs 0"}
   platform_blocked: Account-tailored intelligence brief; use your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -314,7 +310,7 @@ endpoints:
   method: GET
   path: /organizations/{organization_id}/signals
   name: Get organization signals
-  summary: Get organization signals
+  summary: "List the signals Sumble found for one organization"
   input:
     pathParams:
       organization_id:
@@ -336,10 +332,10 @@ endpoints:
         note: Technology slugs to filter signals by. Repeat this query parameter to filter by multiple technologies.
           Use POST /technologies/lookup to resolve technology names, slugs, or aliases to canonical slugs; use POST
           /technologies/find to search for matching technologies.
-    note: 1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only.
+    note: "the answer includes your Sumble account's signal configuration and CRM context"
   docs_url: https://docs.sumble.com/api/api
   capability: companies.news
-  price: {value: '1', currency: credit, unit: record, note: "1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only."}
+  price: {value: '1', currency: credit, unit: record, note: "1 credit per signal returned; an organization with no signals costs 0"}
   platform_blocked: Account signal configuration and CRM context can appear in responses; use your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
     BYOK.
@@ -350,17 +346,16 @@ endpoints:
   method: GET
   path: /organizations/{organization_id}/techs
   name: Get organization tech stack
-  summary: Get organization tech stack
+  summary: "Get one organization's confirmed-used tech stack, grouped by business function and category"
   input:
     pathParams:
       organization_id:
         type: integer
         required: true
-    note: 1 per technology in business_functions[].categories[].technologies, not evidence. No documented result
-      cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate.
+    note: "pass the Sumble organization id; an unknown id answers 404"
   docs_url: https://docs.sumble.com/api/api
   capability: companies.tech_stack
-  price: {value: '1', currency: credit, unit: record, display: {unit: technology}, note: "1 per technology in business_functions[].categories[].technologies, not evidence. No documented result cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate."}
+  price: {value: '1', currency: credit, unit: record, display: {unit: technology}, note: "1 credit per technology in `business_functions[].categories[].technologies`; the `evidence` lists are free, and an organization with no confirmed technologies costs 0"}
   reserve: {plugin: sumble.tech_stack_hold, max: '100'}
   test_request:
     pathParams:
@@ -375,7 +370,7 @@ endpoints:
   method: POST
   path: /people
   name: Unified people endpoint
-  summary: Unified people endpoint
+  summary: "Find and enrich people at organizations, with optional work email and phone reveal"
   input:
     bodyType: json
     body:
@@ -589,14 +584,10 @@ endpoints:
         description: (v8 only) Id of a previously started async request (returned by the kickoff call). Provide
           this alone to poll for the status and result.
         required: false
-    note: 'Async POST: start with people/filter; poll the SAME endpoint with request_id alone. First succeeded poll
-      charges once; later polls report zero. 1 base + paid attributes (name free), related people 1 each; email
-      reveal 10, phone 80, successful email resolution 20 extra. Contact reveal repeats/misses free. All/scores
-      may include account ICP. treg does not meter BYOK. Platform disabled pending POST-poll ownership and durable
-      charge recovery.'
+    note: "asynchronous: start with `people` or `filter`, then poll the same endpoint with `request_id` alone. `person_score` and `all` return your account's ICP match score"
   docs_url: https://docs.sumble.com/api/api
   capability: people.search
-  price: {value: '1', currency: credit, unit: record, note: "Async POST: start with people/filter; poll the SAME endpoint with request_id alone. First succeeded poll charges once; later polls report zero. 1 base + paid attributes (name free), related people 1 each; email reveal 10, phone 80, successful email resolution 20 extra. Contact reveal repeats/misses free. All/scores may include account ICP. treg does not meter BYOK. Platform disabled pending POST-poll ownership and durable charge recovery."}
+  price: {value: '1', currency: credit, unit: record, note: "charged once, on the first poll that succeeds: 1 credit per person plus 1 per paid attribute (`name` is free) and 1 per related person; an email reveal adds 10, a phone 80 and a resolved email 20. A repeat reveal and a contact not found cost 0"}
   platform_blocked: POST polling with first-success-only charge needs durable settlement/ownership support; use
     your own Sumble key.
   untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
@@ -608,7 +599,7 @@ endpoints:
   method: POST
   path: /jobs
   name: Unified jobs endpoint
-  summary: Unified jobs endpoint
+  summary: "List job posts by Sumble job id or organization, with the title, description, location, technologies and teams you select"
   input:
     bodyType: json
     body:
@@ -786,11 +777,10 @@ endpoints:
         description: Number of results to skip (filter mode only; ignored when `jobs` is provided).
         default: 0
         required: false
-    note: 1 base + 1 per paid attribute (title free) + 1 per related person returned. Platform requires explicit
-      attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK.
+    note: "select every attribute you need; `title` is free. On treg's key, list job ids or filter by `organization_ids` alone; related people, a saved list, an advanced query and a search need your own Sumble key"
   docs_url: https://docs.sumble.com/api/api
   capability: companies.jobs.search
-  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "1 base + 1 per paid attribute (title free) + 1 per related person returned. Platform requires explicit attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK."}
+  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "each returned job costs 1 credit, plus 1 per paid attribute and 1 per related person; an unmatched job id costs 0"}
   reserve: {plugin: sumble.job_credits, max: '1200'}
   miss: {when: {any: [{path: response.matched_count, op: equals, value: 0}, {path: response.jobs, op: empty}]}}
   test_request:
@@ -813,7 +803,7 @@ endpoints:
   method: POST
   path: /teams
   name: Unified teams endpoint
-  summary: Unified teams endpoint
+  summary: "List the teams inside organizations, with their job counts, technologies, job functions, locations and activity dates"
   input:
     bodyType: json
     body:
@@ -1009,12 +999,10 @@ endpoints:
         - type: 'null'
         description: Sort direction; DESC when omitted.
         required: false
-    note: 1 base + 1 per paid attribute + 1 per related person + 1 per job post returned. Platform requires explicit
-      attributes excluding score, list mode or organization_ids-only filtering. Related people/job posts and advanced
-      queries require BYOK.
+    note: "on treg's key, list team ids or filter by `organization_ids` (and `since`), select attributes other than `score`, and sort by jobs_count, first_activity or last_activity; related people, job posts and an advanced query need your own Sumble key"
   docs_url: https://docs.sumble.com/api/api
   capability: companies.teams.search
-  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "1 base + 1 per paid attribute + 1 per related person + 1 per job post returned. Platform requires explicit attributes excluding score, list mode or organization_ids-only filtering. Related people/job posts and advanced queries require BYOK."}
+  price: {value: '1', currency: credit, unit: record, display: {unit: result, variable: true}, note: "each returned team costs 1 credit, plus 1 per paid attribute, 1 per related person and 1 per job post; an unmatched team id costs 0"}
   reserve: {plugin: sumble.team_credits, max: '500'}
   miss: {when: {any: [{path: response.matched_count, op: equals, value: 0}, {path: response.teams, op: empty}]}}
   test_request:
