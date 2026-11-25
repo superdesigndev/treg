@@ -58,6 +58,7 @@ endpoints:
       per: 1
       unit: page
       note: 5 credits per page of up to 25. An empty page is free.
+    miss: {when: {path: response.data.videos, op: empty}}
 
   - id: virlo.creators.search
     added: '2026-11-02'
@@ -88,6 +89,7 @@ endpoints:
       per: 1
       unit: page
       note: 5 credits per page of up to 25. An empty page is free.
+    miss: {when: {path: response.data.creators, op: empty}}
 
   - id: virlo.shortform.videos.top
     added: '2026-11-02'
@@ -183,6 +185,7 @@ endpoints:
     test_request:
       pathParams: {hashtag: "skincare"}
     price: {value: '0.05', currency: USD, per: 1, unit: call, note: 5 credits.}
+    miss: {status: [404], means: "no analysed video carries this hashtag"}
 
   - id: virlo.shortform.sounds.trending
     added: '2026-11-02'
@@ -240,6 +243,8 @@ endpoints:
     test_request:
       queryParams: {q: "espresso", limit: 3}
     price: {value: '0.1', currency: USD, per: 1, unit: call, note: 10 credits.}
+    miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
 
   - id: virlo.shortform.hooks.trending
     added: '2026-11-02'
@@ -279,6 +284,8 @@ endpoints:
     test_request:
       queryParams: {q: "stop doing", limit: 3}
     price: {value: '0.25', currency: USD, per: 1, unit: call, note: 25 credits.}
+    miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
 
   - id: virlo.tiktok.search.videos
     added: '2026-11-02'
@@ -297,6 +304,8 @@ endpoints:
     test_request:
       queryParams: {q: "meal prep"}
     price: {value: '0.01', currency: USD, per: 1, unit: page, note: 1 credit a page.}
+    miss: {when: {path: response.data, op: empty}}
+    bill: {miss: charged}
 
   - id: virlo.tiktok.user.profile
     added: '2026-11-02'
@@ -314,6 +323,7 @@ endpoints:
     test_request:
       pathParams: {handle: "charlidamelio"}
     price: {value: '0.01', currency: USD, per: 1, unit: call, note: 1 credit.}
+    miss: {status: [404], means: "no public TikTok account with this handle"}
 
   - id: virlo.tiktok.video.captions
     added: '2026-11-02'
@@ -333,3 +343,4 @@ endpoints:
     test_request:
       queryParams: {url: "https://www.tiktok.com/@sotonyeee/video/7659102264887381279"}
     price: {value: '0.01', currency: USD, per: 1, unit: call, note: 1 credit.}
+    miss: {status: [404], means: "no public TikTok video at this URL or id"}
