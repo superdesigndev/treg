@@ -1967,13 +1967,17 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         incomplete, spent = True, _refund_errors(errored, pending, spent)
     upgrade, provider = None, cand.endpoint["provider"]
     served_ref = answered_by.get(id(cand))
+    # The exact bytes this call hands back as `raw`, hashed as the archive hashes a body
+    # (`archive.content_hash`): a reader takes an archived answer for this call only when its
+    # `content_hash` is this one.
+    served_hash = hashlib.sha256(raw).hexdigest() if served_ref and isinstance(raw, bytes) else None
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
         upgrade, better, upgrade_cost = await _run_upgrade(parent, ep, options.upgrade, output, remaining,
                                                            execute_child, upstream_client)
         spent += upgrade_cost
         if better is not None:
-            output, doc, served, served_ref = better
+            output, doc, served, served_ref, served_hash = better
             provider = served.split(".")[0]
     merged_from: list[str] = []
     if options.merge and len(answers) > 1:
@@ -2101,7 +2105,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
-    parent.served_call_ref = served_ref
+    parent.served_call_ref, parent.served_content_hash = served_ref, served_hash if served_ref else None
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
@@ -2218,7 +2222,7 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     this same routed endpoint again by that key alone, its providers in order of measured quality.
     Its answer replaces the first only when it is a hit about the same person (the contract's name
     agrees); otherwise the first, already-paid answer stands. Returns (`_treg.upgrade`, the
-    replacing (output, raw, served_by, served child call ref) or None, money it moved). A failure costs the first answer nothing."""
+    replacing (output, raw, served_by, served child call ref, its body hash) or None, money it moved). A failure costs the first answer nothing."""
     value = output.get(key)
     if not isinstance(value, str) or not value.strip():
         return {"upgraded": False, "via": key, "reason": f"no_{key}"}, None, 0
@@ -2243,7 +2247,8 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     if "full_name" in output and _name_key(found.get("full_name")) != _name_key(output.get("full_name")):
         return {**view, "upgraded": False, "reason": "other_name"}, None, cost
     return {**view, "upgraded": True}, ({**output, **{k: v for k, v in found.items() if v is not None}},
-                                        doc.get("raw"), meta.get("served_by"), child.served_call_ref), cost
+                                        doc.get("raw"), meta.get("served_by"), child.served_call_ref,
+                                        child.served_content_hash), cost
 
 
 def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallContext, tried: list) -> None:
@@ -2290,6 +2295,7 @@ def _audit_parent(parent: CallContext, ep: dict, status: int, charged: int, clie
                                  "credential_tier": "routed", "cost_charged_micro": charged,
                                  # Which child's answer the caller received; None for a miss/failure.
                                  "served_call_ref": parent.served_call_ref,
+                                 "served_content_hash": parent.served_content_hash,
                                  **_tag_telemetry(parent.meta)})
 
 

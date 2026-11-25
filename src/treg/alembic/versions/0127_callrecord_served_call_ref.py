@@ -1,12 +1,13 @@
-"""callrecord.served_call_ref - which child attempt's answer a routed call returned
+"""callrecord.served_call_ref / served_content_hash - which child's answer a routed call returned
 
 Revision ID: 0127
 Revises: 0126
 Create Date: 2026-11-25
 
-One nullable text column, no default, no index, no foreign key: a catalog-only ALTER on Postgres,
+Two nullable text columns, no default, no index, no foreign key: catalog-only ALTERs on Postgres,
 no table rewrite, even on the hot audit table. Set only on a routed parent row: the `call_ref` of
-the child whose answer the caller received. A reader starts from the parent row by id and reads
+the child whose answer the caller received, and the sha256 of the bytes it returned as `raw`, so
+a reader can tell whether an archived answer is the delivered one. A reader starts from the parent row by id and reads
 the child row by that exact ref through `ix_callrecord_call_ref`, never scanning the team's
 history. Rows written before this revision, and every non-routed row, keep NULL.
 
@@ -27,8 +28,10 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("callrecord", sa.Column("served_call_ref", sa.String(), nullable=True))
+    op.add_column("callrecord", sa.Column("served_content_hash", sa.String(), nullable=True))
 
 
 def downgrade() -> None:
     with op.batch_alter_table("callrecord") as batch:
+        batch.drop_column("served_content_hash")
         batch.drop_column("served_call_ref")

@@ -701,6 +701,12 @@ class CallRecord(SQLModel, table=True):
     # the column (0127). NULL means no usable link was recorded, never that no answer was served.
     # A logical reference only, never a foreign key: either row may be shed.
     served_call_ref: str | None = Field(default=None)
+    # sha256 of the exact bytes returned as `raw` (`archive.content_hash`'s digest), set with
+    # `served_call_ref`. The ref says where to look; this says whether what is found there is what
+    # the caller got. A reader takes an archived answer only when its `content_hash` equals this:
+    # another poller's terminal answer, a body the call path changed before delivery (the provider's
+    # reported charge removed) or a ticket never match, and count as archive unavailable.
+    served_content_hash: str | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):

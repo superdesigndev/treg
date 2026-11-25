@@ -59,6 +59,7 @@ async def test_a_waterfall_hit_links_its_last_attempt(clients, verifiers_on, mon
     assert parent.served_call_ref == f"{parent.call_ref}:r1"
     assert child.endpoint_id == r.json()["_treg"]["served_by"] == "hunter.people.email.find"
     assert await _archived(child) == r.json()["raw"], "the child row leads to the archived answer"
+    assert parent.served_content_hash == child.archive_content_hash, "and its hash proves it is the delivered one"
 
 
 async def test_a_miss_everywhere_links_no_child(clients, verifiers_on, monkeypatch):
@@ -68,7 +69,7 @@ async def test_a_miss_everywhere_links_no_child(clients, verifiers_on, monkeypat
     d = r.json()
     assert d["_treg"]["served_by"] is None and d["raw"] is None
     parent, child = await _served(r)
-    assert parent.served_call_ref is None and child is None
+    assert parent.served_call_ref is None and parent.served_content_hash is None and child is None
 
 
 async def test_a_route_failure_links_no_child(clients, verifiers_on, monkeypatch):
