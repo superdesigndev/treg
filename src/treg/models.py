@@ -1237,8 +1237,10 @@ class CallCharge(SQLModel, table=True):
     a call can be recorded once. Owned by `domain/money`.
     """
 
+    __table_args__ = (Index("ix_callcharge_org_id_created_at", "org_id", "created_at"),)
+
     call_id: str = Field(primary_key=True)
-    org_id: int = Field(index=True)
+    org_id: int
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what the team owes for the call, margin applied
     # The part of `amount_micro` the call never set aside: owed to the balance, not to the

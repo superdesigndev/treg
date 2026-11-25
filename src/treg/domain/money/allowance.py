@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, true, update
+from sqlalchemy import delete, func, text, true, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -596,16 +596,40 @@ async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
+_QUEUED_TEAMS = text("""
+WITH RECURSIVE teams(org_id) AS (
+    SELECT (SELECT min(org_id) FROM callcharge)
+    UNION ALL
+    SELECT (SELECT min(c.org_id) FROM callcharge c WHERE c.org_id > teams.org_id)
+    FROM teams WHERE teams.org_id IS NOT NULL
+)
+SELECT org_id FROM (
+    SELECT t.org_id,
+           (SELECT min(c.created_at) FROM callcharge c
+            WHERE c.org_id = t.org_id AND c.created_at < :queued_before) AS oldest
+    FROM teams t
+    WHERE t.org_id IS NOT NULL AND t.org_id % :shard_count = :shard_index
+) queued
+WHERE oldest IS NOT NULL
+ORDER BY oldest, org_id
+LIMIT :limit
+""")
+
+
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
                                    limit: int = 500, shard: Shard | None = None) -> list[int]:
     """Teams with a charge queued before `queued_before`, the team whose oldest charge has waited
-    longest first, at most `limit` of them."""
-    oldest = func.min(CallCharge.created_at)
-    return list((await db.execute(
-        select(CallCharge.org_id)
-        .where(CallCharge.created_at < queued_before, _in_shard(CallCharge.org_id, shard))
-        .group_by(CallCharge.org_id).order_by(oldest, CallCharge.org_id)
-        .limit(limit))).scalars())
+    longest first, at most `limit` of them.
+
+    The queue is walked one team number at a time on `ix_callcharge_org_id_created_at` (each
+    step the next number, one index probe), and a team's oldest charge is one more probe, taken
+    only for the teams of `shard`. So a share costs a probe per queued team plus one per team of
+    its own, however many rows those teams have queued; a share with no queue of its own reads
+    no queued row at all."""
+    index, count = shard if shard is not None and shard[1] > 1 else (0, 1)
+    return list((await db.execute(_QUEUED_TEAMS, {
+        "queued_before": queued_before, "shard_count": count, "shard_index": index,
+        "limit": limit})).scalars())
 
 
 async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,
