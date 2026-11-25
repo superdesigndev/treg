@@ -1,328 +1,243 @@
 ---
 name: vendor-listing
 description: >
-  Onboard a vendor who wants their API listed in the treg catalog. Use whenever someone asks
-  "how do we get listed on treg", a vendor sends their API details, or a listing PR/issue needs
-  review. Walks the whole pipeline: eligibility gate → registry entry → platform-key slot → logo
-  → tests → LIVE bogus-key test → core catalog YAML → verify → scrub → validate → evidence
-  ledger in the PR. Every listing ships tier-4 wiring and a per-endpoint verification table.
-  The vendor-facing doc this skill implements is docs/VENDORS.md.
+  Writes the pull request that lists an API in the treg catalog (github.com/superdesigndev/treg):
+  eligibility check, endpoint selection, the registry entry in oauth_providers.py, the catalog file
+  in the v2 spelling, a credit rate in fx.yaml, live verification with the vendor's own key, and the
+  pull request description. Use when an API vendor wants their API listed on treg, when someone asks
+  how to get an API into the treg catalog, or when writing or reviewing a listing pull request.
 metadata:
   internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
-# Vendor listing — add a provider to the catalog
+# Listing an API in the treg catalog
 
-A listing has **three parts**, and all three ship in the same PR:
+One pull request on superdesigndev/treg adds one API. The pull request is the whole submission:
+treg's maintainers then verify it and email the contact address in its description about the
+next steps.
 
-1. **Registry entry** (`src/treg/oauth_providers.py`) — how a team connects a credential for the
-   provider, and how treg verifies that credential is real.
-2. **Core catalog file** (`src/treg/catalog/<service>.yaml`) — what an agent can *do*: 8–15
-   curated endpoints with capability mapping, inputs, price + provenance, and verified examples.
-3. **Platform-key slot** (`config.py` + `fx.yaml`) — so treg can serve the
-   endpoints on its own key (tier 4). **Always aim for this.** A listing that is BYOK-only is the
-   exception and needs a stated reason (no self-serve pricing, `own_account` data, sales-gated).
+Needs: a clone of the repository with `origin` fetched (`git fetch origin`), `uv`, npm for the
+full test run, and a key for the API in an environment variable. Never write the key into a file,
+a commit or the pull request.
 
-And every listing PR carries a **verification evidence ledger** (Step 7b). No ledger, no merge.
+When the API does something this skill does not cover (two APIs or pricing models to choose from,
+vendor sources that disagree, a price that has several parts or is missing for some modes, a request
+value that must be fixed, an endpoint that answers before its work is done, a setup step beyond the
+key), list what you can and describe the rest under "Open questions" in the pull request.
+Maintainers decide those; do not guess.
 
-Deep references (read before non-trivial work; do not duplicate them here):
-- `references/expanding-a-category.md` - the verify toolbox, provider traps and selection heuristics
-- `docs/context/architecture/catalog.md` — catalog file shape, cost provenance, verify pipeline, PII rules
-- `docs/context/architecture/catalog-schema.md` - the v2 row model, `defaults:`, outcome keys, and
-  the rules for a summary and a note
-- `docs/VENDORS.md` — what we told the vendor to prepare (their checklist)
-- `src/treg/web/vendor-listing.md` — the HOSTED instructions (served at `/vendor-listing`) that a
-  vendor's own coding agent follows to raise a listing PR; the dashboard's "List as vendor" modal
-  (Catalog page, `vendorPromptText` in `frontend/src/state/agentsComputed.js`) hands vendors a
-  prompt pointing at it. Keep the three vendor-facing surfaces (doc, hosted page, modal prompt)
-  telling one story.
+Reference files, one level down:
 
-## Step 0 — intake: collect the vendor facts
+- [references/example.md](references/example.md): a complete listing for a fictional API. Read it
+  before writing anything.
+- [references/catalog-v2.md](references/catalog-v2.md): every key of the catalog file.
+- [references/key-check.md](references/key-check.md): registry fields for the ways an API answers an
+  invalid key.
+- [references/maintainers.md](references/maintainers.md): treg maintainers only, for reviewing and
+  finishing a listing.
 
-Before touching code, you need ALL of these. If the vendor's submission is missing any, ask —
-do not guess ("unconfirmed" beats a wrong path shipped):
+## Workflow
 
-- **A contact email for the vendor's team** — required in the PR/issue description. It is how a
-  test credential gets arranged for live verification; without it the listing stalls at step 7.
-- `service` id (lowercase slug), display name, one-line summary (what an agent can DO)
-- `base_url` (exact API root)
-- Auth: where the key rides (header name + format, or query param name). Key **in the URL path is
-  not supported** — decline or defer.
-- A **free or near-free probe endpoint** where a valid key returns 2xx and an invalid key does NOT
-  — plus the exact bad-key behavior (status code, or the JSON field that signals invalid)
-- Pricing page URL, per-endpoint prices, and the billing model (`per_call` / `per_success` /
-  `per_result` / credits / quota). Machine-readable rate-card endpoint if they have one.
-- Docs URL; OpenAPI spec URL if published
-- The 8–15 endpoints they consider their core surface, with example parameter *values*
-- A test credential (or credits grant) for verification — read it from env only, never write it
-  into any file
+Copy this checklist and track your progress:
 
-## Step 1 — eligibility gate
+```
+Listing progress:
+- [ ] 1. Check eligibility
+- [ ] 2. Map every endpoint, choose which to list
+- [ ] 3. Pick a capability for each
+- [ ] 4. Registry entry and logo
+- [ ] 5. Catalog file (and an fx.yaml rate when priced in credits)
+- [ ] 6. Validate until clean
+- [ ] 7. Verify live with your own key
+- [ ] 8. Rebase and open the pull request
+```
 
-Reject decisively, with a recorded reason, when:
-- The key **cannot be validated** (API returns success for garbage keys) — e.g. ScrapeCreators
-- Key rides in the **URL path** (`/v3/{key}/…`) — injectors do header/query only
-- **Sales-gated** signup (no self-serve key breaks the fast path)
-- Legal/shutdown risk, or deprecated/absorbed products
+The pull request changes only these files:
 
-## Step 2 — registry entry
+- `src/treg/oauth_providers.py`: the registry entry, and nothing else in that file
+- `src/treg/web/logos/<service>.svg`: the logo
+- `src/treg/catalog/<service>.yaml`: the catalog file
+- `src/treg/catalog/fx.yaml`: only when prices are in credits
+- the copies `scripts/build_plugin.py` regenerates
 
-Add an `OAuthProvider(auth_kind="key", …)` in `oauth_providers.py` and append it to `REGISTRY`.
-Model it on `HUNTER` (a clean key provider). Pick the verify fields from the toolbox table in
-`references/expanding-a-category.md` (`token_header`/`token_format`, `token_location="query"`+`token_param`,
-`probe_url`, `probe_method`+`probe_json`, `token_verify_field`, `token_ok_field`+`token_ok_value`,
-`token_reject_field`, `probe_reject_statuses`, …). Prefer a header over a query key so the secret
-never lands in a logged URL. Set `category` (add to `CATEGORY_ORDER` only if genuinely new),
-`summary`, `base_url`, `docs_url`, `probe_path`, and `setup_url`/`setup_steps` so a user can find
-their key.
+### 1. Check eligibility
 
-**Provider-required constant headers** (Crustdata's `x-api-version: 2025-11-01`): declare them in
-`required_headers=(("name", "value"),)` on the `OAuthProvider` and in the `providers.py` CATALOG
-row — never in the proxy. They become constant-format bindings. Trap (PR #191): a binding whose
-`format` has no `{secret}` must NOT be fed to `_secret_renderings` — otherwise the literal
-value (a date!) joins the redaction set and gets masked out of error evidence. Check the
-constant does not appear in `_secret_renderings`' output, and add a test.
+All must hold, or the pull request is declined. If one fails, stop and tell the user which.
 
-## Step 2b — platform-key slot (do this for every listing)
+- Self-serve keys: sign up and get a key without a sales call.
+- The key goes in a header, a query parameter or the JSON body, never in the URL path.
+- A free or near-free endpoint answers a valid key and an invalid key differently, by status or by
+  a body field. treg checks every connected key there.
+- A public pricing page at a stable URL.
+- Docs with parameter names, types and example values for the endpoints you list.
+- No legal or shutdown risk, not deprecated, not UI-only.
+- A contact email for the vendor's team. If you do not have one, ask the user now.
 
-The tier-4 wiring is part of the listing, not a follow-up:
+### 2. Map every endpoint, choose which to list
 
-- `src/treg/config.py`: `platform_key_<service>: str = ""` with a one-line comment (auth shape,
-  what a top-up buys). Pairs (key+secret) use `platform_extra_setting`; see Tomba.
-- `src/treg/catalog/fx.yaml` `credit_rates_usd`: the USD-per-credit treg actually pays, with
-  `basis` naming the real top-up/receipt (not the pricing page's headline tier), `source`, `checked`.
-- A test asserting `cat.platform_eligible(ep)` for every endpoint in the file (see
-  `test_crustdata_and_aviato_catalogs_are_platform_priced`); every row's `provenance` must
-  therefore be `confidence: documented|verified` and its price computable in USD.
-- If the platform key also needs a constant header, `_platform_bindings` must carry it — assert
-  the tier-4 binding list equals BYOK's (see `test_crustdata_platform_key_keeps_the_required_version_header`).
-- Hand the **env value** to Jason out-of-band (a file, never the PR, never chat if avoidable) with
-  the `TREG_PLATFORM_PROVIDERS` allow-list entry. Enabling it in production is treg's ops decision;
-  the PR just makes it possible.
+List every documented endpoint of the API. The pull request carries this map, each endpoint
+marked catalogued or excluded with the reason (an endpoint whose docs lack parameters or examples is
+excluded, not a reason to decline the API). Catalogue the core endpoints an agent would call directly,
+usually no more than 15. Maintainers can list the rest from an OpenAPI spec, if you publish one.
+Favor:
 
-Modal pricing (preview/rescrape/email riders, bulk-per-record) that one scalar can't express: keep
-the numbers in the row (`price.table`, `reserve`, `settle`) and read them generically — do not
-hardcode credit arithmetic in `api.py` per provider (#191 debt).
+- endpoints doing a job other providers in the catalog already do (agents compare and route
+  between those);
+- free count, preview or pre-flight endpoints that size a query before paying for it;
+- the cheapest tier of an operation, beside the default one.
 
-## Step 3 — logo
+Leave out endpoints that manage the caller's own account (settings, saved lists, reports, users) or
+change data in it, unless managing that account is what the API is for. Mark any you do list
+`scope: own_account`: treg never serves those on its own key. List one row per operation: when the
+API offers the same operation as GET and POST, list the form its docs lead with, and the other only
+if it can do something the first cannot.
 
-`src/treg/web/logos/<service>.svg` — a **neutral lettermark**, not the real brand mark.
-`test_every_provider_has_a_logo` fails without it.
+### 3. Pick a capability for each
 
-## Step 4 — tests
+A capability (`people.email.find`) names the job an endpoint does and puts it beside other
+providers doing that job.
 
-No test list needs editing: the registry-wide tests pick the new entry up on their own.
+1. Search `src/treg/catalog/capabilities.yaml` and the other `src/treg/catalog/*.yaml` files. Reuse
+   an existing id when its description covers the job, even if your endpoint is narrower (a
+   company's employees fit `people.search`); never create a near-duplicate.
+2. Only when none fits, propose one under `proposed_capabilities:` in your own catalog file. If
+   another provider has an endpoint doing that job without a capability, name it in the pull request.
+3. Name a proposal like the existing ones on the same platform: `<platform>.<object>.<action>`,
+   the object singular for one item (`amazon.product.detail`), and the platform's own pattern for
+   finding many (Amazon has `amazon.search.products`, so categories are `amazon.search.categories`).
+   Prefer the actions the catalog uses most: `detail` for one item by id, `list` for a fixed list,
+   `search` for a query.
 
-## Step 5 — LIVE bogus-key test (load-bearing; never skip)
+### 4. Registry entry and logo
 
-Start the server, `POST /connections/token` with a **garbage key** against the real API:
-- `422 "rejected …"` → correct. Ship it.
-- `200` → the probe does not validate the key → fix the verify fields or drop the provider.
-- `404`/`502` in the reason → wrong probe path/host → fix `base_url`/`probe_path`.
+Add an `OAuthProvider(auth_kind="key", ...)` to `src/treg/oauth_providers.py`, shaped like the
+example's, and add it to the provider tuple that builds `REGISTRY`, beside providers of the same
+`category`. `category` is one of `CATEGORY_ORDER` in that file; never add one. If none fits, use the
+closest and say so in the pull request.
 
-**Never ship a key provider you haven't watched reject a bogus key.** Use a throwaway org
-(`e2e-…@treg.local`) and delete it after. Watch for the known traps: trailing-slash 307 (put the
-slash in `probe_path`), 200-with-error-body (read a body field), CSV/text responses.
+- `service` is the brand name in lowercase without spaces (`pinpointdata`). It is also the catalog
+  file name, its `provider`, and the `fx.yaml` key.
+- Put the key in a header (`token_header`, `token_format`) when the API allows it, so it never
+  appears in a URL.
+- `probe_path` is the free endpoint from step 1.
+- If the API answers 200 to an invalid key, add the field that tells them apart, from
+  [references/key-check.md](references/key-check.md).
+- A header every call needs (an API version) goes in `required_headers=(("name", "value"),)`.
+- A setup step beyond the key (a profile to complete, a plan to enable) goes in `setup_steps`.
 
-## Step 6 — core catalog YAML
+The logo is your own icon as an SVG (an embedded PNG is fine, as `hunter.svg` does), or a neutral
+lettermark (a letter on a plain shape).
 
-`src/treg/catalog/<service>.yaml`, following the schema in `catalog.md`. In order:
+### 5. Catalog file
 
-1. **Ingest** from OpenAPI if published (never hand-transcribe paths); else from docs with
-   `source.openapi: null`.
-2. **Select** ~8–15 endpoints; ALWAYS include ones matching capabilities other providers already
-   implement (overlap enables comparison).
-3. **Map** each to a capability from `capabilities.yaml`. Search the taxonomy AND the other
-   provider files for the job first; reuse an existing id, never a near-duplicate. Missing jobs go
-   under `proposed_capabilities:` in the provider file, not straight into the shared taxonomy —
-   and if another provider's endpoint already does the job unmapped, name it in the PR so the
-   reviewer attaches both to the new capability.
-4. **Describe** `input` (param names, types, required, location; constraints into `note`).
-5. **Cost, in the v2 spelling** - never a `cost:` block. Each row states its `price`; when the
-   request or the answer decides the charge, `reserve` / `settle` / `bill`; and its outcome
-   rules, `expect` / `error` / `miss` / `not_found`. What holds for every row of the provider
-   (`provenance`, the `bill` rule, a shared `expect`) goes once in the file header's `defaults:`.
-   The keys, the merge rule and the outcome order are `catalog-schema.md`; how each key bills is
-   `money.md` ("Rows in the v2 spelling"). Prefer a rate-card endpoint (`source: rate_card_api`)
-   over a pricing page.
-   A minimal file, header and one row:
+Write `src/treg/catalog/<service>.yaml` in the v2 spelling: each endpoint states a `price`, never a
+`cost:` block. Start from the example and look up keys in
+[references/catalog-v2.md](references/catalog-v2.md). Live files such as `hunter.yaml` also use keys
+few listings need (`cache`, plugins); write only keys that reference lists.
 
-   ```yaml
-   defaults:
-     provenance: {source: docs, source_url: 'https://acme.example/pricing', checked: '2026-11-09', confidence: documented}
+**Price: the entry-level public price.** What an ordinary customer pays at the entry level:
 
-   endpoints:
-     - id: acme.web.backlinks.summary
-       # … capability, platform, scope, method, path, name, summary, input, test_request …
-       price: {value: '0.002', currency: USD, per: 1, unit: call}
-       miss: {when: {path: response.data, op: absent}}
-       added: '2026-11-09'
-   ```
+- the pay-as-you-go rate, if there is one;
+- otherwise the cheapest paid plan, divided down to one unit (Starter, $49 a month for 2,000
+  credits, is $0.0245 a credit);
+- not a free tier, a volume or annual discount, or an enterprise or negotiated price.
 
-   For the full shape copy a live v2 file: `tikhub.yaml` (a provider that bills every 2xx:
-   `bill: {miss: charged, error: charged}` in `defaults:`, an `error` rule per row) or
-   `justoneapi.yaml` (a provider-wide `expect` in `defaults:`, a CNY price, `miss` rules).
-   **A provider already listed keeps its spelling:** rows added to it are written the way its
-   file's rows are, and a listing PR never respells a row. Moving rows between `cost` and v2 is a
-   migration batch's job, under the `catalog-migration` label; without it the `Catalog added
-   dates` workflow fails the respelt row.
-6. **test_request** per endpoint — CHEAP: smallest limit, one item, public well-known target.
-   ⚠️ Never probe with empty params "expecting a validation error": a no-required-params endpoint
-   returns its full default result set and bills for it (the Moz quota trap).
-7. **Write the summary and note** by the procedure below.
+Credit prices also need a rate in `src/treg/catalog/fx.yaml` at the same entry level, or validation
+fails.
 
-### Writing summary and note
+**Required beyond the obvious:**
 
-The rules are [`catalog-schema.md`, "Summary and note"](../../../docs/context/architecture/catalog-schema.md#summary-and-note);
-read them there. This is only the order to apply them in, to a row's `summary`, `note`, parameter
-notes and `price.note`:
+- A `miss` rule on every endpoint that finds or enriches something (a person, an email, a company):
+  how its answer looks when there is nothing to return. A verdict or a count is an answer, not a
+  miss: an email check that answers "invalid" is a hit.
+- A `test_request` that is the cheapest real call: one item, the smallest limit, a well-known
+  public target (a large company, a company founder), never a private person. An email input takes
+  an address of your own company (`support@yourapi.example`), never a third party's personal
+  address. Never leave parameters empty to provoke an error: an endpoint with no required
+  parameters returns its full default result and bills for it.
 
-1. Apply its "Most callers need it" rule to each sentence.
-2. Place each caveat that stays by its "A caveat goes to its most specific home first" bullet.
-3. **Run `uv run --frozen python scripts/catalog_validate.py` locally and read every warning** on
-   your rows (`--base origin/main` limits them to the rows you touched, as CI does).
-4. Put the evidence behind each sentence where that bullet says, with the Step 7b ledger.
+**Never write** `verified:`, `example_response`, or files under `src/treg/catalog/examples/`.
+Maintainers add those from their own run.
 
-## Step 7 — verify, scrub, validate
+### 6. Validate until clean
+
+Run, fix, and run again until both pass:
 
 ```bash
-TREG_CATALOG_CRED='<secret>' uv run --frozen python scripts/catalog_verify.py <service>.yaml
-uv run --frozen python scripts/catalog_added.py       # `added:` (today, UTC) on every new row
-uv run --frozen python scripts/catalog_validate.py    # must exit 0
-uv run --frozen python -m pytest -q
+uv run --frozen python scripts/catalog_added.py                         # writes `added:` dates
+uv run --frozen python scripts/catalog_validate.py --base origin/main   # must exit 0
 ```
 
-- Every endpoint row needs `added: 'YYYY-MM-DD'`, the UTC day the tool reaches main. The helper
-  above writes today's date where it is missing and never touches an existing one. If the PR waits
-  long, update the new rows' dates before merging. Never change the date of a tool that is already
-  on main.
+Read every warning printed for your endpoints. Fix it, or be able to say why it stays. Messages
+that name `cost.*` refer to the view treg derives from your `price`, `reserve` and `settle`.
 
-- Stamp `verified:` only on endpoints that PASSED **with a real target that returned real data and
-  billed the documented amount**. Docs lie; documented ≠ verified. Three stamp traps from #191:
-  - **Placeholder path params** (`urn:li:activity:0000…`, `id: 0`): providers return an empty
-    2xx for 0 credits. That proves the route exists, nothing else. Use a real id harvested from a
-    sibling endpoint's response and observe the charge once.
-  - **Preview / free modes** (`preview=true`) as the test_request: the free path is verified, the
-    paid price is not. Either observe the paid path once, or mark the ledger row "hit price
-    unobserved" - never let the stamp imply the price was confirmed.
-  - **A miss on a per_success route** (`{"phones":[]}`, 0 credits) proves miss=free, not the
-    hit price. Say so in the ledger.
-- **Declare the miss shape, or the router turns every miss into a 502.** Probe each find/enrich
-  endpoint once with a person who cannot exist and record status, body, latency and charge. The
-  routed waterfall reads only the endpoint's `miss:` block: a 2xx is hit-or-miss by the adapter's
-  predicate, and any 4xx is an ERROR unless `miss: {status, means}` names it — one error child
-  and the parent cannot answer "miss", so eight clean misses plus one undeclared 404 is a 502
-  (#573: 64% of three days of `treg.people.email.find` 502s were exactly this).
-  - LimaData answered 404 for "no email"; its note said "a 404 miss is free" but no
-    `miss:` block existed. Prose in `note` is documentation; only the `miss:` block is read.
-  - Prospeo answers 400 for BOTH `NO_MATCH` (a miss) and `INVALID_DATAPOINTS` (a real error). When
-    status alone cannot separate them the declaration needs a body predicate, not a
-    `provider == "x"` branch in `route.py` — provider knowledge lives in YAML and adapters only.
-  - The hit-only `example_response` hides the miss shape from every later reader; capture the
-    miss body too (scrubbed) or describe it in `means`.
-  - Record the miss-path latency. A provider whose miss is slow (LimaData 404: median 10 s) sits
-    late in the ladder or under a tighter child timeout, or a nine-child waterfall blows the
-    caller's client timeout.
-  - Test the miss under the ROUTED parent (`treg.<capability>`), not only the direct `/call/`;
-    the direct call looked fine for both providers.
-- **Settle ≤ reserve only on evidence.** If the code settles a modal price below its reserve
-  (e.g. drops a documented per-result rider because one 1-row probe didn't charge it), that is an
-  unproven assumption that under-bills treg on every call (#141 inverse). Settle at the estimate
-  until a multi-row balance delta shows the rider is not billed.
-- **Scrub every captured example** (this repo is public): no named private individuals
-  (contact-lookup routes get `untestable:` + no test_request + no example), no third-party
-  emails/phones riding along, no first-party account identity.
-- No credential value anywhere in the diff.
+### 7. Verify live with your own key
 
-## Step 7b — the verification evidence ledger (required in every listing PR)
+1. Call `probe_path` with your key and with a made-up key. Record both statuses and bodies, with
+   the date.
+2. Run every `test_request`, fix what fails, and run again until all pass:
 
-"Live-called all N tools" in prose is not evidence. The PR description carries **one table row per
-endpoint**, produced from your own run, so a reviewer can tell at a glance which stamps rest on an
-observation and which don't:
+   ```bash
+   TREG_CATALOG_CRED="$YOUR_KEY_VAR" uv run --frozen python scripts/catalog_verify.py <service>
+   ```
 
-```
-| endpoint | http | test target | credits observed | catalog price | matches? | evidence |
+   Do not pass `--write`.
+3. Check each endpoint's price against the meter: a charge field in the answer, a rate-card
+   endpoint, or the account balance before and after. The meter wins over the docs: correct the
+   file to the observed charge.
+   - Observe a charge on a target your key has not queried before; repeats can be cached and free.
+   - A deliberate miss (a target chosen so a pay-on-success endpoint charges nothing) proves only
+     that a miss is free. Observe one hit on a real target too.
+4. Call each endpoint that has a `miss` rule with a target that cannot exist (a search takes a
+   nonsense keyword). Record the status, body, latency and charge.
+5. Run the remaining checks:
+
+   ```bash
+   uv run --frozen python scripts/build_plugin.py        # commit every file it changes
+   uv run --with pytest-xdist pytest -n auto -q          # must pass
+   ```
+
+### 8. Rebase and open the pull request
+
+Rebase on the latest `main` first; catalog files move fast. Use this description, filling every
+section:
+
+```markdown
+Adds <Display name> (<what it does>) as a key provider: <N> endpoints.
+
+Contact: <a team address, e.g. partnerships@yourapi.example; the repository is public>
+
+## Verification ledger (<date>)
+
+| endpoint | http | test target | charge observed | catalog price | matches? | meter |
 |---|---|---|---|---|---|---|
-| svc.companies.search | 200 | stripe.com, limit 1 | 0.03 | per_result 0.03 | ✅ | `x-credits-used: 0.03` header |
-| svc.people.phone     | 200 | real profile | 0 (miss) | per_success 8 | ⚠️ hit unobserved | balance 945.75→945.75 |
-| svc.post.reactions   | 200 | urn:…7496332962049933312 | 2 | per_success 2 | ✅ | balance 937.75→935.75 |
+| <id> | 200 | <target> | <charge> | <price> | ✅ | <charge field, rate-card endpoint, or balance before → after> |
+
+Valid key on <probe_path> (<date>): <status> <body>
+Invalid key on <probe_path> (<date>): <status> <body>
+Miss: <id> on <target>: <status> <body>, <latency>, <charge>   (one line per endpoint with a miss rule)
+
+## Endpoint map
+
+Catalogued: ...
+Excluded: <endpoint> (<reason>), ...
+
+## Pricing
+
+<pricing page URL>, <the plan or rate the prices come from>, <billing model: per call, per result,
+per success, credits>.
+OpenAPI: <URL, or none>
+
+## Open questions
+
+<what the skill did not cover, and endpoints that save something in the caller's account; or none>
+
+catalog_validate.py: <result>. pytest: <result>.
 ```
 
-Rules for the ledger:
-- **`evidence` names the meter**: a charge header/field, a rate-card endpoint, or a balance delta
-  (before → after). "Docs say" is not a meter. Arithmetic across a batch is fine if the batch total
-  reconciles to the cent — state the reconciliation (`87.25 documented − 25 preview − 6 placeholder
-  − 8 miss = 48.25 observed ✓`).
-- **`matches?` is honest**: ✅ observed = catalog; ⚠️ partial (miss/preview/placeholder only —
-  say what was not observed); ❌ mismatch (then the YAML must already be corrected to the
-  observed value with `source: observed`).
-- Also record: the **bogus-key probe** (status + quoted body), balance before/after per provider,
-  `catalog_validate.py` and `build_plugin.py --check` output, the pytest count, and the date.
-- Prices that were observed get `provenance: {source: observed, confidence: verified}`; the
-  rest stay `documented`. The ledger and the YAML must agree — a ledger that contradicts its own YAML
-  bounces the PR.
+In `matches?`: ✅ observed equals the file; ⚠️ only part was observed (say what was not); ❌ they
+differed and the file now holds the observed value. A ledger that disagrees with its own file gets
+the pull request sent back.
 
-## Step 8 — optional extended tier
-
-If the vendor publishes a stable OpenAPI spec with example parameter values, add an
-`ingest_<service>()` to `scripts/catalog_ingest.py`, register it in `INGESTERS`, and generate
-`<service>.extended.yaml`. The core file's `defaults:` apply to the extended rows too, so a v2
-provider's ingester writes v2 keys against them, as `ingest_tikhub` and `ingest_justoneapi` do,
-or its output is converted with `scripts/catalog_v2.py --provider <slug> --apply`. Rules: never
-probe with a real call; platform = what the data is ABOUT; normalise platform slugs across
-providers. Bulk-verify with
-`catalog_verify_extended.py --dry-run` first, then with an explicit `--budget`.
-
-## Reviewing a vendor-RAISED PR (they wrote the files; you verify)
-
-The same pipeline, entered from the other end. Every vendor claim is **untrusted input** — one
-vendor PR was outright malicious (#92), and an honest one shipped a docs-transcribed price 5×
-under the real charge (#141, GitHub→LinkedIn: claimed 1 credit, metered 5). The order:
-
-1. **Gate on the required PR evidence** (per `docs/VENDORS.md` items 8–9): the Step 7b ledger
-   (per-endpoint status + claimed vs metered cost + meter evidence, dated) and the full-surface
-   map. Missing → ask for it before spending review time. A ledger that contradicts its own YAML
-   bounces the PR unreviewed. This applies to **internal** listing PRs too (#191 shipped with
-   prose claims and three stamps on a placeholder URN).
-2. **Diff hygiene first**: expected files only (registry entry, catalog YAML, logo, two test
-   lists, fx row), data-only changes, no credential values, no `verified:` stamps or committed
-   examples (those are yours to add).
-3. **Merge it onto current main locally** before verifying — catalog PRs staleness-conflict in
-   the shared test lists and REGISTRY tuple within days.
-4. **Independently verify with a key YOU control** (steps 5–7 above): watch the bogus-key
-   rejection yourself and quote the real wire body, run `catalog_verify.py` over every
-   test_request, and reconcile every row's price against the meter (charge field / rate-card
-   endpoint / balance delta) — the vendor's ledger is a cross-check, never the source of truth.
-   Where a price disagrees, fix it from the observed charge (`source: observed`,
-   `confidence: verified`) and tell the vendor their docs are stale. Post your own Step 7b table
-   as the review body and one inline comment per issue, anchored to the YAML/API line.
-   Read the keys from env only; if they arrived in chat, say they should be rotated.
-5. **Audit the curation against their surface map**: are the free count/pre-flight routes and
-   cheapest operation tiers in? Deliberate-miss test_requests labeled, with the hit price
-   observed once? per_success semantics actually observed (a miss settling at 0)?
-6. **Finish the maintainer half they can't**: front-door counts (llms.txt, skill.md, README) +
-   `scripts/build_plugin.py`, docs drift, and the tier-4 key slot (Step 2b — not optional; if
-   their prices can't support it, record why). Land your verified version (a maintainer branch
-   superseding their PR is fine); close their PR with credit and the findings.
-
-## Step 9 — done means
-
-- Validator exits 0; suite green; bogus-key rejection observed live and quoted
-- The PR description carries the Step 7b evidence ledger (one row per endpoint, meter named,
-  balances before/after, reconciliation), and the vendor's contact email — no credential value
-  anywhere
-- Every endpoint carries `verified:` + example backed by a real target and an observed charge, or
-  its ledger row states exactly what was not observed (hit price / rider / placeholder)
-- Every new row is in the v2 spelling (no `cost:` block) unless its provider's file is still in
-  today's
-- Every find/enrich endpoint with a routing adapter has its miss shape observed and, when the
-  miss is a 4xx, declared in `miss:`; the ledger row for the deliberate-miss probe shows the
-  status, body and latency
-- Platform-key slot shipped: `config.py` setting, `fx.yaml` rate from a real top-up,
-  `platform_eligible` test for the whole file; env value handed to Jason out-of-band with the
-  `TREG_PLATFORM_PROVIDERS` entry. Enabling in production is treg's call, not automatic, but the
-  PR must make it a one-line ops change.
-- Any settle-below-reserve logic is backed by a multi-row balance delta, and no provider credit
-  arithmetic is hardcoded in `api.py` that the YAML doesn't also state
-- Docs synced: run `bash .agents/skills/tools-registry-context/scripts/drift.sh`, update touched
-  fragments in the same commit
+After it is up: answer review comments and keep the branch rebased. Maintainers re-run every check,
+stamp the endpoints that pass, and email the contact address.

@@ -1,216 +1,81 @@
 # List your API on treg
 
-treg is the tool catalog for AI agents: endpoints discoverable by *capability* ("get a domain's
-backlink summary") rather than by vendor name. Agents search the catalog, compare providers side
-by side on price / measured success rate / speed, and call your API through treg's proxy with the
-credential injected server-side.
+treg is the tool catalog for AI agents. Agents find endpoints by the job they want done ("get a
+domain's backlink summary") rather than by vendor name, compare the providers that do that job on
+price, measured success rate and speed, and call the one they pick through treg's proxy, which adds
+the credential on the server.
 
-**What listing gets you:**
+## What listing gets you
 
-- **Discovery** — every agent connected to a treg deployment can find your endpoints when they
-  search for the job your API does, next to (and compared against) your competitors.
-- **Zero-friction customers** — teams that connect their own key to your API call you directly;
-  you keep the billing relationship. treg never sits between you and your customer's account.
-- **Metered platform traffic (optional)** — if your pricing is published and machine-checkable,
-  treg can serve your endpoints on *its own* key, metered per call from teams' prepaid balances.
-  That means paid usage from teams that never signed up with you. See "Platform-eligible" below.
+- **Paid traffic from teams that never signed up with you.** treg serves listed endpoints on its own
+  key and charges each call to the calling team's prepaid balance, so agents can call your API
+  without anyone opening an account with you first. Whether treg serves an API on its own key is
+  decided per provider after it is listed.
+- **Discovery.** Every agent connected to treg can find your endpoints when it searches for the job
+  your API does, next to your competitors and compared with them.
 
-## Eligibility
+Teams that already have an account with you can also connect their own key and call you directly.
 
-You need ALL of these. They exist because every listing is *live-tested*, not transcribed:
+## Requirements, and why
+
+Every listing is tested live, not transcribed from docs, so all of these must hold:
 
 | Requirement | Why |
 |---|---|
-| **Self-serve API keys** — sign up, get a key, no sales call | The whole listing pipeline runs in one session; sales-gated APIs can't be verified |
-| **Key rides in a header or query param** | treg injects credentials as a header (preferred) or query param. Keys embedded in the URL path are not supported |
-| **A free (or near-free) probe endpoint** that returns 2xx for a valid key and a distinguishable failure for an invalid one | Connect-time verification. We will literally send your API a garbage key and watch it get rejected — **an API that accepts any key cannot be listed** |
-| **Published pricing** with a stable URL | Costs in the catalog carry provenance (`source_url`, `checked`, `confidence`); "contact sales" prices can't be listed as numbers |
-| **Accurate docs** for your core endpoints: param names, types, required flags, and example *values* | Every listed endpoint gets a real test call; docs without example values can't be verified |
+| Self-serve API keys: sign up and get a key without a sales call | treg's maintainers verify every listing with a key of their own |
+| The key goes in a header, a query parameter or the JSON body | treg adds the key there on every call; a key inside the URL path cannot be added |
+| A free or near-free endpoint that answers a valid key and an invalid key differently | treg checks every key a team connects. We send your API a made-up key and watch it get refused: an API that accepts any key cannot be listed |
+| A public pricing page at a stable URL | Every price in the catalog cites where it came from; "contact sales" cannot be listed as a number |
+| Docs for your endpoints with parameter names, types and example values | Every listed endpoint gets a real test call |
 
-Strongly preferred (each one directly improves your listing):
+Each listed price is your **entry-level public price**: what an ordinary customer pays at the entry
+level (your pay-as-you-go rate, or your cheapest paid plan divided down to one unit), not a free
+tier, a volume discount or an enterprise price.
 
-- **An OpenAPI spec at a stable URL** — lets us machine-generate your *full* endpoint surface as
-  an "extended tier" (hundreds of routes), not just the hand-curated core 8–15.
-- **A machine-readable rate card endpoint** (an API route that returns your current per-endpoint
-  prices) — the strongest cost provenance we have, and the fastest route to platform eligibility.
-- **Per-success billing** (errors free) — makes verification and retries cheap, and means broken
-  calls never bill treg users.
-- **Documented rate limits**, including per-route limits, not just the account-wide one.
+Each of these improves a listing:
 
-## What to send us
+- **An OpenAPI spec at a stable URL.** treg can then list your whole surface from it, beyond the
+  core endpoints curated by hand.
+- **An endpoint that returns your current prices.** The strongest evidence a price can cite.
+- **Per-success billing** (failed calls free). Verification and retries stay cheap, and a broken
+  call never bills a treg user.
+- **Documented rate limits**, per endpoint as well as per account.
 
-The fastest route: paste the prompt from the **"List as vendor"** button on the dashboard's
-Catalog page into your coding agent — it follows the hosted instructions at
-[`/vendor-listing`](https://treg.to/vendor-listing) and opens the PR for you.
-Or open an issue or PR on this repo yourself, with:
+## How to apply
 
-0. **A contact email in the PR/issue description** (e.g. `Contact: partnerships@yourapi.com`) —
-   we use it to arrange a test credential for live verification; a PR without one cannot be
-   verified or merged
+Give your coding agent a prompt like this one (the **List as vendor** button on the treg
+dashboard's Catalog page copies one):
 
-1. `service` slug (lowercase), display name, and a one-line summary of what an agent can DO
-2. `base_url`, auth mechanics (header name + format, or query param name)
-3. Probe endpoint path + exact bad-key behavior (status code, or the JSON field that flips)
-4. Pricing page URL + billing model; rate-card endpoint if you have one
-5. Docs URL; OpenAPI spec URL if published
-6. Your 8–15 core endpoints, each with example parameter values and a cheap test target
-7. A test credential (or a small credits grant) sent privately once we reach out — **never in
-   the issue/PR** — so we can run live verification
-8. **A self-verification ledger**: before submitting, run every `test_request` live against your
-   own account and record, per endpoint, the HTTP status, the cost your YAML claims, and the cost
-   your meter actually charged (charge field, rate-card endpoint, or balance delta), dated. Docs
-   drift; meters don't. Deliberate-miss test targets must be labeled as such, with the hit price observed
-   once on a real target.
-9. **A full-surface map**: every documented operation, marked catalogued or excluded-with-reason —
-   including the free count/preview routes and your cheapest operation tiers, which are the ones
-   agents (and reviewers) look for first.
-
-The example below is the complete shape of a listing.
-
-## Example implementation — "Acme SEO"
-
-A fictional vendor: Acme SEO sells backlink data at `https://api.acmeseo.example/v1`, key in an
-`X-Api-Key` header, free `/account` route, $0.002 per successful request, pricing at
-`https://acmeseo.example/pricing`.
-
-### 1. Registry entry — `src/treg/oauth_providers.py`
-
-How a team connects a key, and how treg verifies it is real:
-
-```python
-ACMESEO = OAuthProvider(
-    service="acmeseo",
-    display_name="Acme SEO",
-    auth_kind="key",
-    token_label="API key",
-    token_placeholder="your Acme SEO API key",
-    token_header="X-Api-Key",
-    token_format="{secret}",
-    setup_url="https://acmeseo.example/dashboard/api-keys",
-    setup_action_label="Get your Acme SEO API key",
-    setup_steps=(
-        "Sign in to Acme SEO and open Settings → API Keys.",
-        "Copy your API key.",
-    ),
-    setup_note="Backlink queries are billed per successful request; the account check is free.",
-    auth_uri="", token_uri="",
-    scopes={},
-    client_id_setting="", client_secret_setting="",
-    category="SEO",
-    summary="Backlink profiles, referring domains and anchor texts for any domain or URL.",
-    base_url="https://api.acmeseo.example/v1",
-    docs_url="https://docs.acmeseo.example",
-    probe_path="/account",  # free — a bad key gets a 401 here
-)
+```
+Help me create a PR to treg (https://github.com/superdesigndev/treg) that adds our API to its tool
+catalog. Follow the instructions at https://treg.to/vendor-listing and include our contact email in
+the PR description.
 ```
 
-…added to the provider tuple that builds `REGISTRY`, plus a neutral lettermark at
-`src/treg/web/logos/acmeseo.svg` (`test_every_provider_has_a_logo` fails without it). The
-registry-wide tests pick the new entry up on their own; no test list needs editing.
+The agent opens one pull request on this repository: the registry entry, the catalog file, a logo,
+and a description with the evidence from its own live run against your account. Use a team address
+for the contact email; the repository is public. Never put a key in the pull request.
 
-If your API answers HTTP 200 even for a bad key, the entry instead names the body field that
-distinguishes them (`token_verify_field`, `token_ok_field`/`token_ok_value`, or
-`token_reject_field`) — tell us the exact behavior and we pick the right one.
+## After the pull request
 
-### 2. Core catalog file — `src/treg/catalog/acmeseo.yaml`
-
-What an agent can do, priced and verifiable:
-
-```yaml
-provider: acmeseo                  # must equal the registry entry's `service`
-source:
-  docs: https://docs.acmeseo.example
-  openapi: https://api.acmeseo.example/v1/openapi.json
-  curated: 2026-08-12
-limits: "60 requests/minute per key"
-pricing_url: https://acmeseo.example/pricing
-defaults:                                # what every row inherits
-  provenance: {source: docs, source_url: 'https://acmeseo.example/pricing', checked: '2026-08-12', confidence: documented}
-endpoints:
-  - id: acmeseo.web.backlinks.summary
-    capability: web.backlinks.summary     # the cross-provider join key, from capabilities.yaml
-    platform: web
-    scope: any_account                     # data about anything, not the caller's own account
-    method: GET
-    path: /backlinks/summary
-    name: "Backlink summary"
-    summary: "Aggregate backlink profile of a domain or URL"   # what the tool does (catalog-schema.md)
-    input:
-      queryParams:
-        target: {type: string, required: true, note: "domain or full URL", example: "moz.com"}
-        mode:   {type: string, required: false, note: "one of domain | url", example: "domain"}
-    test_request:                          # the CHEAP call verification replays
-      queryParams: {target: "moz.com", mode: "domain"}
-    price: {value: '0.002', currency: USD, per: 1, unit: call}   # misses and errors free by default
-    docs_url: https://docs.acmeseo.example/backlinks-summary
-    added: 2026-08-12                      # written by scripts/catalog_added.py
-  # …7–14 more endpoints, same shape
-```
-
-The `capability` field is what puts you on the comparison shelf: an agent asking for
-`web.backlinks.summary` sees every provider that implements it, with prices side by side. If
-your API does a job the taxonomy lacks, the file proposes it under `proposed_capabilities:`.
-
-Capability first, for every endpoint: search `capabilities.yaml` and the other provider files for
-the job before writing the field, and reuse an existing id rather than a near-duplicate. Propose a
-new one only when nothing covers the job; if another provider already has an endpoint doing it
-unmapped, name that endpoint in the PR so both get attached. Overlap is the point: endpoints that
-share a capability are the ones agents compare and route between.
-
-### 3. What we run before it merges
-
-Your self-verification ledger speeds this up but never replaces it: every claim in a vendor PR —
-prices, probe behavior, evidence — is re-checked against an **independent** live run with a
-credential we control. `verified:` stamps and example responses are ours to add, on what we
-watched succeed. A ledger that disagrees with its own YAML bounces the PR; a price that disagrees
-with our meter gets corrected from the observed charge.
-
-```bash
-# 1. Live bogus-key test: a garbage key POSTed to /connections/token must come back rejected
-# 2. Live verification of every endpoint's test_request (with the test credential, from env)
-TREG_CATALOG_CRED='<key>' uv run python scripts/catalog_verify.py acmeseo --write
-# 3. Schema + referential integrity
-uv run python scripts/catalog_validate.py     # must exit 0
-# 4. The full test suite
-uv run --frozen python -m pytest -q
-```
-
-Every endpoint row also carries `added:`, the UTC day it reached the catalog. Run
-`uv run python scripts/catalog_added.py` before opening the PR: it writes today's date on every
-row without one. An existing tool's date never changes.
-
-Endpoints that pass get a `verified:` date and a truncated, PII-scrubbed real example response
-committed to `src/treg/catalog/examples/` — that example is what convinces an agent choosing
-between providers, so passing verification is the listing's main asset.
-
-## Platform-eligible — getting paid calls from treg's own key
-
-Beyond discovery, treg can serve your endpoints on its **own** key, charging the calling team's
-prepaid balance per call. An endpoint qualifies when:
-
-- its cost is machine-computable in USD (a concrete `value`, or a convertible credit/unit rate),
-- the price's `confidence` is `verified` (observed billed, or read from your live rate card) or
-  `documented` (transcribed from your published pricing), and
-- it isn't an own-account or account-management route.
-
-Eligibility is necessary but not sufficient — treg also has to hold a funded account with you
-and allow-list your service, which is an ops decision made per provider. The fastest way to get
-there: publish a rate-card endpoint, bill per success, and give us a verification credit grant.
+Maintainers re-run every check with a key they control, correct any price that disagrees with
+their meter, and email the contact address about the next steps. Once it merges, agents can find
+and call your API, and treg shows each endpoint's measured success rate and latency next to its
+price: reliability is your ranking.
 
 ## What gets declined
 
-Recorded reasons from past reviews, so nobody wastes a cycle:
+Reasons from past reviews:
 
-- API accepts any key (no way to validate a connection)
-- Key embedded in the URL path
-- Sales-gated / enterprise-only access
-- Legal or shutdown risk; deprecated or absorbed products
-- UI-only products with no API
+- The API accepts any key, so a connection cannot be checked.
+- The key goes inside the URL path.
+- Sales-gated or enterprise-only access.
+- Legal or shutdown risk; deprecated or absorbed products.
+- UI-only products with no API.
 
 ## Keeping your listing healthy
 
-- **Prices moved?** Tell us or PR the `price` and `provenance` keys — stale prices are flagged after 90 days.
-- **Routes changed?** If you publish OpenAPI, a re-ingest regenerates your extended tier from
-  the spec; the curated core file is updated by hand, so breaking changes there need a heads-up.
-- **Success rates are public.** treg aggregates observed success rate and latency per endpoint
-  across all callers and shows them next to your price. Reliability is your ranking.
+- **Prices moved?** Open a pull request on the `price` and `provenance` keys, or tell us. A price
+  not checked for 90 days is flagged.
+- **Endpoints changed?** The hand-curated catalog file is updated by hand, so breaking changes need
+  a pull request or a heads-up. Endpoints listed from an OpenAPI spec are regenerated from it.
