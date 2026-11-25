@@ -19,7 +19,9 @@ def _cut(value, items: int, chars: int, keys: int, depth: int = 64):
     if isinstance(value, dict):
         if depth <= 0:
             return {"_keys": len(value)}
-        out = {k[:chars]: _cut(v, items, chars, keys, depth - 1) for k, v in list(value.items())[:keys]}
+        # Keys are never cut: two keys sharing a long prefix would collapse into one, and one value
+        # would silently replace the other. A key that does not fit is dropped and counted.
+        out = {k: _cut(v, items, chars, keys, depth - 1) for k, v in list(value.items())[:keys]}
         if len(value) > keys:
             out["_more_keys"] = len(value) - keys
         return out

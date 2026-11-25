@@ -1,12 +1,14 @@
 """The body pilot: negative reviews coded again with the call's answer in view, compared with the
 reason-only codes, writing nothing; and the shortened answer the judge reads."""
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from sqlmodel import select
 
+import treg
 from treg import archive, worker
 from treg.application import review_body_pilot, review_judge
 from treg.config import get_settings
@@ -19,6 +21,7 @@ from test_routing import enrichment_on  # noqa: F401 - pytest fixture
 from test_route_verify import verifiers_on  # noqa: F401 - pytest fixture
 
 V = review_codes.CODEBOOK_VERSION
+CATALOG = Path(treg.__file__).parent / "catalog"
 
 
 def test_shrink_keeps_structure_and_counts_cut_items():
@@ -39,6 +42,26 @@ def test_shrink_strips_html_and_cuts_text():
 
 REASON = "Half of the requested fields came back empty for these people."
 PEOPLE = json.dumps({"people": [{"email": None}] * 30})
+
+
+def test_shrink_never_merges_keys_that_share_a_prefix():
+    # The repository's CrustData example at the default budget: two long keys with one prefix.
+    example = json.loads((CATALOG / "examples/crustdata.people.search.json").read_text())
+    out = body_view.shrink(json.dumps(example), 4000)
+    assert len(out) <= 4000
+
+    def keys(value):
+        if isinstance(value, dict):
+            yield from value
+            for v in value.values():
+                yield from keys(v)
+        elif isinstance(value, list):
+            for v in value:
+                yield from keys(v)
+    original = set(keys(example)) | {"_more", "_more_keys", "_items", "_keys"}
+    assert set(keys(json.loads(out))) <= original
+    pair = {"company_professional_network_industry": "Software", "company_professional_network_profile_url": "u" * 90}
+    assert json.loads(body_view.shrink(json.dumps({"rows": [pair] * 20}), 600))["rows"][0].keys() == pair.keys()
 
 
 @pytest.mark.parametrize("budget", [0, -5])
