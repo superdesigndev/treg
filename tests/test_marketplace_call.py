@@ -1139,6 +1139,17 @@ def test_predictleads_per_response_rows_keep_the_vendor_limit():
         ep, b"", query=call_resolution.QueryValues((("limit", "1000"),)))
 
 
+def test_a_null_platform_request_body_field_must_be_absent_on_treg_key():
+    ep = {"id": "demo.enrich", "provider": "demo",
+          "input": {"bodyType": "json", "body": {"person": {"type": "object"}, "revealPhones": {"type": "object"}}},
+          "platform_request": {"body.revealPhones": None}}
+    call_resolution._enforce_platform_request(ep, b'{"person": {"name": "a"}}')
+    with pytest.raises(ResolutionFailed) as exc:
+        call_resolution._enforce_platform_request(ep, b'{"person": {}, "revealPhones": {"includePhones": true}}')
+    assert exc.value.detail["parameter"] == "body.revealPhones"
+    assert "includePhones" not in json.dumps(exc.value.detail)
+
+
 def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
     ep = {"id": "demo.scrape", "provider": "demo", "input": {},
           "platform_request": {"queryParams.type": None}}

@@ -113,7 +113,7 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
   (omitted when a condition is not one equality; its floor `table_min` is served either way),
-  `reserve.rows` with its parameter back in
+  `reserve.rows` (its `platform_max` included) with its parameter back in
   `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
