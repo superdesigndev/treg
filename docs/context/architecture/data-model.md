@@ -317,12 +317,13 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
   attempt's submission, an upgrade's own served child, under a merge the answer whose body is `raw`,
   not `served_by`). It names a child only when that child's body is the `raw` returned. NULL on a
   miss or a failure, when the router wrote `raw` itself (a declared-miss status, a failed async
-  task, a non-JSON body), on an answer an overflow aggregator served (that row shares the child's
-  ref with the direct attempt's, so a ref could not name one), on every non-routed row and on rows
-  written before 0127, successful ones included: NULL means no usable link was recorded, never that
-  no answer was served. Unindexed and never a foreign key: a reader starts from the parent by id and
-  reads the child by that exact ref through `ix_callrecord_call_ref`. It is not review credit
-  (`route_summary["credited"]`, [feedback](feedback.md)).
+  task, a non-JSON body), on a pending 202 (the caller got the submission ticket, not the answer
+  later filed under its ref), on an answer an overflow aggregator served (that row shares the
+  child's ref with the direct attempt's, so a ref could not name one), on every non-routed row and
+  on rows written before 0127, successful ones included: NULL means no usable link was recorded,
+  never that no answer was served. Unindexed and never a foreign key: a reader starts from the
+  parent by id and reads the child by that exact ref through `ix_callrecord_call_ref`. It is not
+  review credit (`route_summary["credited"]`, [feedback](feedback.md)).
 
 **Failure evidence.** `error_request` / `error_response` hold redacted, truncated failure evidence
 on every tier; `/calls` never fetches them, `GET /admin/errors` reads them, and

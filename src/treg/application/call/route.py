@@ -57,13 +57,14 @@ The parent's audit row names the child whose answer the caller received
 (for an async provider the submission: the finalizer archives the terminal answer under that ref,
 read with `archive.load_terminal_responses`; the polls' own rows carry no archive link), an
 upgrade's own served child `:u:r<m>`, under a merge the answer whose body is `raw` (not
-`served_by`, the first contributor), the submission of a pending async call. It names a child only
-when that child's body is the `raw` returned: a miss or failure names none, nor does an answer the
-router wrote itself (a declared-miss status, a failed async task, a non-JSON body: `raw` is `{}`),
-nor an answer an overflow aggregator served (its row shares the child's ref with the direct
-attempt's). So NULL means no usable link was recorded, not that no answer was served; rows written
-before 0127 are NULL too. Review credit (`route_summary.credited`) is a separate decision and stays
-the latest successful attempt.
+`served_by`, the first contributor). It names a child only when that child's body is the `raw`
+returned: a miss or failure names none, nor does an answer the router wrote itself (a declared-miss
+status, a failed async task, a non-JSON body: `raw` is `{}`), nor a pending call's submission
+ticket (the answer later filed under that ref is not what was delivered), nor an answer an overflow
+aggregator served (its row shares the child's ref with the direct attempt's). So NULL means no
+usable link was recorded, not that no answer was served; rows written before 0127 are NULL too.
+Review credit (`route_summary.credited`) is a separate decision and stays the latest successful
+attempt.
 """
 
 from __future__ import annotations
@@ -1665,7 +1666,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     await _remember_pending_task(parent, cand.endpoint["id"], descriptor,
                                                  waited.task_id, kickoff_raw)
                 _summarize(parent, served_by=cand.endpoint["id"], tried_count=len(tried))
-                parent.served_call_ref = child.call_ref   # the submission; its polls follow it
+                # No link: the caller got the submission's ticket, and the answer filed later
+                # under this ref is not what was delivered.
                 _audit_parent(parent, ep, 202, spent, audit_client)
                 return _json(body_out, 202, {
                     "X-Treg-Served-By": cand.endpoint["id"],

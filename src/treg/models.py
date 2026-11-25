@@ -695,7 +695,8 @@ class CallRecord(SQLModel, table=True):
     # answer is the terminal snapshot the finalizer archived under it
     # (`archive.load_terminal_responses`); the submission row's own hashes are the task ticket.
     # NULL on every other row, on a routed miss or failure, when the router wrote `raw` itself (a
-    # declared miss status, a failed async task, a non-JSON body), on an answer an overflow
+    # declared miss status, a failed async task, a non-JSON body), on a pending 202 (the caller got
+    # the submission ticket, not the answer later filed under its ref), on an answer an overflow
     # aggregator served (its row and the direct attempt's share one ref), and on rows written before
     # the column (0127). NULL means no usable link was recorded, never that no answer was served.
     # A logical reference only, never a foreign key: either row may be shed.

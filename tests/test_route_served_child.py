@@ -288,3 +288,22 @@ async def test_a_providers_own_miss_body_handed_over_stays_linked(clients, verif
     parent, child = await _served(r)
     assert parent.served_call_ref == f"{parent.call_ref}:r0" and child.status_code == 200
     assert await _archived(child) == r.json()["raw"]
+
+
+async def test_a_pending_call_links_no_child_even_after_its_task_finishes(clients, dropcontact_platform, monkeypatch):
+    """A 202 hands the caller the submission ticket. The answer filed under the submission's ref
+    once the task finishes was never delivered by this call, so the parent links nothing."""
+    from test_dropcontact_routing import _relay as dropcontact_relay
+
+    dropcontact_relay(monkeypatch, {"success": True, "data": [{"email": [
+        {"email": "person@company.com", "qualification": "nominatif@pro"}]}]}, [])
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.01)
+    r = await clients.post("/call/treg.people.email.find",
+                           json={"first_name": "Peter", "last_name": "Jackson", "domain": "company.com"},
+                           headers={"X-Treg-Route-Prefer": "dropcontact", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 202 and "request_id" in r.json()["raw"], r.text
+    task = r.json()["_treg"]["async"]["task_id"]
+    done = await clients.get("/call/dropcontact.jobs.get", params={"request_id": task})
+    assert done.status_code == 200 and "data" in done.json(), done.text
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    assert parent.status_code == 202 and parent.served_call_ref is None
