@@ -4605,6 +4605,35 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+AIFORDATABASE = OAuthProvider(
+    service="aifordatabase",
+    display_name="AI for Database",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="afd_…",
+    # Bearer header only; a key in a query parameter is not read (401).
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.aifordatabase.com/settings?tab=platform-keys",
+    setup_action_label="Get your AI for Database API key",
+    setup_steps=(
+        "Sign in to AI for Database as a workspace admin and open Settings, then API keys.",
+        "Click Create key, name it and copy the key (it starts with afd_); it is shown once.",
+    ),
+    setup_note="The key reads and queries the databases connected to your own AI for Database workspace. "
+               "Listing connections, schemas, workflows and dashboards and the key check are not charged per call. "
+               "Plain-English questions spend the AI credits of the member who created the key; the Team plan includes unlimited AI usage.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Read the schema of the databases connected to your AI for Database workspace, query them in read-only SQL or plain English, and run their SQL-check workflows.",
+    base_url="https://app.aifordatabase.com/api/v1",
+    docs_url="https://www.aifordatabase.com/docs/api-overview/",
+    # free, needs the key's `usage` scope; a bad key gets HTTP 401 {"error":{"code":"UNAUTHORIZED"}}
+    probe_path="/usage/budget",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4635,6 +4664,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Own-workspace databases
+        AIFORDATABASE,
     )
 }
 
