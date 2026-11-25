@@ -1112,6 +1112,33 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+@pytest.mark.parametrize(("items", "valid"), [
+    ((), True),
+    ((("limit", "1"),), True),
+    ((("limit", "100"),), True),
+    ((("limit", "101"),), False),
+    ((("limit", "1000"),), False),
+    ((("limit", "0"),), False),
+    ((("limit", "ten"),), False),
+    ((("limit", "5"), ("limit", "5")), False),
+])
+def test_predictleads_shared_key_lists_take_at_most_100_records(items, valid):
+    ep = {"id": "predictleads.jobs.discover", "provider": "predictleads", "cost": {"type": "per_result"}}
+    query = call_resolution.QueryValues(items)
+    if valid:
+        call_resolution._enforce_platform_request(ep, b"", query=query)
+    else:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, b"", query=query)
+        assert exc.value.detail["parameter"] == "queryParams.limit"
+
+
+def test_predictleads_per_response_rows_keep_the_vendor_limit():
+    ep = {"id": "predictleads.companies.job_openings", "provider": "predictleads", "cost": {"type": "per_call"}}
+    call_resolution._enforce_platform_request(
+        ep, b"", query=call_resolution.QueryValues((("limit", "1000"),)))
+
+
 def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
     ep = {"id": "demo.scrape", "provider": "demo", "input": {},
           "platform_request": {"queryParams.type": None}}
