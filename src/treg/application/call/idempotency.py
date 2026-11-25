@@ -95,7 +95,7 @@ def _idem_display(key: str) -> str:
     return key.rsplit(_IDEM_SCOPE_SEP, 1)[-1]
 
 
-def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "", surface: str | None = None) -> str:
+def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -> str:
     """What the label was used FOR, so reusing it on a different request can be caught.
 
     A client that reuses one label for two different requests has a bug. Quietly returning the first
@@ -107,20 +107,18 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "", s
     genuinely different lookups under one label matched, and the second was answered with the first
     one's data instead of the 422 this function exists to raise.
 
-    The SURFACE is part of it too when it is not `/call/`: a `/table/` caller receives a reshaped
-    answer, so a label first used on `/call/` must not replay its call there (or the other way), whose
-    call id would then name an answer the caller never saw. `/call/` fingerprints are unchanged.
+    The surface a label was taken on (`/call/` or `/table/`) is checked beside it, from
+    `IdempotentCall.surface`, not hashed into it (`_replay_idempotent`).
     """
-    return _fingerprint(method, rest, _canonical_json(body), query, surface)
+    return _fingerprint(method, rest, _canonical_json(body), query)
 
 
-def _raw_request_fingerprint(method: str, rest: str, body: bytes, query: str = "",
-                             surface: str | None = None) -> str:
+def _raw_request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -> str:
     """The fingerprint of the body's exact bytes, as labels taken before `_canonical_json` stored it."""
-    return _fingerprint(method, rest, body, query, surface)
+    return _fingerprint(method, rest, body, query)
 
 
-def _fingerprint(method: str, rest: str, body: bytes, query: str, surface: str | None = None) -> str:
+def _fingerprint(method: str, rest: str, body: bytes, query: str) -> str:
     h = hashlib.sha256()
     h.update(method.upper().encode())
     h.update(b"\0")
@@ -129,8 +127,6 @@ def _fingerprint(method: str, rest: str, body: bytes, query: str, surface: str |
     h.update((query or "").encode())
     h.update(b"\0")
     h.update(body or b"")
-    if surface:
-        h.update(b"\0surface:" + surface.encode())
     return h.hexdigest()
 
 
@@ -205,8 +201,8 @@ async def _claim_owner(key: str, caller: Caller, db: AsyncSession) -> str | None
 
 
 async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
-                             db: AsyncSession, *, raw_fingerprint: str | None = None
-                             ) -> IdempotentReplay | None:
+                             db: AsyncSession, *, raw_fingerprint: str | None = None,
+                             surface: str | None = None) -> IdempotentReplay | None:
     """The stored answer for this caller's label, or None if there is nothing to replay.
 
     Returns a real response, so the provider is never reached and no money moves. That is the whole
@@ -223,7 +219,12 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         await db.delete(row)
         await db.commit()
         return None
-    if row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint):
+    # A `/table/` caller receives a reshaped answer, so a label taken on one surface never replays on
+    # the other: its call id would name an answer that caller never saw. A label taken before the
+    # surface was kept (NULL) cannot say which, and replays as it always did rather than turning a
+    # retry of a call already made into a new paid one; such labels expire within the window.
+    crossed = row.surface is not None and row.surface != _surface(surface)
+    if crossed or (row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint)):
         raise IdempotencyFailed(
             "idempotency_mismatch", status_code=422,
             detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
@@ -250,6 +251,11 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         # money, not to a fresh reference for work that never happened.
         call_ref=row.call_ref or "",
     )
+
+
+def _surface(surface: str | None) -> str:
+    """The surface a label is kept under: `call` for `/call/` (whose `CallInput.surface` is None)."""
+    return surface or "call"
 
 
 def _utcnow() -> datetime:
@@ -505,7 +511,7 @@ async def _release_idempotent_claim(claim: tuple[int, str, str] | None) -> None:
 
 
 async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Caller,
-                            db: AsyncSession, *, call_ref: str) -> bool:
+                            db: AsyncSession, *, call_ref: str, surface: str | None = None) -> bool:
     """Take the label for this caller, or report that somebody else already has it.
 
     The pending row IS the lock. It goes in before the upstream call, so a concurrent retry loses the
@@ -529,7 +535,7 @@ async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Calle
 
     row = IdempotentCall(
         org_id=caller.org_id, membership_id=caller.membership.id, key=key, call_ref=call_ref,
-        request_fingerprint=fingerprint, endpoint_id=rest[:200], status="pending",
+        request_fingerprint=fingerprint, endpoint_id=rest[:200], surface=_surface(surface), status="pending",
         expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
         + timedelta(seconds=IDEMPOTENCY_WINDOW_S))
     db.add(row)

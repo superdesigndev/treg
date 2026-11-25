@@ -1784,6 +1784,9 @@ class IdempotentCall(SQLModel, table=True):
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
     endpoint_id: str = Field(default="")
+    # The surface the label was taken on, `call` or `table`: a label never replays on the other
+    # one. NULL on labels taken before it was kept (Alembic 0128), which replay as before.
+    surface: str | None = Field(default=None)
     # The X-Treg-Call-Id the FIRST call returned. A replay hands this back rather than a fresh
     # reference, so a retry resolves to the row that actually holds the money.
     call_ref: str = Field(default="")

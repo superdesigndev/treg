@@ -169,17 +169,18 @@ async def prepare_call_intake(
         return IntakeResult("", "", None, None, meta)
 
     body = await read_body()
-    fingerprint = _request_fingerprint(method, rest, body, raw_query, surface)
+    fingerprint = _request_fingerprint(method, rest, body, raw_query)
     async with session_maker() as db:
         replay = await _replay_idempotent(
             key, fingerprint, caller, db,
-            raw_fingerprint=_raw_request_fingerprint(method, rest, body, raw_query, surface))
+            raw_fingerprint=_raw_request_fingerprint(method, rest, body, raw_query), surface=surface)
         if replay is None:
             # Claim it now, before anything reaches a provider. Two retries can arrive together and both
             # miss the lookup above; the unique constraint is what makes the loser wait instead of making
             # a second upstream call. A check-then-act in Python would leave exactly the window this
             # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
-            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
+            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref,
+                                           surface=surface):
                 raise _in_progress(key, await _claim_owner(key, caller, db))
     if replay is not None:
         # Outside the session on purpose: a trimmed row's bytes may come from object storage.

@@ -1,4 +1,4 @@
-"""callreview.code_basis / answer_retry_at / answer_attempts and callrecord.surface
+"""callreview.code_basis / answer_retry_at / answer_attempts, callrecord.surface, idempotentcall.surface
 
 Revision ID: 0128
 Revises: 0127
@@ -10,7 +10,9 @@ an upgrade may follow), `answer` (with the answer), `reason_final` (no answer ca
 gone, or the delivery cannot be told). `answer_retry_at` and `answer_attempts` hold the back-off of
 an answer that could not be read yet. `callrecord.surface` names the surface a call came through
 when it is not `/call/` (`table`), so a judge never reads an archived body the caller received
-reshaped.
+reshaped. `idempotentcall.surface` (`call` or `table`) keeps an Idempotency-Key from replaying a
+call across the two surfaces; a label taken before it (NULL) replays as before and expires within
+the idempotency window.
 
 Nullable columns with no default, no index, no foreign key: catalog-only ALTERs on Postgres, no table
 rewrite, even on the hot audit table. Rows written before this revision keep NULL.
@@ -34,6 +36,7 @@ COLUMNS = (
     ("callreview", "answer_retry_at", sa.DateTime()),
     ("callreview", "answer_attempts", sa.Integer()),
     ("callrecord", "surface", sa.String()),
+    ("idempotentcall", "surface", sa.String()),
 )
 
 

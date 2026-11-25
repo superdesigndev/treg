@@ -335,7 +335,8 @@ async def test_a_table_call_records_its_surface(clients: AsyncClient, platform_o
 
 async def test_one_idempotency_key_never_replays_across_call_and_table(clients: AsyncClient, platform_on, table_on, monkeypatch):
     """A label first used on `/call/` is refused on `/table/` (and the other way): its replay would
-    name a call whose archived answer is not what the table caller received."""
+    name a call whose archived answer is not what the table caller received. The fingerprint is the
+    same on both; the label keeps its surface."""
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}'))
     h = {"Idempotency-Key": "cross-surface"}
     assert (await clients.get(f"/call/{EP}?aweme_id=x", headers=h)).status_code == 200
@@ -344,3 +345,30 @@ async def test_one_idempotency_key_never_replays_across_call_and_table(clients: 
     h2 = {"Idempotency-Key": "table-first"}
     assert (await clients.get(f"/table/{EP}?aweme_id=y", headers=h2)).status_code == 200
     assert (await clients.get(f"/call/{EP}?aweme_id=y", headers=h2)).status_code == 422
+
+
+async def test_a_label_taken_before_surfaces_were_kept_replays_on_either(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """A label an earlier build stored (no surface) cannot say which surface it was taken on: a retry
+    on either replays the call already made instead of being refused into a new paid call."""
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import IdempotentCall
+
+    calls = []
+    relay = _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}')
+
+    async def counted(*args, **kwargs):
+        calls.append(1)
+        return await relay(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", counted)
+    h = {"Idempotency-Key": "before-surfaces"}
+    assert (await clients.get(f"/table/{EP}?aweme_id=z", headers=h)).status_code == 200
+    async with session_maker() as db:
+        row = (await db.execute(select(IdempotentCall))).scalar_one()
+        assert row.surface == "table"
+        row.surface = None
+        await db.commit()
+    assert (await clients.get(f"/table/{EP}?aweme_id=z", headers=h)).status_code == 200
+    assert (await clients.get(f"/call/{EP}?aweme_id=z", headers=h)).status_code == 200
+    assert len(calls) == 1

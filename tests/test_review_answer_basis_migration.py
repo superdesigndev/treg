@@ -1,4 +1,5 @@
-"""0128 adds the review's code basis and answer back-off columns, and `callrecord.surface`; a rerun
+"""0128 adds the review's code basis and answer back-off columns, `callrecord.surface` and
+`idempotentcall.surface`; a rerun
 after an interrupted upgrade or downgrade acts only on what is left. The Postgres CI job runs these
 against a real server."""
 from importlib import import_module
@@ -39,7 +40,7 @@ async def _apply(direction):
 async def _columns() -> set[tuple[str, str]]:
     async with db._engine.connect() as connection:
         found = await connection.run_sync(lambda c: {
-            (t, col["name"]) for t in ("callreview", "callrecord") for col in sa.inspect(c).get_columns(t)})
+            (t, col["name"]) for t in ("callreview", "callrecord", "idempotentcall") for col in sa.inspect(c).get_columns(t)})
     return found & NAMES
 
 
