@@ -183,41 +183,26 @@ async def test_pilot_compares_codes_and_writes_nothing(clients, monkeypatch):
     assert await _codes() == before
 
 
-async def test_routed_review_reads_its_successful_attempt(clients, monkeypatch):
-    # The parent has no archive link; the answer is on the successful attempt, not on the failed
-    # one or the async poll, and another team's same-named attempt is never read.
-    org, other = await _org(clients), await _org(clients)
-    await _add(_review(org, "rt", "EMPTY", routed=True),
-               _record(org, "rt", tier="routed"),
-               _record(org, "rt:r1", "failed", status=502),
-               _record(org, "rt:r2", "child"),
-               _record(org, "rt:r2:p1", "poll"),
-               _record(other, "rt:r3", "foreign"))
-    _archive(monkeypatch, {"failed": "{}", "child": json.dumps({"results": []}), "poll": "{}", "foreign": "{}"})
-    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
-
-    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
-    assert out["coded"] == 1 and out["same_primary"] == 1
-    item = seen[0]["reviews"][0]
-    assert item["routed"] is True and json.loads(item["response"]["body"]) == {"results": []}
-
-
-async def test_routed_review_compares_only_an_answer_the_caller_got(clients, monkeypatch):
-    # A waterfall that moved on from a miss returned its last attempt's answer; a confirmed find
-    # (a hit, then its confirmer) returned the finder's while crediting the confirmer, so it is
-    # counted and never compared.
+async def test_a_routed_review_is_counted_and_never_compared(clients, monkeypatch):
+    # Whatever its attempts' rows say (here a waterfall that moved on from a miss), they cannot
+    # prove which answer the caller got (a confirm, an upgrade, a miss), so no routed answer is read.
     org = await _org(clients)
     await _add(_review(org, "wf", "EMPTY", routed=True), _record(org, "wf", tier="routed"),
                _record(org, "wf:r1", "wf-miss", hit=False), _record(org, "wf:r2", "wf-hit", hit=True),
-               _review(org, "cf", "EMPTY", routed=True), _record(org, "cf", tier="routed"),
-               _record(org, "cf:r1", "finder", hit=True), _record(org, "cf:r2", "confirmer", hit=False))
-    _archive(monkeypatch, {"wf-miss": "{}", "wf-hit": json.dumps({"email": "x"}),
-                           "finder": "{}", "confirmer": "{}"})
-    seen = _jev(monkeypatch, lambda q, item: {"choice": "ACCURACY"})
+               _review(org, "direct", "EMPTY"), _record(org, "direct", "kd"))
+    _archive(monkeypatch, {"wf-miss": "{}", "wf-hit": "{}", "kd": json.dumps({"results": []})})
+    read = []
+    real = archive.resolve_result
+
+    async def watched(key_hash, content_hash):
+        read.append(key_hash)
+        return await real(key_hash, content_hash)
+    monkeypatch.setattr(archive, "resolve_result", watched)
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
 
     out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
-    assert out["answer_unconfirmed"] == 1 and out["coded"] == 1
-    assert [json.loads(r["response"]["body"]) for r in seen[0]["reviews"]] == [{"email": "x"}]
+    assert out["answer_unconfirmed"] == 1 and out["coded"] == 1 and read == ["kd"]
+    assert [r["routed"] for r in seen[0]["reviews"]] == [False]
 
 
 async def test_a_confirmed_find_through_the_router_is_never_compared(clients, verifiers_on, monkeypatch):

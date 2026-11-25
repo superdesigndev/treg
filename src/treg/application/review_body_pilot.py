@@ -2,8 +2,8 @@
 
 The hourly judge (`application.review_judge`) codes a `partly` or `not_useful` review from its
 reason alone. This pilot takes the newest such reviews already coded under the current codebook
-whose call still has its answer on file (`archive.resolve_result`; for a routed call, the answer of
-the attempt the review is attributed to), asks Jev the same codebook
+whose direct call still has its answer on file (`archive.resolve_result`; a routed review is counted
+as `answer_unconfirmed`, see `_answer`), asks Jev the same codebook
 with the request and a shortened answer beside the reason (`review_codes.body_code_question`,
 `body_view.shrink`), and reports how the two codings compare.
 
@@ -26,7 +26,6 @@ from ..domain.feedback import body_view, review_codes
 from ..infra.db import session_maker
 from ..models import CallRecord, CallReview
 from ..timeutil import utcnow_naive
-from .feedback import served_attempt
 from .review_judge import NEGATIVE, _ask, configured
 
 WINDOW_DAYS = 28
@@ -54,24 +53,17 @@ async def _candidates(since, after: tuple | None, limit: int) -> list:
         return (await db.execute(page)).all()
 
 
-UNCONFIRMED = "unconfirmed"
-
-
-async def _answer(r) -> dict | str | None:
-    """The answer the reviewed call got, from the archive. A routed call has no archive link of
-    its own: its answer is that of the attempt the audit rows show was returned
-    (`feedback.served_attempt`), in the review's own team. `UNCONFIRMED` when they cannot show it
-    (a confirmed find returns the finder's answer while the review is credited to the confirmer):
-    such a review is counted, never compared against an answer the agent may not have seen."""
+async def _answer(r) -> dict | None:
+    """The answer the reviewed call got, from the archive, for a direct call (`r.routed_via` is
+    None; the caller counts routed reviews apart). A routed call has no archive link of its own,
+    and its audit rows cannot prove which attempt's answer was returned: with
+    X-Treg-Route-Confirm the review is credited to the confirmer while the finder's answer is
+    returned, an upgrade returns another vendor's answer, and a miss returns none. The route's
+    `served_by` is in the answer and the call event, not on the rows."""
     async with session_maker() as db:
-        if r.routed_via is not None:
-            record = await served_attempt(db, org_id=r.org_id, call_id=r.call_id)
-            if record is False:
-                return UNCONFIRMED
-        else:
-            record = (await db.execute(select(CallRecord).where(
-                CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
-            ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
+        record = (await db.execute(select(CallRecord).where(
+            CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
+        ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
         link = (record.archive_key_hash, record.archive_content_hash) if record is not None else (None, None)
     if None in link:
         return None
@@ -168,10 +160,10 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             if not r.reason.strip():  # coded NOREASON without asking; nothing to read beside the answer
                 out["no_reason"] += 1
                 continue
-            found = await _answer(r)
-            if found == UNCONFIRMED:
+            if r.routed_via is not None:  # which attempt's answer it got is not provable (`_answer`)
                 out["answer_unconfirmed"] += 1
                 continue
+            found = await _answer(r)
             if found is None:
                 out["no_body"] += 1
                 continue

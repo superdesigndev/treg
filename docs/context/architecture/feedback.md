@@ -450,11 +450,11 @@ answer in view: it pages through the negative reviews already coded under the cu
 newest first, until it has read `--sample` answers still on file, asks Jev the codebook again with the request and
 the answer shortened by `body_view.shrink` (long strings cut, long lists kept to their first items
 and a count, always valid JSON, every mark a cut leaves named in `body_view.MARKERS` and explained
-in the question), and prints how its codes compare with the reason-only ones. A routed review is
-compared only with an answer the audit rows prove the caller got (`feedback.served_attempt`: the
-last successful attempt, every earlier one a miss); a confirmed find returns the finder's answer
-while the review is credited to the confirmer (`feedback.answering_child`), so it is counted as
-`answer_unconfirmed` instead. A blank
+in the question), and prints how its codes compare with the reason-only ones. Routed reviews are
+counted as `answer_unconfirmed` and never compared: the audit rows cannot prove which answer the
+caller got (a confirmed find returns the finder's answer while the review is credited to the
+confirmer, `feedback.answering_child`; an upgrade returns another vendor's; a miss returns none),
+and the route's `served_by` is not stored on them. A blank
 reason is skipped; no Jev request starts after the deadline. It writes nothing and prints only
 counts, code pairs and review ids, never a reason, request or answer.
 
