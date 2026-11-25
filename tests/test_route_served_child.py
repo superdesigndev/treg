@@ -22,6 +22,7 @@ from test_route_confirm import ON as CONFIRM, _hunter
 from test_route_quality_upgrade import EMAIL, ENRICH, HARVEST_FIRST, _named, _Reader, enrich_on  # noqa: F401
 from test_route_verify import ASK, FIND, TOMBA_HIT, _relay, verifiers_on  # noqa: F401
 from test_dropcontact_routing import dropcontact_platform  # noqa: F401
+from test_routing import people_search_on  # noqa: F401
 
 TOMBA_MISS = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
 
@@ -31,6 +32,13 @@ async def _row(call_ref: str) -> CallRecord | None:
     await audit.drain()
     async with session_maker() as db:
         return (await db.execute(select(CallRecord).where(CallRecord.call_ref == call_ref))).scalars().first()
+
+
+async def _archived(row: CallRecord):
+    """The answer the archive holds for this row, parsed: what a reader of the link gets."""
+    import json
+    found = await archive.resolve_result(row.archive_key_hash, row.archive_content_hash)
+    return json.loads(found["response"]["body_text"])
 
 
 async def _served(r) -> tuple[CallRecord, CallRecord | None]:
@@ -49,7 +57,7 @@ async def test_a_waterfall_hit_links_its_last_attempt(clients, verifiers_on, mon
     parent, child = await _served(r)
     assert parent.served_call_ref == f"{parent.call_ref}:r1"
     assert child.endpoint_id == r.json()["_treg"]["served_by"] == "hunter.people.email.find"
-    assert child.archive_key_hash and child.archive_content_hash, "the child row leads to the archived answer"
+    assert await _archived(child) == r.json()["raw"], "the child row leads to the archived answer"
 
 
 async def test_a_miss_everywhere_links_no_child(clients, verifiers_on, monkeypatch):
@@ -164,3 +172,23 @@ async def test_an_async_find_links_the_poll_that_answered(clients, dropcontact_p
     parent, child = await _served(r)
     assert parent.served_call_ref.startswith(f"{parent.call_ref}:r0:p"), "the poll carries the answer"
     assert child is not None and child.status_code == 200
+
+
+async def test_a_merged_search_links_the_answer_whose_body_is_raw(clients, people_search_on, monkeypatch):
+    """`served_by` names the first contributor (exa), but `raw` is the last answer (parallel's
+    `entities`): the link follows `raw`, so reading it gives back exactly what the caller got."""
+    from test_routing import _person, _relay_by_provider
+
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"exa": [(200, {"results": [_person(0), _person(1)]})],
+         "parallel": [(200, {"entities": [_person(1), _person(2), _person(3), _person(4)]})]}, []))
+    r = await clients.post("/call/treg.people.search", json={"q": "head of tax in phoenix", "limit": 5},
+                           headers={"X-Treg-Route-Prefer": "exa,parallel"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["merged_from"] == ["exa.people.search", "parallel.people.search"]
+    assert d["_treg"]["served_by"] == "exa.people.search" and "entities" in d["raw"]
+    parent, child = await _served(r)
+    assert parent.served_call_ref == f"{parent.call_ref}:r1" and child.endpoint_id == "parallel.people.search"
+    assert await _archived(child) == d["raw"]

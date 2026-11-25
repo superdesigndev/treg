@@ -54,8 +54,9 @@ reported in `_treg.upgrade`. Both are opt-in.
 
 The parent's audit row names the child whose answer the caller received
 (`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>` (its answering poll
-`:r<n>:p<k>` for an async provider), an upgrade's own served child `:u:r<m>`, the first contributor
-of a merge, the submission of a pending async call. A miss or failure names none. Review credit
+`:r<n>:p<k>` for an async provider), an upgrade's own served child `:u:r<m>`, under a merge the
+answer whose body is `raw` (not `served_by`, the first contributor), the submission of a pending
+async call. A miss or failure names none. Review credit
 (`route_summary.credited`) is a separate decision and stays the latest successful attempt.
 """
 
@@ -1976,8 +1977,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     output["count"] = len(rows)
                 merged_from = contributed
                 served = merged_from[0]
-                served_ref = next((answered_by.get(id(c)) for c, _, core_i, _ in answers
-                                   if c.endpoint["id"] == served and (core_i.get(field) or [])), served_ref)
+                # `raw` stays the winner's body, so the link stays the winner's too: a reader of
+                # the served answer must find the bytes the caller received, not the first rows.
     # Holders of the asked role now first, past holders last (`row.rank_by_role`), merged or not.
     if plan.contract.row_rank and output and isinstance(output.get(plan.contract.row_of), list):
         output = {**output, plan.contract.row_of: plan.contract.rank_rows(plan.identity, output[plan.contract.row_of])}

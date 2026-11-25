@@ -314,7 +314,8 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
   ([archive](archive.md)).
 - `served_call_ref` (Alembic 0127): on a routed parent only, the `call_ref` of the child whose
   answer the caller received (`answered_by` in `route._run_routed`: the winning attempt, an async attempt's
-  answering poll, an upgrade's own served child, a merge's first contributor). NULL on a miss or a
+  answering poll, an upgrade's own served child, under a merge the answer whose body is `raw`,
+  not `served_by`). NULL on a miss or a
   failure, on every non-routed row and on rows written before 0127. Unindexed and never a foreign
   key: a reader starts from the parent by id and reads the child by that exact ref through
   `ix_callrecord_call_ref`. It is not review credit (`route_summary["credited"]`, [feedback](feedback.md)).
