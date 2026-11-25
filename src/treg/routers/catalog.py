@@ -39,11 +39,7 @@ def _provider_display(service: str) -> str:
 
 
 def _run_hint(ep: dict) -> str:
-    auth = (
-        "no provider key required" if ep.get("platform_auth") == "anonymous"
-        else "key injected server-side"
-    )
-    return f"{catalog_store.call_template(ep)}   # run it — {auth}"
+    return f"{catalog_store.call_template(ep)}   # run it — {catalog_store.provider_auth_hint(ep)}"
 
 
 def _platform_rows() -> list[dict]:
@@ -782,6 +778,7 @@ async def catalog_endpoint(
                                                      "best measured quality first, each at its own price; the answer is "
                                                      "_treg.decision {decided, decided_by, ordered_by}"} if contract and contract.verdict_decisive else {})},
         }
+    overflow_hint = catalog_store.overflow_billing_hint(ep["provider"], overflow)
     return {
         "endpoint": view | ({"routed_children": ep.get("routed_children")} if ep.get("kind") == "routed" else {}),
         "provider": {"service": ep["provider"], "display_name": _provider_display(ep["provider"]),
@@ -795,11 +792,7 @@ async def catalog_endpoint(
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
         "hints": [_run_hint(ep)]
-                 + ([f"when treg's own {ep['provider']} account is out this may be served through the "
-                     f"overflow relay ({overflow['overflow_via']}) and bill "
-                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
-                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
-                    if overflow else [])
+                 + ([overflow_hint] if overflow_hint else [])
                  + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
                     if siblings else []),
     }

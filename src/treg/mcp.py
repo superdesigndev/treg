@@ -138,6 +138,7 @@ _TEAM_SURFACE = _SurfacePolicy(
 # over supplied evidence) generates none of them and stays. The team `/mcp/` keeps every platform.
 _DIRECTORY_HIDDEN_PLATFORMS = frozenset({"image-gen", "video-gen", "voice-gen", "music-gen"})
 _DIRECTORY_HIDDEN_NOTE = "this connector does not offer image, video, voice or music generation"
+_DIRECTORY_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _DIRECTORY_SURFACE = _SurfacePolicy(
     client_name="claude-connector",
     event_source="claude-connector",
@@ -1602,40 +1603,17 @@ async def catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
 
 
 def _mcp_call_template(ep: dict[str, Any], your_values: dict[str, Any] | None = None) -> str:
-    """Build MCP arguments using the same required examples as the CLI template."""
-    inp = ep.get("input") or {}
-    test = ep.get("test_request") or {}
-    auth_methods = tuple(ep.get("authorization_methods") or ())
-    auth_method = str(ep.get("authorization_method") or (auth_methods[0] if auth_methods else ""))
-    method = ep["method"]
+    template = catalog_store.call_template_parts(ep, your_values, merge_path_params=True)
     args: dict[str, Any] = {"endpoint_id": ep["id"]}
-    if auth_method and len(auth_methods) <= 1:
-        args["authorization_method"] = auth_method
+    if template.authorization_method:
+        args["authorization_method"] = template.authorization_method
 
-    query = {
-        **catalog_store.required_examples(inp.get("pathParams"), auth_method),
-        **(test.get("pathParams") or {}),
-        **catalog_store.required_examples(inp.get("queryParams"), auth_method),
-        **(test.get("queryParams") or {}),
-    }
-    body = test.get("body") if test.get("body") is not None else (
-        catalog_store.required_examples(inp.get("body"), auth_method) or None
-    )
-    body_values = {}
-    for dotted, value in (your_values or {}).items():
-        slot, _, field = dotted.partition(".")
-        if slot in ("pathParams", "queryParams"):
-            query[field] = value
-        elif slot == "body":
-            body_values[field] = value
-    if body_values:
-        body = {**(body or {}), **body_values}
-
+    method, query, body = template.method, template.query_params, template.body
     reads_query = method in ("GET", "HEAD", "DELETE")
     if query:
         args["params" if reads_query else "query"] = query
-    if (test.get("bodyType") or inp.get("bodyType")) == "multipart":
-        files = test.get("files") or {}
+    if template.body_type == "multipart":
+        files = template.files
         if body is not None:
             args["form"] = {name: value for name, value in body.items() if name not in files}
         if files:
@@ -1650,7 +1628,6 @@ def _mcp_call_template(ep: dict[str, Any], your_values: dict[str, Any] | None = 
 
 
 def _compact_siblings(siblings: list[dict[str, Any]], cat: catalog_store.Catalog) -> list[dict[str, Any]]:
-    """Keep the comparison fields in the order supplied by the endpoint route."""
     fields = ("id", "provider", "name", "kind", "hub", "status", "status_note",
               "superseded_by", "verified", "estimated")
     out = []
@@ -1673,7 +1650,6 @@ def _compact_siblings(siblings: list[dict[str, Any]], cat: catalog_store.Catalog
 
 
 def _compact_routing(routing: dict[str, Any]) -> dict[str, Any]:
-    """Drop null noise from routing plan rows while preserving all contract/plan fields."""
     compacted = dict(routing)
     if isinstance(compacted.get("plan"), list):
         compacted["plan"] = [
@@ -1683,20 +1659,21 @@ def _compact_routing(routing: dict[str, Any]) -> dict[str, Any]:
     return compacted
 
 
-def _mcp_catalog_hints(out: dict[str, Any]) -> list[str]:
-    """Replace CLI command hints with surface-neutral MCP hints while preserving overflow notices."""
-    orig_hints = out.get("hints") if isinstance(out.get("hints"), list) else []
-    overflow_hints = [h for h in orig_hints if isinstance(h, str) and "overflow relay" in h]
-    is_routed = bool((out.get("routing") or {}).get("plan"))
-    primary = (
-        "Pass the JSON in call_template as arguments to `call` (V1) or to `catalog_call_read` "
-        "(V2 GET/HEAD/OPTIONS) or `catalog_call_write` (V2 POST/PUT/PATCH/DELETE)."
-    )
-    if is_routed:
-        primary += (" Set a USD ceiling with V1 `call`'s `max_cost_usd` or pass "
-                    "`X-Treg-Route-Max-Cost` in `headers` on either surface. Pass other routing "
-                    "controls in `headers`.")
-    hints_out = [primary, *overflow_hints]
+def _mcp_catalog_hints(out: dict[str, Any], raw_ep: dict[str, Any], *, surface: _SurfacePolicy) -> list[str]:
+    if surface is _TEAM_SURFACE:
+        tool = "call"
+        ceiling_arg = "the `max_cost_usd` argument or "
+    else:
+        tool = "catalog_call_read" if raw_ep["method"] in _DIRECTORY_READ_METHODS else "catalog_call_write"
+        ceiling_arg = ""
+    auth = catalog_store.provider_auth_hint(raw_ep)
+    primary = f"Pass the JSON in `call_template` as arguments to `{tool}` ({auth})."
+    if (out.get("routing") or {}).get("plan"):
+        primary += (f" Set a USD ceiling with {ceiling_arg}`X-Treg-Route-Max-Cost` in `headers`."
+                    " Pass other routing controls in `headers`.")
+    hints_out = [primary]
+    if overflow := catalog_store.overflow_billing_hint(raw_ep["provider"], out):
+        hints_out.append(overflow)
     sibs = out.get("siblings") if isinstance(out.get("siblings"), list) else []
     if sibs and isinstance(sibs[0], dict) and sibs[0].get("id"):
         top = sibs[0]
@@ -1751,7 +1728,6 @@ async def _catalog_get_impl(
             out["overflow_price_usd"] = ep["overflow_price_usd"]
             out["overflow_price_unit"] = ep.get("overflow_price_unit")
             out["overflow_via"] = ep.get("overflow_via")
-        # Avoid repeating the CLI template inside endpoint; top-level call_template carries MCP args.
         if raw_ep is not None:
             ep.pop("call_template", None)
     if isinstance(out, dict):
@@ -1766,7 +1742,7 @@ async def _catalog_get_impl(
         elif isinstance(out.get("siblings"), list):
             out["siblings"] = _compact_siblings(out["siblings"], cat)
         if raw_ep is not None:
-            out["hints"] = _mcp_catalog_hints(out)
+            out["hints"] = _mcp_catalog_hints(out, raw_ep, surface=surface)
     return out
 
 
@@ -2551,7 +2527,7 @@ async def directory_catalog_call_read(
         endpoint_id, params=params, idempotency_key=idempotency_key, query=query, headers=headers,
         authorization_method=authorization_method,
         ctx=ctx, catalog_only=True, surface=_DIRECTORY_SURFACE,
-        allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+        allowed_methods=_DIRECTORY_READ_METHODS,
     )
 
 

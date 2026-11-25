@@ -62,7 +62,7 @@ behavior.
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route, error shape, MCP call arguments and hints, and compact siblings in the route's evidence order | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
+| endpoint details | the `/catalog/endpoints/{id}` route, error shape, MCP call arguments, provider auth and overflow notices, and compact siblings in the route's evidence order | client attribution and hints for the available call tool and ceiling options; the directory surface refuses endpoints on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
 | calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools and exposes `call.max_cost_usd`; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
@@ -74,16 +74,20 @@ stay separate because names, descriptions, schemas and safety annotations are pu
 `build_mcp_app` refuses a server and OAuth resource-version pair naming different surfaces.
 
 For catalog endpoints, MCP `catalog_get` returns `call_template` as a JSON string containing tool
-arguments. Its hints name `call` for V1 and the method-appropriate `catalog_call_read` or
-`catalog_call_write` for V2. Multipart templates put fields in `form` and name the files to supply
-in `uploads`. Hub tools keep the example in `endpoint.call_template`. Direct endpoint siblings
-carry the advertised USD price where known, the compact price quote including any trial limit,
-all available observations and the team count and shares when reviews are present. Routed endpoints
-show `routing.plan` and `routing.also` for comparison.
+arguments. Its hints name only the tools available on that surface: `call` on the team surface,
+and `catalog_call_read` (GET, HEAD, OPTIONS) or `catalog_call_write` (POST, PUT, PATCH, DELETE) on
+the directory surface. Both say whether the provider needs a key and format any overflow
+disclosure from the quoted price, unit and relay. For a routed endpoint, both surfaces show how to
+set a USD ceiling with `headers["X-Treg-Route-Max-Cost"]` and put other routing controls in
+`headers`, and the team surface also names `max_cost_usd`. Multipart templates put fields in `form`
+and name the files to supply in `uploads`. Hub tools keep the example in `endpoint.call_template`.
+Direct endpoint siblings carry the advertised USD price where known, the compact price quote
+including any trial limit, all available observations and the team count and shares when reviews
+are present. Routed endpoints show `routing.plan` and `routing.also` for comparison.
 
-Use the V1 `call.max_cost_usd` argument or set `headers["X-Treg-Route-Max-Cost"]` on either
-surface to cap a call billed from the team's treg balance. If a V1 caller supplies both, the values
-must match. The V2 tool schemas stay fixed.
+Use the team surface's `call.max_cost_usd` argument or `headers["X-Treg-Route-Max-Cost"]` on
+either surface to cap any call billed from the team's treg balance. If a team-surface caller
+supplies both, the values must match. The V2 tool schemas stay fixed.
 
 When either surface or shared MCP code changes, review both; tests must compare the shared behavior
 and prove the listed differences. Keep these V2 properties fixed unless a new directory review

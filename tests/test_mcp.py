@@ -1672,6 +1672,42 @@ async def test_catalog_get_shows_what_a_FREE_endpoint_bills_through_the_relay(cl
         assert overflow_hint in out["hints"]
 
 
+def test_catalog_get_builds_the_overflow_hint_from_billing_fields():
+    from treg import mcp
+
+    ep = {"method": "GET", "provider": "example"}
+    billing = {
+        "overflow_via": "relay",
+        "overflow_price_usd": 0.125,
+        "overflow_price_unit": "result",
+    }
+    unrelated = {"hints": ["old route prose about an overflow relay (wrong)"]}
+    for surface in (mcp._TEAM_SURFACE, mcp._DIRECTORY_SURFACE):
+        plain_hint, = mcp._mcp_catalog_hints(unrelated, ep, surface=surface)
+        primary, overflow = mcp._mcp_catalog_hints(billing | unrelated, ep, surface=surface)
+        assert primary == plain_hint
+        assert "treg's own example account is out" in overflow
+        assert "overflow relay (relay)" in overflow and "$0.125 per result" in overflow
+        assert "X-Treg-Served-Via / served_via" in overflow
+
+
+@pytest.mark.parametrize(("endpoint_id", "auth_note", "other_note"), [
+    ("ashby.companies.jobs", "no provider key required", "key injected server-side"),
+    ("tikhub.tiktok.video.comments", "key injected server-side", "no provider key required"),
+])
+async def test_catalog_get_explains_provider_auth_on_both_surfaces(clients, endpoint_id, auth_note, other_note):
+    from test_mcp_directory import _call_tool as _directory_call, directory_session
+
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": endpoint_id}
+    async with mcp_session(clients) as client:
+        team = await _call_tool(client, "catalog_get", args, token)
+    async with directory_session() as client:
+        directory = await _directory_call(client, "catalog_get", args, token)
+    for out in (team, directory):
+        assert auth_note in out["hints"][0] and other_note not in out["hints"][0]
+
+
 async def test_a_lone_surrogate_in_an_upstream_body_still_returns_the_paid_answer(clients, monkeypatch):
     """A JavaScript scraper that cuts a LinkedIn post mid-pair sends `"\\ud835"`. The SDK's pydantic
     dump refused it, so the agent got "Error serializing to JSON" and lost the body, call_id and cost
@@ -1892,6 +1928,62 @@ async def test_catalog_get_call_template_uses_the_endpoint_wire_contract(clients
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_get", {"endpoint_id": endpoint_id}, token=token)
     assert json.loads(out["call_template"]) == {"endpoint_id": endpoint_id, **expected}
+
+
+def test_cli_and_mcp_call_templates_share_required_examples_and_test_values():
+    import shlex
+
+    from treg import mcp
+    from treg.domain.catalog import store
+
+    ep = {
+        "id": "example.write", "method": "POST", "authorization_methods": ["app", "oauth"],
+        "input": {
+            "pathParams": {"id": {"required": True, "example": "fallback"}},
+            "queryParams": {
+                "limit": {"required": True, "example": 10, "authorization_methods": ["app"]},
+                "oauth_only": {"required": True, "type": "string", "authorization_methods": ["oauth"]},
+            },
+            "body": {"payload.name": {"required": True, "example": "example name"}},
+        },
+        "test_request": {"pathParams": {"id": "actual"}, "queryParams": {"live": False}},
+    }
+    cli = shlex.split(store.call_template(ep))
+    args = json.loads(mcp._mcp_call_template(ep))
+    assert cli == [
+        "treg", "call", ep["id"], "--method", "POST", "--query", "id=actual",
+        "--query", "limit=10", "--query", "live=false", "--data", '{"payload":{"name":"example name"}}',
+    ]
+    assert args == {
+        "endpoint_id": ep["id"], "query": {"id": "actual", "limit": 10, "live": False},
+        "body": json.loads(cli[-1]),
+    }
+    assert json.loads(mcp._mcp_call_template(ep, {
+        "pathParams.id": "team", "queryParams.live": True, "body.payload.name": "caller name",
+    })) == {
+        "endpoint_id": ep["id"], "query": {"id": "team", "limit": 10, "live": True},
+        "body": {"payload": {"name": "caller name"}},
+    }
+
+
+@pytest.mark.parametrize("body", [{}, [{"name": "example"}], "raw body"])
+def test_cli_and_mcp_call_templates_keep_explicit_bodies(body):
+    import shlex
+
+    from treg import mcp
+    from treg.domain.catalog import store
+
+    ep = {
+        "id": "example.write", "method": "POST", "authorization_method": "oauth",
+        "test_request": {"body": body},
+    }
+    assert shlex.split(store.call_template(ep)) == [
+        "treg", "call", ep["id"], "--method", "POST", "--authorization-method", "oauth",
+        "--data", json.dumps(body, separators=(",", ":")),
+    ]
+    assert json.loads(mcp._mcp_call_template(ep)) == {
+        "endpoint_id": ep["id"], "authorization_method": "oauth", "params": body,
+    }
 
 
 async def test_call_max_cost_usd_enforces_a_metered_platform_ceiling(clients, platform_on, monkeypatch):
