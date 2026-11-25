@@ -695,7 +695,8 @@ class CallRecord(SQLModel, table=True):
     # (`archive.load_terminal_responses`), is the delivered one only when its content hash is
     # `served_content_hash` below. Anything else is archive unavailable.
     # NULL on every other row, on a routed miss or failure, when the router wrote `raw` itself (a
-    # declared miss status, a failed async task, a non-JSON body), on a pending 202 (the caller got
+    # declared miss status, a failed async task, a non-JSON body), when re-serializing `raw` changes
+    # a number in it (a float past 15 significant digits), on a pending 202 (the caller got
     # the submission ticket, not the answer later filed under its ref), on an answer an overflow
     # aggregator served (its row and the direct attempt's share one ref), and on rows written before
     # the column (0127). NULL means no usable link was recorded, never that no answer was served.

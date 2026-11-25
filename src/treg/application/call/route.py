@@ -59,7 +59,8 @@ read with `archive.load_terminal_responses`; the polls' own rows carry no archiv
 upgrade's own served child `:u:r<m>`, under a merge the answer whose body is `raw` (not
 `served_by`, the first contributor). It names a child only when that child's body is the `raw`
 returned: a miss or failure names none, nor does an answer the router wrote itself (a declared-miss
-status, a failed async task, a non-JSON body: `raw` is `{}`), nor a pending call's submission
+status, a failed async task, a non-JSON body: `raw` is `{}`), nor an answer whose numbers the
+re-serialized `raw` changes (a float past 15 significant digits), nor a pending call's submission
 ticket (the answer later filed under that ref is not what was delivered), nor an answer an overflow
 aggregator served (its row shares the child's ref with the direct attempt's). So NULL means no
 usable link was recorded, not that no answer was served; rows written before 0127 are NULL too.
@@ -77,6 +78,7 @@ import json
 import re
 import logging
 import unicodedata
+from decimal import Decimal
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -1970,6 +1972,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # The exact bytes this call hands back as `raw`, hashed as the archive hashes a body
     # (`archive.content_hash`): a reader takes an archived answer for this call only when its
     # `content_hash` is this one.
+    if served_ref and isinstance(raw, bytes) and not _numbers_survive(raw):
+        served_ref = None   # `raw` is delivered re-serialized; a number it changes breaks the link
     served_hash = hashlib.sha256(raw).hexdigest() if served_ref and isinstance(raw, bytes) else None
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
@@ -2276,6 +2280,38 @@ def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallCont
     else:
         return
     _summarize(parent, route_rule=route)
+
+
+# A number whose float can differ from its text: 16+ digits (dots included) or an exponent. Shorter
+# decimals survive a float round trip exactly (15 significant digits), so most bodies skip the parse.
+_LONG_NUMBER = re.compile(rb"\d[\d.]{15,}|\d[eE][-+]?\d")
+
+
+class _NumberChanged(ValueError):
+    pass
+
+
+def _exact_float(text: str) -> float:
+    value = float(text)
+    if Decimal(repr(value)) != Decimal(text):
+        raise _NumberChanged(text)
+    return value
+
+
+def _numbers_survive(raw: bytes) -> bool:
+    """Whether every number in this JSON body keeps its value once parsed and serialized again,
+    as the routed answer's `raw` is: `9007199254740993.0` comes back `...992.0` and `1e400`
+    `Infinity`. Integers are exact. Only then does an archived copy of these bytes equal, in
+    value, what the caller received (`CallRecord.served_content_hash`)."""
+    if not _LONG_NUMBER.search(raw):
+        return True
+    try:
+        json.loads(raw, parse_float=_exact_float)
+    except _NumberChanged:
+        return False
+    except ValueError:
+        return True   # not JSON: the caller got `{}`, and that branch links nothing already
+    return True
 
 
 def _summarize(parent: CallContext, **outcome) -> None:

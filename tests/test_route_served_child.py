@@ -425,3 +425,56 @@ async def test_an_async_provider_finished_on_submission_reads_its_own_archive(cl
     child = await _row(parent.served_call_ref)
     assert await archive.load_terminal_responses([(child.call_ref, child.endpoint_id)]) == {}
     assert await _delivered(parent) == r.json()["raw"]
+
+
+def _exactly(body: bytes | str):
+    """A JSON body with its numbers as written: float asserts would hide the difference."""
+    from decimal import Decimal
+    return json.loads(body, parse_float=Decimal)
+
+
+def _bytes_relay(payload: bytes):
+    """A provider answering these exact bytes (Python's json would round the numbers first)."""
+    from treg.application.call.types import UpstreamResponse
+    from treg.infra.upstream import relay as relay_module
+
+    async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        if (on_send := relay_module.ON_SEND.get()) is not None:
+            on_send()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+    return relay
+
+
+async def _found_with(clients, monkeypatch, extra: bytes):
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    body = json.dumps(TOMBA_HIT[1]).encode()[:-1] + b", " + extra + b"}"
+    monkeypatch.setattr(call_service, "relay", _bytes_relay(body))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Prefer": "tomba"})
+    assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "hit", r.text
+    return r, await _row(r.headers["X-Treg-Call-Id"])
+
+
+async def test_a_number_the_delivered_raw_changes_is_not_linked(clients, verifiers_on, monkeypatch):
+    """`raw` is delivered parsed and serialized again, so a float past 15 significant digits comes
+    back changed (`9007199254740993.0` as `...992.0`) while the archive keeps the provider's text.
+    The hashes of the bytes would still match, so the router links nothing."""
+    r, parent = await _found_with(clients, monkeypatch, b'"account": 9007199254740993.0')
+    child = await _row(f"{parent.call_ref}:r0")
+    archived = _exactly(await archive.answer_bytes(child.archive_key_hash, child.archive_content_hash))
+    assert archived["account"] != _exactly(r.content)["raw"]["account"], "the caller got another number"
+    assert parent.served_call_ref is None and parent.served_content_hash is None
+
+
+async def test_numbers_that_survive_keep_the_link(clients, verifiers_on, monkeypatch):
+    """The control: long but exact numbers (a big integer, a 15-digit decimal) come back as written."""
+    r, parent = await _found_with(clients, monkeypatch, b'"id": 90071992547409930001, "share": 0.123456789012345')
+    assert parent.served_call_ref == f"{parent.call_ref}:r0"
+    child = await _row(parent.served_call_ref)
+    archived = _exactly(await archive.answer_bytes(child.archive_key_hash, parent.served_content_hash))
+    assert archived == _exactly(r.content)["raw"]
