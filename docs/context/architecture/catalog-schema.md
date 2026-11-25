@@ -118,7 +118,9 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
   reads a v2 row unchanged; billing never reads it
-  ([money](money.md#rows-in-the-v2-spelling)).
+  ([money](money.md#rows-in-the-v2-spelling)). When `price.unit: call` pairs a reserve plugin
+  with a reported charge, the plugin estimates the hold and `bill.miss` determines whether the
+  catalog shows `per_call` or `per_success`.
 
 The byte-identical claim is checked by the catalog dump in [replay](replay.md).
 

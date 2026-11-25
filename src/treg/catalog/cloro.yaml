@@ -557,12 +557,12 @@ endpoints:
       body:
         query: {type: string, required: true, note: "at most 3,500 characters after URL encoding, so fewer for non-Latin scripts", example: "how to remove rust from cast iron"}
         country: {type: string, required: true, note: "ISO 3166-1 alpha-2; it sets the Bing market. CN, KR and RU are refused; use cloro.account.coverage.countries for the current list.", example: "US"}
-        pages: {type: integer, required: false, note: "1-10, default 1. Each page past the first adds 2 credits.", example: 1}
+        pages: {type: integer, required: false, min: 1, max: 10, default: 1, note: "Each page past the first adds 2 credits.", example: 1}
         first: {type: integer, required: false, note: "the result to start at, from 1, default 1. Bing shows its AI summary only on its first page, so there is no AI Overview above 1.", example: 1}
         include:
           type: object
           required: false
-          note: "any of html, aioverview. html is free; aioverview (true, or {markdown: true}) adds 2 credits."
+          note: "html is free. aioverview as true or an object adds 2 credits even when Bing shows no AI summary. Set markdown to true inside the object to include Markdown."
       bodyType: json
     test_request:
       body:
@@ -570,19 +570,27 @@ endpoints:
         country: "US"
         include: {aioverview: {markdown: true}}
       bodyType: json
-    added: '2026-11-21'
+    added: '2026-11-25'
     example_response: examples/cloro.bing.serp.organic.json
-    cost:
-      type: per_success
-      value: 5
+    price:
+      value: '5'
       currency: credit
-      per: 1
       unit: call
+      display: {unit: call, variable: true}
+      note: "One page costs 5 credits including the sync surcharge. X-Credits-Charged reports the actual charge. A hit with no readable charge header costs the request estimate."
+    provenance:
       source: docs
       source_url: 'https://cloro.dev/docs/guides/providers'
       checked: '2026-11-21'
       confidence: documented
-      note: "5 = 3 base + the 2-credit sync surcharge, for one page. include.aioverview adds 2, which the X-Credits-Charged header bills. html is free. Ads cost nothing extra. Each page past the first adds 2, and `pages` is capped at 10, so the ceiling is 23, or 25 with the AI Overview. A failed extraction is not charged."
+    reserve: {plugin: cloro.bing_search_units, max: '25'}
+    settle: {reported: {header: x-credits-charged, unit: credit}}
+    expect: {path: response.success, op: equals, value: true}
+    miss:
+      when:
+        any:
+          - {path: response.result.organicResults, op: absent}
+          - {path: response.result.organicResults, op: empty}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-bing
 
   - id: cloro.bing.serp.ai_mode
