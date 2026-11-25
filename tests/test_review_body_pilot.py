@@ -84,3 +84,12 @@ async def test_pilot_is_off_without_a_key(monkeypatch):
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {
         "skipped": "no_judge_key"}
     assert review_judge.configured() is False
+
+
+def test_shrink_keeps_json_valid_when_cuts_are_not_enough():
+    nested = {"data": {"results": [{"person": {"name": "n" * 50, "work": {"title": "t" * 50,
+                                    "company": {"name": "c" * 50, "domain": "d" * 50}}}}] * 10}}
+    for budget in (40, 120, 300, 500):
+        out = body_view.shrink(json.dumps(nested), budget)
+        assert len(out) <= max(budget, len('{"_omitted_bytes":9999}'))
+        json.loads(out)

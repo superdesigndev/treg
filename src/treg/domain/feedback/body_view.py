@@ -15,14 +15,18 @@ _TAG = re.compile(r"<(script|style)\b.*?</\1>|<[^>]+>", re.IGNORECASE | re.DOTAL
 _SPACE = re.compile(r"\s+")
 
 
-def _cut(value, items: int, chars: int, keys: int):
+def _cut(value, items: int, chars: int, keys: int, depth: int = 64):
     if isinstance(value, dict):
-        out = {k: _cut(v, items, chars, keys) for k, v in list(value.items())[:keys]}
+        if depth <= 0:
+            return {"_keys": len(value)}
+        out = {k[:chars]: _cut(v, items, chars, keys, depth - 1) for k, v in list(value.items())[:keys]}
         if len(value) > keys:
             out["_more_keys"] = len(value) - keys
         return out
     if isinstance(value, list):
-        out = [_cut(v, items, chars, keys) for v in value[:items]]
+        if depth <= 0:
+            return {"_items": len(value)}
+        out = [_cut(v, items, chars, keys, depth - 1) for v in value[:items]]
         if len(value) > items:
             out.append({"_more": len(value) - items})
         return out
@@ -31,8 +35,15 @@ def _cut(value, items: int, chars: int, keys: int):
     return value
 
 
+def _dumps(value) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
 def shrink(text: str | None, budget: int) -> str:
-    """`text` cut to at most `budget` characters, keeping a JSON answer's structure."""
+    """`text` cut to at most `budget` characters, keeping a JSON answer's structure. A JSON answer
+    always stays valid JSON: past the last cut, deeper levels are replaced by their counts
+    (`{"_items": n}`, `{"_keys": n}`) rather than the text being sliced, so a cut never reads as
+    the vendor's malformed output."""
     if not text:
         return ""
     try:
@@ -40,9 +51,14 @@ def shrink(text: str | None, budget: int) -> str:
     except ValueError:
         plain = _SPACE.sub(" ", _TAG.sub(" ", text)).strip()
         return plain if len(plain) <= budget else plain[:budget - 1] + "…"
-    out = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    out = _dumps(value)
     for items, chars, keys in _STEPS:
         if len(out) <= budget:
             return out
-        out = json.dumps(_cut(value, items, chars, keys), ensure_ascii=False, separators=(",", ":"))
-    return out if len(out) <= budget else out[:budget - 1] + "…"
+        out = _dumps(_cut(value, items, chars, keys))
+    items, chars, keys = _STEPS[-1]
+    for depth in range(8, -1, -1):
+        if len(out) <= budget:
+            return out
+        out = _dumps(_cut(value, items, chars, keys, depth))
+    return out if len(out) <= budget else _dumps({"_omitted_bytes": len(text)})
