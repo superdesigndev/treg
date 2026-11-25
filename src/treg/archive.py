@@ -1315,11 +1315,12 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
     to the row carrying the bytes; a hash-only version returns `stored=False` with the bytes
     honestly absent. Never raises on decode: a non-UTF-8 body reports `body_text=None`.
 
-    `prefer_bytes` picks, among the versions with that hash, one that kept its bytes over a newer
-    hash-only one (the same bytes, so never another answer). `diagnostics` receives the body read's
-    report (`archive_bodies.read`), whose `cache_body_fallback_reason` tells a failed read apart
-    from an object that is not there."""
-    from sqlalchemy import case, or_, select
+    `prefer_bytes` tries, among the versions with that hash (the same bytes, so never another
+    answer), those that kept a copy in the database first, then those in object storage, until one
+    reads. `diagnostics` receives the body read's report (`archive_bodies.read`); when every read
+    failed, its `cache_body_fallback_reason` is a failure other than a missing object if any read
+    met one, so a caller can tell a failed read from bytes that are gone."""
+    from sqlalchemy import case, select
 
     from .models import ArchiveKey, ArchiveSnapshot
 
@@ -1330,17 +1331,31 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
             select(ArchiveKey).where(ArchiveKey.key_hash == key_hash))).scalars().one_or_none()
         if key is None:
             return None
-        snap = (await session.execute(
+        order = ArchiveSnapshot.version.desc(),
+        if prefer_bytes:
+            order = (case((ArchiveSnapshot.body.is_not(None), 0), (ArchiveSnapshot.body_of.is_not(None), 1),
+                          (ArchiveSnapshot.body_storage.in_(("r2", "both")), 2), else_=3),) + order
+        snaps = (await session.execute(
             select(ArchiveSnapshot).options(*archive_bodies.read_options("result"))
             .where(ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.content_hash == content_hash)
-            .order_by(*((case((or_(ArchiveSnapshot.body_storage.in_(("r2", "both")),
-                                   ArchiveSnapshot.body.is_not(None), ArchiveSnapshot.body_of.is_not(None)), 0),
-                              else_=1),) if prefer_bytes else ()),
-                      ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
-        if snap is None:
+            .order_by(*order).limit(5 if prefer_bytes else 1))).scalars().all()
+        if not snaps:
             return None
-        pointer = await archive_bodies.pointer(session, snap, "result")
-    body = await archive_bodies.read(pointer, "result", diagnostics=diagnostics)
+        pointers = [await archive_bodies.pointer(session, snap, "result") for snap in snaps]
+    body, snap, failure = None, snaps[0], None
+    for candidate, pointer in zip(snaps, pointers):
+        report: dict = {}
+        body = await archive_bodies.read(pointer, "result", diagnostics=report)
+        if diagnostics is not None:
+            diagnostics.update(report)
+        if body is not None:
+            snap = candidate
+            break
+        reason = report.get("cache_body_fallback_reason", "none")
+        if reason not in ("none", "not_found", "hash_mismatch"):
+            failure = reason
+    if body is None and failure is not None and diagnostics is not None:
+        diagnostics["cache_body_fallback_reason"] = failure
     return {
         "stored": body is not None,
         "request": {"method": key.req_method or "", "url": key.req_url or "",
