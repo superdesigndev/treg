@@ -1028,7 +1028,13 @@
       b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy prompt'; }, 1600);
     }, function () { b.textContent = 'Select it above'; });
   });
-  var nav = $('nav'), onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 10); };
+  var nav = $('nav'), tabs = [].slice.call(document.querySelectorAll('.tabs a'));
+  var onScroll = function () {
+    nav.classList.toggle('scrolled', window.scrollY > 10);
+    var cur = tabs[0];
+    tabs.forEach(function (t) { var sec = document.querySelector(t.getAttribute('href')); if (sec && sec.getBoundingClientRect().top <= innerHeight * 0.4) cur = t; });
+    tabs.forEach(function (t) { if (t === cur) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current'); });
+  };
   addEventListener('scroll', onScroll, { passive: true }); onScroll();
 
 
