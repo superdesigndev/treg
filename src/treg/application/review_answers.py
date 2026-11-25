@@ -11,7 +11,7 @@ from datetime import timezone
 
 from sqlmodel import select
 
-from .. import archive, archive_bodies
+from .. import archive
 from ..config import get_settings
 from ..domain.catalog import reported_charge
 from ..domain.catalog import store as catalog_store
@@ -26,55 +26,51 @@ REQUEST_BUDGET = 800
 
 @dataclass(frozen=True)
 class Answer:
-    """`read`: `found` is the answer as delivered. `absent`: no answer can ever be shown, so the
-    reason is all a judge has. `unreadable`: it was not read now (storage or the database failed, a
-    read failed, object storage is in use but not configured here, a corrupt snapshot); the caller
-    tries again later and gives up after a few tries, so these need not be told apart."""
+    """`read`: `found` is the answer as delivered. `absent`: by the call row or the bytes
+    themselves, no answer can ever be shown, so the reason is all a judge has. `unreadable`: not
+    read now, for any other reason (the archive not written yet, the answer kept only as a hash or
+    gone, a failed or refused read, object storage not configured here, the database unreachable,
+    a corrupt snapshot); the caller tries again later and keeps the reason codes after its last
+    try, so none of these needs telling apart, and none ends the upgrade at once."""
     state: str
     found: dict | None = None
 
 
 ABSENT = Answer("absent")
 UNREADABLE = Answer("unreadable")
-# A read that found every copy missing, or bytes not matching their hash, is an answer gone for good.
-_GONE = ("none", "not_found", "hash_mismatch")
 
 
 async def answer_of(r) -> Answer:
     """The answer the reviewed direct call got (`r.routed_via` is None; routed reviews are never
     read: their rows cannot prove which attempt's answer was returned).
 
-    `absent` when there is no archive link, the key or every copy of these bytes is gone, the
-    answer was kept as a hash only, its text is not UTF-8, or the archive cannot show what the
-    caller received: a call through `/table` (`CallRecord.surface`), or one made before
-    `review_answer_surface_since`, from when a deployment that had `/table` on could not tell."""
+    `absent` only on facts that will not change: the call row has no archive link (nothing was
+    recorded), it came through `/table` (`CallRecord.surface`: a reshaped answer), it predates
+    `review_answer_surface_since`, or the stored bytes are not UTF-8 text."""
     try:
         async with session_maker() as db:
             record = (await db.execute(select(CallRecord).where(
                 CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
             ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
-        if record is None or record.archive_key_hash is None or record.archive_content_hash is None:
+        if record is None:
+            return UNREADABLE
+        if record.archive_key_hash is None or record.archive_content_hash is None:
             return ABSENT
         since = get_settings().review_answer_surface_since
         if since is not None and since.tzinfo is not None:  # call rows hold naive UTC
             since = since.astimezone(timezone.utc).replace(tzinfo=None)
         if record.surface is not None or (since is not None and record.created_at < since):
             return ABSENT
-        report: dict = {}
         found = await archive.resolve_result(record.archive_key_hash, record.archive_content_hash,
-                                             prefer_bytes=True, diagnostics=report)
-        if found is None:
-            return ABSENT
-        if found["stored"]:
-            text = found["response"]["body_text"]
-            if text is None or "\x00" in text:  # not UTF-8 text, or text in another encoding
-                return ABSENT
-            return Answer("read", as_delivered(found, record.status_code, record.endpoint_id,
-                                               record.cost_charged_micro))
-        if archive_bodies.uses_r2() and not archive_bodies.has_store():
+                                             prefer_bytes=True)
+        if found is None or not found["stored"]:
             return UNREADABLE
-        return ABSENT if report.get("cache_body_fallback_reason", "none") in _GONE else UNREADABLE
-    except Exception:  # tried again later; a corrupt snapshot gives up after a few tries
+        text = found["response"]["body_text"]
+        if text is None or "\x00" in text:  # not UTF-8 text, or text in another encoding
+            return ABSENT
+        return Answer("read", as_delivered(found, record.status_code, record.endpoint_id,
+                                           record.cost_charged_micro))
+    except Exception:  # tried again later; the reason codes stand after the last try
         log.warning("review answer not read: review %s", r.id, exc_info=True)
         return UNREADABLE
 

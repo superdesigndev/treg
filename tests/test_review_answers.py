@@ -38,10 +38,13 @@ async def test_an_older_version_that_kept_the_bytes_is_read(clients):
     assert answer.state == "read" and answer.found["response"]["body_text"] == PEOPLE
 
 
-async def test_a_hash_only_answer_is_absent_for_good(clients):
+async def test_no_bytes_now_is_tried_again_not_final(clients):
+    # Kept as a hash only, or not written yet (the archive records after the answer): neither ends
+    # the upgrade at once; the judge backs off and keeps the reason codes after its last try.
     review = await _reviewed(clients)
+    assert (await review_answers.answer_of(review)).state == "unreadable"   # no key yet
     await _key((1, None, None))
-    assert (await review_answers.answer_of(review)).state == "absent"
+    assert (await review_answers.answer_of(review)).state == "unreadable"   # hash only
 
 
 async def test_a_failed_object_read_waits_even_for_a_legacy_row(clients, monkeypatch):
@@ -61,7 +64,6 @@ async def test_object_storage_in_use_but_not_configured_waits(clients, monkeypat
     review = await _reviewed(clients)
     await _key((1, None, "r2"))
     monkeypatch.setattr(archive_bodies, "uses_r2", lambda: True)
-    monkeypatch.setattr(archive_bodies, "has_store", lambda: False)
     assert (await review_answers.answer_of(review)).state == "unreadable"
 
 
@@ -122,18 +124,6 @@ async def test_a_missing_object_falls_back_to_a_database_copy_and_otherwise_is_g
         return await real(pointer, path, diagnostics=diagnostics, session_factory=session_factory)
     monkeypatch.setattr(archive_bodies, "read", read)
     assert (await review_answers.answer_of(review)).state == "read"
-
-
-async def test_an_object_confirmed_missing_with_no_other_copy_is_gone(clients, monkeypatch):
-    review = await _reviewed(clients)
-    await _key((1, None, "r2"))
-    monkeypatch.setattr(archive_bodies, "has_store", lambda: True)
-
-    async def read(pointer, path, *, diagnostics=None, session_factory=None):
-        diagnostics.update(cache_body_fallback_reason="not_found")
-        return None
-    monkeypatch.setattr(archive_bodies, "read", read)
-    assert (await review_answers.answer_of(review)).state == "absent"
 
 
 @pytest.mark.parametrize("body", ['{"a":1}'.encode("utf-16le")])
