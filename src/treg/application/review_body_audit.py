@@ -5,7 +5,7 @@ answer. For each of those, given as `review_id:primary[:secondary]` (the pilot's
 asks Claude through the AI Gateway which of two codings is right, the reason-only one already on
 the review and the body one, shown as A and B in an order drawn from the review id so the judge
 cannot tell which is which. It sees the reason, the request and the shortened answer
-(`review_body_pilot._item`) and the codebook.
+(`review_answers.view`) and the codebook.
 
 It writes nothing and prints aggregates and review ids only, never a reason, request or answer.
 Spend is capped: no request starts once the cost so far reaches `max_usd`.
@@ -25,7 +25,7 @@ from ..domain.catalog import store as catalog_store
 from ..domain.feedback import body_view, review_codes
 from ..infra.db import session_maker
 from ..models import CallReview
-from .review_body_pilot import _answer, _item
+from .review_answers import answer_of, view
 
 log = logging.getLogger("treg.review_body_audit")
 
@@ -123,12 +123,12 @@ async def run(*, pairs: list[tuple[int, str, str | None]], model: str, max_usd: 
         if out["usd"] >= max_usd:
             out["stopped_by_cost"] = True
             break
-        found = await _answer(r)
+        found = await answer_of(r)
         if found is None:
             out["no_body"] += 1
             continue
         capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
-        item = _item(0, r, found, capability, budget)
+        item = view(0, r, found, capability, budget)
         reason_coding, body_coding = (r.primary_code, r.secondary_code), (body_primary, body_secondary)
         a, b = (reason_coding, body_coding) if _reason_first(review_id) else (body_coding, reason_coding)
         answer, usage = await _judge(_prompt(item, a, b), model=model, max_tokens=max_tokens)

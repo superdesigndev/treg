@@ -3,7 +3,7 @@
 The hourly judge (`application.review_judge`) codes a `partly` or `not_useful` review from its
 reason alone. This pilot takes the newest such reviews already coded under the current codebook
 whose direct call still has its answer on file (`archive.resolve_result`; a routed review is counted
-as `answer_unconfirmed`, see `_answer`), asks Jev the same codebook
+as `answer_unconfirmed`, see `review_answers.answer_of`), asks Jev the same codebook
 with the request and a shortened answer beside the reason (`review_codes.body_code_question`,
 `body_view.shrink`), and reports how the two codings compare.
 
@@ -20,16 +20,15 @@ from datetime import timedelta
 from sqlalchemy import and_, or_
 from sqlmodel import select
 
-from .. import archive
 from ..domain.catalog import store as catalog_store
-from ..domain.feedback import body_view, review_codes
+from ..domain.feedback import review_codes
 from ..infra.db import session_maker
-from ..models import CallRecord, CallReview
+from ..models import CallReview
 from ..timeutil import utcnow_naive
+from .review_answers import answer_of, view
 from .review_judge import NEGATIVE, _ask, configured
 
 WINDOW_DAYS = 28
-REQUEST_BUDGET = 800
 DIFFS_SHOWN = 100
 PAGE = 200
 
@@ -51,39 +50,6 @@ async def _candidates(since, after: tuple | None, limit: int) -> list:
                               and_(CallReview.created_at == at, CallReview.id < review_id)))
     async with session_maker() as db:
         return (await db.execute(page)).all()
-
-
-async def _answer(r) -> dict | None:
-    """The answer the reviewed call got, from the archive, for a direct call (`r.routed_via` is
-    None; the caller counts routed reviews apart). A routed call has no archive link of its own,
-    and its audit rows cannot prove which attempt's answer was returned: with
-    X-Treg-Route-Confirm the review is credited to the confirmer while the finder's answer is
-    returned, an upgrade returns another vendor's answer, and a miss returns none. The route's
-    `served_by` is in the answer and the call event, not on the rows."""
-    async with session_maker() as db:
-        record = (await db.execute(select(CallRecord).where(
-            CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
-        ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
-        link = (record.archive_key_hash, record.archive_content_hash) if record is not None else (None, None)
-    if None in link:
-        return None
-    found = await archive.resolve_result(*link)
-    if not found or not found["stored"] or found["response"]["body_text"] is None:
-        return None
-    return found
-
-
-def _item(i: int, r, found: dict, capability: str, budget: int) -> dict:
-    req, res = found["request"], found["response"]
-    return {
-        "i": i, "usefulness": r.usefulness, "reason": r.reason.strip(), "endpoint": r.endpoint_id,
-        "capability": capability, "routed": r.routed_via is not None,
-        "request": {"method": req["method"],
-                    "url": body_view.shrink(req["url"], REQUEST_BUDGET),
-                    "body": body_view.shrink(req["body_text"], REQUEST_BUDGET)},
-        "response": {"status_code": res["status_code"], "media_type": res["media_type"],
-                     "size_bytes": res["size_bytes"], "body": body_view.shrink(res["body_text"], budget)},
-    }
 
 
 async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> dict:
@@ -163,12 +129,12 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             if r.routed_via is not None:  # which attempt's answer it got is not provable (`_answer`)
                 out["answer_unconfirmed"] += 1
                 continue
-            found = await _answer(r)
+            found = await answer_of(r)
             if found is None:
                 out["no_body"] += 1
                 continue
             capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
-            ready.append((r, _item(len(ready), r, found, capability, budget)))
+            ready.append((r, view(len(ready), r, found, capability, budget)))
             if len(ready) == batch:
                 await ask(ready)
                 ready = []
