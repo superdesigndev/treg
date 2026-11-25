@@ -490,7 +490,12 @@ async def complete_oauth_connection(
 
     try:
         client = client_factory()
-        blob = await HTTPXOAuthExchangePort(client).exchange_code(pending, code)
+        try:
+            blob = await HTTPXOAuthExchangePort(client).exchange_code(pending, code)
+        except AddressLookupTimedOut:
+            # Refused before the code was sent: it is still unspent, so the grant stays pending and
+            # reloading the callback within its lifetime tries again.
+            return OAuthCallbackOutcome("exchange_retry")
         provider = oauth_providers.get(pending.provider) if pending.provider else None
         profile = (
             provider.profile_for_authorization(pending.authorization_method)

@@ -1166,3 +1166,15 @@ async def test_a_refresh_lookup_timeout_is_a_retryable_502_on_resource_routes(
         assert r.status_code == 502, r.text
         assert "lookup timed out" in r.json()["detail"]
 
+
+async def test_a_lookup_timeout_before_the_code_is_sent_keeps_the_callback_retryable(
+        clients: AsyncClient, token_endpoint_lookup):
+    state = (await clients.post("/oauth/start", json=BYO)).json()["state"]
+    first = await clients.get(f"/oauth/callback?code=AUTHCODE&state={state}")
+    assert first.status_code == 502
+    assert (await clients.get(f"/oauth/status/{state}")).json()["status"] == "pending"
+
+    token_endpoint_lookup["timeout"] = False
+    again = await clients.get(f"/oauth/callback?code=AUTHCODE&state={state}")
+    assert again.status_code == 200, again.text
+    assert (await clients.get(f"/oauth/status/{state}")).json()["status"] == "done"
