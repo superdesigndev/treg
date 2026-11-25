@@ -372,6 +372,28 @@ async def test_the_tail_batch_goes_out_without_another_page(clients, monkeypatch
     assert out["stopped_by_deadline"] is False
 
 
+async def test_the_second_request_of_a_batch_is_not_sent_after_the_deadline(clients, monkeypatch):
+    # The body request goes out at 0 s and returns at 2 s, past a 1 s deadline: the reason-only
+    # request is not sent, and the batch is not counted as a pair.
+    org = await _org(clients)
+    await _add(_review(org, "d", "WRONG"), _record(org, "d", "kd"))
+    _archive(monkeypatch, {"kd": PEOPLE})
+    now = [0.0]
+    monkeypatch.setattr(review_body_pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    sent = []
+
+    async def ask(state, questions):
+        sent.append(now[0])
+        now[0] += 2
+        return Reply(answers={q: {"choice": "EMPTY"} for q in questions}, ms=1, tokens_in=50)
+    monkeypatch.setattr(review_body_pilot, "_ask", ask)
+    monkeypatch.setattr(get_settings(), "typesafe_api_key", "test-key", raising=False)
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=1)
+    assert sent == [0.0] and out["half_asked"] == 1 and out["coded"] == 0
+    assert out["stopped_by_deadline"] is True
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {

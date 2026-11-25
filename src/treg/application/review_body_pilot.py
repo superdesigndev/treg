@@ -58,7 +58,7 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
     by_id = catalog_store.load().by_id
     since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
     out = {"candidates": 0, "no_reason": 0, "answer_unconfirmed": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
-           "failed_requests": 0, "read_not_asked": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0, "changed": 0,
+           "failed_requests": 0, "read_not_asked": 0, "half_asked": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0, "changed": 0,
            "stopped_by_deadline": False}
     pairs, reason_codes, body_codes = Counter(), Counter(), Counter()
     by_capability: dict[str, Counter] = {}
@@ -79,6 +79,10 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
         replies = []
         for state, question in (({"reviews": [item for _, item in items]}, review_codes.body_code_question),
                                 (reason_state, review_codes.code_question)):
+            if time.monotonic() >= deadline:  # no paid request after it; a half-asked batch is not paired
+                out["stopped_by_deadline"] = True
+                out["half_asked"] += len(items)
+                return
             reply = await _ask(state, {f"a{i}": question(i) for i in range(len(items))})
             if reply.answers is None:
                 out["failed_requests"] += 1
