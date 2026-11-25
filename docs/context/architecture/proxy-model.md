@@ -392,8 +392,9 @@ Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking re
 dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
 most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
 lands, so each new call resolves again. A caller that has waited `ssrf_lookup_timeout_s` is refused, as an
-unresolvable host is (`ssrf_lookup_timeout` in the log); the stuck lookup finishes on its thread and the
-next call starts a fresh one, so a refusal never outlasts the slow resolver.
+unresolvable host is (`ssrf_lookup_timeout` in the log). A lookup still queued when its last caller stops
+waiting is dropped, so it never delays later lookups; one already running cannot be interrupted, finishes on
+its thread, and the next call after it starts a fresh one, so a refusal never outlasts the slow resolver.
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at

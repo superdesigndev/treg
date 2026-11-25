@@ -124,3 +124,72 @@ async def test_client_metadata_fetch_refuses_a_private_host(resolver, monkeypatc
     monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
     assert await mcp_oauth.fetch_client_id_metadata("https://rebound.example/client.json") is None
     assert calls == []
+
+
+@pytest.fixture
+def one_lookup_thread(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="treg-ssrf-dns")
+    monkeypatch.setattr(ssrf, "_executor", pool)
+    yield
+    pool.shutdown(wait=False, cancel_futures=True)
+
+
+@pytest.fixture
+def counted_resolver(resolver, monkeypatch):
+    answers, slow, gate = resolver
+    resolved = []
+    inner = socket.getaddrinfo
+
+    def getaddrinfo(host, *args, **kwargs):
+        resolved.append(host)
+        return inner(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    return answers, slow, gate, resolved
+
+
+async def _drain(host):
+    for _ in range(300):
+        if host not in ssrf._inflight:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"{host} still in flight")
+
+
+async def test_a_queued_lookup_nobody_waits_for_is_dropped(counted_resolver, one_lookup_thread, monkeypatch):
+    answers, slow, gate, resolved = counted_resolver
+    answers["busy.example"] = answers["queued.example"] = ["8.8.8.8"]
+    slow.add("busy.example")
+    monkeypatch.setattr(get_settings(), "ssrf_lookup_timeout_s", 0.1)
+    busy = asyncio.create_task(ssrf.host_is_public_async("busy.example"))
+    await asyncio.sleep(0.02)
+    assert await ssrf.host_is_public_async("queued.example") is False  # timed out in the queue
+    assert "queued.example" not in ssrf._inflight
+    gate.set()
+    await busy
+    await _drain("busy.example")
+    await asyncio.sleep(0.05)
+    assert resolved == ["busy.example"]
+
+
+async def test_one_waiter_timing_out_keeps_the_lookup_another_still_needs(
+        counted_resolver, one_lookup_thread, monkeypatch):
+    answers, slow, gate, resolved = counted_resolver
+    answers["busy.example"] = answers["shared.example"] = ["8.8.8.8"]
+    slow.add("busy.example")
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ssrf_lookup_timeout_s", 2.0)
+    busy = asyncio.create_task(ssrf.host_is_public_async("busy.example"))
+    await asyncio.sleep(0.02)
+    monkeypatch.setattr(settings, "ssrf_lookup_timeout_s", 0.1)
+    impatient = asyncio.create_task(ssrf.host_is_public_async("shared.example"))
+    await asyncio.sleep(0)
+    monkeypatch.setattr(settings, "ssrf_lookup_timeout_s", 2.0)
+    patient = asyncio.create_task(ssrf.host_is_public_async("shared.example"))
+    assert await impatient is False
+    gate.set()
+    assert await patient is True
+    await busy
+    assert resolved == ["busy.example", "shared.example"]
