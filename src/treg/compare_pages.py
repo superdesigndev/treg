@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import date
 
 CHECKED = "2026-11-03"  # the day a record was read, unless the record names its own "checked"
-CORRECTIONS = "jason@treg.to"
+CORRECTIONS = "dev@treg.to"
 
 NOT_PUBLISHED = "Not published"
 
