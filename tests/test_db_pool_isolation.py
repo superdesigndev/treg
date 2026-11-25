@@ -96,6 +96,14 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     # Runs only inside `treg-worker reviews judge`; same reasoning as `worker.py`. No session is held
     # across a Jev request.
     "application/review_judge.py": {API},
+    # Runs only inside `treg-worker reviews body-pilot`; same reasoning as `worker.py`. Reads only,
+    # and no session is held across an archive read or a Jev request.
+    "application/review_body_pilot.py": {API},
+    # Read only by the review judge, pilot and audit, which run only inside `treg-worker reviews`;
+    # same reasoning as `worker.py`. One short read per review, closed before the archive read.
+    "application/review_answers.py": {API},
+    # Runs only inside `treg-worker reviews body-audit`; same reasoning as `worker.py`.
+    "application/review_body_audit.py": {API},
     # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.
     "application/key_spend_rollup.py": {API},
     # Runs only inside `treg-worker usage rollup`; same reasoning as `worker.py`.

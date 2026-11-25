@@ -108,7 +108,8 @@ contracts:
     summary: "List recent posts under an Instagram hashtag — provider-native post objects in `posts`"
     identity:
       - {hashtag: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true, note: "the provider's own post objects — shapes differ per provider; raw is the same body"}
       count: {type: integer}
@@ -121,7 +122,8 @@ contracts:
     identity:
       - {username: string}
       - {user_id: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true, note: "the provider's own tweet objects; raw is the same body"}
       next_cursor: {type: string}
@@ -174,10 +176,12 @@ contracts:
     idempotent: true
     one_subject: true           # every variant names one person: cost per hit ranks first
     # No phone provider reports a line check, so every hit carries this.
-    advice_unverified: "This number was found, not confirmed live. Send X-Treg-Route-Verify: true and treg checks the line with a live network lookup (hlrlookup.people.phone.verify) in the same call. For a US number, trestleiq.people.contact.verify also checks that it belongs to this person."
+    advice_unverified: "This number was found, not confirmed. A live line and the right person are two checks. X-Treg-Route-Verify: true checks the line is live (hlrlookup.people.phone.verify) in the same call; it does not show whose number it is. To check it is this person's: with their LinkedIn profile, call millionphones.people.contact.verify with social_url and phone_number; for a US number, trestleiq.people.contact.verify with phone and name."
     # `X-Treg-Route-Verify`: HLR's live check; a national-form number would be read as another country's.
     check: {endpoint: hlrlookup.people.phone.verify, field: phone, when: "e164_digits(phone) != null", skip_reason: not_international,
             skip_advice: "This number has no country code, so it was not checked: a live lookup would read its first digits as a country code. Add the country code (+ and the digits), or call hlrlookup.people.phone.verify with input_format set to the ISO3 country code (for example USA)."}
+    # LeadOcean returned the most wrong-person numbers in a 110-person benchmark; asked first on price, it answers before more accurate providers.
+    ask_last: [leadocean]
 
   people.phone.live:
     summary: "Check whether a phone number is live on its network — a live network lookup, not a format check"
@@ -284,7 +288,7 @@ contracts:
     # not a miss, and catch-all is kept apart from `risky` so it can be counted on its own.
     # `decisive`: the words that answer the question, for `X-Treg-Route-Decisive` (route.py).
     verdict: {from: status, words: [valid, invalid, catch_all, risky, unknown], decisive: [valid, invalid]}
-    # ContactOut's free verifier answers most calls on treg's key with a 429; asked first on price, it adds a refused attempt to most calls.
+    # ContactOut's verifier answers most calls on treg's key with a 429; asked first on price, it adds a refused attempt to most calls.
     ask_last: [contactout]
 
   people.enrich:
@@ -321,7 +325,8 @@ contracts:
     identity:
       - {username: string}
       - {user_id: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true, note: "the provider's own post objects; raw is the same body"}
       next_cursor: {type: string}
@@ -585,6 +590,7 @@ contracts:
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters:
       limit: {type: integer, default: 10, note: "posts per page where the provider takes a count"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true, note: "provider-native LinkedIn post rows"}
       next_cursor: {type: string}
@@ -902,11 +908,12 @@ contracts:
     advice_unverified: "To find a niche's best-known creators, also search influencer directories and list pages: treg.web.search with contents: true ('top fitness influencers Brazil TikTok') returns the names they list."
 
   tiktok.search.videos:
-    summary: "Search TikTok videos by keyword, first page only — provider-native video rows in `videos`; to page deeper, call the provider named in X-Treg-Served-By directly with its offset or cursor"
+    summary: "Search TikTok videos by keyword — provider-native video rows in `videos`"
     identity:
       - {q: string}
     filters:
       limit: {type: integer, default: 10, note: "videos per page where the provider takes a count"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1044,6 +1051,7 @@ contracts:
       - {user_id: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       reels: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1089,7 +1097,8 @@ contracts:
     summary: "Search X (Twitter) posts by keyword — provider-native rows in `posts`"
     identity:
       - {q: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1152,7 +1161,8 @@ contracts:
       - {company_name: string}
       - {company_domain: string}
       - {facebook_url: {type: string, format: url}}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       ads: {type: array, items: {type: object}, required: true, note: "the provider's own ad rows (id, dates, text, media…) — shapes differ per provider; raw is the same body"}
       page_id: {type: string}

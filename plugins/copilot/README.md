@@ -21,7 +21,7 @@ copilot plugin marketplace add superdesigndev/treg
 copilot plugin install treg@treg
 ```
 
-Then ask Copilot for something that needs external data, and sign in to treg when it asks.
+For a free install check, ask Copilot “Use `catalog_get` to show the inputs and pricing for `treg.web.search`. Stop after the lookup.” Sign in to treg if prompted.
 
 ## Cost
 

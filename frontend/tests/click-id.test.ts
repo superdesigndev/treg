@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(resolve(__dirname, '../../src/treg/web/adtrack.js'), 'utf8')
+const source = readFileSync(resolve(__dirname, '../../src/treg/web/click-id.js'), 'utf8')
 function page(url: string, cookie = '', slug = '', storage: any = new Map<string, string>()) {
   const events: Record<string, (e: any) => void> = {}
   const document = {

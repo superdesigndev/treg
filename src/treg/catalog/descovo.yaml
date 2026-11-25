@@ -1,0 +1,405 @@
+provider: descovo
+source:
+  docs: https://descovo.com/docs/rest
+  openapi: https://api.descovo.com/v1/openapi.json
+  curated: '2026-11-23'
+# Every answer is {"data": ..., "credits": {"charged": n, "available": n}}, and credits.charged
+# settles the call. Search charges per result, a reveal per field found, and a miss costs nothing:
+# an unknown LinkedIn profile is a 404 not_found, an empty search or match a 200 with an empty
+# list. A body field a route does not know is a free 400. A repeat is charged again.
+limits: "120 requests a minute per key, across all routes; X-RateLimit-* headers on every answer, 429 above it. Search pages hold up to 1000 rows."
+pricing_url: https://descovo.com/pricing
+
+proposed_capabilities:
+  people.search.natural_language: "Search people or companies from a natural-language sentence"
+  companies.search.natural_language: "Search companies from a plain-English description"
+  people.identity.from_email: Resolve an email address to social profiles
+
+defaults:
+  provenance: {source: observed, source_url: 'https://descovo.com/pricing', checked: '2026-11-23', confidence: verified}
+  docs_url: https://descovo.com/docs/rest
+  settle: {reported: {path: response.credits.charged, unit: credit}}
+
+endpoints:
+  - id: descovo.people.contact.reveal
+    added: '2026-11-23'
+    example_response: examples/descovo.people.contact.reveal.json
+    domain: contacts
+    capability: people.contact.get
+    platform: people
+    scope: any_account
+    method: POST
+    path: /contacts/reveal
+    name: Reveal a person's email and phone from LinkedIn
+    summary: Reveal a person's work email, personal email and direct phone from their LinkedIn profile, charged only for the fields found.
+    input: &reveal_input
+      bodyType: json
+      body:
+        linkedinUrl: {type: string, required: true, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/satyanadella"}
+        enrichmentType:
+          type: object
+          required: false
+          note: "Which fields to look for. Each one defaults to true, so set every field you do not want to false: {getWorkEmails: true, getPersonalEmails: false, getPhoneNumbers: false} is the 2-credit work-email lookup"
+          properties:
+            getWorkEmails: {type: boolean, required: false}
+            getPersonalEmails: {type: boolean, required: false}
+            getPhoneNumbers: {type: boolean, required: false}
+        mode: {type: string, required: false, enum: [standard, lite, turbo], note: "standard (the default) balances speed and coverage; lite is a cheaper, lower-yield lookup with a different answer shape (emailAddress, validationStatus); turbo uses a premium stack"}
+        validateEmails: {type: boolean, required: false}
+        patience: {type: string, required: false, enum: [MINIMUM, LOW, MEDIUM, HIGH, EXTREME, MAXIMUM]}
+      note: "The answer is complete in one call (data.done is true). A personal-email or turbo reveal takes about 17 seconds."
+    untestable: "A real answer is a person's private email and phone; the example is a fixture with reserved fake data."
+    price: &reveal_price
+      table:
+        - {when: [{path: body.mode, op: equals, value: turbo}], value: '11'}
+        - {when: [{path: body.mode, op: equals, value: lite}], value: '3'}
+        - when: [{path: body.enrichmentType.getWorkEmails, op: equals, value: true}, {path: body.enrichmentType.getPersonalEmails, op: equals, value: false}, {path: body.enrichmentType.getPhoneNumbers, op: equals, value: false}]
+          value: '2'
+        - when: [{path: body.enrichmentType.getWorkEmails, op: equals, value: false}, {path: body.enrichmentType.getPersonalEmails, op: equals, value: false}, {path: body.enrichmentType.getPhoneNumbers, op: equals, value: true}]
+          value: '3'
+        - when: [{path: body.enrichmentType.getWorkEmails, op: equals, value: false}, {path: body.enrichmentType.getPersonalEmails, op: equals, value: true}, {path: body.enrichmentType.getPhoneNumbers, op: equals, value: false}]
+          value: '2'
+      fallback: {value: '11', note: "every field asked for, standard or turbo"}
+      currency: credit
+      per: 1
+      unit: call
+      note: "Charged only for the fields found. Standard: work email 2, personal email 2, phone 3. Lite: 1 each. Turbo: work email 3, phone 5. The hold is the most the asked-for fields can cost; credits.charged settles the call."
+    miss: &reveal_miss {status: [404], ok_when: [{path: response.data.profile.emails, op: empty}, {path: response.data.profile.phoneNumbers, op: empty}], means: "A LinkedIn URL with no person behind it answers 404 not_found; a person with nothing found answers empty lists. Both are free."}
+
+
+  - id: descovo.people.email.find
+    added: '2026-11-23'
+    example_response: examples/descovo.people.email.find.json
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /contacts/reveal
+    name: Find a person's work email from LinkedIn
+    summary: Find a person's work email from their LinkedIn profile; send enrichmentType with only getWorkEmails true for the 2-credit lookup.
+    input: *reveal_input
+    untestable: "A real answer is a person's work email; the example is a fixture with a reserved fake address."
+    price: *reveal_price
+    miss: *reveal_miss
+
+  - id: descovo.people.phone.find
+    added: '2026-11-23'
+    example_response: examples/descovo.people.phone.find.json
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /contacts/reveal
+    name: Find a person's direct phone from LinkedIn
+    summary: Find a person's direct phone from their LinkedIn profile; send enrichmentType with only getPhoneNumbers true for the 3-credit lookup.
+    input: *reveal_input
+    untestable: "A real answer is a person's private phone number; the example is a fixture with a reserved fake number."
+    price: *reveal_price
+    miss: *reveal_miss
+
+  - id: descovo.people.search.count
+    added: '2026-11-23'
+    example_response: examples/descovo.people.search.count.json
+    domain: people
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/count
+    name: Count a people search
+    summary: Count the people matching title, seniority, company, location and industry filters, before loading anyone.
+    input:
+      bodyType: json
+      body:
+        searchParams: {type: object, required: false, note: "jobTitleV2, jobFunction, location, keywords, country3LetterCode and more; see the OpenAPI document"}
+        currentCompanies: {type: array, items: {type: object}, required: false, note: "[{domain: stripe.com}]: the title must hold at that same job"}
+    test_request:
+      body: {currentCompanies: [{domain: stripe.com}]}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+    settle: null
+
+  - id: descovo.companies.search
+    added: '2026-11-23'
+    example_response: examples/descovo.companies.search.json
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/search
+    name: Search companies by name, domain, size and industry
+    summary: Search companies by name, domain, headcount, industry, location and technology, with firmographics, domains and social links.
+    input:
+      bodyType: json
+      body:
+        searchParams: {type: object, required: true, note: "domains, names, headcount, industry, location and technology filters", example: {domains: [stripe.com]}}
+        pageSize: {type: integer, required: false, default: 25, min: 1, max: 1000}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+    test_request:
+      body: {searchParams: {domains: [stripe.com]}, pageSize: 1}
+    reserve: {rows: {param: body.pageSize, default: {value: 25, source: docs}, max: 1000}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "1 credit per company returned; an empty page is free."}
+    miss: {when: {path: response.data.data, op: empty}}
+
+  - id: descovo.companies.search.count
+    added: '2026-11-23'
+    example_response: examples/descovo.companies.search.count.json
+    domain: companies
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/count
+    name: Count a company search
+    summary: Count the companies matching name, domain, headcount, industry, location and technology filters.
+    input:
+      bodyType: json
+      body:
+        searchParams: {type: object, required: true, example: {domains: [stripe.com]}}
+    test_request:
+      body: {searchParams: {domains: [stripe.com]}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+    settle: null
+
+  - id: descovo.jobs.search
+    added: '2026-11-23'
+    example_response: examples/descovo.jobs.search.json
+    domain: companies
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /jobs/search
+    name: Search open job postings
+    summary: Search open job postings by title, company and location, with seniority, function, applicant range and the posting link.
+    input:
+      bodyType: json
+      body:
+        searchParams: {type: object, required: true, note: "companies {identifier: domain, value: [...]}, title and location filters", example: {companies: {identifier: domain, value: [stripe.com]}}}
+        pageSize: {type: integer, required: false, default: 25, min: 1, max: 1000}
+        cursor: {type: string, required: false}
+    test_request:
+      body: {searchParams: {companies: {identifier: domain, value: [stripe.com]}}, pageSize: 1}
+    reserve: {rows: {param: body.pageSize, default: {value: 25, source: docs}, max: 1000}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "1 credit per posting returned; an empty page is free."}
+    miss: {when: {path: response.data.data, op: empty}}
+
+  - id: descovo.people.search.natural_language
+    added: '2026-11-23'
+    example_response: examples/descovo.people.search.natural_language.json
+    domain: people
+    capability: people.search.natural_language
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/ask
+    name: Search people from a plain-English description
+    summary: Describe the people you want in plain English; Descovo turns it into filters and returns matching profiles.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Heads of data at fintech companies in New York"}
+        pageSize: {type: integer, required: false, default: 25, min: 1, max: 1000}
+        cursor: {type: string, required: false}
+        getDetailedEducation: {type: boolean, required: false}
+        getDetailedWorkExperience: {type: boolean, required: false}
+      note: "Reading the question takes about 8 seconds."
+    test_request:
+      body: {query: "Bill Gates, co-chair of the Gates Foundation", pageSize: 1}
+    reserve: {rows: {param: body.pageSize, default: {value: 25, source: docs}, max: 1000}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "2 credits to read the question plus 1 per person returned; the hold is one per row asked for, and credits.charged settles the call."}
+
+  - id: descovo.companies.search.natural_language
+    added: '2026-11-23'
+    example_response: examples/descovo.companies.search.natural_language.json
+    domain: companies
+    capability: companies.search.natural_language
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/ask
+    name: Search companies from a plain-English description
+    summary: Describe the companies you want in plain English; Descovo turns it into filters and returns matching companies.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Series B fintech companies in New York"}
+        pageSize: {type: integer, required: false, default: 25, min: 1, max: 1000}
+        cursor: {type: string, required: false}
+    test_request:
+      body: {query: "Stripe, the payments company", pageSize: 1}
+    reserve: {rows: {param: body.pageSize, default: {value: 25, source: docs}, max: 1000}}
+    price: {value: '1', currency: credit, per: 1, unit: result, note: "2 credits to read the question plus 1 per company returned; the hold is one per row asked for, and credits.charged settles the call."}
+
+  - id: descovo.people.match
+    added: '2026-11-23'
+    example_response: examples/descovo.people.match.json
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/match
+    name: Match a person from a name, company, email or LinkedIn
+    summary: Resolve a person from whatever you know - a name with a company, an email, a title or a LinkedIn profile - and get their full profile.
+    input:
+      bodyType: json
+      body:
+        personName: {type: object, required: false, note: "{value: 'Satya Nadella'}", example: {value: Satya Nadella}}
+        companyDomain: {type: object, required: false, note: "{value: 'microsoft.com'}", example: {value: microsoft.com}}
+        companyName: {type: object, required: false, note: "{value: ...}"}
+        emailAddress: {type: string, required: false}
+        profileIdentifier: {type: object, required: false, note: "a LinkedIn URL or slug"}
+        jobTitle: {type: object, required: false, note: "{value: ...}"}
+        numProfiles: {type: integer, required: false, default: 1, min: 1, max: 10}
+        forceCompanyMatch: {type: boolean, required: false, note: "accept only people at that company"}
+        liveFetch: {type: boolean, required: false, default: false, note: "fetch the profile live, 2 more credits"}
+      note: "More identifiers give better matches. A miss is a free 200 with an empty data list; it can take about 13 seconds."
+    test_request:
+      body: {personName: {value: Satya Nadella}, companyDomain: {value: microsoft.com}}
+    reserve: {rows: {param: body.numProfiles, default: {value: 1, source: docs}, max: 10}}
+    price:
+      table:
+        - {when: [{path: body.liveFetch, op: equals, value: false}], value: '2'}
+      fallback: {value: '4', note: "with liveFetch"}
+      currency: credit
+      per: 1
+      unit: result
+      note: "2 credits per profile returned, 2 more with liveFetch; no match is free."
+    miss: {when: {path: response.data.data, op: empty}}
+
+  - id: descovo.companies.match
+    added: '2026-11-23'
+    example_response: examples/descovo.companies.match.json
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/match
+    name: Match a company from a name, domain or LinkedIn page
+    summary: Resolve a company from its name, domain or LinkedIn page and get its firmographic record.
+    input:
+      bodyType: json
+      body:
+        companyDomain: {type: object, required: false, note: "{value: 'ramp.com'}", example: {value: ramp.com}}
+        companyName: {type: object, required: false, note: "{value: ...}"}
+        companyIdentifier: {type: object, required: false, note: "a LinkedIn company URL or slug"}
+        numCompanies: {type: integer, required: false, default: 1, min: 1, max: 10}
+    test_request:
+      body: {companyDomain: {value: ramp.com}}
+    reserve: {rows: {param: body.numCompanies, default: {value: 1, source: docs}, max: 10}}
+    price: {value: '2', currency: credit, per: 1, unit: result, note: "2 credits per company returned; no match is free."}
+    miss: {when: {path: response.data.data, op: empty}}
+
+  - id: descovo.people.enrich
+    added: '2026-11-23'
+    example_response: examples/descovo.people.enrich.json
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/enrich
+    name: Get a person's live LinkedIn profile
+    summary: Fetch a person's LinkedIn profile as it is right now, with headline, current job, every role, education and location.
+    input:
+      bodyType: json
+      body:
+        identifier: {type: string, required: true, note: "the LinkedIn slug, the part after linkedin.com/in/", example: williamhgates}
+        getDetailedEducation: {type: boolean, required: false}
+        getDetailedWorkExperience: {type: boolean, required: false}
+    test_request:
+      body: {identifier: williamhgates}
+    price: {value: '2', currency: credit, per: 1, unit: call, note: "2 credits for a found profile; a 404 not_found is free."}
+    miss: {status: [404], means: "No profile has that slug; free."}
+
+  - id: descovo.companies.enrich
+    added: '2026-11-23'
+    example_response: examples/descovo.companies.enrich.json
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/enrich
+    name: Get a company's live LinkedIn page
+    summary: Fetch a company's LinkedIn page as it is right now, with description, headcount, followers, industries and location.
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [slug, url, id], example: slug}
+        value: {type: string, required: true, example: stripe}
+        getHistoricalHeadcount: {type: boolean, required: false}
+    test_request:
+      body: {type: slug, value: stripe}
+    price: {value: '2', currency: credit, per: 1, unit: call, note: "2 credits for a found company."}
+    miss: {status: [404], means: "No company page matches; free."}
+
+  - id: descovo.people.identity.from_email
+    added: '2026-11-23'
+    example_response: examples/descovo.people.identity.from_email.json
+    domain: contacts
+    capability: people.identity.from_email
+    platform: people
+    scope: any_account
+    method: POST
+    path: /lookup/email
+    name: Find the person behind an email address
+    summary: Find the person behind an email address and get their profile.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, format: email, required: true}
+        mode: {type: string, required: false, enum: [standard, lite], note: "lite is a lighter, cheaper lookup"}
+    untestable: "Its only input is a real person's email address; the example is a miss for a reserved address."
+    price:
+      table:
+        - {when: [{path: body.mode, op: equals, value: lite}], value: '1'}
+      fallback: {value: '2', note: "standard mode"}
+      currency: credit
+      per: 1
+      unit: call
+      note: "2 credits for a found person (lite 1); no match is free."
+    miss: {when: {path: response.data.data, op: empty}}
+
+  - id: descovo.people.profile.from_phone
+    added: '2026-11-23'
+    example_response: examples/descovo.people.profile.from_phone.json
+    domain: contacts
+    capability: people.profile.from_phone
+    platform: people
+    scope: any_account
+    method: POST
+    path: /lookup/phone
+    name: Find the person or company behind a phone number
+    summary: Find the LinkedIn profile or company behind a phone number.
+    input:
+      bodyType: json
+      body:
+        phoneNumber: {type: string, required: true, note: "E.164, e.g. +14155550100"}
+    untestable: "Its only input is a real person's phone number; the example is a miss for a reserved number."
+    price: {value: '3', currency: credit, per: 1, unit: call, note: "3 credits when found; no match is free."}
+    miss: {when: {path: response.data.results, op: empty}}
+
+  - id: descovo.people.email.verify
+    added: '2026-11-23'
+    example_response: examples/descovo.people.email.verify.json
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /emails/verify
+    name: Verify an email address
+    summary: Check whether an email address will deliver - ok, undeliverable, risky or inconclusive - with a deliverability score.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, format: email, required: true, example: jane.doe@example.com}
+    test_request:
+      body: {email: jane.doe@example.com}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit per check."}
+    miss: {when: {path: response.data.verdict, op: absent}}

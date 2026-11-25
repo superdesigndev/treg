@@ -154,7 +154,7 @@
     provide(){return {arena:this};},
     data:()=>({benchmark:(location.pathname||'').endsWith('/people-search-bench'),benchCategories:[],benchCategory:'',benchLoading:false,benchError:'',leaderboard:(location.pathname||'').endsWith('/leaderboard'),setupStep:1,setupTeamName:'',setupExampleCopied:'',setupAgentId:'claude-code',setupToken:null,setupShowToken:false,setupCopied:false,setupError:'',setupLoading:false,setupSequence:0,tasks:[],taskId:'people.email.find',variant:0,inputs:{},extraInputs:[],showAllEntries:false,selectedEntry:null,selectedVendor:'',resultFilter:'all',mode:'waterfall',autoVerify:true,verificationHintHidden:false,verificationQuotes:{},verificationPending:{},
       user:null,teams:[],team:'',balance:null,meta:{},intercomStarted:false,intercomIdentity:'',busy:false,error:'',run:null,quote:null,history:[],customServices:false,services:[],
-      insights:null,insightsState:'idle',insightsTimer:null,statsView:'rate',chartFocus:null,metricTooltip:null,requestDone:false,requestBusy:false,vendorPromptCopied:false,vendorPromptError:'',requestError:'',requestQuery:'',requestForm:{capability:'',note:'',contact:''},
+      insights:null,insightsState:'idle',insightsTimer:null,statsView:'rate',chartFocus:null,metricTooltip:null,requestDone:false,requestBusy:false,requestError:'',requestQuery:'',requestForm:{capability:'',note:'',contact:''},
       manualQuotes:{},manualPending:{},reporting:'',reportDrafts:{},pricing:false,quoteTimer:null,quoteSequence:0,pricedKey:'',expandedResults:[],email:'',code:'',emailStep:'email',authMode:'email',ssoTeams:[],devCode:'',authBusy:false,authError:'',
       newTeamName:'',pendingSubmit:false,pollTimer:null,pollFailures:0,scrollOnComplete:'',runTeam:'',booted:false,draftRestored:false,historySequence:0,historyLoading:false,historyHasMore:false,linkedRunPending:false,urlPopHandler:null}),
     watch:{
@@ -241,7 +241,6 @@
       },
       supportsVerifiedRate(){return ['people.email.find','people.phone.find'].includes(this.taskId);},
       showVerifiedRateColumn(){return this.supportsVerifiedRate&&(this.taskId!=='people.phone.find'||this.chartRows.some(p=>Number.isFinite(p.verifiedRate)));},
-      vendorListingPrompt(){return 'Read https://treg.to/vendor-listing.md and add our API to the treg catalog, then open a PR.';},
       verifiedRateLabel(){return this.taskId==='people.email.find'?'Email validity rate':'Phone format validity';},
       verifiedExplanation(){return this.taskId==='people.phone.find'?'Percentage of sampled returned phone numbers with completed checks that passed the verifier’s number-format check. This does not confirm a live line, deliverability or ownership.':'Percentage of sampled returned emails with completed checks that both verifiers marked valid. Risky, unknown and conflicting verdicts do not count as valid.';},
       verificationWindow(){const v=this.insights?.verification;if(!v)return 'No published pilot';const date=x=>new Date(x).toLocaleDateString('en-US',{timeZone:'UTC'});return 'Sample '+date(v.sample_since)+'–'+date(v.sample_until)+' · Checked '+date(v.checked_at)+' · UTC';},
@@ -435,14 +434,9 @@
       timeLeft(r){return (r.started_ms||0)/this.timelineEnd*100;},timeWidth(r){return Math.max(.5,(r.duration_ms||0)/this.timelineEnd*100);},
       openVendorRequest(){
         if(this.requestBusy)return;
-        this.requestDone=false;this.requestError='';this.vendorPromptCopied=false;this.vendorPromptError='';
+        this.requestDone=false;this.requestError='';
         this.requestQuery='Enrich Arena: '+this.taskId;
         this.$refs.vendorRequestDialog.showModal();
-      },
-      async copyVendorListingPrompt(){
-        this.vendorPromptCopied=false;this.vendorPromptError='';
-        try{await navigator.clipboard.writeText(this.vendorListingPrompt);this.vendorPromptCopied=true;}
-        catch{this.vendorPromptError='Could not copy automatically. Select and copy the prompt above.';}
       },
       closeVendorRequest(){if(!this.requestBusy)this.$refs.vendorRequestDialog.close();},
       async submitVendorRequest(){

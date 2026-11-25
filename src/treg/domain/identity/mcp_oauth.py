@@ -412,7 +412,12 @@ async def fetch_client_id_metadata(url: str) -> dict | None:
     u = urlsplit(url)
     if u.scheme != "https" or not u.hostname:
         return None
-    if not health.safe_webhook_url(url) or not health.host_is_public(u.hostname):
+    if not health.safe_webhook_url(url):
+        return None
+    try:
+        if not await health.host_is_public_async(u.hostname, health.host_is_public):
+            return None
+    except health.AddressLookupTimedOut:
         return None
     try:
         async with httpx.AsyncClient(timeout=_CIMD_TIMEOUT_S, follow_redirects=False) as c:

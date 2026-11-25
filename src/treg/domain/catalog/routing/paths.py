@@ -192,6 +192,16 @@ def upper(v: Any) -> Any:
     return v.upper() if isinstance(v, str) else v
 
 
+def zero_based(position: Any) -> int | None:
+    """The zero-based offset of a result numbered from one."""
+    if isinstance(position, str) and position.isascii() and position.isdigit():
+        try:
+            position = int(position.lstrip("0") or "0")
+        except ValueError:
+            return None
+    return position - 1 if type(position) is int and position >= 1 else None
+
+
 def at_least(v: Any, floor: Any) -> Any:
     """A provider minimum (`pagination.size must not be less than 10`, lusha) applied to the
     caller's limit — the caller still pays the provider's price for the rows it insists on."""
@@ -823,7 +833,8 @@ def starts_with(v: Any, prefix: Any) -> bool:
 TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "one_place": one_place, "join": join, "phrase": phrase, "people_text": people_text, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_country": dfs_country, "dfs_keyword": dfs_keyword, "dfs_keyword_text": dfs_keyword_text,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
-              "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
+              "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "zero_based": zero_based,
+              "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "x_post_id": x_post_id, "linkedin_job_id": linkedin_job_id, "reddit_post_id": reddit_post_id,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "key": key, "starts_with": starts_with, "http_error": http_error, "wall_page": wall_page, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,

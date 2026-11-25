@@ -890,9 +890,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             caller=caller,
             enforce_tag_budgets=_enforce_tag_budgets,
             call_ref=call_ref,
+            surface=request.context.input.surface,
         )
     except CallFailure:
         raise
+    if intake.meta is not None and intake.meta is not meta:
+        meta = request.context.meta = intake.meta
     idem_key = intake.idempotency_key
     if intake.replay is not None:
         replayed = intake.replay
@@ -1051,8 +1054,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             body_bytes = await _await_before_reserve(request.body(), request, call_ref)
             response, charged = await routed.run_routed(
                 request.context, ep, body_bytes, request.headers.get, upstream_client, execute_call,
-                audit_client=_client_name(request))
+                audit_client=_client_name(request), keyed=bool(idem_key))
         except asyncio.CancelledError:
+            if request.context.allowance_charged:
+                # A child's charge stands: the claim stays pending for a retry to resolve.
+                request.state.idem_claim = None
             await _finish_cancelled_call(request, None, call_ref)
             raise
         except CallFailure as exc:
@@ -1171,6 +1177,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.context.marketplace = mk
         request.context.tool_name = tool.name
         mk.deferred = request.context.deferred_settles
+        mk.routed_allowance = bool(request.context.routed_allowance)
     try:
         slot_day = await _await_before_reserve(
             authorize_call(
@@ -1270,6 +1277,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if mk is not None:
             request.context.provider, request.context.credential_tier = mk.provider, mk.tier
         telemetry: dict = {"call_ref": call_ref}
+        if request.context.input.surface:  # a reshaped answer: never read back as the archived bytes
+            telemetry["surface"] = request.context.input.surface
         if meta.tags:
             # Own-tool calls carry tags too: a builder's usage report has to account for every call
             # their user made, not only the ones that spent treg's money.
@@ -1464,6 +1473,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             raise
     if mk is not None:
         mk.deferred = request.context.deferred_settles
+        mk.routed_allowance = bool(request.context.routed_allowance)
     if mk is not None and mk.tier == "platform" and mk.public_resource_ids:
         # Resolution already proved these ids are absent from every org's durable assignments.
         # End the DB phase before asking the provider whether each is an approved public resource.
@@ -1562,7 +1572,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.context.finalization = FinalizationState.PENDING
         try:
             await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True,
-                                    allow_allowance=not idem_key)
+                                    allow_allowance=True, mark_in_flight=bool(idem_key))
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref)

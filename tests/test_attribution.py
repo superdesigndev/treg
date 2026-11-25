@@ -74,6 +74,18 @@ async def test_sitetrack_is_inert_without_a_posthog_key(clients, monkeypatch):
     assert "{POSTHOG_KEY}" not in r.text
 
 
+async def test_browsers_use_the_browser_host_and_the_server_keeps_its_own(clients, monkeypatch):
+    """A first-party proxy host reaches every page; server-side capture stays on `posthog_host`."""
+    s = get_settings()
+    monkeypatch.setattr(s, "posthog_key", "phc_test", raising=False)
+    monkeypatch.setattr(s, "posthog_host", "https://eu.i.posthog.com", raising=False)
+    monkeypatch.setattr(s, "posthog_browser_host", "https://e.example.com/", raising=False)
+    js = (await clients.get("/sitetrack.js")).text
+    assert "host = 'https://e.example.com'" in js
+    assert (await clients.get("/meta")).json()["posthog_host"] == "https://e.example.com"
+    assert s.posthog_host == "https://eu.i.posthog.com"
+
+
 async def test_sitetrack_templates_the_posthog_key(clients, monkeypatch):
     monkeypatch.setattr(get_settings(), "posthog_key", "phc_test", raising=False)
     monkeypatch.setattr(get_settings(), "posthog_host", "https://eu.i.posthog.com/", raising=False)

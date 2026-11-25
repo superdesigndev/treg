@@ -1,1 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="millionphones"><rect width="180" height="180" rx="36" fill="#2b4c8c"/><path d="M50 134V46l40 52 40-52v88" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="-26 0 914 914">
+  <rect x="-26" width="914" height="914" fill="#121623"/>
+  <!-- phone body with screen cut out -->
+  <path fill="#00C2E0" fill-rule="evenodd" d="M255,38 H585 A70,70 0 0 1 655,108 V808 A70,70 0 0 1 585,878 H255 A70,70 0 0 1 185,808 V108 A70,70 0 0 1 255,38 Z M242,146 V735 H598 V146 Z"/>
+  <rect x="360" y="80" width="122" height="22" rx="11" fill="#121623"/>
+  <circle cx="420" cy="805" r="37" fill="#121623"/>
+  <!-- gaps where the letters cross the phone frame -->
+  <g fill="#121623" stroke="#121623" stroke-linejoin="miter">
+    <polygon stroke-width="60" points="68,247 125,247 336,483 482,320 482,407 336,567 125,333 125,672 68,672"/>
+    <path stroke-width="56" d="M482,247 H660 A146.5,146.5 0 0 1 660,540 H538 V670 H482 Z"/>
+  </g>
+  <!-- letters -->
+  <g fill="#00C2E0">
+    <polygon points="68,247 125,247 336,483 482,320 482,407 336,567 125,333 125,672 68,672"/>
+    <path fill-rule="evenodd" d="M482,247 H660 A146.5,146.5 0 0 1 660,540 H538 V670 H482 Z M538,303 V483 H660 A90,90 0 0 0 660,303 Z"/>
+  </g>
+</svg>

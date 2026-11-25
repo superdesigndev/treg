@@ -27,6 +27,8 @@ sources:
   - src/treg/alembic/versions/0029_arena_verification_snapshot.py
 
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
+  - src/treg/alembic/versions/0127_callrecord_served_call_ref.py
+  - tests/test_callrecord_served_call_ref_migration.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
@@ -311,6 +313,27 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
   `not_found`); null where the status rule decides. Reliability reads it first ([catalog](catalog.md)).
 - `archive_key_hash` / `archive_content_hash`: the link for `GET /calls/{id}/result`
   ([archive](archive.md)).
+- `served_call_ref` (Alembic 0127): on a routed parent only, the `call_ref` of the child whose
+  answer the caller received (`answered_by` in `route._run_routed`: the winning attempt, an async
+  attempt's submission, an upgrade's own served child, under a merge the answer whose body is `raw`,
+  not `served_by`). It names a child only when that child's body is the `raw` returned. NULL on a
+  miss or a failure, when the router wrote `raw` itself (a declared-miss status, a failed async
+  task, a non-JSON body), when re-serializing `raw` changes its value or that cannot be told
+  (`route._delivered_as_received`: the provider's bytes read exactly, numbers as Decimal, in any
+  encoding `json.loads` accepts and with no repeated key, against the delivered `raw` read back; a
+  float past 15 significant digits or a dropped duplicate key fails it, and so does a body the check
+  cannot read, which costs the link, never the call), on an answer over `route.SERVED_CHECK_MAX` (64
+  KiB: the check parses the body again on the request path, so a larger one is served as before and
+  not linked), on a pending 202 (the caller got the submission ticket, not the answer later filed
+  under its ref), on an answer an overflow aggregator served (that row shares the child's ref with
+  the direct attempt's, so a ref could not name one), on every non-routed row and on rows written
+  before 0127, successful ones included: NULL means no usable link was recorded, never that no
+  answer was served. Unindexed and never a foreign key: a reader starts from the parent by id and
+  reads the child by that exact ref through `ix_callrecord_call_ref`. It is not review credit
+  (`route_summary["credited"]`, [feedback](feedback.md)). `served_content_hash` (same revision) is
+  the sha256 of the bytes returned as `raw`, in `archive.content_hash`'s digest: a reader takes an
+  archived answer for this call only when its content hash equals it ([archive](archive.md), "The
+  call-archive link").
 
 **Failure evidence.** `error_request` / `error_response` hold redacted, truncated failure evidence
 on every tier; `/calls` never fetches them, `GET /admin/errors` reads them, and
@@ -337,6 +360,10 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
 - `request_fingerprint` hashes method, path, query and body, a JSON body as its canonical
   serialization (`_canonical_json`); a row stored with the raw-bytes fingerprint still matches
   the same bytes (`_raw_request_fingerprint`). A 409 on a live `pending` row names its `call_ref`.
+- `surface` is `call` or `table`, the surface the label was taken on: a retry on the other one is
+  the 422 mismatch, since `/table/` returns a reshaped answer. NULL on labels stored before 0128,
+  which replay on either surface as before rather than becoming a new paid call; they expire
+  within the window.
 - A `pending` row is a lease owned by one call's `call_ref`: the owner renews `created_at` every
   `IDEMPOTENCY_LEASE_RENEW_S`, and every store, release and renewal is fenced on `call_ref`.
 - A lease older than `IDEMPOTENCY_STALE_PENDING_S` with no open hold or pending async task under
@@ -470,7 +497,8 @@ Their contract for anyone changing them: they issue no SQL, add no awaits to mon
 never change a transaction boundary or swallow an exception or cancellation, and carry no SQL text,
 parameters, amounts, exception messages, keys or tokens. Org and call ids appear only in bounded
 slow-operation logs, never as aggregate dimensions. A backend PID is reusable, so join trace records
-by `app_txn_id` and time interval. PostHog is a lossy diagnostic sink, never evidence that a charge
+by `app_txn_id` and time interval. A pool behind a connection pooler records no backend PID: the
+id its client sees is the pooler's. PostHog is a lossy diagnostic sink, never evidence that a charge
 committed; short-lived workers are verified from their local exit summary. The quota fail-open
 summary is described in [org-endpoint quotas](org-endpoint-quota.md#store-contract).
 

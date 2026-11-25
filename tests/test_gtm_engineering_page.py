@@ -28,7 +28,7 @@ async def test_hub_is_served_canonical_and_measurable(clients: AsyncClient):
     title = re.search(r"<title>(.*?)</title>", html).group(1)
     assert len(title.replace("&amp;", "&")) <= 62, title
     assert '<script src="/sitetrack.js"></script>' in html
-    assert '<script src="/adtrack.js"></script>' in html
+    assert '<script src="/click-id.js"></script>' in html
     kinds = []
     for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
         kinds.append(json.loads(block)["@type"])

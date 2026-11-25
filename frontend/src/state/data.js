@@ -132,7 +132,6 @@ export default function data(){
       useMode:'call',
       startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, startProgress:null, startWatching:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
-      vendorAsk:false, vendorCopied:false,
       reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},
       demo:{signin:false},
     teamResources:[],

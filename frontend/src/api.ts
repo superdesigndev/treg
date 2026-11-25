@@ -4,9 +4,18 @@ export interface RequestOptions extends Omit<RequestInit, 'headers'> {
   encode?: boolean
 }
 
+function readable(detail: unknown): unknown {
+  if (!Array.isArray(detail)) return detail
+  const messages = detail.map(d => d?.msg).filter((m): m is string => typeof m === 'string')
+  return messages.length ? messages.join('; ') : detail
+}
+
 export class ApiError extends Error {
-  constructor(public status: number, public detail: unknown = undefined) {
-    super(typeof detail === 'string' ? detail : `HTTP ${status}`)
+  public detail: unknown
+  constructor(public status: number, detail: unknown = undefined) {
+    const shown = readable(detail)
+    super(typeof shown === 'string' ? shown : `HTTP ${status}`)
+    this.detail = shown
   }
 }
 

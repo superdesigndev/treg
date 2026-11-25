@@ -30,13 +30,18 @@ def _holds(rule: dict, endpoint: dict, doc: object, request: plugins.Request | N
 def declares_miss(endpoint: dict) -> bool:
     """The row says what a 2xx that found nothing looks like."""
     rule = endpoint.get("miss")
-    return isinstance(rule, dict) and "status" not in rule
+    return isinstance(rule, dict) and ("status" not in rule or rule.get("ok_when") is not None)
 
 
 def miss_holds(endpoint: dict, doc: object, request: plugins.Request | None = None,
                answer: plugins.Answer | None = None) -> bool:
     """The row's 2xx miss rule holds on this answer."""
-    return declares_miss(endpoint) and _holds(endpoint["miss"], endpoint, doc, request, answer)
+    if not declares_miss(endpoint):
+        return False
+    rule = endpoint["miss"]
+    if "status" in rule:
+        return holds(rule["ok_when"], {"response": doc})
+    return _holds(rule, endpoint, doc, request, answer)
 
 
 def status_miss(endpoint: dict, status: int, doc: object, request: plugins.Request | None = None,

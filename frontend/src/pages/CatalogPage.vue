@@ -88,8 +88,8 @@ export default { components: { FindAnswer, CatalogSearch }, setup: useDashboard 
     <button v-if="!publicCatalog" class="pl-link" @click="go('connections')">Connect your own accounts</button></p>
 
   <footer class="cat-foot">
-    <p>Missing a tool? <button class="pl-link" @click="openToolRequest()">Request a tool</button>
-      <span aria-hidden="true">·</span> Sell an API? <button class="pl-link" @click="vendorAsk=true">List as vendor</button></p>
+    <p>Missing a tool? <button class="pl-link" @click="openToolRequest()">Request a tool</button> <span aria-hidden="true">·</span>
+      Sell an API? <a class="pl-link" href="https://vendors.treg.to" target="_blank" rel="noopener">List as vendor</a></p>
   </footer>
 </div>
 </template>

@@ -1,0 +1,23 @@
+{
+  "data": {
+    "profile": {
+      "name": "Jane Doe",
+      "status": "completed",
+      "emails": [],
+      "phoneNumbers": [
+        {
+          "number": "+15555550100",
+          "type": "mobile"
+        }
+      ],
+      "success": true,
+      "task_id": "00000000-0000-0000-0000-000000000000",
+      "linkedin_url": "https://www.linkedin.com/in/jane-doe-example"
+    },
+    "done": true
+  },
+  "credits": {
+    "charged": 3,
+    "available": 15000
+  }
+}

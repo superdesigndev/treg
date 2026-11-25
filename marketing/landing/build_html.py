@@ -605,7 +605,7 @@ TEMPLATE = """<!doctype html>
 }})();
 </script>
 <script src="/sitetrack.js"></script>
-<script src="/adtrack.js"></script>
+<script src="/click-id.js"></script>
 </body>
 </html>
 """
@@ -762,7 +762,7 @@ HUB = """<!doctype html>
 </footer>
 
 <script src="/sitetrack.js"></script>
-<script src="/adtrack.js"></script>
+<script src="/click-id.js"></script>
 </body>
 </html>
 """

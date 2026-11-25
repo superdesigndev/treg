@@ -118,7 +118,9 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
   reads a v2 row unchanged; billing never reads it
-  ([money](money.md#rows-in-the-v2-spelling)).
+  ([money](money.md#rows-in-the-v2-spelling)). When `price.unit: call` pairs a reserve plugin
+  with a reported charge, the plugin estimates the hold and `bill.miss` determines whether the
+  catalog shows `per_call` or `per_success`.
 
 The byte-identical claim is checked by the catalog dump in [replay](replay.md).
 
@@ -135,7 +137,8 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 `domain/catalog/outcome.py` judges one answer to a v2 row from its one declaration: a non-2xx is a
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
-`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.judged_outcome`
+`miss` rule holds, or the `ok_when` beside a rule's `status` holds (a provider that answers one miss
+with a 404 and another with an empty 2xx), else a hit. Billing reads it in the settlement order; `results.judged_outcome`
 records it on each call with `not_found` ahead of it, and reliability counts that word before the
 status ([catalog](catalog.md)); `results.classify` (the hit verdict, cache admission) reads it for a
 row that declares a `miss` rule, for a 2xx or a 4xx status, beside a verified adapter, in today's

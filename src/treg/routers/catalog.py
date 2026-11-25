@@ -690,6 +690,8 @@ async def catalog_endpoint(
         # at a one-row lookup. Own keys rank first at call time (this route is open, so it cannot
         # know the caller's); nothing is reserved here.
         from ..application.call.resolve import anonymous_served
+        from ..application.call.route import const_table_price
+        from ..domain.catalog.routing.contracts import default_prefer
         from ..domain.catalog.routing.plan import Candidate, cost_at, miss_charge_micro, rank
         contract = cat.contracts.get(ep["capability"])
         kids = [cat.by_id[i] for i in ep.get("routed_children") or [] if i in cat.by_id]
@@ -700,13 +702,21 @@ async def catalog_endpoint(
             cv = cat.cost_view(k.get("cost"), k["provider"])
             # Tiered as `route.build_plan` tiers it for a team with no own key: keyless rows first, free.
             anonymous = anonymous_served(k) is not None
-            price = 0 if anonymous else cost_at(cv, {}, ad)
-            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (),
+            variant = ad.accepts[0] if ad and ad.accepts else ()
+            # A price table the adapter's `const` always resolves to one row is quoted at that row,
+            # as `route.build_plan` ranks it; the fallback ceiling would misplace it in the order.
+            fixed = (const_table_price(cat, k, ad, dict(getattr(ad, "test_identity", None) or {}), variant)
+                     if ad is not None and not anonymous else None)
+            price = 0 if anonymous else fixed if fixed is not None else cost_at(cv, {}, ad)
+            cands.append(Candidate(k, ad, variant,
                                    "anonymous" if anonymous else "platform",
                                    price, st.get("hit_rate"),
                                    st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days"),
                                    miss_micro=0 if anonymous else
                                    miss_charge_micro(cv, {}, ad, price) if price is not None else None))
+        # The contract's own order, as a call with no X-Treg-Route-Prefer gets it.
+        order = ({"prefer": default_prefer(contract, {}), "one_subject": contract.one_subject,
+                  "last": contract.ask_last} if contract else {})
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": {
                              # `analytics` is treg's own event mapping, not part of the answer.
@@ -716,9 +726,9 @@ async def catalog_endpoint(
                          **({"complete": list(contract.complete)} if contract.complete else {})} if contract else None,
             # A child the router would not call on treg's key (`route.py` drops it the same way)
             # stays in the plan for its `accepts`, ranked after the rest and saying why.
-            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
+            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)], **order)]
                     + [_plan_row(c, cat) | {"skipped": _quote_skip(c.endpoint, cat)}
-                       for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)])],
+                       for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)], **order)],
             # The same job from providers whose adapter is not (yet) verified: not chosen by the
             # router, still callable by id — the search page groups them under this row, so the
             # page it points at must name them too.

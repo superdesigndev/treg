@@ -9,10 +9,11 @@ from datetime import timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import update
+from sqlalchemy import event, update
 
 from treg.api import app
 from treg.domain import money as ledger
+from treg.infra import db as infra_db
 from treg.infra.db import reset_db, session_maker
 from treg.models import Hold, Org
 from treg.timeutil import utcnow_naive
@@ -40,6 +41,26 @@ async def _both(org_id: int) -> tuple[int, int]:
     """(counter, journal) — every assertion below checks them against each other too."""
     async with session_maker() as db:
         return await ledger.spent_today(db, org_id), await ledger.spent_today_from_ledger(db, org_id)
+
+
+async def test_releasing_a_zero_hold_leaves_the_team_row_alone(c: AsyncClient):
+    org_id = await _org(c)
+    async with session_maker() as db:
+        call_id = await ledger.reserve(db, org_id, EP, 0)
+    statements: list[str] = []
+
+    def seen(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement.lstrip().upper())
+
+    engine = infra_db._engine.sync_engine
+    event.listen(engine, "before_cursor_execute", seen)
+    try:
+        async with session_maker() as db:
+            assert await ledger.release(db, call_id, reason="free") == 0
+    finally:
+        event.remove(engine, "before_cursor_execute", seen)
+    assert not [s for s in statements if s.startswith('UPDATE "ORG"') or s.startswith("UPDATE ORG")]
+    assert await _both(org_id) == (0, 0)
 
 
 async def test_counter_follows_reserve_settle_and_release(c: AsyncClient):
