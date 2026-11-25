@@ -68,7 +68,7 @@
   .pill.dark { background: var(--ink); color: var(--paper); border-color: var(--ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 1px 2px rgba(0,0,0,.2), 0 6px 16px -6px rgba(0,0,0,.35); }
   .pill.dark:hover { background: #262626; transform: translateY(-1px); }
   .pill:disabled { opacity: .45; cursor: default; transform: none; }
-  #run.busy { opacity: 1; color: #000; border-color: transparent; background: linear-gradient(90deg, #fde0f6, #fff0c7, #d6f3ff, #d9f7e8, #fde0f6) 0 0 / 400% 100%; animation: wash 4s ease-in-out infinite alternate; }
+  #run.busy { opacity: 1; color: #000; border-color: transparent; box-shadow: none; box-shadow: none; background: linear-gradient(90deg, #fde0f6, #fff0c7, #d6f3ff, #d9f7e8, #fde0f6) 0 0 / 400% 100%; animation: wash 4s ease-in-out infinite alternate; }
   @keyframes wash { to { background-position: 100% 0; } }
 
   /* hero: the house landing style (pixel headline, muted sub) with the scanner in it */
@@ -136,25 +136,29 @@
   @keyframes glint { from { background-position: 100% 0; } to { background-position: -150% 0; } }
   @keyframes nudge { from { transform: translateX(-6px); opacity: .5; } }
   @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
-  .px { width: 40px; height: 30px; margin: -4px 12px -4px 0; vertical-align: middle; flex-shrink: 0; fill: currentColor; shape-rendering: crispEdges; overflow: visible; }
+  .px { width: 36px; height: 27px; margin: -4px 12px -4px 0; vertical-align: middle; flex-shrink: 0; shape-rendering: crispEdges; overflow: visible; transition: opacity .3s, filter .3s; }
   .px * { transform-box: fill-box; }
+  .steps li:not(.on):not(.done) .px { opacity: .45; filter: grayscale(1); }
   .steps li:not(.on) .px * { animation: none !important; }
-  .steps li .px .spark, .steps li .px .bubble { opacity: 0; }
-  .steps li.on .px .bob { animation: pxBob .8s steps(1) infinite; }
-  .steps li.on .px .scan { animation: pxScan 1.6s steps(1) infinite; }
-  .steps li.on .px .hop { animation: pxHop .9s steps(1) infinite; }
-  .steps li.on .px .scanline { animation: pxRead 1.4s steps(7) infinite; }
-  .steps li.on .px .gavel { transform-origin: 0% 50%; animation: pxGavel .7s steps(1) infinite; }
-  .steps li.on .px .spark { animation: pxSpark .7s steps(1) infinite; }
-  .steps li.on .px .win { animation: pxBlink 1.2s steps(1) infinite; }
-  .steps li.on .px .bubble { animation: pxSpark 1.6s steps(1) infinite; }
+  .px .twinkle, .px .spark, .px .bubble { opacity: 0; }
+  .steps li.on .px .bob { animation: pxBob 1.2s ease-in-out infinite; }
+  .steps li.on .px .scan { animation: pxScan 2.4s ease-in-out infinite; }
+  .steps li.on .px .twinkle { animation: pxTwinkle 2.4s ease-in-out infinite; }
+  .steps li.on .px .hop { animation: pxHop 1.2s ease-in-out infinite; }
+  .steps li.on .px .scanline { animation: pxRead 1.8s ease-in-out infinite alternate; }
+  .steps li.on .px .gavel { transform-origin: 0% 45%; animation: pxGavel 1.3s infinite; }
+  .steps li.on .px .spark { animation: pxSpark 1.3s ease-out infinite; }
+  .steps li.on .px .win { animation: pxGlow 2s ease-in-out infinite; }
+  .steps li.on .px .bubble { animation: pxFloat 2.4s ease-in-out infinite; }
   @keyframes pxBob { 50% { transform: translateY(-1px); } }
-  @keyframes pxScan { 25% { transform: translate(1px, -1px); } 50% { transform: translate(2px, 0); } 75% { transform: translate(1px, 1px); } }
-  @keyframes pxHop { 30% { transform: translateY(-2px); } 60% { transform: translateY(0); } }
-  @keyframes pxRead { to { transform: translateY(7px); } }
-  @keyframes pxGavel { 0% { transform: rotate(-35deg); } 40% { transform: rotate(-18deg); } 65% { transform: rotate(0); } }
-  @keyframes pxSpark { 65% { opacity: 1; } 90% { opacity: 0; } }
-  @keyframes pxBlink { 50% { opacity: .15; } }
+  @keyframes pxScan { 25% { transform: translate(2px, -1px); } 50% { transform: translate(3px, 1px); } 75% { transform: translate(1px, 1px); } }
+  @keyframes pxTwinkle { 40%, 60% { opacity: 1; } }
+  @keyframes pxHop { 25% { transform: translateY(-3px); } 50% { transform: translateY(0); } }
+  @keyframes pxRead { to { transform: translateY(10px); } }
+  @keyframes pxGavel { 0% { transform: rotate(-30deg); animation-timing-function: ease-in-out; } 55% { transform: rotate(-34deg); animation-timing-function: cubic-bezier(.6,0,1,1); } 70% { transform: rotate(0); animation-timing-function: ease-out; } 100% { transform: rotate(-30deg); } }
+  @keyframes pxSpark { 0%, 68% { opacity: 0; } 74% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes pxGlow { 50% { opacity: .25; } }
+  @keyframes pxFloat { 0% { opacity: 0; transform: translateY(2px); } 30%, 70% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-2px); } }
   @keyframes hop { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
   .steps li.done span:first-child::before { content: "✓ "; color: #118453; }
   .runbox .actions { display: flex; gap: 10px; margin-top: 14px; }
@@ -298,11 +302,11 @@
     </div>
     <div class="meter"><i id="barFill"></i></div>
     <ul class="steps" id="steps">
-      <li data-s="site"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><g class="bob"><rect x="2" y="1" width="2" height="2"/><rect x="1" y="3" width="4" height="4"/><rect x="1" y="7" width="1" height="3"/><rect x="4" y="7" width="1" height="3"/></g><g class="scan"><rect x="5" y="4" width="2" height="1"/><rect x="7" y="5" width="2" height="1"/><rect x="10" y="2" width="2" height="1"/><rect x="10" y="6" width="2" height="1"/><rect x="9" y="3" width="1" height="3"/><rect x="12" y="3" width="1" height="3"/><rect x="10" y="3" width="2" height="3" fill="#22c7ff" opacity=".6"/></g></svg>Work out what you sell, from your profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="pull"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><g class="hop" style="animation-delay:0s"><rect x="1" y="2" width="2" height="2"/><rect x="0" y="4" width="4" height="4"/><rect x="0" y="8" width="1" height="2"/><rect x="3" y="8" width="1" height="2"/></g><g class="hop" style="animation-delay:0.15s"><rect x="7" y="2" width="2" height="2"/><rect x="6" y="4" width="4" height="4"/><rect x="6" y="8" width="1" height="2"/><rect x="9" y="8" width="1" height="2"/></g><g class="hop" style="animation-delay:0.3s"><rect x="13" y="2" width="2" height="2"/><rect x="12" y="4" width="4" height="4"/><rect x="12" y="8" width="1" height="2"/><rect x="15" y="8" width="1" height="2"/></g></svg>Read followers<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="bio"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><rect x="1" y="1" width="14" height="1"/><rect x="1" y="10" width="14" height="1"/><rect x="1" y="1" width="1" height="10"/><rect x="14" y="1" width="1" height="10"/><rect x="3" y="3" width="3" height="3"/><rect x="7" y="3" width="6" height="1"/><rect x="7" y="5" width="5" height="1"/><rect x="3" y="7" width="10" height="1"/><rect class="scanline" x="2" y="2" width="12" height="1" fill="#22c7ff" opacity=".7"/></svg>Read their bios<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="judge"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><rect x="9" y="9" width="6" height="2"/><g class="gavel"><rect x="2" y="5" width="8" height="1"/><rect x="9" y="2" width="3" height="7"/></g><g class="spark" fill="#ffbb40"><rect x="7" y="8" width="1" height="1"/><rect x="15" y="7" width="1" height="1"/><rect x="12" y="7" width="1" height="1"/></g></svg>Jev judges each profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
-      <li data-s="fill"><span><svg class="px" viewBox="0 0 16 12" aria-hidden="true"><rect x="2" y="2" width="9" height="9"/><rect class="win" x="3" y="4" width="2" height="1" fill="#ffbb40" style="animation-delay:0s"/><rect class="win" x="7" y="4" width="2" height="1" fill="#ffbb40" style="animation-delay:0.3s"/><rect class="win" x="3" y="6" width="2" height="1" fill="#ffbb40" style="animation-delay:0.6s"/><rect class="win" x="7" y="6" width="2" height="1" fill="#ffbb40" style="animation-delay:0.2s"/><rect class="win" x="3" y="8" width="2" height="1" fill="#ffbb40" style="animation-delay:0.5s"/><rect class="win" x="7" y="8" width="2" height="1" fill="#ffbb40" style="animation-delay:0.8s"/><g class="bubble"><rect x="12" y="1" width="4" height="3"/><rect x="12" y="4" width="1" height="1"/></g></svg>Posts or company, only where the bio is thin<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="site"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><g class="bob"><rect x="2" y="3" width="3" height="1" fill="#cfccc7"/><rect x="2" y="4" width="3" height="1" fill="#cfccc7"/><rect x="2" y="5" width="3" height="1" fill="#cfccc7"/><rect x="1" y="6" width="5" height="1" fill="#fdb5ec"/><rect x="0" y="7" width="7" height="1" fill="#fdb5ec"/><rect x="1" y="8" width="5" height="1" fill="#fdb5ec"/><rect x="1" y="9" width="5" height="1" fill="#fdb5ec"/><rect x="1" y="10" width="5" height="1" fill="#fdb5ec"/><rect x="1" y="11" width="2" height="1" fill="#8f8b85"/><rect x="4" y="11" width="2" height="1" fill="#8f8b85"/><rect x="1" y="12" width="2" height="1" fill="#8f8b85"/><rect x="4" y="12" width="2" height="1" fill="#8f8b85"/><rect x="1" y="13" width="2" height="1" fill="#8f8b85"/><rect x="4" y="13" width="2" height="1" fill="#8f8b85"/><rect x="1" y="14" width="2" height="1" fill="#8f8b85"/><rect x="4" y="14" width="2" height="1" fill="#8f8b85"/></g><g class="scan"><rect x="13" y="1" width="3" height="1" fill="#8f8b85"/><rect x="12" y="2" width="1" height="1" fill="#8f8b85"/><rect x="13" y="2" width="1" height="1" fill="#ffffff"/><rect x="14" y="2" width="2" height="1" fill="#22c7ff"/><rect x="16" y="2" width="1" height="1" fill="#8f8b85"/><rect x="11" y="3" width="1" height="1" fill="#8f8b85"/><rect x="12" y="3" width="5" height="1" fill="#22c7ff"/><rect x="17" y="3" width="1" height="1" fill="#8f8b85"/><rect x="11" y="4" width="1" height="1" fill="#8f8b85"/><rect x="12" y="4" width="5" height="1" fill="#22c7ff"/><rect x="17" y="4" width="1" height="1" fill="#8f8b85"/><rect x="11" y="5" width="1" height="1" fill="#8f8b85"/><rect x="12" y="5" width="5" height="1" fill="#22c7ff"/><rect x="17" y="5" width="1" height="1" fill="#8f8b85"/><rect x="12" y="6" width="1" height="1" fill="#8f8b85"/><rect x="13" y="6" width="3" height="1" fill="#22c7ff"/><rect x="16" y="6" width="1" height="1" fill="#8f8b85"/><rect x="7" y="7" width="3" height="1" fill="#fdb5ec"/><rect x="10" y="7" width="2" height="1" fill="#8f8b85"/><rect x="13" y="7" width="3" height="1" fill="#8f8b85"/></g><g class="twinkle"><rect x="20" y="0" width="1" height="1" fill="#ffbb40"/><rect x="19" y="1" width="3" height="1" fill="#ffbb40"/><rect x="20" y="2" width="1" height="1" fill="#ffbb40"/></g></svg>Work out what you sell, from your profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="pull"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><g class="hop" style="animation-delay:0s"><rect x="2" y="7" width="3" height="1" fill="#cfccc7"/><rect x="2" y="8" width="3" height="1" fill="#cfccc7"/><rect x="1" y="9" width="5" height="1" fill="#fdb5ec"/><rect x="1" y="10" width="5" height="1" fill="#fdb5ec"/><rect x="1" y="11" width="5" height="1" fill="#fdb5ec"/><rect x="1" y="12" width="5" height="1" fill="#fdb5ec"/><rect x="2" y="13" width="1" height="1" fill="#8f8b85"/><rect x="4" y="13" width="1" height="1" fill="#8f8b85"/><rect x="2" y="14" width="1" height="1" fill="#8f8b85"/><rect x="4" y="14" width="1" height="1" fill="#8f8b85"/></g><g class="hop" style="animation-delay:0.2s"><rect x="10" y="7" width="3" height="1" fill="#cfccc7"/><rect x="10" y="8" width="3" height="1" fill="#cfccc7"/><rect x="9" y="9" width="5" height="1" fill="#22c7ff"/><rect x="9" y="10" width="5" height="1" fill="#22c7ff"/><rect x="9" y="11" width="5" height="1" fill="#22c7ff"/><rect x="9" y="12" width="5" height="1" fill="#22c7ff"/><rect x="10" y="13" width="1" height="1" fill="#8f8b85"/><rect x="12" y="13" width="1" height="1" fill="#8f8b85"/><rect x="10" y="14" width="1" height="1" fill="#8f8b85"/><rect x="12" y="14" width="1" height="1" fill="#8f8b85"/></g><g class="hop" style="animation-delay:0.4s"><rect x="18" y="7" width="3" height="1" fill="#cfccc7"/><rect x="18" y="8" width="3" height="1" fill="#cfccc7"/><rect x="17" y="9" width="5" height="1" fill="#36d08a"/><rect x="17" y="10" width="5" height="1" fill="#36d08a"/><rect x="17" y="11" width="5" height="1" fill="#36d08a"/><rect x="17" y="12" width="5" height="1" fill="#36d08a"/><rect x="18" y="13" width="1" height="1" fill="#8f8b85"/><rect x="20" y="13" width="1" height="1" fill="#8f8b85"/><rect x="18" y="14" width="1" height="1" fill="#8f8b85"/><rect x="20" y="14" width="1" height="1" fill="#8f8b85"/></g></svg>Read followers<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="bio"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><rect x="1" y="2" width="22" height="1" fill="#cfccc7"/><rect x="1" y="3" width="1" height="1" fill="#cfccc7"/><rect x="22" y="3" width="1" height="1" fill="#cfccc7"/><rect x="1" y="4" width="1" height="1" fill="#cfccc7"/><rect x="4" y="4" width="4" height="1" fill="#fdb5ec"/><rect x="10" y="4" width="10" height="1" fill="#8f8b85"/><rect x="22" y="4" width="1" height="1" fill="#cfccc7"/><rect x="1" y="5" width="1" height="1" fill="#cfccc7"/><rect x="4" y="5" width="4" height="1" fill="#fdb5ec"/><rect x="22" y="5" width="1" height="1" fill="#cfccc7"/><rect x="1" y="6" width="1" height="1" fill="#cfccc7"/><rect x="4" y="6" width="4" height="1" fill="#fdb5ec"/><rect x="10" y="6" width="7" height="1" fill="#8f8b85"/><rect x="22" y="6" width="1" height="1" fill="#cfccc7"/><rect x="1" y="7" width="1" height="1" fill="#cfccc7"/><rect x="4" y="7" width="4" height="1" fill="#fdb5ec"/><rect x="22" y="7" width="1" height="1" fill="#cfccc7"/><rect x="1" y="8" width="1" height="1" fill="#cfccc7"/><rect x="22" y="8" width="1" height="1" fill="#cfccc7"/><rect x="1" y="9" width="1" height="1" fill="#cfccc7"/><rect x="4" y="9" width="15" height="1" fill="#8f8b85"/><rect x="22" y="9" width="1" height="1" fill="#cfccc7"/><rect x="1" y="10" width="1" height="1" fill="#cfccc7"/><rect x="22" y="10" width="1" height="1" fill="#cfccc7"/><rect x="1" y="11" width="1" height="1" fill="#cfccc7"/><rect x="4" y="11" width="12" height="1" fill="#8f8b85"/><rect x="22" y="11" width="1" height="1" fill="#cfccc7"/><rect x="1" y="12" width="1" height="1" fill="#cfccc7"/><rect x="22" y="12" width="1" height="1" fill="#cfccc7"/><rect x="1" y="13" width="1" height="1" fill="#cfccc7"/><rect x="22" y="13" width="1" height="1" fill="#cfccc7"/><rect x="1" y="14" width="22" height="1" fill="#cfccc7"/><rect class="scanline" x="2" y="3" width="20" height="1" fill="#22c7ff" opacity=".55"/></svg>Read their bios<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="judge"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><g class="gavel"><rect x="13" y="7" width="5" height="1" fill="#8f8b85"/><rect x="13" y="8" width="1" height="1" fill="#8f8b85"/><rect x="14" y="8" width="3" height="1" fill="#cfccc7"/><rect x="17" y="8" width="1" height="1" fill="#8f8b85"/><rect x="13" y="9" width="5" height="1" fill="#8f8b85"/><rect x="2" y="10" width="11" height="1" fill="#ffbb40"/><rect x="13" y="10" width="1" height="1" fill="#8f8b85"/><rect x="14" y="10" width="3" height="1" fill="#cfccc7"/><rect x="17" y="10" width="1" height="1" fill="#8f8b85"/><rect x="2" y="11" width="11" height="1" fill="#ffbb40"/><rect x="13" y="11" width="1" height="1" fill="#8f8b85"/><rect x="14" y="11" width="3" height="1" fill="#cfccc7"/><rect x="17" y="11" width="1" height="1" fill="#8f8b85"/><rect x="13" y="12" width="5" height="1" fill="#8f8b85"/><rect x="13" y="13" width="1" height="1" fill="#8f8b85"/><rect x="14" y="13" width="3" height="1" fill="#cfccc7"/><rect x="17" y="13" width="1" height="1" fill="#8f8b85"/><rect x="13" y="14" width="5" height="1" fill="#8f8b85"/></g><g class="spark"><rect x="20" y="12" width="1" height="1" fill="#fdb5ec"/><rect x="8" y="13" width="1" height="1" fill="#ffbb40"/><rect x="23" y="14" width="1" height="1" fill="#ffbb40"/></g><rect x="9" y="15" width="14" height="1" fill="#36d08a"/><rect x="9" y="16" width="14" height="1" fill="#36d08a"/></svg>Jev judges each profile<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
+      <li data-s="fill"><span><svg class="px" viewBox="0 0 24 18" aria-hidden="true"><rect x="2" y="2" width="13" height="1" fill="#8f8b85"/><rect x="3" y="3" width="11" height="1" fill="#cfccc7"/><rect x="3" y="4" width="11" height="1" fill="#cfccc7"/><rect x="3" y="5" width="11" height="1" fill="#cfccc7"/><rect x="3" y="6" width="11" height="1" fill="#cfccc7"/><rect x="3" y="7" width="11" height="1" fill="#cfccc7"/><rect x="3" y="8" width="11" height="1" fill="#cfccc7"/><rect x="3" y="9" width="11" height="1" fill="#cfccc7"/><rect x="3" y="10" width="11" height="1" fill="#cfccc7"/><rect x="3" y="11" width="11" height="1" fill="#cfccc7"/><rect x="3" y="12" width="11" height="1" fill="#cfccc7"/><rect x="3" y="13" width="4" height="1" fill="#cfccc7"/><rect x="7" y="13" width="2" height="1" fill="#8f8b85"/><rect x="9" y="13" width="5" height="1" fill="#cfccc7"/><rect x="3" y="14" width="4" height="1" fill="#cfccc7"/><rect x="7" y="14" width="2" height="1" fill="#8f8b85"/><rect x="9" y="14" width="5" height="1" fill="#cfccc7"/><rect x="3" y="15" width="4" height="1" fill="#cfccc7"/><rect x="7" y="15" width="2" height="1" fill="#8f8b85"/><rect x="9" y="15" width="5" height="1" fill="#cfccc7"/><rect x="3" y="16" width="4" height="1" fill="#cfccc7"/><rect x="7" y="16" width="2" height="1" fill="#8f8b85"/><rect x="9" y="16" width="5" height="1" fill="#cfccc7"/><rect class="win" x="5" y="5" width="2" height="2" fill="#ffbb40" style="animation-delay:0s"/><rect class="win" x="9" y="5" width="2" height="2" fill="#ffbb40" style="animation-delay:0.5s"/><rect class="win" x="5" y="9" width="2" height="2" fill="#ffbb40" style="animation-delay:1s"/><rect class="win" x="9" y="9" width="2" height="2" fill="#ffbb40" style="animation-delay:0.3s"/><g class="bubble"><rect x="15" y="1" width="7" height="1" fill="#22c7ff"/><rect x="15" y="2" width="1" height="1" fill="#22c7ff"/><rect x="16" y="2" width="1" height="1" fill="#ffffff"/><rect x="17" y="2" width="1" height="1" fill="#22c7ff"/><rect x="18" y="2" width="1" height="1" fill="#ffffff"/><rect x="19" y="2" width="1" height="1" fill="#22c7ff"/><rect x="20" y="2" width="1" height="1" fill="#ffffff"/><rect x="21" y="2" width="1" height="1" fill="#22c7ff"/><rect x="15" y="3" width="7" height="1" fill="#22c7ff"/><rect x="16" y="4" width="1" height="1" fill="#22c7ff"/></g></svg>Posts or company, only where the bio is thin<i class="dots" aria-hidden="true"><i></i><i></i><i></i></i></span><span></span></li>
     </ul>
     <div class="actions"><button class="pill" id="stop">Stop</button></div>
     <div class="runmsg" id="runErr"></div>
@@ -331,45 +335,23 @@
       <div id="cHandle" style="font-size: 40px; font-weight: 700; letter-spacing: -0.5px"></div>
     </div>
 
-    <div style="margin-top: auto; display: flex; flex-direction: column">
-      <div style="display: flex; align-items: center">
-        <div id="leadsNumber" style="font-family: 'Geist Pixel', monospace; font-weight: 400; line-height: 0.85; letter-spacing: 0"></div>
-        <div style="display: flex; align-items: center; margin-left: 18px; margin-right: -6px" aria-hidden="true"><div style="width: 10px; height: 10px; border-radius: 999px; background: #111111"></div><div style="width: 60px; height: 3px; background: #111111"></div></div>
-        <div style="position: relative; flex-shrink: 0; margin: -45px 0">
-          <svg width="320" height="320" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
-            <circle cx="32" cy="32" r="31" fill="#FFFFFF"></circle>
-            <circle cx="32" cy="32" r="15.5" fill="none" stroke="#111111" stroke-width="31" id="pieSlice"></circle>
-          </svg>
-          
+    <div style="margin-top: auto; display: flex; gap: 80px; align-items: flex-end">
+      <div style="display: flex; flex-direction: column; gap: 14px">
+        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 150px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
+          <div style="font-size: 24px; font-weight: 600; color: #3F3F3F">lead rate</div>
         </div>
       </div>
-      <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 100px; line-height: 0.9; letter-spacing: 0; margin-top: -8px">LEADS</div>
-      <div style="margin-top: 10px; font-size: 20px; font-weight: 500; color: #5E5E5E">in my followers · out of <span data-f="scanned"></span> scanned</div>
-    </div>
-
-    <div style="margin-top: 20px">
-    <div style="display: flex; align-items: center">
-    <span id="leadAvatars"></span>
-    <div style="margin-left: -28px; transform: translateY(-4px) rotate(-7deg); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12); width: 56px; height: 56px; border-radius: 999px; border: 4px solid #FFFFFF; background: #111111; color: #FFFFFF; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center">+<span data-f="moreLeads"></span></div>
-  </div>
-    </div>
-  </div>
-
-  <div style="flex: 0 0 auto; display: flex; flex-direction: column; justify-content: flex-end; gap: 40px; padding-bottom: 90px; position: relative; z-index: 1">
-    <div style="display: flex; flex-direction: column; gap: 10px">
-      <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 88px; line-height: 0.9; letter-spacing: 0"><span data-f="revenue"></span></div>
-      <div style="display: flex; align-items: center; gap: 10px">
-        <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
-        <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
+      <div style="display: flex; flex-direction: column; gap: 14px">
+        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 150px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
+          <div style="font-size: 24px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
+        </div>
       </div>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 10px">
-      <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 88px; line-height: 0.9; letter-spacing: 0"><span data-f="rate"></span></div>
-      <div style="display: flex; align-items: center; gap: 10px">
-        <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
-        <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">lead rate</div>
-      </div>
-    </div>
+    <div style="margin-top: 26px; font-size: 19px; font-weight: 500; color: #5E5E5E"><span data-f="math"></span></div>
   </div>
 </div>
 </div></div>
@@ -720,7 +702,7 @@
     return call(EP.profile, { body: { username: handle }, cap: 0.002 }).then(function (res) {
       if (!res.ok && res.status !== 404) throw unreachable(res);
       var b = res.body, out = b.output || {}, raw = b.raw || {}, rr = (raw.rows || [{}])[0] || {};
-      o.bio = out.description || ''; o.name = out.name || out.display_name || rr.name || ''; o.website = rr.website || raw.website || ''; o.image = rr.image || out.image || '';
+      o.bio = out.description || ''; o.name = out.name || out.display_name || rr.name || ''; o.website = rr.website || raw.website || ''; o.image = rr.image || out.image || ''; o.followers = +(out.followers || rr.followers || 0);
       var dom = domainOf(o.website);
       if (dom) return readPage(/:\/\//.test(o.website) ? o.website : 'https://' + o.website).then(function (t) { if (t.length >= 80) { found = dom; o.site = t.slice(0, 2000); } });
     }).then(function () {
@@ -734,11 +716,11 @@
       var t = 'What the owner of @' + handle + (o.name ? ' (' + o.name + ')' : '') + ' sells, worked out from their own public profile. If they sell nothing, judge followers as buyers of the work they describe.\n' +
         'bio: ' + o.bio + '\nwebsite: ' + o.website + '\n' +
         (o.site ? 'their website, quoted:\n' + o.site + '\n' : '') + (o.posts ? 'their latest posts, quoted:\n' + o.posts + '\n' : '');
-      return { text: t, found: found || 'bio', name: o.name, image: o.image };
+      return { text: t, found: found || 'bio', name: o.name, image: o.image, followers: o.followers };
     });
   }
 
-  var ownerInfo = null;
+  var ownerInfo = null, followerTotal = 0;
   function scan(handle, want) {
     stopped = false; spent = 0; leads = []; all = [];
     var Q, product, bandP, started = Date.now();
@@ -757,7 +739,7 @@
     }).then(function (got) {
       if (!got.rows.length) throw new Stop('No followers came back for @' + handle + '. Check the handle; a private account cannot be read.');
       step('pull', 'done', got.rows.length.toLocaleString('en-US') + ' followers');
-      all = got.rows;
+      all = got.rows; followerTotal = got.total || 0;
       var todo = all.filter(function (r) { return !(r.default_avatar && r.followers < 5 && !r.badge); });
       step('bio', 'on', '0 / ' + todo.length);
       return pool(todo, 8, function (r) {
@@ -825,12 +807,12 @@
     var by = {}; leads.forEach(function (r) { by[r.role] = (by[r.role] || 0) + 1; });
     $('roles').innerHTML = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return '<span>' + esc(ROLE_LABEL[k] || k) + ' · ' + by[k] + '</span>'; }).join('');
     $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min. Followers with no bio count as misses.';
-    var b = BANDS[band.key];
-    $('resNote').textContent += ' Revenue on the card: ' + leads.length + ' leads × 2% close × USD ' + b.usd.toLocaleString('en-US') + ' a year (' + b.label +
-      (band.read ? ', as Jev read your profile' : ', the default: Jev could not read your profile') + '). What the leads could bring in, not a forecast.';
-    drawCard({ handle: cleanHandle($('handle').value), name: (ownerInfo || {}).name || '', image: (ownerInfo || {}).image || '',
-      leads: leads.length, scanned: all.length, closeRate: 2, customerValue: b.usd,
-      top: leads.filter(function (r) { return /^https:\/\//.test(r.avatar) && !r.default_avatar; }).slice(0, 6).map(function (r) { return { handle: r.handle, avatar: r.avatar }; }) });
+    var b = BANDS[band.key], scanned = all.length, total = Math.max((ownerInfo || {}).followers || followerTotal || 0, scanned);
+    var rate = scanned ? leads.length / scanned : 0, revenue = Math.round(total * rate * 0.02 * b.usd);
+    $('resNote').textContent += ' Revenue on the card: ' + total.toLocaleString('en-US') + ' followers × ' + pct(rate) + ' lead rate × 2% close × USD ' + b.usd.toLocaleString('en-US') + ' a year (' + b.label +
+      (band.read ? ', as Jev read your profile' : ', the default: Jev could not read your profile') + '). What your followers could bring in, not a forecast.';
+    drawCard({ handle: cleanHandle($('handle').value), image: (ownerInfo || {}).image || '', leads: leads.length, scanned: scanned,
+      total: total, rate: rate, revenue: revenue, usd: b.usd });
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -844,52 +826,29 @@
   }
   function fitCard() { var w = $('card').clientWidth; if (w) $('cardNode').style.transform = 'scale(' + (w / 1200) + ')'; }
   window.addEventListener('resize', fitCard);
+  function pct(r) { return (r * 100).toFixed(1).replace(/\.0$/, '') + '%'; }
+  function money(n) {
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e4) return '$' + Math.round(n / 1e3) + 'K';
+    return '$' + n.toLocaleString('en-US');
+  }
   function drawCard(c) {
     cardData = c; $('cardNote').textContent = '';
-    var photos = [c.image ? asData(c.image.replace(/_normal\./, '_400x400.')).catch(function () { return ''; }) : Promise.resolve('')]
-      .concat(c.top.map(function (p) { return asData(p.avatar).catch(function () { return ''; }); }));
-    return Promise.all(photos).then(function (got) {
+    var photo = c.image ? asData(c.image.replace(/_normal\./, '_400x400.')).catch(function () { return ''; }) : Promise.resolve('');
+    return photo.then(function (got) {
       if (cardData !== c) return;
-      c.photo = got[0]; c.topLeads = c.top.map(function (p, i) { return { handle: p.handle, photo: got[i + 1] }; }).filter(function (p) { return p.photo; });
-      render(c); fitCard();
+      c.photo = got; render(c); fitCard();
     });
   }
   function render(c) {
     $('cOwner').src = c.photo || ''; $('cOwner').alt = c.photo ? '@' + c.handle + "'s X profile photo" : '';
     $('cOwner').style.visibility = c.photo ? '' : 'hidden';
     $('cHandle').textContent = '@' + c.handle;
-    var node = $('cardNode');
-    const rate = c.scanned > 0 ? c.leads / c.scanned * 100 : 0;
-    const revenue = Math.round(c.leads * c.closeRate / 100 * c.customerValue);
-    const set = (f, v) => node.querySelectorAll('[data-f="' + f + '"]').forEach(el => el.textContent = v);
-    set('scanned', c.scanned.toLocaleString('en-US'));
-    set('rate', rate.toFixed(1).replace(/\.0$/, '') + '%');
-    set('revenue', '$' + revenue.toLocaleString('en-US'));
-    set('moreLeads', Math.max(c.leads - c.topLeads.length, 0));
-    $('leadsNumber').parentNode.parentNode.nextElementSibling.querySelector('[data-f="moreLeads"]').parentNode.style.display = c.leads > c.topLeads.length ? '' : 'none';
-
-    const num = document.getElementById('leadsNumber');
-    const digits = String(c.leads).length;
-    num.style.fontSize = (digits <= 2 ? 250 : digits === 3 ? 210 : 160) + 'px';
-    num.textContent = c.leads;
-
-    const r = 15.5, circ = 2 * Math.PI * r, pct = Math.min(rate, 100);
-    const slice = document.getElementById('pieSlice');
-    slice.setAttribute('stroke-dasharray', (pct * circ / 100).toFixed(2) + ' ' + circ.toFixed(2));
-    slice.setAttribute('transform', 'rotate(' + (180 - pct * 1.8).toFixed(1) + ' 32 32)');
-    document.getElementById('pie').setAttribute('aria-label', c.leads + ' of ' + c.scanned + ' followers are leads');
-
-    const tilt = [-8, 6, -4, 9, -6, 5], lift = [0, -7, 3, -5, 6, -3];
-    const stack = document.getElementById('leadAvatars');
-    stack.innerHTML = '';
-    c.topLeads.forEach((p, i) => {
-      const img = document.createElement('img');
-      img.src = p.photo;
-      img.alt = 'Profile photo of @' + p.handle;
-      img.style.cssText = 'width: 56px; height: 56px; border-radius: 999px; object-fit: cover; border: 4px solid #FFFFFF; display: block; box-shadow: 0 4px 10px rgba(0,0,0,0.12); margin-left: ' + (i === 0 ? 0 : -28) + 'px; transform: translateY(' + lift[i % 6] + 'px) rotate(' + tilt[i % 6] + 'deg)';
-      stack.appendChild(img);
-    });
-    stack.style.display = 'contents';
+    var node = $('cardNode'), set = function (f, v) { node.querySelectorAll('[data-f="' + f + '"]').forEach(function (el) { el.textContent = v; }); };
+    set('rate', pct(c.rate));
+    set('revenue', money(c.revenue));
+    set('math', c.leads + ' of ' + c.scanned.toLocaleString('en-US') + ' followers scanned are leads · ' + c.total.toLocaleString('en-US') +
+      ' followers × ' + pct(c.rate) + ' × 2% close × $' + c.usd.toLocaleString('en-US') + ' a year');
   }
   /* Google Fonts subset to the card's own characters, inlined so the PNG draws the same type */
   function cardFontCss() {
