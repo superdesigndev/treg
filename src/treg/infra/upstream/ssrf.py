@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
 import socket
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from urllib.parse import urlsplit
+
+_log = logging.getLogger(__name__)
 
 
 def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -67,8 +71,22 @@ def host_is_public(host: str) -> bool:
     return True
 
 
+class AddressLookupTimedOut(TimeoutError):
+    """The address could not be confirmed in time. The request is still refused, but this says
+    nothing about the host or a credential behind it."""
+
+
 _executor: ThreadPoolExecutor | None = None
-_inflight: dict[str, asyncio.Future] = {}
+
+
+@dataclass(eq=False)
+class _Lookup:
+    job: Future
+    answer: asyncio.Future
+    waiters: int = 0
+
+
+_inflight: dict[str, _Lookup] = {}
 
 
 def _lookup_executor() -> ThreadPoolExecutor:
@@ -82,20 +100,43 @@ def _lookup_executor() -> ThreadPoolExecutor:
 
 async def host_is_public_async(host: str, check=None) -> bool:
     """host_is_public off the event loop, on a small dedicated pool. At most one lookup per host is in
-    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands."""
+    flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands. A
+    caller that has waited `ssrf_lookup_timeout_s` gets AddressLookupTimedOut. A lookup still queued when its last
+    caller stops waiting is dropped; one already running cannot be interrupted and finishes on its
+    thread."""
     if not host:
         return False
-    fut = _inflight.get(host)
-    if fut is None:
-        loop = asyncio.get_running_loop()
-        fut = loop.run_in_executor(_lookup_executor(), check or host_is_public, host)
-        _inflight[host] = fut
-        fut.add_done_callback(lambda f, h=host: _inflight.pop(h, None) if _inflight.get(h) is f else None)
-    return await asyncio.shield(fut)
+    lookup = _inflight.get(host)
+    if lookup is None:
+        job = _lookup_executor().submit(check or host_is_public, host)
+        lookup = _Lookup(job, asyncio.wrap_future(job))
+        _inflight[host] = lookup
+        lookup.answer.add_done_callback(_forget(host, lookup))
+    from ...config import get_settings
+    lookup.waiters += 1
+    try:
+        return await asyncio.wait_for(asyncio.shield(lookup.answer), get_settings().ssrf_lookup_timeout_s)
+    except TimeoutError:
+        _log.warning("ssrf_lookup_timeout")
+        raise AddressLookupTimedOut("address lookup timed out") from None
+    finally:
+        lookup.waiters -= 1
+        if not lookup.waiters and lookup.job.cancel() and _inflight.get(host) is lookup:
+            del _inflight[host]  # Future.cancel() succeeds only for a lookup that has not started
+
+
+def _forget(host: str, lookup: _Lookup):
+    def done(answer: asyncio.Future) -> None:
+        if _inflight.get(host) is lookup:
+            _inflight.pop(host, None)
+        if not answer.cancelled():
+            answer.exception()  # a refused caller may have stopped waiting; mark the outcome retrieved
+    return done
 
 
 async def url_host_is_public(url: object) -> bool:
-    """host_is_public for a whole URL (a str or an httpx.URL), resolved off the event loop."""
+    """host_is_public for a whole URL (a str or an httpx.URL), resolved off the event loop. Raises
+    AddressLookupTimedOut as host_is_public_async does."""
     try:
         host = urlsplit(str(url)).hostname or ""
     except ValueError:

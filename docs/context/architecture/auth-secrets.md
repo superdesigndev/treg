@@ -190,7 +190,9 @@ Meta reject `access_type`). PKCE where required; TikTok's hex challenge (`pkce_l
 only when `public_url` is localhost, because TikTok treats a localhost redirect as a desktop app.
 `long_lived_exchange` swaps Meta's short code-exchange token for its long-lived one, non-fatally.
 The callback performs token and identity requests after closing the database session; a required
-identity miss produces `setup_required` and no tool.
+identity miss produces `setup_required` and no tool. A token endpoint whose address lookup times out
+is refused before the code is sent, so that callback leaves the grant `pending` and answers a 502 that
+a reload retries within the grant's lifetime; any other exchange failure ends the grant.
 
 **Expiry is a separate axis from health.** Health answers "does it work"; expiry answers "how long
 will it keep working", which matters for a non-refreshable token that reads healthy until it
@@ -361,7 +363,7 @@ member call cannot read someone else's key.
 
 A tool's `base_url` is checked against the internal-address block-list (including numeric IP
 encodings) at registration, and the proxy re-resolves the host at call time
-(`infra.upstream.ssrf.host_is_public`, gated by `proxy_ssrf_check`), so DNS rebinding does not
+(`infra.upstream.ssrf.host_is_public_async`, off the event loop, gated by `proxy_ssrf_check`), so DNS rebinding does not
 bypass it. The health probe and the OAuth token endpoint (refresh and code exchange) get the same
 resolve check before sending; a token answer without `access_token` is reported without its body,
 naming only a standard OAuth error code (`invalid_grant`) when the answer carries one.
