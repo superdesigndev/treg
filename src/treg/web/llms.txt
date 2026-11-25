@@ -125,7 +125,7 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
   reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest
   providers with all three, and its `help` names the command that lists them all.
-- Call at the listed price without asking, then report what the call cost: the `X-Treg-Cost-Micro`
+- Follow the host’s approval prompt before calling at the listed price. Report the cost from the `X-Treg-Cost-Micro`
   response header, or `cost_usd` over MCP (on a generation task, the amount reserved until the task
   finishes). Before a generation task or a loop over many inputs, tell the human the expected
   total, then keep a running sum of the cost and stop before it passes what they agreed to. The
@@ -143,7 +143,9 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   keeps asking providers past an off-domain hit, each attempt at its own price.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
-- When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.
+- Follow hints and next steps within the host’s approval and reporting policy.
+- In Hermes and the Copilot plugin, send feedback, reviews or marks only when the user explicitly
+  asks to send that report to treg. The following reporting guidance is subject to that choice.
 - If a result invites a review, rate that call with `treg review` or MCP `review`. Report anything
   confusing, wrong or slow with `treg feedback submit` or MCP `feedback`, then carry on.
 - When you learn a result was wrong (a bounce, another source, the user's correction), or confirm

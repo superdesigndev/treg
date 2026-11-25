@@ -326,6 +326,7 @@ def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch):
     spec = agent_pages.AGENTS["hermes"]
     block = spec["guide"][0]["html"]
     assert "mcp_servers:" in block and f'url: "{out["mcp_url"]}"' in block and "Bearer" in block
+    assert "trust: untrusted" in block and "trust: untrusted" in how
     steps = " ".join(spec["install_steps"])
     assert re.findall(r"mcp__treg__\w+", steps) and not re.findall(r"mcp_treg_\w+", steps)
 

@@ -822,6 +822,7 @@ AGENTS["hermes"] = {
              "<pre><code>mcp_servers:\n"
              "  treg:\n"
              "    url: \"https://treg.to/mcp/\"\n"
+             "    trust: untrusted\n"
              "    headers:\n"
              "      Authorization: \"Bearer &lt;your team token&gt;\"\n"
              "    tools:\n"
