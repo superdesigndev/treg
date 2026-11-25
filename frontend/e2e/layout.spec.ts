@@ -49,6 +49,8 @@ for (const [width, height] of [[1440, 1000], [390, 844]] as const) {
     test('the signed-in pages with tables lay out cleanly', async ({ page }) => {
       await signIn(page, `layout-${width}`)
       for (const hash of ['activity', 'orgs', 'tools', 'catalog', 'connections']) {
+        // A hash change alone is no new load, so networkidle would answer at once, before the page drew.
+        await page.goto('about:blank')
         await page.goto('/app#' + hash)
         await page.waitForLoadState('networkidle')
         await expectClean(page, '/app#' + hash)

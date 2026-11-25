@@ -32,7 +32,11 @@ test('a slow answer for the team you left never replaces the team you switched t
   })
   const staleAnswer = page.waitForEvent('requestfinished', request =>
     request.url().endsWith('/tools') && request.headers()['x-treg-org'] === first.slug, { timeout: 5000 })
+  // Leave only once the first team's list is asked for; leaving earlier means it is never asked.
+  const staleAsk = page.waitForRequest(request =>
+    request.url().endsWith('/tools') && request.headers()['x-treg-org'] === first.slug)
   await switchTo(page, 'First team')
+  await staleAsk
   await switchTo(page, 'Second team')
   await staleAnswer
   expect(released).toBe(true)
@@ -51,8 +55,10 @@ test('a member with no daily cap reads as no limit, a cap can be set and cleared
   await expect(page.getByRole('spinbutton', { name: 'Daily call cap' })).toHaveValue('')
   for (const value of ['25', '']) {
     await cap.fill(value)
+    const saved = page.waitForResponse(response => /\/members\/\d+\/cap$/.test(new URL(response.url()).pathname)
+      && response.request().method() === 'PATCH')
     await cap.press('Tab')
-    await page.waitForLoadState('networkidle')
+    expect((await saved).ok()).toBe(true)
     await page.reload()
     await expect(cap).toHaveValue(value)
   }
