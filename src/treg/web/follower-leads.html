@@ -206,12 +206,7 @@
   .gets li { display: flex; flex-direction: column; padding: 20px 20px 22px; border-radius: 16px; background: #fafaf9; box-shadow: inset 0 3px 0 var(--c); }
   .gets em { align-self: flex-start; font: 400 10.5px var(--mono); font-style: normal; color: var(--grey); border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; background: #fff; }
   .gets h3 { margin: 14px 0 6px; font-size: 19px; font-weight: 600; letter-spacing: -.015em; }
-  .gets p { margin: 0 0 16px; color: var(--grey); font-weight: 400; font-size: 14.5px; line-height: 1.55; }
-  .gets .gv { margin-top: auto; min-height: 104px; border-radius: 12px; background: #fff; border: 1px solid var(--line); padding: 14px; display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: center; gap: 7px; }
-  .gets .gv strong { font: 400 56px/1 var(--pixel); margin-right: 8px; }
-  .gets .gv > span { font: 500 12.5px var(--sans); }
-  .gets .gv.tags span { padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line); background: #f0faff; }
-  .gets .gv.says span { padding: 7px 11px; border-radius: 12px 12px 12px 3px; background: #eafaf2; font-weight: 400; }
+  .gets p { margin: 0; color: var(--grey); font-weight: 400; font-size: 14.5px; line-height: 1.55; }
   @media (max-width: 860px) { .gets { grid-template-columns: 1fr; } }
   .how { list-style: none; padding: 0; margin: 40px auto 0; max-width: 1000px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
   @media (max-width: 760px) { .how { grid-template-columns: 1fr; } }
@@ -421,12 +416,9 @@
 <section class="how-s wrap" id="get">
   <h2 class="cap">What you get.<small>Three answers about the people who follow you.</small></h2>
   <ul class="gets">
-    <li style="--c:var(--pink)"><em>X on this page · all three with your agent</em><h3>Your lead signal</h3><p>How many of your followers are potential buyers, and which ones, across X, Instagram and TikTok.</p>
-      <div class="gv" aria-hidden="true"><strong>8%</strong><span>of your followers<br>are leads</span></div></li>
-    <li style="--c:var(--cyan)"><em>with your agent</em><h3>Who your followers are</h3><p>Their job, role and seniority, where they are, and the traits that shape a buying decision.</p>
-      <div class="gv tags" aria-hidden="true"><span>Founder</span><span>Decision maker</span><span>Europe</span><span>Design</span><span>11–50 people</span></div></li>
-    <li style="--c:var(--green)"><em>with your agent</em><h3>Their pain points</h3><p>What they struggle with, what they need and what they care about, each backed by their own words.</p>
-      <div class="gv says" aria-hidden="true"><span>“hiring is slow”</span><span>“too many tools”</span><span>“need more leads”</span></div></li>
+    <li style="--c:var(--pink)"><em>X on this page · all three with your agent</em><h3>Your lead signal</h3><p>How many of your followers are potential buyers, and which ones, across X, Instagram and TikTok.</p></li>
+    <li style="--c:var(--cyan)"><em>with your agent</em><h3>Who your followers are</h3><p>Their job, role and seniority, where they are, and the traits that shape a buying decision.</p></li>
+    <li style="--c:var(--green)"><em>with your agent</em><h3>Their pain points</h3><p>What they struggle with, what they need and what they care about, each backed by their own words.</p></li>
   </ul>
 </section>
 
