@@ -442,9 +442,15 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   aggregate per endpoint). A review of a direct call whose answer is still on file is asked with the
   request and the shortened answer beside its reason (`application.review_answers`,
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
-  `review_judge_answer_chars`; a routed call's review (its rows cannot prove which answer the caller
-  got), or one whose answer is gone, from its reason alone. The worker opens the archive's object
-  store; without its credentials it logs that and judges from the reasons alone. A review with no
+  `review_judge_answer_chars`, as the reviewed call delivered it (`review_answers.as_delivered`: that
+  call's status, and no provider-reported charge under `strip_reported_charge`); a routed call's
+  review (its rows cannot prove which answer the caller got), or one whose answer is gone for good,
+  from its reason alone. An answer still on file that cannot be read now (object storage
+  unavailable, a failed read) leaves its review uncoded for a later run (`answer_unreadable`); a read
+  that raises codes that review from its reason (`answer_errors`) and the run carries on. The
+  worker opens the archive's object store, and without its credentials logs that and runs on, so
+  such reviews wait for them. Reading stops with a request's worth of time left before the
+  deadline, so what was read is sent, and no request starts after it. A review with no
   reason is `NOREASON` without asking. A new codebook version re-judges only reviews coded under an
   older one; `2026-11-25.1` brought the answer in, so it re-judges every review in the window.
 
@@ -455,9 +461,9 @@ under an older codebook version (`domain.feedback.reviews`), so overlapping runs
 downgrade an answer; no database connection is held across a Jev request.
 
 `treg-worker reviews body-pilot` (`application.review_body_pilot`) is a dry run of coding with the
-answer in view: it pages through the negative reviews already coded under the current codebook,
-newest first, until it has read `--sample` answers still on file, asks Jev the codebook again with the request and
-the answer shortened by `body_view.shrink` (long strings cut, long lists kept to their first items
+answer in view: it pages through the negative reviews, newest first, until it has read `--sample`
+answers still on file, and asks Jev the codebook twice, from the reason alone (a fresh control: the
+row is coded with the answer by the hourly judge) and with the request and the answer shortened by `body_view.shrink` (long strings cut, long lists kept to their first items
 and a count, always valid JSON, every mark a cut leaves named in `body_view.MARKERS` and explained
 in the question), and prints how its codes compare with the reason-only ones. Routed reviews are
 counted as `answer_unconfirmed` and never compared: the audit rows cannot prove which answer the
@@ -467,10 +473,10 @@ and the route's `served_by` is not stored on them. A blank
 reason is skipped; no Jev request starts after the deadline. It writes nothing and prints only
 counts, code pairs and review ids, never a reason, request or answer.
 
-`treg-worker reviews body-audit --pairs id:CODE[:CODE],...` (`application.review_body_audit`)
+`treg-worker reviews body-audit --pairs id:REASON[:CODE]=BODY[:CODE],...` (`application.review_body_audit`)
 checks the pilot's changed codes with a stronger judge: for each review, Claude through the AI
 Gateway (`ai_gateway_api_key`) sees the reason, request, shortened answer and codebook and picks
-between the review's reason-only coding and the pilot's body coding, shown as A and B in an order
+between the pilot's reason-only and body codings, shown as A and B in an order
 fixed by the review id. It writes nothing, prints winners per code change and review ids only, and
 starts no request once its spend reaches `--max-usd`.
 
