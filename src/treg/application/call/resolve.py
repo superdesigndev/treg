@@ -418,6 +418,8 @@ class MarketplaceCall:
     # That reserve marked the call in flight in the shared store (a keyed call): cleared once its
     # charge is written.
     allowance_marked: bool = False
+    # The caller's tags of a tagged call that took: carried on its charge, whose fold writes them.
+    allowance_tags: dict[str, str] | None = None
     # Its allowance charge was handed to the charge writer, which writes it whatever then happens
     # to the request: a cancel from here on keeps the call's idempotency claim.
     allowance_charged: bool = False

@@ -893,6 +893,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         )
     except CallFailure:
         raise
+    if intake.meta is not None and intake.meta is not meta:
+        meta = request.context.meta = intake.meta
     idem_key = intake.idempotency_key
     if intake.replay is not None:
         replayed = intake.replay

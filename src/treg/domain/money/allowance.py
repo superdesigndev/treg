@@ -20,7 +20,7 @@ from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import CallCharge, Hold, LedgerEntry, Org
+from ...models import CallCharge, Hold, LedgerEntry, Org, TagSpend
 from . import (
     _add_balance,
     _charge_parts,
@@ -202,6 +202,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
             meta={**(row.meta or {}), "allowance": True, "settled_micro": row.amount_micro,
                   "consumed_micro": drawn, "block_shortfall_micro": shortfall,
                   "charged_at": row.created_at.isoformat()})
+        # A tagged call's tag rows, settled at once with the entry, as `settle` leaves them.
+        for dim, val in ((row.meta or {}).get("tags") or {}).items():
+            db.add(TagSpend(org_id=org_id, dim=dim, val=val, hold_id=row.call_id,
+                            amount_micro=drawn, settled=True, created_at=folded_at))
     # The hold pays for what each of ITS calls set aside and no more. A call's overrun comes out
     # of the balance, as it does at `settle`, and so does all of a call that set its money aside
     # from an earlier hold: this one belongs to the calls it admitted.

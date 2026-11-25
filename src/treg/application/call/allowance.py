@@ -129,6 +129,15 @@ def routed_listed(org_id: int) -> bool:
                                or org_id in settings.money_allowance_routed_org_ids)
 
 
+def tagged_listed(org_id: int) -> bool:
+    """Whether a tagged call of the team no tag budget limits may take from the allowance: a
+    team on the allowance, named in `money_allowance_tagged_org_ids` or every one under
+    `money_allowance_tagged_all_orgs`."""
+    settings = get_settings()
+    return listed(org_id) and (settings.money_allowance_tagged_all_orgs
+                               or org_id in settings.money_allowance_tagged_org_ids)
+
+
 def enabled_for(org_id: int) -> bool:
     return listed(org_id) and kv.configured() and _database_supported()
 

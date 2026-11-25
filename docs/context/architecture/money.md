@@ -325,9 +325,9 @@ queue on the team's money lease twice each.
 
 Eligible: a direct call (not a child of a route, a hub run or overflow; a routed child under the
 next paragraph), synchronous, on treg's
-platform key, with no tags, a member with no daily spend limit, a provider outside the trial
+platform key, untagged (a tagged call under the paragraph after next), a member with no daily spend limit, a provider outside the trial
 pools, an endpoint any credit may pay for, and a price above zero. Every other call keeps its own
-hold, because something reads that hold: the tag and member rows written with it, the async task
+hold, because something reads that hold: the tag rows a budget counts and the member rows written with it, the async task
 or routed parent that closes it later, the purchased-credit gate. A call with an `Idempotency-Key`
 is eligible too: its claim's stale check, which asks whether money moved, reads the call's
 in-flight mark and queued charge where it would read a hold ("Idempotency and retries").
@@ -354,8 +354,33 @@ it. A root cancelled after a child's charge was queued keeps its claim pending
 (`CallContext.allowance_charged`). A process that dies before the close leaves the takes in the
 allowance hold, unspent and uncharged, until the hold is closed.
 
+**Tagged calls.** Off by default: `money_allowance_tagged_org_ids` lists the teams, or
+`money_allowance_tagged_all_orgs` turns it on for every team on the allowance
+(`allowance.tagged_listed`). A call tagged by `X-Treg-Meta` is then judged like an untagged one
+when no tag budget limits any of its tags: the pre-flight pass
+(`reserve._enforce_tag_budgets`, run by `intake.prepare_call_intake` before the idempotency
+replay) resolves each declared dimension's budget as it always does and reports whether any
+resolved row caps spend or counts calls (`daily_cap_micro`, `monthly_cap_micro`, `calls_per_day`
+of 0 or more). A registry row (`auto`) and a row with no limit do not; a tag on an undeclared key
+never has a budget. The answer rides on the call's `CallMeta.tag_limited`, which is True until that
+pass says otherwise, so a call that never ran it keeps its hold, and every pass writes its own
+answer, so a routed child's pass replaces what its parent's found. A limited call keeps its own hold
+(`tag_budget`), because its caps read the tag rows the hold writes at reserve; with the switch off
+every tagged call does (`tagged`). A pinned token's call keeps its hold too (`pinned`). When the
+audit row is gone, a pinned reader finds a call by the tags on its `reserve` entry or, for an
+allowance call, on its `settle` entry. A tagged call that took carries its tags on its charge
+(`MarketplaceCall.allowance_tags` into `CallCharge.meta["tags"]`), and the fold writes its
+`TagSpend` rows with its `settle` entry, settled at what the blocks gave, stamped with the fold's
+instant, the entry's meta naming the tags as a reserve entry's does. Per-tag spend, call counts
+and invoices therefore read the same as on the exact path once the charge is folded; a call never
+billed writes none, as a release deletes them. Until the fold the cap reads count the queued
+charge itself (`tag_spent_since`, `tag_calls_since` match `CallCharge.meta["tags"]`), so a budget
+set after such calls sees them at once. They read every queued charge whenever it queued, since its
+rows will carry the fold's later instant, and read it in the same statement as the tag rows, so a
+fold committing in between cannot hide it from both.
+
 Every listed team's call that keeps its own hold is counted by why, on its own logger
-(`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `async`,
+(`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `tag_budget`, `pinned`, `async`,
 `member_spend_cap`, ...; a routed child its root lets take is counted under these too), with any other child call named by its own suffix (`child_call:routed` for a
 routed child `:rN`, `child_call:overflow`, `child_call:hub_step` for `:sN`, `child_call:other` for
 polls and verifications), `in_flight_unmarked`, or `take_refused` when an eligible call's take
@@ -1606,7 +1631,8 @@ in declaration order refuses, naming the dimension. `domain.governance.budgets` 
 dimension selection; `application.call.reserve` owns the call-side caps; a newly observed tag returns
 `created` without committing, and the caller commits.
 
-**`TagSpend`**: `ledger.reserve` writes one row per tag in the balance transaction, each carrying the
+**`TagSpend`**: `ledger.reserve` writes one row per tag in the balance transaction (a tagged call on
+the allowance: the fold of its charge, settled at once; "Allowance"), each carrying the
 **full** call amount (cost-allocation-tag semantics: summing within a dimension reconciles to the org
 total, across dimensions double-counts, so every report names its key). `amount_micro` tracks the
 hold: estimate in flight, consumed figure at settle, deleted on release. Hence two deliberately
