@@ -450,14 +450,19 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
 - Upgrade with the answer (`judge_answers`): a direct call's review coded from its reason is asked
   again with the request and the shortened answer beside its reason (`application.review_answers`,
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
-  `review_judge_answer_chars`. The judge sees what this call's delivery is known to have had: its own
+  `review_judge_answer_chars` (JSON that fits is shown as sent, and a shortened one keeps the vendor's
+  own number text). The request's query is shown sorted (`review_answers.request_url`) and the
+  question says its order is not known: the archive keys a question by its sorted query, so the
+  URL it kept is the first call's. The judge sees what this call's delivery is known to have had: its own
   status and the body (`review_answers.as_delivered`), without the provider-reported charge the
   endpoint declares (whether this delivery kept it is not on file), read from a version of that
   answer that kept its bytes and still matches its content hash
   (`archive.resolve_result(prefer_bytes=True, verify=True)`). The reason codes become
   `reason_final` at once only on facts that will not change: the call row has no archive link, it
   came through `/table` (`CallRecord.surface`: a reshaped answer; an idempotency key keeps its
-  surface, `IdempotentCall.surface`, and never replays on the other), it predates `review_answer_surface_since`, or the bytes are not UTF-8 text.
+  surface, `IdempotentCall.surface`, and never replays on the other), it predates `review_answer_surface_since` (for a deployment with `/table/` on: when the last
+  instance of a build that did not record the surface stopped serving), or the bytes are not UTF-8
+  text.
   Anything else that does not read now (the archive not written yet, a hash-only or gone answer, a
   failed read, object storage not configured here, the database unreachable, a corrupt or
   mismatched copy) is

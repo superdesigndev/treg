@@ -800,7 +800,9 @@ class Settings(BaseSettings):
     review_judge_answers: bool = True
     # Calls before this moment are never read back as their archived answer: older call rows do not
     # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
-    # had `/table/` on before `callrecord.surface` existed sets it to when that column was added.
+    # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`
+    # finished serving: until then such an instance answers `/table/` (a retry included) without
+    # recording the surface, though the column exists. Keep `review_judge_answers` off until it is set.
     review_answer_surface_since: datetime | None = None
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
