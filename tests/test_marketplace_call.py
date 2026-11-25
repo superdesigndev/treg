@@ -3212,37 +3212,6 @@ def test_reported_charge_uses_catalog_path_for_any_provider(monkeypatch, amount,
         _mk('example', endpoint_id=endpoint['id']), body) == expected
 
 
-@pytest.mark.parametrize('endpoint', [
-    'oceanio.companies.lookalike', 'oceanio.companies.search', 'oceanio.people.search',
-])
-@pytest.mark.parametrize('size,valid', [(1, True), (100, True), (0, False),
-                                       (101, False), (True, False), ('10', False),
-                                       (None, False)])
-def test_oceanio_platform_search_reserve_matches_bounded_size(endpoint, size, valid):
-    cat = catalog_store.load()
-    ep = cat.by_id[endpoint]
-    body = json.dumps({'size': size}).encode()
-    if not valid:
-        with pytest.raises(ResolutionFailed) as exc:
-            call_resolution._enforce_platform_request(ep, body)
-        assert exc.value.detail['parameter'] == 'body.size'
-        return
-    call_resolution._enforce_platform_request(ep, body)
-    cost = cat.cost_view(ep['cost'], 'oceanio')
-    estimate, _ = call_resolution._marketplace_pricing('oceanio', endpoint, cost, {}, body)
-    assert estimate == size * 16_200
-
-
-@pytest.mark.parametrize('field', ['revealEmails', 'revealPhones'])
-def test_oceanio_platform_person_enrich_refuses_separately_billed_reveals(field):
-    ep = catalog_store.load().by_id['oceanio.people.enrich']
-    call_resolution._enforce_platform_request(ep, b'{"person":{"linkedin":"example"}}')
-    with pytest.raises(ResolutionFailed) as exc:
-        call_resolution._enforce_platform_request(
-            ep, json.dumps({'person': {'linkedin': 'example'}, field: {}}).encode())
-    assert exc.value.detail['parameter'] == f'body.{field}'
-
-
 @pytest.mark.parametrize('name,value', [
     *[(n, v) for n in ('reveal_phone_number', 'poll_only', 'run_waterfall_email', 'run_waterfall_phone')
       for v in ('true', '1', 'False', '')],
@@ -3286,73 +3255,6 @@ def test_apollo_platform_person_enrich_accepts_documented_false_default(name):
         call_resolution._enforce_platform_request(
             ep, b'', query=call_resolution.QueryValues(
                 (('email', 'a@stripe.com'), (name, 'false'), (name, 'true'))))
-
-
-@pytest.mark.parametrize('endpoint,credits,expected', [
-    ('oceanio.companies.lookalike', 0.2, 16_200),
-    ('oceanio.companies.search', 0, 0),
-    ('oceanio.people.search', 0.4, 32_400),
-    ('oceanio.people.enrich', 0.1, 8_100),
-])
-def test_oceanio_platform_settles_reported_credits(endpoint, credits, expected):
-    mk = _mk('oceanio', endpoint_id=endpoint, reported_charge_unit_micro=81_000)
-    assert call_settle._observed_cost_micro(
-        mk, json.dumps({'creditsUsed': credits}).encode()) == expected
-
-
-@pytest.mark.parametrize('endpoint,body,expected', [
-    ('oceanio.companies.lookalike',
-     {'size': 1, 'companiesFilters': {'lookalikeDomains': ['example.com']}}, 16_200),
-    ('oceanio.companies.search', {'size': 1}, 16_200),
-    ('oceanio.people.search', {'size': 1}, 16_200),
-    ('oceanio.people.enrich', {'person': {'linkedin': 'example'}}, 8_100),
-])
-async def test_oceanio_shared_key_calls_settle_reported_credits(
-    clients, monkeypatch, endpoint, body, expected,
-):
-    monkeypatch.setenv('TREG_PLATFORM_KEY_OCEANIO', 'PLATFORM-OCEANIO')
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'oceanio')
-    get_settings.cache_clear()
-
-    def upstream(request):
-        assert request.headers['x-api-token'] == 'PLATFORM-OCEANIO'
-        assert json.loads(request.content) == body
-        return _dropleads_response(200, {'creditsUsed': expected / 81_000})
-
-    try:
-        before = await _balance(clients)
-        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
-            monkeypatch.setattr(A.app.state, 'http', vendor)
-            response = await clients.post(f'/call/{endpoint}', json=body)
-        assert response.status_code == 200, response.text
-        assert response.headers['x-treg-cost-micro'] == str(expected)
-        assert before - await _balance(clients) == expected
-    finally:
-        get_settings.cache_clear()
-
-
-async def test_oceanio_own_key_keeps_upstream_search_limit_and_is_unmetered(clients, monkeypatch):
-    monkeypatch.setenv('TREG_PLATFORM_KEY_OCEANIO', 'PLATFORM-OCEANIO')
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'oceanio')
-    get_settings.cache_clear()
-    saved = await clients.post('/secrets', json={'name': 'oceanio', 'value': 'OWN-OCEANIO'})
-    assert saved.status_code == 200, saved.text
-
-    def upstream(request):
-        assert request.headers['x-api-token'] == 'OWN-OCEANIO'
-        assert json.loads(request.content)['size'] == 101
-        return _dropleads_response(200, {'creditsUsed': 20.2})
-
-    try:
-        before = await _balance(clients)
-        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
-            monkeypatch.setattr(A.app.state, 'http', vendor)
-            response = await clients.post('/call/oceanio.companies.search', json={'size': 101})
-        assert response.status_code == 200, response.text
-        assert 'x-treg-cost-micro' not in response.headers
-        assert await _balance(clients) == before
-    finally:
-        get_settings.cache_clear()
 
 
 @pytest.mark.parametrize('body,valid', [

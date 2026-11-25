@@ -46,6 +46,11 @@ pricing_url: https://www.ocean.io/pricing
 # them) and carry no published price. They are listed here because they answer a real job — turning a
 # customer list into ICP clusters — but treat them as less stable than the documented surface.
 
+defaults:
+  provenance: {source: docs, source_url: 'https://app.ocean.io/docs/getting-started/credits', checked: '2026-11-25', confidence: documented}
+  settle: {reported: {path: response.creditsUsed, unit: credit, missing: 0}}
+  error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+
 proposed_capabilities:
   companies.coverage.check: "Check which domains the provider already has data for"
   companies.search.fields: "List the industries, technologies and regions you can filter on"
@@ -76,17 +81,7 @@ endpoints:
       note: "the returned record is the wide one — web traffic (visits, pageViews, pagesPerVisit, bounceRate), the site's technology stack and technologyCategories, headcountGrowth at 3/6/12 months, departmentSizes, revenue band, funding round, locations and LinkedIn industry. The response reports its own price in `creditsUsed`"
     test_request:
       body: {company: {domain: "stripe.com"}}
-    cost:
-      type: per_success
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: the response body reported creditsUsed 0.1 and the standard-credit balance fell by exactly 0.1 (30.0 -> 29.9). Bulk lookup via /v2/lookup/companies is half the price per company (0.05) — prefer it whenever you are enriching by domain. Matches the published rate card: "Enrich Company — 0.1 credits / result".'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: the response body reported creditsUsed 0.1 and the standard-credit balance fell by exactly 0.1 (30.0 -> 29.9). Bulk lookup via /v2/lookup/companies is half the price per company (0.05) — prefer it whenever you are enriching by domain. Matches the published rate card: \"Enrich Company — 0.1 credits / result\"."}
     docs_url: https://app.ocean.io/docs/enrichCompany
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -109,17 +104,9 @@ endpoints:
       note: "the cheapest way to enrich by domain — 0.05 credit per company found, half the price of /v2/enrich/company, and synchronous. Domains with no match come back as `company: null` and, per the response's own accounting, are not billed. `totalRequested`, `totalFound` and `creditsUsed` are returned alongside the records"
     test_request:
       body: {domains: ["stripe.com"]}
-    cost:
-      type: per_result
-      value: 0.05
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: one domain requested, one found, response creditsUsed 0.05 and balance fell 29.9 -> 29.85. The list length is the price dial. Matches the published rate card: "Lookup Companies — 0.05 credits / result".'
+    price: {value: '0.05', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: one domain requested, one found, response creditsUsed 0.05 and balance fell 29.9 -> 29.85. The list length is the price dial. Matches the published rate card: \"Lookup Companies — 0.05 credits / result\"."}
+    provenance: {source: observed, checked: '2026-11-25', confidence: verified}
+    reserve: {entities: {from: body.domains, max: 1000}}
     docs_url: https://app.ocean.io/docs/lookupCompanies
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -143,17 +130,8 @@ endpoints:
       note: "ASYNC. The HTTP response is only {\"status\": \"in progress\"}; the data arrives at your webhook. For fewer than a thousand domains prefer /v2/lookup/companies, which is synchronous AND cheaper per company"
     test_request:
       body: {companyDataMapping: {c1: {company: {domain: "anthropic.com"}}}, webhookUrl: "https://example.com/treg-webhook", fields: ["domain", "name", "employeeCountOcean"]}
-    cost:
-      type: per_result
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: a one-company job debited 0.1 standard credit at submission time — the same rate as the synchronous single enrich, twice the bulk-lookup rate. Matches the published rate card: "Enrich Companies (Batch) — 0.1 credits / result". Only the accept was observed; the webhook delivery itself was not (no public endpoint available at curation time).'
+    price: {value: '0.1', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: a one-company job debited 0.1 standard credit at submission time — the same rate as the synchronous single enrich, twice the bulk-lookup rate. Matches the published rate card: \"Enrich Companies (Batch) — 0.1 credits / result\". Only the accept was observed; the webhook delivery itself was not (no public endpoint available at curation time)."}
+    settle: null
     docs_url: https://app.ocean.io/docs/enrichCompanies
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -174,7 +152,8 @@ endpoints:
       note: "FREE, and the right first call before a big enrichment run: it returns `successfulDomains`, so you learn which domains are covered without paying to enrich them, and the misses start being crawled in the background. Re-run the enrich a while later for the ones that were missing"
     test_request:
       body: {domains: ["stripe.com", "anthropic.com"]}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: "listed as Free on the published rate card and stated as credit-free in the route description; OBSERVED live 2026-08-20 — the balance was unchanged across the call"}
+    price: {value: '0', currency: USD, unit: call, note: "listed as Free on the published rate card and stated as credit-free in the route description; OBSERVED live 2026-08-20 — the balance was unchanged across the call"}
+    settle: null
     docs_url: https://app.ocean.io/docs/warmupCompanies
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -199,18 +178,9 @@ endpoints:
       note: "the base call returns the profile — job title, seniorities, departments, full experience history with dates, skills, location, LinkedIn URL, connections and followers — for 0.1 credit. Leave revealEmails/revealPhones out unless you actually need contact details; they are 10x and 100x the price"
     test_request:
       body: {person: {name: "Patrick Collison", linkedin: "https://www.linkedin.com/in/patrickcollison"}, company: {domain: "stripe.com"}}
-    cost:
-      type: per_success
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      reported_charge: {path: creditsUsed, unit: credit}
-      note: 'OBSERVED live 2026-08-20: response creditsUsed 0.1, balance fell by 0.1. Matches the published rate card: "Enrich Person — 0.1 credits / result". Excludes email/phone reveals, which draw from the same pool at 1 and 10 credits per verified value.'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: response creditsUsed 0.1, balance fell by 0.1. Matches the published rate card: \"Enrich Person — 0.1 credits / result\". Excludes email/phone reveals, which draw from the same pool at 1 and 10 credits per verified value."}
+    platform_request: {body.revealEmails: null, body.revealPhones: null}
+    miss: {when: {path: response.name, op: absent}}
     docs_url: https://app.ocean.io/docs/enrichPerson
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -233,17 +203,9 @@ endpoints:
       note: "give either list or both; 1,000 entries across the two combined. Half the price of /v2/enrich/person per person and synchronous. Only matched people are returned, so compare `totalFound` against `totalRequested` to see the misses"
     test_request:
       body: {linkedinHandles: ["patrickcollison"]}
-    cost:
-      type: per_result
-      value: 0.05
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: one handle requested, one found, response creditsUsed 0.05. Matches the published rate card: "Lookup People — 0.05 credits / result".'
+    price: {value: '0.05', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: one handle requested, one found, response creditsUsed 0.05. Matches the published rate card: \"Lookup People — 0.05 credits / result\"."}
+    provenance: {source: observed, checked: '2026-11-25', confidence: verified}
+    reserve: {entities: {from: [body.linkedinHandles, body.oceanIds], max: 1000}}
     docs_url: https://app.ocean.io/docs/lookupPeople
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -266,17 +228,8 @@ endpoints:
       note: "ASYNC — the HTTP response is only {\"status\": \"in progress\"}. For fewer than a thousand people prefer /v2/lookup/people, which is synchronous and cheaper per person"
     test_request:
       body: {peopleDataMapping: {p1: {person: {linkedin: "https://www.linkedin.com/in/patrickcollison"}}}, webhookUrl: "https://example.com/treg-webhook"}
-    cost:
-      type: per_result
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: a one-person job debited 0.1 credit at submission. Matches the published rate card: "Enrich People (Batch) — 0.1 credits / result". Only the accept was observed; the webhook delivery was not (no public endpoint available at curation time).'
+    price: {value: '0.1', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: a one-person job debited 0.1 credit at submission. Matches the published rate card: \"Enrich People (Batch) — 0.1 credits / result\". Only the accept was observed; the webhook delivery was not (no public endpoint available at curation time)."}
+    settle: null
     docs_url: https://app.ocean.io/docs/enrichPeople
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -307,18 +260,10 @@ endpoints:
         size: 2
         companiesFilters: {includeDomains: ["stripe.com"]}
         fields: ["domain", "name", "description", "employeeCountOcean", "webTraffic", "technologies", "headcountGrowth", "primaryCountry", "industries"]
-    cost:
-      type: per_result
-      value: 0.2
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      reported_charge: {path: creditsUsed, unit: credit}
-      note: 'OBSERVED live 2026-08-20: size=2 returned creditsUsed 0.4 and the balance fell by 0.4 — 0.2 per company returned, four times the bulk-lookup rate. `size` is the whole price. Matches the published rate card: "Search Companies — 0.2 credits / result".'
+    price: {value: '0.2', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: size=2 returned creditsUsed 0.4 and the balance fell by 0.4 — 0.2 per company returned, four times the bulk-lookup rate. `size` is the whole price. Matches the published rate card: \"Search Companies — 0.2 credits / result\"."}
+    provenance: {source: observed, checked: '2026-11-25', confidence: verified}
+    reserve: {rows: {param: body.size, max: 10000, platform_max: 100}}
+    miss: {when: {path: response.companies, op: empty}}
     docs_url: https://app.ocean.io/docs/searchCompaniesV3
     verified: '2026-10-06'
     added: '2026-08-20'
@@ -348,18 +293,10 @@ endpoints:
         size: 2
         companiesFilters: {lookalikeDomains: ["stripe.com"]}
         fields: ["domain", "name", "description", "employeeCountOcean", "webTraffic", "technologies", "headcountGrowth", "primaryCountry", "industries"]
-    cost:
-      type: per_result
-      value: 0.2
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      reported_charge: {path: creditsUsed, unit: credit}
-      note: 'OBSERVED live 2026-08-20 on the same call as oceanio.companies.search: size=2 with lookalikeDomains=["stripe.com"] returned 15,286 total matches and creditsUsed 0.4. Matches the published rate card: "Search Companies — 0.2 credits / result".'
+    price: {value: '0.2', currency: credit, unit: record, note: "OBSERVED live 2026-08-20 on the same call as oceanio.companies.search: size=2 with lookalikeDomains=[\"stripe.com\"] returned 15,286 total matches and creditsUsed 0.4. Matches the published rate card: \"Search Companies — 0.2 credits / result\"."}
+    provenance: {source: observed, checked: '2026-11-25', confidence: verified}
+    reserve: {rows: {param: body.size, max: 10000, platform_max: 100}}
+    miss: {when: {path: response.companies, op: empty}}
     docs_url: https://app.ocean.io/docs/searchCompaniesV3
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -391,18 +328,10 @@ endpoints:
         size: 2
         companiesFilters: {includeDomains: ["stripe.com"]}
         peopleFilters: {seniorities: ["C-Level"]}
-    cost:
-      type: per_result
-      value: 0.2
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      reported_charge: {path: creditsUsed, unit: credit}
-      note: 'OBSERVED live 2026-08-20: size=2 returned creditsUsed 0.4 and the balance fell 29.4 -> 29.0 — 0.2 per person returned. Matches the published rate card: "Search People — 0.2 credits / result".'
+    price: {value: '0.2', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: size=2 returned creditsUsed 0.4 and the balance fell 29.4 -> 29.0 — 0.2 per person returned. Matches the published rate card: \"Search People — 0.2 credits / result\"."}
+    provenance: {source: observed, checked: '2026-11-25', confidence: verified}
+    reserve: {rows: {param: body.size, max: 10000, platform_max: 100}}
+    miss: {when: {path: response.people, op: empty}}
     docs_url: https://app.ocean.io/docs/searchPeopleV3
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -426,17 +355,9 @@ endpoints:
       note: "EXPENSIVE relative to enrichment — about 10x an enrich per verified address — and asynchronous. Accounts on plans with a dedicated email-credit pool spend that pool; on the account we tested the charge came out of the standard balance. Nothing is charged for a person whose address cannot be verified"
     test_request:
       body: {personIds: ["8646fe23931d019b"], webhookUrl: "https://example.com/treg-webhook"}
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: a single-person reveal debited exactly 1 credit at submission, matching the published rate card ("Reveal Emails — 1 credit / email found"; nothing is charged for an address that cannot be found). Only the accept was observed; the webhook payload was not (no public endpoint available at curation time).'
+    price: {value: '1', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: a single-person reveal debited exactly 1 credit at submission, matching the published rate card (\"Reveal Emails — 1 credit / email found\"; nothing is charged for an address that cannot be found). Only the accept was observed; the webhook payload was not (no public endpoint available at curation time)."}
+    reserve: {entities: {from: body.personIds}}
+    settle: null
     docs_url: https://app.ocean.io/docs/revealEmails
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -459,17 +380,9 @@ endpoints:
       note: "THE MOST EXPENSIVE ENDPOINT HERE — a single phone cost 10 credits in our test, 100x a company enrich. Never fan this out over a search result without capping the list first"
     test_request:
       body: {personIds: ["8646fe23931d019b"], webhookUrl: "https://example.com/treg-webhook"}
-    cost:
-      type: per_result
-      value: 10
-      currency: credit
-      per: 1
-      unit: record
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: a single-person phone reveal debited exactly 10 credits at submission (balance 28.4 -> 17.4 across one email reveal and one phone reveal), matching the published rate card ("Reveal Phones — 10 credits / phone found"). Only the accept was observed; the webhook payload was not.'
+    price: {value: '10', currency: credit, unit: record, note: "OBSERVED live 2026-08-20: a single-person phone reveal debited exactly 10 credits at submission (balance 28.4 -> 17.4 across one email reveal and one phone reveal), matching the published rate card (\"Reveal Phones — 10 credits / phone found\"). Only the accept was observed; the webhook payload was not."}
+    reserve: {entities: {from: body.personIds}}
+    settle: null
     docs_url: https://app.ocean.io/docs/revealPhones
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -498,7 +411,8 @@ endpoints:
       note: "ASYNC but POLLABLE, unlike the webhook endpoints: it returns `segmentationId` immediately, then you poll oceanio.companies.segment.get until `status` is SUCCESSFUL. Free in our test. A handful of domains lands everything in one 'Other' segment — feed it a real list (dozens to hundreds) for useful clusters"
     test_request:
       body: {domains: ["stripe.com", "adyen.com", "razorpay.com", "checkout.com", "mollie.com"]}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: "OBSERVED live 2026-08-20: a 5-domain segmentation left the balance unchanged. The provider does not publish a price for this route, so a very large domain list may behave differently"}
+    price: {value: '0', currency: USD, unit: call, note: "OBSERVED live 2026-08-20: a 5-domain segmentation left the balance unchanged. The provider does not publish a price for this route, so a very large domain list may behave differently"}
+    settle: null
     docs_url: https://app.ocean.io/docs/createSegmentation
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -521,7 +435,8 @@ endpoints:
       note: "the poll half of the segmentation pair — free, so poll it freely. `status` moves to SUCCESSFUL, then `segments` carries one entry per cluster with its name, domains and companyCount"
     test_request:
       pathParams: {segmentation_id: 153746}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: "OBSERVED live 2026-08-20: polled six times, balance unchanged"}
+    price: {value: '0', currency: USD, unit: call, note: "OBSERVED live 2026-08-20: polled six times, balance unchanged"}
+    settle: null
     docs_url: https://app.ocean.io/docs/getSegmentation
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -548,7 +463,8 @@ endpoints:
     test_request:
       pathParams: {segmentation_id: 153746}
       body: {domains: ["adyen.com"], type: "positive"}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: "OBSERVED live 2026-08-20: balance unchanged"}
+    price: {value: '0', currency: USD, unit: call, note: "OBSERVED live 2026-08-20: balance unchanged"}
+    settle: null
     docs_url: https://app.ocean.io/docs/addMarkedDomains
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -575,16 +491,9 @@ endpoints:
     test_request:
       pathParams: {segmentation_id: 153746}
       body: {domains: ["gocardless.com"]}
-    cost:
-      type: per_call
-      value: null
-      currency: credit
-      per: 1
-      unit: call
-      source: inferred
-      checked: '2026-08-20'
-      confidence: unknown
-      note: 'NOT VERIFIED — the call returned 412 (segmentation needs re-running) before any billing could be observed. The three sibling segmentation routes are all free, so free is the likely answer, but treat it as unknown until a live call succeeds.'
+    price: {value: null, currency: credit, unit: call, note: "NOT VERIFIED — the call returned 412 (segmentation needs re-running) before any billing could be observed. The three sibling segmentation routes are all free, so free is the likely answer, but treat it as unknown until a live call succeeds."}
+    provenance: {source: inferred, source_url: 'https://app.ocean.io/docs/attributeSegmentationDomains', checked: '2026-08-20', confidence: unknown}
+    settle: null
     docs_url: https://app.ocean.io/docs/attributeSegmentationDomains
 
   # ---------------------------------------------------------------- reference & autocomplete ---
@@ -601,7 +510,8 @@ endpoints:
       note: "no parameters. FREE, and the call to make before any search: the industries, industryCategories, linkedinIndustries, technologies, regions, seniorities and departments filters only accept values from this list, so guessing a label is how a search silently returns nothing. It is also the registry's key-health probe"
     test_request:
       queryParams: {}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: "listed as Free on the published rate card; OBSERVED live 2026-08-20 — balance unchanged"}
+    price: {value: '0', currency: USD, unit: call, note: "listed as Free on the published rate card; OBSERVED live 2026-08-20 — balance unchanged"}
+    settle: null
     docs_url: https://app.ocean.io/docs/getDataFieldsPublic
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -626,17 +536,9 @@ endpoints:
       note: "the name-to-domain resolver — turn 'Stripe' into stripe.com before calling an enrich or seeding lookalikeDomains. Returns name, domain and logo per suggestion"
     test_request:
       body: {name: "stripe"}
-    cost:
-      type: per_call
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: not free despite carrying no creditsUsed field — five autocomplete calls moved the balance by exactly 0.5, and an isolated single call by 0.1. Matches the published rate card: "Autocomplete (all endpoints) — 0.1 credits / call".'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: not free despite carrying no creditsUsed field — five autocomplete calls moved the balance by exactly 0.5, and an isolated single call by 0.1. Matches the published rate card: \"Autocomplete (all endpoints) — 0.1 credits / call\"."}
+    settle: null
+    bill: {miss: charged, error: charged}
     docs_url: https://app.ocean.io/docs/autoCompleteCompany
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -659,17 +561,9 @@ endpoints:
       note: "keywords are the free-text filter on the company search (`companiesFilters.keywords`) and they must match indexed phrases — this route tells you which phrases exist"
     test_request:
       body: {query: "payment", limit: 5}
-    cost:
-      type: per_call
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: an isolated single call moved the balance by exactly 0.1 (28.5 -> 28.4). Matches the published rate card: "Autocomplete (all endpoints) — 0.1 credits / call".'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: an isolated single call moved the balance by exactly 0.1 (28.5 -> 28.4). Matches the published rate card: \"Autocomplete (all endpoints) — 0.1 credits / call\"."}
+    settle: null
+    bill: {miss: charged, error: charged}
     docs_url: https://app.ocean.io/docs/autoCompleteKeywords
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -692,17 +586,9 @@ endpoints:
       note: "feeds `peopleFilters.jobTitleKeywords` on the people search — resolve the loose title you have into the titles the index actually holds"
     test_request:
       body: {query: "head of grow", limit: 5}
-    cost:
-      type: per_call
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: charged at the same 0.1 credit as the other autocomplete routes (measured across a batch of five, then isolated on one), which is also the published rate card figure for every autocomplete route.'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: charged at the same 0.1 credit as the other autocomplete routes (measured across a batch of five, then isolated on one), which is also the published rate card figure for every autocomplete route."}
+    settle: null
+    bill: {miss: charged, error: charged}
     docs_url: https://app.ocean.io/docs/autoCompleteJobTitles
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -726,17 +612,9 @@ endpoints:
       note: "returns filterCode alongside the name — filterCode is the value the search filters want, not the display name. Place names are ambiguous (San Francisco exists in the US, Nicaragua, Panama and Argentina), so resolving through here is what stops a search silently targeting the wrong country"
     test_request:
       body: {query: "San Fra", limit: 5}
-    cost:
-      type: per_call
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: charged at the same 0.1 credit as the other autocomplete routes, which is also the published rate card figure.'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: charged at the same 0.1 credit as the other autocomplete routes, which is also the published rate card figure."}
+    settle: null
+    bill: {miss: charged, error: charged}
     docs_url: https://app.ocean.io/docs/autoCompleteLocations
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -759,17 +637,9 @@ endpoints:
       note: "feeds `peopleFilters.skills`. Suggestions come back in the language the profiles use, so a broad query returns localised variants of the same skill"
     test_request:
       body: {query: "kuber", limit: 5}
-    cost:
-      type: per_call
-      value: 0.1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://app.ocean.io/docs/getting-started/credits
-      checked: '2026-08-20'
-      confidence: verified
-      note: 'OBSERVED live 2026-08-20: charged at the same 0.1 credit as the other autocomplete routes, which is also the published rate card figure.'
+    price: {value: '0.1', currency: credit, unit: call, note: "OBSERVED live 2026-08-20: charged at the same 0.1 credit as the other autocomplete routes, which is also the published rate card figure."}
+    settle: null
+    bill: {miss: charged, error: charged}
     docs_url: https://app.ocean.io/docs/autoCompleteSkills
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -790,7 +660,8 @@ endpoints:
       note: "no parameters. Free. Returns credits.oneTime and credits.recurrent (the two standard-credit pools), dailyLimitRateLeft (calls left today, 1,000 on the plan we tested) and dailyLimitRateSecondsToReset. Read it before and after a batch to see exactly what a workload cost"
     test_request:
       queryParams: {}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: "listed as Free on the published rate card; OBSERVED live 2026-08-20 — repeated calls left the balance unchanged. It DOES count against the 60/min and 1,000/day request limits"}
+    price: {value: '0', currency: USD, unit: call, note: "listed as Free on the published rate card; OBSERVED live 2026-08-20 — repeated calls left the balance unchanged. It DOES count against the 60/min and 1,000/day request limits"}
+    settle: null
     docs_url: https://app.ocean.io/docs/getCreditBalance
     verified: '2026-08-20'
     added: '2026-08-20'
