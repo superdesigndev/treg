@@ -2495,6 +2495,43 @@ async def test_teams_another_process_holds_do_not_use_up_a_pass(org_id, store, m
     assert [await _queued(team) for team in teams] == [1, 1, 0]
 
 
+async def _three_waiting_teams(org_id: int) -> list[int]:
+    """Three teams with one queued charge each, the first the longest waiting."""
+    teams = [org_id + offset for offset in range(3)]
+    async with session_maker() as db:
+        for team in teams[1:]:
+            db.add(Org(id=team, name="later", slug=uuid4().hex))
+        await db.flush()
+        for team in teams[1:]:
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in teams])
+        for age, team in zip((30, 20, 10), teams):
+            await db.execute(update(CallCharge).where(CallCharge.org_id == team).values(
+                created_at=ledger._now() - timedelta(minutes=age)))
+        await db.commit()
+    return teams
+
+
+async def test_teams_whose_rows_stay_locked_do_not_use_up_a_pass(org_id, store, monkeypatch):
+    """A team whose fold gave up on its row locks before committing anything was not worked on:
+    it must not take the place of the team behind it."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 1)
+    teams = await _three_waiting_teams(org_id)
+    fold = allowance.fold_charges_in_transaction
+
+    async def front_locked(db, team, **kwargs):
+        if team in teams[:2]:
+            raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", front_locked)
+    for _ in range(2):
+        await allowance_sweep.fold_queued_once(session_maker)
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
 async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
         org_id, store, monkeypatch):
     """The pass does not wait its turn behind a team's other money sessions: it leaves that
