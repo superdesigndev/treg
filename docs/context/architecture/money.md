@@ -366,9 +366,9 @@ never has a budget. The answer rides on the call's `CallMeta.tag_limited`, which
 pass says otherwise, so a call that never ran it keeps its hold, and every pass writes its own
 answer, so a routed child's pass replaces what its parent's found. A limited call keeps its own hold
 (`tag_budget`), because its caps read the tag rows the hold writes at reserve; with the switch off
-every tagged call does (`tagged`). A pinned token's call keeps its hold too (`pinned`): when the
-audit row is gone, a pinned token finds its calls by the tags on their `reserve` entry, which an
-allowance call does not have. A tagged call that took carries its tags on its charge
+every tagged call does (`tagged`). A pinned token's call keeps its hold too (`pinned`). When the
+audit row is gone, a pinned reader finds a call by the tags on its `reserve` entry or, for an
+allowance call, on its `settle` entry. A tagged call that took carries its tags on its charge
 (`MarketplaceCall.allowance_tags` into `CallCharge.meta["tags"]`), and the fold writes its
 `TagSpend` rows with its `settle` entry, settled at what the blocks gave, stamped with the fold's
 instant, the entry's meta naming the tags as a reserve entry's does. Per-tag spend, call counts

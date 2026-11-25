@@ -288,7 +288,8 @@ rows are readable by unpinned members only; attribution is never inferred from c
 
 Every audit writer stores the pin; async task and resource records snapshot submission tags in their
 own transaction, and resources found later inherit the task's tags. The reserve ledger entry freezes
-tags in `meta.tags`, so `/calls/{call_ref}` can serve ledger-only history when audit was shed. treg's
+tags in `meta.tags` (an allowance call's `settle` entry, which has no reserve), so `/calls/{call_ref}`
+and feedback verification can serve ledger-only history when audit was shed. treg's
 replay key includes the full pin; on the shared key the forwarded idempotency label is partitioned by
 it too (unpinned and BYOK forwarding unchanged). Public media URLs stay bearer-by-possession. A
 `TagBudget` is a ceiling on the shared balance, never a sub-account.

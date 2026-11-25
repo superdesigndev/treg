@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from sqlmodel import select
@@ -106,6 +107,28 @@ async def test_ledger_only_read_uses_immutable_reserve_tags(clients, identities,
         await db.commit()
     assert (await clients.get(f'/calls/{call_id}', headers=h['a'])).status_code == 404
     assert (await clients.get(f'/calls/{call_id}')).status_code == 200
+
+
+@pytest.mark.parametrize('state', ['folded'])
+async def test_an_allowance_call_is_read_through_the_pin_of_another_identity(clients, identities, state):
+    """An unpinned backend's tagged call on the allowance has no reserve entry; once its audit row
+    is gone, a reader pinned to its tags still finds and verifies it."""
+    org, h = identities
+    call_id = f'allowance-{state}'
+    async with session_maker() as db:
+        db.add(LedgerEntry(id=uuid4().hex, org_id=org, kind='settle', amount_micro=-100,
+                           call_id=call_id, meta={'tags': {'customer': 'a'}}))
+        await db.commit()
+    assert (await clients.get(f'/calls/{call_id}', headers=h['a'])).status_code == 200
+    assert (await clients.get(f'/calls/{call_id}', headers=h['b'])).status_code == 404
+    for who in ['a', 'b']:
+        r = await clients.post('/feedback', headers=h[who], json={
+            'category': 'quality', 'message': f'{state} {who}', 'call_ids': [call_id]})
+        assert r.status_code == 201, r.text
+    async with session_maker() as db:
+        rows = {f.message: f for f in (await db.execute(select(Feedback))).scalars().all()}
+    assert rows[f'{state} a'].verified_call_ids == [call_id]
+    assert rows[f'{state} b'].verified_call_ids == []
 
 
 async def test_async_submission_snapshots_tags_without_audit(clients, identities, monkeypatch, replicate_platform):
