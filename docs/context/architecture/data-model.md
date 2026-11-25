@@ -322,16 +322,18 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
   (`route._delivered_as_received`: the provider's bytes read exactly, numbers as Decimal, in any
   encoding `json.loads` accepts and with no repeated key, against the delivered `raw` read back; a
   float past 15 significant digits or a dropped duplicate key fails it, and so does a body the check
-  cannot read, which costs the link, never the call), on a pending 202 (the caller got the
-  submission ticket, not the answer later filed under its ref), on an answer an overflow aggregator
-  served (that row shares the child's ref with the direct attempt's, so a ref could not name one),
-  on every non-routed row and on rows written before 0127, successful ones included: NULL means no
-  usable link was recorded, never that no answer was served. Unindexed and never a foreign key: a
-  reader starts from the parent by id and reads the child by that exact ref through
-  `ix_callrecord_call_ref`. It is not review credit (`route_summary["credited"]`,
-  [feedback](feedback.md)). `served_content_hash` (same revision) is the sha256 of the bytes
-  returned as `raw`, in `archive.content_hash`'s digest: a reader takes an archived answer for this
-  call only when its content hash equals it ([archive](archive.md), "The call-archive link").
+  cannot read, which costs the link, never the call), on an answer over `route.SERVED_CHECK_MAX` (64
+  KiB: the check parses the body again on the request path, so a larger one is served as before and
+  not linked), on a pending 202 (the caller got the submission ticket, not the answer later filed
+  under its ref), on an answer an overflow aggregator served (that row shares the child's ref with
+  the direct attempt's, so a ref could not name one), on every non-routed row and on rows written
+  before 0127, successful ones included: NULL means no usable link was recorded, never that no
+  answer was served. Unindexed and never a foreign key: a reader starts from the parent by id and
+  reads the child by that exact ref through `ix_callrecord_call_ref`. It is not review credit
+  (`route_summary["credited"]`, [feedback](feedback.md)). `served_content_hash` (same revision) is
+  the sha256 of the bytes returned as `raw`, in `archive.content_hash`'s digest: a reader takes an
+  archived answer for this call only when its content hash equals it ([archive](archive.md), "The
+  call-archive link").
 
 **Failure evidence.** `error_request` / `error_response` hold redacted, truncated failure evidence
 on every tier; `/calls` never fetches them, `GET /admin/errors` reads them, and

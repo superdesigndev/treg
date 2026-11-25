@@ -59,13 +59,14 @@ read with `archive.load_terminal_responses`; the polls' own rows carry no archiv
 upgrade's own served child `:u:r<m>`, under a merge the answer whose body is `raw` (not
 `served_by`, the first contributor). It names a child only when that child's body is the `raw`
 returned: a miss or failure names none, nor does an answer the router wrote itself (a declared-miss
-status, a failed async task, a non-JSON body: `raw` is `{}`), nor an answer whose value the
-re-serialized `raw` changes (a float past 15 significant digits, a repeated key), nor a pending
-call's submission ticket (the answer later filed under that ref is not what was delivered), nor an
-answer an overflow aggregator served (its row shares the child's ref with the direct attempt's). So
-NULL means no usable link was recorded, not that no answer was served; rows written before 0127 are
-NULL too. Review credit (`route_summary.credited`) is a separate decision and stays the latest
-successful attempt.
+status, a failed async task, a non-JSON body: `raw` is `{}`), nor an answer over `SERVED_CHECK_MAX`
+(not checked, to keep the call path's cost bounded), nor an answer whose value the re-serialized
+`raw` changes (a float past 15 significant digits, a repeated key), nor a pending call's submission
+ticket (the answer later filed under that ref is not what was delivered), nor an answer an overflow
+aggregator served (its row shares the child's ref with the direct attempt's). So NULL means no
+usable link was recorded, not that no answer was served; rows written before 0127 are NULL too.
+Review credit (`route_summary.credited`) is a separate decision and stays the latest successful
+attempt.
 """
 
 from __future__ import annotations
@@ -1104,6 +1105,10 @@ def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
 # A routed call parses each child's answer, so it holds the whole of it, as settlement does: an
 # anonymous or own-key child would otherwise stream any size into memory.
 ROUTED_BODY_MAX = 8 * 1024 * 1024
+# The largest answer the router checks before linking it (`_delivered_as_received`). The check
+# parses the body again on the request path; past this size it would cost more than a millisecond
+# of event-loop time, so a larger answer is served exactly as before and simply not linked.
+SERVED_CHECK_MAX = 64 * 1024
 
 
 class _ChildTooLarge(Exception):
@@ -1972,7 +1977,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # The exact bytes this call hands back as `raw`, hashed as the archive hashes a body
     # (`archive.content_hash`): a reader takes an archived answer for this call only when its
     # `content_hash` is this one.
-    if served_ref and (not isinstance(raw, bytes) or not _delivered_as_received(raw, doc)):
+    if served_ref and (not isinstance(raw, bytes) or len(raw) > SERVED_CHECK_MAX
+                       or not _delivered_as_received(raw, doc)):
         served_ref = None   # `raw` is delivered re-serialized; a value that changes breaks the link
     served_hash = hashlib.sha256(raw).hexdigest() if served_ref and isinstance(raw, bytes) else None
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):

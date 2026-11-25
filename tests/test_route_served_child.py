@@ -533,3 +533,12 @@ async def test_a_number_the_check_cannot_read_costs_the_link_not_the_call(client
     r, parent = await _found_with(clients, monkeypatch, b'"zero": 0e9999999999999999999')
     assert r.status_code == 200 and r.json()["raw"]["zero"] == 0.0
     assert parent.served_call_ref is None
+
+
+async def test_an_answer_too_large_to_check_is_served_unchanged_and_not_linked(clients, verifiers_on, monkeypatch):
+    """Past `SERVED_CHECK_MAX` the router does no extra work: the answer is served as before and
+    the parent row records no link."""
+    padding = "x" * (call_route.SERVED_CHECK_MAX + 1)
+    r, parent = await _found_with(clients, monkeypatch, f'"note": "{padding}"'.encode())
+    assert r.status_code == 200 and r.json()["raw"]["note"] == padding
+    assert parent.served_call_ref is None and parent.served_content_hash is None
