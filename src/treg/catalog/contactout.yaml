@@ -1140,7 +1140,9 @@ endpoints:
       emails are not included. matches_found counts the profiles with at least one hash;
       unmatched lists the rest. A batch with no hashes answers 404.
   untestable: Requires real LinkedIn profiles and returns hashes of their private addresses;
-    no automated verification request or stored example under the catalog PII rule.
+    no automated verification request is stored under the catalog PII rule. The example is a
+    structural fixture hashed from reserved fake addresses.
+  example_response: examples/contactout.people.audience.email-hash.json
   price:
     value: '0.25'
     currency: USD
@@ -1156,7 +1158,7 @@ endpoints:
     confidence: documented
   expect: {path: response.status_code, op: equals, value: 200}
   reserve: {entities: {from: body.profiles, max: 100}}
-  settle: {reported: {path: response.matches_found, unit: usd, scale: 0.25}}
+  settle: {plugin: contactout.profiles_matched}
   miss: {status: [404], means: "No profile in the batch has a hashed personal email; free"}
   docs_url: https://api.contactout.com/
 proposed_capabilities:
