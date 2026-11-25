@@ -25,7 +25,7 @@ TTL_S = 60.0
 class LatestStateView:
     def __init__(self, ttl_s: float = TTL_S) -> None:
         self._ttl = ttl_s
-        self._loaded_at = -1.0
+        self._loaded_at = float("-inf")
         self._states: dict[str, LatestState] = {}
         self._locks: dict[str, Lock] = {}
 
@@ -109,7 +109,7 @@ class LatestStateView:
         return provider, self.concurrency(provider)
 
     def invalidate(self) -> None:
-        self._loaded_at = -1.0
+        self._loaded_at = float("-inf")
 
 
 def _pair(rl: dict | None) -> tuple[int, float] | None:

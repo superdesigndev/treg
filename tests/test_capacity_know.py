@@ -4,6 +4,7 @@ and the latest-state view. Observe-only: nothing here touches the call path."""
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -172,6 +173,28 @@ async def test_view_sees_a_published_state_from_a_fresh_process_within_the_ttl()
     await view.load()
     assert view.is_exhausted("findymail")
     assert view.get("findymail").exhausted_until == state.exhausted_until
+
+
+async def test_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from treg.domain.capacity import view as view_mod
+    await reset_db()
+    monkeypatch.setattr(view_mod, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    state = LatestState("findymail", 0.0, "credits", utcnow_naive(), "exact", health="ok")
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "findymail", state.to_json(), ttl_s=3600)
+        await db.commit()
+    view = LatestStateView(ttl_s=60)
+    await view.load()
+    assert view.get("findymail") is not None, "the first load reads the database"
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "findymail", LatestState(
+            "findymail", 0.0, "credits", utcnow_naive(), "exact", health="exhausted",
+            exhausted_until=utcnow_naive() + timedelta(hours=1)).to_json(), ttl_s=3600)
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert view.is_exhausted("findymail"), "a load after invalidate() reads the database"
 
 
 @pytest.mark.parametrize(("provider", "path", "body"), [

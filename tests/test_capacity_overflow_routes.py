@@ -85,6 +85,23 @@ def test_an_async_job_never_overflows():
     assert view.for_endpoint("icypeas.people.email.find") == []
 
 
+async def test_route_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from types import SimpleNamespace
+    from treg.domain.capacity import routes_view
+    await reset_db()
+    monkeypatch.setattr(routes_view, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    view = routes_view.RouteView()
+    await view.load()
+    async with session_maker() as db:
+        db.add(_route(enabled=True))
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert [r.endpoint_id for r in view.for_endpoint("findymail.search.business-profile")] == [
+        "findymail.search.business-profile"]
+
+
 def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
     ours = [{"endpoint_id": "hunter.people.email.find", "provider": "hunter", "method": "GET",
              "path": "/email-finder", "base_url": "https://api.hunter.io/v2"},
