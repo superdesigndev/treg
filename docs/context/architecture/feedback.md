@@ -446,11 +446,13 @@ under an older codebook version (`domain.feedback.reviews`), so overlapping runs
 downgrade an answer; no database connection is held across a Jev request.
 
 `treg-worker reviews body-pilot` (`application.review_body_pilot`) is a dry run of coding with the
-answer in view: it takes the newest negative reviews already coded under the current codebook whose
-call still has its answer on file, asks Jev the codebook again with the request and the answer
-shortened by `body_view.shrink` (long strings cut, long lists kept to their first items and a count),
-and prints how its codes compare with the reason-only ones. It writes nothing and prints only counts,
-code pairs and review ids, never a reason, request or answer.
+answer in view: it pages through the negative reviews already coded under the current codebook,
+newest first, until it has read `--sample` answers still on file (a routed review's from the attempt
+it is attributed to, `feedback.answering_child`), asks Jev the codebook again with the request and
+the answer shortened by `body_view.shrink` (long strings cut, long lists kept to their first items
+and a count, always valid JSON), and prints how its codes compare with the reason-only ones. A blank
+reason is skipped; no Jev request starts after the deadline. It writes nothing and prints only
+counts, code pairs and review ids, never a reason, request or answer.
 
 Without `typesafe_api_key`, or with the cron suspended, nothing new is judged: new reasons are not
 quoted, but reasons already judged clean keep being quoted. To stop quoting those too, revert the
