@@ -1,6 +1,7 @@
 """The body pilot: negative reviews coded again with the call's answer in view, compared with the
 reason-only codes, writing nothing; and the shortened answer the judge reads."""
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,7 +30,7 @@ def test_shrink_keeps_structure_and_counts_cut_items():
     out = body_view.shrink(body, 1000)
     assert len(out) <= 1000
     value = json.loads(out)
-    assert value["total"] == 40 and value["results"][-1]["_more"] > 0
+    assert value["total"] == 40 and value["results"][-1][body_view.MORE] > 0
     assert value["results"][0]["email"] is None and value["results"][0]["name"].endswith("…")
 
 
@@ -58,10 +59,26 @@ def test_shrink_never_merges_keys_that_share_a_prefix():
         elif isinstance(value, list):
             for v in value:
                 yield from keys(v)
-    original = set(keys(example)) | {"_more", "_more_keys", "_items", "_keys"}
+    original = set(keys(example)) | set(body_view.MARKERS)
     assert set(keys(json.loads(out))) <= original
     pair = {"company_professional_network_industry": "Software", "company_professional_network_profile_url": "u" * 90}
     assert json.loads(body_view.shrink(json.dumps({"rows": [pair] * 20}), 600))["rows"][0].keys() == pair.keys()
+
+
+MARK = re.compile(r'"(_treg_[a-z_]+)"')
+
+
+@pytest.mark.parametrize("example,budget", [("dataforseo.google.serp.organic.json", 500),
+                                            ("crustdata.people.search.json", 4000),
+                                            ("crustdata.people.search.json", 300)])
+def test_every_mark_a_cut_leaves_is_explained_to_the_judge(example, budget):
+    text = (CATALOG / "examples" / example).read_text()
+    out = body_view.shrink(text, budget)
+    marks = set(MARK.findall(out))
+    assert marks, "the example should need cutting at this budget"
+    prompt = review_codes.body_code_question(0)["instructions"]
+    assert marks <= set(body_view.MARKERS) and all(f'"{m}"' in prompt for m in marks)
+    assert body_view.CUT not in out or body_view.CUT in prompt
 
 
 @pytest.mark.parametrize("budget", [0, -5])
