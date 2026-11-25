@@ -1424,6 +1424,11 @@ async def test_free_platform_call_still_honours_a_members_spent_limit(
         return 1_000
 
     monkeypatch.setattr(ledger, "member_spent_since", spent)
+
+    async def no_reaping(*_args, **_kwargs):
+        raise AssertionError("a holdless call must not reap holds outside money admission")
+
+    monkeypatch.setattr(ledger, "reap_stale_holds", no_reaping)
     probe = AdmissionProbe(monkeypatch)
     probe.allow.set()
     try:

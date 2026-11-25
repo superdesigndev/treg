@@ -173,9 +173,11 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
         })
 
 
-async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSession) -> int | None:
+async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSession, *,
+                                    reap: bool = True) -> int | None:
     """Refuse a call that would take this member past their daily spend limit on treg's keys.
     Returns the member id to attribute the hold to when a limit applies, else None.
+    `reap=False` keeps the check read-only, for a caller outside money admission.
 
     FAIL-CLOSED, like the platform cap: it limits money. SOFT like the tag caps: the figure is an
     aggregate over `MemberSpend`, so concurrent calls can each pass and together overshoot by at most
@@ -188,7 +190,7 @@ async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSes
         spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
         # A crashed call's expired hold still counts here. `reserve_in_transaction` reaps those, but
         # only after this gate, so a refusal reaps first and reads again.
-        if spent + add_micro > cap and await ledger.reap_stale_holds(db, org_id=caller.org_id):
+        if reap and spent + add_micro > cap and await ledger.reap_stale_holds(db, org_id=caller.org_id):
             spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
     except Exception as exc:  # cannot verify the limit => do not spend
         logging.getLogger("treg.ledger").warning(
@@ -359,7 +361,7 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
             if team_cap:
                 await _enforce_platform_daily_cap(caller, 0, db)
             if member_cap:
-                await _enforce_member_spend_cap(caller, 0, db)
+                await _enforce_member_spend_cap(caller, 0, db, reap=False)
 
 
 def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
