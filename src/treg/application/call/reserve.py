@@ -337,6 +337,14 @@ def _purchased_only(endpoint_id: str) -> bool:
     return bool((catalog.platforms.get(platform) or {}).get("purchased_credit_only"))
 
 
+def _holdless_listed(org_id: int) -> bool:
+    """The team's untagged free calls may take no hold (`holdless_free_*`)."""
+    settings = get_settings()
+    if org_id in settings.holdless_free_excluded_org_ids:
+        return False
+    return settings.holdless_free_all_orgs or org_id in settings.holdless_free_org_ids
+
+
 async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
     """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
     mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
@@ -546,8 +554,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
     dimension here would be a second place that could disagree about who pays.
 
-    `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
-    `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
+    `allow_holdless` admits a `holdless_eligible` call from an untagged caller of a team
+    `_holdless_listed` without a hold: a $0 reserve and its release only queued on the org's
     balance row. A tagged call keeps its hold,
     because the tag rows written with it count toward `calls_per_day`.
 
@@ -564,7 +572,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
     the balance gate already, so only a hold that covers the worst case bounds them."""
     if (allow_holdless and mk.holdless_eligible and not meta.tags
-            and caller.org_id in get_settings().holdless_free_org_ids):
+            and _holdless_listed(caller.org_id)):
         await _holdless_reserve(mk, caller)
         return
     mk.holdless = False

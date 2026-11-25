@@ -988,8 +988,8 @@ price.
 Any other direct platform call with an explicit `free` price and zero estimate is
 `MarketplaceCall.holdless_eligible` unless it is billed OAuth, a routed child, an owned poll, an
 async submission, a resource producer or usage-settled. For an org listed in
-`holdless_free_org_ids` (default `[]`: none; the money queue also brakes free bursts, so this rolls
-out per org until an explicit free-call rate limit exists) and with no caller tags (`X-Treg-Meta`
+`holdless_free_org_ids` (default `[]`: none), or every org with `holdless_free_all_orgs` except
+`holdless_free_excluded_org_ids` (the excluded list wins), and with no caller tags (`X-Treg-Meta`
 or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
 LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap read
 runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed

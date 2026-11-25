@@ -1361,6 +1361,24 @@ async def test_untagged_free_platform_call_takes_no_hold_and_no_admission(
         assert await ledger.balance_of(db, org_id) == before
 
 
+@pytest.mark.parametrize("excluded", [False, True])
+async def test_all_orgs_holdless_except_the_excluded(clients, icypeas_platform_on, monkeypatch, excluded):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    monkeypatch.setattr(get_settings(), "holdless_free_all_orgs", True)
+    monkeypatch.setattr(get_settings(), "holdless_free_excluded_org_ids", [org_id] if excluded else [])
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == (["reserve", "release"] if excluded else [])
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == (
+        ["reserve", "settle"] if excluded else [])
+
+
 async def test_tagged_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
     await _allow_holdless(clients, monkeypatch)
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
