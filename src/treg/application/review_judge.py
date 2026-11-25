@@ -275,7 +275,10 @@ async def run(*, max_seconds: float) -> dict:
         return {"skipped": "no_judge_key"}
     deadline = time.monotonic() + max_seconds
     out = {}
-    for name, judge_pass in (("privacy", judge_privacy), ("codes", judge_codes), ("answers", judge_answers)):
+    passes = [("privacy", judge_privacy), ("codes", judge_codes)]
+    if get_settings().review_judge_answers:
+        passes.append(("answers", judge_answers))
+    for name, judge_pass in passes:
         try:
             out[name] = await judge_pass(deadline=deadline)
         except Exception as exc:  # one pass failing never stops the other

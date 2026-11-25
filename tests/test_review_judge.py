@@ -417,3 +417,18 @@ async def test_an_answer_read_wins_over_a_concurrent_give_up(clients, monkeypatc
     assert (row.primary_code, row.code_basis) == ("EMPTY", "answer")
     async with session_maker() as db:  # never over another answer judgement
         assert not await reviews_domain.record_answer_codes(db, review_id, "WRONG", None, v, utcnow_naive())
+
+
+async def test_the_answer_pass_can_be_switched_off(clients, monkeypatch):
+    calls = []
+
+    async def answers(*, deadline):
+        calls.append(1)
+        return {}
+    monkeypatch.setattr(review_judge, "judge_answers", answers)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "WRONG"})
+    monkeypatch.setattr(get_settings(), "review_judge_answers", False, raising=False)
+    out = await review_judge.run(max_seconds=5)
+    assert "answers" not in out and calls == []
+    monkeypatch.setattr(get_settings(), "review_judge_answers", True, raising=False)
+    assert "answers" in await review_judge.run(max_seconds=5)

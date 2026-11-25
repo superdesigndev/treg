@@ -463,7 +463,8 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   `review_judge_answer_attempts` tries the reason codes stand; a review waiting its turn is not read,
   so it never holds back the others. Answer codes may replace this version's `reason_final`, so a run
   that read the answer wins over one that meanwhile gave up. The worker opens the archive's object
-  store, and without its credentials logs that and runs on. Each read gets only the time left before
+  store, and without its credentials logs that and runs on. `review_judge_answers` off skips the pass
+(its rollback switch: 0128 stays). Each read gets only the time left before
   reading stops, which leaves a request's worth before the deadline, so what was read is sent; a read
   cut by that budget waits six hours without spending a try. No request starts after the deadline.
 

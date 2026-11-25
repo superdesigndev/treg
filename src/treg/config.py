@@ -796,6 +796,8 @@ class Settings(BaseSettings):
     # An answer not readable yet is tried again, backing off from an hour to a week; after this many
     # tries its review keeps the codes from its reason.
     review_judge_answer_attempts: int = Field(default=10, ge=1)
+    # Off: the review judge codes from reasons only, as before the answer upgrade (its rollback switch).
+    review_judge_answers: bool = True
     # Calls before this moment are never read back as their archived answer: older call rows do not
     # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
     # had `/table/` on before `callrecord.surface` existed sets it to when that column was added.
