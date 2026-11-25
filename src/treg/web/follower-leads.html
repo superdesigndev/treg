@@ -68,6 +68,8 @@
   .pill.dark { background: var(--ink); color: var(--paper); border-color: var(--ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 1px 2px rgba(0,0,0,.2), 0 6px 16px -6px rgba(0,0,0,.35); }
   .pill.dark:hover { background: #262626; transform: translateY(-1px); }
   .pill:disabled { opacity: .45; cursor: default; transform: none; }
+  #run.busy { opacity: 1; color: #000; border-color: transparent; background: linear-gradient(90deg, #fde0f6, #fff0c7, #d6f3ff, #d9f7e8, #fde0f6) 0 0 / 400% 100%; animation: wash 4s ease-in-out infinite alternate; }
+  @keyframes wash { to { background-position: 100% 0; } }
 
   /* hero: the house landing style (pixel headline, muted sub) with the scanner in it */
   .hero { padding: 150px 24px 40px; text-align: center; background: radial-gradient(42% 46% at 30% 18%, rgba(253,181,236,.22), transparent 70%), radial-gradient(40% 44% at 70% 22%, rgba(34,199,255,.14), transparent 70%), radial-gradient(50% 50% at 50% 40%, rgba(54,208,138,.10), transparent 72%); }
@@ -99,9 +101,6 @@
   .field input:focus, .scanner select:focus { box-shadow: inset 0 0 0 1.5px var(--ink); }
   .scanner select { -webkit-appearance: none; appearance: none; border: 0; background: var(--soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%23737373' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center; border-radius: 14px; padding: 13px 40px 31px 16px; border-radius: 16px; font: 500 14px var(--sans); color: var(--ink); outline: none; cursor: pointer; }
   .bar1 { gap: 10px !important; }
-  .countf { position: relative; display: block; flex: 1; }
-  .countf select { width: 100%; font-size: 14px !important; color: var(--grey); }
-  .countf .est { position: absolute; left: 16px; bottom: 13px; font: 400 12px var(--mono); color: var(--grey); pointer-events: none; }
   .row2 { margin-top: 22px; }
   .row2 .pill { padding: 15px 40px; font-size: 15px; flex: none; }
   .runmsg { margin-top: 12px; font: 400 13px/1.5 var(--mono); color: var(--grey); text-align: center; }
@@ -232,6 +231,7 @@
     .hero h1 .xroll > span { animation: none !important; }
     .steps .dots i { animation: none !important; opacity: 1; }
     .runbox.live .meter::after { display: none; }
+    #run.busy { animation: none; }
   }
 </style>
 </head>
@@ -264,24 +264,11 @@
         <span class="at">@</span><input id="handle" autocomplete="off" spellcheck="false" placeholder="yourhandle" maxlength="40" aria-label="Your X handle">
       </div>
     </div>
-    <span class="flab">Followers to scan</span>
-    <div class="bar1">
-      <label class="countf">
-        <select id="count" aria-label="Followers to scan" aria-describedby="est">
-          <option value="200" data-usd="0.10" selected>200 followers</option>
-          <option value="1000" data-usd="0.50">1,000 followers</option>
-          <option value="2000" data-usd="1">2,000 followers</option>
-          <option value="5000" data-usd="2.50">5,000 followers</option>
-          <option value="10000" data-usd="5">10,000 followers</option>
-        </select>
-        <span class="est" id="est">~$0.10 estimated</span>
-      </label>
-    </div>
     <div class="bar1 row2" style="justify-content:center">
-      <button class="pill dark" id="run">Scan leads</button>
+      <button class="pill dark" id="run">Get your leads analysis card</button>
     </div>
     <div class="err" id="formErr"></div>
-    <p class="fnote">Billed per call to your treg balance</p>
+    <p class="fnote">~$0.10 estimated for your newest 200 followers · billed per call to your treg balance</p>
   </section>
 
   <section class="runbox" id="progress" hidden>
@@ -547,9 +534,10 @@
 
   /* ---------- form ---------- */
   function cleanHandle(v) { return v.trim().replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, '').replace(/^@/, '').split(/[/?#]/)[0]; }
-  function saveDraft() { store.set(DRAFT, { handle: $('handle').value, count: $('count').value, at: Date.now() }); }
+  var SCAN_N = 200;
+  function saveDraft() { store.set(DRAFT, { handle: $('handle').value, at: Date.now() }); }
   var d = store.get(DRAFT);
-  if (d && Date.now() - d.at < 3600e3) { $('handle').value = d.handle || ''; if (d.count) $('count').value = d.count; }
+  if (d && Date.now() - d.at < 3600e3) { $('handle').value = d.handle || ''; }
 
   $('run').onclick = function () {
     var handle = cleanHandle($('handle').value), err = $('formErr');
@@ -558,13 +546,13 @@
     if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) { err.textContent = 'Enter an X handle, like @yourhandle.'; return; }
     saveDraft();
     var b = this;
-    if (team) { scan(handle, +$('count').value); return; }
+    if (team) { scan(handle, SCAN_N); return; }
     /* a scan is paid from a team balance: a first-time visitor gets one made quietly */
     b.disabled = true;
     fetch('/orgs', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '@' + handle }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'could not set up your account'); }); })
       .then(loadIdentity)
-      .then(function () { b.disabled = false; if (!team) throw new Error('could not set up your account'); scan(handle, +$('count').value); })
+      .then(function () { b.disabled = false; if (!team) throw new Error('could not set up your account'); scan(handle, SCAN_N); })
       .catch(function (e) { b.disabled = false; if (window.console) console.warn('follower-leads: team setup failed', e); err.textContent = "We couldn't set up your account. Reload and try again."; });
   };
 
@@ -734,7 +722,7 @@
   function scan(handle, want) {
     stopped = false; spent = 0; leads = []; all = [];
     var Q, product, bandP, started = Date.now();
-    $('run').disabled = true; $('progress').hidden = false; $('progress').classList.add('live'); $('results').hidden = true; $('runErr').textContent = '';
+    $('run').disabled = true; $('run').classList.add('busy'); $('progress').hidden = false; $('progress').classList.add('live'); $('results').hidden = true; $('runErr').textContent = '';
     $('progTitle').textContent = 'Scanning @' + handle;
     document.querySelectorAll('#steps li').forEach(function (li) { li.className = ''; li.lastElementChild.textContent = ''; });
     bar(0); $('spent').textContent = usd(0);
@@ -804,7 +792,7 @@
     }).catch(function (e) {
       if (!(e instanceof Stop) && window.console) console.warn('follower-leads: scan stopped', e);
       $('runErr').textContent = e instanceof Stop ? e.message : 'Something went wrong and the scan stopped. Try again in a minute.';
-    }).then(function () { $('run').disabled = false; $('progress').classList.remove('live'); refreshBalance(); });
+    }).then(function () { $('run').disabled = false; $('run').classList.remove('busy'); $('progress').classList.remove('live'); refreshBalance(); });
   }
   $('stop').onclick = function () { stopped = true; $('runErr').textContent = 'Stopping: finishing the calls already in flight…'; };
 
@@ -929,10 +917,6 @@
     });
     window.open('https://x.com/intent/post?text=' + encodeURIComponent(shareText()), '_blank', 'noopener');
   };
-
-  /* the estimate under the follower count */
-  function syncEst() { var o = $('count').selectedOptions[0]; $('est').textContent = '~$' + o.getAttribute('data-usd') + ' estimated'; }
-  $('count').addEventListener('change', syncEst); syncEst();
 
   /* the agent prompt: treg setup and the skill in one paste, as on /rea-growth */
   function livePrompt() {
