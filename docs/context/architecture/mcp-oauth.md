@@ -221,6 +221,9 @@ different request is refused. See `architecture/money.md`.
 `served_via` with a one-line `hint` (`cost_usd` is then the relay's real price), identically on both
 surfaces. `catalog_get` carries `overflow_price_usd`, `overflow_price_unit` and `overflow_via` so the
 price told before the call includes the relay's (`architecture/money.md` § Overflow money).
+On both surfaces each of `catalog_get`'s `siblings` carries only its price (`quote_cost`), not how it
+settles: MCP hosts cap a tool result, and a crowded job lists dozens of siblings. The full cost is
+that sibling's own `catalog_get`; the HTTP route, CLI and dashboard keep the full sibling cost.
 
 ## Output schemas: every field optional and nullable
 
