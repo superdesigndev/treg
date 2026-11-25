@@ -450,8 +450,12 @@ def check_platform_request(rule: object, input_schema: object, where: str,
     fields = _input_fields(input_schema)
     for path, value in rule.items():
         if value is None:
-            if not isinstance(path, str) or not path.startswith("queryParams.") or path == "queryParams.":
-                fail(errors, where, "platform_request null (must be absent) applies to a query parameter only")
+            if (not isinstance(path, str) or not path.startswith(("queryParams.", "body."))
+                    or path in ("queryParams.", "body.")):
+                fail(errors, where, "platform_request null (must be absent) applies to a query parameter "
+                                    "or a body field only")
+            elif path.startswith("body.") and fields.get(path) is None:
+                fail(errors, where, "platform_request null on a body field names a declared body field")
             continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)

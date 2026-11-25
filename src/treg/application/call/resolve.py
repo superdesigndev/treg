@@ -2098,9 +2098,23 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     "message": f"{ep['id']} requires query parameter {name}={expected}",
                 },
             )
+    absent = sorted(str(path).removeprefix("body.") for path, value in rules.items()
+                    if str(path).startswith("body.") and value is None)
+    if absent:
+        document = _request_body_document(ep, body, headers)
+        for path in absent:
+            if _document_has(document, path):
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"body.{path}",
+                        "message": f"{ep['id']} does not take body field {path} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
     selectors: dict[str, object] = {
         path.removeprefix("body."): value
-        for path, value in rules.items() if str(path).startswith("body.")
+        for path, value in rules.items() if str(path).startswith("body.") and value is not None
     }
     pinned = set(selectors)
     defaulted: set[str] = set()
@@ -2741,6 +2755,7 @@ async def _resolve_catalog_tier(
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data)
             call_cost.require_entities(ep, pricing.request_data)
+            call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
         if service == "sumble":
             from . import sumble
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
