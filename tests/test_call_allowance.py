@@ -3869,3 +3869,20 @@ async def test_a_nested_routed_close_keeps_the_root_s_mark_and_leaves_its_releas
     assert store.marks == {"root"} and runtime._charges._marked == {"root": 1}
     await runtime.release_mark("root")
     assert store.marks == set()
+
+
+async def test_a_free_routed_child_of_a_holdless_team_takes_no_hold(org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    caller = await _caller(org_id)
+    pending: list = []
+    mk = _call(org_id, estimate=0, deferred=pending)
+    mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    await call_reserve._platform_reserve(
+        mk, caller, CallMeta(tags={}), "root-1:r0", allow_holdless=True, allow_allowance=True)
+    assert mk.holdless and mk.allowance_epoch is None
+    assert await call_settle._platform_settle(mk, 200, b"{}") == (0, None)
+    assert pending == []
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == "root-1:r0"))).first() is None
+        assert await db.get(Hold, "root-1:r0") is None
