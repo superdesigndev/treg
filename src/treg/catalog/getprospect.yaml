@@ -7,7 +7,8 @@ source:
 #   - Email CREDITS (fx.yaml credit_rates_usd.getprospect): 1 per valid email served. GetProspect does
 #     not charge a workspace again for an address it already owns, but no response field says which
 #     case a call was, so every row prices each served email.
-#   - Wallet USD: $0.0008 per verification with a verdict.
+#   - Wallet USD: $0.0008 per verification with a verdict. As with emails, GetProspect's own meter
+#     skips a repeat for the same workspace, with no response field to settle on.
 # Everything that finds nothing is free: every route answers HTTP 200 with success: false and
 # errors[0].name NOT_FOUND (or VERIFICATION_ERROR for an unknown verdict), the shape each `miss`
 # rule reads. A 408 (still searching) is never charged.
@@ -72,7 +73,7 @@ endpoints:
       currency: USD
       per: 1
       unit: call
-      note: "From the wallet, per address with a valid, invalid or accept_all verdict, once per address per workspace; an unknown verdict is free"
+      note: "From the wallet, per address with a valid, invalid or accept_all verdict; an unknown verdict is free"
     miss: {when: {path: response.success, op: equals, value: false}, means: "no verdict (200, success false, VERIFICATION_ERROR, data.status unknown) - free, retry later"}
     docs_url: https://getprospect.com/api-docs/email-verifier
 
