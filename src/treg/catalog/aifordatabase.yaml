@@ -1,0 +1,246 @@
+provider: aifordatabase
+source:
+  docs: https://www.aifordatabase.com/docs/api-overview/
+  openapi: https://app.aifordatabase.com/api/v1/openapi.json
+  curated: '2026-11-25'
+pricing_url: https://www.aifordatabase.com/pricing/
+# AI for Database's REST API, reached with a workspace's own afd_ key. A key answers only for the
+# workspace that issued it, and the databases it reaches are the ones that workspace connected, so
+# every row is scope own_account.
+#
+# Billing is a plan per user (the pricing page: Pro $20 per user per month, Team $50 per user per
+# month), not a price per call. No route here is charged per call except POST /chat, which spends the
+# caller's AI credit balance for each AI call it makes and publishes no per-question price (Team is
+# not limited by credits), so that row is `value: null`. A workspace that has not paid gets a free
+# allowance of successful queries on its own databases, reported as freeQueries at GET /usage/budget;
+# after it, query routes answer 402 PAYMENT_REQUIRED. The bundled sample database never counts.
+#
+# Every answer is the envelope {data, error, meta}; a failure is a non-2xx status with error.code.
+# Connection and workflow ids belong to one workspace, so the rows that take one are `untestable`:
+# a replay needs an id read from the list row with the same credential.
+# Probe: GET /usage/budget is not charged; a bad key answers 401 with error.code UNAUTHORIZED.
+limits: "The docs state per-organization limits per minute: 60 requests on Free, 300 on Pro / Max, 1,000 on Enterprise (20, 100 and 500 on POST /chat); over the limit is HTTP 429 RATE_LIMITED. List routes page with page and pageSize (20 by default, 100 at most)."
+proposed_capabilities:
+  database.connections.list: "List the databases connected to your workspace"
+  database.schema.get: "Get a connected database's tables & columns"
+  database.query.sql: "Run a read-only SQL query on your database"
+  database.query.ask: "Ask your database a question in plain English"
+  database.workflows.list: "List your SQL-check alert workflows"
+  database.workflow.get: "Get a workflow's SQL steps & alert actions"
+  database.workflow.runs: "List a workflow's past runs & their results"
+  database.workflow.preview: "Preview a workflow's query results without sending alerts"
+  database.workflow.run: "Run a workflow now & send its alerts"
+  database.dashboards.list: "List your database dashboards"
+defaults:
+  provenance: {source: docs, source_url: 'https://www.aifordatabase.com/pricing/', checked: '2026-11-25', confidence: documented}
+
+endpoints:
+  # --- Connections and queries --------------------------------------------------------------
+  - id: aifordatabase.database.connections.list
+    added: '2026-11-25'
+    capability: database.connections.list
+    platform: database
+    domain: connections
+    scope: own_account
+    method: GET
+    path: /connections
+    name: List connected databases
+    summary: "List the databases and data sources connected to your AI for Database workspace: id, name, type, host, database name, health and when the schema was last read."
+    input:
+      queryParams:
+        page: {type: integer, required: false, default: 1, min: 1}
+        pageSize: {type: integer, required: false, default: 20, min: 1, max: 100, example: 20}
+    test_request: {queryParams: {pageSize: 1}}
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call."}
+    docs_url: https://www.aifordatabase.com/docs/agent-querying-databases/
+
+  - id: aifordatabase.database.schema.get
+    added: '2026-11-25'
+    capability: database.schema.get
+    platform: database
+    domain: connections
+    scope: own_account
+    method: GET
+    path: /connections/{id}/schema
+    name: Get a database's schema
+    summary: "Get the cached schema of one connected database: tables, columns with types, primary and foreign keys, indexes and a text overview."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "connection id from aifordatabase.database.connections.list"}
+    note: "The answer holds up to 3 sample rows of each table under schema.sampleRows, so it carries real values as well as structure."
+    untestable: "Requires a connection id of the connected workspace, read from aifordatabase.database.connections.list."
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call."}
+    docs_url: https://www.aifordatabase.com/docs/agent-querying-databases/
+
+  - id: aifordatabase.database.query.sql
+    added: '2026-11-25'
+    capability: database.query.sql
+    platform: database
+    domain: queries
+    scope: own_account
+    method: POST
+    path: /connections/{id}/query
+    name: Run read-only SQL
+    summary: "Run one read-only SQL statement on a connected database and get its columns, rows, row count and execution time."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "connection id from aifordatabase.database.connections.list"}
+      bodyType: json
+      body:
+        sql: {type: string, required: true, note: "one statement that reads: SELECT, WITH, SHOW, DESCRIBE or EXPLAIN. A second statement, or one that writes or exports data, is rejected", example: "SELECT id, email FROM users LIMIT 5"}
+        question: {type: string, required: false, maxLength: 2000, note: "the question this query answers, in the user's words; stored with the query and shown in the app's query history"}
+    untestable: "Requires a connection id of the connected workspace, read from aifordatabase.database.connections.list. The bundled demo database, marked isSample there when the workspace has one, is free to query."
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call and uses no AI credits. On a workspace that has not paid, each successful query on its own databases is taken from a free allowance (freeQueries at aifordatabase.account.usage); once it is used up the call answers 402 PAYMENT_REQUIRED. The sample database never counts."}
+    docs_url: https://www.aifordatabase.com/docs/agent-querying-databases/
+
+  - id: aifordatabase.database.query.ask
+    added: '2026-11-25'
+    capability: database.query.ask
+    platform: database
+    domain: queries
+    scope: own_account
+    method: POST
+    path: /chat
+    name: Ask a question in plain English
+    summary: "Ask a question about a connected database in plain English and get the answer, the SQL that was generated and run, and its result rows."
+    input:
+      bodyType: json
+      body:
+        message: {type: string, required: true, note: "the question", example: "How many users signed up last week?"}
+        connectionId: {type: string, required: false, note: "connection id from aifordatabase.database.connections.list: the database the question is about"}
+        conversationId: {type: string, required: false, note: "conversationId of an earlier answer, to ask a follow-up"}
+        stream: {type: boolean, required: false, default: false, note: "true answers as Server-Sent Events instead of one JSON body"}
+    note: "Each question is saved as a conversation in the workspace. A request for a dashboard creates one when the key holds the dashboards scope."
+    untestable: "Spends AI credits on every call and takes a connection id of the connected workspace."
+    price: {value: null, currency: USD, unit: call, note: "Spends the caller's AI credit balance for each AI call the request makes; no per-question price is published, and a request that fails partway is still charged for the calls already made. The Team plan is not limited by credits. The change in remaining at aifordatabase.account.usage is the charge."}
+    provenance: {source: docs, source_url: 'https://www.aifordatabase.com/docs/endpoints/', checked: '2026-11-25', confidence: unknown}
+    docs_url: https://www.aifordatabase.com/docs/endpoints/
+
+  # --- Workflows: SQL checks that alert by email or webhook ---------------------------------
+  - id: aifordatabase.database.workflows.list
+    added: '2026-11-25'
+    capability: database.workflows.list
+    platform: database
+    domain: workflows
+    scope: own_account
+    method: GET
+    path: /workflows
+    name: List workflows
+    summary: "List the workspace's workflows, manual or scheduled SQL checks that send email or webhook alerts, with trigger, schedule, active state, last and next run, and step and action counts."
+    input:
+      queryParams:
+        page: {type: integer, required: false, default: 1, min: 1}
+        pageSize: {type: integer, required: false, default: 20, min: 1, max: 100, example: 20}
+    test_request: {queryParams: {pageSize: 1}}
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call."}
+    docs_url: https://www.aifordatabase.com/docs/agent-workflow-lifecycle/
+
+  - id: aifordatabase.database.workflow.get
+    added: '2026-11-25'
+    capability: database.workflow.get
+    platform: database
+    domain: workflows
+    scope: own_account
+    method: GET
+    path: /workflows/{id}
+    name: Get a workflow
+    summary: "Get one workflow with its SQL steps, its email and webhook actions, its schedule and whether its draft has unpublished changes."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "workflow id from aifordatabase.database.workflows.list"}
+    note: "triggerConfig and each action's config are JSON-encoded strings: parse them before reading a field."
+    untestable: "Requires a workflow id of the connected workspace."
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call."}
+    docs_url: https://www.aifordatabase.com/docs/agent-workflow-lifecycle/
+
+  - id: aifordatabase.database.workflow.runs
+    added: '2026-11-25'
+    capability: database.workflow.runs
+    platform: database
+    domain: workflows
+    scope: own_account
+    method: GET
+    path: /workflows/{id}/runs
+    name: List a workflow's runs
+    summary: "List a workflow's past runs, newest first: trigger, status, start and end time, duration, error, the result of each query step and each delivery attempt."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "workflow id from aifordatabase.database.workflows.list"}
+      queryParams:
+        page: {type: integer, required: false, default: 1, min: 1}
+        pageSize: {type: integer, required: false, default: 20, min: 1, max: 100, example: 20}
+    note: "stepResults and actionResults are JSON-encoded strings; stepResults holds the rows the queries returned."
+    untestable: "Requires a workflow id of the connected workspace."
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call."}
+    docs_url: https://www.aifordatabase.com/docs/agent-workflow-lifecycle/
+
+  - id: aifordatabase.database.workflow.preview
+    added: '2026-11-25'
+    capability: database.workflow.preview
+    platform: database
+    domain: workflows
+    scope: own_account
+    method: POST
+    path: /workflows/{id}/preview
+    name: Preview a workflow's queries
+    summary: "Run only the query steps of a workflow's draft and get each step's rows, the condition state and whether its actions would run, without delivering anything or recording a run."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "workflow id from aifordatabase.database.workflows.list"}
+    note: "Each step returns at most 100 rows."
+    untestable: "Requires a workflow id of the connected workspace, and runs that workflow's queries on its database."
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call. On a workspace that has not paid, each query step is taken from the free allowance as a direct query is."}
+    docs_url: https://www.aifordatabase.com/docs/agent-workflow-lifecycle/
+
+  - id: aifordatabase.database.workflow.run
+    added: '2026-11-25'
+    kind: action
+    capability: database.workflow.run
+    platform: database
+    domain: workflows
+    scope: own_account
+    method: POST
+    path: /workflows/{id}/run
+    name: Run a workflow now
+    summary: "Run a workflow's current draft now, including its email and webhook actions, and get the run with each step's result and each delivery attempt."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "workflow id from aifordatabase.database.workflows.list"}
+    note: "The actions send real email and webhook requests, and the run can have completed when no answer arrived: check aifordatabase.database.workflow.runs before calling again."
+    untestable: "Sends the workflow's real email and webhook alerts, and requires a workflow id of the connected workspace."
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call. On a workspace that has not paid, each query step is taken from the free allowance, and email and webhook actions need a paid plan."}
+    docs_url: https://www.aifordatabase.com/docs/agent-workflow-lifecycle/
+
+  # --- Dashboards and account ---------------------------------------------------------------
+  - id: aifordatabase.database.dashboards.list
+    added: '2026-11-25'
+    capability: database.dashboards.list
+    platform: database
+    domain: dashboards
+    scope: own_account
+    method: GET
+    path: /dashboards
+    name: List dashboards
+    summary: "List the workspace's dashboards with title, description, whether each is public, and when it was created and last changed."
+    input:
+      queryParams:
+        page: {type: integer, required: false, default: 1, min: 1}
+        pageSize: {type: integer, required: false, default: 20, min: 1, max: 100, example: 20}
+    test_request: {queryParams: {pageSize: 1}}
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call."}
+    docs_url: https://www.aifordatabase.com/docs/endpoints/
+
+  - id: aifordatabase.account.usage
+    added: '2026-11-25'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /usage/budget
+    name: Get AI credit balance and free queries
+    summary: "Your AI credit balance in USD cents and whether AI usage is unlimited; for a workspace that has not paid, also its free queries left and the plans it can subscribe to."
+    input: {}
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "Not charged per call; this is the registry's key check."}
+    docs_url: https://www.aifordatabase.com/docs/endpoints/

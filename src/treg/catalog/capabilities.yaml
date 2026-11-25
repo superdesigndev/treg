@@ -146,6 +146,7 @@ platforms:
   producthunt: {label: "Product Hunt", category: "Community", summary: "Products and daily launches from Product Hunt."}
   stackoverflow: {label: "Stack Overflow", category: "Developer", summary: "Questions by tag from Stack Overflow."}
   packages: {label: "Package registries", category: "Developer", summary: "Package facts from npm, PyPI and crates.io."}
+  database: {label: "Your databases", category: "Developer", summary: "Read the schema of your own connected databases, query them in SQL or plain English, and run SQL-check workflows on them."}
   medium: {label: "Medium", category: "Research & public data", summary: "Posts of a Medium tag, author or publication."}
   substack: {label: "Substack", category: "Research & public data", summary: "Latest posts of a Substack publication."}
   wikipedia: {label: "Wikipedia", category: "Research & public data", summary: "Article summaries, sections and search from Wikipedia."}
