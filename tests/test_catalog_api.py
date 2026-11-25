@@ -60,6 +60,14 @@ async def test_platform_listing_hides_taxonomy_entries_nobody_implements(clients
     assert all(p["endpoints"] > 0 for p in rows)
 
 
+async def test_every_listed_platform_has_its_logo(clients: AsyncClient):
+    """The Catalog page asks /logos/platforms/<slug>.svg for every shelf, so a new shelf ships its logo."""
+    rows = (await clients.get("/catalog/platforms")).json()["platforms"]
+    missing = [p["slug"] for p in rows
+               if (await clients.get(f"/logos/platforms/{p['slug']}.svg")).status_code != 200]
+    assert missing == []
+
+
 # ---- platform detail ---------------------------------------------------------------------
 async def test_platform_detail_groups_the_same_job_across_providers(clients: AsyncClient):
     """The capability is the join key: one row, both providers — that's what makes the catalog
