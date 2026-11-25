@@ -381,3 +381,27 @@ def test_shrink_keeps_json_valid_when_cuts_are_not_enough():
         out = body_view.shrink(json.dumps(nested), budget)
         assert len(out) <= max(budget, len('{"_omitted_bytes":9999}'))
         json.loads(out)
+
+
+async def test_the_judge_sees_the_status_and_body_the_caller_got(clients, monkeypatch):
+    # One stored body answered this call with 206; the provider's reported charge is stripped
+    # before delivery, so the judge never sees it either.
+    from treg.application import review_answers
+    from treg.application.call import service as call_service
+
+    org = await _org(clients)
+    record = _record(org, "s", "ks", status=206)
+    record.cost_charged_micro = 100
+    await _add(_review(org, "s", "PARTIAL"), record)
+
+    async def resolve(key_hash, content_hash):
+        return {"stored": True, "request": {"method": "POST", "url": "u", "body_text": "{}"},
+                "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 9,
+                             "body_text": '{"people":[],"credits_charged":2}'}}
+    monkeypatch.setattr(archive, "resolve_result", resolve)
+    monkeypatch.setattr(call_service, "answer_for_caller",
+                        lambda endpoint_id, body, headers: body.replace(b',"credits_charged":2', b""))
+    async with session_maker() as db:
+        review = (await db.execute(select(CallReview))).scalar_one()
+    found = await review_answers.answer_of(review)
+    assert found["response"]["status_code"] == 206 and "credits_charged" not in found["response"]["body_text"]

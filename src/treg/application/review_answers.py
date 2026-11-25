@@ -27,12 +27,28 @@ async def answer_of(r) -> dict | None:
             CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
         ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
         link = (record.archive_key_hash, record.archive_content_hash) if record is not None else (None, None)
+        delivered = (record.status_code, record.endpoint_id, record.cost_charged_micro) if record is not None else None
     if None in link:
         return None
     found = await archive.resolve_result(*link)
     if not found or not found["stored"] or found["response"]["body_text"] is None:
         return None
-    return found
+    return as_delivered(found, *delivered)
+
+
+def as_delivered(found: dict, status_code: int, endpoint_id: str | None, charged: int | None) -> dict:
+    """The archived answer as the reviewed call delivered it: that call's own status (one stored
+    body can answer several calls with different statuses) and, for a metered 2xx answer under
+    `strip_reported_charge`, without the provider's reported charge, as `/calls/{id}/result` shows
+    it. Whether the request kept that charge is not on file, so it is always left out: a field the
+    caller may not have seen never takes part in a judgement."""
+    from .call import service as call_service
+
+    response = dict(found["response"], status_code=status_code)
+    if charged is not None and 200 <= status_code < 300:
+        response["body_text"] = call_service.answer_for_caller(
+            endpoint_id, response["body_text"].encode("utf-8"), {}).decode("utf-8")
+    return dict(found, response=response)
 
 
 def view(i: int, r, found: dict, capability: str, budget: int) -> dict:
