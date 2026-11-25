@@ -4,8 +4,9 @@ source:
   openapi: https://api.getprospect.com/openapi.json
   curated: '2026-11-24'
 # Billing: two meters.
-#   - Email CREDITS (fx.yaml credit_rates_usd.getprospect): 1 per valid email served that the
-#     workspace does not already own. An email the workspace revealed before is served free.
+#   - Email CREDITS (fx.yaml credit_rates_usd.getprospect): 1 per valid email served. GetProspect does
+#     not charge a workspace again for an address it already owns, but no response field says which
+#     case a call was, so every row prices each served email.
 #   - Wallet USD: $0.0008 per verification with a verdict.
 # Everything that finds nothing is free: every route answers HTTP 200 with success: false and
 # errors[0].name NOT_FOUND (or VERIFICATION_ERROR for an unknown verdict), the shape each `miss`
@@ -43,7 +44,7 @@ endpoints:
       currency: credit
       per: 1
       unit: call
-      note: "1 email credit when a valid email is served; not found and catch-all results are free, and so is an email the workspace already owns"
+      note: "1 email credit per valid email served; not found and catch-all results are free"
     miss: {when: {path: response.success, op: equals, value: false}, means: "no confirmed email (200, success false, NOT_FOUND, data.status not_found) - free"}
     docs_url: https://getprospect.com/api-docs/email-finder
 
@@ -103,7 +104,7 @@ endpoints:
       currency: credit
       per: 1
       unit: call
-      note: "1 email credit per newly revealed email; matching a person is free, and so is an email the workspace already owns or enrich_email false"
+      note: "1 email credit per email served; a matched person without an email is free, and so is enrich_email false"
     bill:
       free_when: {path: response.data.email.address, op: absent}
     miss: {when: {path: response.success, op: equals, value: false}, means: "nobody matched (200, success false, NOT_FOUND, data null) - free"}
@@ -139,7 +140,7 @@ endpoints:
       currency: credit
       per: 1
       unit: record
-      note: "1 email credit per email served (newly revealed); matched people without an email, enrich_email false, not_matched and invalid items are free"
+      note: "1 email credit per email served; matched people without an email, enrich_email false, not_matched and invalid items are free"
     reserve:
       entities: {from: body.data, max: 50}
     settle:
