@@ -704,7 +704,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 caller.org_id, exc.required_micro - exc.balance_micro):
             noted = True
             return await _platform_reserve(
-                mk, caller, meta, call_ref, allow_holdless=allow_holdless, retry_short=False,
+                mk, caller, meta, call_ref, allow_holdless=allow_holdless,
+                mark_in_flight=mark_in_flight, retry_short=False,
                 skip_reason=note, skip_as_direct=as_direct)
         wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team

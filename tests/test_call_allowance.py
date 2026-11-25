@@ -3904,3 +3904,24 @@ async def test_a_mark_is_set_only_where_a_stale_claim_reads_it(monkeypatch):
     assert store.marks == set()
     monkeypatch.setattr(kv, "configured", lambda: True)
     assert await idempotency.mark_in_flight("root-shared") is True
+
+
+async def test_a_keyed_free_call_retried_after_a_give_back_still_keeps_a_hold(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(balance_micro=-1))
+        await db.commit()
+
+    async def gave_back(_org_id, _micro):
+        return True
+
+    monkeypatch.setattr(runtime, "give_back_for_exact_path", gave_back)
+    caller = await _caller(org_id)
+    mk = _call(org_id, estimate=0)
+    mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    with pytest.raises(ReservationFailed):
+        await call_reserve._platform_reserve(
+            mk, caller, CallMeta(tags={}), "keyed-free-1", allow_holdless=True,
+            allow_allowance=True, mark_in_flight=True)
+    assert not mk.holdless, "the retry kept the claim's mark_in_flight, so it never went holdless"
