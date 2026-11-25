@@ -888,7 +888,7 @@ class Settings(BaseSettings):
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
     # A caller waiting longer than this for that lookup is refused, as an unresolvable host is.
-    ssrf_lookup_timeout_s: float = 10.0
+    ssrf_lookup_timeout_s: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible
