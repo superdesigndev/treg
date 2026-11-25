@@ -19,8 +19,8 @@ permissions:
 
 jobs:
   test:
-    # The repository variable CI_LINUX_RUNNER names the runner label for the two test jobs;
-    # unset, they run on GitHub's own runner.
+    # The repository variable CI_LINUX_RUNNER names the runner label for the Linux jobs that run
+    # Python (test, test-postgres, cli-go's Linux leg); unset, they run on GitHub's own runner.
     runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     # A throttled shared runner once turned the 5-minute suite into 20+ (log showed 68s before the
     # first test started). Die loudly instead of eating half an hour; a re-run usually lands on a
@@ -247,8 +247,9 @@ jobs:
 
   cli-go:
     # The binary CLI: vet and unit tests on every platform it ships for, then the parity suite that
-    # runs it beside the Python CLI against a real local registry.
-    runs-on: ${{ matrix.os }}
+    # runs it beside the Python CLI against a real local registry. The matrix value stays the job's
+    # name, so the required check keeps its name whichever runner the Linux leg lands on.
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && vars.CI_LINUX_RUNNER || matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
