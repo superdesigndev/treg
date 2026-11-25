@@ -750,6 +750,11 @@ async def catalog_endpoint(
                                                    "running also pending, call_id and async (task_id + poll) — "
                                                    "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
                            if contract and contract.check else {}),
+                        **({"X-Treg-Route-Ad-Hashes": f"true = add the hit's {contract.ad_hashes} as SHA-256 hashes ready for "
+                                                      "LinkedIn, Meta and Google audience uploads, at no extra charge; the answer "
+                                                      "is _treg.ad_hashes {hashed, linkedin, meta, google}, or {hashed: false, "
+                                                      "reason} (no_hit, no_email)"}
+                           if contract and contract.ad_hashes else {}),
                         **({"X-Treg-Route-Domain-Match": "strict (or true) = when you sent a domain, an email hit at another domain does not "
                                                          "end the call: the waterfall goes on (at most two more such hits), each "
                                                          "attempt at its own price, inside X-Treg-Route-Max-Cost; the first "

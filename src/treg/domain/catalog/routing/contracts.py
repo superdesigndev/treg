@@ -121,6 +121,9 @@ class Contract:
     # The output field two providers must agree on under `X-Treg-Route-Confirm`: a hit counts only
     # once another provider returns the same value. Empty = the header is refused.
     confirm: str = ""
+    # The output field `X-Treg-Route-Ad-Hashes` hashes for ad platforms (`_treg.ad_hashes`): an
+    # email field. Empty = the header is refused.
+    ad_hashes: str = ""
     # True where a 2xx with nothing in it is the provider failing the job, not "no result": an
     # empty scraped page, an empty results list. Measured success then counts such an answer
     # against the endpoint (`stats.Tally.fold`), so a provider that answers 200 to everything
@@ -388,7 +391,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm", "ad_hashes",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
     "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
@@ -522,6 +525,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
+            ad_hashes=_parse_output_field(cap, "ad_hashes", c.get("ad_hashes"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
@@ -684,10 +688,14 @@ def _parse_check(cap: str, raw, output: dict) -> Check | None:
 
 
 def _parse_confirm(cap: str, raw, output: dict) -> str:
+    return _parse_output_field(cap, "confirm", raw, output)
+
+
+def _parse_output_field(cap: str, key: str, raw, output: dict) -> str:
     if not raw:
         return ""
     if raw not in output:
-        raise ValueError(f"contract {cap}: confirm must name a field of its output, got {raw!r}")
+        raise ValueError(f"contract {cap}: {key} must name a field of its output, got {raw!r}")
     return str(raw)
 
 
