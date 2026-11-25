@@ -392,7 +392,7 @@
             <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
             <div style="font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: -0.5px; color: #111111">lead rate</div>
           </div>
-          <div id="cTags" style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px"></div>
+          <div id="cTags" style="margin-top: 16px; white-space: nowrap; display: flex; flex-direction: column; gap: 8px"></div>
           </div>
         </div>
         <div style="display: flex; align-items: center; margin-left: 18px; margin-right: -6px" aria-hidden="true"><div style="width: 10px; height: 10px; border-radius: 999px; background: #111111"></div><div style="width: 60px; height: 3px; background: #111111"></div></div>
@@ -962,13 +962,15 @@
     };
     $('cTags').innerHTML = ['role', 'topic'].map(function (k) {
       var row = (c.tags || []).filter(function (t) { return t.kind === k; });
-      return row.length ? '<div style="display: flex; gap: 8px">' + row.map(chip).join('') + '</div>' : '';
+      return row.length ? '<div style="display: flex; flex-wrap: wrap; gap: 8px">' + row.map(chip).join('') + '</div>' : '';
     }).join('');
     set('revenue', money(c.revenue));
     set('math', c.leads + ' of ' + c.scanned.toLocaleString('en-US') + ' followers scanned are leads · ' + c.total.toLocaleString('en-US') +
       ' followers × ' + pct(c.rate) + ' × 2% close × $' + c.usd.toLocaleString('en-US') + ' a year');
     var rl = pct(c.rate).length;
     $('rateNum').style.fontSize = (rl <= 2 ? 160 : rl === 3 ? 136 : 112) + 'px';
+    /* the tags end where the pie ends: number, pointer (82px), pie (240px) */
+    $('cTags').style.width = ($('rateNum').offsetWidth + 322) + 'px';
     var r = 15.5, circ = 2 * Math.PI * r, share = Math.min(c.rate * 100, 100), slice = $('pieSlice');
     slice.setAttribute('stroke-dasharray', (share * circ / 100).toFixed(2) + ' ' + circ.toFixed(2));
     slice.setAttribute('transform', 'rotate(' + (180 - share * 1.8).toFixed(1) + ' 32 32)');
