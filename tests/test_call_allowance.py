@@ -20,7 +20,7 @@ from treg.application import allowance_sweep
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
-from treg.application.call.intake import CallMeta
+from treg.application.call.intake import CallMeta, prepare_call_intake
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
@@ -31,7 +31,9 @@ from treg.infra import db as infra_db
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity.access import Caller
-from treg.models import ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, Tool, User
+from treg.models import (
+    ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, TagBudget, TagSpend, Tool, User,
+)
 
 GRANT = 5_000_000
 CHUNK = 1_000_000
@@ -1498,6 +1500,114 @@ async def test_a_reserved_routed_child_counts_under_the_reason_it_would_have_as_
     held = ledger.with_margin(600)
     assert routed["as_direct"] == {"eligible": [1, held], "tagged": [1, held]}
     assert other["calls"] == 1 and other["as_direct"] == {}
+
+
+@pytest.fixture
+def tagged_on(org_id, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_tagged_org_ids", [org_id])
+    monkeypatch.setattr(get_settings(), "money_allowance_tagged_all_orgs", False)
+
+
+async def _tag_meta(caller: Caller, tags: dict[str, str]) -> CallMeta:
+    """The call's tags as the pre-flight pass leaves them."""
+    async def body() -> bytes:
+        return b""
+    intake = await prepare_call_intake(
+        meta=CallMeta(tags=tags), idempotency_header=None, method="GET", rest="", raw_query="",
+        read_body=body, caller=caller, enforce_tag_budgets=call_reserve._enforce_tag_budgets,
+        call_ref="intake")
+    return intake.meta
+
+
+async def test_a_tagged_call_no_budget_limits_takes_and_its_fold_writes_its_tag_rows(
+        org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    meta = await _tag_meta(caller, {"customer": "c1", "feature": "find"})
+    assert meta.tag_limited is False
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "tagged-1", allow_allowance=True)
+    assert mk.allowance_epoch and await _per_call_holds(org_id) == []
+    assert await call_settle._platform_settle(mk, 200, observed_override=450) == (450, 450)
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge))).scalar_one().meta["tags"] == meta.tags
+    await _fold(org_id)
+    async with session_maker() as db:
+        rows = (await db.execute(select(TagSpend).order_by(TagSpend.dim))).scalars().all()
+        entry = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == "tagged-1", LedgerEntry.kind == "settle"))).scalar_one()
+        day = ledger._day_start()
+        by_tag = await ledger.spend_by_tag(db, org_id, "customer", day)
+        calls = await ledger.calls_by_tag(db, org_id, "feature", day)
+    assert [(r.dim, r.val, r.hold_id, r.amount_micro, r.settled) for r in rows] == [
+        ("customer", "c1", "tagged-1", 450, True), ("feature", "find", "tagged-1", 450, True)]
+    assert all(r.created_at == entry.created_at for r in rows)
+    assert entry.meta["tags"] == meta.tags and entry.amount_micro == -450
+    assert by_tag == {"c1": 450} and calls == {"find": 1}
+
+
+async def test_an_unbilled_tagged_take_writes_no_tag_rows(org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, await _tag_meta(caller, {"customer": "c1"}), "tagged-1", allow_allowance=True)
+    assert mk.allowance_epoch
+    assert await call_settle._platform_settle(mk, 500) == (0, None)
+    await _fold(org_id)
+    async with session_maker() as db:
+        assert (await db.execute(select(TagSpend))).scalars().all() == []
+
+
+@pytest.mark.parametrize(("budget", "limited"), [
+    ({"val": "c1", "daily_cap_micro": 10_000}, True),
+    ({"val": "*", "monthly_cap_micro": 10_000}, True),
+    ({"val": "c1", "calls_per_day": 5}, True),
+    ({"val": "*", "calls_per_day": 0, "status": "active"}, True),
+    ({"val": "c1", "auto": True}, False),
+    ({"val": "c1"}, False),
+    ({"val": "*", "calls_per_day": -1}, False),
+])
+async def test_a_tag_budget_that_limits_the_call_keeps_it_on_its_own_hold(
+        org_id, store, tagged_on, skip_lines, budget, limited):
+    async with session_maker() as db:
+        db.add(TagBudget(org_id=org_id, dim="customer", **budget))
+        await db.commit()
+    caller = await _caller(org_id)
+    if limited and budget.get("calls_per_day") == 0:
+        with pytest.raises(ReservationFailed):
+            await _tag_meta(caller, {"customer": "c1"})
+        return
+    meta = await _tag_meta(caller, {"customer": "c1"})
+    assert meta.tag_limited is limited
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "c-1", allow_allowance=True)
+    assert (mk.allowance_epoch is None) is limited
+    assert await _per_call_holds(org_id) == (["c-1"] if limited else [])
+    assert skip_lines() == ([_skip(org_id, "tag_budget", 1)] if limited else [])
+
+
+async def test_a_tag_on_an_undeclared_key_is_never_limited(org_id, store, tagged_on):
+    async with session_maker() as db:
+        db.add(TagBudget(org_id=org_id, dim="workspace", val="*", daily_cap_micro=1))
+        await db.commit()
+    assert (await _tag_meta(await _caller(org_id), {"workspace": "w1"})).tag_limited is False
+
+
+async def test_a_tagged_call_keeps_its_hold_until_its_team_is_switched_on(org_id, store, skip_lines):
+    caller = await _caller(org_id)
+    meta = await _tag_meta(caller, {"customer": "c1"})
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "c-1", allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
+    assert skip_lines() == [_skip(org_id, "tagged", 1)]
+    assert call_reserve._direct_skip(_call(org_id, reserved_micro=600), caller,
+                                     CallMeta(tags={"customer": "c1"}), True) == "tagged"
+
+
+async def test_a_tagged_meta_never_judged_by_the_pre_flight_keeps_its_hold(
+        org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    assert call_reserve._direct_skip(_call(org_id, reserved_micro=600), caller,
+                                     CallMeta(tags={"customer": "c1"}), True) == "tag_budget"
 
 
 async def test_a_member_with_a_spend_limit_keeps_a_hold_of_their_own(org_id, store):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +42,9 @@ class CallMeta:
 
     tags: dict[str, str]
     primary_dim: str = budget_policy.DEFAULT_PRIMARY_DIM
+    # A tag budget may limit this call. False only once the pre-flight pass found none for any of
+    # its tags (`reserve._enforce_tag_budgets`): only then may a tagged call take from the allowance.
+    tag_limited: bool = True
 
     @property
     def primary_val(self) -> str:
@@ -129,6 +132,7 @@ class IntakeResult:
     fingerprint: str
     replay: IdempotentReplay | None
     claim: tuple[int, str, str] | None
+    meta: CallMeta | None = None
 
 
 async def prepare_call_intake(
@@ -140,15 +144,17 @@ async def prepare_call_intake(
     raw_query: str,
     read_body: Callable[[], Awaitable[bytes]],
     caller: Caller,
-    enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[None]],
+    enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[bool]],
     call_ref: str,
 ) -> IntakeResult:
     """Run the pre-resolve gates in their frozen order using bounded transactions."""
     # Blocked status and the per-tag call count, BEFORE the replay below: a blocked user must neither
     # take an idempotency lock nor be handed an answer this team cached before they were blocked.
     async with session_maker() as db:
-        await enforce_tag_budgets(caller, meta, db)
+        limited = await enforce_tag_budgets(caller, meta, db)
         await db.commit()
+    if meta.tags and limited is False:
+        meta = replace(meta, tag_limited=False)
 
     # A retry the caller has labelled: answer it from what we already returned, before resolving
     # anything or reaching a provider. Nothing happens without the header.
@@ -157,7 +163,7 @@ async def prepare_call_intake(
     key = _scoped_idempotency_key(
         _idempotency_key(idempotency_header), meta, pinned_tags=caller.membership.pinned_tags)
     if not key:
-        return IntakeResult("", "", None, None)
+        return IntakeResult("", "", None, None, meta)
 
     body = await read_body()
     fingerprint = _request_fingerprint(method, rest, body, raw_query)
@@ -174,5 +180,5 @@ async def prepare_call_intake(
                 raise _in_progress(key, await _claim_owner(key, caller, db))
     if replay is not None:
         # Outside the session on purpose: a trimmed row's bytes may come from object storage.
-        return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None)
-    return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref))
+        return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None, meta)
+    return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref), meta)

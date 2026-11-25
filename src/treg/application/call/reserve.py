@@ -234,8 +234,9 @@ async def _resolve_tag_budget(db: AsyncSession, org_id: int, dim: str, val: str)
 
 
 async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
-                               add_micro: int | None = None) -> None:
-    """Refuse a call that breaches a builder-set limit on one of its tags.
+                               add_micro: int | None = None) -> bool:
+    """Refuse a call that breaches a builder-set limit on one of its tags; return whether any
+    limit (a spend cap or a call count) applies to one of them.
 
     Two passes, called from two places. `add_micro is None` is the PRE-FLIGHT pass (blocked status and
     the daily call count), which runs before the idempotency replay so a blocked user can neither take
@@ -255,7 +256,8 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
     allowed to move money. Never document these caps to builders as hard limits.
     """
     if not meta.tags:
-        return
+        return False
+    limited = False
     dims = budget_policy._budget_dims_of(caller.org)
     for dim in dims:
         val = meta.tags.get(dim)
@@ -284,6 +286,7 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
             }) from exc
         if row is None:
             continue
+        limited = limited or _limits(row)
         if add_micro is None:
             if row.status == "blocked":
                 raise ReservationFailed("tag_blocked", status_code=403, detail={
@@ -318,6 +321,13 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                     "message": (f"{dim} {val!r} has reached its spend limit for this {period} "
                                 f"(${ledger.usd(spent):g} of ${ledger.usd(cap):g})"),
                 })
+    return limited
+
+
+def _limits(row: TagBudget) -> bool:
+    """The row caps spend or counts calls, both read from the tag rows a hold writes."""
+    return (row.daily_cap_micro is not None or row.monthly_cap_micro is not None
+            or (row.calls_per_day is not None and row.calls_per_day >= 0))
 
 
 def _purchased_only(endpoint_id: str) -> bool:
@@ -341,11 +351,12 @@ async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
 def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
                     allowed: bool) -> str | None:
     """Why a call keeps its own hold, or None for a call the team's allowance may pay for: a
-    direct, synchronous, untagged call on treg's platform key, by a member with no spend limit,
-    on an endpoint any credit may pay for.
+    direct, synchronous call on treg's platform key, untagged or (for a team `tagged_listed`) with
+    no tag budget limiting any of its tags, by a member with no spend limit, on an endpoint any
+    credit may pay for.
 
-    Everything else keeps its own hold, because something reads that hold: a tag or member row
-    written with it, an async task or a routed parent that closes it later, the purchased-credit
+    Everything else keeps its own hold, because something reads that hold: a tag row a budget
+    counts, a member row written with it, an async task or a routed parent that closes it later, the purchased-credit
     gate. A child call's reference is its parent's plus a `:suffix` (`_child_kind`). A call whose application did
     not allow the allowance (`allowed`) keeps its hold too. A routed child whose root lets its
     children take (`mk.routed_allowance`) is judged as a direct call: its parent finishes its take.
@@ -370,7 +381,10 @@ def _direct_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, allowed: b
     if not allowance_runtime.enabled_for(caller.org_id):
         return "allowance_off"
     if meta.tags:
-        return "tagged"
+        if not allowance_runtime.tagged_listed(caller.org_id):
+            return "tagged"
+        if meta.tag_limited:
+            return "tag_budget"
     if mk.billed_oauth:
         return "billed_oauth"
     if deferred_settle and mk.deferred is not None:
@@ -585,6 +599,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             # finds the take and returns it.
             mk.call_id, mk.allowance_epoch = call_ref, epoch
             mk.allowance_marked = mark_in_flight
+            mk.allowance_tags = dict(meta.tags) or None
         if auto_on and allowance_runtime.refills(caller.org_id) != before:
             await _schedule_autotopup_after(caller.org_id)
         if epoch:

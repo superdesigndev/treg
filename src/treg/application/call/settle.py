@@ -1170,6 +1170,8 @@ async def _platform_settle(
                             mk.settlement_basis.get("amount", {}).get("kind", "estimate")),
             **({"cached": True, "cache_price_percent": repeat_percent if cached_repeat else 100}
                if cached_hit else {})}
+    if mk.allowance_epoch is not None and mk.allowance_tags:
+        meta["tags"] = dict(mk.allowance_tags)
     if mk.allowance_epoch is not None and deferrable:
         # A routed child that took from the allowance: its parent charges or gives back the take
         # (`close_deferred`), as it settles or releases a deferred hold.
@@ -1453,7 +1455,8 @@ async def _finish_cancelled_call(
                 mk.payer_org_id, call_ref, epoch, mk.reserved_micro or 0,
                 endpoint_id=mk.endpoint_id, billable=charge_hold, marked=marked,
                 meta={"provider": mk.provider, "cost_type": mk.cost_type, "status_code": None,
-                      "reason": "call_cancelled_after_purchase_sent"})
+                      "reason": "call_cancelled_after_purchase_sent",
+                      **({"tags": dict(mk.allowance_tags)} if mk.allowance_tags else {})})
         if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release
