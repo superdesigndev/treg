@@ -744,7 +744,8 @@ async def _release_claimed(
     amount = hold.amount_micro
     # Same rule as settle: a hold counted today leaves today's counter; an older one never was in it.
     spent_delta = -amount if hold.created_at >= _day_start() else 0
-    await _add_balance(db, hold.org_id, amount, spent_delta_micro=spent_delta)
+    if amount or spent_delta:
+        await _add_balance(db, hold.org_id, amount, spent_delta_micro=spent_delta)
     await _entry(db, org_id=hold.org_id, kind="release", amount_micro=amount, call_id=call_id,
                  endpoint_id=hold.endpoint_id, meta={**(meta or {}), "reason": reason})
     # Nothing was billable, so nothing is attributable: the tag rows go with the hold. Leaving them
