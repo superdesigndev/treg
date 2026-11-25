@@ -349,6 +349,9 @@ class Settings(BaseSettings):
     money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
     # How long finished calls wait to share one insert of their charges.
     money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+    # How many processes may fold queued charges at once, each for its own share of the teams
+    # (money.md "One place folds the queue"). 1 = one process folds for every team.
+    money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
 
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)

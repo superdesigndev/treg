@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, func, true, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -573,26 +573,39 @@ async def close_stale_allowance_in_transaction(
     return await _close(db, org_id, hold, reason, None)
 
 
+Shard = tuple[int, int]
+"""`(index, count)`: the teams whose number leaves `index` when divided by `count`."""
+
+
+def _in_shard(column, shard: Shard | None):
+    if shard is None or shard[1] <= 1:
+        return true()
+    return column % shard[1] == shard[0]
+
+
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
-                               after: int = 0, limit: int = 50) -> list[int]:
+                               after: int = 0, limit: int = 50,
+                               shard: Shard | None = None) -> list[int]:
     """Teams whose allowance hold stopped admitting calls before `stale_before`, in the order of
     their numbers, a page at a time: `after` is the last team of the page before. A read; the
     close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
-            Hold.allowance.is_(True), Hold.org_id > after,
+            Hold.allowance.is_(True), Hold.org_id > after, _in_shard(Hold.org_id, shard),
             func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
-                                   after: int = 0, limit: int = 50) -> list[int]:
-    """Teams with a charge queued before `queued_before`, in the order of their numbers, a page
-    at a time: `after` is the last team of the page before."""
+                                   limit: int = 500, shard: Shard | None = None) -> list[int]:
+    """Teams with a charge queued before `queued_before`, the team whose oldest charge has waited
+    longest first, at most `limit` of them."""
+    oldest = func.min(CallCharge.created_at)
     return list((await db.execute(
         select(CallCharge.org_id)
-        .where(CallCharge.created_at < queued_before, CallCharge.org_id > after)
-        .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
+        .where(CallCharge.created_at < queued_before, _in_shard(CallCharge.org_id, shard))
+        .group_by(CallCharge.org_id).order_by(oldest, CallCharge.org_id)
+        .limit(limit))).scalars())
 
 
 async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,
