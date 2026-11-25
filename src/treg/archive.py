@@ -1305,15 +1305,21 @@ def _decode(body: bytes | None) -> str | None:
         return None
 
 
-async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | None:
+async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool = False,
+                         diagnostics: dict | None = None) -> dict[str, Any] | None:
     """The request shape and the stored answer a call row points at, or None when the key or
     that exact answer is no longer on file.
 
     `content_hash` names the exact bytes of the provider's answer (dedup means several versions can
     share them — the newest matching version is the one reported). Follows a `body_of` reference
     to the row carrying the bytes; a hash-only version returns `stored=False` with the bytes
-    honestly absent. Never raises on decode: a non-UTF-8 body reports `body_text=None`."""
-    from sqlalchemy import select
+    honestly absent. Never raises on decode: a non-UTF-8 body reports `body_text=None`.
+
+    `prefer_bytes` picks, among the versions with that hash, one that kept its bytes over a newer
+    hash-only one (the same bytes, so never another answer). `diagnostics` receives the body read's
+    report (`archive_bodies.read`), whose `cache_body_fallback_reason` tells a failed read apart
+    from an object that is not there."""
+    from sqlalchemy import case, or_, select
 
     from .models import ArchiveKey, ArchiveSnapshot
 
@@ -1327,11 +1333,14 @@ async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | N
         snap = (await session.execute(
             select(ArchiveSnapshot).options(*archive_bodies.read_options("result"))
             .where(ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.content_hash == content_hash)
-            .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
+            .order_by(*((case((or_(ArchiveSnapshot.body_storage.in_(("r2", "both")),
+                                   ArchiveSnapshot.body.is_not(None), ArchiveSnapshot.body_of.is_not(None)), 0),
+                              else_=1),) if prefer_bytes else ()),
+                      ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
         if snap is None:
             return None
         pointer = await archive_bodies.pointer(session, snap, "result")
-    body = await archive_bodies.read(pointer, "result")
+    body = await archive_bodies.read(pointer, "result", diagnostics=diagnostics)
     return {
         "stored": body is not None,
         "request": {"method": key.req_method or "", "url": key.req_url or "",

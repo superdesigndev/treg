@@ -301,7 +301,7 @@ async def test_an_answer_unreadable_now_waits_and_a_corrupt_one_does_not_block(c
         await db.commit()
     readable = {"now": False}
 
-    async def resolve(key_hash, content_hash):
+    async def resolve(key_hash, content_hash, **kwargs):
         if key_hash == "kb":
             raise ValueError("Error -3 while decompressing data")
         stored = readable["now"]

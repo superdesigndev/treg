@@ -148,7 +148,7 @@ async def _add(*rows):
 
 def _archive(monkeypatch, bodies: dict):
     """Synthetic archive: key hash -> answer text; a key it lacks is no longer on file."""
-    async def resolve(key_hash, content_hash):
+    async def resolve(key_hash, content_hash, **kwargs):
         if key_hash not in bodies:
             return None
         return {"stored": True, "request": {"method": "POST", "url": "https://x.test/s", "body_text": "{}"},
@@ -215,9 +215,9 @@ async def test_a_routed_review_is_counted_and_never_compared(clients, monkeypatc
     read = []
     real = archive.resolve_result
 
-    async def watched(key_hash, content_hash):
+    async def watched(key_hash, content_hash, **kwargs):
         read.append(key_hash)
-        return await real(key_hash, content_hash)
+        return await real(key_hash, content_hash, **kwargs)
     monkeypatch.setattr(archive, "resolve_result", watched)
     seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
 
@@ -315,7 +315,7 @@ def _slow_archive(monkeypatch, slow_key: str):
     now = [0.0]
     monkeypatch.setattr(review_body_pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
 
-    async def resolve(key_hash, content_hash):
+    async def resolve(key_hash, content_hash, **kwargs):
         if key_hash == slow_key:
             now[0] += 100
         return {"stored": True, "request": {"method": "POST", "url": "https://x.test/s", "body_text": "{}"},
@@ -399,7 +399,7 @@ async def test_the_judge_sees_the_status_and_body_the_caller_got(clients, monkey
     record.cost_charged_micro = 100
     await _add(_review(org, "s", "PARTIAL"), record)
 
-    async def resolve(key_hash, content_hash):
+    async def resolve(key_hash, content_hash, **kwargs):
         return {"stored": True, "request": {"method": "POST", "url": "u", "body_text": "{}"},
                 "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 9,
                              "body_text": '{"people":[],"credits_charged":2}'}}

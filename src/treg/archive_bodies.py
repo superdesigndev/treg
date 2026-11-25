@@ -52,6 +52,11 @@ def forget(content_hash: str) -> None:
     _uploaded.pop(content_hash, None)
 
 
+def has_store() -> bool:
+    """Whether an object store is configured in this process (`configure`)."""
+    return _store is not None
+
+
 def uses_r2() -> bool:
     s = get_settings()
     return s.archive_body_write != "db" or any(
