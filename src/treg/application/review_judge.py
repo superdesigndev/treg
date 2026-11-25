@@ -124,7 +124,7 @@ async def judge_codes(*, deadline: float) -> dict:
                    or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
             .order_by(CallReview.created_at.desc()))).all()
     out = {"pending": len(rows), "judged": 0, "with_answer": 0, "answer_unreadable": 0, "answer_errors": 0, "no_reason": 0, "already_judged": 0,
-           "failed_requests": 0, "unreadable": 0, "tokens_in": 0}
+           "failed_requests": 0, "unreadable": 0, "tokens_in": 0, "stopped_by_deadline": False}
     blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
     out["no_reason"] = await _write_codes(blank)
     out["already_judged"] += len(blank) - out["no_reason"]
@@ -134,7 +134,14 @@ async def judge_codes(*, deadline: float) -> dict:
     def capability(r) -> str:
         return (by_id.get(r.endpoint_id) or {}).get("capability") or ""
 
+    # Answers are read until a request's worth of time is left, so the batches read are sent before
+    # the deadline rather than dropped and read again next run; no request starts after it.
+    read_until = deadline - min(s.review_judge_timeout_s, max(deadline - time.monotonic(), 0) / 4)
+
     async def ask(batch: list[tuple], with_answer: bool) -> None:
+        if time.monotonic() >= deadline:
+            out["stopped_by_deadline"] = True
+            return
         if with_answer:
             state = {"reviews": [item for _, item in batch]}
             questions = {f"a{i}": review_codes.body_code_question(i) for i in range(len(batch))}
@@ -167,7 +174,8 @@ async def judge_codes(*, deadline: float) -> dict:
     plain: list[tuple] = []
     read: list[tuple] = []
     for r in rows:
-        if time.monotonic() >= deadline:
+        if time.monotonic() >= read_until:
+            out["stopped_by_deadline"] = True
             break
         answer = await answer_of(r) if r.routed_via is None else ABSENT
         if answer.state == "unreadable":  # on file but not readable now: left for a later run
@@ -192,7 +200,7 @@ async def judge_codes(*, deadline: float) -> dict:
                 await ask(plain, False)
                 plain = []
     for batch, with_answer in ((read, True), (plain, False)):
-        if batch and time.monotonic() < deadline:
+        if batch:
             await ask(batch, with_answer)
     return out
 

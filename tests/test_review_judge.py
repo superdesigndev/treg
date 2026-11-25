@@ -95,7 +95,7 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_codes(deadline=float("inf"))
     assert out == {"pending": 3, "judged": 1, "with_answer": 0, "answer_unreadable": 0, "answer_errors": 0,
-                   "no_reason": 1, "already_judged": 0, "failed_requests": 0,
+                   "no_reason": 1, "stopped_by_deadline": False, "already_judged": 0, "failed_requests": 0,
                    "unreadable": 1, "tokens_in": 10}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.CODES)
     rows = await _all()
@@ -325,3 +325,39 @@ async def test_an_answer_unreadable_now_waits_and_a_corrupt_one_does_not_block(c
     again = await review_judge.judge_codes(deadline=float("inf"))
     assert again["pending"] == 1 and again["with_answer"] == 1
     assert (await _all())["later"].primary_code == "EMPTY"
+
+
+async def test_reading_answers_stops_in_time_to_send_what_was_read(clients, monkeypatch):
+    """With 1 s left and 0.21 s per archive read, the judge stops reading with a request's worth of
+    time left and sends the partial batch before the deadline; nothing is sent after it, and the
+    next run carries on from the reviews still pending."""
+    from types import SimpleNamespace
+
+    from treg.application import review_answers
+    from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
+
+    org = await _org(clients)
+    await _add(*[_review(org, f"t-{i}", None) for i in range(6)], *[_record(org, f"t-{i}", f"k{i}") for i in range(6)])
+    async with session_maker() as db:
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.codebook_version = None
+        await db.commit()
+    now = [0.0]
+    monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    async def answer_of(r):
+        now[0] += 0.21
+        return review_answers.Answer("read", {"request": {"method": "POST", "url": "u", "body_text": "{}"},
+                                              "response": {"status_code": 200, "media_type": "application/json",
+                                                           "size_bytes": 9, "body_text": PEOPLE}})
+    monkeypatch.setattr(review_judge, "answer_of", answer_of)
+    sent_at = []
+    _fake(monkeypatch, lambda q, spec, state: sent_at.append(now[0]) or {"choice": "EMPTY"})
+
+    out = await review_judge.judge_codes(deadline=1.0)
+    assert out["stopped_by_deadline"] is True and 0 < out["judged"] < 6
+    assert sent_at and max(sent_at) < 1.0
+
+    now[0] = 0.0
+    again = await review_judge.judge_codes(deadline=1.0)
+    assert again["pending"] == 6 - out["judged"] and again["judged"] > 0
