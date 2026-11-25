@@ -987,8 +987,10 @@ price.
 
 Any other direct platform call with an explicit `free` price and zero estimate is
 `MarketplaceCall.holdless_eligible` unless it is billed OAuth, an owned poll, an async
-submission, a resource producer or usage-settled. A routed child qualifies too: a free child is
-never charged, so its parent has nothing to decide for it and it leaves no deferred settle. For an org listed in
+submission, a resource producer or usage-settled. A routed child qualifies only when its root lets
+its children take from the allowance (`routed_allowance`): a free child is never charged, so its
+parent has nothing to decide for it, and a keyed root is then marked in flight, which is what a
+stale idempotency claim reads while no child holds anything. For an org listed in
 `holdless_free_org_ids` (default `[]`: none), or every org with `holdless_free_all_orgs` except
 `holdless_free_excluded_org_ids` (the excluded list wins), and with no caller tags (`X-Treg-Meta`
 or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,

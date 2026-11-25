@@ -3871,12 +3871,17 @@ async def test_a_nested_routed_close_keeps_the_root_s_mark_and_leaves_its_releas
     assert store.marks == set()
 
 
-async def test_a_free_routed_child_of_a_holdless_team_takes_no_hold(org_id, store, monkeypatch):
+@pytest.mark.parametrize("root_allows", [False, True])
+async def test_a_free_routed_child_is_holdless_only_when_its_root_lets_children_take(
+        org_id, store, monkeypatch, root_allows):
     monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
     caller = await _caller(org_id)
     pending: list = []
-    mk = _call(org_id, estimate=0, deferred=pending)
+    mk = _call(org_id, estimate=0, deferred=pending, routed_allowance=root_allows)
     mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    if not root_allows:
+        assert not mk.holdless_eligible, "an unmarked keyed root has only its children's holds"
+        return
     await call_reserve._platform_reserve(
         mk, caller, CallMeta(tags={}), "root-1:r0", allow_holdless=True, allow_allowance=True)
     assert mk.holdless and mk.allowance_epoch is None

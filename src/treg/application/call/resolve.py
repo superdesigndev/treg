@@ -465,6 +465,7 @@ class MarketplaceCall:
         ownership = self.resource_ownership or {}
         return (self.tier == "platform" and self.cost_type == "free"
                 and self.estimate_micro == 0 and not self.billed_oauth
+                and (self.deferred is None or self.routed_allowance)
                 and self.async_owner_call_id is None
                 and not self.async_descriptor and not ownership.get("produces")
                 and (self.settlement_basis.get("amount") or {}).get("kind") != "usage")
