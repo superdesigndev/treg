@@ -1713,6 +1713,12 @@ adapters:
     in_expr: {body.gl: "lower(country)", body.hl: language, body.num: limit}
     out: {results: news, count: "len(news)"}
     miss: "coalesce(news, []) == []"
+  searchapi.google.serp.news:
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    in_expr: {queryParams.gl: "lower(country)", queryParams.hl: language}
+    const: {queryParams.engine: google_news}
+    out: {results: organic_results, count: "len(organic_results)"}
   cloro.google.serp.news:
     accepts: [[q]]
     in: {q: body.query}
@@ -3230,6 +3236,13 @@ adapters:
     in: {q: body.q}
     out: {results: organic, count: "len(organic)"}
     miss: "coalesce(organic, []) == []"
+  searchapi.google.serp.scholar:
+    accepts: [[q]]
+    max: {limit: 20}
+    in: {q: queryParams.q}
+    in_expr: {queryParams.num: limit}
+    const: {queryParams.engine: google_scholar}
+    out: {results: organic_results, count: "len(organic_results)"}
   search1api.web.search:
     accepts: [[q]]
     max: {limit: 50}
@@ -3375,6 +3388,13 @@ adapters:
     in_expr: {body.gl: "lower(country)", body.hl: language, body.num: "at_least(limit, 10)"}
     out: {results: organic, count: "len(organic)"}
     miss: "coalesce(organic, []) == []"
+  searchapi.web.search:
+    accepts: [[q]]
+    in: {q: queryParams.q}
+    # Google fixed the page at ten results in September 2025, so limit is not sent.
+    in_expr: {queryParams.gl: "lower(country)", queryParams.hl: language}
+    const: {queryParams.engine: google}
+    out: {results: organic_results, count: "len(organic_results)"}
   spidercloud.web.search:
     accepts: [[q]]
     max: {limit: 10}

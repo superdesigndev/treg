@@ -1,0 +1,146 @@
+{
+  "search_metadata": {
+    "id": "search_1XbZBxkZENuBlPXM1v8JaLNR",
+    "status": "Success",
+    "created_at": "2026-11-20T14:29:57Z",
+    "request_time_taken": 5.4,
+    "parsing_time_taken": 0.09,
+    "total_time_taken": 5.5,
+    "request_url": "https://www.google.com/search?q=OpenAI+API+documentation&oq=OpenAI+API+documentation&gl=us&hl=en",
+    "html_url": "https://www.searchapi.io/api/v1/searches/search_1XbZBxkZENuBlPXM1v8JaLNR.html",
+    "json_url": "https://www.searchapi.io/api/v1/searches/search_1XbZBxkZENuBlPXM1v8JaLNR"
+  },
+  "search_parameters": {
+    "engine": "google",
+    "q": "OpenAI API documentation",
+    "device": "desktop",
+    "hl": "en",
+    "gl": "us"
+  },
+  "search_information": {
+    "query_displayed": "OpenAI API documentation",
+    "time_taken_displayed": 0.29,
+    "detected_location": "Unknown",
+    "has_no_results_for": false
+  },
+  "ai_overview": {
+    "text_blocks": [
+      {
+        "type": "paragraph",
+        "answer": "The official OpenAI API Platform Documentation provides comprehensive guides, reference materials, and tools for integrating …",
+        "reference_indexes": [
+          0
+        ]
+      },
+      {
+        "type": "header",
+        "answer": "Key Documentation Sections"
+      },
+      "… 3 more item(s) truncated"
+    ],
+    "markdown": "The official OpenAI API Platform Documentation provides comprehensive guides, reference materials, and tools for integrating …",
+    "reference_links": [
+      {
+        "index": 0,
+        "title": "OpenAI API Platform Documentation",
+        "link": "https://www.google.com/goto?url=CAESYwHEIkXXzWfX3XyXRvHni-2Niz2jaM0_ffmsgLm9k3lpIMet8gaqOaYhiC2RFoh9P8GE3i4oooaP9TQEvFSu8GE00…",
+        "link_token": "e-Ei23x7Y5CIFO7QK-WA3gEc-P51WzxsEfyIO218ibQtlhR69X5O4qN9iE1uNZzkSSy0GkThcPiDNNa00b4P9czO5_HsqQavmWWC0M7JLBu2ki65UqBjq31S21Jc_…",
+        "snippet": "Home API Overview Get started with the OpenAI API Models Explore models and compare capabilities Agents Build persistent agen…",
+        "source": "OpenAI Developers",
+        "favicon": "https://encrypted-tbn2.gstatic.com/faviconV2?url=https://developers.openai.com&client=AIM&size=32&type=FAVICON&fallback_opts=…",
+        "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcS_vybgjFfUn5x_PPYxTTNjxVjvqI3EbMzMWL1OivGk4EB6UCDicHMt18q_K57o5rEHTfLzK…"
+      },
+      {
+        "index": 1,
+        "title": "API Overview | OpenAI API Reference",
+        "link": "https://www.google.com/goto?url=CAEScQHEIkXX-5-x7AtrJojGp-I2kR12BqZi15i8_HmU-_n-wOC8M_El2U_GIrYkf3PQtKw_3gio9h9thZl3YJYN3Rixk…",
+        "link_token": "lbBbqjFtFm3C-Fm-MzjgSf4cgpN3vFSaVzBcRPQSr8Sg0PfmF1SL142gupeCa6NPLdzq6xWsU6_Gf-k9sTJp9EIbP6GdM5OwddCw0Lp6JLyVnCLuF-ItWW04hM_4-…",
+        "snippet": "Home API Overview Get started with the OpenAI API Models Explore models and compare capabilities Agents Build persistent agen…",
+        "source": "OpenAI Developers",
+        "favicon": "https://encrypted-tbn2.gstatic.com/faviconV2?url=https://developers.openai.com&client=AIM&size=32&type=FAVICON&fallback_opts=…",
+        "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQx-__aiDcGdxADI5qfX8R8m-Rv3PZwyysUn5fOFZjJw6xxskUaTPsTqnLxpjkN4G2_J10GH…"
+      },
+      "… 3 more item(s) truncated"
+    ]
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "OpenAI API Platform Documentation",
+      "link": "https://www.google.com/goto?url=CAESYwHEIkXXjG9IxhwZqwPS5bHPzifAEkTs8qS01b6sRHsz8c2Oqq8SiXCybP27yQCqkzQJViI3wKV4CRUL0HFRecnLv…",
+      "link_token": "xitD6t7ovUykJYapG7wngLwO6x085f1WjI130Ocn1wL4IiUr4zZTghWVqNJ0KzikB43cFQLpuOoleXgiAhJgd1-P-sctb6nDBSS514CgeyxpFtEWqmNSwDdiZ_fbh…",
+      "source": "OpenAI Developers",
+      "domain": "developers.openai.com",
+      "displayed_link": "https://developers.openai.com › api › docs",
+      "snippet": "Explore guides, API docs, and examples for the OpenAI API.",
+      "snippet_highlighted_words": [
+        "API docs",
+        "OpenAI API"
+      ],
+      "sitelinks": {
+        "expanded": [
+          {
+            "title": "Developer quickstart",
+            "link": "https://www.google.com/goto?url=CAESbgHEIkXXXvC0mO49nT2SN8iFVlfvT8mLqEcJr4a5qB8c3pd-xZlwfhIX6KE2BQpNebhJQpFyItHsR55pYUHGI6aD6…",
+            "link_token": "tJcAdlOZrMQDXmrvBRbwQs_6TVpfCHC3GhCwfAxgAal2B_QutVkceTgutUYYlLeRyO8vulvcg3j58LiaddY6zWlx-gA0yttP9q699riRZhLSwQascjTy-PYPHHRpz…",
+            "snippet": "The OpenAI API provides a consistent interface to state-of ..."
+          },
+          {
+            "title": "Key concepts",
+            "link": "https://www.google.com/goto?url=CAESbAHEIkXXZpSnkNhOA7NrswFXoU6Bf5T1MeeKUpZqgHE6-n6SK9hjnjnc8miBM4fn-lHPpAFECDqNytGmCV0lFEjg1…",
+            "link_token": "GNCf7ZU4ilMzmNi879_g7RWTKSywlzOYXoLbIO1kuSJjcePgpwmu7QctSZJynC8qfCGhnmep2JDepecrm2URZMFmDBpExQItQ5sAFJ33UDz7ficfZk0a6C1KW1lGX…",
+            "snippet": "OpenAI offers text embedding models that take as input a text ..."
+          },
+          "… 3 more item(s) truncated"
+        ]
+      },
+      "favicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAPFBMVEVHcEwAgPgAgPgAgPcAgPcAgPcAgPcAgPcAevcAdPd0s/u82f2…"
+    },
+    {
+      "position": 2,
+      "title": "API Overview | OpenAI API Reference",
+      "link": "https://developers.openai.com/api/reference/overview/",
+      "source": "OpenAI Developers",
+      "domain": "developers.openai.com",
+      "displayed_link": "https://developers.openai.com › api › reference › overview",
+      "snippet": "API Overview. Use this reference to look up OpenAI API endpoints, request and response schemas, streaming events, client libr…",
+      "snippet_highlighted_words": [
+        "API Overview"
+      ],
+      "favicon": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAMAAABEpIrGAAAAPFBMVEVHcEwAgPgAgPgAgPcAgPcAgPcAgPcAgPcAevcAdPd0s/u82f2…"
+    },
+    "… 4 more item(s) truncated"
+  ],
+  "related_questions": [
+    {
+      "is_ai_overview": true,
+      "question": "Is it free to use the OpenAI API?",
+      "error": "Google AI Overview loads this answer asynchronously; it was not included in this response.",
+      "page_token": "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9hc3luYy9jYWxsYmFjazo2NzYxP2ZjPUV1SUJDcUlCUVVSRVlsZGxXblZoTWtSSWNtVlVSRmh2V2xsM05reENURkZxWWpaN…",
+      "next_page_token": "eyJmYyI6IkVxRUJDbUpCUkVSaVYyVmhaMjVoVFVjd1ptMVRVVXh1YW5GclkyWTFaMGcyU0dOUmJHMUdVMnByVldWRFVVeFJPVzlPVm5Wd1RHZFVkMFJLZVRGRmRsT…"
+    },
+    {
+      "is_ai_overview": true,
+      "question": "Is OpenAI api the same as ChatGPT?",
+      "error": "Google AI Overview loads this answer asynchronously; it was not included in this response.",
+      "page_token": "aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9hc3luYy9jYWxsYmFjazo2NzYxP2ZjPUVzd0JDb3dCUVVSRVlsZGxXa3hqY21GeVNFRkZYeTFvY0MxS1pYSkZkbVJWZERjd…",
+      "next_page_token": "eyJmYyI6IkVxRUJDbUpCUkVSaVYyVmhaMjVoVFVjd1ptMVRVVXh1YW5GclkyWTFaMGcyU0dOUmJHMUdVMnByVldWRFVVeFJPVzlPVm5Wd1RHZFVkMFJLZVRGRmRsT…"
+    },
+    "… 2 more item(s) truncated"
+  ],
+  "related_searches": [
+    {
+      "query": "Openai api documentation pdf",
+      "link": "https://www.google.com/search?sca_esv=7374f37f56150b03&gl=us&pws=0&hl=en&sxsrf=AKL5yDhZzW9eteSmmc2_KGbxhfeZab8TgQ:17951849996…"
+    },
+    {
+      "query": "OpenAI API key",
+      "link": "https://www.google.com/search?sca_esv=7374f37f56150b03&gl=us&pws=0&hl=en&sxsrf=AKL5yDhZzW9eteSmmc2_KGbxhfeZab8TgQ:17951849996…"
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "pagination": {
+    "current": 1,
+    "next": "https://www.google.com/search?q=OpenAI+API+documentation&oq=OpenAI+API+documentation&gl=us&hl=en&start=10"
+  }
+}

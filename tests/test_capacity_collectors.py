@@ -507,6 +507,32 @@ async def test_serper_capacity_rejects_invalid_balance(balance, monkeypatch):
         _refused(await _balance(monkeypatch, "serper", client, "test"), "invalid balance")
 
 
+async def test_searchapi_capacity_uses_free_me_route(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://www.searchapi.io/api/v1/me"
+        assert request.headers["authorization"] == "Bearer test"
+        return httpx.Response(200, json={
+            "account": {"current_month_usage": 0, "monthly_allowance": 100,
+                        "remaining_credits": 1270, "remaining_searches": 1370},
+            "api_usage": {"searches_this_hour": 0, "hourly_rate_limit": 200000}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "searchapi", client, "test")
+    assert row == {"value": 1370, "unit": "searches", "note": "hourly rate limit 200000 searches"}
+
+
+@pytest.mark.parametrize("payload", [
+    {}, {"account": None}, {"account": {"remaining_searches": None}},
+    {"account": {"remaining_searches": True}}, {"account": {"remaining_searches": "1370"}},
+    {"account": {"remaining_searches": -1}}, {"account": {"remaining_searches": 1.5}},
+])
+async def test_searchapi_capacity_rejects_invalid_balance(payload, monkeypatch):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json=payload))) as client:
+        _refused(await _balance(monkeypatch, "searchapi", client, "test"), "remaining_searches")
+
+
 async def test_fetchin_capacity_uses_free_subscription_balance(monkeypatch):
     def probe(request):
         assert request.method == "GET"
