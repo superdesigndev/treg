@@ -73,13 +73,21 @@ COPILOT_PLUGIN_DIR = ROOT / "plugins" / "copilot"
 COPILOT_MANIFEST = COPILOT_PLUGIN_DIR / "plugin.json"
 COPILOT_SKILL = COPILOT_PLUGIN_DIR / "skills" / "treg" / "SKILL.md"
 
+# Anthropic's Claude plugin directory reads one fixed folder per submission: `plugins/treg-claude/`,
+# its own root so that `plugins/treg/` (Claude Code marketplace, Cursor) does not change for it.
+DIRECTORY_PLUGIN_DIR = ROOT / "plugins" / "treg-claude"
+DIRECTORY_MANIFEST = DIRECTORY_PLUGIN_DIR / ".claude-plugin" / "plugin.json"
+DIRECTORY_SKILL = DIRECTORY_PLUGIN_DIR / "skills" / "treg" / "SKILL.md"
+
 # Every generated SKILL.md, and every manifest a public directory reads. Tests that apply to the
 # product as a whole (version, positioning) parametrise over these rather than being
 # written against whichever plugin happened to exist first.
 ALL_SKILLS = {"codex": SKILL, "skills": BARE_SKILL, "plugin": PLUGIN_SKILL, "dsh": DSH_SKILL,
-              "minimax": MINIMAX_SKILL, "copilot": COPILOT_SKILL}
+              "minimax": MINIMAX_SKILL, "copilot": COPILOT_SKILL,
+              "claude-directory": DIRECTORY_SKILL}
 ALL_MANIFESTS = {"codex": MANIFEST, "claude": CLAUDE_MANIFEST, "cursor": CURSOR_MANIFEST,
-                 "dsh": DSH_MANIFEST, "minimax": MINIMAX_MANIFEST, "copilot": COPILOT_MANIFEST}
+                 "dsh": DSH_MANIFEST, "minimax": MINIMAX_MANIFEST, "copilot": COPILOT_MANIFEST,
+                 "claude-directory": DIRECTORY_MANIFEST}
 
 # The one line that positions the product. It is the same sentence `llms.txt` opens with, and it is
 # hand-maintained in three places across two stores — which is exactly the shape of thing that
@@ -127,9 +135,10 @@ def test_no_unsubstituted_placeholder_reaches_the_plugin(variant):
     plugin, so shipping the literal would break every URL in the most-read page of the product."""
     text = ALL_SKILLS[variant].read_text(encoding="utf-8")
     assert "{BASE}" not in text
-    # The Codex skill rides an MCP connector and must not install anything (OpenAI's plugin review
-    # refuses a skill that downloads or runs code outside the package); every other copy installs the CLI.
-    assert ("https://treg.to/install.sh" in text) is (variant != "codex")
+    # The Codex and Claude-directory skills ride an MCP connector and must not install anything (both
+    # reviews refuse a skill that downloads or runs code outside the package); every other copy
+    # installs the CLI.
+    assert ("https://treg.to/install.sh" in text) is (variant not in {"codex", "claude-directory"})
 
 
 def test_the_connector_points_at_production_over_https():
@@ -416,3 +425,66 @@ def test_copilots_marketplace_installs_the_copilot_plugin():
     for p in claude["plugins"]:
         if p["name"] != "treg":
             assert by_name[p["name"]] == p, f"{p['name']} differs between the two marketplaces"
+
+
+# --------------------------------------------------------------------------------------------
+# The Claude plugin directory submission: its own folder, the directory connector, a skill the
+# directory policy accepts.
+# --------------------------------------------------------------------------------------------
+
+def test_the_directory_plugin_uses_the_directory_connector():
+    """The directory connector `/mcp/v2` hides the generation platforms the directory policy
+    refuses, and it is the URL of the connector listing, so the plugin can link to that listing.
+    Typed `http`, URL only: Claude Code needs the type, and the host runs OAuth."""
+    manifest = json.loads(DIRECTORY_MANIFEST.read_text(encoding="utf-8"))
+    assert manifest["name"] == "treg" and manifest["version"] == package_version()
+    assert manifest["mcpServers"] == {"treg": {"type": "http", "url": "https://treg.to/mcp/v2"}}
+    assert not (DIRECTORY_PLUGIN_DIR / "mcp.json").exists(), (
+        "the directory validator reads a root mcp.json as another host's manifest")
+    assert not (DIRECTORY_PLUGIN_DIR / ".mcp.json").exists(), "Claude Code would load the server twice"
+    assert (DIRECTORY_PLUGIN_DIR / manifest["icon"].removeprefix("./")).is_file()
+    for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"):
+        assert manifest[key].startswith("https://"), f"the directory listing reads {key}"
+
+
+def test_the_directory_plugin_ships_only_the_skill_and_the_connector():
+    """The directory checks every file it fetches. The folder holds the manifest, the README the
+    checklist asks for, the icon and the one skill: no hooks, scripts or other hosts' manifests."""
+    files = sorted(str(p.relative_to(DIRECTORY_PLUGIN_DIR)) for p in DIRECTORY_PLUGIN_DIR.rglob("*")
+                   if p.is_file())
+    assert files == [".claude-plugin/plugin.json", "README.md", "assets/logo.svg",
+                     "skills/treg/SKILL.md"]
+    assert len((DIRECTORY_PLUGIN_DIR / "README.md").read_text(encoding="utf-8").split()) >= 40
+
+
+def test_the_directory_plugin_is_not_in_any_marketplace():
+    """Only the directory installs it. treg's own marketplaces keep `plugins/treg/`."""
+    for market in (CLAUDE_MARKETPLACE, CURSOR_MARKETPLACE, ROOT / ".github" / "plugin" / "marketplace.json"):
+        sources = [p["source"] for p in json.loads(market.read_text(encoding="utf-8"))["plugins"]]
+        assert "./plugins/treg-claude" not in sources, market
+
+
+def test_the_directory_skill_names_only_the_directory_tools():
+    """A tool name the directory connector does not serve is an instruction Claude cannot follow."""
+    import re
+    text = DIRECTORY_SKILL.read_text(encoding="utf-8")
+    tools = {"catalog_search", "catalog_get", "catalog_call_read", "catalog_call_write", "balance",
+             "catalog_request"}
+    named = set(re.findall(r"\|\s*`([a-z_]+)`\s*\|", text))
+    assert named == tools
+    for absent in ("`call`", "call_media", "my_tools", "resources_list", "`feedback`", "`review`",
+                   "`mark`", "`compare`", "call_result"):
+        assert absent not in text, absent
+
+
+@pytest.mark.parametrize("phrase", [
+    "install.sh", "curl ", "| sh", "npx ", "uvx ", "pip install",  # download-and-run
+    "skill bootstrap", "skill install", ".well-known", "llms.txt", "tutorial.md", "feedback.md",  # outside instructions
+    "video-gen", "image-gen", "voice-gen", "music-gen", "Seedance", "Veo",  # AI media generation
+    "topup", "top up", "without asking",  # money without a human
+    "Reach for this first", "/plugin install",  # pulling Claude toward other software
+    ".env", "--ref",
+])
+def test_the_directory_skill_keeps_to_the_directory_policy(phrase):
+    """Each phrase is something Anthropic's directory policy or validator refuses or flags."""
+    assert phrase.lower() not in DIRECTORY_SKILL.read_text(encoding="utf-8").lower()
