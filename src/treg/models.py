@@ -690,10 +690,10 @@ class CallRecord(SQLModel, table=True):
     outcome: str | None = Field(default=None)
     # A routed parent's link to the answer its caller received: the `call_ref` of the child attempt
     # whose body is the `raw` returned (the winner; an upgrade's own served child; under a merge the
-    # winner, not `served_by`). Read the child row by this exact ref (`ix_callrecord_call_ref`), then
-    # its archive hashes - except for an async provider, where the ref is the submission and the
-    # answer is the terminal snapshot the finalizer archived under it
-    # (`archive.load_terminal_responses`); the submission row's own hashes are the task ticket.
+    # winner, not `served_by`). Read the child row by this exact ref (`ix_callrecord_call_ref`); its
+    # own archived answer, or for an async provider the terminal answer filed under the ref
+    # (`archive.load_terminal_responses`), is the delivered one only when its content hash is
+    # `served_content_hash` below. Anything else is archive unavailable.
     # NULL on every other row, on a routed miss or failure, when the router wrote `raw` itself (a
     # declared miss status, a failed async task, a non-JSON body), on a pending 202 (the caller got
     # the submission ticket, not the answer later filed under its ref), on an answer an overflow

@@ -42,6 +42,26 @@ async def _archived(row: CallRecord):
     return json.loads(found["response"]["body_text"])
 
 
+async def _delivered(parent: CallRecord):
+    """The documented reader: the answer this routed call delivered, or None (archive unavailable).
+
+    The ref says where to look: the child row's own archived answer, or for an async provider the
+    terminal answer filed under that ref. Either counts only when its `content_hash` (sha256 of the
+    bytes) equals the parent's `served_content_hash`."""
+    import hashlib
+    if not parent.served_call_ref:
+        return None
+    child = await _row(parent.served_call_ref)
+    if child is None:
+        return None
+    if child.archive_key_hash and child.archive_content_hash == parent.served_content_hash:
+        return await _archived(child)
+    terminal = (await archive.load_terminal_responses([(child.call_ref, child.endpoint_id)])).get(child.call_ref)
+    if terminal is not None and hashlib.sha256(terminal).hexdigest() == parent.served_content_hash:
+        return json.loads(terminal)
+    return None
+
+
 async def _served(r) -> tuple[CallRecord, CallRecord | None]:
     """The parent row, and the child row its link names (read by that exact ref)."""
     parent = await _row(r.headers["X-Treg-Call-Id"])
@@ -58,8 +78,8 @@ async def test_a_waterfall_hit_links_its_last_attempt(clients, verifiers_on, mon
     parent, child = await _served(r)
     assert parent.served_call_ref == f"{parent.call_ref}:r1"
     assert child.endpoint_id == r.json()["_treg"]["served_by"] == "hunter.people.email.find"
-    assert await _archived(child) == r.json()["raw"], "the child row leads to the archived answer"
-    assert parent.served_content_hash == child.archive_content_hash, "and its hash proves it is the delivered one"
+    assert await _delivered(parent) == r.json()["raw"], "the link leads to the delivered answer"
+    assert parent.served_content_hash == child.archive_content_hash
 
 
 async def test_a_miss_everywhere_links_no_child(clients, verifiers_on, monkeypatch):
@@ -177,8 +197,7 @@ async def test_an_async_find_links_the_submission_whose_terminal_answer_is_raw(c
     assert child.endpoint_id == r.json()["_treg"]["served_by"] == "dropcontact.people.email.find"
     # The answer is the terminal snapshot archived under the submission's ref, not the row's hashes
     # (the task ticket) nor a poll's row (no archive link).
-    terminal = await archive.load_terminal_responses([(parent.served_call_ref, child.endpoint_id)])
-    assert json.loads(terminal[parent.served_call_ref]) == r.json()["raw"]
+    assert await _delivered(parent) == r.json()["raw"], "read from the terminal answer filed under the ref"
 
 
 async def test_a_merged_search_links_the_answer_whose_body_is_raw(clients, people_search_on, monkeypatch):
@@ -198,7 +217,7 @@ async def test_a_merged_search_links_the_answer_whose_body_is_raw(clients, peopl
     assert d["_treg"]["served_by"] == "exa.people.search" and "entities" in d["raw"]
     parent, child = await _served(r)
     assert parent.served_call_ref == f"{parent.call_ref}:r1" and child.endpoint_id == "parallel.people.search"
-    assert await _archived(child) == d["raw"]
+    assert await _delivered(parent) == d["raw"]
 
 
 async def _news_through_overflow(clients, monkeypatch, *, shed_overflow_row: bool = False):
@@ -288,7 +307,7 @@ async def test_a_providers_own_miss_body_handed_over_stays_linked(clients, verif
     assert r.json()["raw"] == TOMBA_MISS[1]
     parent, child = await _served(r)
     assert parent.served_call_ref == f"{parent.call_ref}:r0" and child.status_code == 200
-    assert await _archived(child) == r.json()["raw"]
+    assert await _delivered(parent) == r.json()["raw"]
 
 
 async def test_a_pending_call_links_no_child_even_after_its_task_finishes(clients, dropcontact_platform, monkeypatch):
@@ -308,3 +327,101 @@ async def test_a_pending_call_links_no_child_even_after_its_task_finishes(client
     assert done.status_code == 200 and "data" in done.json(), done.text
     parent = await _row(r.headers["X-Treg-Call-Id"])
     assert parent.status_code == 202 and parent.served_call_ref is None
+
+
+def _dropcontact_found(email: str) -> dict:
+    return {"success": True, "data": [{"first_name": "Peter", "last_name": "Jackson",
+                                       "email": [{"email": email, "qualification": "nominative@pro"}]}]}
+
+
+async def test_an_async_answer_another_poller_archived_first_is_not_taken_for_the_delivered_one(
+        clients, dropcontact_platform, monkeypatch):
+    """While the router's poll is in flight the team polls the same task itself and gets terminal A,
+    which settles the task and is archived under the submission's ref. The router's own poll then
+    answers B, and B is what the routed caller receives. The ref leads to A; the hash says it is not
+    the delivered answer, so the reader reports the archive unavailable rather than A."""
+    import asyncio
+
+    from treg.application.call.types import UpstreamResponse
+
+    gets = []
+
+    async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        if request.method == "POST":
+            doc = {"request_id": "dropcontact-job", "success": True, "credits_left": 3999}
+        else:
+            gets.append(upstream_url)
+            if len(gets) == 1:   # the router's poll: someone else polls first and wins
+                other = await asyncio.wait_for(clients.get("/call/dropcontact.jobs.get",
+                                                           params={"request_id": "dropcontact-job"}), 10)
+                assert other.status_code == 200, other.text
+                doc = _dropcontact_found("b.answer@company.com")
+            else:
+                doc = _dropcontact_found("a.answer@company.com")
+        payload = json.dumps(doc).encode()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+    monkeypatch.setattr(call_service, "relay", relay)
+    r = await clients.post("/call/treg.people.email.find",
+                           json={"first_name": "Peter", "last_name": "Jackson", "domain": "company.com"},
+                           headers={"X-Treg-Route-Prefer": "dropcontact", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    assert r.json()["output"]["email"] == "b.answer@company.com" and len(gets) == 2
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    assert parent.served_call_ref == f"{parent.call_ref}:r0"
+    terminal = await archive.load_terminal_responses([(parent.served_call_ref, "dropcontact.people.email.find")])
+    assert "a.answer@company.com" in terminal[parent.served_call_ref].decode(), "the ref leads to A"
+    assert await _delivered(parent) is None, "A is not what the caller got: archive unavailable"
+
+
+async def _enrich_by_harvest(clients, monkeypatch, headers: dict | None = None):
+    from test_routing import _example, _relay_by_provider
+
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    monkeypatch.setattr(get_settings(), "strip_reported_charge", True)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"harvest": [(200, _example("harvestapi.linkedin.user.profile"))]}, []))
+    r = await clients.post(ENRICH, json={"linkedin_url": "https://www.linkedin.com/in/alex-example"},
+                           headers={"X-Treg-Route-Prefer": "harvestapi", **(headers or {})})
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["served_by"] == "harvestapi.linkedin.user.profile"
+    return r, await _row(r.headers["X-Treg-Call-Id"])
+
+
+async def test_a_body_changed_before_delivery_is_not_taken_for_the_archived_one(clients, enrich_on, monkeypatch):
+    """With `strip_reported_charge` on, the caller's `raw` lacks the provider's `cost`, which the
+    archive keeps verbatim: the hashes differ, so the archived answer is not the delivered one."""
+    r, parent = await _enrich_by_harvest(clients, monkeypatch)
+    assert "cost" not in json.dumps(r.json()["raw"])
+    child = await _row(parent.served_call_ref)
+    assert '"cost"' in json.dumps(await _archived(child)), "the archive keeps the provider's bytes"
+    assert await _delivered(parent) is None
+
+
+async def test_a_body_delivered_unchanged_reads_back_from_the_archive(clients, enrich_on, monkeypatch):
+    """The control: the caller keeps the reported charge, so `raw` is the archived body itself."""
+    r, parent = await _enrich_by_harvest(clients, monkeypatch, {"X-Treg-Keep-Reported-Charge": "true"})
+    assert '"cost"' in json.dumps(r.json()["raw"])
+    assert await _delivered(parent) == r.json()["raw"]
+
+
+async def test_an_async_provider_finished_on_submission_reads_its_own_archive(clients, verifiers_on, monkeypatch):
+    """BounceBan can answer on submission (`terminal_on_submission`): no task is filed, so there is
+    no terminal snapshot, and the child row's own archived answer is the delivered one."""
+    from test_route_verify import _bb
+
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    monkeypatch.setattr(call_service, "relay", _relay({"bounceban": [_bb("deliverable")]}, []))
+    r = await clients.post("/call/treg.people.email.verify", json={"email": "patrick@stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "bounceban", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["served_by"] == "bounceban.people.email.verify"
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    child = await _row(parent.served_call_ref)
+    assert await archive.load_terminal_responses([(child.call_ref, child.endpoint_id)]) == {}
+    assert await _delivered(parent) == r.json()["raw"]
