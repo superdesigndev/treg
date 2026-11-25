@@ -721,7 +721,14 @@
     var li = document.querySelector('#steps li[data-s="' + name + '"]');
     li.className = state; if (text != null) li.lastElementChild.textContent = text;
   }
-  function bar(f) { $('barFill').style.width = Math.round(f * 100) + '%'; $('progress').style.setProperty('--p', Math.round(f * 100) + '%'); }
+  var barAt = 0, barTo = 0;
+  function paint() { var w = (barAt * 100).toFixed(1) + '%'; $('barFill').style.width = w; $('progress').style.setProperty('--p', w); }
+  function bar(f) { barTo = f; barAt = f === 0 || f >= 1 ? f : Math.max(barAt, f); paint(); }
+  /* between two reports the fill keeps creeping, up to a little past the last one */
+  setInterval(function () {
+    if (!$('progress').classList.contains('live') || barTo >= 1) return;
+    barAt += (Math.min(barTo + 0.08, 0.99) - barAt) * 0.05; paint();
+  }, 300);
   function domainOf(w) {
     if (!w) return '';
     var h = ''; try { h = new URL(/:\/\//.test(w) ? w : 'http://' + w).hostname; } catch (e) { return ''; }
@@ -757,7 +764,7 @@
             location: f.location || '', badge: badge || '', default_avatar: img.indexOf('default_profile') >= 0 });
         });
         step('pull', 'on', rows.length.toLocaleString('en-US') + (total ? ' of ' + total.toLocaleString('en-US') : ''));
-        bar(0.02 + 0.08 * Math.min(1, rows.length / want));
+        bar(0.08 + 0.17 * Math.min(1, rows.length / want));
         cursor = d.next_cursor;
         if (rows.length >= want || !d.more_users || !cursor || pages >= Math.ceil(want / 20) + 10 || stopped) return;
         return page();
@@ -836,14 +843,14 @@
           var b = res.body, o = b.output || {}, raw = b.raw || {}, rr = (raw.rows || [{}])[0] || {};
           r.bio = o.description || ''; r.website = rr.website || raw.website || ''; if (!r.location) r.location = rr.location || '';
         });
-      }, function (n, t) { step('bio', 'on', n + ' / ' + t); bar(0.1 + 0.4 * n / t); }).then(function () {
+      }, function (n, t) { step('bio', 'on', n + ' / ' + t); bar(0.25 + 0.3 * n / t); }).then(function () {
         step('bio', 'done', todo.length + ' read · ' + (got.rows.length - real.length) + ' empty accounts left out');
         return todo.filter(function (r) { return r.bio || r.badge; });
       });
     }).then(function (judgeable) {
       step('judge', 'on', '0 / ' + judgeable.length);
       return pool(judgeable, 8, function (r) { return judge(product, Q, r).then(function (a) { r.p1 = a; }); },
-        function (n, t) { step('judge', 'on', n + ' / ' + t); bar(0.5 + 0.2 * n / t); })
+        function (n, t) { step('judge', 'on', n + ' / ' + t); bar(0.55 + 0.2 * n / t); })
         .then(function () { step('judge', 'done', judgeable.length + ' judged'); return judgeable.filter(function (r) { return r.p1; }); });
     }).then(function (judged) {
       var thin = judged.filter(function (r) { return r.p1.enough.noul < 0.5 && r.p1.fit.probabilities['0'] < 0.8; });
@@ -866,7 +873,7 @@
             return judge(product, Q, r, ex).then(function (a) { if (a) r.p3 = a; });
           });
         });
-      }, function (n, t) { step('fill', 'on', n + ' / ' + t); bar(0.7 + 0.3 * n / t); })
+      }, function (n, t) { step('fill', 'on', n + ' / ' + t); bar(0.75 + 0.25 * n / t); })
         .then(function () { step('fill', 'done', thin.length + ' thin profiles checked'); return judged; });
     }).then(function (judged) {
       judged.forEach(function (r) {
