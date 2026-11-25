@@ -1573,6 +1573,29 @@ async def test_a_budget_set_after_tagged_takes_counts_their_queued_charges(
         assert await ledger.tag_spent_since(db, org_id, "customer", "c1", day) == 300
 
 
+async def test_a_charge_queued_before_the_day_counts_in_todays_tag_cap(
+        org_id, store, tagged_on):
+    caller = await _caller(org_id)
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(
+        mk, caller, await _tag_meta(caller, {"customer": "c1"}), "t-late", allow_allowance=True)
+    assert mk.allowance_epoch
+    await call_settle._platform_settle(mk, 200, observed_override=500)
+    assert await _queued(org_id) == 1
+    day = ledger._day_start()
+    async with session_maker() as db:
+        await db.execute(update(CallCharge).where(CallCharge.org_id == org_id).values(
+            created_at=day - timedelta(seconds=1)))
+        await db.commit()
+        before = (await ledger.tag_spent_since(db, org_id, "customer", "c1", day),
+                  await ledger.tag_calls_since(db, org_id, "customer", "c1", day))
+    await _fold(org_id)
+    async with session_maker() as db:
+        after = (await ledger.tag_spent_since(db, org_id, "customer", "c1", day),
+                 await ledger.tag_calls_since(db, org_id, "customer", "c1", day))
+    assert before == after == (500, 1)
+
+
 async def test_an_unbilled_tagged_take_writes_no_tag_rows(org_id, store, tagged_on):
     caller = await _caller(org_id)
     mk = _call(org_id)

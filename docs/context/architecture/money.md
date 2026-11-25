@@ -375,7 +375,9 @@ instant, the entry's meta naming the tags as a reserve entry's does. Per-tag spe
 and invoices therefore read the same as on the exact path once the charge is folded; a call never
 billed writes none, as a release deletes them. Until the fold the cap reads count the queued
 charge itself (`tag_spent_since`, `tag_calls_since` match `CallCharge.meta["tags"]`), so a budget
-set after such calls sees them at once.
+set after such calls sees them at once. They read every queued charge whenever it queued, since its
+rows will carry the fold's later instant, and read it in the same statement as the tag rows, so a
+fold committing in between cannot hide it from both.
 
 Every listed team's call that keeps its own hold is counted by why, on its own logger
 (`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `tag_budget`, `pinned`, `async`,

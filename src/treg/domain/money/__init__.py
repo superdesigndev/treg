@@ -959,18 +959,18 @@ async def tag_calls_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
             TagSpend.created_at >= since).scalar_subquery(),
         select(func.count()).select_from(CallCharge).where(
-            *_queued_tag(org_id, dim, val, since)).scalar_subquery(),
+            *_queued_tag(org_id, dim, val)).scalar_subquery(),
     ))).one()
     return int(row[0] or 0) + int(row[1] or 0)
 
 
-def _queued_tag(org_id: int, dim: str, val: str, since: datetime) -> list:
+def _queued_tag(org_id: int, dim: str, val: str) -> list:
     """A tagged allowance call's charge still in the queue: its tag rows are written when it is
     folded, so until then a cap reads it here. Read in the same statement as the tag rows: a fold
     committing between two statements moves a charge from the queue into rows the first one
-    already read."""
-    return [CallCharge.org_id == org_id, CallCharge.created_at >= since,
-            CallCharge.meta[("tags", dim)].as_string() == val]
+    already read. Every queued charge counts, whenever it queued: its tag rows are dated by the
+    fold, which is still to come, so they fall in the current day and month."""
+    return [CallCharge.org_id == org_id, CallCharge.meta[("tags", dim)].as_string() == val]
 
 
 async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime) -> dict[str, int]:
@@ -1012,7 +1012,7 @@ async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
             TagSpend.created_at >= since).scalar_subquery(),
         select(func.coalesce(func.sum(CallCharge.amount_micro), 0)).where(
-            *_queued_tag(org_id, dim, val, since)).scalar_subquery(),
+            *_queued_tag(org_id, dim, val)).scalar_subquery(),
     ))).one()
     return int(row[0] or 0) + int(row[1] or 0)
 
