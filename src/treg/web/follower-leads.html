@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find the Buyers in Your X Followers | treg</title>
-<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads a random sample of your followers, Jev judges each one as a buyer, and you get a share card of your leads.">
+<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads a random sample of your followers, and Jev judges each one as a buyer. You get a card of your leads to share.">
 <link rel="canonical" href="{BASE}/follower-leads"/>
 <meta property="og:title" content="Find the buyers in your X followers | treg"/>
 <meta property="og:description" content="100 of your followers, picked at random and judged one by one as buyers of what you sell."/>
@@ -340,7 +340,7 @@
       </div>
     </div>
     <div class="bar1 row2" style="justify-content:center">
-      <button class="pill dark" id="run">Get your leads analysis card</button>
+      <button class="pill dark" id="run">Get your lead analysis card</button>
     </div>
     <div class="err" id="formErr"></div>
     <p class="fnote">~$0.08 estimated for 100 followers picked at random · billed per call to your treg balance</p>
@@ -470,7 +470,7 @@
 </section>
 
 <section class="final" id="agent">
-  <h2>Scan leads with your agent.</h2>
+  <h2>Find leads with your agent.</h2>
   <p>The skill scans your followers on <strong><span class="nw"><img class="pl" src="media/social-search/brands/color/x.svg" alt="">X</span>, <span class="nw"><img class="pl" src="media/social-search/brands/color/instagram.svg" alt="">Instagram</span> and <span class="nw"><img class="pl" src="media/social-search/brands/color/tiktok.svg" alt="">TikTok</span></strong>, finds the leads, and tells you who they are: their background and role, what they care about at work, their pain points, and what they care about as people.</p>
   <div class="cmd">
     <div class="ch">paste this into your agent</div>
@@ -603,7 +603,7 @@
     if (!em) { err.textContent = 'Enter your email address.'; return; }
     if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
     (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'Could not send the code.'); return d; }); })
       .then(function (d) {
         $('em-step1').style.display = 'none'; $('em-step2').style.display = 'grid';
         if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
@@ -616,7 +616,7 @@
     if (!code || $('em-btn2').disabled) return;
     $('em-btn2').disabled = true; $('em-btn2').textContent = 'Verifying…'; err.textContent = '';
     fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
-      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); closeSignin(); return loadIdentity(); })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "That code didn't work."); }); closeSignin(); return loadIdentity(); })
       .catch(function (e2) { err.textContent = e2.message; $('em-btn2').disabled = false; $('em-btn2').textContent = 'Sign in'; });
   }
 
