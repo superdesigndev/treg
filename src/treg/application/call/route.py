@@ -56,7 +56,8 @@ The parent's audit row names the child whose answer the caller received
 (`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>` (its answering poll
 `:r<n>:p<k>` for an async provider), an upgrade's own served child `:u:r<m>`, under a merge the
 answer whose body is `raw` (not `served_by`, the first contributor), the submission of a pending
-async call. A miss or failure names none. Review credit
+async call. A miss or failure names none, nor does an answer an overflow aggregator served (its
+row shares the child's ref with the direct attempt's). Review credit
 (`route_summary.credited`) is a separate decision and stays the latest successful attempt.
 """
 
@@ -1491,7 +1492,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         deadline = started + cancel_s if cancel_s is not None else None
         try:
             response = await _bounded(deadline, execute_child(child, upstream_client))
-            answered_by[id(cand)] = child.call_ref
+            if child.credential_tier == "platform-overflow":
+                # Served through an overflow aggregator: the direct attempt's row and the
+                # overflow's row share this call ref, so the ref cannot name one answer. No link.
+                answered_by.pop(id(cand), None)
+            else:
+                answered_by[id(cand)] = child.call_ref
             _note_call(parent, plan, cand, child, tried)
             if 200 <= response.status < 300:
                 # The latest successful attempt (never its async polls, `:p<k>`): the endpoint a

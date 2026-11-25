@@ -192,3 +192,66 @@ async def test_a_merged_search_links_the_answer_whose_body_is_raw(clients, peopl
     parent, child = await _served(r)
     assert parent.served_call_ref == f"{parent.call_ref}:r1" and child.endpoint_id == "parallel.people.search"
     assert await _archived(child) == d["raw"]
+
+
+async def _news_through_overflow(clients, monkeypatch, *, shed_overflow_row: bool = False):
+    """Akta answers treg's account out of credits, then Monid serves the same request: two rows,
+    one child ref."""
+    import httpx
+
+    from treg.application.call import overflow as call_overflow
+    from treg.models import OverflowRoute
+
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "akta,predictleads")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_AKTA", "AKTA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PREDICTLEADS", "PREDICTLEADS-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
+    monkeypatch.setenv("TREG_OVERFLOW_KEY_MONID", "MONID-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_DAILY_BUDGET_USD", "10")
+    get_settings.cache_clear()
+    async with session_maker() as db:
+        db.add(OverflowRoute(endpoint_id="akta.companies.news", aggregator="monid", provider="akta",
+                             method="GET", path="/v1/news/", agg_slug="akta", agg_path="/v1/news",
+                             agg_price_micro=10_000, agg_unit="call", ratio=1, enabled=True))
+        await db.commit()
+    call_route.overflow_routes_view.invalidate()
+
+    async def overflow_send(client, req):
+        return httpx.Response(200, json={
+            "runId": "run-akta-news", "status": "COMPLETED",
+            "output": {"data": [{"title": "served through Monid"}], "total": 1, "count": 1, "limit": 1, "offset": 0},
+            "providerResponse": {"httpStatus": 200},
+            "billing": {"reportedCost": {"value": 5_500, "unit": "MICRO_DOLLAR"}}})
+    monkeypatch.setattr(call_overflow, "_send", overflow_send)
+    from test_routing import _relay_by_provider
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"akta": [(402, {"error": "Insufficient credits"})]}, []))
+    if shed_overflow_row:
+        record = audit.record_call
+
+        def shed(**kwargs):
+            if kwargs.get("method") == "OVERFLOW":
+                return
+            record(**kwargs)
+        monkeypatch.setattr(audit, "record_call", shed)
+    r = await clients.post("/call/treg.companies.news", json={"domain": "canva.com", "limit": 1})
+    assert r.status_code == 200, r.text
+    assert r.json()["output"]["articles"] == [{"title": "served through Monid"}]
+    return r
+
+
+async def test_an_overflow_answer_is_not_linked(clients, platform_on, monkeypatch):
+    r = await _news_through_overflow(clients, monkeypatch)
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    async with session_maker() as db:
+        shared = (await db.execute(select(CallRecord.method, CallRecord.status_code)
+                                   .where(CallRecord.call_ref == f"{parent.call_ref}:r0"))).all()
+    assert sorted(shared) == [("GET", 402), ("OVERFLOW", 200)], "one ref, two rows: it names no one answer"
+    assert parent.served_call_ref is None
+
+
+async def test_an_overflow_answer_whose_row_was_shed_is_not_linked_to_the_direct_failure(clients, platform_on, monkeypatch):
+    r = await _news_through_overflow(clients, monkeypatch, shed_overflow_row=True)
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    left = await _row(f"{parent.call_ref}:r0")
+    assert left.status_code == 402, "only the direct attempt's row is left"
+    assert parent.served_call_ref is None, "never read the direct failure as the answer"
