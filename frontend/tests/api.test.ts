@@ -47,3 +47,10 @@ test('session expiry reloads once without returning a successful result', async 
   await vi.waitFor(() => expect(expired).toHaveBeenCalledTimes(1))
   expect(settled).not.toHaveBeenCalled()
 })
+
+test('a validation refusal reads as its messages, not a list', async () => {
+  const detail = [{ type: 'name', loc: ['body', 'name'], msg: 'a name is 1-128 characters' }]
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ detail }, { status: 422 })))
+  await expect(requestJson('/tools', { method: 'POST', body: '{}' }, {}, vi.fn(), () => true))
+    .rejects.toMatchObject({ status: 422, detail: 'a name is 1-128 characters', message: 'a name is 1-128 characters' })
+})

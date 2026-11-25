@@ -6,10 +6,12 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel, ValidationError
+from pydantic_core import PydanticCustomError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -28,6 +30,7 @@ from ..domain.governance import sandbox as sandbox_policy
 from ..domain.tools import SecretOwnershipError, ToolConfigError
 from ..domain.tools import bindings as binding_rules
 from ..domain.tools import bundles as bundle_rules
+from ..domain.tools import names as name_rules
 from ..domain.identity.access import (
     Caller,
     _can_manage,
@@ -55,15 +58,25 @@ def _require_tool_use_http(caller: Caller, tool: Tool) -> None:
         raise HTTPException(status_code=403, detail=exc.detail) from exc
 
 
+def _check_name(name: str) -> str:
+    try:
+        return name_rules.check_name(name)
+    except ValueError as exc:
+        raise PydanticCustomError("name", str(exc)) from exc
+
+
+Name = Annotated[str, AfterValidator(_check_name)]
+
+
 class SecretIn(BaseModel):
-    name: str
+    name: Name
     value: str
     kind: str = "env"
     bundle_id: int | None = None
 
 
 class SecretUpdate(BaseModel):
-    name: str | None = None
+    name: Name | None = None
     value: str | None = None
     kind: str | None = None
 
@@ -213,7 +226,7 @@ def _secret_view(s: Secret) -> dict:
 
 
 class ToolIn(BaseModel):
-    name: str
+    name: Name
     base_url: str
     bundle_id: int | None = None
     # Multi-binding (explicit) — each: {secret_id, injector, location, name, format, secret_field}
@@ -232,7 +245,7 @@ class ToolIn(BaseModel):
 
 
 class ToolUpdate(BaseModel):
-    name: str | None = None  # a rename; a connection's tool renames the connection with it
+    name: Name | None = None  # a rename; a connection's tool renames the connection with it
     base_url: str | None = None
     bindings: list[dict] | None = None
     health_check: dict | None = None
@@ -489,13 +502,13 @@ class BundleUpdate(BaseModel):
 
 
 class SkillSecretIn(BaseModel):
-    local_name: str  # name within the skill; bindings reference it by this
+    local_name: Name  # name within the skill; bindings reference it by this
     value: str
     kind: str = "env"
 
 
 class SkillToolIn(BaseModel):
-    name: str
+    name: Name
     base_url: str
     bindings: list[dict] = []  # each binding's "secret" is a local_name, resolved server-side
     health_check: dict | None = None  # optional {method, path, expect_status}
@@ -504,7 +517,7 @@ class SkillToolIn(BaseModel):
 
 
 class SkillIn(BaseModel):
-    name: str
+    name: Name
     recipe: str = ""  # the SKILL.md text
     files: dict[str, str] = {}  # companion files {relpath: content} — the rest of the skill folder
     secrets: list[SkillSecretIn] = []
@@ -751,6 +764,9 @@ async def import_skill_folder(
                 results.append({"name": d.name, "ok": True, "kind": d.kind})
             except HTTPException as exc:
                 results.append({"name": d.name, "ok": False, "error": str(exc.detail)})
+            except ValidationError as exc:
+                results.append({"name": d.name, "ok": False,
+                                "error": "; ".join(e["msg"] for e in exc.errors(include_input=False))})
             except Exception:  # noqa: BLE001 -- report per-skill, never 500 the batch
                 # A generic message — a raw exception string could echo a fragment of an uploaded secret.
                 results.append({"name": d.name, "ok": False, "error": "registration failed"})
