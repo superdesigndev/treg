@@ -1,0 +1,75 @@
+provider: sellersonar
+source:
+  docs: https://api.sellersonar.com/docs/
+  openapi: null
+  curated: 2026-11-25
+pricing_url: https://sellersonar.com/amazon-monitoring-api/
+defaults:
+  provenance: {source: docs, source_url: 'https://api.sellersonar.com/docs/', checked: '2026-11-25', confidence: documented}
+  bill: {miss: charged}
+endpoints:
+  - id: sellersonar.amazon.product.detail
+    added: '2026-11-25'
+    capability: amazon.product.detail
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /api/request
+    name: "Amazon product by ASIN"
+    summary: "Get an Amazon product by ASIN: title, brand, Buy Box price and seller, every offer, reviews count and score, BSR, estimated monthly sales, variation ASINs and images"
+    input:
+      queryParams:
+        type: {type: string, required: true, enum: [product], note: "selects the product request", example: "product"}
+        market: {type: string, required: true, note: "Amazon marketplace code: us, ca, mx, br, au, uk, de, fr, es, it, nl, tr, in, ae, sa, jp, sg, se, pl, eg, be, ie or za", example: "us"}
+        asin: {type: string, required: true, note: "10-character ASIN", example: "B073JYC4XM"}
+    test_request:
+      queryParams: {type: "product", market: "us", asin: "B073JYC4XM"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "an ASIN with no listing is billed too"}
+    provenance: {source: observed, source_url: 'https://api.sellersonar.com/billing', checked: '2026-11-25', confidence: verified}
+    miss: {when: {path: response.title, op: empty}}
+    docs_url: https://api.sellersonar.com/docs/
+
+  - id: sellersonar.amazon.product.sellers
+    added: '2026-11-25'
+    capability: amazon.product.sellers
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /api/request
+    name: "Sellers on an Amazon listing"
+    summary: "List the sellers offering an ASIN, with each offer's price, seller id, condition and FBA or merchant-fulfilled flag"
+    input:
+      queryParams:
+        type: {type: string, required: true, enum: [offers], note: "selects the offers request", example: "offers"}
+        market: {type: string, required: true, note: "Amazon marketplace code, as for the product request", example: "us"}
+        asin: {type: string, required: true, note: "10-character ASIN", example: "B073JYC4XM"}
+    test_request:
+      queryParams: {type: "offers", market: "us", asin: "B073JYC4XM"}
+    price: {value: '1', currency: credit, per: 10, unit: row, round: up, note: "one row per seller; minimum 1 credit, also when no seller is found"}
+    provenance: {source: observed, source_url: 'https://api.sellersonar.com/billing', checked: '2026-11-25', confidence: verified}
+    settle: {count: {path: response.sellers}}
+    miss: {when: {path: response.sellers, op: empty}}
+    docs_url: https://api.sellersonar.com/docs/
+
+  - id: sellersonar.amazon.search.products
+    added: '2026-11-25'
+    capability: amazon.search.products
+    platform: amazon
+    scope: any_account
+    method: GET
+    path: /api/request
+    name: "Amazon keyword search"
+    summary: "Search Amazon by keyword and get the results in page order: ASIN, title, price, rating, review count and a sponsored flag for each, plus the total result count"
+    input:
+      queryParams:
+        type: {type: string, required: true, enum: [search], note: "selects the search request", example: "search"}
+        market: {type: string, required: true, note: "Amazon marketplace code, as for the product request", example: "us"}
+        search_term: {type: string, required: true, note: "the keyword phrase sent to Amazon search", example: "ddr5 ram"}
+        max_page: {type: integer, required: true, min: 1, max: 7, note: "result pages to collect; 1 credit is held per page", example: 1}
+    test_request:
+      queryParams: {type: "search", market: "us", search_term: "ddr5 ram", max_page: 1}
+    price: {value: '1', currency: credit, per: 50, unit: result, round: up, note: "minimum 1 credit, also when nothing is found; 1 credit per requested page is held first"}
+    provenance: {source: observed, source_url: 'https://api.sellersonar.com/billing', checked: '2026-11-25', confidence: verified}
+    settle: {count: {path: response.result_asins}}
+    miss: {when: {path: response.result_asins, op: empty}}
+    docs_url: https://api.sellersonar.com/docs/
