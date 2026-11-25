@@ -438,6 +438,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
     "descovo",  # funded plan credits remain; its 402 error code is undocumented and unobserved
+    "getprospect",  # two independent pools (email credits; USD wallet for verifications) and per-bucket 429s: any provider-wide lock would block calls the other pool still pays for, and its 402s/429s are never charged
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "branddev", "brightdata", "coresignal", "crustdata",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
