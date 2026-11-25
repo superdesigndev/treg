@@ -144,6 +144,7 @@ endpoints:
     path: /v3/contacts/signals
     name: "Job-change and promotion signals for contact ids"
     summary: "Retrieve signal events for a list of contacts — job changes and promotions"
+    platform_blocked: Lusha bills each matched signal, and one call can match hundreds per company, more than a hold can cover. Connect your own Lusha key.
     input:
       bodyType: json
       body:
@@ -166,6 +167,7 @@ endpoints:
     path: /v3/companies/signals
     name: "Hiring and headcount signals for company ids"
     summary: "Retrieve signal events for a list of companies — hiring activity, headcount changes, web traffic, IT spend and news"
+    platform_blocked: Lusha bills each matched signal, and one call can match hundreds per company, more than a hold can cover. Connect your own Lusha key.
     input:
       bodyType: json
       body:
