@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find the Buyers in Your X Followers | treg</title>
 <meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads a random sample of your followers, and Jev judges each one as a buyer. You get a card of your leads to share.">
-<link rel="canonical" href="{BASE}/follower-leads"/>
+<link rel="canonical" href="{BASE}/follower-signal"/>
 <meta property="og:title" content="Find the buyers in your X followers | treg"/>
 <meta property="og:description" content="100 of your followers, picked at random and judged one by one as buyers of what you sell."/>
-<meta property="og:url" content="{BASE}/follower-leads"/>
+<meta property="og:url" content="{BASE}/follower-signal"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary"/>
 <link rel="icon" href="favicon.svg">
@@ -307,7 +307,7 @@
 <body>
 <script src="/captcha.js" defer></script>
 <nav class="nav" id="nav">
-  <a href="/" class="brand" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg><span class="bn">treg</span><span class="bd">/</span><span class="bs">Follower leads</span></a>
+  <a href="/" class="brand" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg><span class="bn">treg</span><span class="bd">/</span><span class="bs">Follower signal</span></a>
   <span class="tabs" aria-label="Page sections">
     <a href="#top" aria-current="page"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/></svg>Scan</a>
     <a href="#how"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg>How it works</a>
@@ -496,8 +496,8 @@
     <button class="cls" id="signinClose" aria-label="Close">✕</button>
     <h3>Sign in to scan</h3>
     <p>the scan runs on your treg balance · first sign-in creates your account</p>
-    <a class="pill dark" href="/auth/github?return_to=%2Ffollower-leads" style="text-decoration:none">Continue with GitHub</a>
-    <a class="pill" href="/auth/google?return_to=%2Ffollower-leads" style="text-decoration:none">Continue with Google</a>
+    <a class="pill dark" href="/auth/github?return_to=%2Ffollower-signal" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google?return_to=%2Ffollower-signal" style="text-decoration:none">Continue with Google</a>
     <div class="div">or email a code</div>
     <div id="em-step1">
       <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
@@ -573,7 +573,7 @@
     }
     w.innerHTML = out + '<button type="button" class="tbtn" id="signOut">Sign out</button>';
     if ($('teamSel')) $('teamSel').onchange = function (e) { team = e.target.value; store.set(TEAM, team); balance = null; refreshBalance(); };
-    if ($('topUp')) $('topUp').onclick = function () { saveDraft(); try { localStorage.setItem('treg-active', team); } catch (e) {} location.assign('/app?from=follower-leads#billing'); };
+    if ($('topUp')) $('topUp').onclick = function () { saveDraft(); try { localStorage.setItem('treg-active', team); } catch (e) {} location.assign('/app?from=follower-signal#billing'); };
     $('signOut').onclick = function () {
       fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(function () {}).then(function () { me = null; teams = []; team = ''; balance = null; renderWho(); });
     };
@@ -634,7 +634,7 @@
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : 'could not set up your account'); }); })
       .then(loadIdentity)
       .then(function () { b.disabled = false; if (!team) throw new Error('could not set up your account'); scan(handle, SCAN_N); })
-      .catch(function (e) { b.disabled = false; if (window.console) console.warn('follower-leads: team setup failed', e); err.textContent = "We couldn't set up your account. Reload and try again."; });
+      .catch(function (e) { b.disabled = false; if (window.console) console.warn('follower-signal: team setup failed', e); err.textContent = "We couldn't set up your account. Reload and try again."; });
   };
 
   /* ---------- one call through treg ---------- */
@@ -781,7 +781,7 @@
   /* a refusal by treg or the provider is not the visitor's fault: say what happened, never blame the handle */
   function unreachable(res) {
     var d = res.body && res.body.detail, why = (d && (d.message || d.error || (typeof d === 'string' ? d : ''))) || res.body.error || '';
-    if (window.console) console.warn('follower-leads: provider refused', res.status, why);
+    if (window.console) console.warn('follower-signal: provider refused', res.status, why);
     return new Stop("We couldn't reach the data source just now. Nothing was charged. Try again in a minute.");
   }
   function readOwner(handle) {
@@ -884,7 +884,7 @@
         show(judged.length, Date.now() - started, band);
       });
     }).catch(function (e) {
-      if (!(e instanceof Stop) && window.console) console.warn('follower-leads: scan stopped', e);
+      if (!(e instanceof Stop) && window.console) console.warn('follower-signal: scan stopped', e);
       $('runErr').textContent = e instanceof Stop ? e.message : 'Something went wrong and the scan stopped. Try again in a minute.';
     }).then(function () { $('run').disabled = false; $('run').classList.remove('busy'); $('progress').classList.remove('live');
       if ($('results').hidden) { $('stop').hidden = true; $('again2').hidden = false; } refreshBalance(); });
@@ -996,7 +996,7 @@
   $('copyPng').onclick = function () {
     var b = this;
     copyCard().then(function () { flash(b, 'Copied'); }, function () {
-      cardPng().then(function (blob) { download(blob, 'follower-leads.png'); $('cardNote').textContent = 'Copy was blocked, so the card downloaded instead.'; });
+      cardPng().then(function (blob) { download(blob, 'follower-signal.png'); $('cardNote').textContent = 'Copy was blocked, so the card downloaded instead.'; });
     });
   };
   function copyCard() {
@@ -1007,14 +1007,14 @@
   function shareText() {
     var dm = leads.filter(function (r) { return r.tier === 'decision maker'; }).length;
     return 'I used treg to check which of my X followers could be customers. This is the card I got: ' +
-      leads.length + ' leads, ' + dm + ' decision makers.\n\ntreg.to/follower-leads';
+      leads.length + ' leads, ' + dm + ' decision makers.\n\ntreg.to/follower-signal';
   }
   $('shareX').onclick = function () {
     var b = this;
     copyCard().then(function () {
       flash(b, 'Card copied'); $('cardNote').textContent = 'The card is on your clipboard. Paste it into the post (Ctrl/⌘ V).';
     }, function () {
-      cardPng().then(function (blob) { download(blob, 'follower-leads.png'); });
+      cardPng().then(function (blob) { download(blob, 'follower-signal.png'); });
       $('cardNote').textContent = 'The card downloaded. Attach it to the post.';
     });
     window.open('https://x.com/intent/post?text=' + encodeURIComponent(shareText()), '_blank', 'noopener');

@@ -1333,8 +1333,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "follower_leads_page",
-    "path": "/follower-leads"
+    "name": "follower_signal_page",
+    "path": "/follower-signal"
   },
   {
     "kind": "APIRoute",

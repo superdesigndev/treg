@@ -308,7 +308,7 @@ def _arena_return_target(target: str) -> str:
         return ""
     if url.scheme or url.netloc or url.fragment or url.path not in {
         "/enrich-arena", "/enrich-arena/leaderboard", "/enrich-arena/people-search-bench", "/web-arena",
-        "/follower-leads",
+        "/follower-signal",
     }:
         return ""
     params = parse_qsl(url.query, keep_blank_values=True)

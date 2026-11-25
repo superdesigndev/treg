@@ -95,7 +95,7 @@ async def test_recruit_skill_is_served_and_advertised(clients):
 
 
 async def test_follower_signal_skill_is_served_and_advertised(clients):
-    """/follower-leads tells visitors to copy this skill; the link and the install line must resolve."""
+    """/follower-signal tells visitors to copy this skill; the link and the install line must resolve."""
     r = await clients.get("/skills/follower-signal/SKILL.md")
     assert r.status_code == 200 and r.text.startswith("---\nname: follower-signal")
     assert "{BASE}" not in r.text

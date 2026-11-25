@@ -265,7 +265,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/doomscroll', ('GET',), 'doomscroll_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
     ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
-    ('/follower-leads', ('GET',), 'follower_leads_page'),
+    ('/follower-signal', ('GET',), 'follower_signal_page'),
     ('/jev', ('GET',), 'jev_page'),
     ('/jev/xboost.json', ('GET',), 'jev_xboost_json'),
     ('/jev/xboost/judge', ('POST',), 'jev_xboost_judge'),

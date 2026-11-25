@@ -493,7 +493,7 @@ dark via `prefers-color-scheme`.
   "Signals read from each lead's own bio and posts" ·
   the revenue formula with its conversion assumption
   · average per lead and total spend · "Observed results, not a controlled benchmark."
-- Bottom chip: `treg.to/follower-leads`.
+- Bottom chip: `treg.to/follower-signal`.
 - No lead names or company names on the card.
 - Also write a ready post for the user's platform: 3-4 short lines in their numbers, ending with
   the link, card attached.

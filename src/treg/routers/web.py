@@ -3582,7 +3582,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/rea-marketing", "rea-marketing.html", "0.8"),
     ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
-    ("/follower-leads", "follower-leads.html", "0.8"),
+    ("/follower-signal", "follower-signal.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
     # The outcome pages. Listed WITHOUT a trailing slash on purpose: `/use-cases/<slug>/` 307s to
@@ -3914,7 +3914,7 @@ async def recruit_skill_md():
 @app.get("/skills/follower-signal/SKILL.md", include_in_schema=False)
 async def follower_signal_skill_md():
     """The follower-signal skill: a handle on X, Instagram or TikTok in; the followers who could buy,
-    judged by Jev, and who they are and what they care about, out. The skill behind /follower-leads.
+    judged by Jev, and who they are and what they care about, out. The skill behind /follower-signal.
     Bundled like recruit."""
     return _serve_md("skills/follower-signal/SKILL.md")
 
@@ -4320,13 +4320,13 @@ async def gtm_engineering_md():
     return resp
 
 
-@app.get("/follower-leads", include_in_schema=False)
-async def follower_leads_page(request: Request):
+@app.get("/follower-signal", include_in_schema=False)
+async def follower_signal_page(request: Request):
     """Follower leads: a signed-in visitor types an X handle and what they sell; the page reads the
     newest followers and has Jev judge each one, every step an ordinary `/call/` billed to the
     visitor's team. Signed out, the form shows the estimate and Scan opens sign-in. Served like
     /jev: canonical, in the sitemap, no-cache."""
-    return _static_page("follower-leads.html", request)
+    return _static_page("follower-signal.html", request)
 
 
 @app.get("/jev", include_in_schema=False)
