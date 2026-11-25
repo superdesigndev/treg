@@ -306,3 +306,28 @@ def test_a_one_item_list_is_one_row_unless_it_wraps_tables():
     wrapped = to_table({"tasks": [{"result": [{"k": 1}, {"k": 2}]}]})
     assert wrapped["shape"] == "list" and wrapped["path"] == "tasks[0].result"
 
+
+
+async def test_a_table_call_records_its_surface(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """The caller of `/table/` gets a reshaped answer, so its audit row says so: a judge of a review
+    of it must never read the archived bytes as what the caller saw. `/call/` rows leave it empty."""
+    import asyncio
+
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import CallRecord
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"name": "x"}}'))
+    table = await clients.get(f"/table/{EP}?aweme_id=surface")
+    plain = await clients.get(f"/call/{EP}?aweme_id=plain")
+    assert table.status_code == plain.status_code == 200
+    refs = {table.headers["x-treg-call-id"]: "table", plain.headers["x-treg-call-id"]: None}
+    for _ in range(100):  # the audit row is written after the answer
+        async with session_maker() as db:
+            rows = (await db.execute(select(CallRecord.call_ref, CallRecord.surface)
+                                     .where(CallRecord.call_ref.in_(refs)))).all()
+        if len(rows) == 2:
+            break
+        await asyncio.sleep(0.02)
+    assert dict(rows) == refs

@@ -1276,6 +1276,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if mk is not None:
             request.context.provider, request.context.credential_tier = mk.provider, mk.tier
         telemetry: dict = {"call_ref": call_ref}
+        if request.context.input.surface:  # a reshaped answer: never read back as the archived bytes
+            telemetry["surface"] = request.context.input.surface
         if meta.tags:
             # Own-tool calls carry tags too: a builder's usage report has to account for every call
             # their user made, not only the ones that spent treg's money.

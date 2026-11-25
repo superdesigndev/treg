@@ -318,6 +318,8 @@ class CallInput:
     client_ip: str
     # The reviewed /catalog/call surface accepts only a catalog id — team tools never shadow it.
     catalog_only: bool = False
+    # The surface the call came through when it is not `/call/`: "table" (recorded on its audit row).
+    surface: str | None = None
     # Set on every child call of a hub run: a child never resolves to a hub tool (no nested
     # runs, no undisclosed second price).
     child_of: str | None = None
