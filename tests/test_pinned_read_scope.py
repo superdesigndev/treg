@@ -12,7 +12,7 @@ from treg.application import asynctasks as task_app
 from treg.application.call import service as call_service
 from treg.domain import money
 from treg.infra.db import session_maker
-from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallMark, CallRecord, Feedback, LedgerEntry, RunRecord
+from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallCharge, CallMark, CallRecord, Feedback, LedgerEntry, RunRecord
 from treg.timeutil import utcnow_naive
 from test_asynctasks import EP, _response, replicate_platform, legacy_async_platform, minimax_platform  # noqa: F401 - pytest fixtures
 from test_tag_billing import _mint_agent, _mk_echo_tool, _org_id
@@ -109,18 +109,24 @@ async def test_ledger_only_read_uses_immutable_reserve_tags(clients, identities,
     assert (await clients.get(f'/calls/{call_id}')).status_code == 200
 
 
-@pytest.mark.parametrize('state', ['folded'])
+@pytest.mark.parametrize('state', ['folded', 'queued'])
 async def test_an_allowance_call_is_read_through_the_pin_of_another_identity(clients, identities, state):
     """An unpinned backend's tagged call on the allowance has no reserve entry; once its audit row
     is gone, a reader pinned to its tags still finds and verifies it."""
     org, h = identities
     call_id = f'allowance-{state}'
     async with session_maker() as db:
-        db.add(LedgerEntry(id=uuid4().hex, org_id=org, kind='settle', amount_micro=-100,
-                           call_id=call_id, meta={'tags': {'customer': 'a'}}))
+        if state == 'folded':
+            db.add(LedgerEntry(id=uuid4().hex, org_id=org, kind='settle', amount_micro=-100,
+                               call_id=call_id, meta={'tags': {'customer': 'a'}}))
+        else:
+            db.add(CallCharge(call_id=call_id, org_id=org, amount_micro=100,
+                              meta={'tags': {'customer': 'a'}}))
         await db.commit()
-    assert (await clients.get(f'/calls/{call_id}', headers=h['a'])).status_code == 200
+    own = await clients.get(f'/calls/{call_id}', headers=h['a'])
+    assert own.status_code == 200, own.text
     assert (await clients.get(f'/calls/{call_id}', headers=h['b'])).status_code == 404
+    assert (await clients.get(f'/calls/{call_id}')).status_code == 200
     for who in ['a', 'b']:
         r = await clients.post('/feedback', headers=h[who], json={
             'category': 'quality', 'message': f'{state} {who}', 'call_ids': [call_id]})

@@ -48,7 +48,7 @@ from .domain.identity.access import (
 )
 from .domain.identity import api_keys as managed_keys
 from .domain.identity import session as identity_session
-from .models import (CallRecord, CapabilityPin, LedgerEntry, Membership, Org, RunRecord, Secret,
+from .models import (CallCharge, CallRecord, CapabilityPin, LedgerEntry, Membership, Org, RunRecord, Secret,
                      Tool, ToolRequest, User)
 from .routers import activity as activity_routes
 from .routers import admin as admin_routes
@@ -806,7 +806,13 @@ async def get_call(
                  defer(cast(QueryableAttribute, CallRecord.error_response), raiseload=True))
         .where(CallRecord.org_id == caller.org_id, CallRecord.call_ref == call_ref,
                *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
-    if row is None and caller.membership.pinned_tags:
+    # Before the ledger: a fold commits the charge's removal with its settle entry, so a fold in
+    # between moves the call into the next read, never out of both.
+    queued = (await db.execute(select(CallCharge.call_id).where(
+        CallCharge.org_id == caller.org_id, CallCharge.call_id == call_ref,
+        *pinned_tag_predicates(CallCharge.meta["tags"], caller.membership.pinned_tags),
+    ))).scalar_one_or_none()
+    if row is None and queued is None and caller.membership.pinned_tags:
         owned = (await db.execute(select(LedgerEntry.id).where(
             LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref,
             LedgerEntry.kind.in_(("reserve", "settle")),
@@ -817,7 +823,7 @@ async def get_call(
     entries = (await db.execute(select(LedgerEntry).where(
         LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref)
         .order_by(LedgerEntry.created_at))).scalars().all()
-    if row is None and not entries:
+    if row is None and queued is None and not entries:
         raise HTTPException(status_code=404, detail="no call with that id")
     await db.close()
     task = (await async_task_app.views_for(
