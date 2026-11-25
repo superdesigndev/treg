@@ -22,7 +22,7 @@ from test_route_confirm import ON as CONFIRM, _hunter
 from test_route_quality_upgrade import EMAIL, ENRICH, HARVEST_FIRST, _named, _Reader, enrich_on  # noqa: F401
 from test_route_verify import ASK, FIND, TOMBA_HIT, _relay, verifiers_on  # noqa: F401
 from test_dropcontact_routing import dropcontact_platform  # noqa: F401
-from test_routing import people_search_on  # noqa: F401
+from test_routing import enrichment_on, people_search_on  # noqa: F401
 
 TOMBA_MISS = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
 
@@ -255,3 +255,30 @@ async def test_an_overflow_answer_whose_row_was_shed_is_not_linked_to_the_direct
     left = await _row(f"{parent.call_ref}:r0")
     assert left.status_code == 402, "only the direct attempt's row is left"
     assert parent.served_call_ref is None, "never read the direct failure as the answer"
+
+
+async def test_a_raw_the_router_wrote_itself_is_not_linked(clients, enrichment_on, monkeypatch):
+    """With the waterfall off, aviato's declared 404 miss comes back as a 200 with `raw: {}`: the
+    caller never received the provider's `Not Found` body, so the link names no child."""
+    from test_routing import _relay_by_provider
+
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"aviato": [(404, {"message": "Not Found"})]}, []))
+    r = await clients.post("/call/treg.people.phone.find", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
+                           headers={"X-Treg-Route-Prefer": "aviato", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "miss", r.text
+    assert r.json()["raw"] == {} and r.json()["_treg"]["served_by"] == "aviato.people.phone.find"
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    assert (await _row(f"{parent.call_ref}:r0")).status_code == 404
+    assert parent.served_call_ref is None
+
+
+async def test_a_providers_own_miss_body_handed_over_stays_linked(clients, verifiers_on, monkeypatch):
+    """The control: a 200 miss whose body is the `raw` the caller gets keeps its link."""
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_MISS]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "miss", r.text
+    assert r.json()["raw"] == TOMBA_MISS[1]
+    parent, child = await _served(r)
+    assert parent.served_call_ref == f"{parent.call_ref}:r0" and child.status_code == 200
+    assert await _archived(child) == r.json()["raw"]

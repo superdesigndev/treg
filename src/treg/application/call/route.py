@@ -56,8 +56,11 @@ The parent's audit row names the child whose answer the caller received
 (`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>` (its answering poll
 `:r<n>:p<k>` for an async provider), an upgrade's own served child `:u:r<m>`, under a merge the
 answer whose body is `raw` (not `served_by`, the first contributor), the submission of a pending
-async call. A miss or failure names none, nor does an answer an overflow aggregator served (its
-row shares the child's ref with the direct attempt's). Review credit
+async call. It names a child only when that child's body is the `raw` returned: a miss or failure
+names none, nor does an answer the router wrote itself (a declared-miss status, a failed async
+task, a non-JSON body: `raw` is `{}`), nor an answer an overflow aggregator served (its row shares
+the child's ref with the direct attempt's). So NULL means no usable link was recorded, not that
+no answer was served; rows written before 0127 are NULL too. Review credit
 (`route_summary.credited`) is a separate decision and stays the latest successful attempt.
 """
 
@@ -1687,6 +1690,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                  response.status, charged, "asynchronous task failed", ignored=ignored))
             if options.waterfall:
                 continue
+            answered_by.pop(id(cand), None)   # the router writes this `raw`, not the provider
             winner = (cand, {}, {}, raw)
             break
         outcome = child_outcome(cand.endpoint, plan.contract, cand.adapter, response.status, raw,
@@ -1701,6 +1705,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged, ignored=ignored))
             if options.waterfall:
                 continue
+            answered_by.pop(id(cand), None)   # the router writes this `raw`, not the provider
             winner = (cand, {}, {}, raw)
             break
         if outcome.kind == "not_found":
@@ -1791,6 +1796,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     if weak_hits > MAX_WEAK_FALLBACKS:
                         break
                 continue
+            if doc is None:
+                answered_by.pop(id(cand), None)   # not JSON: the caller gets the router's `{}`
             winner = (cand, doc if doc is not None else {}, {}, raw)
             break
         # A HIT that answers thinly is not the end of the search. `min_results` lets the caller say

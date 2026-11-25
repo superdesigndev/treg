@@ -692,8 +692,10 @@ class CallRecord(SQLModel, table=True):
     # whose answer was returned (`_treg.served_by`'s attempt; an upgrade's own served child; an async
     # attempt's answering poll `:r<n>:p<k>`; under a merge the answer whose body is `raw`, not `served_by`). Read the child row
     # by this exact ref (`ix_callrecord_call_ref`), then its archive hashes. NULL on every other row,
-    # on a routed miss or failure (no child answered), on an answer an overflow aggregator served
+    # on a routed miss or failure (no child answered), when the router wrote `raw` itself (a declared
+    # miss status, a failed async task, a non-JSON body), on an answer an overflow aggregator served
     # (its row and the direct attempt's share one ref), and on rows written before the column (0127).
+    # NULL means no usable link was recorded, never that no answer was served.
     # A logical reference only, never a foreign key: either row may be shed.
     served_call_ref: str | None = Field(default=None)
 
