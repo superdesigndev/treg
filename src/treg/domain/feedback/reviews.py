@@ -64,9 +64,12 @@ def _upgradable(version: str):
 
 async def record_answer_codes(db: AsyncSession, review_id: int, primary: str, secondary: str | None,
                               version: str, at: datetime) -> bool:
-    """Codes judged with the call's answer in view, written only over this version's reason codes:
-    never over another answer judgement, and never over codes of a newer codebook."""
-    result = await db.execute(update(CallReview).where(CallReview.id == review_id, *_upgradable(version)).values(
+    """Codes judged with the call's answer in view, written over this version's reason codes, final
+    ones included: an answer one run read wins over another run that, meanwhile, gave up reading it.
+    Never over another answer judgement, and never over codes of a newer codebook."""
+    result = await db.execute(update(CallReview).where(
+        CallReview.id == review_id, CallReview.codebook_version == version,
+        or_(CallReview.code_basis.is_(None), CallReview.code_basis.in_((REASON, REASON_FINAL)))).values(
         primary_code=primary, secondary_code=secondary, code_judged_at=at, code_basis=ANSWER,
         answer_retry_at=None, answer_attempts=None))
     return result.rowcount == 1

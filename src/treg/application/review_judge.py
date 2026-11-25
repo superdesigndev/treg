@@ -39,6 +39,7 @@ log = logging.getLogger("treg.review_judge")
 
 NEGATIVE = ("partly", "not_useful")
 _wait_for = asyncio.wait_for  # a seam for tests that run on a fake clock
+BUDGET_CUT_DELAY = timedelta(hours=6)
 
 
 def configured() -> bool:
@@ -234,7 +235,13 @@ async def judge_answers(*, deadline: float) -> dict:
         try:  # one slow read cannot carry the run past the point where what was read is sent
             answer = await _wait_for(answer_of(r), max(read_until - time.monotonic(), 0))
         except TimeoutError:
+            # Cut by this run's budget, not a failure: no try is spent, but it waits a few hours so
+            # the next runs reach the reviews after it.
             out["stopped_by_deadline"] = True
+            async with session_maker() as db:
+                await reviews.record_answer_retry(db, r.id, version, r.answer_attempts or 0,
+                                                  utcnow_naive() + BUDGET_CUT_DELAY)
+                await db.commit()
             break
         item = None
         if answer.state == "read":

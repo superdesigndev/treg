@@ -371,6 +371,49 @@ async def test_a_slow_last_read_does_not_drop_what_was_read(clients, monkeypatch
 
     out = await review_judge.judge_answers(deadline=1.0)
     assert out["judged"] == 2 and out["stopped_by_deadline"] is True and max(sent_at) < 1.0
-    assert (await _all())["s-0"].code_basis == "reason"
+    cut = (await _all())["s-0"]
+    assert cut.code_basis == "reason" and cut.answer_retry_at is not None and not cut.answer_attempts
+    # It waits a few hours (spending no try), so the next run is not cut on it again.
     now[0] = 0.0
-    assert (await review_judge.judge_answers(deadline=10.0))["pending"] == 1
+    assert (await review_judge.judge_answers(deadline=10.0))["pending"] == 0
+
+
+async def test_a_slow_read_cut_by_the_budget_lets_the_next_review_through_next_run(clients, monkeypatch):
+    """The newest review's read is slow and is cut by the run's budget every time; the one after it
+    is upgraded on the next run instead of never being reached."""
+    from types import SimpleNamespace
+
+    await _negatives(clients, "fast", "slow")  # "slow" is newer, so read first
+    now = [0.0]
+    monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    def clock(r):
+        if r.call_id == "slow":
+            raise TimeoutError
+    _answers(monkeypatch, {}, clock=clock)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY"})
+
+    first = await review_judge.judge_answers(deadline=1.0)
+    assert first["judged"] == 0 and first["stopped_by_deadline"] is True
+    second = await review_judge.judge_answers(deadline=1.0)
+    assert second["judged"] == 1 and (await _all())["fast"].code_basis == "answer"
+
+
+async def test_an_answer_read_wins_over_a_concurrent_give_up(clients, monkeypatch):
+    """Run A has read the answer and waits on Jev; run B, meanwhile, spends the last try and makes
+    the reason codes final. A's judgement is still written; a newer codebook still is not touched."""
+    from treg.domain.feedback import reviews as reviews_domain
+
+    await _negatives(clients, "race")
+    review_id = (await _all())["race"].id
+    v = review_codes.CODEBOOK_VERSION
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_final(db, review_id, v)
+        await db.commit()
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_codes(db, review_id, "EMPTY", None, v, utcnow_naive())
+        await db.commit()
+    row = (await _all())["race"]
+    assert (row.primary_code, row.code_basis) == ("EMPTY", "answer")
+    async with session_maker() as db:  # never over another answer judgement
+        assert not await reviews_domain.record_answer_codes(db, review_id, "WRONG", None, v, utcnow_naive())
