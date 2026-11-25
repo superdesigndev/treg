@@ -75,15 +75,24 @@ async def record_answer_codes(db: AsyncSession, review_id: int, primary: str, se
     return result.rowcount == 1
 
 
-async def record_answer_final(db: AsyncSession, review_id: int, version: str) -> bool:
-    """No answer will ever be shown for this review: its reason codes stand."""
-    result = await db.execute(update(CallReview).where(CallReview.id == review_id, *_upgradable(version))
-                              .values(code_basis=REASON_FINAL, answer_retry_at=None, answer_attempts=None))
-    return result.rowcount == 1
-
-
 def _attempts_still(seen: int | None):
     return CallReview.answer_attempts.is_(None) if seen is None else CallReview.answer_attempts == seen
+
+
+_ANY = object()
+
+
+async def record_answer_final(db: AsyncSession, review_id: int, version: str, seen=_ANY) -> bool:
+    """No answer will be shown for this review: its reason codes stand. Given the `seen` failed
+    tries this run read (its tries ran out), only while the row still holds them: a worker allowed
+    more tries that recorded another failure meanwhile keeps its back-off. Without `seen` (the
+    answer is gone for good) it ends whatever the count."""
+    where = [CallReview.id == review_id, *_upgradable(version)]
+    if seen is not _ANY:
+        where.append(_attempts_still(seen))
+    result = await db.execute(update(CallReview).where(*where)
+                              .values(code_basis=REASON_FINAL, answer_retry_at=None, answer_attempts=None))
+    return result.rowcount == 1
 
 
 async def record_answer_retry(db: AsyncSession, review_id: int, version: str, seen: int | None,

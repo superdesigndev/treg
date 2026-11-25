@@ -2,6 +2,7 @@
 reviews, each pass written once and failing on its own."""
 from datetime import timedelta
 
+from sqlalchemy import update
 from sqlmodel import select
 
 from treg.application import review_judge
@@ -464,3 +465,29 @@ async def test_a_budget_cut_never_moves_back_a_failure_another_run_recorded(clie
         await db.commit()
     row = (await _all())["busy"]
     assert row.answer_attempts == 5 and row.answer_retry_at == later
+
+
+async def test_tries_running_out_never_ends_a_back_off_another_run_moved_on(clients, monkeypatch):
+    """A worker allowed fewer tries read 4 and gives up; one allowed more recorded the 5th meanwhile:
+    its back-off stands. An answer gone for good still ends it whatever the count."""
+    from datetime import timedelta
+
+    from treg.domain.feedback import reviews as reviews_domain
+
+    await _negatives(clients, "limits")
+    review_id = (await _all())["limits"].id
+    v = review_codes.CODEBOOK_VERSION
+    later = utcnow_naive() + timedelta(hours=16)
+    async with session_maker() as db:
+        await db.execute(update(CallReview).where(CallReview.id == review_id).values(answer_attempts=5,
+                                                                                      answer_retry_at=later))
+        await db.commit()
+    async with session_maker() as db:
+        assert not await reviews_domain.record_answer_final(db, review_id, v, 4)
+        await db.commit()
+    row = (await _all())["limits"]
+    assert (row.code_basis, row.answer_attempts, row.answer_retry_at) == ("reason", 5, later)
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_final(db, review_id, v)
+        await db.commit()
+    assert (await _all())["limits"].code_basis == "reason_final"

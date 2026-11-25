@@ -220,8 +220,10 @@ async def judge_answers(*, deadline: float) -> dict:
     async def settle(r, state: str) -> None:
         async with session_maker() as db:
             attempts = (r.answer_attempts or 0) + 1
-            if state == "absent" or attempts >= s.review_judge_answer_attempts:
+            if state == "absent":
                 out["final"] += await reviews.record_answer_final(db, r.id, version)
+            elif attempts >= s.review_judge_answer_attempts:
+                out["final"] += await reviews.record_answer_final(db, r.id, version, r.answer_attempts)
             else:
                 out["retry_later"] += await reviews.record_answer_retry(
                     db, r.id, version, r.answer_attempts, _retry_at(utcnow_naive(), attempts))
