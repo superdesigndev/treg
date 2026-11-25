@@ -2131,49 +2131,127 @@ async def _run_workers(count, seconds, *, every_s, stagger_s=0.0):
             await task
 
 
-async def test_one_process_at_a_time_runs_the_pass(store, monkeypatch):
-    """Every process runs the loop, and each pass reads every team with queued charges: run by
+@pytest.mark.parametrize("shards", [1, 4])
+async def test_one_process_at_a_time_runs_the_pass_over_a_share(store, monkeypatch, shards):
+    """Every process runs the loop, and each pass reads the teams with queued charges: run by
     every process every second, that reading cost the database more than the folding. A process
-    whose store says another has the pass pauses; one whose store cannot answer still runs."""
-    passes: list[bool] = []
+    whose store says every share is taken pauses; one whose store cannot answer still runs, over
+    every team."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: shards)
+    passes: list[tuple] = []
 
-    async def counted(session_maker, *, sweep, keep_going=None):
-        passes.append(sweep)
+    async def counted(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append((sweep, shard))
         return 0
 
     monkeypatch.setattr(allowance_sweep, "run_once", counted)
-    store.leases[allowance_sweep._PASS_KEY] = "another process"
+    keys = [allowance_sweep.pass_key((index, shards)) for index in range(shards)]
+    for key in keys:
+        store.leases[key] = "another process"
     await _run_workers(1, 0.05, every_s=0.005)
     assert passes == []
-    del store.leases[allowance_sweep._PASS_KEY]
+    del store.leases[keys[-1]]
     await _run_workers(1, 0.05, every_s=0.005)
-    assert passes and passes[0] is True, "the first pass it runs is a sweep too"
+    assert passes and passes[0][0] is True, "the first pass it runs is a sweep too"
+    assert {shard for _, shard in passes} == {(shards - 1, shards)}, "only the share left free"
     passes.clear()
     store.lease_answer = "unavailable"
     await _run_workers(1, 0.05, every_s=0.005)
-    assert passes
+    assert passes and {shard for _, shard in passes} == {None}
+
+
+def test_one_share_keeps_the_lease_name_of_a_single_pass():
+    """Processes of a build before shares run beside the new ones during a deploy: with one
+    share they take the same lease."""
+    assert allowance_sweep.pass_key((0, 1)) == allowance_sweep._PASS_KEY
+    assert allowance_sweep.pass_key((1, 4)) != allowance_sweep.pass_key((1, 8))
+
+
+async def test_shares_fold_side_by_side_and_never_the_same_share_twice(store, monkeypatch):
+    """With more shares, as many processes fold at once, each over teams no other one has."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 2)
+    running: dict = {}
+    overlap, side_by_side = [], []
+
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
+        overlap.append(running.get(shard, 0) > 0)
+        running[shard] = running.get(shard, 0) + 1
+        side_by_side.append(sum(running.values()))
+        await asyncio.sleep(0.05)
+        running[shard] -= 1
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", slow)
+    await _run_workers(4, 0.3, every_s=0.01, stagger_s=0.005)
+    assert overlap and not any(overlap)
+    assert max(side_by_side) == 2
+
+
+async def test_a_share_folds_only_its_teams_and_the_longest_wait_first(
+        org_id, store, monkeypatch):
+    """A pass over a share reads and folds only the teams in it, and the team whose oldest
+    charge has waited longest comes first."""
+    epoch = await runtime.take(org_id, 10)
+    await _finish(org_id, "share-only", epoch, 10, billable=True)
+    mine, other = (org_id % 2, 2), ((org_id + 1) % 2, 2)
+    assert await allowance_sweep.fold_queued_once(session_maker, shard=other) == 0
+    assert await _queued(org_id) == 1
+    assert await allowance_sweep.fold_queued_once(session_maker, shard=mine) == 1
+    assert await _queued(org_id) == 0
+
+
+async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypatch):
+    """A pass that stops early (its lease lost) has still brought down the longest wait."""
+    later = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=later, name="later", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, later, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(call, team, "e.metered", 400, reserved_micro=400)
+            for team, call in ((org_id, "newer"), (later, "older"))])
+        await db.commit()
+    async with session_maker() as db:  # the higher team number has waited longer
+        await db.execute(update(CallCharge).where(CallCharge.call_id == "older").values(
+            created_at=ledger._now() - timedelta(minutes=5)))
+        await db.commit()
+        assert await allowance.orgs_with_queued_charges(db, ledger._now()) == [later, org_id]
+    folded: list[int] = []
+    real = allowance_sweep._fold_team
+
+    async def first_only(session_maker, team):
+        folded.append(team)
+        return await real(session_maker, team)
+
+    monkeypatch.setattr(allowance_sweep, "_fold_team", first_only)
+    assert await allowance_sweep.fold_queued_once(
+        session_maker, keep_going=lambda: not folded) == 1
+    assert folded == [later] and await _queued(org_id) == 1
 
 
 async def test_the_pause_after_an_idle_pass_is_shared_by_every_process(store, monkeypatch):
     """Released at once after an idle pass, the lease would go to whichever process woke next,
     and processes waking at different moments would each scan once per pause anyway."""
-    passes: list[float] = []
+    passes: dict = {}
 
-    async def idle(session_maker, *, sweep, keep_going=None):
-        passes.append(time.monotonic())
+    async def idle(session_maker, *, sweep, keep_going=None, shard=None):
+        passes[shard] = passes.get(shard, 0) + 1
         return 0
 
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 2)
     monkeypatch.setattr(allowance_sweep, "run_once", idle)
-    await _run_workers(4, 0.3, every_s=0.05, stagger_s=0.012)
-    assert len(passes) <= 9, f"{len(passes)} passes in 0.3 s; one per pause is about 7"
+    await _run_workers(6, 0.3, every_s=0.05, stagger_s=0.008)
+    assert passes and max(passes.values()) <= 9, (
+        f"{passes} passes in 0.3 s; one per share per pause is about 7")
 
 
 async def test_a_long_pass_keeps_the_lease(store, monkeypatch):
     """A pass that outlives the lease's time would let a second process start one beside it."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
     running, overlapped = [0], []
 
-    async def slow(session_maker, *, sweep, keep_going=None):
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
         running[0] += 1
         overlapped.append(running[0] > 1)
         await asyncio.sleep(0.2)
@@ -2191,7 +2269,10 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 30)
     renewing, finish = asyncio.Event(), asyncio.Event()
 
+    renewed_keys: list[str] = []
+
     async def stubborn_renew(key, token, ttl_ms, *, deadline=None):
+        renewed_keys.append(key)
         renewing.set()
         try:
             await finish.wait()
@@ -2202,7 +2283,7 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
 
     stop = [False]
 
-    async def until_renewing(session_maker, *, sweep, keep_going=None):
+    async def until_renewing(session_maker, *, sweep, keep_going=None, shard=None):
         if stop[0]:
             raise asyncio.CancelledError
         await renewing.wait()
@@ -2221,12 +2302,17 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert stopped_on_its_own and task.cancelled()
-    assert allowance_sweep._PASS_KEY not in store.leases, "the lease is given back on the way out"
+    taken = renewed_keys[0]
+    assert taken.startswith(allowance_sweep._PASS_KEY) and not taken.endswith(":sweep")
+    held = [key for key in store.leases
+            if key.startswith(allowance_sweep._PASS_KEY) and not key.endswith(":sweep")]
+    assert taken not in store.leases and held == [], "the share's lease is given back on the way out"
 
 
 async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkeypatch):
     """A store that fails once and comes back while the lease is still valid must not leave a
     long pass without its lease."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 60)
     answers = ["unavailable"]
     renew = store.renew_lease
@@ -2238,7 +2324,7 @@ async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkey
 
     running, overlapped = [0], []
 
-    async def slow(session_maker, *, sweep, keep_going=None):
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
         running[0] += 1
         overlapped.append(running[0] > 1)
         await asyncio.sleep(0.2)
@@ -2281,6 +2367,7 @@ async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_le
         store, monkeypatch):
     """Asked again only at the usual interval, two failed renewals in a row could miss the store
     coming back before the lease runs out."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 90)
     answers = ["unavailable", "unavailable"]
     renew = store.renew_lease
@@ -2292,7 +2379,7 @@ async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_le
 
     running, overlapped = [0], []
 
-    async def slow(session_maker, *, sweep, keep_going=None):
+    async def slow(session_maker, *, sweep, keep_going=None, shard=None):
         running[0] += 1
         overlapped.append(running[0] > 1)
         await asyncio.sleep(0.25)
@@ -2362,11 +2449,11 @@ async def test_a_fold_on_postgresql_caps_its_wait_for_row_locks(monkeypatch):
     assert ran == []
 
 
-async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
+async def test_passes_reach_every_team_however_many_have_charges_queued(
         org_id, store, monkeypatch):
-    """Teams are listed a page at a time. A pass that only ever read the first page would never
-    reach the teams after it while the first ones keep queueing."""
-    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PAGE", 1)
+    """A pass folds a bounded number of teams, the longest-waiting first; the passes after it
+    reach the rest, so no team is left behind however many have charges queued."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 1)
     async with session_maker() as db:
         others = [Org(id=org_id + offset, name="later", slug=uuid4().hex) for offset in (1, 2)]
         db.add_all(others)
@@ -2377,9 +2464,83 @@ async def test_a_pass_reaches_every_team_however_many_have_charges_queued(
             allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
             for team in (org_id, org_id + 1, org_id + 2)])
         await db.commit()
-    assert await allowance_sweep.fold_queued_once(session_maker) == 3
+    assert [await allowance_sweep.fold_queued_once(session_maker) for _ in range(4)] == [1, 1, 1, 0]
     for team in (org_id, org_id + 1, org_id + 2):
         assert await _queued(team) == 0 and (await _state(team))[0] == GRANT - 400
+
+
+async def test_teams_another_process_holds_do_not_use_up_a_pass(org_id, store, monkeypatch):
+    """A pass works on a bounded number of teams. The teams at the front, longest waiting, may
+    all be held by other processes; they must not take the places of the team behind them, pass
+    after pass."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 2)
+    teams = [org_id + offset for offset in range(3)]
+    async with session_maker() as db:
+        for team in teams[1:]:
+            db.add(Org(id=team, name="later", slug=uuid4().hex))
+        await db.flush()
+        for team in teams[1:]:
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in teams])
+        for age, team in zip((30, 20, 10), teams):
+            await db.execute(update(CallCharge).where(CallCharge.org_id == team).values(
+                created_at=ledger._now() - timedelta(minutes=age)))
+        await db.commit()
+    for team in teams[:2]:  # the two longest waits, held elsewhere for the whole test
+        store.leases[runtime.money_key(team)] = "another process"
+    for _ in range(3):
+        await allowance_sweep.fold_queued_once(session_maker)
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
+async def _three_waiting_teams(org_id: int) -> list[int]:
+    """Three teams with one queued charge each, the first the longest waiting."""
+    teams = [org_id + offset for offset in range(3)]
+    async with session_maker() as db:
+        for team in teams[1:]:
+            db.add(Org(id=team, name="later", slug=uuid4().hex))
+        await db.flush()
+        for team in teams[1:]:
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in teams])
+        for age, team in zip((30, 20, 10), teams):
+            await db.execute(update(CallCharge).where(CallCharge.org_id == team).values(
+                created_at=ledger._now() - timedelta(minutes=age)))
+        await db.commit()
+    return teams
+
+
+async def test_teams_whose_rows_stay_locked_do_not_use_up_a_pass(org_id, store, monkeypatch):
+    """A team whose fold gave up on its row locks before committing anything was not worked on:
+    it must not take the place of the team behind it."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 1)
+    teams = await _three_waiting_teams(org_id)
+    fold = allowance.fold_charges_in_transaction
+
+    async def front_locked(db, team, **kwargs):
+        if team in teams[:2]:
+            raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", front_locked)
+    for _ in range(2):
+        await allowance_sweep.fold_queued_once(session_maker)
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
+async def test_a_pass_pages_past_a_full_list_of_teams_it_cannot_have(org_id, store, monkeypatch):
+    """The list a pass reads is bounded too. When every team on it is held elsewhere, the pass
+    reads on past the last one instead of ending with nothing folded."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_LISTED", 1)
+    teams = await _three_waiting_teams(org_id)
+    for team in teams[:2]:
+        store.leases[runtime.money_key(team)] = "another process"
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
 
 
 async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
@@ -2510,13 +2671,13 @@ async def test_the_background_loop_folds_a_queue_whether_or_not_its_team_is_list
 async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(monkeypatch):
     passes, pauses, sweeps = iter([3, 2, 0]), [], []
 
-    async def fold(session_maker, *, keep_going=None) -> int:
+    async def fold(session_maker, *, keep_going=None, shard=None) -> int:
         try:
             return next(passes)
         except StopIteration:
             raise asyncio.CancelledError from None
 
-    async def sweep(session_maker, *, keep_going=None) -> int:
+    async def sweep(session_maker, *, keep_going=None, shard=None) -> int:
         sweeps.append(len(pauses))
         return 0
 
@@ -2529,6 +2690,58 @@ async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(mon
     with pytest.raises(asyncio.CancelledError):
         await allowance_sweep.worker(fold_every_s=1.5, sweep_every_s=3_600)
     assert pauses == [1.5] and sweeps == [0], "one pause, after the empty pass; one sweep so far"
+
+
+async def test_a_share_handed_to_another_process_is_not_swept_again_within_the_period(
+        store, monkeypatch):
+    """Shares move between processes from pass to pass. The process taking one over sees when
+    its sweep is due instead of sweeping it again at once, and folds what is queued right away."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 4)
+    passes: list[tuple] = []
+
+    async def counted(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append((shard, sweep))
+        await asyncio.sleep(0.002)
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", counted)
+    await _run_workers(4, 0.2, every_s=0.01, stagger_s=0.005)
+    sweeps = [shard for shard, sweep in passes if sweep]
+    assert sorted(sweeps) == [(index, 4) for index in range(4)], "one sweep per share"
+    assert len(passes) > 4 * 4, "and every other pass went straight to folding"
+
+    passes.clear()
+    store.lease_answer = "unavailable"
+    await _run_workers(1, 0.05, every_s=0.01)
+    assert [sweep for _, sweep in passes][:2] == [True, False], "its own clock without a store"
+
+
+async def test_an_idle_share_does_not_put_the_only_worker_to_sleep(store, monkeypatch):
+    """One process, four shares, one of them always busy: a pass that drew an empty share pauses
+    that share, not the process, which goes on to the busy one at once."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 4)
+    monkeypatch.setattr(allowance_sweep.random, "randrange", lambda count: 0)  # empty share first
+    busy, passes, pauses = (3, 4), [], []
+
+    async def one_busy_share(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append(shard)
+        if len(passes) >= 20:
+            raise asyncio.CancelledError
+        return 5 if shard == busy else 0
+
+    real_sleep = asyncio.sleep
+
+    async def pause(seconds: float) -> None:
+        pauses.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(allowance_sweep, "run_once", one_busy_share)
+    monkeypatch.setattr(allowance_sweep.asyncio, "sleep", pause)
+    with pytest.raises(asyncio.CancelledError):
+        await allowance_sweep.worker(fold_every_s=60, sweep_every_s=3_600)
+    assert pauses == [], "never asleep while a share has work"
+    assert passes[:4] == [(0, 4), (1, 4), (2, 4), busy]
+    assert passes[4:] == [busy] * 16, "the idle shares pause; the busy one is folded again at once"
 
 
 # ---- one money session per team, across processes ---------------------------------------------
