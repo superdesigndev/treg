@@ -359,6 +359,11 @@ class Settings(BaseSettings):
 
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org's untagged free platform calls take no $0 hold, as if listed, except
+    # `holdless_free_excluded_org_ids`.
+    holdless_free_all_orgs: bool = False
+    # Never holdless, whatever the two settings above say.
+    holdless_free_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
 
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"

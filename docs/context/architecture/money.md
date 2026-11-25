@@ -986,13 +986,19 @@ estimate on a paid endpoint. An overflow child carries its own `observed` basis 
 price.
 
 Any other direct platform call with an explicit `free` price and zero estimate is
-`MarketplaceCall.holdless_eligible` unless it is billed OAuth, a routed child, an owned poll, an
-async submission, a resource producer or usage-settled. For an org listed in
-`holdless_free_org_ids` (default `[]`: none; the money queue also brakes free bursts, so this rolls
-out per org until an explicit free-call rate limit exists) and with no caller tags (`X-Treg-Meta`
+`MarketplaceCall.holdless_eligible` unless it is billed OAuth, an owned poll, an async
+submission, a resource producer or usage-settled. A routed child qualifies only when its root lets
+its children take from the allowance (`routed_allowance`): a free child is never charged, so its
+parent has nothing to decide for it, and a keyed root is then marked in flight, which is what a
+stale idempotency claim reads while no child holds anything. For an org listed in
+`holdless_free_org_ids` (default `[]`: none), or every org with `holdless_free_all_orgs` except
+`holdless_free_excluded_org_ids` (the excluded list wins), with no `Idempotency-Key` (its $0
+hold is what a stale claim reads while the call runs) and with no caller tags (`X-Treg-Meta`
 or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
-LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap read
-runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed
+LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap and
+member-limit reads run, so a team past its cap, or a member past their limit, is still refused.
+The member read never reaps stale holds (that writes, and only money admission may): an expired
+hold can keep a member refused until their next paid reserve reaps it. `_platform_settle` then writes nothing; a computed
 charge is logged and absorbed. A tagged call keeps its $0 hold because its settled tag rows count
 toward `calls_per_day`. Overflow children always reserve, since their aggregator spend is recorded
 in the settle transaction; `_child` never inherits the parent's flags. Cancellation of a holdless

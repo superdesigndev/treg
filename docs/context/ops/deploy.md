@@ -404,8 +404,11 @@ and money-worker process must use the same store and rollout settings; no migrat
 semantics are in [money](../architecture/money.md#optional-admission-before-the-settlement-session).
 
 `TREG_HOLDLESS_FREE_ORG_IDS` (default `[]`) lists orgs whose untagged free platform calls skip
-the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless"). Removing
-an id restores the hold path for that org's new calls; no migration is needed.
+the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless").
+`TREG_HOLDLESS_FREE_ALL_ORGS` (default `false`) does the same for every org except those in
+`TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS`, which never skip the hold. To put one org back on the hold
+path, add it to `TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS`; removing it from the list works only while
+the all-orgs switch is off. No migration is needed.
 
 `TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
 a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
