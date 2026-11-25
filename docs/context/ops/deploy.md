@@ -283,9 +283,33 @@ against the database `max_connections` minus its reserved slots. Pools open lazi
 database holds far fewer than the capacity, but a slow database keeps connections checked out and the
 peak approaches it. Do not shrink the `api` overflow to fit: a smaller api pool turns a short database
 slowdown into saturation 503s. Before adding web workers or instances, put a connection pooler in
-transaction mode between the services and the database (the code uses only `SET LOCAL` and
-transaction-level advisory locks; asyncpg then needs its statement caches off). `python -m treg
-upgrade` and Alembic use session-level settings and must keep a direct database URL, never the pooler's.
+transaction mode between the services and the database.
+
+### Behind a transaction-mode pooler
+
+The request, background and worker code holds no session state across transactions: settings are
+`SET LOCAL`, advisory locks are the `_xact_` variants, isolation levels are per transaction, and
+nothing uses `LISTEN`, temporary tables or `WITH HOLD` cursors. Two things do need care:
+
+- **Prepared statements.** asyncpg and the SQLAlchemy dialect cache named prepared statements
+  (`__asyncpg_stmt_*`) on the server connection that created them. A pooler that does not track
+  protocol-level prepared statements gives the next transaction another server connection, where
+  the name does not exist. `TREG_DB_STATEMENT_CACHE=false` turns both caches off, so every statement
+  is sent unnamed; SQLAlchemy always opens a transaction before preparing, so the unnamed statement
+  and its execution reach the same server connection. The cost is one parse and an extra round trip
+  per statement. A pooler that tracks them (PgBouncer `max_prepared_statements` above zero, 1.21
+  and later) lets the caches stay on. The switch applies to every PostgreSQL engine, the replica's
+  included; `tests/test_db_pooler.py` pins it.
+- **Schema upgrades.** `python -m treg upgrade` and Alembic set `lock_timeout` and
+  `statement_timeout` for the session and build indexes `CONCURRENTLY` outside a transaction.
+  `TREG_MIGRATION_DATABASE_URL`, when set, is the URL they use instead of `TREG_DATABASE_URL`; with
+  the pooler in `TREG_DATABASE_URL` it must name the database directly. Startup verification and
+  the lock-holder check before an upgrade are plain transactions and may use the pooler.
+
+The read pool's `default_transaction_read_only` is a startup parameter; a pooler that neither
+tracks nor ignores it refuses the connection. Point the replica URL at the replica directly unless
+the pooler tracks that parameter. Pools sized in `POOL_SPECS` then bound client connections to the
+pooler, and the pooler's own pool size bounds the server connections; budget both.
 
 ## Configuration (`config.py`)
 
