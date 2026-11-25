@@ -118,17 +118,22 @@
   .meter { height: 6px; background: var(--soft); border-radius: 6px; overflow: hidden; margin: 16px 0 6px; }
   .meter i { display: block; height: 100%; width: 0; border-radius: 6px; background: linear-gradient(90deg, var(--pink), var(--yellow) 35%, var(--cyan) 70%, var(--green)); transition: width .4s var(--out); }
   .steps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
-  .steps li { display: flex; justify-content: space-between; gap: 12px; font: 400 13px var(--mono); padding: 11px 14px; border-radius: 12px; background: #fafaf9; color: #a3a09b; transition: background .3s, color .3s; }
+  .steps li { display: flex; justify-content: space-between; gap: 12px; font: 400 13px var(--mono); padding: 11px 14px; border-radius: 12px; background: rgba(245,245,244,.55); color: #a3a09b; transition: background .3s, color .3s; }
   .steps li.on { color: var(--ink); background: #fff7e0; }
-  .steps li.done { color: var(--ink); background: #eafaf2; }
+  .steps li.done { color: var(--ink); background: rgba(234,250,242,.6); }
   .steps .dots { display: none; margin-left: 8px; gap: 3px; vertical-align: middle; }
   .steps li.on .dots { display: inline-flex; }
   .steps .dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: hop 1s ease-in-out infinite; }
   .steps .dots i:nth-child(2) { animation-delay: .15s; }
   .steps .dots i:nth-child(3) { animation-delay: .3s; }
-  .meter { position: relative; }
+  .meter { display: none; }
+  .runbox { position: relative; overflow: hidden; --p: 0%; }
+  .runbox > * { position: relative; z-index: 1; }
+  .runbox::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--p); background: linear-gradient(90deg, #fde3f6, #fff1cc 25%, #d8f3ff 50%, #dcf7ea 75%, #fde3f6) 0 0 / 200% 100%; opacity: .85; transition: width .6s var(--out); }
+  .runbox.live::before { animation: flow 3s linear infinite; }
+  .runbox.live::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 25%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent); animation: sweep 2s var(--out) infinite; pointer-events: none; }
   .runbox.live .meter i { background-size: 200% 100%; animation: flow 1.6s linear infinite; }
-  .runbox.live .meter::after { content: ""; position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: sweep 1.4s var(--out) infinite; }
+  .runbox.live .meter::after { display: none; content: ""; position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: sweep 1.4s var(--out) infinite; }
   .runbox.live .steps li.on { background: linear-gradient(100deg, #fff7e0 30%, #ffe6a1 50%, #fff7e0 70%) 0 0 / 250% 100%; animation: glint 1.8s linear infinite, nudge .35s var(--out); box-shadow: inset 3px 0 0 var(--yellow); }
   .steps li.done span:first-child::before { display: inline-block; margin-right: .45em; animation: pop .45s var(--out); }
   @keyframes flow { to { background-position: -200% 0; } }
@@ -255,7 +260,7 @@
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     .hero h1 .xroll > span { animation: none !important; }
     .steps .dots i { animation: none !important; opacity: 1; }
-    .runbox.live .meter::after { display: none; }
+    .runbox.live .meter::after, .runbox.live::after { display: none; }
     #run.busy { animation: none; }
     .px * { animation: none !important; }
   }
@@ -641,7 +646,7 @@
     var li = document.querySelector('#steps li[data-s="' + name + '"]');
     li.className = state; if (text != null) li.lastElementChild.textContent = text;
   }
-  function bar(f) { $('barFill').style.width = Math.round(f * 100) + '%'; }
+  function bar(f) { $('barFill').style.width = Math.round(f * 100) + '%'; $('progress').style.setProperty('--p', Math.round(f * 100) + '%'); }
   function domainOf(w) {
     if (!w) return '';
     var h = ''; try { h = new URL(/:\/\//.test(w) ? w : 'http://' + w).hostname; } catch (e) { return ''; }
