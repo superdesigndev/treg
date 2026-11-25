@@ -853,7 +853,8 @@ def cost_row(ep: dict, cat: Catalog) -> dict | None:
 
 
 _QUOTE_COST = frozenset({"type", "value", "currency", "per", "unit", "usd", "usd_min", "varies", "display_usd",
-                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit"})
+                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit",
+                         "trial_calls_per_team_day"})
 
 
 def quote_cost(cost: dict | None) -> dict | None:
@@ -1769,7 +1770,7 @@ def query_values(ep: dict | None, name: str, value) -> list[str]:
     return [wire_value(item) for item in value if item is not None]
 
 
-def _required_examples(params, authorization_method: str = "") -> dict:
+def required_examples(params, authorization_method: str = "") -> dict:
     """Required params only, valued by their documented example (else a typed placeholder). Optional
     params are omitted — the template is the SHORTEST call that works, not a parameter reference."""
     if not isinstance(params, dict):
@@ -1837,9 +1838,9 @@ def call_template(ep: dict) -> str:
     if authorization_method and len(authorization_methods) <= 1:
         parts += ["--authorization-method", authorization_method]
     # Path params first (the server folds them into the path), then query params proper.
-    for name, value in {**_required_examples(inp.get("pathParams"), authorization_method), **(test.get("pathParams") or {})}.items():
+    for name, value in {**required_examples(inp.get("pathParams"), authorization_method), **(test.get("pathParams") or {})}.items():
         parts += ["--query", shlex.quote(f"{name}={wire_value(value)}")]
-    for name, value in {**_required_examples(inp.get("queryParams"), authorization_method), **(test.get("queryParams") or {})}.items():
+    for name, value in {**required_examples(inp.get("queryParams"), authorization_method), **(test.get("queryParams") or {})}.items():
         for encoded in query_values(ep, name, value):
             # Quote the COMPLETE argv token, not just its value. `name=['US']` lost its inner
             # quotes after shell parsing and became either an unmatched glob (zsh) or `[US]`;
@@ -1848,7 +1849,7 @@ def call_template(ep: dict) -> str:
             parts += ["--query", shlex.quote(f"{name}={encoded}")]
 
     body = test.get("body") if test.get("body") is not None else (
-        _required_examples(inp.get("body"), authorization_method) or None)
+        required_examples(inp.get("body"), authorization_method) or None)
     # `is not None`, not truthiness: `body: {}` is a real stored test request — a POST that takes no
     # arguments but still requires a JSON body — and dropping `--data '{}'` from the line hands the
     # reader a command that differs from the one that was tested, on handlers that reject an empty
