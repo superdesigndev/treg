@@ -453,12 +453,14 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   `review_judge_answer_chars`. The judge sees what this call's delivery is known to have had: its own
   status and the body (`review_answers.as_delivered`), without the provider-reported charge the
   endpoint declares (whether this delivery kept it is not on file), read from a version of that
-  answer that kept its bytes (`archive.resolve_result(prefer_bytes=True)`). The reason codes become
+  answer that kept its bytes and still matches its content hash
+  (`archive.resolve_result(prefer_bytes=True, verify=True)`). The reason codes become
   `reason_final` at once only on facts that will not change: the call row has no archive link, it
-  came through `/table` (`CallRecord.surface`: a reshaped answer; one idempotency key never replays
-  across surfaces), it predates `review_answer_surface_since`, or the bytes are not UTF-8 text.
+  came through `/table` (`CallRecord.surface`: a reshaped answer; an idempotency key keeps its
+  surface, `IdempotentCall.surface`, and never replays on the other), it predates `review_answer_surface_since`, or the bytes are not UTF-8 text.
   Anything else that does not read now (the archive not written yet, a hash-only or gone answer, a
-  failed read, object storage not configured here, the database unreachable, a corrupt snapshot) is
+  failed read, object storage not configured here, the database unreachable, a corrupt or
+  mismatched copy) is
   tried again from `answer_retry_at`, an hour doubling to a week (`answer_attempts`), and after
   `review_judge_answer_attempts` tries the reason codes stand; a review waiting its turn is not read,
   so it never holds back the others. Answer codes may replace this version's `reason_final`, so a run
@@ -466,7 +468,8 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   store, and without its credentials logs that and runs on. `review_judge_answers` off skips the pass
 (its rollback switch: 0128 stays). Each read gets only the time left before
   reading stops, which leaves a request's worth before the deadline, so what was read is sent; a read
-  cut by that budget waits six hours without spending a try. No request starts after the deadline.
+  cut by that budget waits six hours without spending a try. Back-off writes hold only while the
+  row still has the tries the run read, so concurrent runs never move it back. No request starts after the deadline.
 
 Each answer is validated on its own (a Noul must be a number in [0, 1], a Choice one of the codes);
 a failed request or an unreadable answer leaves that review unjudged for the next run, and one pass
