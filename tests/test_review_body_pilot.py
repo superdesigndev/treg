@@ -174,6 +174,19 @@ async def test_one_malformed_answer_is_unreadable_and_the_rest_count(clients, mo
     assert review_codes.codes_from({"choice": {"code": "EMPTY"}}) is None
 
 
+async def test_sample_counts_readable_answers_across_pages(clients, monkeypatch):
+    # The three newest answers are gone; the fourth is on file, on the second page.
+    org = await _org(clients)
+    await _add(*[_review(org, f"s-{i}", "PARTIAL") for i in range(4)],
+               *[_record(org, f"s-{i}", f"k{i}") for i in range(4)])
+    _archive(monkeypatch, {"k0": PEOPLE})
+    monkeypatch.setattr(review_body_pilot, "PAGE", 2)
+    _jev(monkeypatch)
+
+    out = await review_body_pilot.run(sample=1, batch=5, budget=500, max_seconds=60)
+    assert out["coded"] == 1 and out["no_body"] == 3 and out["candidates"] == 4
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {

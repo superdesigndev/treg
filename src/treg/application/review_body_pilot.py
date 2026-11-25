@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from datetime import timedelta
 
+from sqlalchemy import and_, or_
 from sqlmodel import select
 
 from .. import archive
@@ -31,20 +32,26 @@ from .review_judge import NEGATIVE, _ask, configured
 WINDOW_DAYS = 28
 REQUEST_BUDGET = 800
 DIFFS_SHOWN = 100
+PAGE = 200
 
 
-async def _candidates(limit: int) -> list:
-    since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
-    async with session_maker() as db:
-        return (await db.execute(
-            select(CallReview.id, CallReview.org_id, CallReview.call_id, CallReview.reason,
-                   CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via,
+async def _candidates(since, after: tuple | None, limit: int) -> list:
+    """One page of reviews to try, newest first in a stable order (created_at, then id), after the
+    last row of the previous page."""
+    page = (select(CallReview.id, CallReview.created_at, CallReview.org_id, CallReview.call_id,
+                   CallReview.reason, CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via,
                    CallReview.primary_code, CallReview.secondary_code)
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    CallReview.reason.is_not(None),
                    CallReview.codebook_version == review_codes.CODEBOOK_VERSION,
                    CallReview.primary_code.is_not(None))
-            .order_by(CallReview.created_at.desc()).limit(limit))).all()
+            .order_by(CallReview.created_at.desc(), CallReview.id.desc()).limit(limit))
+    if after is not None:
+        at, review_id = after
+        page = page.where(or_(CallReview.created_at < at,
+                              and_(CallReview.created_at == at, CallReview.id < review_id)))
+    async with session_maker() as db:
+        return (await db.execute(page)).all()
 
 
 async def _answer(r) -> dict | None:
@@ -87,8 +94,8 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
         return {"skipped": "no_judge_key"}
     deadline = time.monotonic() + max_seconds
     by_id = catalog_store.load().by_id
-    rows = await _candidates(sample * 3)
-    out = {"candidates": len(rows), "no_reason": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
+    since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
+    out = {"candidates": 0, "no_reason": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
            "failed_requests": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0,
            "stopped_by_deadline": False}
     pairs, reason_codes, body_codes = Counter(), Counter(), Counter()
@@ -127,24 +134,34 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             if body_primary in (r.primary_code, r.secondary_code) or r.primary_code == body_secondary:
                 out["primary_in_either"] += 1
 
-    for r in rows:
-        if out["asked"] + len(ready) >= sample:
+    # Page through the window until enough answers were read, the window ends or time runs out:
+    # how many reviews still have their answer on file is not known in advance.
+    after, done = None, False
+    while not done:
+        page = await _candidates(since, after, PAGE)
+        if not page:
             break
-        if time.monotonic() >= deadline:
-            out["stopped_by_deadline"] = True
-            break
-        if not r.reason.strip():  # coded NOREASON without asking; nothing to read beside the answer
-            out["no_reason"] += 1
-            continue
-        found = await _answer(r)
-        if found is None:
-            out["no_body"] += 1
-            continue
-        capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
-        ready.append((r, _item(len(ready), r, found, capability, budget)))
-        if len(ready) == batch:
-            await ask(ready)
-            ready = []
+        after = (page[-1].created_at, page[-1].id)
+        for r in page:
+            if out["asked"] + len(ready) >= sample:
+                done = True
+                break
+            if time.monotonic() >= deadline:
+                out["stopped_by_deadline"] = done = True
+                break
+            out["candidates"] += 1
+            if not r.reason.strip():  # coded NOREASON without asking; nothing to read beside the answer
+                out["no_reason"] += 1
+                continue
+            found = await _answer(r)
+            if found is None:
+                out["no_body"] += 1
+                continue
+            capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
+            ready.append((r, _item(len(ready), r, found, capability, budget)))
+            if len(ready) == batch:
+                await ask(ready)
+                ready = []
     if ready and time.monotonic() < deadline:
         await ask(ready)
     out["pairs"] = dict(pairs.most_common())
