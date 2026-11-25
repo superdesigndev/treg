@@ -127,6 +127,16 @@
   .steps .dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: hop 1s ease-in-out infinite; }
   .steps .dots i:nth-child(2) { animation-delay: .15s; }
   .steps .dots i:nth-child(3) { animation-delay: .3s; }
+  .meter { position: relative; }
+  .runbox.live .meter i { background-size: 200% 100%; animation: flow 1.6s linear infinite; }
+  .runbox.live .meter::after { content: ""; position: absolute; inset: 0; width: 30%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: sweep 1.4s var(--out) infinite; }
+  .runbox.live .steps li.on { background: linear-gradient(100deg, #fff7e0 30%, #ffe6a1 50%, #fff7e0 70%) 0 0 / 250% 100%; animation: glint 1.8s linear infinite, nudge .35s var(--out); box-shadow: inset 3px 0 0 var(--yellow); }
+  .steps li.done span:first-child::before { display: inline-block; margin-right: .45em; animation: pop .45s var(--out); }
+  @keyframes flow { to { background-position: -200% 0; } }
+  @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  @keyframes glint { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+  @keyframes nudge { from { transform: translateX(-6px); opacity: .5; } }
+  @keyframes pop { 0% { transform: scale(0); } 60% { transform: scale(1.5); } 100% { transform: scale(1); } }
   @keyframes hop { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
   .steps li.done span:first-child::before { content: "✓ "; color: #118453; }
   .runbox .actions { display: flex; gap: 10px; margin-top: 14px; }
@@ -221,6 +231,7 @@
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     .hero h1 .xroll > span { animation: none !important; }
     .steps .dots i { animation: none !important; opacity: 1; }
+    .runbox.live .meter::after { display: none; }
   }
 </style>
 </head>
@@ -723,7 +734,7 @@
   function scan(handle, want) {
     stopped = false; spent = 0; leads = []; all = [];
     var Q, product, bandP, started = Date.now();
-    $('run').disabled = true; $('progress').hidden = false; $('results').hidden = true; $('runErr').textContent = '';
+    $('run').disabled = true; $('progress').hidden = false; $('progress').classList.add('live'); $('results').hidden = true; $('runErr').textContent = '';
     $('progTitle').textContent = 'Scanning @' + handle;
     document.querySelectorAll('#steps li').forEach(function (li) { li.className = ''; li.lastElementChild.textContent = ''; });
     bar(0); $('spent').textContent = usd(0);
@@ -793,7 +804,7 @@
     }).catch(function (e) {
       if (!(e instanceof Stop) && window.console) console.warn('follower-leads: scan stopped', e);
       $('runErr').textContent = e instanceof Stop ? e.message : 'Something went wrong and the scan stopped. Try again in a minute.';
-    }).then(function () { $('run').disabled = false; refreshBalance(); });
+    }).then(function () { $('run').disabled = false; $('progress').classList.remove('live'); refreshBalance(); });
   }
   $('stop').onclick = function () { stopped = true; $('runErr').textContent = 'Stopping: finishing the calls already in flight…'; };
 
