@@ -41,8 +41,8 @@
   .tabs { display: flex; gap: 4px; padding: 5px; border: 1px solid #E9ECE9; border-radius: 999px; background: #fff; box-shadow: 0 2px 8px #18241C04; }
   .tabs a { display: flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px; text-decoration: none; font-size: 13px; line-height: 20px; color: var(--grey); white-space: nowrap; transition: background .15s, color .15s; }
   .tabs a svg { width: 16px; height: 16px; flex: none; }
-  .tabs a:hover { color: var(--ink); background: #F7F9F7; }
-  .tabs a[aria-current="page"] { color: var(--ink); background: linear-gradient(90deg, rgba(253,181,236,.5), rgba(34,199,255,.28)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
+  .tabs a:hover { color: var(--ink); background: linear-gradient(90deg, rgba(253,181,236,.22), rgba(34,199,255,.12)); }
+  .tabs a[aria-current="page"] { color: var(--ink); background: transparent; }
   .nav-r { justify-self: end; display: flex; align-items: center; gap: 20px; font-size: 13px; }
   .community { display: flex; align-items: center; gap: 14px; }
   .community a { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; color: var(--grey); text-decoration: none; white-space: nowrap; }
@@ -191,7 +191,7 @@
   /* the money: one test scan */
   .fx { max-width: 1000px; margin: 40px auto 0; display: flex; align-items: center; gap: 18px; }
   .fx .fh { margin: 0; display: flex; align-items: center; gap: 14px; flex: none; }
-  .fx .fh strong { font: 400 56px/1 var(--pixel); letter-spacing: -.02em; color: #e64fc4; background: linear-gradient(90deg, #f05bc8, #b277f0 50%, #22a7ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .fx .fh strong { font: 400 56px/1 var(--pixel); letter-spacing: -.02em; color: var(--ink); }
   .fx .fh span { font: 400 40px/1 var(--pixel); color: var(--grey); }
   .fx .fg { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .fx .fg div { border-radius: 16px; background: #fafaf9; padding: 20px 16px 18px; }
