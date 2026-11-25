@@ -1,11 +1,11 @@
 """A dry run of coding negative reviews with the vendor's answer in view, against the reason-only codes.
 
-The hourly judge (`application.review_judge`) codes a `partly` or `not_useful` review from its
-reason alone. This pilot takes the newest such reviews already coded under the current codebook
-whose direct call still has its answer on file (`archive.resolve_result`; a routed review is counted
-as `answer_unconfirmed`, see `review_answers.answer_of`), asks Jev the same codebook
-with the request and a shortened answer beside the reason (`review_codes.body_code_question`,
-`body_view.shrink`), and reports how the two codings compare.
+It asks Jev the codebook twice for the newest `partly` and `not_useful` reviews whose direct call
+still has its answer on file (`review_answers.answer_of`; a routed review is counted as
+`answer_unconfirmed`): from the reason alone (`review_codes.code_question`), and with the request and
+the shortened answer beside it (`review_codes.body_code_question`, `body_view.shrink`), and reports
+how the two codings compare. The reason-only coding is asked afresh, never read from the review
+row, which the hourly judge (`application.review_judge`) codes with the answer.
 
 It writes nothing and prints aggregates only: counts, code pairs, tokens, and the review ids
 where the codings differ, never a reason, a request or an answer. Run by
@@ -37,12 +37,9 @@ async def _candidates(since, after: tuple | None, limit: int) -> list:
     """One page of reviews to try, newest first in a stable order (created_at, then id), after the
     last row of the previous page."""
     page = (select(CallReview.id, CallReview.created_at, CallReview.org_id, CallReview.call_id,
-                   CallReview.reason, CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via,
-                   CallReview.primary_code, CallReview.secondary_code)
+                   CallReview.reason, CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via)
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
-                   CallReview.reason.is_not(None),
-                   CallReview.codebook_version == review_codes.CODEBOOK_VERSION,
-                   CallReview.primary_code.is_not(None))
+                   CallReview.reason.is_not(None))
             .order_by(CallReview.created_at.desc(), CallReview.id.desc()).limit(limit))
     if after is not None:
         at, review_id = after
@@ -74,37 +71,44 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             out["stopped_by_deadline"] = True
             out["read_not_asked"] += len(items)
             return
-        state = {"reviews": [item for _, item in items]}
         out["asked"] += len(items)
-        reply = await _ask(state, {f"a{i}": review_codes.body_code_question(i) for i in range(len(items))})
-        if reply.answers is None:
-            out["failed_requests"] += 1
-            return
-        answers = reply.answers if isinstance(reply.answers, dict) else {}
-        out["tokens_in"] += reply.tokens_in or 0
+        # The reason-only control is asked here too, never read from the review row: the hourly
+        # judge codes rows with their answer, so a stored code is no control.
+        reason_state = {"reviews": [{k: item[k] for k in ("i", "usefulness", "reason", "endpoint", "capability",
+                                                          "routed")} for _, item in items]}
+        replies = []
+        for state, question in (({"reviews": [item for _, item in items]}, review_codes.body_code_question),
+                                (reason_state, review_codes.code_question)):
+            reply = await _ask(state, {f"a{i}": question(i) for i in range(len(items))})
+            if reply.answers is None:
+                out["failed_requests"] += 1
+                return
+            out["tokens_in"] += reply.tokens_in or 0
+            replies.append(reply.answers if isinstance(reply.answers, dict) else {})
+        body_answers, reason_answers = replies
         for i, (r, item) in enumerate(items):
-            codes = review_codes.codes_from(answers.get(f"a{i}"))
-            if codes is None:
+            body = review_codes.codes_from(body_answers.get(f"a{i}"))
+            reason = review_codes.codes_from(reason_answers.get(f"a{i}"))
+            if body is None or reason is None:
                 out["unreadable"] += 1
                 continue
-            body_primary, body_secondary = codes
+            (body_primary, body_secondary), (reason_primary, reason_secondary) = body, reason
             out["coded"] += 1
-            reason_codes[r.primary_code] += 1
+            reason_codes[reason_primary] += 1
             body_codes[body_primary] += 1
             tally = by_capability.setdefault(item["capability"] or "unknown", Counter())
             tally["coded"] += 1
-            if body_primary == r.primary_code:
+            if body_primary == reason_primary:
                 out["same_primary"] += 1
                 tally["same_primary"] += 1
             else:
-                pairs[f"{r.primary_code}->{body_primary}"] += 1
-            if (body_primary, body_secondary) != (r.primary_code, r.secondary_code):
+                pairs[f"{reason_primary}->{body_primary}"] += 1
+            if body != reason:
                 out["changed"] += 1
                 if len(diffs) < DIFFS_SHOWN:
-                    diffs.append({"review_id": r.id,
-                                  "reason_codes": [r.primary_code, r.secondary_code],
+                    diffs.append({"review_id": r.id, "reason_codes": [reason_primary, reason_secondary],
                                   "body_codes": [body_primary, body_secondary]})
-            if body_primary in (r.primary_code, r.secondary_code) or r.primary_code == body_secondary:
+            if body_primary in reason or reason_primary == body_secondary:
                 out["primary_in_either"] += 1
 
     # Page through the window until enough answers were read, the window ends or time runs out:

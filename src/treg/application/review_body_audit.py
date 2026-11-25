@@ -1,9 +1,9 @@
 """A blind check of the body pilot's disagreements: which coding a stronger judge agrees with.
 
 `treg-worker reviews body-pilot` prints the reviews whose code changed when Jev read the vendor's
-answer. For each of those, given as `review_id:primary[:secondary]` (the pilot's body codes), this
-asks Claude through the AI Gateway which of two codings is right, the reason-only one already on
-the review and the body one, shown as A and B in an order drawn from the review id so the judge
+answer. For each of those, given as `review_id:REASON[:SECONDARY]=BODY[:SECONDARY]` (the pilot's
+two codings; the review row is coded with the answer by the hourly judge, so it is no reason-only
+control), this asks Claude through the AI Gateway which of the two is right, shown as A and B in an order drawn from the review id so the judge
 cannot tell which is which. It sees the reason, the request and the shortened answer
 (`review_answers.view`) and the codebook.
 
@@ -33,17 +33,24 @@ CHAT_URL = "https://ai-gateway.vercel.sh/v1/chat/completions"
 VERDICTS = ("A", "B", "both", "neither")
 
 
-def parse_pairs(text: str) -> list[tuple[int, str, str | None]]:
-    """`id:PRIMARY[:SECONDARY],...` into `(review_id, primary, secondary)`; a code must be in the
-    codebook."""
+def _coding(text: str, part: str) -> tuple[str, str | None]:
+    primary, *rest = text.split(":")
+    secondary = (rest[0] or None) if rest else None
+    for code in (primary, secondary):
+        if code is not None and code not in review_codes.CODES:
+            raise ValueError(f"unknown code {code!r} in {part!r}")
+    return primary, secondary
+
+
+def parse_pairs(text: str) -> list[tuple[int, tuple, tuple]]:
+    """`id:REASON[:SECONDARY]=BODY[:SECONDARY],...`, the pilot's two codings of each review, into
+    `(review_id, reason_coding, body_coding)`. Both come from the pilot: the review row is coded by
+    the hourly judge with the answer, so it is no reason-only control."""
     out = []
     for part in filter(None, (p.strip() for p in text.split(","))):
-        review_id, primary, *rest = part.split(":")
-        secondary = (rest[0] or None) if rest else None
-        for code in (primary, secondary):
-            if code is not None and code not in review_codes.CODES:
-                raise ValueError(f"unknown code {code!r} in {part!r}")
-        out.append((int(review_id), primary, secondary))
+        review_id, rest = part.split(":", 1)
+        reason, body = rest.split("=")
+        out.append((int(review_id), _coding(reason, part), _coding(body, part)))
     return out
 
 
@@ -98,21 +105,20 @@ async def _judge(prompt: str, *, model: str, max_tokens: int) -> tuple[dict | No
     return answer if isinstance(answer, dict) else None, usage
 
 
-async def run(*, pairs: list[tuple[int, str, str | None]], model: str, max_usd: float,
+async def run(*, pairs: list[tuple[int, tuple, tuple]], model: str, max_usd: float,
               usd_per_mtok_in: float, usd_per_mtok_out: float, budget: int, max_tokens: int) -> dict:
     if not get_settings().ai_gateway_api_key:
         return {"skipped": "no_gateway_key"}
     async with session_maker() as db:
         rows = {r.id: r for r in (await db.execute(
             select(CallReview.id, CallReview.org_id, CallReview.call_id, CallReview.reason,
-                   CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via,
-                   CallReview.primary_code, CallReview.secondary_code)
+                   CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via)
             .where(CallReview.id.in_([p[0] for p in pairs])))).all()}
     by_id = catalog_store.load().by_id
     out = {"asked": 0, "missing": 0, "routed": 0, "no_body": 0, "unreadable": 0, "failed_requests": 0,
            "stopped_by_cost": False, "tokens_in": 0, "tokens_out": 0, "usd": 0.0}
     totals, by_change, picked = Counter(), {}, []
-    for review_id, body_primary, body_secondary in pairs:
+    for review_id, reason_coding, body_coding in pairs:
         r = rows.get(review_id)
         if r is None or not (r.reason or "").strip():
             out["missing"] += 1
@@ -130,7 +136,6 @@ async def run(*, pairs: list[tuple[int, str, str | None]], model: str, max_usd: 
         found = answer.found
         capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
         item = view(0, r, found, capability, budget)
-        reason_coding, body_coding = (r.primary_code, r.secondary_code), (body_primary, body_secondary)
         a, b = (reason_coding, body_coding) if _reason_first(review_id) else (body_coding, reason_coding)
         answer, usage = await _judge(_prompt(item, a, b), model=model, max_tokens=max_tokens)
         out["asked"] += 1
@@ -149,7 +154,7 @@ async def run(*, pairs: list[tuple[int, str, str | None]], model: str, max_usd: 
                   "B": "body" if a is reason_coding else "reason"}.get(verdict, verdict)
         code = (answer or {}).get("code")
         totals[winner] += 1
-        change = f"{r.primary_code}->{body_primary}"
+        change = f"{reason_coding[0]}->{body_coding[0]}"
         by_change.setdefault(change, Counter())[winner] += 1
         picked.append({"review_id": review_id, "change": change, "winner": winner,
                        "judge_code": code if code in review_codes.CODES else None})

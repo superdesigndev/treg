@@ -13,11 +13,13 @@ from treg.models import CallReview
 from test_review_body_pilot import PEOPLE, _add, _archive, _codes, _org, _record, _review
 
 
-def test_parse_pairs_takes_the_pilot_codes_and_refuses_unknown_ones():
-    assert review_body_audit.parse_pairs("12:EMPTY:PARTIAL, 34:WRONG,56:CONTEXT:") == [
-        (12, "EMPTY", "PARTIAL"), (34, "WRONG", None), (56, "CONTEXT", None)]
-    with pytest.raises(ValueError):
-        review_body_audit.parse_pairs("12:NOPE")
+def test_parse_pairs_takes_the_pilot_codings_and_refuses_unknown_ones():
+    assert review_body_audit.parse_pairs("12:WRONG=EMPTY:PARTIAL, 34:PARAM:COVER=WRONG,56:EMPTY=CONTEXT:") == [
+        (12, ("WRONG", None), ("EMPTY", "PARTIAL")), (34, ("PARAM", "COVER"), ("WRONG", None)),
+        (56, ("EMPTY", None), ("CONTEXT", None))]
+    for bad in ("12:NOPE=EMPTY", "12:EMPTY=NOPE", "12:EMPTY"):
+        with pytest.raises(ValueError):
+            review_body_audit.parse_pairs(bad)
 
 
 def test_the_order_is_blind_and_fixed_per_review():
@@ -44,7 +46,7 @@ def _coding(prompt, letter):
 
 async def test_winners_map_back_to_reason_or_body_and_nothing_is_written(clients, monkeypatch):
     org = await _org(clients)
-    rows = [_review(org, f"a-{i}", "WRONG") for i in range(4)] + [_record(org, f"a-{i}", f"k{i}") for i in range(4)]
+    rows = [_review(org, f"a-{i}", "CONTEXT") for i in range(4)] + [_record(org, f"a-{i}", f"k{i}") for i in range(4)]
     rows += [_review(org, "routed", "WRONG", routed=True), _record(org, "routed", tier="routed")]
     await _add(*rows)
     _archive(monkeypatch, {f"k{i}": PEOPLE for i in range(4)})
@@ -53,7 +55,9 @@ async def test_winners_map_back_to_reason_or_body_and_nothing_is_written(clients
                                              "code": "PARTIAL"})
     before = await _codes()
     ids = {r.call_id: r.id for r in rows if hasattr(r, "usefulness")}
-    pairs = [(ids[f"a-{i}"], "PARTIAL", None) for i in range(4)] + [(ids["routed"], "PARTIAL", None), (999999, "EMPTY", None)]
+    # The stored code is CONTEXT (the hourly judge's); the pilot's reason-only coding, WRONG, is the control.
+    pairs = [(ids[f"a-{i}"], ("WRONG", None), ("PARTIAL", None)) for i in range(4)]
+    pairs += [(ids["routed"], ("WRONG", None), ("PARTIAL", None)), (999999, ("WRONG", None), ("EMPTY", None))]
 
     out = await review_body_audit.run(pairs=pairs, model="m", max_usd=5, usd_per_mtok_in=4,
                                       usd_per_mtok_out=20, budget=500, max_tokens=100)
@@ -72,7 +76,7 @@ async def test_spend_cap_stops_new_requests(clients, monkeypatch):
     async with session_maker() as db:
         ids = [r.id for r in (await db.execute(select(CallReview))).scalars()]
 
-    out = await review_body_audit.run(pairs=[(i, "EMPTY", None) for i in ids], model="m", max_usd=0.006,
+    out = await review_body_audit.run(pairs=[(i, ("WRONG", None), ("EMPTY", None)) for i in ids], model="m", max_usd=0.006,
                                       usd_per_mtok_in=4, usd_per_mtok_out=20, budget=500, max_tokens=100)
     assert out["asked"] == 1 and out["stopped_by_cost"] is True and out["winners"] == {"both": 1}
 
@@ -84,7 +88,7 @@ async def test_an_unreadable_verdict_is_counted(clients, monkeypatch):
     _judge(monkeypatch, lambda p: {"verdict": "maybe"})
     async with session_maker() as db:
         review_id = (await db.execute(select(CallReview.id))).scalar_one()
-    out = await review_body_audit.run(pairs=[(review_id, "EMPTY", None)], model="m", max_usd=5,
+    out = await review_body_audit.run(pairs=[(review_id, ("WRONG", None), ("EMPTY", None))], model="m", max_usd=5,
                                       usd_per_mtok_in=4, usd_per_mtok_out=20, budget=500, max_tokens=100)
     assert out["unreadable"] == 1 and out["winners"] == {}
 

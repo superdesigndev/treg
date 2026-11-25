@@ -180,20 +180,24 @@ async def _codes():
 
 
 async def test_pilot_compares_codes_and_writes_nothing(clients, monkeypatch):
-    # p-0 and p-1 have answers on file, p-2's answer is gone, p-3 has no archive link.
+    # p-0 and p-1 have answers on file, p-2's answer is gone, p-3 has no archive link. The stored
+    # codes (here CONTEXT, as the hourly judge would write) are never the control: the reason-only
+    # coding is asked again, and says WRONG for p-1.
     org = await _org(clients)
-    codes = ["PARTIAL", "WRONG", "EMPTY", "ERROR"]
-    await _add(*[_review(org, f"p-{i}", c) for i, c in enumerate(codes)],
+    await _add(_review(org, "p-0", "CONTEXT"), _review(org, "p-1", "CONTEXT", reason=REASON + " Wrong."),
+               _review(org, "p-2", "EMPTY"), _review(org, "p-3", "ERROR"),
                _record(org, "p-0", "k0"), _record(org, "p-1", "k1"), _record(org, "p-2", "k2"),
                _record(org, "p-3"))
     _archive(monkeypatch, {"k0": PEOPLE, "k1": PEOPLE})
-    seen = _jev(monkeypatch)
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "PARTIAL" if "response" in item or not
+                                              item["reason"].endswith("Wrong.") else "WRONG"})
     before = await _codes()
 
     out = await review_body_pilot.run(sample=10, batch=5, budget=500, max_seconds=60)
     assert out["candidates"] == 4 and out["no_body"] == 2 and out["coded"] == 2
     assert out["same_primary"] == 1 and out["pairs"] == {"WRONG->PARTIAL": 1}
-    assert out["tokens_in"] == 50 and len(seen) == 1
+    assert out["reason_codes"] == {"PARTIAL": 1, "WRONG": 1}
+    assert out["tokens_in"] == 100 and len(seen) == 2 and "response" not in seen[1]["reviews"][0]
     sent = seen[0]["reviews"]
     assert [r["i"] for r in sent] == [0, 1] and all(len(r["response"]["body"]) <= 500 for r in sent)
     assert [d["review_id"] for d in out["diffs"]] and "fields came back" not in json.dumps(out)
@@ -260,7 +264,7 @@ async def test_vague_noreason_review_is_asked_and_a_blank_one_is_not(clients, mo
                _review(org, "blank", "NOREASON", reason="   "),
                _record(org, "vague", "kv"), _record(org, "blank", "kb"))
     _archive(monkeypatch, {"kv": json.dumps({"results": []}), "kb": "{}"})
-    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY" if "response" in item else "NOREASON"})
 
     out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
     assert out["no_reason"] == 1 and out["coded"] == 1 and len(seen[0]["reviews"]) == 1
@@ -297,7 +301,8 @@ async def test_a_secondary_only_change_is_a_diff(clients, monkeypatch):
     org = await _org(clients)
     await _add(_review(org, "e", "EMPTY"), _record(org, "e", "ke"))
     _archive(monkeypatch, {"ke": PEOPLE})
-    _jev(monkeypatch, lambda q, item: {"choice": "EMPTY", "probabilities": {"EMPTY": 0.6, "PARTIAL": 0.4}})
+    _jev(monkeypatch, lambda q, item: {"choice": "EMPTY", "probabilities": {"EMPTY": 0.6, "PARTIAL": 0.4}}
+         if "response" in item else {"choice": "EMPTY"})
 
     out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
     assert out["same_primary"] == 1 and out["pairs"] == {} and out["changed"] == 1

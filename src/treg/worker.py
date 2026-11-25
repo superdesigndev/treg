@@ -19,7 +19,7 @@
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
     treg-worker reviews judge [--max-seconds 600]    # Jev: new review reasons' privacy and codes (hourly)
     treg-worker reviews body-pilot [--sample 200]    # dry run: code negative reviews with the answer in view
-    treg-worker reviews body-audit --pairs ID:CODE,...  # Claude blind-checks the pilot's changed codes
+    treg-worker reviews body-audit --pairs ID:R=B,...  # Claude blind-checks the pilot's changed codes
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
@@ -997,7 +997,8 @@ def main(argv: list[str] | None = None) -> int:
     reva = revsub.add_parser("body-audit", help="Claude, blind, picks between the reason-only and the body "
                              "coding of reviews the body pilot changed; writes nothing, prints aggregates "
                              "and review ids only (off without ai_gateway_api_key)")
-    reva.add_argument("--pairs", required=True, help="review_id:PRIMARY[:SECONDARY],... the pilot's body codes")
+    reva.add_argument("--pairs", required=True,
+                      help="review_id:REASON[:SECONDARY]=BODY[:SECONDARY],... the pilot's two codings")
     reva.add_argument("--model", default="anthropic/claude-opus-5-5")
     reva.add_argument("--max-usd", type=float, default=5.0, help="no request starts once spend reaches this")
     reva.add_argument("--usd-per-mtok-in", type=float, default=4.0)
