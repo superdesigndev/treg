@@ -12,9 +12,6 @@ tourSteps(){ return this.tourData.steps; },
 tourStep(){ return this.tourSteps[this.tourI]; },
 tourParts(){ return [...new Set(this.tourSteps.map(s=>s.part))]; },
 agentPromptText(){ return this.buildAgentPrompt(this.agentGuide); },
-// The whole vendor pitch is two sentences: the hosted /vendor-listing page carries the real
-    // instructions, so this prompt only has to name the repo, the page, and the contact email.
-    vendorPromptText(){ return `Help me create a PR to treg (https://github.com/superdesigndev/treg) that adds our API to its tool catalog. Follow the instructions at ${this.proxy}/vendor-listing — and include our contact email in the PR description so the maintainers can reach us to arrange live verification.`; },
 // What to actually DO with a freshly minted agent token, in the three shapes people need.
     agentSnippet(){ const a=this.newAgent||this.snipAgent||((this.newApiKey&&this.newApiKey.assigned_type==='agent')?this.newApiKey:null); if(!a) return '';
       const base=this.proxy||location.origin, org=a.org||this.activeSlugNow;
