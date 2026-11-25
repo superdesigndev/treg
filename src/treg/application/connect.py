@@ -23,6 +23,7 @@ from ..infra.db import session_maker
 from ..infra.oauth_exchange import HTTPXOAuthExchangePort
 from ..infra.oauth_refresh import HTTPXOAuthRefreshPort
 from ..infra.upstream.injectors import ensure_base64
+from ..infra.upstream.ssrf import AddressLookupTimedOut
 from ..models import HubTool, Invite, Membership, PendingOAuth, Secret, Tool
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -894,10 +895,16 @@ async def _connection_for_upstream(
         secret = await _owned_connection(secret_id, org_id, db)
         _refuse_paused(secret.provider)
         await db.commit()  # end the read before the credential opens over the network
-        await connection_refresh.ensure_fresh(
-            secret, db, HTTPXOAuthRefreshPort(client), oauth_providers.platform_refresh_blob,
-            credentials=credential_cipher.Credentials(),
-        )
+        try:
+            await connection_refresh.ensure_fresh(
+                secret, db, HTTPXOAuthRefreshPort(client), oauth_providers.platform_refresh_blob,
+                credentials=credential_cipher.Credentials(),
+            )
+        except AddressLookupTimedOut:
+            raise ConnectError(
+                "provider_unreachable",
+                "could not renew this connection: its token endpoint address lookup timed out",
+            ) from None
     return secret, await credential_cipher.unseal(secret.value, org_id=secret.org_id)
 
 

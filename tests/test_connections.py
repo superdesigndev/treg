@@ -1125,3 +1125,44 @@ async def test_pick_resource_stamps_ready_made_example(clients: AsyncClient, tre
     stamped = [e for e in tool["examples"] if e.get("stamped") == "resource"]
     assert len(stamped) == 1
     assert stamped[0]["path"] == "v1beta/properties/999:runReport"
+
+
+# ---- a token endpoint whose address lookup times out ---------------------------------------
+@pytest.fixture
+def token_endpoint_lookup(monkeypatch):
+    """Switch the token endpoint's address check between timing out and passing."""
+    from treg.infra import oauth_refresh
+    from treg.infra.upstream.ssrf import AddressLookupTimedOut
+
+    state = {"timeout": True}
+
+    async def check(url):
+        if state["timeout"]:
+            raise AddressLookupTimedOut("address lookup timed out")
+        return True
+
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
+    monkeypatch.setattr(oauth_refresh, "url_host_is_public", check)
+    return state
+
+
+async def test_a_refresh_lookup_timeout_is_a_retryable_502_on_resource_routes(
+        clients: AsyncClient, treg_google_app, token_endpoint_lookup):
+    token_endpoint_lookup["timeout"] = False
+    st = await _connect_byo(clients, provider="google-search-console", name="google-search-console")
+    token_endpoint_lookup["timeout"] = True
+    sid = st["secret_id"]
+    async with session_maker() as db:
+        s = (await db.execute(select(Secret).where(Secret.id == sid))).scalars().one()
+        blob = json.loads(crypto.decrypt(s.value))
+        blob["client_id"] = "retired-cid"  # its own token_uri, not treg's app
+        blob["expires_at"] = 0  # stale: the next use refreshes
+        s.value = crypto.encrypt(json.dumps(blob))
+        await db.commit()
+
+    listed = await clients.get(f"/connections/{sid}/resources")
+    picked = await clients.post(f"/connections/{sid}/resource", json={"resource_ref": "sc-domain:example.com"})
+    for r in (listed, picked):
+        assert r.status_code == 502, r.text
+        assert "lookup timed out" in r.json()["detail"]
+
