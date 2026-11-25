@@ -7,7 +7,7 @@
 <meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads your newest followers, Jev judges each one as a buyer, and you get a share card of your leads.">
 <link rel="canonical" href="{BASE}/follower-leads"/>
 <meta property="og:title" content="Find the buyers in your X followers | treg"/>
-<meta property="og:description" content="Your newest 1,000 followers, judged one by one as buyers of what you sell."/>
+<meta property="og:description" content="Your newest 100 followers, judged one by one as buyers of what you sell."/>
 <meta property="og:url" content="{BASE}/follower-leads"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary"/>
@@ -292,7 +292,7 @@
       <button class="pill dark" id="run">Get your leads analysis card</button>
     </div>
     <div class="err" id="formErr"></div>
-    <p class="fnote">~$0.10 estimated for your newest 200 followers · billed per call to your treg balance</p>
+    <p class="fnote">~$0.05 estimated for your newest 100 followers · billed per call to your treg balance</p>
   </section>
 
   <section class="runbox" id="progress" hidden>
@@ -542,7 +542,7 @@
 
   /* ---------- form ---------- */
   function cleanHandle(v) { return v.trim().replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, '').replace(/^@/, '').split(/[/?#]/)[0]; }
-  var SCAN_N = 200;
+  var SCAN_N = 100;
   function saveDraft() { store.set(DRAFT, { handle: $('handle').value, at: Date.now() }); }
   var d = store.get(DRAFT);
   if (d && Date.now() - d.at < 3600e3) { $('handle').value = d.handle || ''; }
