@@ -924,10 +924,6 @@ def _marketplace_pricing(
                                  _OPENMART_PLATFORM_MAX_RECORDS))
             credit_micro = _usd_to_micro(rate)
             return _openmart_credits(bounded) * credit_micro, credit_micro
-    if provider == "sumble" and cost.get("sumble"):
-        from . import sumble
-        credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
-        return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
     if provider == "contactout" and cost.get("contactout"):
         from . import contactout
         request = _json_object(body) if body else dict(query.multi_items())
@@ -2536,7 +2532,7 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
             (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
         # Freeze one provider credit's replacement cost so a later fx edit cannot re-price a call
         # already in flight. USD reported charges use their fixed micro-USD conversion directly.
-        # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
+        # Body-reported credit counts (datagma, scrubby) settle against this, never against
         # `unit_micro`, which is a whole call on a per_success row.
         reported_charge_unit_micro = _rate_micro(cat.credit_rates.get(service), own_key_only=own_key_only)
     basis = settlement_basis.derive_basis(
@@ -2751,14 +2747,14 @@ async def _resolve_catalog_tier(
         _enforce_team_label(ep, caller.org_id, body, request_headers, query)
         _enforce_caller_email(ep, caller.email, body, request_headers, query)
         _enforce_request_quantity(ep, cost, body, query)
+        if service == "sumble":
+            from . import sumble
+            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data)
             call_cost.require_entities(ep, pricing.request_data)
             call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
-        if service == "sumble":
-            from . import sumble
-            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if service == "contactout":
             # Fixed catalog splits must not silently fall into ContactOut's personal+work default.
             inputs = ep.get("input") or {}

@@ -541,13 +541,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if isinstance(counted, dict) and mk.unit_micro > 0:
         rows = _dig(doc, counted["count"]["path"])
         return _rows_billed_micro(mk, ep, len(rows) if isinstance(rows, list) else None)
-    if provider == "sumble":
-        credits = doc.get("credits_used")
-        # The request-time credit freezes the rate, including legitimate zero usage. Not
-        # `unit_micro`: on a per_success row that is the whole call (50 credits for a brief).
-        if type(credits) is int and credits >= 0:
-            return credits * mk.reported_charge_unit_micro
-        return None
     if provider == "scrubby":
         credits = doc.get("credits_used")
         # Scrubby reports the exact per-call charge, including zero for a cached retry.
