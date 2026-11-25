@@ -100,6 +100,21 @@ async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict
     return record
 
 
+async def answering_child(db, *, org_id: int, call_id: str) -> CallRecord | None:
+    """The routed call's last successful attempt in its own team: the vendor a review of the call
+    is attributed to, and whose answer the agent saw.
+
+    A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>` on the
+    provider's job endpoint, which is not what was asked, so they are left out."""
+    escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
+    return (await db.execute(select(CallRecord).where(
+        CallRecord.org_id == org_id,
+        CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
+        CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
+        CallRecord.status_code >= 200, CallRecord.status_code < 300,
+    ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+
+
 async def submit_review(
     *, org_id: int, user_email: str, call_id: str, usefulness: ReviewUsefulness,
     reason: str | None = None, client: str = "", pinned_tags: dict | None = None,
@@ -122,15 +137,7 @@ async def submit_review(
         if record.credential_tier == "routed":
             targeted = None
             routed_via = record.endpoint_id
-            # A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>`
-            # on the provider's job endpoint, which is not what was asked, so they are left out.
-            escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
-            child = (await db.execute(select(CallRecord).where(
-                CallRecord.org_id == org_id,
-                CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
-                CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
-                CallRecord.status_code >= 200, CallRecord.status_code < 300,
-            ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+            child = await answering_child(db, org_id=org_id, call_id=call_id)
             if child is not None and child.endpoint_id:
                 endpoint_id, provider = child.endpoint_id, child.provider
                 targeted = endpoint_id
