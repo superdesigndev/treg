@@ -132,6 +132,19 @@ async def test_routed_review_reads_its_successful_attempt(clients, monkeypatch):
     assert item["routed"] is True and json.loads(item["response"]["body"]) == {"results": []}
 
 
+async def test_vague_noreason_review_is_asked_and_a_blank_one_is_not(clients, monkeypatch):
+    org = await _org(clients)
+    await _add(_review(org, "vague", "NOREASON", reason="The result was not useful."),
+               _review(org, "blank", "NOREASON", reason="   "),
+               _record(org, "vague", "kv"), _record(org, "blank", "kb"))
+    _archive(monkeypatch, {"kv": json.dumps({"results": []}), "kb": "{}"})
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
+    assert out["no_reason"] == 1 and out["coded"] == 1 and len(seen[0]["reviews"]) == 1
+    assert out["pairs"] == {"NOREASON->EMPTY": 1} and out["body_codes"] == {"EMPTY": 1}
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {

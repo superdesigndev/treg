@@ -43,7 +43,7 @@ async def _candidates(limit: int) -> list:
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    CallReview.reason.is_not(None),
                    CallReview.codebook_version == review_codes.CODEBOOK_VERSION,
-                   CallReview.primary_code.is_not(None), CallReview.primary_code != "NOREASON")
+                   CallReview.primary_code.is_not(None))
             .order_by(CallReview.created_at.desc()).limit(limit))).all()
 
 
@@ -88,7 +88,7 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
     deadline = time.monotonic() + max_seconds
     by_id = catalog_store.load().by_id
     rows = await _candidates(sample * 3)
-    out = {"candidates": len(rows), "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
+    out = {"candidates": len(rows), "no_reason": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
            "failed_requests": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0,
            "stopped_by_deadline": False}
     pairs, reason_codes, body_codes = Counter(), Counter(), Counter()
@@ -132,6 +132,9 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
         if time.monotonic() >= deadline:
             out["stopped_by_deadline"] = True
             break
+        if not r.reason.strip():  # coded NOREASON without asking; nothing to read beside the answer
+            out["no_reason"] += 1
+            continue
         found = await _answer(r)
         if found is None:
             out["no_body"] += 1
