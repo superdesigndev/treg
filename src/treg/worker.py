@@ -814,6 +814,15 @@ async def _enterprise_purge_audit(args) -> int:
     return 0
 
 
+def _answer_budget(value: str) -> int:
+    from .domain.feedback.body_view import MIN_BUDGET
+
+    n = int(value)
+    if n < MIN_BUDGET:
+        raise argparse.ArgumentTypeError(f"must be >= {MIN_BUDGET}")
+    return n
+
+
 def _positive_int(value: str) -> int:
     n = int(value)
     if n < 1:
@@ -955,7 +964,7 @@ def main(argv: list[str] | None = None) -> int:
                              "writes nothing, prints aggregates only")
     revp.add_argument("--sample", type=_positive_int, default=200)
     revp.add_argument("--batch", type=_positive_int, default=5)
-    revp.add_argument("--budget", type=_positive_int, default=4000, help="characters of each answer Jev reads")
+    revp.add_argument("--budget", type=_answer_budget, default=4000, help="characters of each answer Jev reads")
     revp.add_argument("--max-seconds", type=float, default=1200.0)
     revp.set_defaults(fn=_reviews_body_pilot)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")

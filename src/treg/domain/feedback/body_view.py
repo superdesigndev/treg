@@ -13,7 +13,7 @@ import re
 
 CUT = "…"
 MORE, MORE_KEYS, LIST, OBJECT, OMITTED = ("_treg_more", "_treg_more_keys", "_treg_list", "_treg_object",
-                                          "_treg_omitted_chars")
+                                          "_treg_omitted")
 # What each mark a cut leaves means, as the judge is told (`review_codes.body_code_question`).
 MARKERS = {
     CUT: "'…' at the end of a string: the string was cut there",
@@ -21,7 +21,7 @@ MARKERS = {
     MORE_KEYS: '`"_treg_more_keys": n` in an object: n more fields followed',
     LIST: '`{"_treg_list": n}` in place of a list: a list of n items was there',
     OBJECT: '`{"_treg_object": n}` in place of an object: an object with n fields was there',
-    OMITTED: '`{"_treg_omitted_chars": n}` as the whole answer: an answer of n characters was too long to show',
+    OMITTED: '`{"_treg_omitted": true}` as the whole answer: the answer was too long to show at all',
 }
 
 _STEPS = ((8, 300, 60), (5, 160, 40), (3, 80, 25), (2, 40, 15), (1, 24, 10))
@@ -55,13 +55,18 @@ def _dumps(value) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+# The last resort for a JSON answer, so the smallest budget that always fits; lengths are characters.
+_OMITTED_ALL = _dumps({OMITTED: True})
+MIN_BUDGET = len(_OMITTED_ALL)
+
+
 def shrink(text: str | None, budget: int) -> str:
-    """`text` cut to at most `budget` characters, keeping a JSON answer's structure. A JSON answer
+    """`text` cut to at most `budget` characters (at least `MIN_BUDGET`), keeping a JSON answer's structure. A JSON answer
     always stays valid JSON: past the last cut, deeper levels are replaced by their counts
     (`LIST`, `OBJECT`) rather than the text being sliced, so a cut never reads as
     the vendor's malformed output."""
-    if budget < 1:
-        raise ValueError("budget must be a positive number of characters")
+    if budget < MIN_BUDGET:
+        raise ValueError(f"budget must be at least {MIN_BUDGET} characters")
     if not text:
         return ""
     try:
@@ -79,4 +84,4 @@ def shrink(text: str | None, budget: int) -> str:
         if len(out) <= budget:
             return out
         out = _dumps(_cut(value, items, chars, keys, depth))
-    return out if len(out) <= budget else _dumps({OMITTED: len(text)})
+    return out if len(out) <= budget else _OMITTED_ALL

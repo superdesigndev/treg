@@ -81,18 +81,28 @@ def test_every_mark_a_cut_leaves_is_explained_to_the_judge(example, budget):
     assert body_view.CUT not in out or body_view.CUT in prompt
 
 
-@pytest.mark.parametrize("budget", [0, -5])
-def test_shrink_refuses_a_non_positive_budget(budget):
+@pytest.mark.parametrize("budget", [0, -5, body_view.MIN_BUDGET - 1])
+def test_shrink_refuses_a_budget_below_its_last_resort(budget):
     with pytest.raises(ValueError):
         body_view.shrink("word " * 2000, budget)
 
 
-@pytest.mark.parametrize("flag", ["--budget", "--sample", "--batch"])
-@pytest.mark.parametrize("value", ["0", "-5"])
-def test_cli_refuses_non_positive_numbers(flag, value, capsys):
+@pytest.mark.parametrize("text", ['{"results":[1]}', json.dumps({"人": ["数据" * 40] * 30}, ensure_ascii=False),
+                                  "中文正文" * 500, json.dumps({"a": {"b": {"c": [{"d": "e" * 80}] * 9}}})])
+def test_shrink_always_fits_the_budget(text):
+    for budget in range(body_view.MIN_BUDGET, 160):
+        out = body_view.shrink(text, budget)
+        assert len(out) <= budget, (budget, out)
+        if text.startswith("{"):
+            json.loads(out)
+
+
+@pytest.mark.parametrize("flag,value", [("--budget", "0"), ("--budget", "-5"), ("--budget", "1"),
+                                        ("--sample", "0"), ("--sample", "-5"), ("--batch", "0")])
+def test_cli_refuses_numbers_below_their_floor(flag, value, capsys):
     with pytest.raises(SystemExit):
         worker.main(["reviews", "body-pilot", flag, value])
-    assert "must be >= 1" in capsys.readouterr().err
+    assert "must be >= " in capsys.readouterr().err
 
 
 async def _org(clients) -> int:
