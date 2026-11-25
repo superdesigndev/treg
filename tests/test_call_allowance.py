@@ -2611,6 +2611,34 @@ async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(mon
     assert pauses == [1.5] and sweeps == [0], "one pause, after the empty pass; one sweep so far"
 
 
+async def test_an_idle_share_does_not_put_the_only_worker_to_sleep(store, monkeypatch):
+    """One process, four shares, one of them always busy: a pass that drew an empty share pauses
+    that share, not the process, which goes on to the busy one at once."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 4)
+    monkeypatch.setattr(allowance_sweep.random, "randrange", lambda count: 0)  # empty share first
+    busy, passes, pauses = (3, 4), [], []
+
+    async def one_busy_share(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append(shard)
+        if len(passes) >= 20:
+            raise asyncio.CancelledError
+        return 5 if shard == busy else 0
+
+    real_sleep = asyncio.sleep
+
+    async def pause(seconds: float) -> None:
+        pauses.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(allowance_sweep, "run_once", one_busy_share)
+    monkeypatch.setattr(allowance_sweep.asyncio, "sleep", pause)
+    with pytest.raises(asyncio.CancelledError):
+        await allowance_sweep.worker(fold_every_s=60, sweep_every_s=3_600)
+    assert pauses == [], "never asleep while a share has work"
+    assert passes[:4] == [(0, 4), (1, 4), (2, 4), busy]
+    assert passes[4:] == [busy] * 16, "the idle shares pause; the busy one is folded again at once"
+
+
 # ---- one money session per team, across processes ---------------------------------------------
 async def test_no_allowance_money_session_starts_while_another_process_holds_the_teams_lease(
         org_id, store, monkeypatch):

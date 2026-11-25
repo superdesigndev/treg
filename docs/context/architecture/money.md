@@ -623,8 +623,9 @@ past the bound do not make every new team scan them.
   up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass lists the teams of its share with queued charges, listed or
   not, the team whose oldest charge has waited longest first, at most `_TEAMS_PER_PASS` of them
   (the next pass comes back for the rest), and folds them a team at a time, a batch per
-  transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once, an idle one by a short
-  pause. Request processes only queue charges: neither a refill nor the charge writer folds.
+  transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once. An idle share pauses for
+  every process (its holder keeps the lease through the pause), and the process goes on to the
+  other shares; it pauses only once every share is taken or pausing. Request processes only queue charges: neither a refill nor the charge writer folds.
   So the connections folding uses are one per process running a pass, at most one per share,
   whatever the traffic and however many teams are busy, and none of them comes from the pool requests use. A team
   another process is working on (its lease is taken) is skipped, not waited for; so is a team

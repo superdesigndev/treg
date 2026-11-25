@@ -326,13 +326,14 @@ async def run_once(session_maker, *, sweep: bool,
 async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                  sweep_every_s: float = _SWEEP_EVERY_S) -> None:
     """Fold and sweep forever on the background pool, one process at a time per share of the
-    teams (`_pass_lease`). A pass that folded something is followed by the next at once; an idle
-    one by a pause every process shares (the holder keeps the lease through it); a process that
-    finds every share taken pauses too. Each share's idle sweep is due on its own clock. A bad
-    pass never kills the loop."""
+    teams (`_pass_lease`). A pass that folded something is followed by the next at once. An idle
+    share pauses for every process (the holder keeps its lease through the pause), but the
+    process goes on to another share: it pauses only once every share is taken or pausing, or
+    when it ran over every team because the store could not answer. Each share's idle sweep is
+    due on its own clock. A bad pass never kills the loop."""
     next_sweep: dict[allowance.Shard | None, float] = {}
     while True:
-        folded = 0
+        folded, pause = 0, True
         try:
             async with _pass_lease() as turn:
                 if turn.mine:
@@ -343,9 +344,10 @@ async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                                             keep_going=turn.holding, shard=turn.shard)
                     if not folded:
                         turn.rest_s = fold_every_s
+                    pause = not folded and turn.shard is None
         except asyncio.CancelledError:
             raise
         except Exception:
             log.error("allowance background pass failed", exc_info=True)
-        if not folded:
+        if pause and not folded:
             await asyncio.sleep(fold_every_s)
