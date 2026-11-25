@@ -2462,6 +2462,32 @@ async def test_passes_reach_every_team_however_many_have_charges_queued(
         assert await _queued(team) == 0 and (await _state(team))[0] == GRANT - 400
 
 
+async def test_teams_another_process_holds_do_not_use_up_a_pass(org_id, store, monkeypatch):
+    """A pass works on a bounded number of teams. The teams at the front, longest waiting, may
+    all be held by other processes; they must not take the places of the team behind them, pass
+    after pass."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_PER_PASS", 2)
+    teams = [org_id + offset for offset in range(3)]
+    async with session_maker() as db:
+        for team in teams[1:]:
+            db.add(Org(id=team, name="later", slug=uuid4().hex))
+        await db.flush()
+        for team in teams[1:]:
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{team}", team, "e.metered", 400, reserved_micro=400)
+            for team in teams])
+        for age, team in zip((30, 20, 10), teams):
+            await db.execute(update(CallCharge).where(CallCharge.org_id == team).values(
+                created_at=ledger._now() - timedelta(minutes=age)))
+        await db.commit()
+    for team in teams[:2]:  # the two longest waits, held elsewhere for the whole test
+        store.leases[runtime.money_key(team)] = "another process"
+    for _ in range(3):
+        await allowance_sweep.fold_queued_once(session_maker)
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
 async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
         org_id, store, monkeypatch):
     """The pass does not wait its turn behind a team's other money sessions: it leaves that

@@ -53,6 +53,7 @@ _FOLD_BATCH = 100
 _FOLD_BATCHES_PER_PASS = 10
 _TEAMS_PER_PAGE = 50
 _TEAMS_PER_PASS = 500
+_TEAMS_LISTED = 5000
 _ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
 _PASS_KEY = "treg:money-allowance-pass:v1"
@@ -262,33 +263,40 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
                            shard: allowance.Shard | None = None) -> int:
     """Fold the queue of every team (in `shard`, or every team) that has charges queued, listed
     or not: a queue outlives its team's listing and its hold. The team whose oldest charge has
-    waited longest goes first, so the longest wait is what a pass brings down; at most
-    `_TEAMS_PER_PASS` teams, and the next pass, which follows at once, comes back for the rest.
-    Stops between teams once `keep_going` says so. Returns how many charges were folded."""
-    total = 0
+    waited longest goes first, so the longest wait is what a pass brings down. A pass works on
+    at most `_TEAMS_PER_PASS` teams; a team it could not have (another process, or a session of
+    the team's own, is on it) does not count, so teams stuck at the front never use up a pass
+    and the teams behind them are still reached. The next pass, which follows at once, comes
+    back for the rest. Stops between teams once `keep_going` says so. Returns how many charges
+    were folded."""
+    total, worked = 0, 0
     async with session_maker() as db:
         org_ids = await allowance.orgs_with_queued_charges(
-            db, utcnow_naive(), limit=_TEAMS_PER_PASS, shard=shard)
+            db, utcnow_naive(), limit=_TEAMS_LISTED, shard=shard)
     for org_id in org_ids:
-        if not keep_going():
-            return total
-        total += await _fold_team(session_maker, org_id)
+        if worked >= _TEAMS_PER_PASS or not keep_going():
+            break
+        folded = await _fold_team(session_maker, org_id)
+        if folded is not None:
+            worked += 1
+            total += folded
     return total
 
 
-async def _fold_team(session_maker, org_id: int) -> int:
-    """A few batches of one team's queue. Stops when another process has the team, the team's
-    money sessions are busy (a request in this process holding its lock among them), or its rows
-    stay locked past `_LOCK_WAIT_MS`, and the next pass
-    comes back: the teams behind it are not kept waiting. One team failing does not stop the
-    pass."""
-    total = 0
+async def _fold_team(session_maker, org_id: int) -> int | None:
+    """A few batches of one team's queue; None when the team could not be had at all. Stops when
+    another process has the team, the team's money sessions are busy (a request in this process
+    holding its lock among them), or its rows stay locked past `_LOCK_WAIT_MS`, and the next
+    pass comes back: the teams behind it are not kept waiting. One team failing does not stop
+    the pass."""
+    total, had = 0, False
     try:
         for _ in range(_FOLD_BATCHES_PER_PASS):
             async with _team_lease(org_id) as free:
                 lock = money_lock(org_id)
                 if not free or lock.locked():
                     break
+                had = True
                 async with (
                     lock,
                     money_admission.admit(
@@ -304,13 +312,14 @@ async def _fold_team(session_maker, org_id: int) -> int:
             if folded.claimed < _FOLD_BATCH:
                 break
     except money_admission.AdmissionTimeout:
-        pass
+        if not total:
+            return None
     except Exception as exc:
         if _lock_timed_out(exc):
             log.info("folding the queued charges of org %s waited too long on its rows", org_id)
         else:
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
-    return total
+    return total if had else None
 
 
 async def run_once(session_maker, *, sweep: bool,

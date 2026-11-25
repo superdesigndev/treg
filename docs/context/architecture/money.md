@@ -623,8 +623,9 @@ past the bound do not make every new team scan them.
   up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass lists the teams of its share with queued charges, listed or
   not, the team whose oldest charge has waited longest first (a walk of the queue's team numbers
   on `ix_callcharge_org_id_created_at`, one probe per queued team and one more per team of the
-  share, so a share reads none of the rows other shares' teams have queued; revision 0126), at most `_TEAMS_PER_PASS` of them
-  (the next pass comes back for the rest), and folds them a team at a time, a batch per
+  share, so a share reads none of the rows other shares' teams have queued; revision 0126), working on at most `_TEAMS_PER_PASS` of
+  them, not counting a team another process or a session of its own holds, so teams stuck at
+  the front never use up a pass (the next pass comes back for the rest), and folds them a team at a time, a batch per
   transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once. An idle share pauses for
   every process (its holder keeps the lease through the pause), and the process goes on to the
   other shares; it pauses only once every share is taken or pausing. Request processes only queue charges: neither a refill nor the charge writer folds.
