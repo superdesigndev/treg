@@ -43,25 +43,23 @@ Each of these improves a listing:
 
 ## How to apply
 
-Give your coding agent a prompt like this one (the **List as vendor** button on the treg
-dashboard's Catalog page copies one):
+Start at the vendor console, https://vendors.treg.to. Sign in with a treg account and it walks you
+through two steps:
 
-```
-Help me create a PR to treg (https://github.com/superdesigndev/treg) that adds our API to its tool
-catalog. Follow the instructions at https://treg.to/vendor-listing and include our contact email in
-the PR description.
-```
-
-The agent opens one pull request on this repository: the registry entry, the catalog file, a logo,
-and a description with the evidence from its own live run against your account. Use a team address
-for the contact email; the repository is public. Never put a key in the pull request.
+1. **The listing pull request.** Paste the prompt it gives into your coding agent. The agent follows
+   https://treg.to/vendor-listing and opens one pull request on this repository: the registry entry,
+   the catalog file, a logo, and a description with the evidence from its own live run against your
+   account. Use a team address for the contact email; the repository is public. Never put a key in
+   the pull request.
+2. **What the pull request cannot carry.** Back on the console: a test key (stored encrypted, used
+   only to test your API), a contact for a shared Slack channel, and your price for treg.
 
 ## After the pull request
 
-Maintainers re-run every check with a key they control, correct any price that disagrees with
-their meter, and email the contact address about the next steps. Once it merges, agents can find
-and call your API, and treg shows each endpoint's measured success rate and latency next to its
-price: reliability is your ranking.
+Maintainers re-run every check with the test key, correct any price that disagrees with their
+meter, and reach you on the contact you gave. Once it merges, agents can find and call your API,
+and treg shows each endpoint's measured success rate and latency next to its price: reliability is
+your ranking.
 
 ## What gets declined
 

@@ -200,9 +200,6 @@ export default { ...controller, components: { ...controller.components, ...dialo
         </div></div>
     </div>
 
-    <!-- LIST AS VENDOR (an instruction the vendor pastes into THEIR coding agent; it raises the PR) -->
-    <ImportSkillDialog v-if="vendorAsk" />
-
     <!-- REQUEST A TOOL (a "the catalog doesn't have X" report — saved server-side, steers what gets keyed next) -->
     <RequestToolDialog v-if="reqAsk" />
 
