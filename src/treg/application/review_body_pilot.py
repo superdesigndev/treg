@@ -2,7 +2,8 @@
 
 The hourly judge (`application.review_judge`) codes a `partly` or `not_useful` review from its
 reason alone. This pilot takes the newest such reviews already coded under the current codebook
-whose call still has its answer on file (`archive.resolve_result`), asks Jev the same codebook
+whose call still has its answer on file (`archive.resolve_result`; for a routed call, the answer of
+the attempt the review is attributed to), asks Jev the same codebook
 with the request and a shortened answer beside the reason (`review_codes.body_code_question`,
 `body_view.shrink`), and reports how the two codings compare.
 
@@ -24,6 +25,7 @@ from ..domain.feedback import body_view, review_codes
 from ..infra.db import session_maker
 from ..models import CallRecord, CallReview
 from ..timeutil import utcnow_naive
+from .feedback import answering_child
 from .review_judge import NEGATIVE, _ask, configured
 
 WINDOW_DAYS = 28
@@ -35,16 +37,34 @@ async def _candidates(limit: int) -> list:
     since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
     async with session_maker() as db:
         return (await db.execute(
-            select(CallReview.id, CallReview.reason, CallReview.usefulness, CallReview.endpoint_id,
-                   CallReview.routed_via, CallReview.primary_code, CallReview.secondary_code,
-                   CallRecord.archive_key_hash, CallRecord.archive_content_hash)
-            .join(CallRecord, CallRecord.call_ref == CallReview.call_id)
-            .where(CallReview.created_at >= since, CallRecord.created_at >= since - timedelta(days=1),
-                   CallReview.usefulness.in_(NEGATIVE), CallReview.reason.is_not(None),
+            select(CallReview.id, CallReview.org_id, CallReview.call_id, CallReview.reason,
+                   CallReview.usefulness, CallReview.endpoint_id, CallReview.routed_via,
+                   CallReview.primary_code, CallReview.secondary_code)
+            .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
+                   CallReview.reason.is_not(None),
                    CallReview.codebook_version == review_codes.CODEBOOK_VERSION,
-                   CallReview.primary_code.is_not(None), CallReview.primary_code != "NOREASON",
-                   CallRecord.archive_key_hash.is_not(None), CallRecord.archive_content_hash.is_not(None))
+                   CallReview.primary_code.is_not(None), CallReview.primary_code != "NOREASON")
             .order_by(CallReview.created_at.desc()).limit(limit))).all()
+
+
+async def _answer(r) -> dict | None:
+    """The answer the reviewed call got, from the archive. A routed call has no archive link of
+    its own: its answer is that of the attempt the review is attributed to
+    (`feedback.answering_child`), in the review's own team."""
+    async with session_maker() as db:
+        if r.routed_via is not None:
+            record = await answering_child(db, org_id=r.org_id, call_id=r.call_id)
+        else:
+            record = (await db.execute(select(CallRecord).where(
+                CallRecord.org_id == r.org_id, CallRecord.call_ref == r.call_id,
+            ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
+        link = (record.archive_key_hash, record.archive_content_hash) if record is not None else (None, None)
+    if None in link:
+        return None
+    found = await archive.resolve_result(*link)
+    if not found or not found["stored"] or found["response"]["body_text"] is None:
+        return None
+    return found
 
 
 def _item(i: int, r, found: dict, capability: str, budget: int) -> dict:
@@ -112,8 +132,8 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
         if time.monotonic() >= deadline:
             out["stopped_by_deadline"] = True
             break
-        found = await archive.resolve_result(r.archive_key_hash, r.archive_content_hash)
-        if not found or not found["stored"] or found["response"]["body_text"] is None:
+        found = await _answer(r)
+        if found is None:
             out["no_body"] += 1
             continue
         capability = (by_id.get(r.endpoint_id) or {}).get("capability") or ""
