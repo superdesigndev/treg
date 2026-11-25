@@ -418,6 +418,8 @@ class MarketplaceCall:
     # That reserve marked the call in flight in the shared store (a keyed call): cleared once its
     # charge is written.
     allowance_marked: bool = False
+    # The caller's tags of a tagged call that took: carried on its charge, whose fold writes them.
+    allowance_tags: dict[str, str] | None = None
     # Its allowance charge was handed to the charge writer, which writes it whatever then happens
     # to the request: a cancel from here on keeps the call's idempotency claim.
     allowance_charged: bool = False
@@ -431,6 +433,8 @@ class MarketplaceCall:
     key_slot: str | None = None
     # A routed child: settle into this list instead of the ledger (CallContext.deferred_settles).
     deferred: list | None = None
+    # A routed child whose root lets it take from the allowance (CallContext.routed_allowance).
+    routed_allowance: bool = False
     # A v2 row's frozen cost terms (`call.cost`): the settle follows the v2 settlement order.
     cost_terms: dict | None = None
 
@@ -461,7 +465,8 @@ class MarketplaceCall:
         ownership = self.resource_ownership or {}
         return (self.tier == "platform" and self.cost_type == "free"
                 and self.estimate_micro == 0 and not self.billed_oauth
-                and self.deferred is None and self.async_owner_call_id is None
+                and (self.deferred is None or self.routed_allowance)
+                and self.async_owner_call_id is None
                 and not self.async_descriptor and not ownership.get("produces")
                 and (self.settlement_basis.get("amount") or {}).get("kind") != "usage")
 
@@ -757,6 +762,17 @@ def _usd_to_micro(usd: float) -> int:
     return whole + 1 if raw > whole else whole
 
 
+def _rate_micro(usd: float | None, *, own_key_only: bool) -> int:
+    """A catalog rate in RAW micro-USD. A row treg's key never serves prices a rate fx.yaml leaves
+    `usd: null` (or lacks) at 0, the informational price of an own-key call; on a platform-eligible
+    row a missing rate still raises."""
+    if usd is None:
+        if own_key_only:
+            return 0
+        raise ValueError("a platform-eligible catalog row has no USD rate")
+    return _usd_to_micro(usd)
+
+
 def _truthy(value) -> bool:
     """Provider query/body booleans arrive as strings or JSON booleans; interpret both."""
     return value is True or (isinstance(value, str) and value.strip().lower() in ("1", "true", "yes"))
@@ -912,7 +928,7 @@ def _marketplace_pricing(
         from . import sumble
         credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
         return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
-    if provider == "contactout":
+    if provider == "contactout" and cost.get("contactout"):
         from . import contactout
         request = _json_object(body) if body else dict(query.multi_items())
         return contactout.estimate(cost, request), 0
@@ -942,14 +958,6 @@ def _marketplace_pricing(
     else:
         unit = (_usd_to_micro(cost["usd"])
                 if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
-    if endpoint_id in ("icypeas.bulk.search", "icypeas.people.email.find") and credit_rate:
-        # The answer is an id ({file} / {item: {_id}}) with no rows, so this reserve IS the bill: one
-        # row per bulk `data` entry at its task's rate, one for a single search.
-        # ponytail: a search row is billed as if found; per-found billing needs a settle on job end.
-        doc = _json_object(body)
-        rows = doc.get("data") if isinstance(doc.get("data"), list) else []
-        credits = 0.1 if doc.get("task") == "email-verification" else 1
-        return _usd_to_micro(max(1, min(len(rows), 5000)) * credits * credit_rate), unit
     if provider == "quickenrich":
         credit = _usd_to_micro(float(cost.get("usd") or 0))
         if endpoint_id == "quickenrich.people.search.domain":
@@ -2486,7 +2494,8 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     request_data = settlement_basis.request_evidence(
         query.multi_items(), body, path_names=consumed)
     unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
-    unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
+    own_key_only = not cat.platform_eligible(ep)
+    unit_micro = _rate_micro(unit_view.get("usd") if unit_view else None, own_key_only=own_key_only)
     usage_unit_micro = None
     usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
     if usage_unit == "credit":
@@ -2503,7 +2512,7 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
         # already in flight. USD reported charges use their fixed micro-USD conversion directly.
         # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
         # `unit_micro`, which is a whole call on a per_success row.
-        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+        reported_charge_unit_micro = _rate_micro(cat.credit_rates.get(service), own_key_only=own_key_only)
     basis = settlement_basis.derive_basis(
         raw_cost, request=request_data, input_schema=ep.get("input") or {},
         unit_micro=unit_micro, terminal=bool(ep.get("async")),

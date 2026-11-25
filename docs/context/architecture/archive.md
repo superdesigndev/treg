@@ -406,7 +406,18 @@ bytes that team already received. A metered answer is returned as its caller rec
 `strip_reported_charge` on, without the provider's reported charge unless the request keeps it
 ([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
 provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
-`children`, audited before the parent, so the lookup reads the hour before the parent's row.
+`children`, audited before the parent, so the lookup reads the hour before the parent's row. Its
+`served_call_ref` names the one child whose answer the caller received and `served_content_hash`
+the sha256 of the bytes it returned as `raw` ([data-model](data-model.md)). The reader, with no
+scan of the team's history: read the child row by that exact ref; its own archived answer counts
+when its `archive_content_hash` equals `served_content_hash` (a sync answer, or an async provider
+that finished on submission), read as bytes with `answer_bytes(key_hash, served_content_hash)`,
+which checks them against the hash and returns None for a hash-only or expired version; otherwise the terminal answer filed under the ref,
+`load_terminal_responses([(ref, endpoint_id)])`, counts when sha256 of its bytes equals it.
+Anything else is "archive unavailable", never a substitute: another poller's terminal answer that
+was archived first, a body the call path changed before delivery (the provider's reported charge
+removed), a hash-only version, a shed child row. A NULL link means no usable link was recorded, not that no answer was
+served; rows written before 0127 are NULL too.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).
 

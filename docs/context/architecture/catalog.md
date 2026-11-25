@@ -333,9 +333,10 @@ Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`sou
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
 deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
 those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
-worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
-included; a missing entry fails validation. Both blocks must stay
-ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
+worse than an honest credit count. An own-key call to such a row still prices (pricing runs on
+every tier): its per-unit and credit figures are an informational zero, while a platform-eligible
+row with no rate still refuses to price. A v2 price in credits or a meter needs an entry, a null
+one included; a missing entry fails validation. Both blocks must stay ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
 Two treg-set kinds exist for providers with no per-call vendor price; [money](money.md) owns the
@@ -371,8 +372,10 @@ cost:
   `queryParams.mode`) so query/body collisions cannot price the wrong field. Every `when` field must
   be required or have a `default`; narrow rows precede broad ones; the validator rejects shadowed or
   duplicate conditions, unknown keys, non-finite values, values outside the input's enum/min/max, and
-  `value` together with `table`.
-- `times` multiplies by one numeric field with a positive `max`. A value outside the declared range,
+  `value` together with `table`. An empty `when: {}` matches every request, so it can only be the
+  last row: a job priced by its size alone is one such row with `times`.
+- `times` multiplies by one numeric field with a positive `max`, or by the length of one list field
+  with a positive `maxItems` (one price per row a job asks for). A value outside the declared range,
   non-finite or non-positive (whatever minimum the field declares) matches no row and prices at the
   fallback, so a request can neither reserve zero nor bill past the ceiling. A sentinel such as
   `-1` is priced by a flat row that pins it, and that row is left out of the advertised rate span.
@@ -382,10 +385,13 @@ cost:
   `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
   most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
-  `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
-  positive USD rates; a term path may select a list item by key
+  `unit_rates_usd[provider][unit]` entry. `usage.terms` sums several meters times positive rates in
+  `usage.unit` (USD, or the provider's credit or meter, priced by fx.yaml like a single path); a term path may select a list item by key
   (`candidatesTokensDetails[modality=IMAGE].tokenCount`); an absent meter counts as zero (proto3
-  JSON omits zeros) and a response with none settles at the reserve. Settlement itself is in
+  JSON omits zeros) and a response with none settles at the reserve. A single `usage.path` may add
+  `missing: 0` for a provider that leaves a zero meter out of its finished answer (LeadsForge's
+  `consumedCredits`): absent then settles at zero, while an unreadable value still settles at the
+  reserve. Settlement itself is in
   [money](money.md).
 - Display: `_table_floor` computes the cheapest row into `cost.table_min`, served as `usd_min`
   beside `usd` (still the ceiling reserve and eligibility read), so every surface shows `$low-$high`.
@@ -611,9 +617,12 @@ Validation of the effective descriptor: dotted paths; non-empty `success`; `fail
 only when `billed_failure` supplies terminal failure words, or the descriptor has `max_age`; optional
 `progress` names expected non-terminal words; status lists are disjoint; positive `interval`; poll
 has exactly one of `endpoint` or `url_from`, result exactly one of `path` or `fetch`; unknown keys
-fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `param` is exactly
+fail. Static poll/fetch ids must be same-provider utility endpoints; poll `param` is exactly
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
-the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
+the target. A path or query id needs a GET target. A poll `param` with `in: body` needs a POST
+target and is sent as the whole JSON body `{name: id}` (Icypeas reads a search that way) by the
+worker, the routed bridge, Enrich Arena, `/tasks/` and the CLI awaiter, whose resume line is then
+`treg call <poll> --data '{...}'`; a fetch id is never a body. Dynamic URLs need a non-empty `url_hosts`.
 An optional `pending_response` matches one non-2xx HTTP status and one JSON error value. The CLI
 and worker treat only that exact envelope as progress; other non-2xx responses remain errors and
 never serve as settlement evidence.
@@ -980,7 +989,9 @@ headers are agent-facing in `src/treg/web/skill.md`; the invariants are AGENTS.m
 
 Per capability: one-of identity variants (structural keys, never provider names), `derive` rules,
 a small output core and `miss` in canonical terms. `raw` (the winning provider's body) is always
-returned and never documented as stable. An output field may say where it lands in a call event
+returned and never documented as stable. The parent's audit row records which child that body came
+from and its hash (`CallRecord.served_call_ref` / `served_content_hash`, set by `route._run_routed` before `_audit_parent`; `_run_upgrade`
+hands back the nested call's own), so the archived answer can be read later by exact id. An output field may say where it lands in a call event
 (`analytics`, [call-events](call-events.md)); the public contract view drops it.
 
 - `advice_unverified` is attached as `_treg.advice` to a hit whose `verified` is not true (a found

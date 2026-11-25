@@ -361,21 +361,25 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.keyword}
     out: {posts: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   scrapecreators.x.v1-instagram-search-hashtag:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: posts, count: "len(posts)", next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   justoneapi.x.instagram-search-hashtag-posts-v1:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: data.data.hashtag.edge_hashtag_to_media.edges, count: data.data.hashtag.edge_hashtag_to_media.count,
           next_cursor: data.data.hashtag.edge_hashtag_to_media.page_info.end_cursor}
+    paging: {cursor: queryParams.endCursor}
 
   # ---- x.user.posts -------------------------------------------------------------------------
   tikhub.x.user.posts:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.screen_name, user_id: queryParams.rest_id}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
   scrapecreators.x.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -384,6 +388,7 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.restId}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
 
   # ---- tiktok.user.profile ------------------------------------------------------------------
   tikhub.tiktok.user.profile:
@@ -678,10 +683,10 @@ adapters:
     accepts: [[email]]
     in: {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status}
-    # Preserve uncertain verdict words; only explicit valid confirms deliverability.
-    # Require both a successful envelope and a nonempty verdict, using existing expressions.
-    # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
-    miss: "at_least(status_code != 200, coalesce(data.status) == null)"
+    # Only explicit valid confirms deliverability. ContactOut bills valid, invalid and accept_all;
+    # unknown and disposable are unbilled, so they are misses: settlement charges nothing and a
+    # routed call goes on. at_least takes the maximum of two 0/1 predicates, so it reads as "or".
+    miss: "at_least(at_least(status_code != 200, coalesce(data.status) == null), at_least(data.status == 'unknown', data.status == 'disposable'))"
     verdicts: {accept_all: catch_all}
   crawl4ai.people.email.verify:
     accepts: [[email]]
@@ -778,7 +783,9 @@ adapters:
           company: "get(flagged(roles, 'is_current'), 'organization.name')",
           company_domain: "get(flagged(roles, 'is_current'), 'organization.domain')",
           linkedin_url: linkedin_info.public_profile_url, location: location.name}
+  # Not a router candidate: almost no email it is sent matches a person, so it only adds a wait.
   forager.people.enrich.by_email:
+    route: false
     accepts: [[email]]
     in: {email: body.email}
     test_identity: {email: jane.doe@example.com}
@@ -870,14 +877,17 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {posts: data.items, next_cursor: data.next_max_id}
+    paging: {cursor: queryParams.max_id}
   scrapecreators.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
     out: {posts: items, next_cursor: next_max_id}
+    paging: {cursor: queryParams.next_max_id}
   justoneapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.username}
-    out: {posts: data.data.items, next_cursor: data.data.next_page_token}
+    out: {posts: data.data.items, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.paginationToken}
 
   # ---- instagram.post.detail ----------------------------------------------------------------
   tikhub.x.instagram-v1-fetch-post-by-id:
@@ -2020,17 +2030,19 @@ adapters:
   justoneapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
-    const: {queryParams.offset: "0"}
     out: {videos: data.aweme_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
   scrapecreators.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {videos: search_item_list, next_cursor: cursor, has_more: has_more}
+    paging: {cursor: queryParams.cursor}
   tikhub.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.count: limit}
     out: {videos: data.search_item_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
 
   justoneapi.x.instagram-get-post-comments-v1:
     accepts: [[shortcode]]
@@ -2165,6 +2177,13 @@ adapters:
     const: {queryParams.engine: bing}
     out: {results: organic_results, count: search_information.total_results}
     miss: "organic_results == []"
+  cloro.bing.serp.organic:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.country: "upper(country)"}
+    position: {offset: "zero_based(body.first)"}
+    out: {results: result.organicResults, count: "len(result.organicResults)"}
   # x.user.following, x.post.detail, youtube.video.captions, google.domain.competitors, xiaohongshu.search.notes:
   # one vendor with a usable fixture each (X's own API is an OAuth tool) — no waterfall yet.
 
@@ -2178,15 +2197,18 @@ adapters:
     in:  {user_id: queryParams.user_id}
     in_expr: {queryParams.count: limit}
     out: {reels: data.items, next_cursor: data.paging_info.max_id, has_more: data.paging_info.more_available}
+    paging: {cursor: queryParams.max_id}
   tikhub.x.instagram-v2-fetch-user-reels:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.username, user_id: queryParams.user_id}
     out: {reels: data.data.items, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   tikhub.x.instagram-v3-get-user-reels:
     accepts: [[username]]
     in:  {username: queryParams.username}
     in_expr: {queryParams.page_size: limit}
-    out: {reels: data.items, next_cursor: data.next_max_id}
+    # No paging: TikHub answers a page_info.end_cursor sent as `after` with an empty page it still bills.
+    out: {reels: data.items}
 
   justoneapi.x.youtube-get-channel-videos-v1:
     accepts: [[channel_id]]
@@ -3043,14 +3065,17 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {posts: output.data.items, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts.timeline:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -3074,6 +3099,7 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {videos: output.data.videos, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.tiktok.search.users:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3086,10 +3112,12 @@ adapters:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.user.reels:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.post.detail:
     accepts: [[url]]
     in:  {url: body.url}
@@ -3103,6 +3131,7 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.search.reels:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3574,6 +3603,7 @@ adapters:
     # Originals-only callers use this child directly and omit the flag, or pass false.
     const: {queryParams.includeReposts: "true"}
     out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
+    paging: {cursor: queryParams.paginationToken}
     miss: "posts == []"
   fetchinio.linkedin.post.comments:
     accepts: [[post_urn], [post_id]]
@@ -3595,12 +3625,14 @@ adapters:
     in: {linkedin_handle: queryParams.linkedinID}
     in_expr: {queryParams.perPage: limit}
     out: {posts: results, next_cursor: paginationToken, has_more: hasMoreResults}
+    paging: {cursor: queryParams.paginationToken}
     miss: "results == []"
   harvestapi.linkedin.user.posts:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.profilePublicIdentifier}
     const: {queryParams.page: "1"}
-    out: {posts: elements, next_cursor: paginationToken}
+    out: {posts: elements, next_cursor: pagination.paginationToken}
+    paging: {cursor: queryParams.paginationToken}
     miss: "elements == []"
 
   # ---- influencers.club enrich tiers: cache result admission only (`routed: false` contracts) --
@@ -3894,11 +3926,13 @@ adapters:
     in: {page_id: body.pageId, company_name: body.companyName}
     out: {ads: output.data.ads, page_id: "output.data.ads[0].pageId", count: "len(output.data.ads)",
           next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   adyntel.meta-ads.library.advertiser:
     accepts: [[company_domain]]
     in: {company_domain: body.company_domain}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: continuation_token}
+    paging: {cursor: body.continuation_token}
     miss: "coalesce(results, []) == []"
   adyntel.google.ads.transparency:
     accepts: [[company_domain]]
@@ -3920,6 +3954,7 @@ adapters:
     in: {page_id: queryParams.pageId, company_name: queryParams.companyName}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   crawl4ai.facebook.user.posts:
     accepts: [[url]]
     in: {url: body.page}

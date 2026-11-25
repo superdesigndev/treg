@@ -371,7 +371,7 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
                    session_factory=session_factory, clock=clock)
     if dry_run:
         return await _run(result, **options)
-    async with _only_run(session_factory) as alone:
+    async with _only_run() as alone:
         if not alone:
             result.stopped = "busy"
             return asdict(result)
@@ -379,10 +379,12 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
 
 
 @asynccontextmanager
-async def _only_run(session_factory):
+async def _only_run():
     """Hold a session-level advisory lock for the run on a connection of its own (idle between
-    its two statements, so it pins no snapshot) -> whether this run got it. SQLite: always."""
-    async with session_factory.kw["bind"].connect() as connection:
+    its two statements, so it pins no snapshot) -> whether this run got it. SQLite: always.
+    The connection is the API pool's, which never goes through a transaction pooler: the lock
+    lives on the server connection that took it."""
+    async with session_maker.kw["bind"].connect() as connection:
         if connection.dialect.name != "postgresql":
             yield True
             return

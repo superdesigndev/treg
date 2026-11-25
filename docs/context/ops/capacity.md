@@ -329,8 +329,10 @@ the aggregator's real price with no markup, disclosed through `X-Treg-Cost-Micro
 - **`OverflowRoute`**: one row per `(endpoint_id, aggregator)` with a derived `enabled` and
   `disabled_reason`. Worker-owned; the call path reads it through `routes_view.py`.
   `overflow sync` and `overflow verify` are the only writers.
-- **`routes.py` `eligible`** holds every rule: platform-eligible, policy allows overflow
-  (`_NO_OVERFLOW`), same unit (a per-result price is accepted for a per-call endpoint returning at
+- **`routes.py` `eligible`** holds every rule: platform-eligible, not an async job (its task would
+  live on the aggregator's account, where neither the caller nor the settlement worker can poll it;
+  `routes_view.for_endpoint` also returns nothing for one before the next sync disables its row),
+  policy allows overflow (`_NO_OVERFLOW`), same unit (a per-result price is accepted for a per-call endpoint returning at
   most one record), `ratio <= MAX_RATIO` or, for an endpoint free to us, an aggregator price at most
   `FREE_ROUTE_MAX_USD` (free routes still refuse when the account is dry), verified within
   `VERIFY_MAX_AGE`. `request_priced` admits the exact fixed-fee contracts in `_FIXED_DISCOVERY_PATHS`

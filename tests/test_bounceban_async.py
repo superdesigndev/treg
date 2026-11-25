@@ -168,6 +168,7 @@ async def test_direct_verifying_then_success_settles_once_with_hit_and_verdict(
         assert await db.get(Hold, call_ref) is None
     original = await _row(call_ref)
     assert original.hit is True and original.verdict == "valid"
+    assert original.cost_charged_micro == task.settled_micro  # the call record shows the charge
 
 
 async def test_routed_immediate_answer_is_judged_at_once(clients, monkeypatch, bounceban_on):
@@ -208,6 +209,7 @@ async def test_routed_verifying_is_waited_for_not_a_miss(
     assert before - await _balance(clients) == task.settled_micro
     row = await _row(task.call_id)
     assert row.hit is True and row.verdict == "invalid"
+    assert row.cost_charged_micro == task.settled_micro
 
 
 async def test_routed_verifying_past_the_wait_is_pending_and_the_worker_finishes_it(
@@ -275,6 +277,7 @@ async def test_worker_polls_inside_the_window_then_releases(clients, monkeypatch
             break
     [task] = await _tasks()
     assert task.status == "timed_out" and task.settled_micro == 0
+    assert (await _row(task.call_id)).cost_charged_micro == 0  # released: charged nothing
     assert polls and len(polls) <= 5 and max(polls) < 300
     assert (clock["now"] - created).total_seconds() <= 300
     assert await _balance(clients) == before

@@ -465,8 +465,8 @@ def price_table_view(cost) -> dict:
             price += f" × {str(row['times']).split('.', 1)[-1]}"
             if row.get("times_min") is not None:
                 price += f" (from {row['times_min']})"
-        rows.append({"when": " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items()),
-                     "price": price})
+        when = " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items())
+        rows.append({"when": when or "any request", "price": price})
     fb = cost.get("fallback") or {}
     if isinstance(fb, dict) and fb.get("value") is not None:
         rows.append({"when": "fallback (ceiling)", "price": money(float(fb["value"]))})
@@ -488,7 +488,10 @@ def async_view(desc) -> dict | None:
     poll, status, result = desc.get("poll") or {}, desc.get("status") or {}, desc.get("result") or {}
     every = f"every ~{desc.get('interval', 10)} s"
     if poll.get("endpoint"):
-        poll_how = f"treg call {poll['endpoint']} -p {(poll.get('param') or {}).get('name')}=<task id>, {every}"
+        param = poll.get("param") or {}
+        how = (f"--data '{{\"{param.get('name')}\": \"<task id>\"}}'" if param.get("in") == "body"
+               else f"-p {param.get('name')}=<task id>")
+        poll_how = f"treg call {poll['endpoint']} {how}, {every}"
     elif poll.get("url_from"):
         poll_how = f"the URL in response field {poll['url_from']} (hosts: {', '.join(poll.get('url_hosts') or [])}), {every}"
     else:

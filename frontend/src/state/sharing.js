@@ -15,7 +15,6 @@ async copyToken(){ if(!this.myToken) return; if(!(await this.toClipboard(this.my
       return TregAgentSetup.command(this.proxy);
     },
 async copyAgentPrompt(){ if(!(await this.toClipboard(this.agentPromptText))) return; this.agentGuideCopied=true; setTimeout(()=>this.agentGuideCopied=false,1500); },
-async copyVendorPrompt(){ if(!(await this.toClipboard(this.vendorPromptText))) return; this.vendorCopied=true; setTimeout(()=>this.vendorCopied=false,1500); },
 openToolRequest(){ this.reqDone=false; this.reqErr=''; this.reqForm.capability=(this.q||'').trim(); this.reqAsk=true; },
 // pre-fill with the search that came up short
     async submitToolRequest(){ const cap=(this.reqForm.capability||'').trim();

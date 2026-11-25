@@ -345,7 +345,9 @@ def cost_type(price: dict | None, reserve: dict | None, settle: dict | None, bil
         return None
     if price.get("value") is not None and Decimal(price["value"]) == 0:
         return "free"
-    if reserve is not None or (settle or {}).keys() & {"count", "plugin"}:
+    reported_call = (price.get("unit") == "call" and "plugin" in (reserve or {})
+                     and "reported" in (settle or {}))
+    if not reported_call and (reserve is not None or (settle or {}).keys() & {"count", "plugin"}):
         return "per_result"
     if bill.get("miss") == "charged":
         return "per_call"

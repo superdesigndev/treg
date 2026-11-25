@@ -61,6 +61,11 @@ value paints over its neighbour. A real table grows the column instead. The shee
 other text, text past its row, or a page that scrolls sideways (`textCollisions`, `sidewaysCulprits`
 in `e2e/helpers.ts`). Add a page with a table or cards to it.
 
+Keep browser tests to what only a browser shows: sign-in and navigation end to end, layout, a late
+answer racing a newer one, and what a page renders or stores from untrusted data. What a function
+decides belongs in `tests/` (vitest), and what the server alone decides, such as a platform having its
+logo, belongs in the Python suite.
+
 Browser tests run against the **built** dashboard (`TREG_FRONTEND_DEV=false`), not the source: run
 `bash scripts/build-dashboard.sh` after every frontend change, or the browser tests pass or fail on the
 previous build. A regression test only counts once it has failed against a build without the fix.
