@@ -28,6 +28,7 @@ sources:
 
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0127_callrecord_served_call_ref.py
+  - tests/test_callrecord_served_call_ref_migration.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py

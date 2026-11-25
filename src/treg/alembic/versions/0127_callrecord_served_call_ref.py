@@ -26,12 +26,26 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+COLUMNS = ("served_call_ref", "served_content_hash")
+
+
+def _present() -> set[str]:
+    return {c["name"] for c in sa.inspect(op.get_bind()).get_columns("callrecord")}
+
+
 def upgrade() -> None:
-    op.add_column("callrecord", sa.Column("served_call_ref", sa.String(), nullable=True))
-    op.add_column("callrecord", sa.Column("served_content_hash", sa.String(), nullable=True))
+    # Each ADD COLUMN commits on its own where DDL is not transactional (SQLite under Alembic): an
+    # interrupted run can leave the first column with the version still 0126. A rerun adds only
+    # the columns that are missing.
+    present = _present()
+    for name in COLUMNS:
+        if name not in present:
+            op.add_column("callrecord", sa.Column(name, sa.String(), nullable=True))
 
 
 def downgrade() -> None:
+    present = _present()
     with op.batch_alter_table("callrecord") as batch:
-        batch.drop_column("served_content_hash")
-        batch.drop_column("served_call_ref")
+        for name in reversed(COLUMNS):
+            if name in present:
+                batch.drop_column(name)
