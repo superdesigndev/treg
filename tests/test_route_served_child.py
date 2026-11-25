@@ -55,7 +55,11 @@ async def _delivered(parent: CallRecord):
     if child is None:
         return None
     if child.archive_key_hash and child.archive_content_hash == parent.served_content_hash:
-        return await _archived(child)
+        # The bytes themselves, checked against the hash: a hash-only version (licence or size
+        # cap) or an expired one reads None, which is "archive unavailable", never an error.
+        body = await archive.answer_bytes(child.archive_key_hash, parent.served_content_hash)
+        if body is not None:
+            return json.loads(body)
     terminal = (await archive.load_terminal_responses([(child.call_ref, child.endpoint_id)])).get(child.call_ref)
     if terminal is not None and hashlib.sha256(terminal).hexdigest() == parent.served_content_hash:
         return json.loads(terminal)
@@ -478,3 +482,18 @@ async def test_numbers_that_survive_keep_the_link(clients, verifiers_on, monkeyp
     child = await _row(parent.served_call_ref)
     archived = _exactly(await archive.answer_bytes(child.archive_key_hash, parent.served_content_hash))
     assert archived == _exactly(r.content)["raw"]
+
+
+async def test_a_hash_only_archive_reads_as_unavailable_not_an_error(clients, verifiers_on, monkeypatch):
+    """Under the archive's size cap only the hashes are kept: the hashes still match, but there are
+    no bytes to read, so the reader reports the archive unavailable instead of raising."""
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+    monkeypatch.setattr(get_settings(), "archive_max_body_bytes", 1)
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK)
+    assert r.status_code == 200, r.text
+    parent, child = await _served(r)
+    assert child.archive_content_hash == parent.served_content_hash, "the hashes agree"
+    found = await archive.resolve_result(child.archive_key_hash, child.archive_content_hash)
+    assert found["stored"] is False, "only the hash is on file"
+    assert await _delivered(parent) is None
