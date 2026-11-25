@@ -335,23 +335,29 @@
       <div id="cHandle" style="font-size: 40px; font-weight: 700; letter-spacing: -0.5px"></div>
     </div>
 
-    <div style="margin-top: auto; display: flex; gap: 80px; align-items: flex-end">
-      <div style="display: flex; flex-direction: column; gap: 14px">
-        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 150px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
+    <div style="flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 32px">
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 88px; line-height: 0.9; letter-spacing: 0"><span data-f="rate"></span></div>
         <div style="display: flex; align-items: center; gap: 10px">
           <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
-          <div style="font-size: 24px; font-weight: 600; color: #3F3F3F">lead rate</div>
+          <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">lead rate</div>
         </div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 14px">
-        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 150px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
+      <div style="position: relative; flex-shrink: 0">
+        <svg width="320" height="320" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
+          <circle cx="32" cy="32" r="31" fill="#FFFFFF"></circle>
+          <circle cx="32" cy="32" r="15.5" fill="none" stroke="#111111" stroke-width="31" id="pieSlice"></circle>
+        </svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 380px">
+        <div style="font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 88px; line-height: 0.9; letter-spacing: 0"><span data-f="revenue"></span></div>
         <div style="display: flex; align-items: center; gap: 10px">
           <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
-          <div style="font-size: 24px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
+          <div style="font-size: 22px; font-weight: 600; color: #3F3F3F">potential revenue / year</div>
         </div>
+        <div style="font-size: 15px; font-weight: 500; line-height: 1.4; color: #5E5E5E"><span data-f="math"></span></div>
       </div>
     </div>
-    <div style="margin-top: 26px; font-size: 19px; font-weight: 500; color: #5E5E5E"><span data-f="math"></span></div>
   </div>
 </div>
 </div></div>
@@ -849,6 +855,10 @@
     set('revenue', money(c.revenue));
     set('math', c.leads + ' of ' + c.scanned.toLocaleString('en-US') + ' followers scanned are leads · ' + c.total.toLocaleString('en-US') +
       ' followers × ' + pct(c.rate) + ' × 2% close × $' + c.usd.toLocaleString('en-US') + ' a year');
+    var r = 15.5, circ = 2 * Math.PI * r, share = Math.min(c.rate * 100, 100), slice = $('pieSlice');
+    slice.setAttribute('stroke-dasharray', (share * circ / 100).toFixed(2) + ' ' + circ.toFixed(2));
+    slice.setAttribute('transform', 'rotate(' + (180 - share * 1.8).toFixed(1) + ' 32 32)');
+    $('pie').setAttribute('aria-label', c.leads + ' of ' + c.scanned + ' followers scanned are leads');
   }
   /* Google Fonts subset to the card's own characters, inlined so the PNG draws the same type */
   function cardFontCss() {
