@@ -886,7 +886,7 @@ adapters:
   justoneapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.username}
-    out: {posts: data.data.items, next_cursor: data.data.next_page_token}
+    out: {posts: data.data.items, next_cursor: data.pagination_token}
     paging: {cursor: queryParams.paginationToken}
 
   # ---- instagram.post.detail ----------------------------------------------------------------
@@ -2200,8 +2200,8 @@ adapters:
     accepts: [[username]]
     in:  {username: queryParams.username}
     in_expr: {queryParams.page_size: limit}
-    out: {reels: data.items, next_cursor: data.next_max_id}
-    paging: {cursor: queryParams.after}
+    # No paging: TikHub answers a page_info.end_cursor sent as `after` with an empty page it still bills.
+    out: {reels: data.items}
 
   justoneapi.x.youtube-get-channel-videos-v1:
     accepts: [[channel_id]]
@@ -3624,7 +3624,7 @@ adapters:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.profilePublicIdentifier}
     const: {queryParams.page: "1"}
-    out: {posts: elements, next_cursor: paginationToken}
+    out: {posts: elements, next_cursor: pagination.paginationToken}
     paging: {cursor: queryParams.paginationToken}
     miss: "elements == []"
 
