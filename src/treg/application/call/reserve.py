@@ -385,6 +385,10 @@ def _direct_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, allowed: b
             return "tagged"
         if meta.tag_limited:
             return "tag_budget"
+        if caller.membership.pinned_tags:
+            # A pinned token's reads find its calls by the tags on their reserve entry when the
+            # audit row is gone; an allowance call has none until its fold, or ever if unbilled.
+            return "pinned"
     if mk.billed_oauth:
         return "billed_oauth"
     if deferred_settle and mk.deferred is not None:

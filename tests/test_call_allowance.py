@@ -1631,6 +1631,17 @@ async def test_a_childs_pre_flight_overrides_what_its_parents_found(org_id, stor
     assert child.tag_limited is True
 
 
+async def test_a_pinned_tokens_call_keeps_its_hold(org_id, store, tagged_on, skip_lines):
+    caller = await _caller(org_id)
+    caller.membership.pinned_tags = {"customer": "c1"}
+    meta = await _tag_meta(caller, {"customer": "c1"})
+    assert meta.tag_limited is False
+    mk = _call(org_id)
+    await call_reserve._platform_reserve(mk, caller, meta, "c-1", allow_allowance=True)
+    assert mk.allowance_epoch is None and await _per_call_holds(org_id) == ["c-1"]
+    assert skip_lines() == [_skip(org_id, "pinned", 1)]
+
+
 async def test_a_tag_on_an_undeclared_key_is_never_limited(org_id, store, tagged_on):
     async with session_maker() as db:
         db.add(TagBudget(org_id=org_id, dim="workspace", val="*", daily_cap_micro=1))

@@ -356,16 +356,19 @@ allowance hold, unspent and uncharged, until the hold is closed.
 
 **Tagged calls.** Off by default: `money_allowance_tagged_org_ids` lists the teams, or
 `money_allowance_tagged_all_orgs` turns it on for every team on the allowance
-(`allowance.tagged_listed`). A tagged call (`X-Treg-Meta` or a pinned token) is then judged like an
-untagged one when no tag budget limits any of its tags: the pre-flight pass
+(`allowance.tagged_listed`). A call tagged by `X-Treg-Meta` is then judged like an untagged one
+when no tag budget limits any of its tags: the pre-flight pass
 (`reserve._enforce_tag_budgets`, run by `intake.prepare_call_intake` before the idempotency
 replay) resolves each declared dimension's budget as it always does and reports whether any
 resolved row caps spend or counts calls (`daily_cap_micro`, `monthly_cap_micro`, `calls_per_day`
 of 0 or more). A registry row (`auto`) and a row with no limit do not; a tag on an undeclared key
 never has a budget. The answer rides on the call's `CallMeta.tag_limited`, which is True until that
-pass says otherwise, so a call that never ran it keeps its hold. A limited call keeps its own hold
+pass says otherwise, so a call that never ran it keeps its hold, and every pass writes its own
+answer, so a routed child's pass replaces what its parent's found. A limited call keeps its own hold
 (`tag_budget`), because its caps read the tag rows the hold writes at reserve; with the switch off
-every tagged call does (`tagged`). A tagged call that took carries its tags on its charge
+every tagged call does (`tagged`). A pinned token's call keeps its hold too (`pinned`): when the
+audit row is gone, a pinned token finds its calls by the tags on their `reserve` entry, which an
+allowance call does not have. A tagged call that took carries its tags on its charge
 (`MarketplaceCall.allowance_tags` into `CallCharge.meta["tags"]`), and the fold writes its
 `TagSpend` rows with its `settle` entry, settled at what the blocks gave, stamped with the fold's
 instant, the entry's meta naming the tags as a reserve entry's does. Per-tag spend, call counts
@@ -375,7 +378,7 @@ charge itself (`tag_spent_since`, `tag_calls_since` match `CallCharge.meta["tags
 set after such calls sees them at once.
 
 Every listed team's call that keeps its own hold is counted by why, on its own logger
-(`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `tag_budget`, `async`,
+(`treg.allowance_skips`). The reason is what `_allowance_skip` named (`tagged`, `tag_budget`, `pinned`, `async`,
 `member_spend_cap`, ...; a routed child its root lets take is counted under these too), with any other child call named by its own suffix (`child_call:routed` for a
 routed child `:rN`, `child_call:overflow`, `child_call:hub_step` for `:sN`, `child_call:other` for
 polls and verifications), `in_flight_unmarked`, or `take_refused` when an eligible call's take
