@@ -223,14 +223,13 @@
   .gets blockquote { margin: 0; font-size: 14.5px; line-height: 1.45; font-weight: 500; }
   @media (max-width: 860px) { .gets { grid-template-columns: 1fr; } }
   .how { list-style: none; padding: 0; margin: 40px auto 0; max-width: 1000px; display: grid; gap: 40px; }
-  .how li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; }
-  .how .st { display: flex; flex-direction: column; justify-content: center; padding: 20px 22px; border-radius: 16px; background: #fafaf9; }
-  .how .st, .how .viz { position: relative; }
-  .how li:not(:last-child) .st::after, .how li:not(:last-child) .viz::after { content: "↓"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); height: 40px; display: grid; place-items: center; font: 400 20px/1 var(--pixel); color: var(--grey); }
-  @media (max-width: 760px) { .how li { grid-template-columns: 1fr; gap: 12px; } .how li:not(:last-child) .st::after { display: none; } }
+  .how li { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; align-items: center; padding: 20px 22px; border-radius: 16px; background: #fafaf9; }
+  .how .st { display: flex; flex-direction: column; justify-content: center; }
+  .how li:not(:last-child)::after { content: "↓"; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); height: 40px; display: grid; place-items: center; font: 400 20px/1 var(--pixel); color: var(--grey); }
+  @media (max-width: 760px) { .how li { grid-template-columns: 1fr; gap: 12px; } }
   .how h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
   .how p { margin: 0; color: var(--grey); font-weight: 400; font-size: 14.5px; line-height: 1.55; }
-  .how .viz { min-height: 150px; border-radius: 16px; background: #fff; border: 1px solid var(--line); padding: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .how .viz { min-height: 150px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; }
   .how .viz svg { display: block; max-width: 100%; height: auto; }
   .how .viz .vt { font: 400 10.5px var(--mono); fill: var(--grey); }
   .how .vk { margin: 12px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; font: 400 11px var(--mono); }
@@ -435,7 +434,7 @@
     <li style="--c:var(--pink)"><h3><b>Your</b> lead signal</h3><p>How many followers could buy, and which ones.</p>
       <div class="gx" aria-label="Example"><span class="gxl">example</span>
         <div class="gxn"><b>14%</b><span>lead rate<br>28 of 200 followers</span></div>
-        <div class="gxd" aria-hidden="true"><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i class="on"></i><i></i></div>
+        <div class="gxd" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       </div></li>
     <li style="--c:var(--cyan)"><h3><b>Who</b> your followers are</h3><p>Their job, seniority and where they are.</p>
       <div class="gx" aria-label="Example"><span class="gxl">example</span>
