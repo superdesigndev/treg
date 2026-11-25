@@ -1,0 +1,91 @@
+provider: bifura
+source:
+  docs: https://bifura.ai/api-pricing
+  openapi: https://bifura.ai/api/public/v1/openapi.json
+  curated: 2026-11-26
+limits: "60 requests a minute per Agency key; daily caps per endpoint (check and context 1,000, ask 200, fixes 100)"
+pricing_url: https://bifura.ai/api-pricing
+proposed_capabilities:
+  web.page.context: "Measure what a page costs an AI to read: tokens, signal share and truncation"
+  web.page.ask: "Answer one question from one web page, with the supporting quote"
+  web.page.fixes: "Generate copy-and-paste agent-readiness fixes for a page (JSON-LD, llms.txt, robots.txt)"
+defaults:
+  provenance: {source: docs, source_url: 'https://bifura.ai/api-pricing', checked: '2026-11-26', confidence: documented}
+endpoints:
+  - id: bifura.web.page.audit
+    added: '2026-11-25'
+    capability: web.page.audit
+    platform: web
+    scope: any_account
+    method: POST
+    path: /check
+    name: "Agent readiness check"
+    summary: "Check whether AI agents and crawlers can read a page: crawler access per AI bot, share readable without JavaScript, structured data found and missing, llms.txt, sitemap and canonical, with a verdict and a fix hint per failed check"
+    note: "Send url, or raw html (up to 500,000 characters) to run in CI; with html alone the live-site checks are skipped and listed in `skipped`. No model call; answers in a few seconds."
+    input:
+      body:
+        url: {type: string, required: false, maxLength: 2048, note: "a public page; with html, used only for robots.txt, llms.txt and sitemap", example: "https://www.wikipedia.org/"}
+        html: {type: string, required: false, maxLength: 500000, note: "raw HTML, never fetched from; send url or html", example: "<html><head><title>Hi</title></head><body><h1>Hi</h1></body></html>"}
+    test_request:
+      body: {url: "https://www.wikipedia.org/"}
+    price: {value: '0.025', currency: USD, per: 1, unit: call, note: "failed calls are not charged"}
+    docs_url: https://bifura.ai/api-pricing
+
+  - id: bifura.web.page.context
+    added: '2026-11-25'
+    capability: web.page.context
+    platform: web
+    scope: any_account
+    method: POST
+    path: /context
+    name: "Context budget"
+    summary: "Measure what a page costs an AI to read: tokens with and without JavaScript, the share that is main content, where key facts sit and what is lost at 2k, 8k and 32k tokens, plus the clean text"
+    note: "Send url or raw html. No model call."
+    input:
+      body:
+        url: {type: string, required: false, maxLength: 2048, note: "a public page", example: "https://www.wikipedia.org/"}
+        html: {type: string, required: false, maxLength: 500000, note: "raw HTML, never fetched from; send url or html", example: "<html><body><h1>Hi</h1></body></html>"}
+    test_request:
+      body: {url: "https://www.wikipedia.org/"}
+    price: {value: '0.025', currency: USD, per: 1, unit: call, note: "failed calls are not charged"}
+    docs_url: https://bifura.ai/api-pricing
+
+  - id: bifura.web.page.ask
+    added: '2026-11-25'
+    capability: web.page.ask
+    platform: web
+    scope: any_account
+    method: POST
+    path: /ask
+    name: "Ask a page"
+    summary: "Answer one question from one page, with the supporting quote, or say that the page does not say"
+    input:
+      body:
+        question: {type: string, required: true, minLength: 3, maxLength: 300, example: "How many articles does English Wikipedia have?"}
+        url: {type: string, required: false, maxLength: 2048, note: "a public page", example: "https://www.wikipedia.org/"}
+        html: {type: string, required: false, maxLength: 500000, note: "raw HTML, never fetched from; send url or html"}
+    test_request:
+      body: {url: "https://www.wikipedia.org/", question: "How many articles does English Wikipedia have?"}
+    price: {value: '0.055', currency: USD, per: 1, unit: call, note: "failed calls are not charged; an answer that the page does not say (found false) is charged"}
+    # The page does not answer the question: 200 with found false and no quote.
+    miss: {when: {path: response.found, op: equals, value: false}}
+    docs_url: https://bifura.ai/api-pricing
+
+  - id: bifura.web.page.fixes
+    added: '2026-11-25'
+    capability: web.page.fixes
+    platform: web
+    scope: any_account
+    method: POST
+    path: /fixes
+    name: "Agent readiness fixes"
+    summary: "Generate copy-and-paste fixes for a page: JSON-LD (Organization, Product, Offer, FAQ), llms.txt and robots.txt rules"
+    input:
+      body:
+        url: {type: string, required: false, maxLength: 2048, note: "a public page", example: "https://www.wikipedia.org/"}
+        html: {type: string, required: false, maxLength: 500000, note: "raw HTML, never fetched from; send url or html"}
+        types: {type: array, items: {type: string, enum: [organization, product, offer, faq, llms_txt, robots_txt]}, required: false, note: "default all", example: ["organization"]}
+    test_request:
+      body: {url: "https://www.wikipedia.org/", types: ["organization"]}
+    price: {value: '0.07', currency: USD, per: 1, unit: call, note: "failed calls are not charged"}
+    docs_url: https://bifura.ai/api-pricing

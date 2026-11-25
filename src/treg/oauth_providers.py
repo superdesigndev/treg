@@ -2314,6 +2314,32 @@ SCRAPECREATORS = OAuthProvider(
 )
 
 
+BIFURA = OAuthProvider(
+    service="bifura",
+    display_name="Bifura",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Bifura API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://bifura.ai/dashboard/api-keys",
+    setup_action_label="Get your Bifura API key",
+    setup_steps=(
+        "Sign in to Bifura on the Agency plan and open Dashboard, then API keys.",
+        "Create a key and copy it; it is shown once.",
+    ),
+    setup_note="Failed calls are never charged; GET /usage is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Agent readiness for any page: what AI crawlers and agents can read, what it costs them in tokens, and the fixes.",
+    base_url="https://bifura.ai/api/public/v1",
+    docs_url="https://bifura.ai/api-pricing",
+    probe_path="/usage",  # free; an invalid key gets a 401 here
+)
+
+
 DATAFORSEO = OAuthProvider(
     service="dataforseo",
     display_name="DataForSEO",
@@ -4621,7 +4647,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, BIFURA, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
