@@ -505,11 +505,14 @@ Loopni merge.
 ## License
 
 Apache 2.0 with additional terms ([`LICENSE`](LICENSE)): use it freely — including commercially,
-inside your own organization (self-hosting your own registry is encouraged). The restriction: don't
-redistribute the code to third parties as a competing hosted/managed registry service without written
-permission (`jason@superdesign.dev`). **Using the hosted treg.to API** inside your own product —
-with pass-through billing via `X-Treg-Meta` and `usage/by-tag` — is allowed without permission;
-that's calling our API, not redistributing our software.
+inside your own organization (self-hosting your own registry is encouraged). The one restriction:
+don't use the code to offer others a competing service (a hosted, managed or embedded tool registry
+or API catalog) without written permission (`jason@superdesign.dev`).
+
+**Building on the hosted treg.to API needs no permission, and is encouraged.** Building an agent or
+product and want to give it treg's tools? Call the API, with pass-through billing via `X-Treg-Meta`
+and `usage/by-tag` if you bill your own customers. That's using our service, not redistributing our
+software.
 
 ### Pinned customer read scopes
 

@@ -8,16 +8,22 @@ precedence over the Apache License to the extent of any conflict.
 
 ADDITIONAL TERMS
 
-1. Hosted service restriction. You may use, modify, and redistribute this
+1. Competing service restriction. You may use, modify, and redistribute this
    software freely under the Apache License — including commercial use inside
    your own organization (running your own registry for your own team is
    expressly permitted and encouraged). However, you may NOT use this software,
-   in original or modified form, to provide a hosted, managed, or embedded
-   service to third parties — for example offering it as a SaaS product,
-   a managed registry service, or a component of a product or service that is
-   sold, licensed, or otherwise commercially distributed to others — without
-   the licensor's explicit prior written authorization. To request such
+   in original or modified form, to offer third parties a service that
+   competes with treg — that is, a hosted, managed, or embedded service whose
+   offering is access to a catalog of tools or APIs through a registry or
+   proxy, whether sold as SaaS or as part of another product — without the
+   licensor's explicit prior written authorization. To request such
    authorization, contact jason@superdesign.dev.
+
+   Building on the hosted service needs no permission. Calling the hosted
+   treg.to API from your own product (for example, an agent you build that
+   uses treg's tools for your users) is not use of this software under this
+   License. It is governed by the treg Terms of Service, needs no
+   authorization, and is encouraged.
 
 2. Contributor terms. By contributing code, documentation, or other material
    to this project, you agree that: (a) your contribution is licensed to the

@@ -29,7 +29,7 @@
   <div class="eyebrow">Legal</div>
   <h1>Treg Terms of Service</h1>
   <div class="stamp">
-    <span>Last updated: 20 November 2026</span>
+    <span>Last updated: 25 November 2026</span>
     <span>Effective: 22 July 2026</span>
   </div>
 
@@ -70,7 +70,7 @@
       you, within whatever access your role and per-member tool list allow.</li>
     <li>You can revoke every token you hold at once from the dashboard, and we'll do the same on
       request if you believe a token has leaked.</li>
-    <li>Tell us promptly at <a href="mailto:jason@treg.to">jason@treg.to</a> if you
+    <li>Tell us promptly at <a href="mailto:dev@treg.to">dev@treg.to</a> if you
       suspect unauthorized access.</li>
   </ul>
 
@@ -157,9 +157,9 @@
     <li>run malware, mine cryptocurrency, send spam or bulk unsolicited email, or host illegal
       content;</li>
     <li>proxy traffic to destinations unrelated to a registered tool;</li>
-    <li>redistribute the open-source software to third parties as a competing hosted service — see §11.
-      (Using the hosted treg.to API inside your own product — with your own billing layer and the
-      pass-through attribution mechanics — is allowed; that is calling our API, not reselling it. The
+    <li>use the source code to offer third parties a competing service without authorization — see §11.
+      (Building on the hosted treg.to API inside your own product — an agent, an app, with your own
+      billing layer and the pass-through attribution mechanics — needs no permission and is encouraged. The
       upstream provider's own limits on reselling its data still apply; see §05.)</li>
   </ul>
   <p>We apply per-member daily call caps and egress restrictions to protect the Service.
@@ -247,14 +247,15 @@
   <p>treg's source is public under the
   <a href="https://github.com/superdesigndev/treg/blob/main/LICENSE" target="_blank" rel="noopener">tools-registry License</a>
   (Apache 2.0 plus additional terms). You may run your own registry for your own organization — that's
-  expressly encouraged. You may <b>not</b> redistribute the open-source software to third parties as a
-  competing hosted, managed, or embedded registry service without prior written authorization. The
+  expressly encouraged. You may <b>not</b> use the software to offer third parties a competing service
+  (a hosted, managed, or embedded registry or API catalog) without prior written authorization. The
   source licence, not these Terms, governs your use of the code itself.</p>
-  <p><b>Using the hosted treg.to API is different.</b> If your product calls treg.to, uses
+  <p><b>Building on the hosted treg.to API needs no permission.</b> If you are building an agent or a
+  product and want it to use treg's tools, call the API: that is encouraged. If your product calls treg.to, uses
   <code>X-Treg-Meta</code> to tag calls by customer, and invoices from <code>usage/by-tag</code>,
   you are a <b>platform customer</b> of the hosted service — no special agreement is needed. That
-  use case is allowed and encouraged. The restriction above applies to <i>self-hosting the open-source
-  code</i> and offering it to third parties as a competing registry, not to calling the treg.to API.</p>
+  use case is allowed and encouraged. The restriction above applies only to using <i>the source code</i>
+  to offer others a competing service, never to calling the treg.to API.</p>
 
   <h2 class="sec" id="s12"><span class="n">12</span>Limitation of liability</h2>
   <p>To the maximum extent permitted by law, neither party is liable for indirect, incidental,
@@ -282,7 +283,7 @@
 
   <h2 class="sec" id="s16"><span class="n">16</span>Contact</h2>
   <p>Questions about these Terms, or anything else:
-  <a href="mailto:jason@treg.to">jason@treg.to</a>.
+  <a href="mailto:dev@treg.to">dev@treg.to</a>.
   Security reports are welcome and taken seriously — see
   <a href="https://github.com/superdesigndev/treg/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>.</p>
 
@@ -315,7 +316,7 @@
 
 <footer><div class="foot-in">
   <span class="brand"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</span>
-  <span class="muted">100% open source</span>
+  <span class="muted">Source available</span>
   <span class="sp"></span>
   <a href="/support">Support</a>
   <a href="/terms">Terms</a>
