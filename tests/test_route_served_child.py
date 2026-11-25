@@ -8,6 +8,8 @@ credited to the confirmer."""
 
 from __future__ import annotations
 
+import json
+
 from sqlmodel import select
 
 from treg import archive, audit
@@ -36,7 +38,6 @@ async def _row(call_ref: str) -> CallRecord | None:
 
 async def _archived(row: CallRecord):
     """The answer the archive holds for this row, parsed: what a reader of the link gets."""
-    import json
     found = await archive.resolve_result(row.archive_key_hash, row.archive_content_hash)
     return json.loads(found["response"]["body_text"])
 
@@ -159,7 +160,8 @@ async def test_a_lost_served_row_still_names_the_child(clients, verifiers_on, mo
     assert parent.served_call_ref == f"{parent.call_ref}:r1" and child is None
 
 
-async def test_an_async_find_links_the_poll_that_answered(clients, dropcontact_platform, monkeypatch):
+async def test_an_async_find_links_the_submission_whose_terminal_answer_is_raw(clients, dropcontact_platform,
+                                                                                 monkeypatch):
     from test_dropcontact_routing import _relay as dropcontact_relay
 
     dropcontact_relay(monkeypatch, {'success': True, 'data': [{
@@ -170,8 +172,12 @@ async def test_an_async_find_links_the_poll_that_answered(clients, dropcontact_p
                            headers={"X-Treg-Route-Prefer": "dropcontact", "X-Treg-Route-Waterfall": "0"})
     assert r.status_code == 200, r.text
     parent, child = await _served(r)
-    assert parent.served_call_ref.startswith(f"{parent.call_ref}:r0:p"), "the poll carries the answer"
-    assert child is not None and child.status_code == 200
+    assert parent.served_call_ref == f"{parent.call_ref}:r0", "the submission the task is filed under"
+    assert child.endpoint_id == r.json()["_treg"]["served_by"] == "dropcontact.people.email.find"
+    # The answer is the terminal snapshot archived under the submission's ref, not the row's hashes
+    # (the task ticket) nor a poll's row (no archive link).
+    terminal = await archive.load_terminal_responses([(parent.served_call_ref, child.endpoint_id)])
+    assert json.loads(terminal[parent.served_call_ref]) == r.json()["raw"]
 
 
 async def test_a_merged_search_links_the_answer_whose_body_is_raw(clients, people_search_on, monkeypatch):

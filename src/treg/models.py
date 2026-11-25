@@ -689,13 +689,15 @@ class CallRecord(SQLModel, table=True):
     # decide, or a row written before the column existed; those keep the status rule.
     outcome: str | None = Field(default=None)
     # A routed parent's link to the answer its caller received: the `call_ref` of the child attempt
-    # whose answer was returned (`_treg.served_by`'s attempt; an upgrade's own served child; an async
-    # attempt's answering poll `:r<n>:p<k>`; under a merge the answer whose body is `raw`, not `served_by`). Read the child row
-    # by this exact ref (`ix_callrecord_call_ref`), then its archive hashes. NULL on every other row,
-    # on a routed miss or failure (no child answered), when the router wrote `raw` itself (a declared
-    # miss status, a failed async task, a non-JSON body), on an answer an overflow aggregator served
-    # (its row and the direct attempt's share one ref), and on rows written before the column (0127).
-    # NULL means no usable link was recorded, never that no answer was served.
+    # whose body is the `raw` returned (the winner; an upgrade's own served child; under a merge the
+    # winner, not `served_by`). Read the child row by this exact ref (`ix_callrecord_call_ref`), then
+    # its archive hashes - except for an async provider, where the ref is the submission and the
+    # answer is the terminal snapshot the finalizer archived under it
+    # (`archive.load_terminal_responses`); the submission row's own hashes are the task ticket.
+    # NULL on every other row, on a routed miss or failure, when the router wrote `raw` itself (a
+    # declared miss status, a failed async task, a non-JSON body), on an answer an overflow
+    # aggregator served (its row and the direct attempt's share one ref), and on rows written before
+    # the column (0127). NULL means no usable link was recorded, never that no answer was served.
     # A logical reference only, never a foreign key: either row may be shed.
     served_call_ref: str | None = Field(default=None)
 

@@ -409,7 +409,9 @@ provider's bytes, which repeat hits settle from. A routed parent has no link of 
 `children`, audited before the parent, so the lookup reads the hour before the parent's row. Its
 `served_call_ref` names the one child whose answer the caller received ([data-model](data-model.md)):
 an analysis reads that child's row by exact ref, then its two hashes, with no scan of the team's
-history; a NULL there is a miss or failure, and a ref with no row is a shed audit row, not another
+history. For an async provider the ref is the submission and the answer is its terminal snapshot,
+`load_terminal_responses([(ref, endpoint_id)])` (the submission row's own hashes are the task
+ticket, and the polls' rows carry no link); a NULL there is a miss or failure, and a ref with no row is a shed audit row, not another
 attempt's answer.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).

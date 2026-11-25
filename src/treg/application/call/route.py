@@ -53,15 +53,17 @@ alone when the hit carries it (an email's answer naming a LinkedIn URL), as a li
 reported in `_treg.upgrade`. Both are opt-in.
 
 The parent's audit row names the child whose answer the caller received
-(`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>` (its answering poll
-`:r<n>:p<k>` for an async provider), an upgrade's own served child `:u:r<m>`, under a merge the
-answer whose body is `raw` (not `served_by`, the first contributor), the submission of a pending
-async call. It names a child only when that child's body is the `raw` returned: a miss or failure
-names none, nor does an answer the router wrote itself (a declared-miss status, a failed async
-task, a non-JSON body: `raw` is `{}`), nor an answer an overflow aggregator served (its row shares
-the child's ref with the direct attempt's). So NULL means no usable link was recorded, not that
-no answer was served; rows written before 0127 are NULL too. Review credit
-(`route_summary.credited`) is a separate decision and stays the latest successful attempt.
+(`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>`
+(for an async provider the submission: the finalizer archives the terminal answer under that ref,
+read with `archive.load_terminal_responses`; the polls' own rows carry no archive link), an
+upgrade's own served child `:u:r<m>`, under a merge the answer whose body is `raw` (not
+`served_by`, the first contributor), the submission of a pending async call. It names a child only
+when that child's body is the `raw` returned: a miss or failure names none, nor does an answer the
+router wrote itself (a declared-miss status, a failed async task, a non-JSON body: `raw` is `{}`),
+nor an answer an overflow aggregator served (its row shares the child's ref with the direct
+attempt's). So NULL means no usable link was recorded, not that no answer was served; rows written
+before 0127 are NULL too. Review credit (`route_summary.credited`) is a separate decision and stays
+the latest successful attempt.
 """
 
 from __future__ import annotations
@@ -1622,7 +1624,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 
             # The bridge awaits every poll in this iteration; the defaults pin this iteration's values.
             async def poll_task(task_id: str, poll_number: int, *, poll_ep=poll_ep, poll_rule=poll_rule,
-                                remaining=remaining, child=child, cand=cand):
+                                remaining=remaining, child=child):
                 if poll_ep is None:
                     raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
                 query, document = asynctasks_rules.poll_inputs(poll_rule.get("param") or {"name": "id"}, task_id)
@@ -1632,7 +1634,6 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     quota_admissions=parent.quota_admissions | {
                         (parent.input.caller.org_id, poll_ep["id"])})
                 poll_response = await execute_child(poll_child, upstream_client)
-                answered_by[id(cand)] = poll_child.call_ref   # the latest poll's answer is the one kept
                 return poll_response, await _read(poll_response)
 
             waited = await async_bridge.await_terminal(
