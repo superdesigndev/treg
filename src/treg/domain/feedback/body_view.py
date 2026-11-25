@@ -97,8 +97,8 @@ def shrink(text: str | None, budget: int) -> str:
         raise ValueError(f"budget must be at least {MIN_BUDGET} characters")
     if not text:
         return ""
-    try:
-        value, pattern, raw = _numbers(text)
+    try:  # a leading byte order mark is not part of the JSON a caller's parser reads
+        value, pattern, raw = _numbers(text[1:] if text.startswith("\ufeff") else text)
     except ValueError:
         plain = _SPACE.sub(" ", _TAG.sub(" ", text)).strip()
         return plain if len(plain) <= budget else plain[:budget - len(CUT)] + CUT

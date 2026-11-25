@@ -1,5 +1,7 @@
 """What a judge reads of a reviewed call's answer: read, absent for good, or unreadable now (left for
 a later run), against the real archive tables."""
+import json
+
 import pytest
 from sqlalchemy.exc import OperationalError
 from sqlmodel import select
@@ -185,3 +187,34 @@ def test_the_request_shows_its_query_sorted_since_this_call_s_order_is_not_on_fi
             == "https://v/r?a=1&products=100&products=200")
     assert review_answers.request_url("https://v/r") == "https://v/r"
     assert "order the agent sent" in review_codes.body_code_question(0)["instructions"]
+
+
+@pytest.mark.parametrize("budget", [4000, 120])
+def test_json_after_a_byte_order_mark_is_json(budget):
+    from treg.domain.feedback import body_view
+
+    text = "﻿" + json.dumps({"note": "price < 5 or > 50", "items": [{"n": i} for i in range(30)]})
+    out = body_view.shrink(text, budget)
+    if len(text) <= budget:
+        assert out == text
+    else:
+        assert len(out) <= budget and json.loads(out)["note"] == "price < 5 or > 50"
+
+
+def test_a_request_body_is_shown_only_when_it_is_provably_this_call_s():
+    # A fractional number or a repeated key can share an archive key with another body.
+    assert review_answers.request_body('{"min": 1234567890123456.7}') is None
+    assert review_answers.request_body('{"a": 1, "a": 2}') is None
+    assert review_answers.request_body('{"a": [1, "x < y"], "b": null}') == '{"a": [1, "x < y"], "b": null}'
+    assert review_answers.request_body("q=1") == "q=1"
+    assert review_answers.request_body(None) is None
+
+
+def test_every_judge_is_told_what_the_request_can_and_cannot_say():
+    from treg.application import review_body_audit
+    from treg.domain.feedback import review_codes
+
+    assert review_codes.REQUEST_NOTE in review_codes.body_code_question(0)["instructions"]
+    item = {"usefulness": "partly", "reason": "r", "capability": "c",
+            "request": {"method": "GET", "url": "u", "body": None}, "response": {"status_code": 200, "body": ""}}
+    assert review_codes.REQUEST_NOTE in review_body_audit._prompt(item, ("WRONG", None), ("EMPTY", None))

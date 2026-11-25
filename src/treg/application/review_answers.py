@@ -5,6 +5,7 @@ of a review's answer sees the same thing.
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import timezone
@@ -101,6 +102,41 @@ def request_url(url: str) -> str:
     return base + "?" + "&".join(sorted(query.split("&"), key=lambda part: parse_qsl(part, keep_blank_values=True)))
 
 
+class _Unprovable(ValueError):
+    pass
+
+
+def _exact(raw: str):
+    raise _Unprovable(raw)
+
+
+def _no_repeats(pairs: list) -> dict:
+    if len({k for k, _ in pairs}) != len(pairs):
+        raise _Unprovable("repeated key")
+    return dict(pairs)
+
+
+def request_body(text: str | None) -> str | None:
+    """The archived request body when it is provably this call's, else None. The archive keys a
+    JSON body by its parsed form (`archive._body_digest`), so a body with a fractional or
+    non-finite number (parsed to a float, rounding away digits) or a repeated key (the last value
+    wins) can share its key with a different body, and the one kept is the first call's. Integers,
+    strings, key order and whitespace parse exactly; a body that is not JSON is keyed by its bytes."""
+    if text is None:
+        return None
+    try:
+        json.loads(text, parse_float=_exact, parse_constant=_exact, object_pairs_hook=_no_repeats)
+    except _Unprovable:
+        return None
+    except (ValueError, RecursionError):
+        return text
+    return text
+
+
+def _shown(body: str | None) -> str | None:
+    return None if body is None else body_view.shrink(body, REQUEST_BUDGET)
+
+
 def view(i: int, r, found: dict, capability: str, budget: int) -> dict:
     req, res = found["request"], found["response"]
     return {
@@ -108,7 +144,7 @@ def view(i: int, r, found: dict, capability: str, budget: int) -> dict:
         "capability": capability, "routed": r.routed_via is not None,
         "request": {"method": req["method"],
                     "url": body_view.shrink(request_url(req["url"]), REQUEST_BUDGET),
-                    "body": body_view.shrink(req["body_text"], REQUEST_BUDGET)},
+                    "body": _shown(request_body(req["body_text"]))},
         # Only what this call's delivery is known to have had: its own status and the body. The
         # stored media type and size describe whichever call first fetched these bytes.
         "response": {"status_code": res["status_code"], "body": body_view.shrink(res["body_text"], budget)},
