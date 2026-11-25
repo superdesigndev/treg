@@ -100,7 +100,7 @@ async def host_is_public_async(host: str, check=None) -> bool:
     try:
         return await asyncio.wait_for(asyncio.shield(fut), get_settings().ssrf_lookup_timeout_s)
     except TimeoutError:
-        _log.warning("ssrf_lookup_timeout host=%s", host)
+        _log.warning("ssrf_lookup_timeout")
         return False
 
 
