@@ -96,7 +96,7 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
     by_id = catalog_store.load().by_id
     since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
     out = {"candidates": 0, "no_reason": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
-           "failed_requests": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0,
+           "failed_requests": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0, "changed": 0,
            "stopped_by_deadline": False}
     pairs, reason_codes, body_codes = Counter(), Counter(), Counter()
     by_capability: dict[str, Counter] = {}
@@ -128,9 +128,12 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
                 tally["same_primary"] += 1
             else:
                 pairs[f"{r.primary_code}->{body_primary}"] += 1
+            if (body_primary, body_secondary) != (r.primary_code, r.secondary_code):
+                out["changed"] += 1
                 if len(diffs) < DIFFS_SHOWN:
-                    diffs.append({"review_id": r.id, "reason_code": r.primary_code,
-                                  "body_code": body_primary, "body_secondary": body_secondary})
+                    diffs.append({"review_id": r.id,
+                                  "reason_codes": [r.primary_code, r.secondary_code],
+                                  "body_codes": [body_primary, body_secondary]})
             if body_primary in (r.primary_code, r.secondary_code) or r.primary_code == body_secondary:
                 out["primary_in_either"] += 1
 

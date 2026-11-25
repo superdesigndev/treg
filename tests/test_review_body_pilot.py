@@ -187,6 +187,18 @@ async def test_sample_counts_readable_answers_across_pages(clients, monkeypatch)
     assert out["coded"] == 1 and out["no_body"] == 3 and out["candidates"] == 4
 
 
+async def test_a_secondary_only_change_is_a_diff(clients, monkeypatch):
+    org = await _org(clients)
+    await _add(_review(org, "e", "EMPTY"), _record(org, "e", "ke"))
+    _archive(monkeypatch, {"ke": PEOPLE})
+    _jev(monkeypatch, lambda q, item: {"choice": "EMPTY", "probabilities": {"EMPTY": 0.6, "PARTIAL": 0.4}})
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
+    assert out["same_primary"] == 1 and out["pairs"] == {} and out["changed"] == 1
+    assert out["diffs"] == [{"review_id": out["diffs"][0]["review_id"], "reason_codes": ["EMPTY", None],
+                             "body_codes": ["EMPTY", "PARTIAL"]}]
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {
