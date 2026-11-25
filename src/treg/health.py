@@ -19,7 +19,7 @@ from . import oauth, oauth_providers
 from .infra import credential_cipher
 from .config import get_settings
 from .infra.upstream import injectors, pathsegment
-from .infra.upstream.ssrf import host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
+from .infra.upstream.ssrf import AddressLookupTimedOut as AddressLookupTimedOut, host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
 from .timeutil import utcnow_naive
 
@@ -169,6 +169,9 @@ async def run_all(db: AsyncSession, client: httpx.AsyncClient, org_id: int | Non
                     if s.kind == "oauth":
                         try:
                             await oauth.ensure_fresh(s, db, client)
+                        except AddressLookupTimedOut as exc:
+                            apply(s, sid, "unknown", f"oauth refresh not attempted: token endpoint {exc}")
+                            oauth_bad = True
                         except Exception as exc:  # noqa: BLE001
                             apply(s, sid, "invalid", f"oauth refresh failed: {exc}")
                             oauth_bad = True

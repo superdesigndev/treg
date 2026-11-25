@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import json
 import os
 import re
@@ -335,6 +337,10 @@ class Settings(BaseSettings):
     # for these teams, or every team on the allowance.
     money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
     money_allowance_routed_all_orgs: bool = False
+    # A tagged call (`X-Treg-Meta` or a pinned token) may take from the allowance too when no tag
+    # budget limits any of its tags: for these teams, or every team on the allowance.
+    money_allowance_tagged_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_tagged_all_orgs: bool = False
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many
@@ -349,9 +355,17 @@ class Settings(BaseSettings):
     money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
     # How long finished calls wait to share one insert of their charges.
     money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+    # How many processes may fold queued charges at once, each for its own share of the teams
+    # (money.md "One place folds the queue"). 1 = one process folds for every team.
+    money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
 
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org's untagged free platform calls take no $0 hold, as if listed, except
+    # `holdless_free_excluded_org_ids`.
+    holdless_free_all_orgs: bool = False
+    # Never holdless, whatever the two settings above say.
+    holdless_free_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
 
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"
@@ -774,6 +788,22 @@ class Settings(BaseSettings):
     # take. It runs from a cron, so its wait is not a caller's.
     review_judge_batch: int = Field(default=25, ge=1, le=100)
     review_judge_timeout_s: float = 60.0
+    # A direct call's negative review is upgraded with the call's answer in view: this many per Jev
+    # request (an answer is far longer than a reason), each answer shortened to
+    # this many characters (`body_view.shrink`, at least its MIN_BUDGET).
+    review_judge_answer_batch: int = Field(default=5, ge=1, le=25)
+    review_judge_answer_chars: int = Field(default=4000, ge=22, le=20000)
+    # An answer not readable yet is tried again, backing off from an hour to a week; after this many
+    # tries its review keeps the codes from its reason.
+    review_judge_answer_attempts: int = Field(default=10, ge=1)
+    # Off: the review judge codes from reasons only, as before the answer upgrade (its rollback switch).
+    review_judge_answers: bool = True
+    # Calls before this moment are never read back as their archived answer: older call rows do not
+    # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
+    # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`
+    # finished serving: until then such an instance answers `/table/` (a retry included) without
+    # recording the surface, though the column exists. Keep `review_judge_answers` off until it is set.
+    review_answer_surface_since: datetime | None = None
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
@@ -887,6 +917,8 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # A caller waiting longer than this for that lookup is refused, as an unresolvable host is.
+    ssrf_lookup_timeout_s: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible

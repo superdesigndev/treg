@@ -3225,8 +3225,8 @@ CLORO = OAuthProvider(
         "Create a key and copy it — the full key is shown only once.",
     ),
     setup_note=(
-        "Every monitor call spends credits from your cloro balance (Google 5, Google AI Mode / "
-        "Bing AI Mode / Gemini 6, "
+        "Every monitor call spends credits from your cloro balance (Google Search / Bing Search 5, "
+        "Google AI Mode / Bing AI Mode / Gemini 6, "
         "ChatGPT 7, each including the +2 sync surcharge; optional "
         "include flags and US state targeting add more). The free plan grants 500 credits a "
         "month. Connecting spends nothing — the probe is the free credit-balance route."
@@ -3238,7 +3238,7 @@ CLORO = OAuthProvider(
     summary=(
         "Ask ChatGPT, Gemini, Google AI Mode and Bing AI Mode a prompt from supported countries and "
         "read the answer and its cited sources as structured data — plus "
-        "Google Search and Google News SERPs."
+        "Google Search, Google News and Bing Search SERPs."
     ),
     base_url="https://api.cloro.dev",
     docs_url="https://cloro.dev/docs/api-reference/introduction",
