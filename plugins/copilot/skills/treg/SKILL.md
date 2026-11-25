@@ -14,7 +14,7 @@ treg's own marketplace also offers ready workflow skills as separate plugins. Af
 
 - `ai-ugc-video`
 - `doomscroll`
-- `follower-leads`
+- `follower-signal`
 - `jev-memory`
 - `lead-signals`
 - `make-ugc`

@@ -26,7 +26,7 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     assert r.status_code == 200
     skills = r.json()["skills"]
     assert [s["name"] for s in skills] == ["treg", "make-ugc", "lead-signals", "web-access", "recruit",
-                                         "doomscroll", "follower-leads"]
+                                         "doomscroll", "follower-signal"]
     entry = skills[0]
     assert entry["name"] == "treg"
     assert entry["files"] == ["SKILL.md"]
@@ -94,12 +94,12 @@ async def test_recruit_skill_is_served_and_advertised(clients):
     assert f"description: {idx['description']}" in r.text
 
 
-async def test_follower_leads_skill_is_served_and_advertised(clients):
+async def test_follower_signal_skill_is_served_and_advertised(clients):
     """/follower-leads tells visitors to copy this skill; the link and the install line must resolve."""
-    r = await clients.get("/skills/follower-leads/SKILL.md")
-    assert r.status_code == 200 and r.text.startswith("---\nname: follower-leads")
+    r = await clients.get("/skills/follower-signal/SKILL.md")
+    assert r.status_code == 200 and r.text.startswith("---\nname: follower-signal")
     assert "{BASE}" not in r.text
-    wk = await clients.get("/.well-known/skills/follower-leads/SKILL.md")
+    wk = await clients.get("/.well-known/skills/follower-signal/SKILL.md")
     assert wk.text == r.text
     idx = (await clients.get("/.well-known/skills/index.json")).json()["skills"][6]
     assert f"description: {idx['description']}" in r.text

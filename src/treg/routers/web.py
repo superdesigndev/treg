@@ -3911,11 +3911,12 @@ async def recruit_skill_md():
     return _serve_md("skills/recruit/SKILL.md")
 
 
-@app.get("/skills/follower-leads/SKILL.md", include_in_schema=False)
-async def follower_leads_skill_md():
-    """The follower-leads skill: a handle on X, Instagram or TikTok in, the followers who could buy
-    out, judged by Jev, tagged and clustered. The skill behind /follower-leads. Bundled like recruit."""
-    return _serve_md("skills/follower-leads/SKILL.md")
+@app.get("/skills/follower-signal/SKILL.md", include_in_schema=False)
+async def follower_signal_skill_md():
+    """The follower-signal skill: a handle on X, Instagram or TikTok in; the followers who could buy,
+    judged by Jev, and who they are and what they care about, out. The skill behind /follower-leads.
+    Bundled like recruit."""
+    return _serve_md("skills/follower-signal/SKILL.md")
 
 
 @app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
@@ -4817,7 +4818,7 @@ async def well_known_skills_index():
                        ("lead-signals", "skills/lead-signals/SKILL.md"),
                        ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
                        ("doomscroll", "skills/doomscroll/SKILL.md"),
-                       ("follower-leads", "skills/follower-leads/SKILL.md")):
+                       ("follower-signal", "skills/follower-signal/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
         if summary := (fm.get("metadata") or {}).get("summary"):
@@ -4865,10 +4866,10 @@ async def well_known_doomscroll_md():
     return _serve_md("skills/doomscroll/SKILL.md")
 
 
-@app.get("/.well-known/skills/follower-leads/SKILL.md", include_in_schema=False)
-async def well_known_follower_leads_md():
-    """The seventh entry `index.json` promises; the same file as /skills/follower-leads/SKILL.md."""
-    return _serve_md("skills/follower-leads/SKILL.md")
+@app.get("/.well-known/skills/follower-signal/SKILL.md", include_in_schema=False)
+async def well_known_follower_signal_md():
+    """The seventh entry `index.json` promises; the same file as /skills/follower-signal/SKILL.md."""
+    return _serve_md("skills/follower-signal/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)

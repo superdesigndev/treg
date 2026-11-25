@@ -13,7 +13,7 @@ described in `/plugin`:
 
 - `ai-ugc-video`
 - `doomscroll`
-- `follower-leads`
+- `follower-signal`
 - `jev-memory`
 - `lead-signals`
 - `make-ugc`

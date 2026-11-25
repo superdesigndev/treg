@@ -955,8 +955,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "follower_leads_skill_md",
-    "path": "/skills/follower-leads/SKILL.md"
+    "name": "follower_signal_skill_md",
+    "path": "/skills/follower-signal/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1598,8 +1598,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "well_known_follower_leads_md",
-    "path": "/.well-known/skills/follower-leads/SKILL.md"
+    "name": "well_known_follower_signal_md",
+    "path": "/.well-known/skills/follower-signal/SKILL.md"
   },
   {
     "kind": "APIRoute",

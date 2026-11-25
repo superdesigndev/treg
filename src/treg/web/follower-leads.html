@@ -42,7 +42,7 @@
   .tabs a { display: flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px; text-decoration: none; font-size: 13px; line-height: 20px; color: var(--grey); white-space: nowrap; transition: background .15s, color .15s; }
   .tabs a svg { width: 16px; height: 16px; flex: none; }
   .tabs a:hover { color: var(--ink); background: #F7F9F7; }
-  .tabs a[aria-current="page"] { color: #31594F; background: #EDF5F1; box-shadow: inset 0 0 0 1px #E2EEE7; }
+  .tabs a[aria-current="page"] { color: var(--ink); background: linear-gradient(90deg, rgba(253,181,236,.5), rgba(34,199,255,.28)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
   .nav-r { justify-self: end; display: flex; align-items: center; gap: 20px; font-size: 13px; }
   .community { display: flex; align-items: center; gap: 14px; }
   .community a { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; color: var(--grey); text-decoration: none; white-space: nowrap; }
@@ -273,7 +273,7 @@
   <span class="tabs" aria-label="Page sections">
     <a href="#top" aria-current="page"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/></svg>Scan</a>
     <a href="#how"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg>How it works</a>
-    <a href="#agent"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 2h10v16H5zM8 6h4M8 10h4M8 14h2"/></svg>The skill</a>
+    <a href="#agent"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 6l4 4-4 4M10 15h6" stroke-linecap="round" stroke-linejoin="round"/></svg>The prompt</a>
   </span>
   <span class="nav-r">
     <span class="community" role="group" aria-label="Community links"><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener" aria-label="Open source on GitHub" title="Open source on GitHub"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><span>Open source</span></a>
@@ -404,11 +404,11 @@
 
 <section class="final" id="agent">
   <h2>Scan leads with your agent.</h2>
-  <p>The skill scans your followers on <strong><span class="nw"><img class="pl" src="media/social-search/brands/color/x.svg" alt="">X</span>, <span class="nw"><img class="pl" src="media/social-search/brands/color/instagram.svg" alt="">Instagram</span> and <span class="nw"><img class="pl" src="media/social-search/brands/color/tiktok.svg" alt="">TikTok</span></strong>, tags and clusters every lead, and makes a card you can share.</p>
+  <p>The skill scans your followers on <strong><span class="nw"><img class="pl" src="media/social-search/brands/color/x.svg" alt="">X</span>, <span class="nw"><img class="pl" src="media/social-search/brands/color/instagram.svg" alt="">Instagram</span> and <span class="nw"><img class="pl" src="media/social-search/brands/color/tiktok.svg" alt="">TikTok</span></strong>, finds the leads, and tells you who they are: their background and role, what they care about at work, their pain points, and what they care about as people.</p>
   <div class="cmd">
     <div class="ch">paste this into your agent</div>
     <div class="cl"><span class="ps">›</span><span class="cline" id="llmsUrl">{BASE}/llms.txt</span></div>
-    <div class="then">then: "Follow <a href="/skills/follower-leads/SKILL.md" target="_blank" rel="noopener">{BASE}/skills/follower-leads/SKILL.md</a> to <span id="promptText">find the potential customers in my X, Instagram and TikTok followers. My handle is @yourhandle.</span>"</div>
+    <div class="then">then: "Follow <a href="/skills/follower-signal/SKILL.md" target="_blank" rel="noopener">{BASE}/skills/follower-signal/SKILL.md</a> to <span id="promptText">find the potential customers in my X, Instagram and TikTok followers, and tell me who they are and what they care about. My handle is @yourhandle.</span>"</div>
   </div>
   <div class="ctas"><button type="button" class="pill dark" id="copyPrompt">Copy prompt</button></div>
 </section>
@@ -932,7 +932,7 @@
   /* the agent prompt: treg setup and the skill in one paste, as on /rea-growth */
   function livePrompt() {
     var h = cleanHandle($('handle').value) || 'yourhandle';
-    $('promptText').textContent = 'find the potential customers in my X, Instagram and TikTok followers. My handle is @' + h + '.';
+    $('promptText').textContent = 'find the potential customers in my X, Instagram and TikTok followers, and tell me who they are and what they care about. My handle is @' + h + '.';
   }
   $('handle').addEventListener('input', livePrompt); livePrompt();
   $('copyPrompt').addEventListener('click', function () {
