@@ -71,6 +71,11 @@ def host_is_public(host: str) -> bool:
     return True
 
 
+class AddressLookupTimedOut(TimeoutError):
+    """The address could not be confirmed in time. The request is still refused, but this says
+    nothing about the host or a credential behind it."""
+
+
 _executor: ThreadPoolExecutor | None = None
 
 
@@ -96,7 +101,7 @@ def _lookup_executor() -> ThreadPoolExecutor:
 async def host_is_public_async(host: str, check=None) -> bool:
     """host_is_public off the event loop, on a small dedicated pool. At most one lookup per host is in
     flight; a caller arriving meanwhile awaits the same answer. No verdict is kept once it lands. A
-    caller that has waited `ssrf_lookup_timeout_s` is refused. A lookup still queued when its last
+    caller that has waited `ssrf_lookup_timeout_s` gets AddressLookupTimedOut. A lookup still queued when its last
     caller stops waiting is dropped; one already running cannot be interrupted and finishes on its
     thread."""
     if not host:
@@ -113,7 +118,7 @@ async def host_is_public_async(host: str, check=None) -> bool:
         return await asyncio.wait_for(asyncio.shield(lookup.answer), get_settings().ssrf_lookup_timeout_s)
     except TimeoutError:
         _log.warning("ssrf_lookup_timeout")
-        return False
+        raise AddressLookupTimedOut("address lookup timed out") from None
     finally:
         lookup.waiters -= 1
         if not lookup.waiters and lookup.job.cancel() and _inflight.get(host) is lookup:
@@ -130,7 +135,8 @@ def _forget(host: str, lookup: _Lookup):
 
 
 async def url_host_is_public(url: object) -> bool:
-    """host_is_public for a whole URL (a str or an httpx.URL), resolved off the event loop."""
+    """host_is_public for a whole URL (a str or an httpx.URL), resolved off the event loop. Raises
+    AddressLookupTimedOut as host_is_public_async does."""
     try:
         host = urlsplit(str(url)).hostname or ""
     except ValueError:

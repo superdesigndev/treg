@@ -391,8 +391,10 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
 dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
 most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
-lands, so each new call resolves again. A caller that has waited `ssrf_lookup_timeout_s` is refused, as an
-unresolvable host is (`ssrf_lookup_timeout` in the log). A lookup still queued when its last caller stops
+lands, so each new call resolves again. A caller that has waited `ssrf_lookup_timeout_s` is refused
+(`ssrf_lookup_timeout` in the log) with `AddressLookupTimedOut`, kept apart from a confirmed non-public
+answer: the relay's `502` says the lookup timed out, and the health run marks a credential whose token
+endpoint lookup timed out `unknown`, never `invalid`, so no owner is told it died. A lookup still queued when its last caller stops
 waiting is dropped, so it never delays later lookups; one already running cannot be interrupted, finishes on
 its thread, and the next call after it starts a fresh one, so a refusal never outlasts the slow resolver.
 

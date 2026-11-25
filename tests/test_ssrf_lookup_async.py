@@ -51,7 +51,7 @@ async def test_a_lookup_past_the_timeout_is_refused_without_blocking_the_loop(re
     slow.add("hung.example")
     monkeypatch.setattr(get_settings(), "ssrf_lookup_timeout_s", 0.2)
     started = time.monotonic()
-    verdict, gaps = await _gaps_while(ssrf.host_is_public_async("hung.example"))
+    verdict, gaps = await _gaps_while(_timed_out(ssrf.host_is_public_async("hung.example")))
     elapsed = time.monotonic() - started
     assert verdict is False
     assert 0.2 <= elapsed < 1
@@ -63,7 +63,7 @@ async def test_a_timeout_is_not_remembered(resolver, monkeypatch):
     answers["flaky.example"] = ["8.8.8.8"]
     slow.add("flaky.example")
     monkeypatch.setattr(get_settings(), "ssrf_lookup_timeout_s", 0.1)
-    assert await ssrf.host_is_public_async("flaky.example") is False
+    await _timed_out(ssrf.host_is_public_async("flaky.example"))
     gate.set()
     for _ in range(200):
         if "flaky.example" not in ssrf._inflight:
@@ -71,6 +71,12 @@ async def test_a_timeout_is_not_remembered(resolver, monkeypatch):
         await asyncio.sleep(0.01)
     assert "flaky.example" not in ssrf._inflight
     assert await ssrf.host_is_public_async("flaky.example") is True
+
+
+async def _timed_out(coro):
+    with pytest.raises(ssrf.AddressLookupTimedOut):
+        await coro
+    return False
 
 
 async def _gaps_while(coro):
@@ -163,9 +169,9 @@ async def test_a_queued_lookup_nobody_waits_for_is_dropped(counted_resolver, one
     answers["busy.example"] = answers["queued.example"] = ["8.8.8.8"]
     slow.add("busy.example")
     monkeypatch.setattr(get_settings(), "ssrf_lookup_timeout_s", 0.1)
-    busy = asyncio.create_task(ssrf.host_is_public_async("busy.example"))
+    busy = asyncio.create_task(_timed_out(ssrf.host_is_public_async("busy.example")))
     await asyncio.sleep(0.02)
-    assert await ssrf.host_is_public_async("queued.example") is False  # timed out in the queue
+    await _timed_out(ssrf.host_is_public_async("queued.example"))
     assert "queued.example" not in ssrf._inflight
     gate.set()
     await busy
@@ -184,7 +190,7 @@ async def test_one_waiter_timing_out_keeps_the_lookup_another_still_needs(
     busy = asyncio.create_task(ssrf.host_is_public_async("busy.example"))
     await asyncio.sleep(0.02)
     monkeypatch.setattr(settings, "ssrf_lookup_timeout_s", 0.1)
-    impatient = asyncio.create_task(ssrf.host_is_public_async("shared.example"))
+    impatient = asyncio.create_task(_timed_out(ssrf.host_is_public_async("shared.example")))
     await asyncio.sleep(0)
     monkeypatch.setattr(settings, "ssrf_lookup_timeout_s", 2.0)
     patient = asyncio.create_task(ssrf.host_is_public_async("shared.example"))
@@ -193,3 +199,21 @@ async def test_one_waiter_timing_out_keeps_the_lookup_another_still_needs(
     assert await patient is True
     await busy
     assert resolved == ["busy.example", "shared.example"]
+
+
+async def test_relay_names_a_lookup_timeout(monkeypatch):
+    from treg.application.call.types import GatewayFailed
+    from treg.infra.upstream import relay as relay_module
+
+    async def timed_out(host, check=None):
+        raise ssrf.AddressLookupTimedOut("address lookup timed out")
+
+    monkeypatch.setattr(relay_module.get_settings(), "proxy_ssrf_check", True)
+    monkeypatch.setattr(ssrf, "host_is_public_async", timed_out)
+    from test_relay_dns_off_loop import _relay
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))) as client:
+        with pytest.raises(GatewayFailed) as caught:
+            await _relay("slow-dns.example", client)
+    assert caught.value.kind == "ssrf_refused"
+    assert "timed out" in caught.value.detail
