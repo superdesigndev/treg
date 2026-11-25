@@ -8,7 +8,7 @@ from treg import archive, archive_bodies
 from treg.application import review_answers
 from treg.config import get_settings
 from treg.infra.db import session_maker
-from treg.models import ArchiveKey, ArchiveSnapshot, CallReview
+from treg.models import ArchiveKey, ArchiveSnapshot, CallRecord, CallReview
 from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
 
 
@@ -65,7 +65,8 @@ async def test_object_storage_in_use_but_not_configured_waits(clients, monkeypat
     assert (await review_answers.answer_of(review)).state == "unreadable"
 
 
-async def test_a_database_disconnect_waits_and_a_corrupt_read_does_not(clients, monkeypatch):
+async def test_a_database_disconnect_or_a_corrupt_read_is_tried_again(clients, monkeypatch):
+    # Neither is a gone answer; the judge backs off and gives up after a few tries.
     review = await _reviewed(clients)
 
     async def disconnect(*args, **kwargs):
@@ -76,15 +77,56 @@ async def test_a_database_disconnect_waits_and_a_corrupt_read_does_not(clients, 
     async def corrupt(*args, **kwargs):
         raise ValueError("Error -3 while decompressing data")
     monkeypatch.setattr(archive, "resolve_result", corrupt)
-    answer = await review_answers.answer_of(review)
-    assert (answer.state, answer.error) == ("absent", True)
+    assert (await review_answers.answer_of(review)).state == "unreadable"
 
 
-async def test_a_table_caller_is_judged_from_the_reason(clients, monkeypatch):
-    # /table reshapes the answer and the call row does not say which surface was used.
+async def test_a_call_through_table_is_judged_from_the_reason(clients):
+    # /table reshapes the answer; its call row says so.
     review = await _reviewed(clients)
     await _key((1, PEOPLE.encode(), "db"))
-    monkeypatch.setattr(get_settings(), "table_enabled", True, raising=False)
+    async with session_maker() as db:
+        record = (await db.execute(select(CallRecord))).scalar_one()
+        record.surface = "table"
+        await db.commit()
+    assert (await review_answers.answer_of(review)).state == "absent"
+
+
+async def test_a_call_from_before_surfaces_were_recorded_can_be_kept_out(clients, monkeypatch):
+    from datetime import datetime, timedelta
+
+    review = await _reviewed(clients)
+    await _key((1, PEOPLE.encode(), "db"))
+    assert (await review_answers.answer_of(review)).state == "read"
+    monkeypatch.setattr(get_settings(), "review_answer_surface_since", datetime.now() + timedelta(days=1),
+                        raising=False)
+    assert (await review_answers.answer_of(review)).state == "absent"
+
+
+async def test_a_missing_object_falls_back_to_a_database_copy_and_otherwise_is_gone(clients, monkeypatch):
+    # The same bytes kept in the database by an older version and in object storage by a newer one:
+    # an object read that finds it missing moves on to the database copy.
+    review = await _reviewed(clients)
+    await _key((1, PEOPLE.encode(), "db"), (2, None, "r2"))
+    real = archive_bodies.read
+
+    async def read(pointer, path, *, diagnostics=None, session_factory=None):
+        if pointer.storage == "r2":
+            diagnostics.update(cache_body_fallback_reason="not_found")
+            return None
+        return await real(pointer, path, diagnostics=diagnostics, session_factory=session_factory)
+    monkeypatch.setattr(archive_bodies, "read", read)
+    assert (await review_answers.answer_of(review)).state == "read"
+
+
+async def test_an_object_confirmed_missing_with_no_other_copy_is_gone(clients, monkeypatch):
+    review = await _reviewed(clients)
+    await _key((1, None, "r2"))
+    monkeypatch.setattr(archive_bodies, "has_store", lambda: True)
+
+    async def read(pointer, path, *, diagnostics=None, session_factory=None):
+        diagnostics.update(cache_body_fallback_reason="not_found")
+        return None
+    monkeypatch.setattr(archive_bodies, "read", read)
     assert (await review_answers.answer_of(review)).state == "absent"
 
 
@@ -101,11 +143,3 @@ async def test_the_view_shows_only_what_this_delivery_is_known_to_have_had(clien
     found = (await review_answers.answer_of(review)).found
     item = review_answers.view(0, review, found, "people.search", 500)
     assert set(item["response"]) == {"status_code", "body"}
-
-
-async def test_a_table_user_is_judged_from_the_reason(clients, monkeypatch):
-    review = await _reviewed(clients)
-    await _key((1, PEOPLE.encode(), "db"))
-    monkeypatch.setattr(get_settings(), "table_enabled", True, raising=False)
-    monkeypatch.setattr(get_settings(), "table_users", review.user_email, raising=False)
-    assert (await review_answers.answer_of(review)).state == "absent"

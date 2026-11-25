@@ -71,7 +71,6 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             out["stopped_by_deadline"] = True
             out["read_not_asked"] += len(items)
             return
-        out["asked"] += len(items)
         # The reason-only control is asked here too, never read from the review row: the hourly
         # judge codes rows with their answer, so a stored code is no control.
         reason_state = {"reviews": [{k: item[k] for k in ("i", "usefulness", "reason", "endpoint", "capability",
@@ -81,8 +80,10 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
                                 (reason_state, review_codes.code_question)):
             if time.monotonic() >= deadline:  # no paid request after it; a half-asked batch is not paired
                 out["stopped_by_deadline"] = True
-                out["half_asked"] += len(items)
+                out["half_asked" if replies else "read_not_asked"] += len(items)
                 return
+            if not replies:
+                out["asked"] += len(items)
             reply = await _ask(state, {f"a{i}": question(i) for i in range(len(items))})
             if reply.answers is None:
                 out["failed_requests"] += 1

@@ -394,6 +394,27 @@ async def test_the_second_request_of_a_batch_is_not_sent_after_the_deadline(clie
     assert out["stopped_by_deadline"] is True
 
 
+async def test_a_batch_cut_before_its_first_request_is_read_not_asked(clients, monkeypatch):
+    # The deadline passes while the batch is being prepared: no request at all, so nothing is half asked.
+    from treg.application import review_body_pilot as pilot
+
+    org = await _org(clients)
+    await _add(_review(org, "p", "WRONG"), _record(org, "p", "kp"))
+    _archive(monkeypatch, {"kp": PEOPLE})
+    now = [0.0]
+    monkeypatch.setattr(pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    real_view = pilot.view
+
+    def slow_view(*args):
+        now[0] += 2
+        return real_view(*args)
+    monkeypatch.setattr(pilot, "view", slow_view)
+    seen = _jev(monkeypatch)
+
+    out = await pilot.run(sample=5, batch=1, budget=500, max_seconds=1)
+    assert seen == [] and out["asked"] == 0 and out["half_asked"] == 0 and out["read_not_asked"] == 1
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {
@@ -414,7 +435,6 @@ async def test_the_judge_sees_the_status_and_body_the_caller_got(clients, monkey
     # One stored body answered this call with 206; the provider's reported charge is stripped
     # before delivery, so the judge never sees it either.
     from treg.application import review_answers
-    from treg.application.call import service as call_service
 
     org = await _org(clients)
     record = _record(org, "s", "ks", status=206)
@@ -426,8 +446,8 @@ async def test_the_judge_sees_the_status_and_body_the_caller_got(clients, monkey
                 "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 9,
                              "body_text": '{"people":[],"credits_charged":2}'}}
     monkeypatch.setattr(archive, "resolve_result", resolve)
-    monkeypatch.setattr(call_service, "answer_for_caller",
-                        lambda endpoint_id, body, headers: body.replace(b',"credits_charged":2', b""))
+    # Whatever the setting today: the endpoint declares where its reported charge is.
+    monkeypatch.setattr(review_answers.reported_charge, "path_of", lambda endpoint: "response.credits_charged")
     async with session_maker() as db:
         review = (await db.execute(select(CallReview))).scalar_one()
     found = (await review_answers.answer_of(review)).found
