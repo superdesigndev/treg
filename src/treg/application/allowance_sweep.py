@@ -267,20 +267,25 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     at most `_TEAMS_PER_PASS` teams; a team it folded nothing of (another process or a session
     of the team's own is on it, or its rows stayed locked) does not count, so teams stuck at the
     front never use up a pass and the teams behind them are still reached. The next pass, which follows at once, comes
-    back for the rest. Stops between teams once `keep_going` says so. Returns how many charges
+    back for the rest. The teams are read `_TEAMS_LISTED` at a time, and a pass reads on while it
+    has places left, so a full list of teams it cannot have does not end it either. Stops between
+    teams once `keep_going` says so. Returns how many charges
     were folded."""
-    total, worked = 0, 0
-    async with session_maker() as db:
-        org_ids = await allowance.orgs_with_queued_charges(
-            db, utcnow_naive(), limit=_TEAMS_LISTED, shard=shard)
-    for org_id in org_ids:
-        if worked >= _TEAMS_PER_PASS or not keep_going():
-            break
-        folded = await _fold_team(session_maker, org_id)
-        if folded is not None:
-            worked += 1
-            total += folded
-    return total
+    total, worked, after, queued_before = 0, 0, None, utcnow_naive()
+    while True:
+        async with session_maker() as db:
+            page = await allowance.queued_teams(
+                db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
+        for org_id, _ in page:
+            if worked >= _TEAMS_PER_PASS or not keep_going():
+                return total
+            folded = await _fold_team(session_maker, org_id)
+            if folded is not None:
+                worked += 1
+                total += folded
+        if len(page) < _TEAMS_LISTED:
+            return total
+        after = page[-1]
 
 
 async def _fold_team(session_maker, org_id: int) -> int | None:

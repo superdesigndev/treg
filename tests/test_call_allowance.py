@@ -2532,6 +2532,17 @@ async def test_teams_whose_rows_stay_locked_do_not_use_up_a_pass(org_id, store, 
     assert [await _queued(team) for team in teams] == [1, 1, 0]
 
 
+async def test_a_pass_pages_past_a_full_list_of_teams_it_cannot_have(org_id, store, monkeypatch):
+    """The list a pass reads is bounded too. When every team on it is held elsewhere, the pass
+    reads on past the last one instead of ending with nothing folded."""
+    monkeypatch.setattr(allowance_sweep, "_TEAMS_LISTED", 1)
+    teams = await _three_waiting_teams(org_id)
+    for team in teams[:2]:
+        store.leases[runtime.money_key(team)] = "another process"
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert [await _queued(team) for team in teams] == [1, 1, 0]
+
+
 async def test_a_team_whose_money_sessions_are_busy_does_not_hold_up_the_teams_behind_it(
         org_id, store, monkeypatch):
     """The pass does not wait its turn behind a team's other money sessions: it leaves that
