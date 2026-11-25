@@ -1,0 +1,116 @@
+{
+  "query": "stripe",
+  "containsSpecialCharacters": false,
+  "legalUrl": "https://legal.trustpilot.com",
+  "hasMore": false,
+  "businessUnits": [
+    {
+      "businessUnitId": "5ed0ea17dcd4000001700deb",
+      "stars": 4.5,
+      "identifyingName": "stripeandstare.com",
+      "displayName": "Stripe & Stare",
+      "logoUrl": "//s3-eu-west-1.amazonaws.com/tpd/logos/5ed0ea17dcd4000001700deb/0x0.png",
+      "numberOfReviews": 1890,
+      "trustScore": 4.3,
+      "location": {
+        "address": "Units 1&8 Phoenix Mill Business Park",
+        "city": "Plymouth",
+        "zipCode": "PL6 7PY",
+        "country": "United Kingdom"
+      },
+      "isRecommendedInCategories": false,
+      "contact": {
+        "website": "https://stripeandstare.com",
+        "email": null,
+        "phone": null
+      },
+      "categories": [
+        {
+          "categoryId": "underwear_store",
+          "displayName": "Underwear Store",
+          "isPredicted": false,
+          "isPrimary": false
+        },
+        {
+          "categoryId": "clothing_store",
+          "displayName": "Clothing Store",
+          "isPredicted": false,
+          "isPrimary": false
+        },
+        "… 3 more item(s) truncated"
+      ]
+    },
+    {
+      "businessUnitId": "50489e6800006400051ae0d6",
+      "stars": 1.5,
+      "identifyingName": "stripe.com",
+      "displayName": "https://stripe.com/payments/checkout",
+      "logoUrl": "//s3-eu-west-1.amazonaws.com/tpd/logos/50489e6800006400051ae0d6/0x0.png",
+      "numberOfReviews": 17597,
+      "trustScore": 1.6,
+      "location": {
+        "address": "510 Townsend Street",
+        "city": "San Francisco",
+        "zipCode": "94103",
+        "country": "United States"
+      },
+      "isRecommendedInCategories": false,
+      "contact": {
+        "website": "https://stripe.com",
+        "email": null,
+        "phone": null
+      },
+      "categories": [
+        {
+          "categoryId": "payment_service",
+          "displayName": "Payment Service",
+          "isPredicted": false,
+          "isPrimary": false
+        }
+      ]
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "categories": [
+    {
+      "categoryId": "underwear_store",
+      "displayName": "Underwear Store",
+      "topLevelCategoryDisplayName": "Shopping & Fashion",
+      "iconCategoryId": "shopping_fashion"
+    },
+    {
+      "categoryId": "clothing_store",
+      "displayName": "Clothing Store",
+      "topLevelCategoryDisplayName": "Shopping & Fashion",
+      "iconCategoryId": "shopping_fashion"
+    },
+    "… 4 more item(s) truncated"
+  ],
+  "defaultFilters": {
+    "numberOfReviews": null,
+    "trustscore": null,
+    "address": "",
+    "countryCode": "",
+    "claimed": false,
+    "location": "",
+    "variant": ""
+  },
+  "filters": {
+    "numberOfReviews": null,
+    "trustscore": null,
+    "address": "",
+    "countryCode": "",
+    "claimed": false,
+    "location": "",
+    "variant": ""
+  },
+  "hasActiveFilters": false,
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 21,
+    "totalResults": 209,
+    "pageSize": 10
+  },
+  "searchMode": "keyword",
+  "_source": "persistent_browser_primary_json"
+}

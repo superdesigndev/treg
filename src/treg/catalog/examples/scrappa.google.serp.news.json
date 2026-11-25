@@ -1,0 +1,73 @@
+{
+  "news_results": [
+    {
+      "position": 1,
+      "title": "OpenAI’s GPT-6.2 Astra and GPT-6.2 Sol now available",
+      "link": "https://github.blog/changelog/2026-11-17-openais-gpt-6-2-astra-and-gpt-6-2-sol-now-available/",
+      "type": "storyline",
+      "snippet": "OpenAI's GPT-6.2 Astra and GPT-6.2 Sol are now generally available in GitHub Copilot. Both models are designed for agentic coding and code...",
+      "iso_date": "2026-11-17T20:20:29+00:00",
+      "published_at": "2026-11-17 20:20:29 UTC",
+      "date": "today",
+      "thumbnail": "https://github.blog/wp-content/uploads/2026/11/705557007-3c083fa0-9f2d-4f0e-863d-675889a6920a.png?fit=2064%2C713",
+      "thumbnail_small": "https://github.blog/wp-content/uploads/2026/11/705557007-3c083fa0-9f2d-4f0e-863d-675889a6920a.png?fit=2064%2C713",
+      "source": {
+        "name": "The GitHub Blog",
+        "icon": "https://encrypted-tbn3.gstatic.com/faviconV2?url=https://github.blog&client=NEWS_360&size=96&type=FAVICON&fallback_opts=TYPE,SIZE,URL",
+        "title": "The GitHub Blog"
+      },
+      "story_token": "CBMimAFBVV95cUxOekhQQ0QwU01kcHNpY2FqUERROWJrSG5obWVmWm1TQmxHRFZBMUlWMkFnUkp4TmhlQ1VHQlFSSm4tNGQ1TmFNX28xSkVCWUtVX3kwLTd4Q0ktVHZOWUhXS1NZVE1jWjkxZDVYenhUTmZYUUM4SUhKRUtkZ3pZa05lZENmTVc5YnNnMEM0UDdaYXhieDFjT1BUcQ",
+      "related_publications": [
+        {
+          "title": "The GitHub Blog",
+          "link": "https://news.google.com/publications/CAAqJQgKIh9DQklTRVFnTWFnMEtDMmRwZEdoMVlpNWliRzluS0FBUAE",
+          "publication_token": "CAAqJQgKIh9DQklTRVFnTWFnMEtDMmRwZEdoMVlpNWliRzluS0FBUAE"
+        }
+      ]
+    },
+    {
+      "position": 2,
+      "title": "'Essentially unusable': OpenAI launches GPT-6.2 Astra and Sol to negative reception from AI power users",
+      "link": "https://venturebeat.com/technology/essentially-unusable-openai-launches-gpt-6-2-astra-and-sol-to-negative-reception-from-ai-power-users",
+      "type": "storyline",
+      "snippet": "OpenAI's launch makes Astra cheaper at the meter and gives Sol a stronger case at its existing price. Whether either lowers the cost of...",
+      "iso_date": "2026-11-17T22:33:40+00:00",
+      "published_at": "2026-11-17 22:33:40 UTC",
+      "date": "today",
+      "thumbnail": "https://venturebeat.com/_next/image?url=https%3A%2F%2Fimages.ctfassets.net%2Fjdtwqhzvc2n1%2F3W4DImbF39CwCrxtwJt637%2F4fe0fd587694b6e97507fab5aa7b1bea%2FVictorian_Night_Street_with_Gothic_Knot__1_.png%3Fw%3D1000%26q%3D100&w=3840&q=85",
+      "thumbnail_small": "https://venturebeat.com/_next/image?url=https%3A%2F%2Fimages.ctfassets.net%2Fjdtwqhzvc2n1%2F3W4DImbF39CwCrxtwJt637%2F4fe0fd587694b6e97507fab5aa7b1bea%2FVictorian_Night_Street_with_Gothic_Knot__1_.png%3Fw%3D1000%26q%3D100&w=3840&q=85",
+      "source": {
+        "name": "VentureBeat",
+        "icon": "https://encrypted-tbn3.gstatic.com/faviconV2?url=https://venturebeat.com&client=NEWS_360&size=96&type=FAVICON&fallback_opts=TYPE,SIZE,URL",
+        "title": "VentureBeat"
+      },
+      "story_token": "CBMi0AFBVV95cUxOM0p5RXctRUhTQzMxTEdQYnJxaVozUkFlQmJOSEJrQjVfeEdrdDJBcExkcmhEUGpoZTN0dXo3dVhxajVwWlpWdVAyRzNDUTBEdi1rekFrT0l3VlgxMFVic1c1ZG9fTVpaVEh0UzAtOUdGRmtVSDdHdHpHRzRiWGY3QUVndjItemljNG8wZVJrNWo3azFrWTVHQmtWczhTcDdGblJmbjhiOFEyS0pULWNQSG9MVkNLVzhJTjBFaUtGaE16UFA0d1c2YzMtX3Z4Tkdm",
+      "authors": [],
+      "related_publications": [
+        {
+          "title": "VentureBeat",
+          "link": "https://news.google.com/publications/CAAqKggKIiRDQklTRlFnTWFoRUtEM1psYm5SMWNtVmlaV0YwTG1OdmJTZ0FQAQ",
+          "publication_token": "CAAqKggKIiRDQklTRlFnTWFoRUtEM1psYm5SMWNtVmlaV0YwTG1OdmJTZ0FQAQ"
+        }
+      ],
+      "sub_menu_links": []
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "menu_links": [
+    {
+      "title": "U.S.",
+      "link": "https://news.google.com/topics/CAAqIggKIhxDQkFTRHdvSkwyMHZNRGxqTjNjd0VnSmxiaWdBUAE?hl=en-US&gl=US&ceid=US%3Aen",
+      "topic_token": "CAAqIggKIhxDQkFTRHdvSkwyMHZNRGxqTjNjd0VnSmxiaWdBUAE"
+    },
+    {
+      "title": "World",
+      "link": "https://news.google.com/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US%3Aen",
+      "topic_token": "CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtVnVHZ0pWVXlnQVAB"
+    },
+    "… 7 more item(s) truncated"
+  ],
+  "related_publications": [],
+  "sub_menu_links": [],
+  "highlight": null
+}

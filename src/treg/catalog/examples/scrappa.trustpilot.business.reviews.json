@@ -1,0 +1,250 @@
+{
+  "bucketingId": null,
+  "pageUrl": "https:/…",
+  "businessUnit": {
+    "id": "50489e6…",
+    "displayName": "https:/…",
+    "identifyingName": "stripe.…",
+    "numberOfReviews": 17597,
+    "numberOfReviewsLast12Months": 1141,
+    "trustScore": 1.6,
+    "websiteUrl": "https:/…",
+    "websiteTitle": "stripe.…",
+    "profileImageUrl": "//s3-eu…",
+    "customHeaderUrl": "",
+    "promotion": null,
+    "hideCompetitorModule": false,
+    "stars": 1.5,
+    "categories": [
+      {
+        "id": "payment…",
+        "name": "Payment…",
+        "rank": "undefin…",
+        "cardinality": "undefin…",
+        "isPrimary": true
+      }
+    ],
+    "breadcrumb": {
+      "topLevelId": "busines…",
+      "topLevelDisplayName": "Busines…",
+      "midLevelId": "adminis…",
+      "midLevelDisplayName": "Adminis…",
+      "bottomLevelId": "payment…",
+      "bottomLevelDisplayName": "Payment…"
+    },
+    "isClaimed": true,
+    "…": "16 more field(s) truncated"
+  },
+  "reviews": [
+    {
+      "id": "6afc5fb…",
+      "filtered": false,
+      "isPending": false,
+      "text": "Since O…",
+      "rating": 1,
+      "labels": {
+        "merged": null,
+        "verification": {
+          "isVerified": false,
+          "createdDateTime": "2026-11…",
+          "reviewSourceName": "Organic",
+          "verificationSource": "invitat…",
+          "verificationLevel": "not-ver…",
+          "hasDachExclusion": false
+        }
+      },
+      "title": "Since O…",
+      "likes": 1,
+      "source": "Organic",
+      "dates": {
+        "experiencedDate": "2026-11…",
+        "publishedDate": "2026-11…",
+        "updatedDate": null,
+        "submittedDate": null
+      },
+      "report": null,
+      "hasUnhandledReports": false,
+      "isCurrentlyUnderModeration": false,
+      "consumer": {
+        "id": null,
+        "displayName": "Anonymous reviewer",
+        "imageUrl": null,
+        "numberOfReviews": 1,
+        "countryCode": null,
+        "hasImage": false,
+        "isVerified": false,
+        "profileUrl": null
+      },
+      "reply": null,
+      "consumersReviewCountOnSameDomain": 1,
+      "…": "7 more field(s) truncated"
+    }
+  ],
+  "relevantReviews": [
+    {
+      "id": "6afbf2f…",
+      "filtered": false,
+      "isPending": false,
+      "text": "  Horri…",
+      "rating": 1,
+      "labels": {
+        "merged": null,
+        "verification": {
+          "isVerified": false,
+          "createdDateTime": "2026-11…",
+          "reviewSourceName": "Organic",
+          "verificationSource": "invitat…",
+          "verificationLevel": "not-ver…",
+          "hasDachExclusion": false
+        }
+      },
+      "title": "Horribl…",
+      "likes": 0,
+      "source": "Organic",
+      "dates": {
+        "experiencedDate": "2026-11…",
+        "publishedDate": "2026-11…",
+        "updatedDate": null,
+        "submittedDate": null
+      },
+      "report": null,
+      "hasUnhandledReports": false,
+      "isCurrentlyUnderModeration": false,
+      "consumer": {
+        "id": null,
+        "displayName": "Anonymous reviewer",
+        "imageUrl": null,
+        "numberOfReviews": 54,
+        "countryCode": null,
+        "hasImage": true,
+        "isVerified": false,
+        "profileUrl": null
+      },
+      "reply": null,
+      "consumersReviewCountOnSameDomain": 1,
+      "…": "7 more field(s) truncated"
+    },
+    {
+      "id": "6af7586…",
+      "filtered": false,
+      "isPending": false,
+      "text": "there i…",
+      "rating": 1,
+      "labels": {
+        "merged": null,
+        "verification": {
+          "isVerified": false,
+          "createdDateTime": "2026-11…",
+          "reviewSourceName": "Organic",
+          "verificationSource": "invitat…",
+          "verificationLevel": "not-ver…",
+          "hasDachExclusion": false
+        }
+      },
+      "title": "there i…",
+      "likes": 0,
+      "source": "Organic",
+      "dates": {
+        "experiencedDate": "2026-11…",
+        "publishedDate": "2026-11…",
+        "updatedDate": null,
+        "submittedDate": null
+      },
+      "report": null,
+      "hasUnhandledReports": false,
+      "isCurrentlyUnderModeration": false,
+      "consumer": {
+        "id": null,
+        "displayName": "Anonymous reviewer",
+        "imageUrl": null,
+        "numberOfReviews": 62,
+        "countryCode": null,
+        "hasImage": false,
+        "isVerified": true,
+        "profileUrl": null
+      },
+      "reply": {
+        "message": "We’re s…",
+        "publishedDate": "2026-11…",
+        "updatedDate": null
+      },
+      "consumersReviewCountOnSameDomain": 1,
+      "…": "7 more field(s) truncated"
+    },
+    "… 2 mor…"
+  ],
+  "aiSummaryReviews": [],
+  "remainingAiSummaryReviewIds": [],
+  "topicAiSummaryReviews": [],
+  "remainingTopicAiSummaryReviewIds": [],
+  "products": [],
+  "filters": {
+    "hasActiveFilters": false,
+    "totalNumberOfReviews": 16483,
+    "totalNumberOfFilteredReviews": 16483,
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 825,
+      "totalResults": 16483,
+      "perPage": 20
+    },
+    "selected": {
+      "with_replies": null,
+      "verified": null,
+      "rating": null,
+      "stars": null,
+      "query": null,
+      "language": null,
+      "date": null
+    },
+    "reviewStatistics": {
+      "hasMultipleLanguages": true,
+      "reviewLanguages": [
+        {
+          "isoCode": "all",
+          "reviewCount": 16483,
+          "displayName": "all"
+        },
+        {
+          "isoCode": "ar",
+          "reviewCount": 2,
+          "displayName": "العربية"
+        },
+        "… 25 mo…"
+      ],
+      "ratings": {
+        "total": 17597,
+        "one": 9166,
+        "two": 513,
+        "three": 469,
+        "four": 728,
+        "five": 6721
+      }
+    }
+  },
+  "seoData": {
+    "locale": "en-US",
+    "canonicalUrl": "https:/…",
+    "languages": [
+      {
+        "languageCode": "da",
+        "isoLanguage": "da",
+        "uri": "https:/…",
+        "locale": "da-DK"
+      },
+      {
+        "languageCode": "de",
+        "isoLanguage": "de-AT",
+        "uri": "https:/…",
+        "locale": "de-AT"
+      },
+      "… 20 mo…"
+    ],
+    "domain": "https:/…"
+  },
+  "aiSummary": null,
+  "topicAiSummaries": null,
+  "prePackedAnswers": null,
+  "prePackedAnswersReviews": null,
+  "…": "15 more field(s) truncated"
+}

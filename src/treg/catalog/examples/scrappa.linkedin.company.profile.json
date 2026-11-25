@@ -1,0 +1,45 @@
+{
+  "success": true,
+  "company_id": "1035",
+  "url": "https://www.linkedin.com/company/microsoft",
+  "name": "Microsoft",
+  "tagline": null,
+  "description": "Every company has a mission. What's ours? To empower every person and every organization to achieve more. We believe technology can and should be a force for good and that meaningful innovation contributes to a brighter world in the future and today. Our culture doesn’t just encourage curiosity; it embraces it. Each day we make progress together by showing up as our authentic selves. We show up with a learn-it-all mentality. We show up cheering on others, knowing their success doesn't diminish o… [747 chars total]",
+  "logo": "https://media.licdn.com/dms/image/v2/D560BAQH32RJQCl3dDQ/company-logo_200_200/B56ZYQ0mrGGoAM-/0/1744038948046/microsoft_logo?e=2147483647&v=beta&t=ts9MGrTk7Lz3R1bmAfzCL8euuuuPWPCoXfdiLA2_IzM",
+  "website": "https://news.microsoft.com/",
+  "phone": null,
+  "employee_count": 231103,
+  "employee_growth": null,
+  "address": {
+    "type": "PostalAddress",
+    "streetAddress": "1 Microsoft Way",
+    "addressLocality": "Redmond",
+    "addressRegion": "Washington",
+    "postalCode": "98052",
+    "addressCountry": "US"
+  },
+  "posts": [],
+  "followers": 29541031,
+  "similar_pages": [
+    {
+      "name": "Google",
+      "url": "https://www.linkedin.com/company/google?trk=similar-pages"
+    },
+    {
+      "name": "Amazon",
+      "url": "https://www.linkedin.com/company/amazon?trk=similar-pages"
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "specialties": [
+    "Business Software",
+    "Developer Tools",
+    "… 21 more item(s) truncated"
+  ],
+  "employees": [],
+  "funding": null,
+  "industry": "Software Development",
+  "size": "10,001+ employees",
+  "type": "Public Company",
+  "cached": false
+}

@@ -1674,6 +1674,181 @@ def ingest_anyapi(refresh: bool = False):
     return out, {"endpoints": len(endpoints)}
 
 
+# Scrappa publishes one OpenAPI 3.1 spec for its whole surface. Each operation carries
+# `x-credits: {min, max, rule}`, the credits one successful request bills; a range means the charge
+# follows the request (pages fetched, an optional proxy). The core file's `defaults:` supply the
+# provenance, the "failed requests are free" bill rule and the settle on the X-Credits-Charged header.
+SCRAPPA_SPEC = "https://scrappa.co/api/docs/openapi.json"
+# Spec path segments that are the caller's own account or the vendor's plumbing, never data.
+SCRAPPA_OWN_ACCOUNT = {"account", "auth", "zapier", "scrappa"}
+# The first path segment is the data source; these fold several segments into one existing platform.
+SCRAPPA_PLATFORM = {"x-twitter": "x", "maps": "google", "flights": "google", "search": "google",
+                    "search-light": "google", "search-advanced": "google", "search-ai-overview": "google",
+                    "images": "google", "google-play": "google-play"}
+
+
+def scrappa_platform(segment: str, platforms: set[str]) -> str | None:
+    """The shared-taxonomy platform a path segment's data is ABOUT, or None when the taxonomy has none."""
+    if segment in SCRAPPA_PLATFORM:
+        return SCRAPPA_PLATFORM[segment]
+    slug = segment.replace("_", "-")
+    if slug in platforms:
+        return slug
+    if slug.startswith("google-play"):
+        return "google-play"
+    if slug.startswith("google-"):
+        return "google"
+    return None
+
+
+def _scrappa_type(schema: dict) -> str:
+    kind = schema.get("type")
+    if isinstance(kind, list):
+        kind = next((k for k in kind if k != "null"), "string")
+    return kind if kind in ("string", "integer", "number", "boolean", "array") else "string"
+
+
+def _scrappa_enum(values: list, kind: str) -> list | None:
+    """The spec's enum in the parameter's own type; None when a value does not fit it (the spec
+    writes some integer enums as strings)."""
+    out = []
+    for v in values:
+        if v is None:
+            continue
+        if kind in ("integer", "number"):
+            if isinstance(v, bool):
+                return None
+            try:
+                num = float(v)
+            except (TypeError, ValueError):
+                return None
+            if kind == "integer":
+                if not num.is_integer():
+                    return None
+                num = int(num)
+            out.append(num)
+        elif kind == "boolean":
+            if not isinstance(v, bool):
+                return None
+            out.append(v)
+        else:
+            out.append(str(v))
+    return out or None
+
+
+def _scrappa_param_type(schema: dict) -> dict:
+    kind = _scrappa_type(schema)
+    if kind != "array":
+        spec: dict = {"type": kind}
+        enum = _scrappa_enum(schema.get("enum") or [], kind)
+        if enum:
+            spec["enum"] = enum
+        return spec
+    items_schema = schema.get("items") or {}
+    inner = _scrappa_type(items_schema)
+    items: dict = {"type": "string" if inner == "array" else inner}
+    enum = _scrappa_enum(items_schema.get("enum") or schema.get("enum") or [], items["type"])
+    if enum:
+        items["enum"] = enum
+    return {"type": "array", "items": items}
+
+
+def _scrappa_params(op: dict) -> dict:
+    out: dict[str, dict] = {}
+    for q in op.get("parameters") or []:
+        where = {"query": "queryParams", "path": "pathParams"}.get(q.get("in"))
+        if where is None:
+            continue
+        schema = q.get("schema") or {}
+        typed = _scrappa_param_type(schema)
+        spec: dict = {"type": typed["type"], "required": bool(q.get("required"))}
+        if "items" in typed:
+            spec["items"] = typed["items"]
+        note = clean(q.get("description") or "")
+        if note:
+            spec["note"] = note[:240]
+        if "enum" in typed:
+            spec["enum"] = typed["enum"]
+        if q.get("example") is not None and not isinstance(q["example"], (dict, list)):
+            spec["example"] = q["example"]
+        out.setdefault(where, {})[q["name"].rstrip("[]")] = spec
+    return out
+
+
+def ingest_scrappa(refresh: bool) -> tuple[Path, dict]:
+    spec = json.loads(fetch(SCRAPPA_SPEC, "scrappa_openapi.json", refresh=refresh))
+    platforms = set(yaml.safe_load((CATALOG / "capabilities.yaml").read_text())["platforms"])
+    skip = core_routes("scrappa")
+    endpoints, excluded = [], {"own account": 0, "request body": 0, "no taxonomy platform": 0}
+    unmapped: dict[str, int] = {}
+    for path, item in spec["paths"].items():
+        segment = path.strip("/").split("/")[0]
+        for method, op in item.items():
+            if method.lower() not in ("get", "post", "put", "patch", "delete"):
+                continue
+            method = method.upper()
+            if (method, path) in skip:
+                continue
+            if segment in SCRAPPA_OWN_ACCOUNT:
+                excluded["own account"] += 1
+                continue
+            if method != "GET":
+                excluded["request body"] += 1  # a body needs a per-route request schema; none is ingested
+                continue
+            platform = scrappa_platform(segment, platforms)
+            if platform is None:
+                excluded["no taxonomy platform"] += 1
+                unmapped[segment] = unmapped.get(segment, 0) + 1
+                continue
+            summary = clean(op.get("summary") or "")
+            desc = clean(op.get("description") or "")
+            first = re.split(r"(?<=[.!?])\s+", desc)[0] if desc else ""
+            text = first if len(first) > len(summary) else summary
+            entry = {
+                "id": slug_id("scrappa", path),
+                "platform": platform,
+                "method": method,
+                "path": path,
+                "summary": (text or summary or path)[:300],
+            }
+            title = short_name(summary, entry["summary"])
+            if title:
+                entry["name"] = title
+            credits = op.get("x-credits") or {}
+            high, low = credits.get("max"), credits.get("min")
+            if high in (None, 0):
+                entry["price"], entry["provenance"] = {"value": "0", "currency": "USD", "unit": "call"}, None
+            else:
+                entry["price"] = {"value": str(high), "currency": "credit", "per": 1, "unit": "call"}
+                if low != high:
+                    entry["price"]["note"] = clean(credits.get("rule") or "")
+            inp = _scrappa_params(op)
+            if inp:
+                entry["input"] = inp
+            one_of = op.get("x-required-one-of")
+            if one_of:
+                entry["note"] = "Send one of: " + "; ".join(" + ".join(group) for group in one_of) + "."
+            endpoints.append(entry)
+
+    source = {
+        "method": "openapi x-credits",
+        "ingested": str(date.today()),
+        "spec_urls": [SCRAPPA_SPEC],
+    }
+    notes = [
+        "",
+        "Scrappa publishes one OpenAPI document; every operation carries x-credits {min, max, rule}.",
+        "The price is the operation's maximum credits; a call settles on the X-Credits-Charged header",
+        "(the core file's defaults), so a range such as 1 to 50 pages bills only what was fetched.",
+        "`platform` is the shared-taxonomy platform the data is about; Google surfaces fold into `google`.",
+        f"Left out: {excluded['own account']} own-account route(s) (account, auth, zapier), "
+        f"{excluded['request body']} POST route(s) that need a request body, and "
+        f"{excluded['no taxonomy platform']} route(s) in {len(unmapped)} source(s) with no platform in capabilities.yaml.",
+        "No row carries a test_request: bulk verification is catalog_verify_extended.py's job.",
+    ]
+    return write_extended("scrappa", source, endpoints, notes, carry_input=False), {"excluded": excluded, "unmapped": unmapped}
+
+
 INGESTERS = {
     "anyapi": ingest_anyapi,
     "tikhub": ingest_tikhub,
@@ -1681,6 +1856,7 @@ INGESTERS = {
     "justoneapi": ingest_justoneapi,
     "openrouter": ingest_openrouter,
     "replicate": ingest_replicate,
+    "scrappa": ingest_scrappa,
 }
 
 

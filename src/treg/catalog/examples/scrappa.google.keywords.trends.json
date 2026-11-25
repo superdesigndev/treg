@@ -1,0 +1,49 @@
+{
+  "search_parameters": {
+    "keyword": "tesla",
+    "geo": "US",
+    "time_range": "now+7-d",
+    "hl": "en",
+    "search_type": "web"
+  },
+  "timeline_data": [
+    {
+      "timestamp": 1794387600,
+      "date": "Nov 11, 2026 at 9:00 AM",
+      "value": 65,
+      "has_data": true,
+      "is_partial": false
+    },
+    {
+      "timestamp": 1794391200,
+      "date": "Nov 11, 2026 at 10:00 AM",
+      "value": 64,
+      "has_data": true,
+      "is_partial": false
+    },
+    "… 167 more item(s) truncated"
+  ],
+  "interest_over_time": {
+    "average": 69.54,
+    "max_value": 100,
+    "min_value": 56,
+    "data_points": [
+      {
+        "timestamp": 1794387600,
+        "date": "Nov 11, 2026 at 9:00 AM",
+        "value": 65,
+        "has_data": true,
+        "is_partial": false
+      },
+      {
+        "timestamp": 1794391200,
+        "date": "Nov 11, 2026 at 10:00 AM",
+        "value": 64,
+        "has_data": true,
+        "is_partial": false
+      },
+      "… 167 more item(s) truncated"
+    ]
+  },
+  "response_time_ms": 376
+}

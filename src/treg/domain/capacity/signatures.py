@@ -114,6 +114,10 @@ _TABLE: list[Signature] = [
     # OrbiSearch: a balance below one call's price is a 403 {"detail": "Insufficient credits: 0
     # available, 0.2 needed"}.
     Signature("orbisearch", 403, r"insufficient credits: [\d.]+ available", "balance"),
+    # Scrappa: no credits left answers 403 {"code": "FORBIDDEN"} with "You've ran out of credits ..."
+    # (paid) or "You've ran out of free requests ..." (free tier). 402 is only the x402 challenge for a
+    # request with no key header.
+    Signature("scrappa", 403, r"ran out of (credits|free requests)", "balance"),
     Signature("predictleads", 402, r"exceeded the monthly request limit", "quota", tripwire=True),
     # PDL meters operations separately: person_identify can run out while enrich still works.
     Signature("pdl", 402, r"hit your account maximum for", "quota", tripwire=True),

@@ -37,6 +37,17 @@ async def _orbisearch(c, key):
     return {"value": balance, "unit": "credits", "note": "prepaid credit balance"}
 
 
+async def _scrappa(c, key):
+    # Free account read (X-Credits-Charged: 0). `balance` is the usable credits: free, subscription
+    # and purchased packs together.
+    d = await _get(c, "https://scrappa.co/api/account/usage",
+                   headers={"X-API-KEY": key})
+    balance = _finite(d.get("balance")) if isinstance(d, dict) else None
+    if balance is None or balance < 0:
+        raise ValueError("Scrappa returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "usable credit balance"}
+
+
 def _finite(raw):
     """A finite JSON number, sign kept; None for anything else (Booleans and strings included)."""
     return raw if type(raw) in (int, float) and math.isfinite(raw) else None
@@ -1169,6 +1180,7 @@ async def _piapi(c, key):
 
 BALANCE_ROUTES = {
     "orbisearch": _orbisearch,
+    "scrappa": _scrappa,
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,
     "jobspipe": _jobspipe,
