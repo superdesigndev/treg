@@ -372,3 +372,22 @@ async def test_a_label_taken_before_surfaces_were_kept_replays_on_either(clients
     assert (await clients.get(f"/table/{EP}?aweme_id=z", headers=h)).status_code == 200
     assert (await clients.get(f"/call/{EP}?aweme_id=z", headers=h)).status_code == 200
     assert len(calls) == 1
+
+
+async def test_a_request_that_loses_the_claim_to_the_other_surface_is_told_it_is_a_mismatch(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """`/call/` and `/table/` both find the label free and race to claim it; `/call/` wins. The loser
+    is the 422 mismatch, not a 409 pointing at the other surface's call. A same-surface loser is
+    told the call is in progress."""
+    from treg.application.call import intake
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}'))
+    h = {"Idempotency-Key": "race"}
+    assert (await clients.get(f"/call/{EP}?aweme_id=r", headers=h)).status_code == 200
+
+    async def missed(*args, **kwargs):  # the lookup ran before the winner's claim landed
+        return None
+    monkeypatch.setattr(intake, "_replay_idempotent", missed)
+    crossed = await clients.get(f"/table/{EP}?aweme_id=r", headers=h)
+    assert crossed.status_code == 422 and "idempotency" in crossed.text.lower()
+    same = await clients.get(f"/call/{EP}?aweme_id=r", headers=h)
+    assert same.status_code == 409

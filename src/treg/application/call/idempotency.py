@@ -193,11 +193,33 @@ def _in_progress(key: str, call_ref: str | None) -> IdempotencyFailed:
                             + (f" (GET /calls/{call_ref}/result once it is done)." if call_ref else "."))})
 
 
-async def _claim_owner(key: str, caller: Caller, db: AsyncSession) -> str | None:
-    """The call that holds this caller's label, read after losing the race to claim it."""
-    return (await db.execute(select(IdempotentCall.call_ref).where(
+async def _lost_claim(key: str, fingerprint: str, caller: Caller, db: AsyncSession, *,
+                      raw_fingerprint: str | None = None, surface: str | None = None) -> IdempotencyFailed:
+    """What a request that lost the race to claim this caller's label is told, from the row that won:
+    the 422 mismatch when the winner is another request or surface, else that it is in progress
+    and which call holds it."""
+    row = (await db.execute(select(IdempotentCall).where(
         IdempotentCall.membership_id == caller.membership.id,
         IdempotentCall.key == key))).scalar_one_or_none()
+    if row is not None:
+        _check_same_request(row, key, fingerprint, raw_fingerprint, surface)
+    return _in_progress(key, row.call_ref if row is not None else None)
+
+
+def _check_same_request(row: IdempotentCall, key: str, fingerprint: str, raw_fingerprint: str | None,
+                        surface: str | None) -> None:
+    """Raise the 422 mismatch unless `row` holds this same request on this same surface.
+
+    A `/table/` caller receives a reshaped answer, so a label taken on one surface never replays on
+    the other: its call id would name an answer that caller never saw. A label taken before the
+    surface was kept (NULL) cannot say which, and replays as it always did rather than turning a
+    retry of a call already made into a new paid one; such labels expire within the window."""
+    crossed = row.surface is not None and row.surface != _surface(surface)
+    if crossed or (row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint)):
+        raise IdempotencyFailed(
+            "idempotency_mismatch", status_code=422,
+            detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
+                    f"repeat the original request exactly."))
 
 
 async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
@@ -219,16 +241,7 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         await db.delete(row)
         await db.commit()
         return None
-    # A `/table/` caller receives a reshaped answer, so a label taken on one surface never replays on
-    # the other: its call id would name an answer that caller never saw. A label taken before the
-    # surface was kept (NULL) cannot say which, and replays as it always did rather than turning a
-    # retry of a call already made into a new paid one; such labels expire within the window.
-    crossed = row.surface is not None and row.surface != _surface(surface)
-    if crossed or (row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint)):
-        raise IdempotencyFailed(
-            "idempotency_mismatch", status_code=422,
-            detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
-                    f"repeat the original request exactly."))
+    _check_same_request(row, key, fingerprint, raw_fingerprint, surface)
     if (row.status != "done" and row.call_ref
             and row.created_at < _utcnow() - timedelta(seconds=IDEMPOTENCY_STALE_PENDING_S)):
         resolved = await _resolve_stale_claim(row, caller, db)
