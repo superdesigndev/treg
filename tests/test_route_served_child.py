@@ -9,6 +9,9 @@ credited to the confirmer."""
 from __future__ import annotations
 
 import json
+from decimal import Decimal
+
+import pytest
 
 from sqlmodel import select
 
@@ -455,9 +458,10 @@ def _bytes_relay(payload: bytes):
     return relay
 
 
-async def _found_with(clients, monkeypatch, extra: bytes):
+async def _found_with(clients, monkeypatch, extra: bytes, encoding: str = "utf-8"):
     monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
-    body = json.dumps(TOMBA_HIT[1]).encode()[:-1] + b", " + extra + b"}"
+    text = json.dumps(TOMBA_HIT[1])[:-1] + ", " + extra.decode() + "}"
+    body = text.encode(encoding)
     monkeypatch.setattr(call_service, "relay", _bytes_relay(body))
     r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Prefer": "tomba"})
     assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "hit", r.text
@@ -497,3 +501,35 @@ async def test_a_hash_only_archive_reads_as_unavailable_not_an_error(clients, ve
     found = await archive.resolve_result(child.archive_key_hash, child.archive_content_hash)
     assert found["stored"] is False, "only the hash is on file"
     assert await _delivered(parent) is None
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-32"])
+async def test_a_changed_number_in_another_encoding_is_not_linked(clients, verifiers_on, monkeypatch, encoding):
+    """`json.loads` reads UTF-16 and UTF-32 bodies too: the check reads the body as the router
+    does, so a number the delivered `raw` changes is caught in any encoding."""
+    r, parent = await _found_with(clients, monkeypatch, b'"account": 9007199254740993.0', encoding)
+    assert _exactly(r.content)["raw"]["account"] != Decimal("9007199254740993.0")
+    assert parent.served_call_ref is None and parent.served_content_hash is None
+
+
+@pytest.mark.parametrize("encoding", ["utf-16", "utf-32"])
+async def test_an_unchanged_body_in_another_encoding_keeps_its_link(clients, verifiers_on, monkeypatch, encoding):
+    r, parent = await _found_with(clients, monkeypatch, b'"share": 0.5', encoding)
+    assert parent.served_call_ref == f"{parent.call_ref}:r0"
+    assert _exactly(json.dumps(await _delivered(parent))) == _exactly(r.content)["raw"]
+
+
+async def test_a_repeated_key_the_delivered_raw_drops_is_not_linked(clients, verifiers_on, monkeypatch):
+    """Parsing keeps only the last of a repeated key, so `raw` carries `"measure": 23` while the
+    archive keeps both: not the delivered value, no link."""
+    r, parent = await _found_with(clients, monkeypatch, b'"measure": 19, "measure": 23')
+    assert r.json()["raw"]["measure"] == 23
+    assert parent.served_call_ref is None
+
+
+async def test_a_number_the_check_cannot_read_costs_the_link_not_the_call(clients, verifiers_on, monkeypatch):
+    """`0e9999999999999999999` is valid JSON that Decimal cannot hold. The call still answers 200;
+    only the link is left empty."""
+    r, parent = await _found_with(clients, monkeypatch, b'"zero": 0e9999999999999999999')
+    assert r.status_code == 200 and r.json()["raw"]["zero"] == 0.0
+    assert parent.served_call_ref is None
