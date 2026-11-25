@@ -2209,13 +2209,13 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
         await ledger.grant(db, later, amount_micro=GRANT)
         await allowance.record_charges(db, [
             allowance.Charge(call, team, "e.metered", 400, reserved_micro=400)
-            for team, call in ((later, "later"), (org_id, "earlier"))])
+            for team, call in ((org_id, "newer"), (later, "older"))])
         await db.commit()
-    async with session_maker() as db:
-        await db.execute(update(CallCharge).where(CallCharge.call_id == "earlier").values(
+    async with session_maker() as db:  # the higher team number has waited longer
+        await db.execute(update(CallCharge).where(CallCharge.call_id == "older").values(
             created_at=ledger._now() - timedelta(minutes=5)))
         await db.commit()
-        assert await allowance.orgs_with_queued_charges(db, ledger._now()) == [org_id, later]
+        assert await allowance.orgs_with_queued_charges(db, ledger._now()) == [later, org_id]
     folded: list[int] = []
     real = allowance_sweep._fold_team
 
@@ -2226,7 +2226,7 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
     monkeypatch.setattr(allowance_sweep, "_fold_team", first_only)
     assert await allowance_sweep.fold_queued_once(
         session_maker, keep_going=lambda: not folded) == 1
-    assert folded == [org_id] and await _queued(later) == 1
+    assert folded == [later] and await _queued(org_id) == 1
 
 
 async def test_the_pause_after_an_idle_pass_is_shared_by_every_process(store, monkeypatch):
@@ -2269,7 +2269,10 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
     monkeypatch.setattr(allowance_sweep, "_PASS_LEASE_MS", 30)
     renewing, finish = asyncio.Event(), asyncio.Event()
 
+    renewed_keys: list[str] = []
+
     async def stubborn_renew(key, token, ttl_ms, *, deadline=None):
+        renewed_keys.append(key)
         renewing.set()
         try:
             await finish.wait()
@@ -2299,7 +2302,11 @@ async def test_a_cancelled_worker_stops_while_its_renewal_winds_down(store, monk
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert stopped_on_its_own and task.cancelled()
-    assert allowance_sweep._PASS_KEY not in store.leases, "the lease is given back on the way out"
+    taken = renewed_keys[0]
+    assert taken.startswith(allowance_sweep._PASS_KEY) and not taken.endswith(":sweep")
+    held = [key for key in store.leases
+            if key.startswith(allowance_sweep._PASS_KEY) and not key.endswith(":sweep")]
+    assert taken not in store.leases and held == [], "the share's lease is given back on the way out"
 
 
 async def test_a_renewal_the_store_could_not_answer_is_asked_again(store, monkeypatch):
