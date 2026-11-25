@@ -3891,3 +3891,16 @@ async def test_a_free_routed_child_is_holdless_only_when_its_root_lets_children_
         assert (await db.execute(select(LedgerEntry).where(
             LedgerEntry.call_id == "root-1:r0"))).first() is None
         assert await db.get(Hold, "root-1:r0") is None
+
+
+async def test_a_mark_is_set_only_where_a_stale_claim_reads_it(monkeypatch):
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = FakeStore()
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: False)
+    assert await idempotency.mark_in_flight("root-local") is False
+    assert store.marks == set()
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    assert await idempotency.mark_in_flight("root-shared") is True

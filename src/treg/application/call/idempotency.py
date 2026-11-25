@@ -435,7 +435,10 @@ async def _hold_claim_lease(state) -> None:
 
 async def mark_in_flight(call_ref: str) -> bool:
     """Mark a keyed call on the allowance as running; False when the store did not take it, and
-    the call then keeps a hold of its own."""
+    the call then keeps a hold of its own. Without the shared store the mark would live in this
+    process only, where a stale claim never reads it (`_money_of`), so it is never set."""
+    if not kv.configured():
+        return False
     return await kv.store().mark_call_in_flight(call_ref, IN_FLIGHT_MARK_MS)
 
 
