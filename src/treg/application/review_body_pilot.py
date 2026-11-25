@@ -96,7 +96,7 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
     by_id = catalog_store.load().by_id
     since = utcnow_naive() - timedelta(days=WINDOW_DAYS)
     out = {"candidates": 0, "no_reason": 0, "no_body": 0, "asked": 0, "coded": 0, "unreadable": 0,
-           "failed_requests": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0, "changed": 0,
+           "failed_requests": 0, "read_not_asked": 0, "tokens_in": 0, "same_primary": 0, "primary_in_either": 0, "changed": 0,
            "stopped_by_deadline": False}
     pairs, reason_codes, body_codes = Counter(), Counter(), Counter()
     by_capability: dict[str, Counter] = {}
@@ -104,6 +104,11 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
     ready: list[tuple] = []
 
     async def ask(items: list[tuple]) -> None:
+        # Reading an answer can start before the deadline and end after it: no paid request then.
+        if time.monotonic() >= deadline:
+            out["stopped_by_deadline"] = True
+            out["read_not_asked"] += len(items)
+            return
         state = {"reviews": [item for _, item in items]}
         out["asked"] += len(items)
         reply = await _ask(state, {f"a{i}": review_codes.body_code_question(i) for i in range(len(items))})
@@ -165,7 +170,7 @@ async def run(*, sample: int, batch: int, budget: int, max_seconds: float) -> di
             if len(ready) == batch:
                 await ask(ready)
                 ready = []
-    if ready and time.monotonic() < deadline:
+    if ready:
         await ask(ready)
     out["pairs"] = dict(pairs.most_common())
     out["reason_codes"] = dict(reason_codes.most_common())

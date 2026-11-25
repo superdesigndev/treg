@@ -1,6 +1,7 @@
 """The body pilot: negative reviews coded again with the call's answer in view, compared with the
 reason-only codes, writing nothing; and the shortened answer the judge reads."""
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -197,6 +198,42 @@ async def test_a_secondary_only_change_is_a_diff(clients, monkeypatch):
     assert out["same_primary"] == 1 and out["pairs"] == {} and out["changed"] == 1
     assert out["diffs"] == [{"review_id": out["diffs"][0]["review_id"], "reason_codes": ["EMPTY", None],
                              "body_codes": ["EMPTY", "PARTIAL"]}]
+
+
+def _slow_archive(monkeypatch, slow_key: str):
+    """Mock clock: reading `slow_key`'s answer takes 100 s, past a 60 s deadline."""
+    now = [0.0]
+    monkeypatch.setattr(review_body_pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    async def resolve(key_hash, content_hash):
+        if key_hash == slow_key:
+            now[0] += 100
+        return {"stored": True, "request": {"method": "POST", "url": "https://x.test/s", "body_text": "{}"},
+                "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 99,
+                             "body_text": PEOPLE}}
+    monkeypatch.setattr(archive, "resolve_result", resolve)
+
+
+async def test_a_full_batch_read_past_the_deadline_is_not_asked(clients, monkeypatch):
+    org = await _org(clients)
+    await _add(_review(org, "a", "PARTIAL"), _review(org, "b", "PARTIAL"),
+               _record(org, "a", "ka"), _record(org, "b", "kb"))
+    _slow_archive(monkeypatch, "kb")  # "b" is the newest, read first
+    seen = _jev(monkeypatch)
+
+    out = await review_body_pilot.run(sample=5, batch=1, budget=500, max_seconds=60)
+    assert seen == [] and out["asked"] == 0 and out["read_not_asked"] == 1
+    assert out["stopped_by_deadline"] is True
+
+
+async def test_a_tail_batch_read_past_the_deadline_says_so(clients, monkeypatch):
+    org = await _org(clients)
+    await _add(_review(org, "a", "PARTIAL"), _record(org, "a", "ka"))
+    _slow_archive(monkeypatch, "ka")
+    seen = _jev(monkeypatch)
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
+    assert seen == [] and out["read_not_asked"] == 1 and out["stopped_by_deadline"] is True
 
 
 async def test_pilot_is_off_without_a_key(monkeypatch):
