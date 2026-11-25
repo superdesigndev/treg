@@ -95,7 +95,7 @@ def _idem_display(key: str) -> str:
     return key.rsplit(_IDEM_SCOPE_SEP, 1)[-1]
 
 
-def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -> str:
+def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "", surface: str | None = None) -> str:
     """What the label was used FOR, so reusing it on a different request can be caught.
 
     A client that reuses one label for two different requests has a bug. Quietly returning the first
@@ -106,16 +106,21 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -
     calls are GETs that carry all their arguments in the query, that made the check almost inert: two
     genuinely different lookups under one label matched, and the second was answered with the first
     one's data instead of the 422 this function exists to raise.
+
+    The SURFACE is part of it too when it is not `/call/`: a `/table/` caller receives a reshaped
+    answer, so a label first used on `/call/` must not replay its call there (or the other way), whose
+    call id would then name an answer the caller never saw. `/call/` fingerprints are unchanged.
     """
-    return _fingerprint(method, rest, _canonical_json(body), query)
+    return _fingerprint(method, rest, _canonical_json(body), query, surface)
 
 
-def _raw_request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -> str:
+def _raw_request_fingerprint(method: str, rest: str, body: bytes, query: str = "",
+                             surface: str | None = None) -> str:
     """The fingerprint of the body's exact bytes, as labels taken before `_canonical_json` stored it."""
-    return _fingerprint(method, rest, body, query)
+    return _fingerprint(method, rest, body, query, surface)
 
 
-def _fingerprint(method: str, rest: str, body: bytes, query: str) -> str:
+def _fingerprint(method: str, rest: str, body: bytes, query: str, surface: str | None = None) -> str:
     h = hashlib.sha256()
     h.update(method.upper().encode())
     h.update(b"\0")
@@ -124,6 +129,8 @@ def _fingerprint(method: str, rest: str, body: bytes, query: str) -> str:
     h.update((query or "").encode())
     h.update(b"\0")
     h.update(body or b"")
+    if surface:
+        h.update(b"\0surface:" + surface.encode())
     return h.hexdigest()
 
 

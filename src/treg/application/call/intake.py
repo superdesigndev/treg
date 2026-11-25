@@ -146,6 +146,7 @@ async def prepare_call_intake(
     caller: Caller,
     enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[bool]],
     call_ref: str,
+    surface: str | None = None,
 ) -> IntakeResult:
     """Run the pre-resolve gates in their frozen order using bounded transactions."""
     # Blocked status and the per-tag call count, BEFORE the replay below: a blocked user must neither
@@ -168,11 +169,11 @@ async def prepare_call_intake(
         return IntakeResult("", "", None, None, meta)
 
     body = await read_body()
-    fingerprint = _request_fingerprint(method, rest, body, raw_query)
+    fingerprint = _request_fingerprint(method, rest, body, raw_query, surface)
     async with session_maker() as db:
         replay = await _replay_idempotent(
             key, fingerprint, caller, db,
-            raw_fingerprint=_raw_request_fingerprint(method, rest, body, raw_query))
+            raw_fingerprint=_raw_request_fingerprint(method, rest, body, raw_query, surface))
         if replay is None:
             # Claim it now, before anything reaches a provider. Two retries can arrive together and both
             # miss the lookup above; the unique constraint is what makes the loser wait instead of making

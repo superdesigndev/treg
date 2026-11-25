@@ -331,3 +331,16 @@ async def test_a_table_call_records_its_surface(clients: AsyncClient, platform_o
             break
         await asyncio.sleep(0.02)
     assert dict(rows) == refs
+
+
+async def test_one_idempotency_key_never_replays_across_call_and_table(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """A label first used on `/call/` is refused on `/table/` (and the other way): its replay would
+    name a call whose archived answer is not what the table caller received."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}'))
+    h = {"Idempotency-Key": "cross-surface"}
+    assert (await clients.get(f"/call/{EP}?aweme_id=x", headers=h)).status_code == 200
+    crossed = await clients.get(f"/table/{EP}?aweme_id=x", headers=h)
+    assert crossed.status_code == 422 and "idempotency" in crossed.text.lower()
+    h2 = {"Idempotency-Key": "table-first"}
+    assert (await clients.get(f"/table/{EP}?aweme_id=y", headers=h2)).status_code == 200
+    assert (await clients.get(f"/call/{EP}?aweme_id=y", headers=h2)).status_code == 422

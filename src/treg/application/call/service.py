@@ -890,6 +890,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             caller=caller,
             enforce_tag_budgets=_enforce_tag_budgets,
             call_ref=call_ref,
+            surface=request.context.input.surface,
         )
     except CallFailure:
         raise
