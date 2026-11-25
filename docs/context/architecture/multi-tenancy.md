@@ -3,6 +3,7 @@ title: Multi-tenancy - orgs, memberships, invites, per-org scoping
 status: shipped
 sources:
   - src/treg/domain/governance/access.py
+  - src/treg/domain/tools/names.py
   - src/treg/alembic/versions/0042_pinned_read_scope.py
   - tests/test_pinned_read_scope.py
   - src/treg/models.py
@@ -126,7 +127,9 @@ dependency commits; it never extends the auth transaction.
   may call and list only (`_require_can_register`). A tool name containing a dot is the shape of a
   catalog or hub id, and an own tool of that name answers every call to the id in the team, so
   choosing one needs admin or owner (`_require_admin_for_dotted_names`, on `POST /tools` and skill
-  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`.
+  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`. Any other
+  name a team chooses for a tool, secret or skill is 1-128 characters with no control or invisible
+  characters (`domain/tools/names.py`); names stored before the rule are not rechecked.
 - **The roster is admin-only** (`list_members`); any member may read the team's human owners and
   admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
 - **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are
