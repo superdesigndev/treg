@@ -765,7 +765,11 @@ def _rate_micro(usd: float | None, *, own_key_only: bool) -> int:
     """A catalog rate in RAW micro-USD. A row treg's key never serves prices a rate fx.yaml leaves
     `usd: null` (or lacks) at 0, the informational price of an own-key call; on a platform-eligible
     row a missing rate still raises."""
-    return 0 if usd is None and own_key_only else _usd_to_micro(usd)
+    if usd is None:
+        if own_key_only:
+            return 0
+        raise ValueError("a platform-eligible catalog row has no USD rate")
+    return _usd_to_micro(usd)
 
 
 def _truthy(value) -> bool:
