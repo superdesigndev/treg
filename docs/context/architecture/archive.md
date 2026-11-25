@@ -406,7 +406,11 @@ bytes that team already received. A metered answer is returned as its caller rec
 `strip_reported_charge` on, without the provider's reported charge unless the request keeps it
 ([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
 provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
-`children`, audited before the parent, so the lookup reads the hour before the parent's row.
+`children`, audited before the parent, so the lookup reads the hour before the parent's row. Its
+`served_call_ref` names the one child whose answer the caller received ([data-model](data-model.md)):
+an analysis reads that child's row by exact ref, then its two hashes, with no scan of the team's
+history; a NULL there is a miss or failure, and a ref with no row is a shed audit row, not another
+attempt's answer.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).
 

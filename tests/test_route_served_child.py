@@ -1,0 +1,166 @@
+"""A routed call's audit row names the child whose answer its caller received.
+
+`CallRecord.served_call_ref` on the parent row is that child's `call_ref`, so a later reader (the
+review body pilot, a judge) reads the child row, and through it the archived answer, by exact id:
+no scan of the team's history, no guess from attempt order. Review credit is a separate decision
+and is left alone: with `X-Treg-Route-Confirm` the finder's answer is served while the review is
+credited to the confirmer."""
+
+from __future__ import annotations
+
+from sqlmodel import select
+
+from treg import archive, audit
+from treg.application.call import route as call_route
+from treg.application.call import service as call_service
+from treg.config import get_settings
+from treg.infra.db import session_maker
+from treg.models import CallRecord, CallReview
+
+from test_marketplace_call import platform_on  # noqa: F401
+from test_route_confirm import ON as CONFIRM, _hunter
+from test_route_quality_upgrade import EMAIL, ENRICH, HARVEST_FIRST, _named, _Reader, enrich_on  # noqa: F401
+from test_route_verify import ASK, FIND, TOMBA_HIT, _relay, verifiers_on  # noqa: F401
+from test_dropcontact_routing import dropcontact_platform  # noqa: F401
+
+TOMBA_MISS = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
+
+
+async def _row(call_ref: str) -> CallRecord | None:
+    await archive.drain()
+    await audit.drain()
+    async with session_maker() as db:
+        return (await db.execute(select(CallRecord).where(CallRecord.call_ref == call_ref))).scalars().first()
+
+
+async def _served(r) -> tuple[CallRecord, CallRecord | None]:
+    """The parent row, and the child row its link names (read by that exact ref)."""
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    assert parent is not None and parent.credential_tier == "routed"
+    return parent, (await _row(parent.served_call_ref) if parent.served_call_ref else None)
+
+
+async def test_a_waterfall_hit_links_its_last_attempt(clients, verifiers_on, monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")   # recording on
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_MISS], "hunter": [_hunter("patrick@stripe.com")]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK)
+    assert r.status_code == 200, r.text
+    assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "hit"]
+    parent, child = await _served(r)
+    assert parent.served_call_ref == f"{parent.call_ref}:r1"
+    assert child.endpoint_id == r.json()["_treg"]["served_by"] == "hunter.people.email.find"
+    assert child.archive_key_hash and child.archive_content_hash, "the child row leads to the archived answer"
+
+
+async def test_a_miss_everywhere_links_no_child(clients, verifiers_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_MISS], "hunter": [_hunter(None)]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["served_by"] is None and d["raw"] is None
+    parent, child = await _served(r)
+    assert parent.served_call_ref is None and child is None
+
+
+async def test_a_route_failure_links_no_child(clients, verifiers_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [(503, {})], "hunter": [(503, {})]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK)
+    assert r.status_code == 502, r.text
+    parent = await _row(r.headers["X-Treg-Call-Id"])
+    assert parent.status_code == 502 and parent.served_call_ref is None
+
+
+async def test_an_upgrade_links_the_upgraded_vendors_answer(clients, enrich_on, monkeypatch):
+    from test_routing import _relay_by_provider
+
+    monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(HARVEST_FIRST))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "blitz": [(200, _named("blitzapi.people.email.reverse", "Alex", "Example"))],
+        "harvest": [(200, _named("harvestapi.linkedin.user.profile", "alex", "EXAMPLE"))]}, []))
+    r = await clients.post(ENRICH, json=EMAIL, headers={"X-Treg-Route-Upgrade": "linkedin_url"})
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["upgrade"]["upgraded"] is True
+    parent, child = await _served(r)
+    assert parent.served_call_ref.startswith(f"{parent.call_ref}:u:r"), "the leaf the upgrade served, not `:u`"
+    assert child.endpoint_id == r.json()["_treg"]["served_by"] == "harvestapi.linkedin.user.profile"
+    upgrade = await _row(f"{parent.call_ref}:u")
+    assert upgrade.served_call_ref == parent.served_call_ref, "the nested routed row links the same child"
+
+
+async def test_an_upgrade_about_another_person_links_the_first_answer(clients, enrich_on, monkeypatch):
+    from test_routing import _relay_by_provider
+
+    monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(HARVEST_FIRST))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "blitz": [(200, _named("blitzapi.people.email.reverse", "Alex", "Example"))],
+        "harvest": [(200, _named("harvestapi.linkedin.user.profile", "Sam", "Other"))]}, []))
+    r = await clients.post(ENRICH, json=EMAIL, headers={"X-Treg-Route-Upgrade": "linkedin_url"})
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["upgrade"]["upgraded"] is False
+    parent, child = await _served(r)
+    assert parent.served_call_ref == f"{parent.call_ref}:r0"
+    assert child.endpoint_id == "blitzapi.people.email.reverse"
+
+
+async def test_a_confirmed_find_links_the_finder_and_credits_the_confirmer(clients, verifiers_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT], "hunter": [_hunter("Patrick@Stripe.COM")]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers=CONFIRM)
+    assert r.status_code == 200, r.text
+    assert r.json()["_treg"]["confirmation"]["confirmed"] is True
+    parent, child = await _served(r)
+    assert parent.served_call_ref == f"{parent.call_ref}:r0", "the finder's answer is the one returned"
+    assert child.endpoint_id == r.json()["_treg"]["served_by"] == "tomba.people.email.find"
+    review = await clients.post("/reviews", json={"call_id": parent.call_ref, "usefulness": "useful"})
+    assert review.status_code == 201, review.text
+    async with session_maker() as db:
+        row, = (await db.execute(select(CallReview))).scalars().all()
+    assert row.endpoint_id == "hunter.people.email.find", "review credit is unchanged: the confirmer"
+
+
+async def test_a_lost_earlier_attempt_row_does_not_move_the_link(clients, verifiers_on, monkeypatch):
+    """The link is written from what the router knew, never inferred from the rows that landed."""
+    record = audit.record_call
+
+    def shed_first_attempt(**kwargs):
+        if (kwargs.get("telemetry") or {}).get("call_ref", "").endswith(":r0"):
+            return  # the audit writer may shed a row under load
+        record(**kwargs)
+    monkeypatch.setattr(audit, "record_call", shed_first_attempt)
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_MISS], "hunter": [_hunter("patrick@stripe.com")]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK)
+    assert r.status_code == 200, r.text
+    parent, child = await _served(r)
+    assert await _row(f"{parent.call_ref}:r0") is None
+    assert parent.served_call_ref == f"{parent.call_ref}:r1" and child.endpoint_id == "hunter.people.email.find"
+
+
+async def test_a_lost_served_row_still_names_the_child(clients, verifiers_on, monkeypatch):
+    """When the served child's own row is the one shed, the parent still names it: the reader
+    knows the answer is missing rather than taking another attempt's for it."""
+    record = audit.record_call
+
+    def shed_served(**kwargs):
+        if (kwargs.get("telemetry") or {}).get("call_ref", "").endswith(":r1"):
+            return
+        record(**kwargs)
+    monkeypatch.setattr(audit, "record_call", shed_served)
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_MISS], "hunter": [_hunter("patrick@stripe.com")]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK)
+    assert r.status_code == 200, r.text
+    parent, child = await _served(r)
+    assert parent.served_call_ref == f"{parent.call_ref}:r1" and child is None
+
+
+async def test_an_async_find_links_the_poll_that_answered(clients, dropcontact_platform, monkeypatch):
+    from test_dropcontact_routing import _relay as dropcontact_relay
+
+    dropcontact_relay(monkeypatch, {'success': True, 'data': [{
+        'first_name': 'Peter', 'last_name': 'Jackson',
+        'email': [{'email': 'peter.jackson@company.com', 'qualification': 'nominative@pro'}]}]}, [])
+    r = await clients.post("/call/treg.people.email.find",
+                           json={"first_name": "Peter", "last_name": "Jackson", "domain": "company.com"},
+                           headers={"X-Treg-Route-Prefer": "dropcontact", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    parent, child = await _served(r)
+    assert parent.served_call_ref.startswith(f"{parent.call_ref}:r0:p"), "the poll carries the answer"
+    assert child is not None and child.status_code == 200

@@ -27,6 +27,7 @@ sources:
   - src/treg/alembic/versions/0029_arena_verification_snapshot.py
 
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
+  - src/treg/alembic/versions/0127_callrecord_served_call_ref.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
@@ -311,6 +312,12 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
   `not_found`); null where the status rule decides. Reliability reads it first ([catalog](catalog.md)).
 - `archive_key_hash` / `archive_content_hash`: the link for `GET /calls/{id}/result`
   ([archive](archive.md)).
+- `served_call_ref` (Alembic 0127): on a routed parent only, the `call_ref` of the child whose
+  answer the caller received (`answered_by` in `route._run_routed`: the winning attempt, an async attempt's
+  answering poll, an upgrade's own served child, a merge's first contributor). NULL on a miss or a
+  failure, on every non-routed row and on rows written before 0127. Unindexed and never a foreign
+  key: a reader starts from the parent by id and reads the child by that exact ref through
+  `ix_callrecord_call_ref`. It is not review credit (`route_summary["credited"]`, [feedback](feedback.md)).
 
 **Failure evidence.** `error_request` / `error_response` hold redacted, truncated failure evidence
 on every tier; `/calls` never fetches them, `GET /admin/errors` reads them, and

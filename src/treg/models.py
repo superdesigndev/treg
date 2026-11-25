@@ -688,6 +688,13 @@ class CallRecord(SQLModel, table=True):
     # NULL = a row in today's spelling, an async submission, a non-2xx the declaration does not
     # decide, or a row written before the column existed; those keep the status rule.
     outcome: str | None = Field(default=None)
+    # A routed parent's link to the answer its caller received: the `call_ref` of the child attempt
+    # whose answer was returned (`_treg.served_by`'s attempt; an upgrade's own served child; an async
+    # attempt's answering poll `:r<n>:p<k>`; under a merge the first contributor). Read the child row
+    # by this exact ref (`ix_callrecord_call_ref`), then its archive hashes. NULL on every other row,
+    # on a routed miss or failure (no child answered), and on rows written before the column (0127).
+    # A logical reference only, never a foreign key: either row may be shed.
+    served_call_ref: str | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):

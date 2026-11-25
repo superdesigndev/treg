@@ -371,6 +371,9 @@ class CallContext:
     # A routed parent's outcome for its call event (route.py `_summarize`): identity, output,
     # served_by, tried_count, hit, verdict, check_verdict. Never read by money or relay.
     route_summary: dict | None = None
+    # A routed parent's served child (`CallRecord.served_call_ref`): set by the router before it
+    # writes the parent row; a routed `:u` upgrade's own value is read back by its parent.
+    served_call_ref: str | None = None
     # The request left for the provider (the relay's `ON_SEND`, past every local check), or its
     # archived answer was served.
     # A routed parent attributes its order only to children that did (route.py `_note_call`).

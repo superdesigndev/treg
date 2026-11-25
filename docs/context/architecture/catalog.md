@@ -989,7 +989,9 @@ headers are agent-facing in `src/treg/web/skill.md`; the invariants are AGENTS.m
 
 Per capability: one-of identity variants (structural keys, never provider names), `derive` rules,
 a small output core and `miss` in canonical terms. `raw` (the winning provider's body) is always
-returned and never documented as stable. An output field may say where it lands in a call event
+returned and never documented as stable. The parent's audit row records which child that body came
+from (`CallRecord.served_call_ref`, set by `route._run_routed` before `_audit_parent`; `_run_upgrade`
+hands back the nested call's own), so the archived answer can be read later by exact id. An output field may say where it lands in a call event
 (`analytics`, [call-events](call-events.md)); the public contract view drops it.
 
 - `advice_unverified` is attached as `_treg.advice` to a hit whose `verified` is not true (a found

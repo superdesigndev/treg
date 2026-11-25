@@ -51,6 +51,12 @@ reported in `_treg.ordered_by`. `X-Treg-Route-Upgrade: <key>` re-asks this endpo
 alone when the hit carries it (an email's answer naming a LinkedIn URL), as a linked routed child
 `:u` ordered by quality; its answer replaces the first only when it is a hit about the same person,
 reported in `_treg.upgrade`. Both are opt-in.
+
+The parent's audit row names the child whose answer the caller received
+(`CallRecord.served_call_ref`, from `answered_by` in `_run_routed`): the winning attempt's `:r<n>` (its answering poll
+`:r<n>:p<k>` for an async provider), an upgrade's own served child `:u:r<m>`, the first contributor
+of a merge, the submission of a pending async call. A miss or failure names none. Review credit
+(`route_summary.credited`) is a separate decision and stays the latest successful attempt.
 """
 
 from __future__ import annotations
@@ -1416,6 +1422,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
     errored: list[tuple[Attempt, str]] = []     # answered-but-failed attempts and their child call ids
+    answered_by: dict[int, str] = {}   # id(candidate) -> the child call ref whose answer it holds
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
     # measured quality the providers left are ordered by once the first attempt has not decided.
@@ -1483,6 +1490,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         deadline = started + cancel_s if cancel_s is not None else None
         try:
             response = await _bounded(deadline, execute_child(child, upstream_client))
+            answered_by[id(cand)] = child.call_ref
             _note_call(parent, plan, cand, child, tried)
             if 200 <= response.status < 300:
                 # The latest successful attempt (never its async polls, `:p<k>`): the endpoint a
@@ -1604,7 +1612,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 
             # The bridge awaits every poll in this iteration; the defaults pin this iteration's values.
             async def poll_task(task_id: str, poll_number: int, *, poll_ep=poll_ep, poll_rule=poll_rule,
-                                remaining=remaining, child=child):
+                                remaining=remaining, child=child, cand=cand):
                 if poll_ep is None:
                     raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
                 query, document = asynctasks_rules.poll_inputs(poll_rule.get("param") or {"name": "id"}, task_id)
@@ -1614,6 +1622,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     quota_admissions=parent.quota_admissions | {
                         (parent.input.caller.org_id, poll_ep["id"])})
                 poll_response = await execute_child(poll_child, upstream_client)
+                answered_by[id(cand)] = poll_child.call_ref   # the latest poll's answer is the one kept
                 return poll_response, await _read(poll_response)
 
             waited = await async_bridge.await_terminal(
@@ -1645,6 +1654,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     await _remember_pending_task(parent, cand.endpoint["id"], descriptor,
                                                  waited.task_id, kickoff_raw)
                 _summarize(parent, served_by=cand.endpoint["id"], tried_count=len(tried))
+                parent.served_call_ref = child.call_ref   # the submission; its polls follow it
                 _audit_parent(parent, ep, 202, spent, audit_client)
                 return _json(body_out, 202, {
                     "X-Treg-Served-By": cand.endpoint["id"],
@@ -1939,13 +1949,14 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # The waterfall-off miss: the same rule as an all-miss walk (see the no-winner branch).
         incomplete, spent = True, _refund_errors(errored, pending, spent)
     upgrade, provider = None, cand.endpoint["provider"]
+    served_ref = answered_by.get(id(cand))
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
         upgrade, better, upgrade_cost = await _run_upgrade(parent, ep, options.upgrade, output, remaining,
                                                            execute_child, upstream_client)
         spent += upgrade_cost
         if better is not None:
-            output, doc, served = better
+            output, doc, served, served_ref = better
             provider = served.split(".")[0]
     merged_from: list[str] = []
     if options.merge and len(answers) > 1:
@@ -1965,6 +1976,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     output["count"] = len(rows)
                 merged_from = contributed
                 served = merged_from[0]
+                served_ref = next((answered_by.get(id(c)) for c, _, core_i, _ in answers
+                                   if c.endpoint["id"] == served and (core_i.get(field) or [])), served_ref)
     # Holders of the asked role now first, past holders last (`row.rank_by_role`), merged or not.
     if plan.contract.row_rank and output and isinstance(output.get(plan.contract.row_of), list):
         output = {**output, plan.contract.row_of: plan.contract.rank_rows(plan.identity, output[plan.contract.row_of])}
@@ -2071,6 +2084,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
+    parent.served_call_ref = served_ref
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
@@ -2187,7 +2201,7 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     this same routed endpoint again by that key alone, its providers in order of measured quality.
     Its answer replaces the first only when it is a hit about the same person (the contract's name
     agrees); otherwise the first, already-paid answer stands. Returns (`_treg.upgrade`, the
-    replacing (output, raw, served_by) or None, money it moved). A failure costs the first answer nothing."""
+    replacing (output, raw, served_by, served child call ref) or None, money it moved). A failure costs the first answer nothing."""
     value = output.get(key)
     if not isinstance(value, str) or not value.strip():
         return {"upgraded": False, "via": key, "reason": f"no_{key}"}, None, 0
@@ -2212,7 +2226,7 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     if "full_name" in output and _name_key(found.get("full_name")) != _name_key(output.get("full_name")):
         return {**view, "upgraded": False, "reason": "other_name"}, None, cost
     return {**view, "upgraded": True}, ({**output, **{k: v for k, v in found.items() if v is not None}},
-                                        doc.get("raw"), meta.get("served_by")), cost
+                                        doc.get("raw"), meta.get("served_by"), child.served_call_ref), cost
 
 
 def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallContext, tried: list) -> None:
@@ -2257,6 +2271,8 @@ def _audit_parent(parent: CallContext, ep: dict, status: int, charged: int, clie
                       # routed parent row without its pin would hide the caller's own call.
                       telemetry={"call_ref": parent.call_ref, "endpoint_id": ep["id"], "provider": "treg",
                                  "credential_tier": "routed", "cost_charged_micro": charged,
+                                 # Which child's answer the caller received; None for a miss/failure.
+                                 "served_call_ref": parent.served_call_ref,
                                  **_tag_telemetry(parent.meta)})
 
 
