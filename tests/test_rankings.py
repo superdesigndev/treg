@@ -344,7 +344,9 @@ async def test_the_faq_and_its_structured_data_say_the_same_thing(clients: Async
     import html as html_mod
     page = (await clients.get("/rankings")).text
     faq_html = page.split('id="faq"', 1)[1].split("</section>", 1)[0]
-    text = lambda s: re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", "", s))).strip()
+
+    def text(s):
+        return re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", "", s))).strip()
     visible = [(text(q), text(a)) for q, a in re.findall(r"<summary>(.*?)</summary><p>(.*?)</p>", faq_html, re.S)]
     ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', faq_html, re.S).group(1))
     marked = [(q["name"], q["acceptedAnswer"]["text"]) for q in ld["mainEntity"]]
