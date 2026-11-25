@@ -635,7 +635,8 @@ past the bound do not make every new team scan them.
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
   short wait instead of falling back), and the next pass comes back to it. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own
-  clock, and it too goes through every idle hold of the share a page of teams at a time. A pass
+  clock, which every process shares (a lease in the store taken for the sweep period and never
+  given back, so a share handed to another process is not swept again within it), and it too goes through every idle hold of the share a page of teams at a time. A pass
   leaves a team after a few batches so one long queue does not keep the others waiting. Calls
   keep taking from the counter meanwhile, since a fold moves only money their takes already
   removed from it: until its charge is folded, a call's money stays in the hold. A call's

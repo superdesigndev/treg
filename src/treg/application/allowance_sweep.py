@@ -332,6 +332,23 @@ async def run_once(session_maker, *, sweep: bool,
     return await fold_queued_once(session_maker, keep_going=keep_going, shard=shard)
 
 
+async def _sweep_due(shard: allowance.Shard | None, every_s: float,
+                     next_sweep: dict[allowance.Shard | None, float]) -> bool:
+    """Whether the share's idle sweep is due, on a clock every process shares: a lease taken for
+    the sweep period and never given back, so a share handed to another process is not swept
+    again within the period. A store that cannot answer, or a pass over every team, falls back to
+    this process's own clock."""
+    if shard is not None:
+        answer = await kv.store().acquire_lease(
+            f"{pass_key(shard)}:sweep", uuid.uuid4().hex, max(1, int(every_s * 1000)))
+        if answer != "unavailable":
+            return answer == "acquired"
+    if time.monotonic() < next_sweep.get(shard, 0.0):
+        return False
+    next_sweep[shard] = time.monotonic() + every_s
+    return True
+
+
 async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
                  sweep_every_s: float = _SWEEP_EVERY_S) -> None:
     """Fold and sweep forever on the background pool, one process at a time per share of the
@@ -339,16 +356,14 @@ async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
     share pauses for every process (the holder keeps its lease through the pause), but the
     process goes on to another share: it pauses only once every share is taken or pausing, or
     when it ran over every team because the store could not answer. Each share's idle sweep is
-    due on its own clock. A bad pass never kills the loop."""
+    due on a clock every process shares (`_sweep_due`). A bad pass never kills the loop."""
     next_sweep: dict[allowance.Shard | None, float] = {}
     while True:
         folded, pause = 0, True
         try:
             async with _pass_lease() as turn:
                 if turn.mine:
-                    sweep = time.monotonic() >= next_sweep.get(turn.shard, 0.0)
-                    if sweep:
-                        next_sweep[turn.shard] = time.monotonic() + sweep_every_s
+                    sweep = await _sweep_due(turn.shard, sweep_every_s, next_sweep)
                     folded = await run_once(background_session_maker, sweep=sweep,
                                             keep_going=turn.holding, shard=turn.shard)
                     if not folded:

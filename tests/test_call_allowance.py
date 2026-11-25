@@ -2637,6 +2637,30 @@ async def test_the_background_loop_pauses_only_when_it_found_nothing_to_fold(mon
     assert pauses == [1.5] and sweeps == [0], "one pause, after the empty pass; one sweep so far"
 
 
+async def test_a_share_handed_to_another_process_is_not_swept_again_within_the_period(
+        store, monkeypatch):
+    """Shares move between processes from pass to pass. The process taking one over sees when
+    its sweep is due instead of sweeping it again at once, and folds what is queued right away."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 4)
+    passes: list[tuple] = []
+
+    async def counted(session_maker, *, sweep, keep_going=None, shard=None):
+        passes.append((shard, sweep))
+        await asyncio.sleep(0.002)
+        return 1
+
+    monkeypatch.setattr(allowance_sweep, "run_once", counted)
+    await _run_workers(4, 0.2, every_s=0.01, stagger_s=0.005)
+    sweeps = [shard for shard, sweep in passes if sweep]
+    assert sorted(sweeps) == [(index, 4) for index in range(4)], "one sweep per share"
+    assert len(passes) > 4 * 4, "and every other pass went straight to folding"
+
+    passes.clear()
+    store.lease_answer = "unavailable"
+    await _run_workers(1, 0.05, every_s=0.01)
+    assert [sweep for _, sweep in passes][:2] == [True, False], "its own clock without a store"
+
+
 async def test_an_idle_share_does_not_put_the_only_worker_to_sleep(store, monkeypatch):
     """One process, four shares, one of them always busy: a pass that drew an empty share pauses
     that share, not the process, which goes on to the busy one at once."""
