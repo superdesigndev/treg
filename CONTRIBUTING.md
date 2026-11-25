@@ -46,7 +46,7 @@ require a frontend build, so CLI and background-worker development remains indep
    Serial `uv run --frozen python -m pytest -q` is for debugging one test or order.
    Against Postgres, set `TREG_TEST_DB_URL`; each xdist worker creates its own database from it.
    Add `TREG_TEST_POOLER_URL`, a transaction-pooling PgBouncer in front of the same server, to run
-   the background pool through it.
+   the background pool through it (CI's `test-postgres` runs both ways).
    Tests must pass in any order. To check, shuffle with a few seeds (pytest-randomly is not a
    project dependency, so CI order stays fixed):
    `uv run --with pytest-xdist --with pytest-randomly pytest -n auto -q -p randomly --randomly-seed=<n>`.

@@ -118,7 +118,7 @@ def test_the_budget_reports_what_a_process_retains_while_idle():
 
     budget = db.connection_budget(workers=3)
     floor = sum(db.POOL_SPECS[name]["pool_size"] for name in ("api", "admin", "background")
-                if name not in db._pooled_pools)
+                if not (name == "background" and db._background_url))
     assert budget["retained_per_process"] == floor
     assert budget["retained_per_instance"] == floor * 3
     assert budget["retained_per_instance"] <= budget["per_instance"]

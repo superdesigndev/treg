@@ -44,27 +44,28 @@ atexit.register(lambda: [os.remove(p) for p in glob.glob(_db_file + "*")])
 _default = f"sqlite+aiosqlite:///{_db_file}"
 
 
-def _per_worker_postgres(url: str) -> str:
-    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
-    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
-    import asyncio
+async def ensure_postgres_database(url: str, name: str) -> str:
+    """Create database `name` on `url`'s server unless it exists -> its URL."""
     import asyncpg
     from sqlalchemy.engine import make_url
 
     base = make_url(url)
-    name = f"{base.database}_{_worker}"
-
-    async def ensure() -> None:
-        dsn = base.set(drivername="postgresql").render_as_string(hide_password=False)
-        conn = await asyncpg.connect(dsn)
-        try:
-            if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
-                await conn.execute(f'CREATE DATABASE "{name}"')
-        finally:
-            await conn.close()
-
-    asyncio.run(ensure())
+    conn = await asyncpg.connect(base.set(drivername="postgresql").render_as_string(hide_password=False))
+    try:
+        if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
+            await conn.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        await conn.close()
     return base.set(database=name).render_as_string(hide_password=False)
+
+
+def _per_worker_postgres(url: str) -> str:
+    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
+    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
+    import asyncio
+    from sqlalchemy.engine import make_url
+
+    return asyncio.run(ensure_postgres_database(url, f"{make_url(url).database}_{_worker}"))
 
 
 _test_db_url = os.environ.get("TREG_TEST_DB_URL")
@@ -83,8 +84,7 @@ if _test_pooler_url:
 
     _test_pooler_url = make_url(_test_pooler_url).set(
         database=make_url(_test_db_url).database).render_as_string(hide_password=False)
-os.environ["TREG_DATABASE_POOLER_URL"] = _test_pooler_url
-os.environ["TREG_DB_POOLER_POOLS"] = "background" if _test_pooler_url else ""
+os.environ["TREG_BACKGROUND_DATABASE_URL"] = _test_pooler_url
 os.environ["TREG_WORKOS_API_KEY"] = ""
 os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""

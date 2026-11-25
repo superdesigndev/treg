@@ -25,10 +25,8 @@ from . import money_trace
 # sized against the relay's concurrency so bursts don't starve the pool and time out.
 _db_url = get_settings().database_url
 _read_db_url = get_settings().read_database_url
-_pooler_url = get_settings().database_pooler_url
 _is_sqlite = _db_url.startswith("sqlite")
-_pooled_pools = frozenset() if _is_sqlite else frozenset(
-    filter(None, get_settings().db_pooler_pools.split(",")))
+_background_url = "" if _is_sqlite else get_settings().background_database_url
 
 
 # THREE PRIMARY POOLS, ONE DATABASE — a bulkhead. Each class of work can exhaust only its own slots, so
@@ -155,10 +153,10 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
     after its load subsides, reached once it has used that many at the same moment. It is not
     opened at startup.
 
-    A pool behind the connection pooler is excluded as well: the database sees the pooler's server
-    connections for it, not its client connections.
+    The background pool is excluded when `background_database_url` routes it through a pooler: the
+    database sees the pooler's server connections for it, not its client connections.
     """
-    direct = [name for name in _PRIMARY_POOL_NAMES if name not in _pooled_pools]
+    direct = [name for name in _PRIMARY_POOL_NAMES if not (name == "background" and _background_url)]
     per_process = sum(POOL_SPECS[name]["pool_size"] + POOL_SPECS[name]["max_overflow"]
                       for name in direct)
     retained_per_process = sum(POOL_SPECS[name]["pool_size"] for name in direct)
@@ -177,20 +175,20 @@ def log_connection_budget() -> None:
     """Log the budget once per process. Called from the app lifespan, not at import: Uvicorn imports
     the app before treg's loggers are configured, and an import-time INFO line is dropped."""
     budget = connection_budget()
+    pools = {name: f"{name} {POOL_SPECS[name]['pool_size']}+{POOL_SPECS[name]['max_overflow']}"
+             for name in _PRIMARY_POOL_NAMES}
+    pooled = pools.pop("background") if _background_url else None
     logging.getLogger("treg").info(
-        "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
-        "instance at full load, %d retained once idle; a rolling deploy adds the new generation to "
-        "the old one on every instance it replaces; compare with the database connection ceiling%s",
-        POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
-        POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
-        POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
-        budget["per_process"], budget["workers"], budget["per_instance"],
+        "db pools per process: %s = %d; x%d workers = %d per instance at full load, %d retained once "
+        "idle; a rolling deploy adds the new generation to the old one on every instance it "
+        "replaces; compare with the database connection ceiling%s",
+        ", ".join(pools.values()), budget["per_process"], budget["workers"], budget["per_instance"],
         budget["retained_per_instance"],
-        f"; through the pooler, not in these totals: {', '.join(sorted(_pooled_pools))}"
-        if _pooled_pools else "")
+        f"; {pooled} connects through TREG_BACKGROUND_DATABASE_URL, outside these totals"
+        if pooled else "")
 
 
-def _new_engine(name: str, url: str | None = None):
+def _new_engine(name: str, url: str | None = None, *, pooled: bool = False):
     """One pooled engine per `POOL_SPECS` entry.
 
     `pool_timeout` is 5 s, not SQLAlchemy's default 30: a request that cannot get a slot is treg
@@ -199,8 +197,7 @@ def _new_engine(name: str, url: str | None = None):
     500. Slots only bound concurrent DB PHASES, which are milliseconds — a `/call/` holds no
     connection during its upstream round trip (`call_tool` commits before `relay()`)."""
     spec = POOL_SPECS[name]
-    pooled = url is None and name in _pooled_pools
-    db_url = url or (_pooler_url if pooled else _db_url)
+    db_url = url or _db_url
     kwargs: dict = {"future": True}
     is_sqlite = db_url.startswith("sqlite")
     if not is_sqlite:
@@ -229,7 +226,8 @@ def _new_engine(name: str, url: str | None = None):
 
 _engine = _new_engine("api")
 _admin_engine = _new_engine("admin")
-_background_engine = _new_engine("background")
+_background_engine = _new_engine("background", _background_url or None,
+                                 pooled=bool(_background_url))
 
 if _is_sqlite:
     # No pool to protect, and file-level write locks it cannot share: three engines against one file
@@ -320,25 +318,34 @@ def _current_revision(sync_connection) -> str | None:
     return revisions[0] if len(revisions) == 1 else None
 
 
-_SERVER_IDENTITY = text("SELECT current_database(), pg_postmaster_start_time()")
+_IDENTITY = text("SELECT current_database(), current_user, current_schema(), pg_postmaster_start_time()")
+_IDENTITY_FIELDS = ("database", "role", "schema", "server start")
+# asyncpg's own names for the statements it prepares; a transaction-pooling PgBouncer that tracks
+# prepared statements replaces them with its own before they reach the server.
+_DRIVER_STATEMENTS = text(r"SELECT count(*) FROM pg_prepared_statements WHERE name LIKE '\_\_asyncpg\_%'")
 
 
-async def verify_pooler() -> None:
-    """Every pool behind the connection pooler reaches the server and database `database_url` names,
-    so a wrong pooler URL refuses to start instead of failing background writes later."""
-    if not _pooled_pools:
+async def verify_background_database() -> None:
+    """`background_database_url` reaches the database `database_url` does, as the same role and
+    schema, and keeps asyncpg's prepared statements usable across transactions. A wrong URL, or a
+    pooler that would hand a statement prepared on one server connection to another, refuses to
+    start instead of failing background writes later."""
+    if not _background_url:
         return
     async with _engine.connect() as connection:
-        direct = tuple((await connection.execute(_SERVER_IDENTITY)).one())
-    for name, engine in zip(_POOL_NAMES, _engines):
-        if name in _pooled_pools:
-            async with engine.connect() as connection:
-                pooled = tuple((await connection.execute(_SERVER_IDENTITY)).one())
-            if pooled != direct:
-                raise RuntimeError(
-                    f"the {name} pool's TREG_DATABASE_POOLER_URL reaches database {pooled[0]!r} on a "
-                    f"server started at {pooled[1]}, not database {direct[0]!r} on the server "
-                    f"TREG_DATABASE_URL reaches (started at {direct[1]})")
+        direct = tuple((await connection.execute(_IDENTITY)).one())
+    async with _background_engine.connect() as connection:
+        routed = tuple((await connection.execute(_IDENTITY)).one())
+        passed_through = (await connection.execute(_DRIVER_STATEMENTS)).scalar_one()
+    if routed != direct:
+        differences = ", ".join(f"{field} {mine!r} instead of {theirs!r}" for field, mine, theirs
+                                in zip(_IDENTITY_FIELDS, routed, direct) if mine != theirs)
+        raise RuntimeError(f"TREG_BACKGROUND_DATABASE_URL reaches {differences} (TREG_DATABASE_URL)")
+    if passed_through:
+        raise RuntimeError(
+            "TREG_BACKGROUND_DATABASE_URL passes asyncpg's prepared statements to the server under "
+            "their own names: it must be a transaction-pooling PgBouncer with prepared statement "
+            "support (1.21 or later, max_prepared_statements above 0)")
 
 
 async def verify_db() -> None:
@@ -358,7 +365,7 @@ async def verify_db() -> None:
             "TREG_SECRET_KEY unset - using an EPHEMERAL key; stored secrets will not survive a restart."
         )
 
-    await verify_pooler()
+    await verify_background_database()
     async with _engine.connect() as connection:
         revision = await connection.run_sync(_current_revision)
 
