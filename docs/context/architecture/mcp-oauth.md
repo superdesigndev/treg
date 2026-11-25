@@ -323,7 +323,10 @@ The CIMD fetch is fenced because the URL is caller-chosen: https only, no redire
 at connect time, bounded time and size, reusing `health.safe_webhook_url` and the call-time lookup
 `health.host_is_public_async` (off the event loop, refused on timeout; proxy-model.md "Call-time SSRF guard").
 The document must claim its own URL, or a document hosted anywhere could assert someone else's
-`client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
+`client_id` and inherit their consent. `_resolve_oauth_client` reads the cached row, ends that
+transaction, fetches with no pooled connection held, then writes the row in a short transaction of
+its own (a concurrent first sight that loses the unique constraint updates the winner's row). A failed
+refresh keeps the stale copy. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).
 
 ## A confidential client: Microsoft 365 Copilot
