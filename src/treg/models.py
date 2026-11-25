@@ -672,6 +672,9 @@ class CallRecord(SQLModel, table=True):
     # this row by id and both targets carry their own index. Last columns (alembic appends).
     archive_key_hash: str | None = Field(default=None)
     archive_content_hash: str | None = Field(default=None)
+    # The call surface when it is not `/call/`: "table" for `/table/`, whose caller receives a
+    # reshaped answer rather than the archived bytes. NULL on `/call/` and on rows before 0128.
+    surface: str | None = Field(default=None)
     # The provider's share of `duration_ms` (set by the call path; see `upstream_ms` there): the
     # request until its answer is read. NULL when no request reached the provider, and on rows
     # written before the column existed.
@@ -1781,6 +1784,9 @@ class IdempotentCall(SQLModel, table=True):
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
     endpoint_id: str = Field(default="")
+    # The surface the label was taken on, `call` or `table`: a label never replays on the other
+    # one. NULL on labels taken before it was kept (Alembic 0128), which replay as before.
+    surface: str | None = Field(default=None)
     # The X-Treg-Call-Id the FIRST call returned. A replay hands this back rather than a fresh
     # reference, so a retry resolves to the row that actually holds the money.
     call_ref: str = Field(default="")
@@ -1983,6 +1989,12 @@ class CallReview(SQLModel, table=True):
     secondary_code: str | None = Field(default=None)
     codebook_version: str | None = Field(default=None)
     code_judged_at: NaiveUTC | None = Field(default=None)
+    # What the codes were judged from (`application.review_judge`): NULL or "reason" (an upgrade with
+    # the call's answer may follow), "answer", or "reason_final" (no answer can be shown). An answer
+    # not readable yet is tried again from `answer_retry_at`, backing off with `answer_attempts`.
+    code_basis: str | None = Field(default=None)
+    answer_retry_at: NaiveUTC | None = Field(default=None)
+    answer_attempts: int | None = Field(default=None)
 
 
 class CallMark(SQLModel, table=True):

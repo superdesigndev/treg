@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 
 from ... import jsontext
 
@@ -49,15 +50,36 @@ def _cut(value, items: int, chars: int, keys: int, depth: int = 64):
         if len(value) > items:
             out.append({MORE: len(value) - items})
         return out
-    if isinstance(value, str) and len(value) > chars:
+    if isinstance(value, str) and not isinstance(value, _Number) and len(value) > chars:
         return value[:chars] + CUT
     return value
 
 
-def _dumps(value) -> str:
+class _Number(str):
+    """A JSON number as the vendor wrote it: parsing to a float would round `123.1234567890123456789`
+    and turn `1e400` into `Infinity`. Dumped as a placeholder string, then put back verbatim."""
+
+
+def _numbers(text: str):
+    """`text` parsed with every number kept as its own text, and the placeholder tag for them."""
+    numbers: list[str] = []
+    tag = secrets.token_hex(6)
+
+    def keep(raw: str) -> _Number:
+        numbers.append(raw)
+        return _Number(f"{tag}:{len(numbers) - 1}")
+    value = json.loads(text, parse_int=keep, parse_float=keep, parse_constant=keep)
+    return value, re.compile(f'"{tag}:(\\d+)"'), numbers
+
+
+def _dumps(value, numbers=None) -> str:
     # A lone UTF-16 surrogate (a vendor truncating text mid-pair) stays its `\\uXXXX` escape, so
     # the judge's request still encodes as UTF-8 (`jsontext`).
-    return jsontext.dumps(value, separators=(",", ":"))
+    out = jsontext.dumps(value, separators=(",", ":"))
+    if numbers is not None:
+        pattern, raw = numbers
+        out = pattern.sub(lambda m: raw[int(m.group(1))], out)
+    return out
 
 
 # The last resort for a JSON answer, so the smallest budget that always fits; lengths are characters.
@@ -66,7 +88,8 @@ MIN_BUDGET = len(_OMITTED_ALL)
 
 
 def shrink(text: str | None, budget: int) -> str:
-    """`text` cut to at most `budget` characters (at least `MIN_BUDGET`), keeping a JSON answer's structure. A JSON answer
+    """`text` cut to at most `budget` characters (at least `MIN_BUDGET`), keeping a JSON answer's
+    structure; JSON that fits is returned as it is, and every number kept is the vendor's own text. A JSON answer
     always stays valid JSON: past the last cut, deeper levels are replaced by their counts
     (`LIST`, `OBJECT`) rather than the text being sliced, so a cut never reads as
     the vendor's malformed output."""
@@ -74,19 +97,22 @@ def shrink(text: str | None, budget: int) -> str:
         raise ValueError(f"budget must be at least {MIN_BUDGET} characters")
     if not text:
         return ""
-    try:
-        value = json.loads(text)
+    try:  # a leading byte order mark is not part of the JSON a caller's parser reads
+        value, pattern, raw = _numbers(text[1:] if text.startswith("\ufeff") else text)
     except ValueError:
         plain = _SPACE.sub(" ", _TAG.sub(" ", text)).strip()
         return plain if len(plain) <= budget else plain[:budget - len(CUT)] + CUT
-    out = _dumps(value)
+    if len(text) <= budget:  # JSON that fits is shown exactly as the vendor sent it
+        return text
+    numbers = (pattern, raw)
+    out = _dumps(value, numbers)
     for items, chars, keys in _STEPS:
         if len(out) <= budget:
             return out
-        out = _dumps(_cut(value, items, chars, keys))
+        out = _dumps(_cut(value, items, chars, keys), numbers)
     items, chars, keys = _STEPS[-1]
     for depth in range(8, -1, -1):
         if len(out) <= budget:
             return out
-        out = _dumps(_cut(value, items, chars, keys, depth))
+        out = _dumps(_cut(value, items, chars, keys, depth), numbers)
     return out if len(out) <= budget else _OMITTED_ALL

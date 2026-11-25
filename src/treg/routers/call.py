@@ -527,6 +527,7 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
         caller=CallerSnapshot.capture(caller),
         client_ip=_client_ip(request),
         catalog_only=bool(getattr(request.state, "catalog_only", False)),
+        surface="table" if prefix == "/table/" else None,
     )
     return await run_call_input(request, caller, call_input, finish=finish, rest=rest)
 

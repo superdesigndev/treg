@@ -106,6 +106,9 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -
     calls are GETs that carry all their arguments in the query, that made the check almost inert: two
     genuinely different lookups under one label matched, and the second was answered with the first
     one's data instead of the 422 this function exists to raise.
+
+    The surface a label was taken on (`/call/` or `/table/`) is checked beside it, from
+    `IdempotentCall.surface`, not hashed into it (`_replay_idempotent`).
     """
     return _fingerprint(method, rest, _canonical_json(body), query)
 
@@ -190,16 +193,38 @@ def _in_progress(key: str, call_ref: str | None) -> IdempotencyFailed:
                             + (f" (GET /calls/{call_ref}/result once it is done)." if call_ref else "."))})
 
 
-async def _claim_owner(key: str, caller: Caller, db: AsyncSession) -> str | None:
-    """The call that holds this caller's label, read after losing the race to claim it."""
-    return (await db.execute(select(IdempotentCall.call_ref).where(
+async def _lost_claim(key: str, fingerprint: str, caller: Caller, db: AsyncSession, *,
+                      raw_fingerprint: str | None = None, surface: str | None = None) -> IdempotencyFailed:
+    """What a request that lost the race to claim this caller's label is told, from the row that won:
+    the 422 mismatch when the winner is another request or surface, else that it is in progress
+    and which call holds it."""
+    row = (await db.execute(select(IdempotentCall).where(
         IdempotentCall.membership_id == caller.membership.id,
         IdempotentCall.key == key))).scalar_one_or_none()
+    if row is not None:
+        _check_same_request(row, key, fingerprint, raw_fingerprint, surface)
+    return _in_progress(key, row.call_ref if row is not None else None)
+
+
+def _check_same_request(row: IdempotentCall, key: str, fingerprint: str, raw_fingerprint: str | None,
+                        surface: str | None) -> None:
+    """Raise the 422 mismatch unless `row` holds this same request on this same surface.
+
+    A `/table/` caller receives a reshaped answer, so a label taken on one surface never replays on
+    the other: its call id would name an answer that caller never saw. A label taken before the
+    surface was kept (NULL) cannot say which, and replays as it always did rather than turning a
+    retry of a call already made into a new paid one; such labels expire within the window."""
+    crossed = row.surface is not None and row.surface != _surface(surface)
+    if crossed or (row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint)):
+        raise IdempotencyFailed(
+            "idempotency_mismatch", status_code=422,
+            detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
+                    f"repeat the original request exactly."))
 
 
 async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
-                             db: AsyncSession, *, raw_fingerprint: str | None = None
-                             ) -> IdempotentReplay | None:
+                             db: AsyncSession, *, raw_fingerprint: str | None = None,
+                             surface: str | None = None) -> IdempotentReplay | None:
     """The stored answer for this caller's label, or None if there is nothing to replay.
 
     Returns a real response, so the provider is never reached and no money moves. That is the whole
@@ -216,11 +241,7 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         await db.delete(row)
         await db.commit()
         return None
-    if row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint):
-        raise IdempotencyFailed(
-            "idempotency_mismatch", status_code=422,
-            detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
-                    f"repeat the original request exactly."))
+    _check_same_request(row, key, fingerprint, raw_fingerprint, surface)
     if (row.status != "done" and row.call_ref
             and row.created_at < _utcnow() - timedelta(seconds=IDEMPOTENCY_STALE_PENDING_S)):
         resolved = await _resolve_stale_claim(row, caller, db)
@@ -243,6 +264,11 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         # money, not to a fresh reference for work that never happened.
         call_ref=row.call_ref or "",
     )
+
+
+def _surface(surface: str | None) -> str:
+    """The surface a label is kept under: `call` for `/call/` (whose `CallInput.surface` is None)."""
+    return surface or "call"
 
 
 def _utcnow() -> datetime:
@@ -498,7 +524,7 @@ async def _release_idempotent_claim(claim: tuple[int, str, str] | None) -> None:
 
 
 async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Caller,
-                            db: AsyncSession, *, call_ref: str) -> bool:
+                            db: AsyncSession, *, call_ref: str, surface: str | None = None) -> bool:
     """Take the label for this caller, or report that somebody else already has it.
 
     The pending row IS the lock. It goes in before the upstream call, so a concurrent retry loses the
@@ -522,7 +548,7 @@ async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Calle
 
     row = IdempotentCall(
         org_id=caller.org_id, membership_id=caller.membership.id, key=key, call_ref=call_ref,
-        request_fingerprint=fingerprint, endpoint_id=rest[:200], status="pending",
+        request_fingerprint=fingerprint, endpoint_id=rest[:200], surface=_surface(surface), status="pending",
         expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
         + timedelta(seconds=IDEMPOTENCY_WINDOW_S))
     db.add(row)

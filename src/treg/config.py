@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import json
 import os
 import re
@@ -786,6 +788,22 @@ class Settings(BaseSettings):
     # take. It runs from a cron, so its wait is not a caller's.
     review_judge_batch: int = Field(default=25, ge=1, le=100)
     review_judge_timeout_s: float = 60.0
+    # A direct call's negative review is upgraded with the call's answer in view: this many per Jev
+    # request (an answer is far longer than a reason), each answer shortened to
+    # this many characters (`body_view.shrink`, at least its MIN_BUDGET).
+    review_judge_answer_batch: int = Field(default=5, ge=1, le=25)
+    review_judge_answer_chars: int = Field(default=4000, ge=22, le=20000)
+    # An answer not readable yet is tried again, backing off from an hour to a week; after this many
+    # tries its review keeps the codes from its reason.
+    review_judge_answer_attempts: int = Field(default=10, ge=1)
+    # Off: the review judge codes from reasons only, as before the answer upgrade (its rollback switch).
+    review_judge_answers: bool = True
+    # Calls before this moment are never read back as their archived answer: older call rows do not
+    # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
+    # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`
+    # finished serving: until then such an instance answers `/table/` (a retry included) without
+    # recording the surface, though the column exists. Keep `review_judge_answers` off until it is set.
+    review_answer_surface_since: datetime | None = None
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall

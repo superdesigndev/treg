@@ -148,7 +148,7 @@ async def _add(*rows):
 
 def _archive(monkeypatch, bodies: dict):
     """Synthetic archive: key hash -> answer text; a key it lacks is no longer on file."""
-    async def resolve(key_hash, content_hash):
+    async def resolve(key_hash, content_hash, **kwargs):
         if key_hash not in bodies:
             return None
         return {"stored": True, "request": {"method": "POST", "url": "https://x.test/s", "body_text": "{}"},
@@ -180,20 +180,24 @@ async def _codes():
 
 
 async def test_pilot_compares_codes_and_writes_nothing(clients, monkeypatch):
-    # p-0 and p-1 have answers on file, p-2's answer is gone, p-3 has no archive link.
+    # p-0 and p-1 have answers on file, p-2's answer is gone, p-3 has no archive link. The stored
+    # codes (here CONTEXT, as the hourly judge would write) are never the control: the reason-only
+    # coding is asked again, and says WRONG for p-1.
     org = await _org(clients)
-    codes = ["PARTIAL", "WRONG", "EMPTY", "ERROR"]
-    await _add(*[_review(org, f"p-{i}", c) for i, c in enumerate(codes)],
+    await _add(_review(org, "p-0", "CONTEXT"), _review(org, "p-1", "CONTEXT", reason=REASON + " Wrong."),
+               _review(org, "p-2", "EMPTY"), _review(org, "p-3", "ERROR"),
                _record(org, "p-0", "k0"), _record(org, "p-1", "k1"), _record(org, "p-2", "k2"),
                _record(org, "p-3"))
     _archive(monkeypatch, {"k0": PEOPLE, "k1": PEOPLE})
-    seen = _jev(monkeypatch)
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "PARTIAL" if "response" in item or not
+                                              item["reason"].endswith("Wrong.") else "WRONG"})
     before = await _codes()
 
     out = await review_body_pilot.run(sample=10, batch=5, budget=500, max_seconds=60)
     assert out["candidates"] == 4 and out["no_body"] == 2 and out["coded"] == 2
     assert out["same_primary"] == 1 and out["pairs"] == {"WRONG->PARTIAL": 1}
-    assert out["tokens_in"] == 50 and len(seen) == 1
+    assert out["reason_codes"] == {"PARTIAL": 1, "WRONG": 1}
+    assert out["tokens_in"] == 100 and len(seen) == 2 and "response" not in seen[1]["reviews"][0]
     sent = seen[0]["reviews"]
     assert [r["i"] for r in sent] == [0, 1] and all(len(r["response"]["body"]) <= 500 for r in sent)
     assert [d["review_id"] for d in out["diffs"]] and "fields came back" not in json.dumps(out)
@@ -211,9 +215,9 @@ async def test_a_routed_review_is_counted_and_never_compared(clients, monkeypatc
     read = []
     real = archive.resolve_result
 
-    async def watched(key_hash, content_hash):
+    async def watched(key_hash, content_hash, **kwargs):
         read.append(key_hash)
-        return await real(key_hash, content_hash)
+        return await real(key_hash, content_hash, **kwargs)
     monkeypatch.setattr(archive, "resolve_result", watched)
     seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
 
@@ -260,7 +264,7 @@ async def test_vague_noreason_review_is_asked_and_a_blank_one_is_not(clients, mo
                _review(org, "blank", "NOREASON", reason="   "),
                _record(org, "vague", "kv"), _record(org, "blank", "kb"))
     _archive(monkeypatch, {"kv": json.dumps({"results": []}), "kb": "{}"})
-    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY"})
+    seen = _jev(monkeypatch, lambda q, item: {"choice": "EMPTY" if "response" in item else "NOREASON"})
 
     out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
     assert out["no_reason"] == 1 and out["coded"] == 1 and len(seen[0]["reviews"]) == 1
@@ -297,7 +301,8 @@ async def test_a_secondary_only_change_is_a_diff(clients, monkeypatch):
     org = await _org(clients)
     await _add(_review(org, "e", "EMPTY"), _record(org, "e", "ke"))
     _archive(monkeypatch, {"ke": PEOPLE})
-    _jev(monkeypatch, lambda q, item: {"choice": "EMPTY", "probabilities": {"EMPTY": 0.6, "PARTIAL": 0.4}})
+    _jev(monkeypatch, lambda q, item: {"choice": "EMPTY", "probabilities": {"EMPTY": 0.6, "PARTIAL": 0.4}}
+         if "response" in item else {"choice": "EMPTY"})
 
     out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=60)
     assert out["same_primary"] == 1 and out["pairs"] == {} and out["changed"] == 1
@@ -310,7 +315,7 @@ def _slow_archive(monkeypatch, slow_key: str):
     now = [0.0]
     monkeypatch.setattr(review_body_pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
 
-    async def resolve(key_hash, content_hash):
+    async def resolve(key_hash, content_hash, **kwargs):
         if key_hash == slow_key:
             now[0] += 100
         return {"stored": True, "request": {"method": "POST", "url": "https://x.test/s", "body_text": "{}"},
@@ -367,6 +372,49 @@ async def test_the_tail_batch_goes_out_without_another_page(clients, monkeypatch
     assert out["stopped_by_deadline"] is False
 
 
+async def test_the_second_request_of_a_batch_is_not_sent_after_the_deadline(clients, monkeypatch):
+    # The body request goes out at 0 s and returns at 2 s, past a 1 s deadline: the reason-only
+    # request is not sent, and the batch is not counted as a pair.
+    org = await _org(clients)
+    await _add(_review(org, "d", "WRONG"), _record(org, "d", "kd"))
+    _archive(monkeypatch, {"kd": PEOPLE})
+    now = [0.0]
+    monkeypatch.setattr(review_body_pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    sent = []
+
+    async def ask(state, questions):
+        sent.append(now[0])
+        now[0] += 2
+        return Reply(answers={q: {"choice": "EMPTY"} for q in questions}, ms=1, tokens_in=50)
+    monkeypatch.setattr(review_body_pilot, "_ask", ask)
+    monkeypatch.setattr(get_settings(), "typesafe_api_key", "test-key", raising=False)
+
+    out = await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=1)
+    assert sent == [0.0] and out["half_asked"] == 1 and out["coded"] == 0
+    assert out["stopped_by_deadline"] is True
+
+
+async def test_a_batch_cut_before_its_first_request_is_read_not_asked(clients, monkeypatch):
+    # The deadline passes while the batch is being prepared: no request at all, so nothing is half asked.
+    from treg.application import review_body_pilot as pilot
+
+    org = await _org(clients)
+    await _add(_review(org, "p", "WRONG"), _record(org, "p", "kp"))
+    _archive(monkeypatch, {"kp": PEOPLE})
+    now = [0.0]
+    monkeypatch.setattr(pilot, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    real_view = pilot.view
+
+    def slow_view(*args):
+        now[0] += 2
+        return real_view(*args)
+    monkeypatch.setattr(pilot, "view", slow_view)
+    seen = _jev(monkeypatch)
+
+    out = await pilot.run(sample=5, batch=1, budget=500, max_seconds=1)
+    assert seen == [] and out["asked"] == 0 and out["half_asked"] == 0 and out["read_not_asked"] == 1
+
+
 async def test_pilot_is_off_without_a_key(monkeypatch):
     monkeypatch.setattr(get_settings(), "typesafe_api_key", "", raising=False)
     assert await review_body_pilot.run(sample=5, batch=5, budget=500, max_seconds=5) == {
@@ -381,3 +429,26 @@ def test_shrink_keeps_json_valid_when_cuts_are_not_enough():
         out = body_view.shrink(json.dumps(nested), budget)
         assert len(out) <= max(budget, len('{"_omitted_bytes":9999}'))
         json.loads(out)
+
+
+async def test_the_judge_sees_the_status_and_body_the_caller_got(clients, monkeypatch):
+    # One stored body answered this call with 206; the provider's reported charge is stripped
+    # before delivery, so the judge never sees it either.
+    from treg.application import review_answers
+
+    org = await _org(clients)
+    record = _record(org, "s", "ks", status=206)
+    record.cost_charged_micro = 100
+    await _add(_review(org, "s", "PARTIAL"), record)
+
+    async def resolve(key_hash, content_hash, **kwargs):
+        return {"stored": True, "request": {"method": "POST", "url": "u", "body_text": "{}"},
+                "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 9,
+                             "body_text": '{"people":[],"credits_charged":2}'}}
+    monkeypatch.setattr(archive, "resolve_result", resolve)
+    # Whatever the setting today: the endpoint declares where its reported charge is.
+    monkeypatch.setattr(review_answers.reported_charge, "path_of", lambda endpoint: "response.credits_charged")
+    async with session_maker() as db:
+        review = (await db.execute(select(CallReview))).scalar_one()
+    found = (await review_answers.answer_of(review)).found
+    assert found["response"]["status_code"] == 206 and "credits_charged" not in found["response"]["body_text"]

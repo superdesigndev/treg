@@ -306,3 +306,88 @@ def test_a_one_item_list_is_one_row_unless_it_wraps_tables():
     wrapped = to_table({"tasks": [{"result": [{"k": 1}, {"k": 2}]}]})
     assert wrapped["shape"] == "list" and wrapped["path"] == "tasks[0].result"
 
+
+
+async def test_a_table_call_records_its_surface(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """The caller of `/table/` gets a reshaped answer, so its audit row says so: a judge of a review
+    of it must never read the archived bytes as what the caller saw. `/call/` rows leave it empty."""
+    import asyncio
+
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import CallRecord
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"name": "x"}}'))
+    table = await clients.get(f"/table/{EP}?aweme_id=surface")
+    plain = await clients.get(f"/call/{EP}?aweme_id=plain")
+    assert table.status_code == plain.status_code == 200
+    refs = {table.headers["x-treg-call-id"]: "table", plain.headers["x-treg-call-id"]: None}
+    for _ in range(100):  # the audit row is written after the answer
+        async with session_maker() as db:
+            rows = (await db.execute(select(CallRecord.call_ref, CallRecord.surface)
+                                     .where(CallRecord.call_ref.in_(refs)))).all()
+        if len(rows) == 2:
+            break
+        await asyncio.sleep(0.02)
+    assert dict(rows) == refs
+
+
+async def test_one_idempotency_key_never_replays_across_call_and_table(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """A label first used on `/call/` is refused on `/table/` (and the other way): its replay would
+    name a call whose archived answer is not what the table caller received. The fingerprint is the
+    same on both; the label keeps its surface."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}'))
+    h = {"Idempotency-Key": "cross-surface"}
+    assert (await clients.get(f"/call/{EP}?aweme_id=x", headers=h)).status_code == 200
+    crossed = await clients.get(f"/table/{EP}?aweme_id=x", headers=h)
+    assert crossed.status_code == 422 and "idempotency" in crossed.text.lower()
+    h2 = {"Idempotency-Key": "table-first"}
+    assert (await clients.get(f"/table/{EP}?aweme_id=y", headers=h2)).status_code == 200
+    assert (await clients.get(f"/call/{EP}?aweme_id=y", headers=h2)).status_code == 422
+
+
+async def test_a_label_taken_before_surfaces_were_kept_replays_on_either(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """A label an earlier build stored (no surface) cannot say which surface it was taken on: a retry
+    on either replays the call already made instead of being refused into a new paid call."""
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import IdempotentCall
+
+    calls = []
+    relay = _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}')
+
+    async def counted(*args, **kwargs):
+        calls.append(1)
+        return await relay(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", counted)
+    h = {"Idempotency-Key": "before-surfaces"}
+    assert (await clients.get(f"/table/{EP}?aweme_id=z", headers=h)).status_code == 200
+    async with session_maker() as db:
+        row = (await db.execute(select(IdempotentCall))).scalar_one()
+        assert row.surface == "table"
+        row.surface = None
+        await db.commit()
+    assert (await clients.get(f"/table/{EP}?aweme_id=z", headers=h)).status_code == 200
+    assert (await clients.get(f"/call/{EP}?aweme_id=z", headers=h)).status_code == 200
+    assert len(calls) == 1
+
+
+async def test_a_request_that_loses_the_claim_to_the_other_surface_is_told_it_is_a_mismatch(clients: AsyncClient, platform_on, table_on, monkeypatch):
+    """`/call/` and `/table/` both find the label free and race to claim it; `/call/` wins. The loser
+    is the 422 mismatch, not a 409 pointing at the other surface's call. A same-surface loser is
+    told the call is in progress."""
+    from treg.application.call import intake
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": [{"a": 1}], "next_cursor": "p2"}'))
+    h = {"Idempotency-Key": "race"}
+    assert (await clients.get(f"/call/{EP}?aweme_id=r", headers=h)).status_code == 200
+
+    async def missed(*args, **kwargs):  # the lookup ran before the winner's claim landed
+        return None
+    monkeypatch.setattr(intake, "_replay_idempotent", missed)
+    crossed = await clients.get(f"/table/{EP}?aweme_id=r", headers=h)
+    assert crossed.status_code == 422 and "idempotency" in crossed.text.lower()
+    same = await clients.get(f"/call/{EP}?aweme_id=r", headers=h)
+    assert same.status_code == 409
