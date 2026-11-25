@@ -413,24 +413,43 @@ async def reset_db() -> None:
 
     for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
         await engine.dispose()
+    tables = SQLModel.metadata.sorted_tables
     async with _engine.begin() as connection:
-        if _built_schema is not None and await _schema_fingerprint(connection) == _built_schema:
-            # Children first, so foreign keys hold.
-            for table in reversed(SQLModel.metadata.sorted_tables):
-                await connection.execute(table.delete())
-            if not _is_sqlite:
-                # Rewind every sequence so ids restart at 1, as they do on an emptied sqlite table.
-                await connection.execute(text(
-                    "SELECT setval(c.oid, 1, false) FROM pg_class c "
-                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                    "WHERE c.relkind = 'S' AND n.nspname = current_schema()"
-                ))
-        else:
-            await connection.run_sync(SQLModel.metadata.drop_all)
-            await connection.run_sync(SQLModel.metadata.create_all)
+        built = _built_schema is not None and await _schema_fingerprint(connection) == _built_schema
+    # Postgres holds every lock a transaction takes until it ends, in one table shared by every
+    # database on the server (max_locks_per_transaction x max_connections entries). One
+    # transaction over every table and index, in each of many parallel test workers, fills it
+    # ("out of shared memory"), so each transaction covers a few tables. Children go first.
+    if built:
+        for batch in _batches(list(reversed(tables))):
+            async with _engine.begin() as connection:
+                for table in batch:
+                    await connection.execute(table.delete())
+    else:
+        for batch in _batches(list(reversed(tables))):
+            async with _engine.begin() as connection:
+                await connection.run_sync(SQLModel.metadata.drop_all, tables=batch)
+        for batch in _batches(tables):
+            async with _engine.begin() as connection:
+                await connection.run_sync(SQLModel.metadata.create_all, tables=batch)
+    async with _engine.begin() as connection:
+        if built and not _is_sqlite:
+            # Rewind every sequence so ids restart at 1, as they do on an emptied sqlite table.
+            await connection.execute(text(
+                "SELECT setval(c.oid, 1, false) FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE c.relkind = 'S' AND n.nspname = current_schema()"
+            ))
+        if not built:
             _built_schema = await _schema_fingerprint(connection)
-
         await _stamp_test_schema(connection)
+
+
+_RESET_BATCH = 8
+
+
+def _batches(tables: list) -> list[list]:
+    return [tables[i:i + _RESET_BATCH] for i in range(0, len(tables), _RESET_BATCH)]
 
 
 async def dispose_engine() -> None:
