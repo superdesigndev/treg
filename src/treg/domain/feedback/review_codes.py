@@ -11,9 +11,7 @@ import math
 
 from . import body_view
 
-# 2026-11-25.1: a review whose direct call's answer is on file is coded with that answer in view
-# (`body_code_question`), so every review is coded again.
-CODEBOOK_VERSION = "2026-11-25.1"
+CODEBOOK_VERSION = "2026-11-23.2"
 
 CODES = {
     "ACCURACY": "The data returned is wrong: wrong email/phone/value, wrong verdict (valid vs invalid), metrics "

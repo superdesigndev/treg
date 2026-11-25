@@ -40,12 +40,48 @@ async def record_privacy(db: AsyncSession, review_id: int, person_p: float, at: 
     return result.rowcount == 1
 
 
+REASON, ANSWER, REASON_FINAL = "reason", "answer", "reason_final"
+
+
 async def record_codes(db: AsyncSession, review_id: int, primary: str, secondary: str | None,
-                       version: str, at: datetime) -> bool:
-    """Codebook codes, written only over none or an older codebook version (versions are ISO dates,
-    so they order as strings): a worker on an older build never downgrades a newer judgement."""
+                       version: str, at: datetime, *, basis: str = REASON) -> bool:
+    """Codebook codes from the reason, written only over none or an older codebook version (versions
+    are ISO dates, so they order as strings): a worker on an older build never downgrades a newer
+    judgement. `basis` is `reason`, or `reason_final` when no answer will ever be shown for it;
+    any answer back-off starts over."""
     result = await db.execute(update(CallReview).where(
         CallReview.id == review_id,
         or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version),
-    ).values(primary_code=primary, secondary_code=secondary, codebook_version=version, code_judged_at=at))
+    ).values(primary_code=primary, secondary_code=secondary, codebook_version=version, code_judged_at=at,
+             code_basis=basis, answer_retry_at=None, answer_attempts=None))
+    return result.rowcount == 1
+
+
+def _upgradable(version: str):
+    return (CallReview.codebook_version == version,
+            or_(CallReview.code_basis.is_(None), CallReview.code_basis == REASON))
+
+
+async def record_answer_codes(db: AsyncSession, review_id: int, primary: str, secondary: str | None,
+                              version: str, at: datetime) -> bool:
+    """Codes judged with the call's answer in view, written only over this version's reason codes:
+    never over another answer judgement, and never over codes of a newer codebook."""
+    result = await db.execute(update(CallReview).where(CallReview.id == review_id, *_upgradable(version)).values(
+        primary_code=primary, secondary_code=secondary, code_judged_at=at, code_basis=ANSWER,
+        answer_retry_at=None, answer_attempts=None))
+    return result.rowcount == 1
+
+
+async def record_answer_final(db: AsyncSession, review_id: int, version: str) -> bool:
+    """No answer will ever be shown for this review: its reason codes stand."""
+    result = await db.execute(update(CallReview).where(CallReview.id == review_id, *_upgradable(version))
+                              .values(code_basis=REASON_FINAL, answer_retry_at=None, answer_attempts=None))
+    return result.rowcount == 1
+
+
+async def record_answer_retry(db: AsyncSession, review_id: int, version: str, attempts: int,
+                              retry_at: datetime) -> bool:
+    """The answer could not be read now: try again from `retry_at`."""
+    result = await db.execute(update(CallReview).where(CallReview.id == review_id, *_upgradable(version))
+                              .values(answer_attempts=attempts, answer_retry_at=retry_at))
     return result.rowcount == 1

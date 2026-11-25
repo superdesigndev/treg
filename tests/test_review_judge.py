@@ -94,13 +94,13 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
         return {"choice": "SOMETHING_ELSE"}
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_codes(deadline=float("inf"))
-    assert out == {"pending": 3, "judged": 1, "with_answer": 0, "answer_unreadable": 0, "answer_deferred": 0, "answer_errors": 0,
-                   "no_reason": 1, "stopped_by_deadline": False, "already_judged": 0, "failed_requests": 0,
+    assert out == {"pending": 3, "judged": 1, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
                    "unreadable": 1, "tokens_in": 10}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.CODES)
     rows = await _all()
     assert (rows["j-0"].primary_code, rows["j-0"].secondary_code) == ("ACCURACY", "RISKY")
     assert rows["j-0"].codebook_version == review_codes.CODEBOOK_VERSION
+    assert rows["j-0"].code_basis == "reason_final"  # routed: its answer is never read
     assert rows["j-1"].primary_code == "NOREASON"   # no reason: coded without asking
     assert rows["j-2"].code_judged_at is None       # useful reviews are not attributed
     assert rows["j-3"].code_judged_at is None       # unreadable: next run tries again
@@ -233,41 +233,6 @@ def test_off_topic_hits_are_wrong_not_context_and_boilerplate_is_noreason():
     assert review_codes.CODEBOOK_VERSION > "2026-11-23"
 
 
-async def test_a_direct_review_with_its_answer_on_file_is_coded_with_it(clients, monkeypatch):
-    """Direct calls whose answer is on file are asked with the answer in view, a few per request;
-    a routed call, or one whose answer is gone, from its reason alone."""
-    import json as _json
-
-    from test_review_body_pilot import PEOPLE, _add, _archive, _org, _record, _review
-
-    org = await _org(clients)
-    rows = [_review(org, f"d-{i}", None) for i in range(3)] + [_record(org, f"d-{i}", f"k{i}") for i in range(3)]
-    rows += [_review(org, "gone", None), _record(org, "gone", "kg"),
-             _review(org, "rt", None, routed=True), _record(org, "rt", tier="routed"),
-             _record(org, "rt:r1", "kr")]
-    await _add(*rows)
-    async with session_maker() as db:  # the helper codes them; here they wait for the judge
-        for r in (await db.execute(select(CallReview))).scalars():
-            r.codebook_version = None
-        await db.commit()
-    _archive(monkeypatch, {"k0": PEOPLE, "k1": PEOPLE, "k2": PEOPLE, "kr": PEOPLE})
-    monkeypatch.setattr(get_settings(), "review_judge_answer_batch", 2)
-    seen = _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY" if "response" in state["reviews"][int(q[1:])]
-                                                      else "WRONG"})
-
-    out = await review_judge.judge_codes(deadline=float("inf"))
-    assert out["judged"] == 5 and out["with_answer"] == 3 and out["failed_requests"] == 0
-    with_answer = [state for state, _ in seen if "response" in state["reviews"][0]]
-    assert [len(s["reviews"]) for s in with_answer] == [2, 1]
-    assert all(_json.loads(item["response"]["body"])["people"] for s in with_answer for item in s["reviews"])
-    plain, = [state for state, _ in seen if "response" not in state["reviews"][0]]
-    assert {item["routed"] for item in plain["reviews"]} == {True, False} and len(plain["reviews"]) == 2
-    codes = {r.call_id: (r.primary_code, r.codebook_version) for r in (await _all()).values()}
-    assert codes["d-0"] == ("EMPTY", review_codes.CODEBOOK_VERSION)
-    assert codes["gone"][0] == codes["rt"][0] == "WRONG"
-
-
-
 async def test_the_judge_runs_from_reasons_when_object_storage_is_unavailable(clients, monkeypatch, capsys):
     import argparse
 
@@ -284,114 +249,118 @@ async def test_the_judge_runs_from_reasons_when_object_storage_is_unavailable(cl
     assert '"judged": 0' in capsys.readouterr().out
 
 
-async def test_an_answer_unreadable_now_waits_and_a_corrupt_one_does_not_block(clients, monkeypatch):
-    """Bytes on file that cannot be read now (object storage down) leave the review for a later run,
-    which codes it with the answer; a snapshot whose read raises is coded from its reason and the
-    reviews after it carry on."""
-    from treg import archive
-    from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
+async def _negatives(clients, *names, routed=()):
+    """Direct (or routed) partly reviews coded from their reason this codebook, each with a call row
+    whose archive key is its name."""
+    from test_review_body_pilot import _add, _org, _record, _review
 
     org = await _org(clients)
-    await _add(_review(org, "later", None), _record(org, "later", "kl"),
-               _review(org, "broken", None), _record(org, "broken", "kb"),
-               _review(org, "rt", None, routed=True), _record(org, "rt", tier="routed"))
+    rows = []
+    for name in names:
+        rows += [_review(org, name, "WRONG", routed=name in routed),
+                 _record(org, name, None if name in routed else f"k-{name}")]
+    await _add(*rows)
     async with session_maker() as db:
         for r in (await db.execute(select(CallReview))).scalars():
-            r.codebook_version = None
+            r.code_basis = "reason_final" if r.routed_via else "reason"
         await db.commit()
-    readable = {"now": False}
-
-    async def resolve(key_hash, content_hash, **kwargs):
-        if key_hash == "kb":
-            raise ValueError("Error -3 while decompressing data")
-        stored = readable["now"]
-        return {"stored": stored, "request": {"method": "POST", "url": "u", "body_text": "{}"},
-                "response": {"status_code": 200, "media_type": "application/json", "size_bytes": 9,
-                             "body_text": PEOPLE if stored else None}}
-
-    async def on_file(db, pairs):
-        return set(pairs)
-    monkeypatch.setattr(archive, "resolve_result", resolve)
-    monkeypatch.setattr(archive, "bytes_on_file", on_file)
-    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY" if "response" in state["reviews"][int(q[1:])]
-                                               else "WRONG"})
-
-    out = await review_judge.judge_codes(deadline=float("inf"))
-    assert (out["answer_unreadable"], out["answer_errors"], out["judged"]) == (1, 1, 2)
-    codes = {r.call_id: r.primary_code for r in (await _all()).values()}
-    assert codes == {"later": None, "broken": "WRONG", "rt": "WRONG"}
-
-    readable["now"] = True
-    again = await review_judge.judge_codes(deadline=float("inf"))
-    assert again["pending"] == 1 and again["with_answer"] == 1
-    assert (await _all())["later"].primary_code == "EMPTY"
 
 
-async def test_reading_answers_stops_in_time_to_send_what_was_read(clients, monkeypatch):
-    """With 1 s left and 0.21 s per archive read, the judge stops reading with a request's worth of
-    time left and sends the partial batch before the deadline; nothing is sent after it, and the
-    next run carries on from the reviews still pending."""
-    from types import SimpleNamespace
-
+def _answers(monkeypatch, states: dict, clock=None):
+    """Mock `answer_of`: review call_id -> "read" | "absent" | "unreadable" (default "read")."""
     from treg.application import review_answers
-    from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
+    from test_review_body_pilot import PEOPLE
 
-    org = await _org(clients)
-    await _add(*[_review(org, f"t-{i}", None) for i in range(6)], *[_record(org, f"t-{i}", f"k{i}") for i in range(6)])
-    async with session_maker() as db:
-        for r in (await db.execute(select(CallReview))).scalars():
-            r.codebook_version = None
-        await db.commit()
-    now = [0.0]
-    monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    found = {"request": {"method": "POST", "url": "u", "body_text": "{}"},
+             "response": {"status_code": 200, "body_text": PEOPLE}}
+    reads = []
 
     async def answer_of(r):
-        now[0] += 0.21
-        return review_answers.Answer("read", {"request": {"method": "POST", "url": "u", "body_text": "{}"},
-                                              "response": {"status_code": 200, "media_type": "application/json",
-                                                           "size_bytes": 9, "body_text": PEOPLE}})
+        reads.append(r.call_id)
+        state = states.get(r.call_id, "read")
+        if clock is not None:
+            clock(r)
+        return review_answers.Answer(state, found if state == "read" else None)
     monkeypatch.setattr(review_judge, "answer_of", answer_of)
-    sent_at = []
-    _fake(monkeypatch, lambda q, spec, state: sent_at.append(now[0]) or {"choice": "EMPTY"})
+    return reads
 
-    out = await review_judge.judge_codes(deadline=1.0)
-    assert out["stopped_by_deadline"] is True and 0 < out["judged"] < 6
-    assert sent_at and max(sent_at) < 1.0
 
-    now[0] = 0.0
-    again = await review_judge.judge_codes(deadline=1.0)
-    assert again["pending"] == 6 - out["judged"] and again["judged"] > 0
+async def test_reason_codes_come_first_and_answers_upgrade_them(clients, monkeypatch):
+    """Every review is coded from its reason first; a direct one is then upgraded with its answer,
+    a few per request. A routed review is never read, and one whose answer is gone keeps its
+    reason codes for good."""
+    await _negatives(clients, "d-0", "d-1", "d-2", "gone", "rt", routed=("rt",))
+    reads = _answers(monkeypatch, {"gone": "absent"})
+    monkeypatch.setattr(get_settings(), "review_judge_answer_batch", 2)
+    seen = _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY"})
+
+    out = await review_judge.judge_answers(deadline=float("inf"))
+    assert out["judged"] == 3 and out["final"] == 1 and out["retry_later"] == 0
+    assert "rt" not in reads and [len(state["reviews"]) for state, _ in seen] == [2, 1]
+    rows = await _all()
+    assert (rows["d-0"].primary_code, rows["d-0"].code_basis) == ("EMPTY", "answer")
+    assert (rows["gone"].primary_code, rows["gone"].code_basis) == ("WRONG", "reason_final")
+    assert (rows["rt"].primary_code, rows["rt"].code_basis) == ("WRONG", "reason_final")
+    again = await review_judge.judge_answers(deadline=float("inf"))
+    assert again["pending"] == 0
+
+
+async def test_an_unreadable_answer_backs_off_and_never_holds_up_the_rest(clients, monkeypatch):
+    """Answers that cannot be read now are tried again later, not at the next run; reviews after
+    them are upgraded in the same run, and after the last try the reason codes stand."""
+    await _negatives(clients, *[f"u-{i}" for i in range(20)], "late", "no-link")
+    reads = _answers(monkeypatch, {**{f"u-{i}": "unreadable" for i in range(20)}, "no-link": "absent"})
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY"})
+
+    out = await review_judge.judge_answers(deadline=float("inf"))
+    rows = await _all()
+    assert out["retry_later"] == 20 and rows["late"].code_basis == "answer"
+    assert rows["no-link"].code_basis == "reason_final"
+    assert rows["u-0"].answer_attempts == 1 and rows["u-0"].answer_retry_at is not None
+
+    reads.clear()
+    assert (await review_judge.judge_answers(deadline=float("inf")))["pending"] == 0 and reads == []
+
+    monkeypatch.setattr(get_settings(), "review_judge_answer_attempts", 2)
+    async with session_maker() as db:  # their time has come
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.answer_retry_at = None if r.answer_retry_at else r.answer_retry_at
+        await db.commit()
+    last = await review_judge.judge_answers(deadline=float("inf"))
+    rows = await _all()
+    assert last["final"] == 20 and rows["u-0"].code_basis == "reason_final" and rows["u-0"].primary_code == "WRONG"
+
+
+async def test_a_new_codebook_version_codes_from_the_reason_and_upgrades_again(clients, monkeypatch):
+    await _negatives(clients, "v")
+    _answers(monkeypatch, {})
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY" if "response" in state["reviews"][0] else "PARAM"})
+    await review_judge.judge_answers(deadline=float("inf"))
+    assert (await _all())["v"].code_basis == "answer"
+    monkeypatch.setattr(review_codes, "CODEBOOK_VERSION", "2099-01-01.1")
+    await review_judge.judge_codes(deadline=float("inf"))
+    row = (await _all())["v"]
+    assert (row.primary_code, row.code_basis) == ("PARAM", "reason")
+    await review_judge.judge_answers(deadline=float("inf"))
+    assert (await _all())["v"].code_basis == "answer"
 
 
 async def test_a_slow_last_read_does_not_drop_what_was_read(clients, monkeypatch):
-    """1 s to run: two reads of 0.1 s, then one of 0.9 s. The slow read is cut off, that review
-    waits, and the two read are sent before the deadline."""
+    """1 s to run: two reads of 0.1 s, then one of 0.9 s, cut off by its time limit. That review
+    is left for the next run, and the two read are sent before the deadline."""
     from types import SimpleNamespace
 
-    from treg.application import review_answers
-    from test_review_body_pilot import PEOPLE, _add, _org, _record, _review
-
-    org = await _org(clients)
-    await _add(*[_review(org, f"s-{i}", None) for i in range(3)], *[_record(org, f"s-{i}", f"k{i}") for i in range(3)])
-    async with session_maker() as db:
-        for r in (await db.execute(select(CallReview))).scalars():
-            r.codebook_version = None
-        await db.commit()
-    now = [0.0]
+    await _negatives(clients, "s-0", "s-1", "s-2")
+    now, limit = [0.0], [None]
     monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
-    found = {"request": {"method": "POST", "url": "u", "body_text": "{}"},
-             "response": {"status_code": 200, "body_text": PEOPLE}}
 
-    limit = [None]
-
-    async def answer_of(r):
+    def clock(r):
         took = 0.9 if r.call_id == "s-0" else 0.1  # the oldest is read last, and slowly
         if took > limit[0]:  # what asyncio.wait_for does: cut off at its timeout
             now[0] += limit[0]
             raise TimeoutError
         now[0] += took
-        return review_answers.Answer("read", found)
-    monkeypatch.setattr(review_judge, "answer_of", answer_of)
+    _answers(monkeypatch, {}, clock=clock)
 
     async def wait_for(coro, timeout):
         limit[0] = timeout
@@ -400,33 +369,8 @@ async def test_a_slow_last_read_does_not_drop_what_was_read(clients, monkeypatch
     sent_at = []
     _fake(monkeypatch, lambda q, spec, state: sent_at.append(now[0]) or {"choice": "EMPTY"})
 
-    out = await review_judge.judge_codes(deadline=1.0)
-    assert out["with_answer"] == 2 and out["stopped_by_deadline"] is True and max(sent_at) < 1.0
-    assert (await _all())["s-0"].primary_code is None
-
-
-async def test_unreadable_answers_never_hold_up_reviews_that_need_none(clients, monkeypatch):
-    """Many newer direct reviews whose answers cannot be read now, then a routed one: the routed
-    review is coded in the first run, and reads stop after the limit."""
-    from treg.application import review_answers
-    from test_review_body_pilot import _add, _org, _record, _review
-
-    org = await _org(clients)
-    await _add(_review(org, "rt", None, routed=True), _record(org, "rt", tier="routed"))
-    await _add(*[_review(org, f"u-{i}", None) for i in range(30)], *[_record(org, f"u-{i}", f"k{i}") for i in range(30)])
-    async with session_maker() as db:
-        for r in (await db.execute(select(CallReview))).scalars():
-            r.codebook_version = None
-        await db.commit()
-    reads = []
-
-    async def answer_of(r):
-        reads.append(r.call_id)
-        return review_answers.Answer("unreadable")
-    monkeypatch.setattr(review_judge, "answer_of", answer_of)
-    monkeypatch.setattr(get_settings(), "review_judge_unreadable_limit", 5)
-    _fake(monkeypatch, lambda q, spec, state: {"choice": "WRONG"})
-
-    out = await review_judge.judge_codes(deadline=float("inf"))
-    assert (await _all())["rt"].primary_code == "WRONG"
-    assert len(reads) == 5 and out["answer_unreadable"] == 5 and out["answer_deferred"] == 25
+    out = await review_judge.judge_answers(deadline=1.0)
+    assert out["judged"] == 2 and out["stopped_by_deadline"] is True and max(sent_at) < 1.0
+    assert (await _all())["s-0"].code_basis == "reason"
+    now[0] = 0.0
+    assert (await review_judge.judge_answers(deadline=10.0))["pending"] == 1
