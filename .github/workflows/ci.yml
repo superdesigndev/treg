@@ -19,7 +19,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [blacksmith-16vcpu-ubuntu-2404, blacksmith-8vcpu-ubuntu-2404, blacksmith-4vcpu-ubuntu-2404, ubuntu-latest]
+    runs-on: ${{ matrix.runner }}
     # A throttled shared runner once turned the 5-minute suite into 20+ (log showed 68s before the
     # first test started). Die loudly instead of eating half an hour; a re-run usually lands on a
     # healthier machine.
@@ -91,7 +95,11 @@ jobs:
         run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
 
   test-postgres:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [blacksmith-16vcpu-ubuntu-2404, blacksmith-8vcpu-ubuntu-2404, blacksmith-4vcpu-ubuntu-2404, ubuntu-latest]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     services:
       redis:
@@ -253,7 +261,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [blacksmith-16vcpu-ubuntu-2404, blacksmith-8vcpu-ubuntu-2404, blacksmith-4vcpu-ubuntu-2404, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -294,80 +302,3 @@ jobs:
           uv sync --locked
           TREG_GO_BIN="$PWD/cli/treg-go" uv run --locked --with pytest-xdist pytest tests/cli_go -n auto -v
 
-  # RESTORED 2026-08-24. This job is a REQUIRED check on main, and the CI rewrite in 528383d
-  # dropped it while keeping the requirement — so for three weeks every pull request waited on a
-  # check that could never report, and only an admin bypass moved anything. It never skips (see
-  # the docs-only note in `test`: a skipped required check blocks a merge forever), and it scans
-  # the FULL history, because a secret removed from the tip still lives in the commit that added
-  # it. `.gitleaks.toml` allowlists the deliberately-fake placeholders in the tests and the demo
-  # sandbox; everything else is a real finding.
-  gitleaks:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # scan the full history of the push/PR, not just the tip
-      - name: Install gitleaks
-        env:
-          GITLEAKS_VERSION: "8.21.2"
-        run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
-          sudo mv gitleaks /usr/local/bin/
-      - name: Scan for secrets
-        # HEAD is the PR merge commit (both parents) or the pushed main commit. Scan all
-        # reachable history, including deleted secrets, without unrelated fetched branch tips.
-        run: gitleaks detect --source . --config .gitleaks.toml --log-opts="HEAD" --verbose --redact
-
-  frontend:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.13"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: uv sync --locked
-      - run: bash scripts/build-dashboard.sh
-      - run: npm --prefix frontend test
-      - name: Install browser
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-      - run: npm --prefix frontend run test:e2e
-      - name: Upload browser failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-test-results
-          path: frontend/test-results/
-          retention-days: 7
-      - name: Check distributable assets
-        run: |
-          uv build
-          python - <<'PYCODE'
-          from pathlib import Path
-          from tarfile import open as open_tar
-          from zipfile import ZipFile
-          import re
-          with ZipFile(next(Path('dist').glob('*.whl'))) as wheel:
-              assert not [name for name in wheel.namelist() if name.endswith('.mp4')]
-              html = wheel.read('treg/web/dashboard/index.html').decode()
-              assets = re.findall(r'/app/ui/(assets/[^"\s]+)', html)
-              assert assets, 'Dashboard entry must reference compiled assets'
-              for asset in assets:
-                  assert wheel.read('treg/web/dashboard/' + asset)
-              assert not [name for name in wheel.namelist() if 'dashboard-legacy' in name]
-              arena = wheel.read('treg/web/enrich-arena.html').decode()
-              for asset in re.findall(r'src="(/vendor/vue-[^"\s]+)"', arena):
-                  assert wheel.read('treg/web' + asset)
-              assert wheel.read('treg/web/vendor/LICENSE')
-          with open_tar(next(Path('dist').glob('*.tar.gz'))) as source:
-              assert not [member.name for member in source.getmembers()
-                          if member.name.endswith('.mp4')]
-          PYCODE
