@@ -90,6 +90,18 @@ if redis.call('get', KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+# SET NX PX unless another owner holds the claim `KEYS[2]`: a waiter with priority claims the
+# lease's next turn, and only the claim's own token may then take the lease.
+_ACQUIRE_LEASE_UNLESS_CLAIMED = """
+local claim = redis.call('get', KEYS[2])
+if claim and claim ~= ARGV[1] then
+    return 0
+end
+if redis.call('set', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then
+    return 1
+end
+return 0
+"""
 _RELEASE_LEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
     return redis.call('del', KEYS[1])
@@ -437,7 +449,10 @@ class Store(Protocol):
     async def read_route_rules(self) -> FlowControlReadResult:
         """The published route rule set, read like a flow-control snapshot."""
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult: ...
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None) -> AcquireResult:
+        """`unless` names a claim key: while another token holds it the lease is `busy` even
+        when free, so the claim's holder takes the next turn."""
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
                           deadline: float | None = None) -> RenewResult: ...
@@ -670,7 +685,8 @@ class LocalStore:
     async def read_route_rules(self) -> FlowControlReadResult:
         return FlowControlReadFailure.UNAVAILABLE
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None) -> AcquireResult:
         return "unavailable"  # Local counters cannot promise cross-process exclusion.
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
@@ -1089,17 +1105,24 @@ class RedisStore:
             _note_fault(exc)
             return False
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None) -> AcquireResult:
         """A short-lived admission lease, never the authority for a money write.
 
         Unavailable is deliberately distinct from contention. Lease callers aggregate faults;
         unlike optional invitation budgets, an outage must not discard a pending settlement.
+        With `unless`, the lease is busy while another token holds that claim key (one script,
+        so a claim set between the check and the SET cannot be missed).
         """
         started = _clock()
         outcome = "cancelled"
         try:
             async with asyncio.timeout(_LEASE_ATTEMPT_TIMEOUT_S):
-                acquired = await self._client.set(key, token, nx=True, px=ttl_ms)
+                if unless is None:
+                    acquired = await self._client.set(key, token, nx=True, px=ttl_ms)
+                else:
+                    acquired = await self._client.eval(
+                        _ACQUIRE_LEASE_UNLESS_CLAIMED, 2, key, unless, token, ttl_ms)
             outcome = "acquired" if acquired else "busy"
             return outcome
         except Exception as exc:  # noqa: BLE001 - cancellation still propagates to the owning scope
