@@ -243,12 +243,16 @@ database returns `warming`. No production metrics ship in assets or fixtures.
 It must not run in web processes: every web process would contend for the cursor row and walk
 `callrecord` on the money-path database. Once caught up it re-aggregates only every
 `REFRESH_SECONDS`, because each aggregate scans the whole window. The rewind that revisits recent
-evidence is constrained to Arena endpoints so it rides `ix_callrecord_endpoint_id_created_at`.
+evidence uses LATERAL per-endpoint lookups riding `ix_callrecord_endpoint_id_created_at`, avoiding a
+table scan from a large `IN` list.
 
 - It reads a bounded batch of audit records and archive pointers, closes the session, resolves
   bodies through `archive_bodies.read` (path `arena`), then reacquires the cursor lock and
   revalidates before publishing; no cursor lock or DB connection is held across object-store I/O,
   and evidence from a superseded batch is discarded.
+- Aggregation runs under the state row lock; the rewind runs in a separate short session with
+  `statement_timeout` (30s), so a slow rewind cannot hold the lock for hours. Transient disconnects
+  (e.g. `pg_terminate_backend`) are retried up to 2 times; a timeout skips the rewind this pass.
 - It reclassifies with current rules and upserts anonymous `ArenaObservation` facts. It never calls
   vendors or trusts `CallRecord.hit`. Missing exact content stays unresolved; a newer different
   answer never substitutes. Invalid compressed bodies stay unresolved per record.
