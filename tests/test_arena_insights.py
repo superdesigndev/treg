@@ -364,3 +364,14 @@ async def test_rollback_after_prune_rebuilds_before_publishing(clients, monkeypa
     monkeypatch.setattr(service, "_catalog", lambda: (cat, endpoints, "rolled-back"))
     assert not await service.collect_batch(session_maker)
     assert (await service.public_snapshot(session_maker))["rows"][0]["unique_requests"] == 1
+
+
+def test_the_rewind_asks_for_an_expression_postgresql_cannot_answer_by_walking_the_primary_key():
+    """A bare `min(id)` becomes an ascending primary-key walk from the oldest audit row, which
+    filters the whole table before it reaches the last ten minutes; `min(id + 0)` reads the
+    endpoint/created_at index instead."""
+    from sqlalchemy.dialects import postgresql
+
+    sql = str(service.rewind_query(["a.b"], now()).compile(dialect=postgresql.dialect()))
+    assert "min(callrecord.id + 0)" in sql
+    assert "callrecord.endpoint_id IN" in sql and "callrecord.created_at >=" in sql
