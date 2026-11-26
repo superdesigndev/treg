@@ -182,12 +182,13 @@ class FakeStore:
                                  "thawed": (counter or {}).get("thawed", 0)}
         return left
 
-    async def acquire_lease(self, key, token, ttl_ms, *, unless=None):
+    async def acquire_lease(self, key, token, ttl_ms, *, unless=None, owner=None):
         if self.lease_answer is not None:
             return self.lease_answer
         if key in self.leases and self.lease_until.get(key, float("inf")) > time.monotonic():
             return "busy"
-        if (self.leases.get(unless, token) != token
+        owner = owner or token
+        if (self.leases.get(unless, owner) != owner
                 and self.lease_until.get(unless, float("inf")) > time.monotonic()):
             return "busy"
         self.leases[key] = token
@@ -3294,6 +3295,30 @@ async def test_a_starved_turn_that_is_over_starts_no_batch_and_no_wait_outlasts_
     await allowance_sweep.fold_queued_once(session_maker)
     assert len(batches) == 2, "the batch begun inside the turn is the last"
     assert waits[0] <= 0.2 and waits[1] <= 0.2 - (batches[1] - began) + 0.01
+
+
+async def test_a_late_release_of_one_starved_batchs_lease_cannot_free_the_next(
+        org_id, store, monkeypatch):
+    """Every batch of a starved turn takes the team's lease as the claim's owner, but each under
+    a token of its own: a release of the first batch's lease that arrives late (a retried
+    release, a cancelled acquire's cleanup) leaves the second batch's lease in place."""
+    from types import SimpleNamespace
+
+    await _queue_charge(org_id, "queued", 600)
+    key, tokens, kept = runtime.money_key(org_id), [], []
+
+    async def two_batches(db, team, **kwargs):
+        tokens.append(store.leases[key])
+        if len(tokens) == 2:
+            await store.release_lease(key, tokens[0])
+            kept.append(store.leases.get(key))
+            return SimpleNamespace(calls=0, claimed=0)
+        return SimpleNamespace(calls=0, claimed=allowance_sweep._FOLD_BATCH)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", two_batches)
+    await allowance_sweep.fold_queued_once(session_maker)
+    assert len(tokens) == 2 and tokens[0] != tokens[1]
+    assert kept == [tokens[1]], "the late release deleted nothing"
 
 
 async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(

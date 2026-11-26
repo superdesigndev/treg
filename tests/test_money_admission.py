@@ -52,7 +52,7 @@ class LeaseStore:
     async def call_in_flight(self, call_ref):
         return False
 
-    async def acquire_lease(self, key, token, ttl_ms, *, unless=None):
+    async def acquire_lease(self, key, token, ttl_ms, *, unless=None, owner=None):
         self.calls.append(("acquire", key))
         if self.unavailable:
             return "unavailable"
@@ -60,7 +60,7 @@ class LeaseStore:
         if key in self.values and self.values[key][1] > now:
             return "busy"
         claim = self.values.get(unless)
-        if claim is not None and claim[1] > now and claim[0] != token:
+        if claim is not None and claim[1] > now and claim[0] != (owner or token):
             return "busy"
         self.values[key] = (token, now + ttl_ms / 1000)
         return "acquired"

@@ -682,8 +682,9 @@ past the bound do not make every new team scan them.
   turn of up to `_STARVED_TURN_S` instead. The fold claims the team's lease for the turn
   (`allowance.fold_claim_key`, a token-owned key that expires shortly after the turn), and every
   other taker of the lease, the refill, the drain, the give-back and the request-path fold, asks
-  for it `unless` that claim is held (`allowance.acquire_money_lease`), so the fold gets the
-  lease after its current holder rather than losing it each time to whichever refill polls
+  for it `unless` that claim is held (`allowance.acquire_money_lease`; the fold passes the
+  claim as `owner` and takes each batch's lease under a token of its own, so a late release
+  of one batch's lease cannot delete the next's), so the fold gets the lease after its current holder rather than losing it each time to whichever refill polls
   first. Within the turn it waits for this process's money lock and asks `admit` for priority
   (below) over the team's other money sessions, then folds its batches. No wait outlasts the
   turn (admission is asked for what is left of it, with no floor), and no batch starts once

@@ -170,11 +170,12 @@ def fold_claim_key(org_id: int) -> str:
     return f"treg:money-allowance-fold-claim:v1:{org_id}"
 
 
-async def acquire_money_lease(store, org_id: int, token: str, ttl_ms: int) -> str:
+async def acquire_money_lease(store, org_id: int, token: str, ttl_ms: int, *,
+                              owner: str | None = None) -> str:
     """Take the team's lease (`money_key`), unless the background fold has claimed its next turn
-    (`fold_claim_key`) with another token: then `busy`, as if held."""
+    (`fold_claim_key`) and this is not that claim's `owner`: then `busy`, as if held."""
     return await store.acquire_lease(money_key(org_id), token, ttl_ms,
-                                     unless=fold_claim_key(org_id))
+                                     unless=fold_claim_key(org_id), owner=owner)
 
 
 async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,

@@ -142,23 +142,23 @@ def _log_skips(now: float, kind: str, reason: str, window: dict) -> None:
 
 
 @asynccontextmanager
-async def _team_lease(org_id: int, token: str | None = None, until: float | None = None):
+async def _team_lease(org_id: int, owner: str | None = None, until: float | None = None):
     """Hold the team's allowance money lease; yield whether this pass may write the team's money.
 
-    Not while another process has the lease, or the fold has claimed the team's next turn with
-    another token (`acquire_money_lease`). With `until` (a starved team's turn, on the loop's
+    Not while another process has the lease, or the fold has claimed the team's next turn and
+    `owner` is not that claim (`acquire_money_lease`). Each lease has a token of its own, the
+    claim's owner included, so a late release of one batch's lease cannot delete the next's. With `until` (a starved team's turn, on the loop's
     clock) a held lease is waited for until then. When the store cannot answer there is no
     lease to have: PostgreSQL still makes two writers wait on the hold's row lock, so the sweep
     goes on there; SQLite has no row locks, and the write waits for a pass that can take the
     lease."""
-    store, key = kv.store(), money_key(org_id)
-    token = token or uuid.uuid4().hex
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     loop = asyncio.get_running_loop()
     try:
-        acquired = await acquire_money_lease(store, org_id, token, _LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _LEASE_MS, owner=owner)
         while acquired == "busy" and until is not None and loop.time() < until:
             await asyncio.sleep(_LEASE_POLL_S)
-            acquired = await acquire_money_lease(store, org_id, token, _LEASE_MS)
+            acquired = await acquire_money_lease(store, org_id, token, _LEASE_MS, owner=owner)
     except BaseException:
         # A lease the store granted before this stopped waiting for its answer is given back
         # rather than left to expire; release deletes only this token's.
@@ -173,8 +173,8 @@ async def _team_lease(org_id: int, token: str | None = None, until: float | None
 
 @asynccontextmanager
 async def _fold_claim(org_id: int, until: float | None):
-    """Yield `(token, until)` for one team's turn at the fold. With `until`, the turn of a
-    starved team: the token claims the team's next lease (`fold_claim_key`) until then, so the
+    """Yield `(owner, until)` for one team's turn at the fold. With `until`, the turn of a
+    starved team: `owner` claims the team's next lease (`fold_claim_key`) until then, so the
     team's refills, drains and request-path folds, which take the lease `unless` it is claimed,
     wait for this fold rather than win the lease every time it is free. The claim is given back
     when the turn ends, and expires by itself shortly after `until` should that fail. A claim
@@ -423,11 +423,11 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
              if waited_s is not None and waited_s >= _STARVED_AFTER_S else None)
     total, committed, skipped = 0, False, None
     try:
-        async with _fold_claim(org_id, until) as (token, until):
+        async with _fold_claim(org_id, until) as (owner, until):
             for _ in range(_FOLD_BATCHES_PER_PASS):
                 if until is not None and committed and loop.time() >= until:
                     break
-                async with _team_lease(org_id, token, until) as free:
+                async with _team_lease(org_id, owner, until) as free:
                     lock = money_lock(org_id)
                     if not free or not await _take_lock(lock, until):
                         skipped = "busy_lock" if free or lock.locked() else "lease_held"
