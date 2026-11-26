@@ -101,7 +101,7 @@ meta by `tier: platform` vs `tier: oauth`. A team's own key on any other provide
 An endpoint declared `platform_auth: anonymous` is also unmetered: after the own-key tiers miss,
 `_anonymous_offer` relays its verified public route with no credential and creates no reserve,
 settle or release entry. These calls still pass authorization and any per-member daily call cap
-(default unlimited). Sandbox and public-demo teams cannot use the real anonymous fallback.
+(default unlimited). The public-demo team cannot use the real anonymous fallback.
 
 On an oauth-billed provider a **`free` catalog price is a bug, never a fact**: the upstream charges
 whatever the route costs. The estimator falls through to the provider rate rather than reserve

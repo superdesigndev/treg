@@ -15,7 +15,6 @@ from .. import analytics
 from .. import audit
 from .. import hints
 from ..application import agent_payments
-from .. import sandbox as demo_sandbox
 from ..application.call import call_errors
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
@@ -146,8 +145,7 @@ async def _enforce_daily_cap(caller: Caller, db: AsyncSession) -> None:
     (`application/call/authorize.py`), so a member cannot dodge the cap by switching path. Commits,
     because the gate takes the slot with a write and this request's session is the only owner."""
     try:
-        await usage_policy.enforce_daily_cap(
-            caller, db, sandbox=demo_sandbox.is_sandbox(caller.org))
+        await usage_policy.enforce_daily_cap(caller, db)
     except usage_policy.UsagePolicyError as exc:
         await db.commit()
         raise HTTPException(status_code=429, detail=exc.detail) from exc

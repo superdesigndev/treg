@@ -161,7 +161,7 @@ from treg.domain.identity import api_keys as managed_keys  # noqa: E402
 from treg.application import media as media_app  # noqa: E402
 
 
-# The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
+# The OTP-start and other throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
 # process-global dicts — so `reset_db()` (called by every client fixture) already clears them between
 # tests. No separate rate-limit reset fixture is needed.
 

@@ -51,7 +51,7 @@ class Org(SQLModel, table=True):
     # ponytail: one alias only; a second rename overwrites it. An alias table if that ever bites.
     previous_slug: str | None = Field(default=None, index=True)
     suspended: bool = Field(default=False)  # a suspended org's members are locked out (403)
-    demo: bool = Field(default=False)  # a sandbox team seeded by onboarding — labeled + one-click removable
+    demo: bool = Field(default=False)  # a demo team seeded by onboarding: labeled and one-click removable
     # A team whose token is published (e.g. on the landing page): non-admin members are locked to
     # /call + reads, and may never act as a user (see identity.access.require_member /
     # require_identity).

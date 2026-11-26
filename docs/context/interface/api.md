@@ -28,7 +28,6 @@ sources:
   - src/treg/infra/upstream/relay.py
   - src/treg/application/connect.py
   - src/treg/application/onboard/__init__.py
-  - src/treg/application/onboard/sandbox.py
   - src/treg/application/referrals.py
   - src/treg/application/signup.py
   - src/treg/routers/__init__.py
@@ -56,12 +55,9 @@ sources:
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
   - src/treg/domain/governance/publicdemo.py
-  - src/treg/domain/governance/sandbox.py
   - src/treg/domain/governance/usage.py
   - src/treg/domain/identity/mcp_oauth.py
   - src/treg/domain/identity/session.py
-  - src/treg/sandbox.py
-  - src/treg/sandbox_identity.py
   - src/treg/timeutil.py
   - src/treg/domain/catalog/store.py
   - src/treg/email.py
@@ -103,9 +99,9 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 - Each identity dependency commits its read-only transaction before the handler runs, so a use
   case can open its own session without waiting behind the request's pool slot. This relies on
   every session maker setting `expire_on_commit=False`.
-- Sandbox identities (the closed landing sandbox) are refused centrally in
-  `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403); never re-add per-route exceptions.
-  `POST /demo/sandbox` answers 410.
+- The landing sandbox is removed, but its visitor users and tokens may remain in a deployment. They
+  are refused centrally in `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403) until those
+  rows are deleted; never re-add per-route exceptions.
 - **Public demo tokens** (`POST /orgs/{id}/public-token`, owner-only; re-POST rotates) are
   viewer-role tokens on a can't-log-in identity. Lockdown is centralized in the auth deps: below
   admin on a `public_demo` org, `require_member` allows only `/call/*` and GET/HEAD/OPTIONS, so

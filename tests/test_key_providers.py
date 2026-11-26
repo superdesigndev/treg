@@ -781,9 +781,9 @@ async def test_an_allow_listed_public_provider_names_the_real_reason_a_tool_is_n
     tickers = catalog_store.load().by_id["financialdatasets.prices.tickers"]
     demo = SimpleNamespace(demo=False, slug="team", public_demo=True)
     refused = _marketplace_no_credential("financialdatasets", tickers["id"], fd_public, tickers, demo)
-    assert "demo and sandbox teams" in refused.detail and "has not enabled" not in refused.detail
+    assert "the public demo team does not call it" in refused.detail and "has not enabled" not in refused.detail
     preview = _missing_access(tickers, fd_public, fd_public, (), "financialdatasets", org=demo)
-    assert "demo and sandbox teams" in preview["detail"], preview
+    assert "the public demo team does not call it" in preview["detail"], preview
     monkeypatch.setattr(get_settings(), "platform_providers", "")
     assert "has not enabled" in _missing_access(tickers, fd_public, fd_public, (), "financialdatasets",
                                                 org=demo)["detail"]
@@ -917,7 +917,7 @@ def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
 
 
 def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_logs_policy(monkeypatch):
-    """A demo or sandbox team is refused keyless tools: its refusal neither offers one as callable
+    """The public demo team is refused keyless tools: its refusal neither offers one as callable
     nor blames a provider account it does not need."""
     import dataclasses
     from types import SimpleNamespace
@@ -928,7 +928,6 @@ def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_lo
         P.REGISTRY["financialdatasets"], auth_kind="public"))
     monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
     demo = SimpleNamespace(public_demo=True, id=1)
-    monkeypatch.setattr(R.demo_sandbox, "is_sandbox", lambda org: False)
     ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
     monkeypatch.setitem(ep, "platform_auth", "anonymous")
     monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})

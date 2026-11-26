@@ -126,20 +126,19 @@ Fernet token and still opens locally, so the two formats coexist until every row
   path ends its transaction before opening or sealing (AGENTS.md, non-negotiable 3): a bundle
   import seals all its credentials before its single write transaction.
 - **Once per call.** A call opens each credential once, after its database phase ends
-  (`open_for_call` in a per-call `call_scope`); injection (`relay`), error masking (`evidence`),
-  the sandbox and refresh read that copy. The health run scopes the same way per run.
+  (`open_for_call` in a per-call `call_scope`); injection (`relay`), error masking (`evidence`)
+  and refresh read that copy. The health run scopes the same way per run.
 - **Listing never opens.** `Secret.refreshable` is recorded with every oauth write, so connection
   lists and expiry state read a column instead of opening every credential. A null on a Fernet row
   written before the column opens locally; the re-encryption job fills it.
 - **What stays Fernet.** Short-lived state (sign-in return cookies, enterprise SSO state, CLI
-  pairing rows), Arena payloads, and the published placeholder values seeded into demo and
-  sandbox teams, which would otherwise put a KMS call behind every anonymous sandbox visit. The
+  pairing rows), Arena payloads, and the published placeholder values seeded into demo teams. The
   echo key `/onboard/seed-tool` puts in a real team is sealed like any other credential.
 - **Rotating the Fernet key.** `TREG_SECRET_KEY` takes a comma-separated list: the first key
   encrypts, every key decrypts. Deploy `old,new` everywhere first, so every running process can
   open what the next step writes; then `new,old` everywhere; then run `treg-worker admin rotate-fernet`
   (`--dry-run` first): it re-encrypts Arena payloads and every stored credential still on Fernet
-  (all of them without KMS) under the first key with a compare-and-set write. Demo and sandbox
+  (all of them without KMS) under the first key with a compare-and-set write. Demo
   seeds are not rotated; they stop opening once the old key is dropped.
   Without `TREG_SESSION_SECRET` the session signature falls back to the whole setting, so a
   rotation signs everyone out; set a session secret first.
@@ -269,7 +268,7 @@ left out of the Connect listing and both connect paths refuse it. Its catalog ro
 `platform_auth: anonymous` ([catalog](catalog.md)). Resolution and the router skip the credential
 tier for it, so a team secret that only shares its name never stands in for a credential; a team's own registered tool still wins.
 Its refusal names the true reason (`_anonymous_refusal`): "not enabled" only while the provider is off
-the allow-list; a demo or sandbox team, or a row that is not a verified free anonymous one, says so.
+the allow-list; the public demo team, or a row that is not a verified free anonymous one, says so.
 
 The connect probe hits `base_url` + `probe_path` or an absolute `probe_url`, and is free unless
 declared otherwise. Many upstreams answer 200 to a bad key, so validity comes from declarative

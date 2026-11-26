@@ -183,7 +183,7 @@ async def rename_org(db: AsyncSession, org: Org, *, name: str | None = None, slu
         if slug != _slugify(slug) or not SLUG_LEN[0] <= len(slug) <= SLUG_LEN[1]:
             raise ValueError(
                 f"slug must be {SLUG_LEN[0]}-{SLUG_LEN[1]} lowercase letters, digits or hyphens")
-        if slug.startswith("sbx-"):  # the sandbox-team shape (onboard/sandbox.py) is privilege-shaped
+        if slug.startswith("sbx-"):  # the removed landing sandbox's team shape; its rows may remain
             raise ValueError("slug prefix 'sbx-' is reserved")
         if slug != org.previous_slug and await _slug_taken(slug, db):
             raise ValueError("slug is taken")
@@ -546,8 +546,8 @@ async def _retire_allowance_counter(org_id: int, hold_created_at) -> None:
 async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     """Delete every org-scoped row, then the org. Does not commit.
 
-    THE one way a team leaves the database - owner delete, admin force-delete, the landing-sandbox
-    reaper and the onboarding demo reset all come through here. Do not grow a private copy of this
+    THE one way a team leaves the database - owner delete, admin force-delete and the onboarding
+    demo reset all come through here. Do not grow a private copy of this
     list."""
     # OAuthGrant names its mutable team `current_org_id` to distinguish family authority from the
     # immutable `OAuthRefresh.org_id` provenance. A family can name this team on EITHER side: after
