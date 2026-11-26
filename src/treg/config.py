@@ -656,6 +656,7 @@ class Settings(BaseSettings):
     platform_key_scrapegraphai: str = ""  # SGAI-APIKEY; credit balance and bounded v2 web tools
     platform_key_spidercloud: str = ""   # Bearer; PAYG USD balance, only priced routes may use shared key
     platform_key_perplexity: str = ""    # Bearer; prepaid USD credits, no documented balance API
+    platform_key_newscatcher: str = ""  # x-api-key; prepaid NCC credits ($25 / 25,000), free GET /news-api/subscription balance
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
     platform_key_mapsdata: str = ""   # Bearer key (mdk_live_…); scrapes settle from the finished job's email_count
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation

@@ -1,0 +1,328 @@
+provider: newscatcher
+# Vendor-raised listing; prices from the published credits page. The News API prices match the rate
+# card GET /news-api/subscription returns. The vendor's self-verification ledger is in the PR body.
+source:
+  docs: https://www.newscatcherapi.com/docs
+  # Two specs, one per product; both server URLs sit under the one base_url below.
+  # News API: https://api.newscatcherapi.com/news-api/openapi.json
+  # Agent API: https://api.newscatcherapi.com/agent/openapi.json
+  openapi: https://api.newscatcherapi.com/news-api/openapi.json
+  curated: '2026-11-19'
+pricing_url: https://www.newscatcherapi.com/pricing
+limits: "Requests per second are set per plan and per search effort, for the whole organization; /articles has its own rate (1 request/second on Free). GET /news-api/subscription returns the plan's live limits. Over a limit: 429 with Retry-After."
+proposed_capabilities:
+  web.news.story: "Get every article that covers one news story"
+  web.answer.cancel: "Cancel a web research task"
+  account.jobs.list: "List every background job on your account"
+  companies.news.monitor.list: "List your company-news monitors"
+  companies.news.monitor.stories: "Read the story feed of a company-news monitor"
+
+defaults:
+  provenance: {source: docs, source_url: 'https://www.newscatcherapi.com/docs/get-started/credits-and-pricing', checked: '2026-11-19', confidence: documented}
+  # Only successful work is charged: a refused or failed request (4xx/5xx) is free, but a search
+  # or run that succeeds and finds nothing is still charged.
+  bill: {miss: charged}
+
+endpoints:
+  - id: newscatcher.web.search.news
+    added: '2026-11-19'
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /news-api/search
+    name: Search recent news, ranked and grouped into stories
+    summary: Search the last 30 days of news in every language for the best articles, ranked and grouped into stories with newsroom counts.
+    input:
+      queryParams:
+        q: {type: string, required: true, minLength: 1, maxLength: 500, example: "Nvidia", note: "Keywords with AND/OR/NOT or a plain-language question, in any language. An upper-case NOT drops a term."}
+        effort: {type: string, required: false, default: medium, enum: [low, medium, high], example: low, note: "low ranks by relevance, authority, coverage and freshness; medium adds a rerank; high adds an LLM judgement and merges duplicate stories."}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1, note: "The Free plan allows up to 50; a larger limit than the plan allows is refused with 403."}
+        collapse: {type: string, required: false, default: diverse, enum: [diverse, story, duplicates]}
+        sort_by: {type: string, required: false, default: relevancy, enum: [relevancy, published_at, crawled_at]}
+        search_window: {type: string, required: false, default: 7d, example: "1d", note: "A number and a unit counted back from now, e.g. 2h, 1d, 7d; at most 30d (longer gets 422; use /news-api/articles)."}
+        sources: {type: string, required: false, example: "reuters.com,bbc.co.uk", note: "Comma-separated publisher domains, at most 100."}
+        not_sources: {type: string, required: false, note: "Comma-separated publisher domains to leave out."}
+        languages: {type: string, required: false, example: "en,de", note: "Comma-separated ISO 639-1 codes."}
+        not_languages: {type: string, required: false}
+        countries: {type: string, required: false, example: "US,GB", note: "Comma-separated ISO 3166-1 alpha-2 publisher countries."}
+        not_countries: {type: string, required: false}
+        min_newsrooms: {type: integer, required: false, default: 0, min: 0, max: 1000}
+        content_type: {type: string, required: false, default: news, enum: [news, all], note: "all also returns press releases, blogs and opinion."}
+    test_request: {queryParams: {q: "Nvidia", effort: low, limit: 1, search_window: "1d"}}
+    price:
+      table:
+        - {when: [{path: query.effort, op: equals, value: low}], value: '1'}
+        - {when: [{path: query.effort, op: equals, value: medium}], value: '5'}
+        - {when: [{path: query.effort, op: equals, value: high}], value: '10'}
+      fallback: {value: '10', note: "The high-effort price, the documented maximum."}
+      currency: credit
+      unit: call
+      note: "1 credit at effort=low, 5 at medium (the default), 10 at high, whatever the limit."
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/search/search-news
+
+  - id: newscatcher.web.search.news.articles
+    added: '2026-11-19'
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /news-api/articles
+    name: List every news article matching a boolean query, with count
+    summary: List every article matching a boolean query over the last 12 months, newest first, with the exact total match count.
+    input:
+      queryParams:
+        q: {type: string, required: true, minLength: 1, maxLength: 1000, example: "Nvidia", note: "AND, OR, NOT, parentheses, \"exact phrases\", +must, -mustnot, wild*cards and NEAR(\"a\", \"b\", 5). AND and OR side by side in one group are refused: add parentheses."}
+        search_in: {type: string, required: false, default: title_body, note: "At most 2, comma-separated: title, body, title_body, summary, or the same with _translated."}
+        from_date: {type: string, required: false, example: "1 day ago", note: "ISO 8601 or a phrase like '7 days ago'; up to 12 months back."}
+        to_date: {type: string, required: false, note: "Send back the first page's window.to when paging, so every page covers the same articles."}
+        sources: {type: string, required: false, note: "Comma-separated publisher domains, at most 100."}
+        not_sources: {type: string, required: false}
+        predefined_sources: {type: string, required: false, example: "top 100 US", note: "top <n> <country code> or top <n> global."}
+        languages: {type: string, required: false, note: "Comma-separated ISO 639-1 codes."}
+        not_languages: {type: string, required: false}
+        countries: {type: string, required: false, note: "Comma-separated ISO 3166-1 alpha-2 codes; ignored when sources is set."}
+        not_countries: {type: string, required: false}
+        sort_by: {type: string, required: false, default: published_at, enum: [published_at, -published_at, relevancy, rank]}
+        page: {type: integer, required: false, default: 1, min: 1, max: 1000, note: "page x page_size reaches at most the first 1,000 articles."}
+        page_size: {type: integer, required: false, default: 100, min: 1, max: 100, example: 1, note: "page_size=1 reads total_hits as a count at the same price."}
+        ranked_only: {type: boolean, required: false, default: false}
+        from_rank: {type: integer, required: false, min: 1, max: 999999}
+        to_rank: {type: integer, required: false, min: 1, max: 999999}
+        word_count_min: {type: integer, required: false, min: 0, max: 1000000}
+        word_count_max: {type: integer, required: false, min: 0, max: 1000000}
+        exclude_duplicates: {type: boolean, required: false, default: false}
+    test_request: {queryParams: {q: "Nvidia", from_date: "1 day ago", page_size: 1}}
+    price: {value: '5', currency: credit, unit: call, note: "5 credits per page, whatever the page size or the number of results."}
+    miss: {when: {any: [{path: response.results, op: absent}, {path: response.results, op: empty}]}}
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/articles/list-the-articles-that-match-a-query
+
+  - id: newscatcher.web.news.story
+    added: '2026-11-19'
+    capability: web.news.story
+    platform: web
+    domain: news
+    scope: any_account
+    method: GET
+    path: /news-api/stories/{story_id}
+    name: Get every article of one news story by story id
+    summary: List every distinct article of one news story, best sources first, with the newsroom count and first and latest appearance.
+    input:
+      pathParams:
+        story_id: {type: string, required: true, example: "6f1c2b0e-2f0f-4d52-9a0b-5d0e8a5f9d11", note: "The story.id of a /news-api/search result."}
+      queryParams:
+        limit: {type: integer, required: false, default: 50, min: 1, max: 500, example: 50}
+    # Placeholder id from the vendor's spec: it proves the route and the free 404. The live run
+    # replaces it with a story.id harvested from the search test response to observe the 1-credit hit.
+    test_request: {pathParams: {story_id: "6f1c2b0e-2f0f-4d52-9a0b-5d0e8a5f9d11"}, queryParams: {limit: 50}}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per story, whatever the number of articles."}
+    not_found: {status: [404]}
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/search/get-a-story-and-its-articles
+
+  - id: newscatcher.account.usage
+    added: '2026-11-19'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /news-api/subscription
+    name: Check plan, credit balance, limits and per-search prices
+    summary: Your NewsCatcher plan, credit balance, rate and result limits, and the credits each search effort, story and article page costs.
+    input:
+      note: "No parameters. The balance is cached for up to 2 minutes and usage reaches it 1 to 3 minutes late."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "Free; this is the connection probe."}
+    provenance: null
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/subscription/get-subscription-info
+
+  - id: newscatcher.web.news.research
+    added: '2026-11-19'
+    capability: web.answer.research
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /agent/runs
+    body_allowlist: true
+    name: Research news events into a verified table with sources
+    summary: Start a research agent that finds every news event of a kind and returns a verified table, one row per event with source links.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, maxLength: 2000, example: "Product launches announced by Nvidia in the last 7 days", note: "Describe the events, with their time window: the run reads its window from the query."}
+        mode: {type: string, required: false, default: fast, enum: [fast, standard, max], example: fast, note: "fast takes minutes; standard and max verify each row and add a cited briefing, 10-40 minutes."}
+        max_rows: {type: integer, required: false, default: 50, enum: [50, 100, 150, 200], example: 50, note: "Plans cap it (100 today); every 50 rows delivered past the first 50 add 500, 1,500 or 3,000 credits by mode."}
+      note: "Answers 202 with a run_id; poll newscatcher.web.news.research.status until succeeded, failed or cancelled."
+    platform_request: {body.max_rows: 50}
+    test_request: {body: {query: "Product launches announced by Nvidia in the last 7 days", mode: fast, max_rows: 50}}
+    price:
+      table:
+        - {when: [{path: body.mode, op: equals, value: fast}], value: '1000'}
+        - {when: [{path: body.mode, op: equals, value: standard}], value: '3000'}
+        - {when: [{path: body.mode, op: equals, value: max}], value: '6000'}
+      fallback: {value: '6000', note: "The max-mode price, the documented maximum for 50 rows."}
+      currency: credit
+      unit: call
+      note: "Per run, 50 rows included: fast 1,000, standard 3,000, max 6,000 credits. treg's key caps max_rows at 50. Failed and cancelled runs are free; a run that succeeds with no rows is charged."
+    resource_ownership:
+      produces: [{kind: run, path: run_id}]
+    async:
+      id_from: run_id
+      poll:
+        endpoint: newscatcher.web.news.research.status
+        param: {in: pathParams, name: run_id}
+      status:
+        path: status
+        progress: [queued, running]
+        success: [succeeded]
+        failure: [failed, cancelled]
+      result: {path: rows}
+      interval: 15
+      max_age: 3600
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/runs/create-run
+
+  - id: newscatcher.companies.news.research
+    added: '2026-11-19'
+    capability: companies.news
+    platform: companies
+    domain: news
+    scope: any_account
+    method: POST
+    path: /agent/runs
+    body_allowlist: true
+    platform_blocked: "Priced per company (500 credits each) and settled when the run finishes; one async hold cannot follow a per-company price, so connect your own NewsCatcher key."
+    name: Research recent news stories of companies by domain
+    summary: Start a research agent that collects each listed company's recent news stories (funding, M&A, leadership, product, legal) as a table with sources.
+    input:
+      bodyType: json
+      body:
+        companies: {type: object, required: true, example: {items: [{domain: "nvidia.com"}]}, note: "{items: [{domain, name?}]} by website domain, or {list_id} for a saved company list. Up to 50 companies per run on self-serve plans."}
+        query: {type: string, required: false, maxLength: 2000, example: "product launches and partnerships", note: "Keeps only stories about this; blank keeps every story."}
+        lookback_days: {type: integer, required: false, default: 30, min: 1, max: 365, example: 7}
+        include_market_activity: {type: boolean, required: false, default: true, note: "false drops stock moves and analyst ratings."}
+        read_web: {type: boolean, required: false, default: true}
+      note: "Answers 202 with a run_id; poll newscatcher.web.news.research.status until succeeded, failed or cancelled."
+    test_request: {body: {companies: {items: [{domain: "nvidia.com"}]}, lookback_days: 7}}
+    price: {value: '500', currency: credit, unit: domain, note: "500 credits per company domain researched. Failed and cancelled runs are free."}
+    resource_ownership:
+      produces: [{kind: run, path: run_id}]
+    async:
+      id_from: run_id
+      poll:
+        endpoint: newscatcher.web.news.research.status
+        param: {in: pathParams, name: run_id}
+      status:
+        path: status
+        progress: [queued, running]
+        success: [succeeded]
+        failure: [failed, cancelled]
+      result: {path: companies}
+      interval: 15
+      max_age: 3600
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/runs/create-run
+
+  - id: newscatcher.web.news.research.status
+    added: '2026-11-19'
+    kind: utility
+    capability: web.answer.status
+    platform: web
+    domain: answer
+    scope: any_account
+    method: GET
+    path: /agent/runs/{run_id}
+    name: Check a news research run and read its table
+    summary: Read a research run's status and phases, and once it succeeded its columns, rows with sources, companies and briefing.
+    resource_ownership:
+      requires: {kind: "poll:newscatcher.web.news.research.status", param: run_id}
+    input:
+      pathParams:
+        run_id: {type: string, required: true, example: "00000000-0000-4000-8000-000000000001", note: "The run_id from a research start."}
+    test_request: {pathParams: {run_id: "00000000-0000-4000-8000-000000000001"}}
+    price: {value: '0', currency: USD, unit: call, note: "Free; the run itself is charged when it finishes."}
+    provenance: null
+    not_found: {status: [404]}
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/runs/get-run
+
+  - id: newscatcher.web.news.research.cancel
+    added: '2026-11-19'
+    kind: utility
+    capability: web.answer.cancel
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /agent/runs/{run_id}/cancel
+    name: Cancel a news research run
+    summary: Stop a queued or running research run; a cancelled run is not charged.
+    resource_ownership:
+      requires: {kind: "poll:newscatcher.web.news.research.status", param: run_id}
+    input:
+      pathParams:
+        run_id: {type: string, required: true, example: "00000000-0000-4000-8000-000000000001"}
+    test_request: {pathParams: {run_id: "00000000-0000-4000-8000-000000000001"}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+    provenance: null
+    not_found: {status: [404]}
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/runs/cancel-run
+
+  - id: newscatcher.account.runs.list
+    added: '2026-11-19'
+    kind: account
+    capability: account.jobs.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /agent/runs
+    name: List your news research runs
+    summary: List your account's research runs, newest first, with id, kind, mode, status and title.
+    input:
+      queryParams:
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 5}
+        kind: {type: string, required: false, enum: [events, companies]}
+    test_request: {queryParams: {limit: 5}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+    provenance: null
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/runs/list-runs
+
+  - id: newscatcher.account.monitors.list
+    added: '2026-11-19'
+    kind: account
+    capability: companies.news.monitor.list
+    platform: companies
+    scope: own_account
+    method: GET
+    path: /agent/monitors
+    name: List your company and dataset news monitors
+    summary: List your account's monitors with kind, schedule, state and next run.
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call, note: "Free."}
+    provenance: null
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/monitors/list-monitors
+
+  - id: newscatcher.account.monitor.stories
+    added: '2026-11-19'
+    kind: account
+    capability: companies.news.monitor.stories
+    platform: companies
+    scope: own_account
+    method: GET
+    path: /agent/monitors/{monitor_id}/stories
+    name: Read a company news monitor's story feed
+    summary: Read the stories a company monitor collected for its companies, most recent first.
+    input:
+      pathParams:
+        monitor_id: {type: string, required: true, example: "00000000-0000-4000-8000-000000000002", note: "From newscatcher.account.monitors.list."}
+      queryParams:
+        days: {type: integer, required: false, default: 30, min: 1, max: 90, example: 7}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 500, example: 10}
+    test_request: {pathParams: {monitor_id: "00000000-0000-4000-8000-000000000002"}, queryParams: {days: 7, limit: 10}}
+    price: {value: '0', currency: USD, unit: call, note: "Free; the monitor's updates are charged as they run."}
+    provenance: null
+    not_found: {status: [404]}
+    docs_url: https://www.newscatcherapi.com/docs/api-reference/monitors/monitor-stories

@@ -123,6 +123,16 @@ async def _search1api(c, key):
     return {"value": balance, "unit": "credits", "note": "prepaid account balance"}
 
 
+async def _newscatcher(c, key):
+    # GET /news-api/subscription is free; credits_balance is cached up to 2 minutes and lags usage
+    # by 1-3 minutes (newscatcherapi.com/docs/get-started/rate-limits). One balance pays both APIs.
+    d = await _get(c, "https://api.newscatcherapi.com/news-api/subscription", headers={"x-api-key": key})
+    balance = d.get("credits_balance") if isinstance(d, dict) else None
+    if type(balance) not in (int, float) or not math.isfinite(balance) or balance < 0:
+        raise ValueError("NewsCatcher returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": f"plan {d.get('plan')}; NCC credits, 1 = $0.001 at the $25 top-up"}
+
+
 async def _tavily(c, key):
     d = await _get(c, "https://api.tavily.com/usage",
                    headers={"Authorization": f"Bearer {key}"})
@@ -1213,6 +1223,7 @@ BALANCE_ROUTES = {
     "tinyfish": _tinyfish,
     "fishaudio": _fishaudio,
     "tavily": _tavily,
+    "newscatcher": _newscatcher,
     "search1api": _search1api,
     "linkup": _linkup,
     "you": _you,

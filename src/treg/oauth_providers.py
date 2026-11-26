@@ -4589,6 +4589,34 @@ HIREBASE = OAuthProvider(
 )
 
 
+NEWSCATCHER = OAuthProvider(
+    service="newscatcher",
+    display_name="NewsCatcher",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your NewsCatcher API key",
+    # The raw key in x-api-key; `Authorization: Bearer <key>` is also accepted. One key and one
+    # NCC credit balance cover both the News API (/news-api) and the research Agent API (/agent).
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://platform.newscatcherapi.com",
+    setup_action_label="Get your NewsCatcher API key",
+    setup_steps=(
+        "Sign up or sign in at platform.newscatcherapi.com (the Free plan includes 10,000 credits every 30 days).",
+        "Create an API key and copy it.",
+    ),
+    setup_note="News searches cost 1, 5 or 10 credits by effort, an article page 5 and a story 1; research runs cost 500+ credits. Refused or failed requests are free; the account check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Search news in every language, list every article matching a boolean query over 12 months, and run research agents that turn news into verified event or company tables.",
+    # One host serves both products, so paths carry their /news-api or /agent prefix.
+    base_url="https://api.newscatcherapi.com",
+    docs_url="https://www.newscatcherapi.com/docs",
+    probe_path="/news-api/subscription",  # free; a bad key gets HTTP 401 {"message": "The 'x-api-key' parameter has an invalid value. ...", "status_code": 401}
+)
+
 # Lever's Postings API serves every published posting without a key. The API key Lever documents
 # applies only to the application POST, which is not listed.
 LEVER = OAuthProvider(
@@ -4623,6 +4651,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
+        # News search and research
+        NEWSCATCHER,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
