@@ -1377,7 +1377,6 @@ adapters:
     in:  {domain: pathParams.id_or_domain}
     out: {name: "data[0].attributes.friendly_company_name", domain: "data[0].attributes.domain",
           description: "data[0].attributes.description_short", location: "data[0].attributes.location"}
-    miss: "data == []"
   aviato.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.website}
@@ -2007,7 +2006,6 @@ adapters:
     in:  {domain: pathParams.company_id_or_domain}
     in_expr: {queryParams.limit: limit}
     out: {articles: data}
-    miss: "data == []"
 
   justoneapi.x.tiktok-search-user-v1:
     accepts: [[q]]
@@ -2486,7 +2484,6 @@ adapters:
     in_expr: {queryParams.limit: "at_most(limit, 500)", queryParams.location: "country_name(country)"}
     const: {queryParams.active_only: "true"}
     out: {jobs: data}
-    miss: "data == []"
   # threads.user.profile / post.detail, tiktok.music.videos, x.trending.topics, weibo.search.posts (tikhub alone;
   # justoneapi needs a date window), kuaishou.search.users (truncated), instagram.reels.recommended (no identity),
   # companies/people.search.count (filter DSLs), crypto.price.history (coin naming differs per vendor): not routed.

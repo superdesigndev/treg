@@ -1901,18 +1901,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "predictleads" and (ep.get("cost") or {}).get("type") == "per_result":
-        limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
-        if len(limits) > 1 or (limits and re.fullmatch(r"(?:[1-9][0-9]?|100)", limits[0]) is None):
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
-                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                    "parameter": "queryParams.limit", "expected": "one integer from 1 to 100",
-                    "message": "PredictLeads shared-key lists bill per record and take a limit from 1 to 100; "
-                               "page for more, or connect your own key",
-                },
-            )
-
     if ep.get("provider") == "theirstack":
         endpoint_id = ep["id"]
         if endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
