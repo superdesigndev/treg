@@ -240,6 +240,9 @@ _RATE_LIMITS: dict[str, dict] = {
     "crustdata": {"limit": 30, "window_s": 60, "source": "headers"},
     # The shared account's upgraded level: 100 RPS, honored only on the enterprise node (base_url).
     "tikhub": {"limit": 100, "window_s": 1, "source": "policy"},
+    # GetLeads.io documents 100 requests a minute per account, shared by its keys; a batch of
+    # items is one request. Change this and the GetLeads.io line in `_CONCURRENCY` together when
+    # the account's allowance changes.
     "getleadsio": {"limit": 100, "window_s": 60, "source": "docs"},
 }
 # Defaults `_RATE_LIMITS` used to carry. A stored policy still holding one of these exactly was
@@ -281,6 +284,8 @@ _CONCURRENCY: dict[str, int] = {
     # then 503 SERVER_BUSY), and 40 finder searches on treg's finder key.
     "filtrat": 10,
     "filtrat-finder": 40,
+    # GetLeads.io publishes no concurrency cap for the account. Add "getleadsio": N here once one
+    # is agreed; its request rate is the GetLeads.io line in `_RATE_LIMITS`.
 }
 # An endpoint family whose in-progress allowance differs from its provider's has its own places
 # here, shared by every endpoint listed. They replace the provider's places for those endpoints and
