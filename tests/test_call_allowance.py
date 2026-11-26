@@ -3526,6 +3526,18 @@ async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_
     assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
 
 
+async def test_a_reading_or_a_give_back_leaves_a_claimed_fold_its_turn(org_id, store, monkeypatch):
+    """The background fold claimed the team's next lease: a wallet's or an arena's reading and
+    a give-back for a short reserve do not take it first, so they cannot starve the fold."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.take(org_id, 1_000)
+    store.leases[runtime.fold_claim_key(org_id)] = "the fold"
+    assert await runtime.onto_balance(org_id, 50_000) is False
+    assert await runtime.reach(org_id, 50_000) == runtime.Reach(GRANT, False)
+    assert await _given_back(org_id) == []
+
+
 async def test_a_starved_team_waits_for_this_processs_money_session_within_its_turn(
         org_id, store, monkeypatch):
     await _queue_charge(org_id, "queued", 60)

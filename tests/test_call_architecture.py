@@ -337,7 +337,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # an exact-path call the balance alone cannot pay for gets the sized counter back first:
     # the team's lease asked for once, then admission, the drop and the release in one session
     ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
-    ("application/call/allowance.py", "_team_lease", "store.acquire_lease"),
     ("application/call/allowance.py", "_team_lease", "store.release_lease"),
     ("application/call/allowance.py", "_give_back", "money_admission.admit"),
     ("application/call/allowance.py", "_give_back", "store.allowance_drop"),

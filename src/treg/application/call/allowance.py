@@ -728,14 +728,16 @@ class Reach(NamedTuple):
 async def _team_lease(org_id: int):
     """The team's money lease for a reading or a give-back: yields "acquired", "unavailable"
     (the store cannot answer: no call can take from a counter either) or "busy" (another
-    request kept it for as long as a call waits for a refill). Every request that moves the
+    request kept it, or the background fold claimed its next turn, for as long as a call waits
+    for a refill). Every request that moves the
     team's money between the store and the database (a refill, a give-back, a fold, the idle
     sweep) holds it, so what is read under it is one moment of both."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     deadline, pause, answer = time.monotonic() + _REFILL_WAIT_S, 0.01, "busy"
     while True:
         try:
-            answer = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+            # A background fold that claimed the team's next turn is not passed by a reading.
+            answer = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         except Exception:
             log.warning("asking for the allowance lease of org %s failed", org_id, exc_info=True)
             answer = "unavailable"
