@@ -63,7 +63,7 @@ async def test_a_large_tagspend_is_refused_and_the_manual_build_finishes_it(clie
         assert (await s.execute(_VALIDITY, {"name": module.NAME})).scalar() is None
 
     statements = [line.strip().rstrip(";") for line in str(refused.value).splitlines()[1:]
-                  if line.strip() and not line.strip().startswith("SELECT")]
+                  if line.strip() and not line.strip().startswith(("SELECT", "--"))]
     async with session_maker.kw["bind"].connect() as connection:
         connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
         for statement in statements:
@@ -78,6 +78,26 @@ async def test_a_small_tagspend_is_built_in_the_migration(clients: AsyncClient):
     module = _revision()
     async with session_maker() as s:
         await s.execute(text(f"DROP INDEX IF EXISTS {module.NAME}"))
+        await s.commit()
+    await _run(module)
+    async with session_maker() as s:
+        assert (await s.execute(_VALIDITY, {"name": module.NAME})).scalar() is True
+
+
+async def test_a_valid_index_of_that_name_built_otherwise_is_refused_and_kept(clients: AsyncClient):
+    """A hand build that left out the INCLUDE is valid but does not serve the cap read: the
+    migration must not pass on its name, and must not drop a valid index either."""
+    await _postgres_only()
+    module = _revision()
+    async with session_maker() as s:
+        await s.execute(text(f"DROP INDEX IF EXISTS {module.NAME}"))
+        await s.execute(text(f"CREATE INDEX {module.NAME} ON tagspend (org_id, dim, val, created_at)"))
+        await s.commit()
+    with pytest.raises(RuntimeError, match="exists but is not CREATE INDEX"):
+        await _run(module)
+    async with session_maker() as s:
+        assert (await s.execute(_VALIDITY, {"name": module.NAME})).scalar() is True
+        await s.execute(text(f"DROP INDEX {module.NAME}"))
         await s.commit()
     await _run(module)
     async with session_maker() as s:

@@ -11,18 +11,22 @@ Create Date: 2026-11-26
 so every row of the window costs a heap fetch. A busy tag's rows are spread over the whole month,
 so on a cold cache that is one random page read per row: the cap read runs for minutes, inside
 the reserve's money session and under the team's money admission lease, and every other reserve
-of the team waits behind it until its admission budget runs out. Carrying the two columns makes
-it an index-only scan; a row is rewritten once, at settle, and is all-visible once vacuumed.
+of the team waits behind it until its admission budget runs out. Carrying the two columns lets
+the `TagSpend` sum be an index-only scan: a heap page is skipped only once vacuum has marked it
+all-visible, so recent rows can still be fetched. The price is on the write side: settle rewrites
+`amount_micro` and `settled`, so that update is never HOT and touches every index of the table.
 
 The old index stays: this revision is additive, and it is prefix-covered by the new one, so a
 later revision drops it once this one is in place.
 
 A large table's index is built by hand before the deploy, never by this revision (0123 explains
-why): it leaves a valid index alone, builds it itself (CONCURRENTLY, in an autocommit block,
-INVALID debris dropped first) only when the table holds at most `BUILD_IN_MIGRATION_MAX_ROWS`
-rows (a bounded count), and otherwise refuses at once with `MANUAL_BUILD`, the statements to run
-by hand. A lock timeout during the small build is raised as a plain error, so the upgrade's
-lock-timeout retry does not start the build again from zero.
+why). It leaves alone a valid index whose table, method, key columns in order and INCLUDE columns
+match this one; refuses a valid index of that name defined otherwise and never drops it; builds
+the index itself (CONCURRENTLY, in an autocommit block, an INVALID leftover dropped first) only
+when the table holds at most `BUILD_IN_MIGRATION_MAX_ROWS` rows (a bounded count); and otherwise
+refuses at once with `MANUAL_BUILD`, the statements to run by hand. A lock timeout during the
+small build is raised as a plain error, so the upgrade's lock-timeout retry does not start the
+build again from zero.
 
 The expand-safety linter counts the autocommit escape as non-additive, so this revision declares a
 rollback floor pro forma: the operation is one additive index.
@@ -46,22 +50,48 @@ _INCLUDE = ["amount_micro", "settled"]
 BUILD_IN_MIGRATION_MAX_ROWS = 1_000_000
 BUILD_LOCK_TIMEOUT = "180s"
 
+_DEFINITION = (f"CREATE INDEX CONCURRENTLY {NAME} ON {_TABLE} ({', '.join(_COLUMNS)}) "
+               f"INCLUDE ({', '.join(_INCLUDE)})")
 _MANUAL_STEPS = (
     "From a session with no statement timeout (psql), then deploy again:\n"
     "  SET statement_timeout = 0;\n"
-    f"  DROP INDEX CONCURRENTLY IF EXISTS {NAME};\n"
-    f"  CREATE INDEX CONCURRENTLY {NAME} ON {_TABLE} ({', '.join(_COLUMNS)}) "
-    f"INCLUDE ({', '.join(_INCLUDE)});\n"
-    f"  SELECT indisvalid FROM pg_index WHERE indexrelid = '{NAME}'::regclass;  -- must be true")
+    f"  SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass('{NAME}');\n"
+    f"  -- only if that returned false (an INVALID leftover of a killed build): "
+    f"DROP INDEX CONCURRENTLY {NAME};\n"
+    f"  {_DEFINITION};\n"
+    f"  SELECT pg_get_indexdef(indexrelid), indisvalid FROM pg_index "
+    f"WHERE indexrelid = to_regclass('{NAME}');  -- must match the line above and be true")
 
 MANUAL_BUILD = (
     f"Refusing migration 0134: {_TABLE} holds more than {BUILD_IN_MIGRATION_MAX_ROWS} rows and the "
     f"index {NAME} is missing or INVALID. Build it by hand before deploying. " + _MANUAL_STEPS)
 
-_VALIDITY = sa.text(
-    "SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+_STATE = sa.text(
+    "SELECT i.indisvalid, t.relname, am.amname, i.indnkeyatts, "
+    "i.indpred IS NULL AND i.indexprs IS NULL AS plain, "
+    "array(SELECT a.attname::text FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) "
+    "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum ORDER BY k.ord) "
+    "AS columns "
+    "FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+    "JOIN pg_class t ON t.oid = i.indrelid JOIN pg_am am ON am.oid = c.relam "
     "JOIN pg_namespace n ON n.oid = c.relnamespace "
     "WHERE n.nspname = current_schema() AND c.relname = :name")
+
+
+def _matches(state) -> bool:
+    keys, included = state.columns[:state.indnkeyatts], state.columns[state.indnkeyatts:]
+    return (state.relname == _TABLE and state.amname == "btree" and state.plain
+            and keys == _COLUMNS and sorted(included) == sorted(_INCLUDE))
+
+
+def _mismatch(state) -> str:
+    return (
+        f"Refusing migration 0134: a valid index {NAME} exists but is not {_DEFINITION} "
+        f"(it is on {state.relname}, {state.amname}, columns {state.columns}, "
+        f"{state.indnkeyatts} of them keys"
+        f"{'' if state.plain else ', partial or on expressions'}). It was built with another "
+        "definition; it is left in place. Check what uses it, drop it by hand "
+        f"(DROP INDEX CONCURRENTLY {NAME}), build it as below, then deploy again. " + _MANUAL_STEPS)
 
 _BOUNDED_COUNT = sa.text(
     f"SELECT count(*) FROM (SELECT 1 FROM {_TABLE} LIMIT :limit) AS bounded")
@@ -80,8 +110,11 @@ def upgrade() -> None:
     # CONCURRENTLY cannot run inside a transaction; alembic opens one by default.
     with op.get_context().autocommit_block():
         bind = op.get_bind()
-        valid = bind.execute(_VALIDITY, {"name": NAME}).scalar()
+        state = bind.execute(_STATE, {"name": NAME}).first()
+        valid = None if state is None else state.indisvalid
         if valid is True:
+            if not _matches(state):
+                raise RuntimeError(_mismatch(state))
             return
         rows = bind.execute(_BOUNDED_COUNT, {"limit": BUILD_IN_MIGRATION_MAX_ROWS + 1}).scalar_one()
         if rows > BUILD_IN_MIGRATION_MAX_ROWS:
