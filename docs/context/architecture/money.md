@@ -678,7 +678,14 @@ past the bound do not make every new team scan them.
   queue before it returns the counter's money to the balance (a refill found no room, by
   balance or daily cap, and the team goes back to the exact path). A long queue makes that one
   request slow; the order, fold then return, is what keeps the returned money from being spent
-  twice.
+  twice. The first of them is optional, so it is bounded like the loop's: `_fold_backlog`
+  folds at most `_BACKLOG_BATCHES`, asks `admit` to refuse after a short wait, waits at most
+  `LOCK_WAIT_MS` for the team's row locks, and never starts while this process has a money
+  session of the team open. A call that finds one open waits for it holding no connection, a
+  call that finds another process folding reads its entry again shortly, and within
+  `_SETTLED_WAIT_S` in all it answers with what the ledger took, or else with its charge. A
+  busy team's calls therefore cannot each hold a request connection queued on the team's hold
+  row; the queue they leave is the loop's.
 
 - **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
   hold and then write it. All of them hold one lease in the store for the team

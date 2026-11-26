@@ -1862,7 +1862,6 @@ async def test_a_refill_that_committed_before_an_overrun_cannot_lift_its_freeze(
         return published[-1]
 
     monkeypatch.setattr(store, "allowance_add", overrun_lands_first)
-    monkeypatch.setattr(runtime, "_SETTLED_TRIES", 1)  # the refill in progress holds the lease
     assert await runtime.take(org_id, 100) is None, "published, but still frozen"
     assert told == [1_500] and published == [400], "the refill did publish"
     counter = store.counters[org_id]
@@ -1949,6 +1948,57 @@ async def test_a_call_waits_for_another_process_to_apply_its_charge(org_id, stor
 
     monkeypatch.setattr(runtime.asyncio, "sleep", other_process_folds)
     assert await _finish(org_id, "second", second, 2_000_000, billable=True) == 0
+
+
+async def test_a_calls_fold_caps_its_wait_for_row_locks_and_then_answers_the_charge(
+        org_id, store, monkeypatch):
+    """The call holds a connection while it folds. Rows another session keeps locked end the
+    fold at the cap, and the call answers with its charge instead of folding again."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 400, reserved_micro=400)])
+        await db.commit()
+    capped, folds = [], []
+
+    async def cap(db):
+        capped.append(True)
+
+    async def locked(db, org, **kwargs):
+        folds.append(org)
+        raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+
+    monkeypatch.setattr(runtime, "bound_lock_wait", cap)
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", locked)
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert capped == [True] and folds == [org_id], "one capped fold, not a retry loop"
+    assert await _queued(org_id) == 1, "left for the background fold"
+
+
+async def test_calls_of_one_team_in_one_process_fold_one_at_a_time(org_id, store, monkeypatch):
+    """Many calls of a busy team ask for their settle entries at once. One folds; the others
+    wait for it holding no connection, and read what it wrote."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"call-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(8)])
+        await db.commit()
+    fold, open_now, most = allowance.fold_charges_in_transaction, [0], [0]
+
+    async def counted(db, org, **kwargs):
+        open_now[0] += 1
+        most[0] = max(most[0], open_now[0])
+        try:
+            await asyncio.sleep(0.01)
+            return await fold(db, org, **kwargs)
+        finally:
+            open_now[0] -= 1
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", counted)
+    told = await asyncio.gather(*(runtime._settled(org_id, f"call-{index}", 99)
+                                  for index in range(8)))
+    assert most == [1]
+    assert told == [10] * 8, "each read its own settle entry, not the 99 it would fall back to"
+    assert await _queued(org_id) == 0
 
 
 async def test_an_overrun_written_late_freezes_the_counter_when_it_lands(org_id, store, monkeypatch):
