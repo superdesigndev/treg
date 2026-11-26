@@ -1419,6 +1419,7 @@ async def test_a_row_held_by_another_transaction_is_skipped_not_waited_for(
         clients: AsyncClient, monkeypatch):
     """On PostgreSQL the flush gives a held row its lock timeout, then moves on: the other
     endpoints land while the holder still has the row, and the held delta lands after it lets go."""
+    import asyncio
     import time
 
     from sqlalchemy import text
@@ -1436,7 +1437,8 @@ async def test_a_row_held_by_another_transaction_is_skipped_not_waited_for(
         await holder.execute(text(
             "SELECT 1 FROM archiveendpointstat WHERE endpoint_id = 'stats.b' FOR UPDATE"))
         started = time.monotonic()
-        await archive.flush_stats()
+        async with asyncio.timeout(2):                  # without the lock timeout this would hang
+            await archive.flush_stats()
         took = time.monotonic() - started
         got = await _stat_snapshots()
         await holder.rollback()
