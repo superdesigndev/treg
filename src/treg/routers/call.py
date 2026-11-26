@@ -438,7 +438,9 @@ async def _capped_body(request: Request) -> bytes:
                 raise HTTPException(status_code=413, detail="request body too large")
             chunks.append(chunk)
     except ClientDisconnect as exc:
-        raise HTTPException(status_code=499, detail=_CLIENT_GONE) from exc
+        failure = CallFailure("client_disconnected", status_code=499, detail=_CLIENT_GONE)
+        request.state.call_failure = failure
+        raise _translate_call_failure(failure) from exc
     body = b"".join(chunks)
     # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
     # has been consumed; the call road reads the body again through those.

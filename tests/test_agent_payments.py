@@ -911,7 +911,8 @@ async def test_a_keyless_body_is_capped(anon: AsyncClient, payments_on):
     assert r.status_code == 401
 
 
-async def test_a_keyless_caller_gone_before_its_body_is_read_is_a_499(payments_on, monkeypatch):
+async def test_a_keyless_caller_gone_before_its_body_is_read_is_a_499(payments_on, monkeypatch,
+                                                                       call_error_lines):
     post_ep = next(ep["id"] for ep in catalog_store.load().by_id.values()
                    if (ep.get("method") or "GET") == "POST" and ep["provider"] == "tikhub")
     opened = []
@@ -936,6 +937,8 @@ async def test_a_keyless_caller_gone_before_its_body_is_read_is_a_499(payments_o
 
     assert sent[0]["type"] == "http.response.start" and sent[0]["status"] == 499
     assert opened == []
+    assert [(line["error_class"], line["caller_side"], line["kind"]) for line in call_error_lines()] == [
+        ("caller_disconnected", True, "client_disconnected")]
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).first() is None
 
