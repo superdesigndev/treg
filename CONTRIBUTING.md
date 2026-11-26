@@ -42,7 +42,9 @@ require a frontend build, so CLI and background-worker development remains indep
 1. Branch off `main`.
 2. Match the surrounding style — plain Python with type hints, no new dependencies without a reason.
    Commit messages follow Conventional Commits (`feat(scope): …`, `fix: …`, `docs: …`).
-3. Add or update tests; run `uv run --with pytest-xdist pytest -n auto -q` (all green).
+3. Add or update tests. While working, run the files your change touches
+   (`uv run --frozen python -m pytest -q tests/test_x.py`); run the whole suite once before opening
+   the PR (`uv run --with pytest-xdist pytest -n auto -q`, all green). CI runs it again on Postgres.
    Serial `uv run --frozen python -m pytest -q` is for debugging one test or order.
    Against Postgres, set `TREG_TEST_DB_URL`; each xdist worker creates its own database from it.
    Add `TREG_TEST_POOLER_URL`, a transaction-pooling PgBouncer in front of the same server, to run
