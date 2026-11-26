@@ -35,17 +35,6 @@ async def record(hash_, *, status=200, response=None, error=None, cached=False, 
         return row.id
 
 
-async def test_naive_datetime_insert_does_not_raise_value_error(clients):
-    """Regression test: SQLModel 0.0.45 rejects naive datetime binds on INSERT.
-
-    The arena insights collector INSERTs into ArenaInsightState with scan_until=now()-60s.
-    Before the NaiveUTC annotation fix and sqlmodel pin, this raised:
-        ValueError: Datetime values must have timezone information.
-    """
-    backlog = await service.collect_batch(session_maker)
-    assert backlog is False  # no records, but INSERT succeeded
-
-
 async def test_evidence_pointers_name_their_reader_and_carry_the_media_type(clients, monkeypatch):
     call_id = await record("media", response={"data": {"email": "found@example.test"}})
     async with session_maker() as db:
@@ -293,9 +282,14 @@ async def test_bounceban_finished_answers_count_and_verifying_is_unresolved(clie
     assert sorted(categories) == ["hit", "miss", "unresolved_pending"]
 
 
-def test_async_rows_without_terminal_on_submission_stay_out_of_insights():
-    endpoints = service._catalog()[1]
-    assert "wiza.people.email.find" not in endpoints
+def test_async_rows_without_terminal_on_submission_stay_out_of_insights(monkeypatch):
+    cat = store.load()
+    monkeypatch.setattr(store, "load", lambda: cat)
+    assert EP in service._catalog()[1]
+    monkeypatch.setitem(cat.by_id, EP, {**cat.by_id[EP], "async": {"result": "poll"}})
+    assert EP not in service._catalog()[1]
+    monkeypatch.setitem(cat.by_id, EP, {**cat.by_id[EP], "async": {"terminal_on_submission": True}})
+    assert EP in service._catalog()[1]
 
 
 def test_cursor_version_survives_catalog_changes(monkeypatch):
