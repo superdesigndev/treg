@@ -82,8 +82,6 @@ PROVIDERS: dict[str, dict] = {
                 "url": "https://www.semrush.com/api-documentation/", "units": {"*": "call"}},
     "seranking": {"source": "docs", "confidence": "documented",
                   "url": "https://seranking.com/pricing.html", "units": {"*": "call"}},
-    "serpstat": {"source": "docs", "confidence": "documented",
-                 "url": "https://serpstat.com/pay/", "units": {"*": "call"}},
     "spyfu": {"source": "docs", "confidence": "documented",
               "url": "https://www.spyfu.com/api", "units": {"*": "row"}},
 }
@@ -143,19 +141,6 @@ PRICES: dict[str, dict] = {
     "seranking.web.linking_domains.list": _cr(1, "domain"),
     "seranking.web.anchors.list": _cr(1, "row"),
     "seranking.web.url.metrics": _cr(10, "target"),
-
-    # Serpstat: API credits come with the plan at no published per-credit price → rate null.
-    "serpstat.google.domain.overview": _cr(5, "domain"),
-    "serpstat.google.domain.ranked_keywords": _cr(1, "keyword"),
-    "serpstat.google.domain.competitors": _cr(1, "result"),
-    "serpstat.google.keywords.volume": _cr(1, "keyword"),
-    "serpstat.google.keywords.ideas": _cr(1, "keyword"),
-    "serpstat.google.serp.organic": _cr(1, "row"),
-    "serpstat.web.backlinks.summary": _cr(5, "call"),
-    "serpstat.web.backlinks.list": _cr(1, "row"),
-    "serpstat.web.linking_domains.list": _cr(1, "domain"),
-    "serpstat.web.anchors.list": _cr(1, "row"),
-    "serpstat.web.site.top_pages": _cr(1, "page"),
 
     # SpyFu prices in dollars per 1,000 rows (a CPM), which is exactly what `per` is for. Two
     # endpoints sit on a published RANGE rather than a figure; the top of the range is recorded (an

@@ -55,6 +55,25 @@ source:
 
 
 pricing_url: https://serpstat.com/pay/
+
+# Every answer is HTTP 200 JSON-RPC: `result` on success, `error` instead on failure. Error 32017
+# "Data not found" is billed 1 credit; 32015 and -32000 "... not found" answers are free misses;
+# every other error is free.
+defaults:
+  provenance: {source: docs, source_url: 'https://api-docs.serpstat.com/docs/serpstat-public-api/', checked: '2026-11-26', confidence: verified}
+  expect:
+    any:
+      - {path: response.result, op: present}
+      - {path: response.error.code, op: in, value: [32015, 32017]}
+      - [{path: response.error.code, op: equals, value: -32000}, {path: response.error.message, op: contains, value: not found}]
+  miss:
+    when:
+      any:
+        - {path: response.error.code, op: in, value: [32015, 32017]}
+        - [{path: response.error.code, op: equals, value: -32000}, {path: response.error.message, op: contains, value: not found}]
+        - {path: response.result.data, op: empty}
+  settle: {count: {path: response.result.data}}
+  bill: {miss: 1, free_when: {path: response.error.code, op: in, value: [32015, -32000]}}
 endpoints:
   # --- Domain analytics -------------------------------------------------------------------------
   - id: serpstat.google.domain.overview
@@ -76,17 +95,8 @@ endpoints:
         "params.se": {type: string, required: true, note: "search database, e.g. g_us, g_uk, g_de, bing_us", example: "g_us"}
         "params.filters": {type: object, required: false, note: "optional narrowing: traff / traff_from / traff_to (estimated traffic) and visible / visible_from / visible_to (visibility score)"}
       note: "the ONE method here that takes a batch of domains — up to 10 per call — but note the price is PER DOMAIN, so batching saves round trips, not credits. Body shape: {\"id\": \"1\", \"method\": \"SerpstatDomainProcedure.getDomainsInfo\", \"params\": {\"domains\": [\"serpstat.com\"], \"se\": \"g_us\"}}. Rows arrive in result.data[]."
-    cost:
-      type: per_result
-      value: 5
-      currency: credit
-      per: 1
-      unit: domain
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 5 API credits per DOMAIN in `domains` — the most expensive per-row method in this file. A 10-domain batch is 50 credits, and an empty result still bills the 1-credit minimum.
+    price: {value: '5', currency: credit, unit: domain, note: "5 credits per domain returned; Serpstat answers an unknown domain with a row of zeros, which is billed"}
+    reserve: {entities: {from: body.params.domains}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
 
   - id: serpstat.google.domain.ranked_keywords
@@ -116,18 +126,8 @@ endpoints:
         "params.sort": {type: object, required: false, note: "map of field to direction, e.g. {\"position\": \"asc\"}; fields: position, region_queries_count, cost, traff, difficulty, keyword_length, concurrency"}
         "params.filters": {type: object, required: false, note: "position/cost/volume/difficulty ranges — each takes a bare value plus _from and _to variants, e.g. position_to: 10"}
       note: "the workhorse domain report. `size` defaults to 100 rows and every row is metered, so set it explicitly."
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: keyword
-      reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned keyword — `size` (default 100, max 1,000) is the cost dial, and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: keyword, note: "1 credit per returned keyword; a domain with no keywords costs 1 credit"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
 
   - id: serpstat.google.domain.competitors
@@ -150,17 +150,8 @@ endpoints:
         "params.size": {type: integer, required: false, note: "COST DIAL — competitors to return, 1 to 100, default 20", example: 10}
         "params.filters": {type: object, required: false, note: "visible (minimum visibility score), traff (minimum estimated traffic), minus_domains (array of domains to exclude)"}
       note: "the competitor set is derived from keyword overlap in the chosen `se` database, so results differ per country. `SerpstatDomainProcedure.getCompetitors` is the deprecated predecessor of this method and should not be used in new work."
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: result
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned competitor — `size` (default 20, max 100) is the cost dial, and an empty result still costs 1 credit.
+    price: {value: '1', currency: credit, unit: result, note: "1 credit per returned competitor; a domain with no competitors is free"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 500}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/6vpejje0stt4k-get-competitors
 
   # --- Keyword analytics ------------------------------------------------------------------------
@@ -185,17 +176,8 @@ endpoints:
         "params.sort": {type: object, required: false, note: "map of field to direction; fields: region_queries_count, region_queries_count_wide, cost, concurrency, found_results, difficulty"}
         "params.filters": {type: object, required: false, note: "cost / concurrency / found_results ranges, each with _from and _to variants"}
       note: "the batch keyword-overview method — up to 1,000 keywords per call, which is the efficient way to price a keyword list."
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: keyword
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per keyword RETURNED (Serpstat meters per result row), and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: keyword, note: "1 credit per keyword found; keywords in `not_found` are free, and a list with none found costs 1 credit"}
+    reserve: {entities: {from: body.params.keywords}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/2brcbdgmr6rcx-get-keywords-info
 
   - id: serpstat.google.keywords.ideas
@@ -224,18 +206,8 @@ endpoints:
         `SerpstatKeywordProcedure.getKeywords` is the sibling that returns phrase-match (broad)
         keywords rather than semantically related ones, with nearly the same params object;
         `SerpstatKeywordProcedure.getSuggestions` returns search-suggestion keywords.
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: keyword
-      reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned keyword — `size` (default 100, max 1,000) is the cost dial, and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: keyword, note: "1 credit per returned keyword; a seed with no ideas costs 1 credit"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/7yidbv07n5q9u-get-related-keywords
 
   - id: serpstat.google.serp.organic
@@ -255,8 +227,9 @@ endpoints:
         id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keyword": {type: string, required: true, note: "the keyword whose SERP you want", example: "seo"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
-        "params.size": {type: integer, required: false, note: "COST DIAL — rows to return, max 1,000", example: 10}
-        "params.filters": {type: object, required: false, note: "top_size (how deep into the SERP to look, max 100), position / position_from / position_to, and url, exact_url, domain, minus_domain, subdomain to restrict to one site"}
+        "params.size": {type: integer, required: false, note: "Serpstat ignores it on this method: `filters.top_size` sets how many rows come back"}
+        "params.filters": {type: object, required: false, note: "position / position_from / position_to, and url, exact_url, domain, minus_domain, subdomain to restrict to one site"}
+        "params.filters.top_size": {type: integer, required: false, note: "COST DIAL — how deep into the SERP to read, 1 to 100, default 100", example: 10}
       note: |
         This is Serpstat's DATABASE view of the SERP, not a live scrape — positions come from
         Serpstat's last crawl of that keyword in that `se` database, so it is cheap and fast but can
@@ -264,18 +237,16 @@ endpoints:
         `SerpstatKeywordProcedure.getKeywordFullTop` returns the same SERP with the full element set.
         RESPONSE SHAPE: rows are nested one level deeper than elsewhere in this file — they arrive
         at `result.data.top[]`, not `result.data[]`.
-    test_request: {body: {id: "1", method: SerpstatKeywordProcedure.getKeywordTop, params: {keyword: running shoes, se: g_us, size: 3}}}
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: row
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned SERP row — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+    test_request: {body: {id: "1", method: SerpstatKeywordProcedure.getKeywordTop, params: {keyword: running shoes, se: g_us, filters: {top_size: 3}}}}
+    price: {value: '1', currency: credit, unit: row, note: "1 credit per returned SERP row; a keyword with no SERP is free"}
+    reserve: {rows: {param: body.params.filters.top_size, default: {value: 100, source: docs}, max: 100}}
+    settle: {count: {path: response.result.data.top}}
+    miss:
+      when:
+        any:
+          - {path: response.error.code, op: in, value: [32015, 32017]}
+          - [{path: response.error.code, op: equals, value: -32000}, {path: response.error.message, op: contains, value: not found}]
+          - {path: response.result.data.top, op: empty}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/env4osjb1ev9c-get-keyword-top
 
   # --- Backlinks --------------------------------------------------------------------------------
@@ -299,17 +270,8 @@ endpoints:
         "params.query": {type: string, required: true, note: "the domain to summarise", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains", example: "domain"}
       note: "the V2 spelling is the current one — `getSummary` (no V2) is DEPRECATED and returns a different shape. Returns link counts, referring domain/IP/subnet counts, the domain authority indicator and link-type breakdown as a single OBJECT under `result.data`, not an array."
-    cost:
-      type: per_call
-      value: 5
-      currency: credit
-      per: 1
-      unit: call
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 5 API credits FLAT per call — not per row, because it returns one summary. value stays null because credits come with the plan and have no published per-credit dollar price.
+    price: {value: '5', currency: credit, unit: call, note: "5 credits per call; a domain with no backlink data is free"}
+    settle: null
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.backlinks.list
@@ -339,17 +301,8 @@ endpoints:
         Despite the name, `getNewBacklinks` is Serpstat's ACTIVE-backlinks list, not a new-links
         delta — it is the general backlink listing. `SerpstatBacklinksProcedure.getLostBacklinks`
         is the lost-links counterpart.
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: row
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned backlink — `size` (default 100, max 1,000) is the cost dial, and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: row, note: "1 credit per returned backlink; a target with no backlinks is free"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.linking_domains.list
@@ -375,18 +328,8 @@ endpoints:
         "params.order": {type: string, required: false, note: "asc | desc"}
         "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false, note: "nested {name, operator, value} conditions — outer OR, inner AND"}
       note: "note the narrower searchType enum here: this method accepts only domain-level targets."
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: domain
-      reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned referring domain — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: domain, note: "1 credit per returned referring domain; a target with none is free"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.anchors.list
@@ -414,17 +357,8 @@ endpoints:
         "params.order": {type: string, required: false, note: "asc | desc; default desc"}
         "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false}
       note: "`searchType` has no default on this method — omitting it is an error, where the other backlink methods would have assumed `domain`."
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: row
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned anchor — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: row, note: "1 credit per returned anchor; a target with no anchors is free"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.site.top_pages
@@ -450,17 +384,8 @@ endpoints:
         "params.order": {type: string, required: false, note: "asc | desc"}
         "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false}
       note: "the link-equity map of a site — which pages actually earned the backlinks."
-    cost:
-      type: per_result
-      value: 1
-      currency: credit
-      per: 1
-      unit: page
-      source: docs
-      source_url: https://serpstat.com/pay/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 1 API credit per returned page — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+    price: {value: '1', currency: credit, unit: page, note: "1 credit per returned page; a target with no pages is free"}
+    reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   # --- Account (free) ---------------------------------------------------------------------------
@@ -486,10 +411,7 @@ endpoints:
         See the registry-discrepancy note in the file header: this spelling (no "Api" infix) is the
         one that works live; treg's probe sends it too.
         Any captured example must have the account's real balances masked before commit.
-    cost:
-      type: free
-      value: 0
-      currency: USD
-      unit: call
-      note: the limits/credits meter itself does not consume credits — the standard pattern for this class of endpoint, and what makes it the correct liveness probe for a Serpstat token. Confirmed live 2026-08-11 (used_lines stayed 0 after the call).
+    price: {value: '0', currency: USD, unit: call, note: "reading the credit meter costs no credits"}
+    provenance: null
+    settle: null
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/

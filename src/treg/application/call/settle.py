@@ -161,25 +161,6 @@ def _icypeas_search_row_count(endpoint_id: str, doc: object) -> int | None:
     return len(leads) if isinstance(leads, list) else None
 
 
-def _serpstat_result_count(doc: object) -> int | None:
-    """Credits a Serpstat JSON-RPC answer bills, in rows. HTTP 200 carries both outcomes: an `error`
-    envelope (bad token, exhausted limit, "Data not found") bills nothing; a `result` bills per row
-    with the documented 1-credit minimum on an empty list. Rows live in `result.data[]`, or one
-    level deeper for getKeywordTop (`result.data.top[]`). Any other shape (results keyed by the
-    thing asked about) settles at the estimate rather than guessing a row count."""
-    if not isinstance(doc, dict):
-        return None
-    if doc.get("error"):
-        return 0
-    result = doc.get("result")
-    data = result.get("data") if isinstance(result, dict) else None
-    if isinstance(data, dict):
-        data = data.get("top")
-    if isinstance(data, list):
-        return max(len(data), 1)
-    return None
-
-
 def _spyfu_result_count(doc: object) -> int | None:
     """Rows a SpyFu answer bills. Every endpoint answers `{"resultCount": N, "results": [...]}` and
     SpyFu bills per row returned, so an empty list is free. Any other shape settles at the estimate."""
@@ -356,7 +337,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
       - apify: DERIVED by counting the dataset rows a run-sync call returns, plus the row's flat
         `call_fee` for the actor start or compute the run bills regardless of rows.
-      - icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
+      - icypeas bulk and search / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
     Everyone else settles at the estimate. A v2 row reads its own `settle.reported` instead."""
@@ -469,10 +450,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             return _rows_billed_micro(mk, ep, search_rows)
         return _rows_billed_micro(mk, ep, _icypeas_bulk_found_count(mk.endpoint_id, doc),
                                   Decimal("0.5") if company else None)
-    if provider == "serpstat" and isinstance(doc, dict) and doc.get("error"):
-        return 0
-    if provider == "serpstat" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        return _rows_billed_micro(mk, ep, _serpstat_result_count(doc))
     if provider == "spyfu" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         return _rows_billed_micro(mk, ep, _spyfu_result_count(doc))
     if provider == "thecompaniesapi":

@@ -3659,13 +3659,6 @@ def _usd_to_micro_for_test(usd) -> int:
      b'{"validationErrors":[{"field":"query"}],"success":false}', 0),
     ("icypeas.companies.search", None, {"query": {}, "pagination": {"size": 5}},
      b'{"success":true,"leads":[{}],"total":1}', 1),
-    # Serpstat: an error envelope is free, rows bill with a 1-credit minimum, unknown shapes estimate.
-    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}},
-     b'{"id":"1","error":{"code":-32600,"message":"Data not found"}}', 0),
-    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}}, b'{"id":"1","result":{"data":[{},{}]}}', 2),
-    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}}, b'{"id":"1","result":{"data":[]}}', 1),
-    ("serpstat.google.domain.overview", None, {"params": {"domains": ["a.com", "b.com"]}},
-     b'{"id":"1","result":{"a.com":{},"b.com":{}}}', None),
     # TheCompaniesAPI search: one credit per company returned.
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[]}', 0),
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[{},{}]}', 2),
@@ -3696,10 +3689,6 @@ def test_row_counts_never_bill_above_the_hold():
     mk, estimate, _ = _priced("findymail.search.employees", None,
                               {"website": "x.io", "job_titles": ["CEO"], "count": 5})
     assert call_settle._observed_cost_micro(mk, json.dumps([{"name": str(i)} for i in range(5)]).encode()) == estimate
-    mk, estimate, _ = _priced("serpstat.google.domain.ranked_keywords", None,
-                              {"params": {"domain": "a.com", "se": "g_us", "size": 1000}})
-    assert call_settle._observed_cost_micro(
-        mk, json.dumps({"id": "1", "result": {"data": [{}] * 1000}}).encode()) == estimate
 
 
 def test_thecompaniesapi_simplified_is_free_only_where_declared():
