@@ -83,6 +83,7 @@ def test_the_sql_view_leaves_out_the_same_caller_side_classes():
     sql = (Path(__file__).parents[1] / "scripts/call_events_actionable_errors.sql").read_text()
     lists = re.findall(r"error_class (?:NOT )?IN \(([^)]*)\)", sql)
     assert [set(re.findall(r"'(\w+)'", found)) for found in lists] == [call_errors.CALLER_SIDE] * 2
+    assert call_errors.CALLER_SIDE <= set(re.findall(r"THEN '(\w+)'", sql))
 
 
 async def test_a_balance_refusal_logs_the_caller_side_line(clients: AsyncClient, platform_on,
