@@ -1779,7 +1779,7 @@ class IdempotentCall(SQLModel, table=True):
     # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit.
     # The response cache cannot outlive its caller: once a membership is revoked nobody can replay
     # its key, so the membership foreign key cascades instead of blocking token revocation.
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     membership_id: int = Field(foreign_key="membership.id", ondelete="CASCADE", index=True)
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
