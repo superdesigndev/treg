@@ -382,7 +382,7 @@
       </div>
     </div>
 
-    <div id="cRoles" style="flex: 1; margin: 30px 0 20px; display: grid; gap: 28px; align-content: start"></div>
+    <div id="cRoles" style="flex: 1; margin: 30px 0 20px; display: grid; column-gap: 36px; align-content: start"></div>
     <div id="cFoot" style="display: flex; gap: 36px; text-align: left"></div>
   </div>
 </div>
@@ -987,15 +987,18 @@
     var label = function (t) { return '<div style="font-size: 13px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #8A8A8A">' + t + '</div>'; };
     $('cHead').textContent = f.headline;
     $('cRoles').style.gridTemplateColumns = 'repeat(' + Math.max(f.roles.length, 1) + ', minmax(0, 1fr))';
-    $('cRoles').innerHTML = f.roles.map(function (r, i) {
-      return '<div style="text-align: left"><div style="font-size: 84px; font-weight: 800; line-height: 0.85; letter-spacing: -3px">' + Math.round(r.share * 100) + '%</div>' +
-        '<div style="margin-top: 14px; display: flex; align-items: center; gap: 7px; font-size: 18px; font-weight: 600; line-height: 1.15; color: #3F3F3F"><span style="width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: ' + COLORS[i] + '"></span>' + esc(r.text) + '</div>' +
-        '<div style="margin-top: 16px; font-size: 31px; font-weight: 700; line-height: 1.15; letter-spacing: -0.7px">' + esc(r.name) + '</div>' +
-        '<div style="margin-top: 8px; font-size: 20px; font-weight: 500; line-height: 1.38; color: #5E5E5E">' + esc(r.about) + '</div>' +
-        '<div style="margin-top: 20px">' + label('Pain points') + (r.pains.length ? r.pains : ['None in recent posts']).map(function (x) {
-          return '<div style="margin-top: 5px; font-size: 22px; font-weight: 600; letter-spacing: -0.3px; color: ' + (r.pains.length ? '#111111' : '#8A8A8A') + '">' + esc(x) + '</div>';
-        }).join('') + '</div></div>';
-    }).join('');
+    /* laid out row by row, so each line of one persona sits level with the same line of the next */
+    var row = function (style, cell) { return f.roles.map(function (r, i) { return '<div style="text-align: left; ' + style + '">' + cell(r, i) + '</div>'; }).join(''); };
+    $('cRoles').innerHTML =
+      row('font-size: 72px; font-weight: 800; line-height: 0.85; letter-spacing: -2.5px', function (r) { return Math.round(r.share * 100) + '%'; }) +
+      row('margin-top: 12px; display: flex; align-items: center; gap: 7px; font-size: 17px; font-weight: 600; line-height: 1.15; color: #3F3F3F', function (r, i) {
+        return '<span style="width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: ' + COLORS[i] + '"></span>' + esc(r.text); }) +
+      row('margin-top: 26px; font-size: 27px; font-weight: 700; line-height: 1.15; letter-spacing: -0.6px', function (r) { return esc(r.name); }) +
+      row('margin-top: 10px; font-size: 18px; font-weight: 500; line-height: 1.4; color: #5E5E5E', function (r) { return esc(r.about); }) +
+      row('margin-top: 26px', function (r) {
+        return label('Pain points') + (r.pains.length ? r.pains : ['None in recent posts']).map(function (x) {
+          return '<div style="margin-top: 8px; font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -0.3px; color: ' + (r.pains.length ? '#111111' : '#8A8A8A') + '">' + esc(x) + '</div>';
+        }).join(''); });
     $('cFoot').innerHTML = f.foot.map(function (x) {
       return '<div>' + label(x[0]) + '<div style="margin-top: 3px; font-size: 19px; font-weight: 600; letter-spacing: -0.2px">' + esc(x[1]) + '</div></div>';
     }).join('');
