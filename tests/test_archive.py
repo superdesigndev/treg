@@ -707,6 +707,7 @@ async def test_own_key_recording_asks_for_identity_encoding(clients: AsyncClient
 
 @pytest.mark.parametrize("cache_header", [True, False])
 async def test_archive_hit_never_invites_review(clients: AsyncClient, serve, monkeypatch, cache_header):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     monkeypatch.setattr(get_settings(), "review_sample_rate", 1)
     original = call_service._served_response
 

@@ -183,6 +183,10 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+  A caller that names no runtime (`X-Treg-Client`) and sends no `X-Treg-Hints` is a script or
+  backend with no agent reading the header: it is never asked (`invite.UNNAMED_KINDS`) and spends
+  no budget, which stays for the team's agents' calls; it still gets the feedback hint. `invited`
+  on a review does not recompute this, so such a review, rare, can still read as invited.
   With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
   endpoint a review would be credited to (a direct call's own, or a routed parent's latest
   successful child, which the router records as `route_summary["credited"]`; not `served_by`,
