@@ -450,7 +450,15 @@ async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
             await asyncio.sleep(0.05)
             if money_lock(org_id).locked():
                 return _Fold.HERE
-            if await store.acquire_lease(key, token, _REFILL_LEASE_MS) != "acquired":
+            try:
+                acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+            except BaseException:
+                # The store may have granted the lease before the call stopped waiting for its
+                # answer: give back whatever this token holds, or the team's refills and the
+                # background fold wait for it to expire. Release deletes only this token's.
+                await asyncio.shield(store.release_lease(key, token))
+                raise
+            if acquired != "acquired":
                 # The lease may be held by this process's own fold, which took it while this
                 # call waited for the store: its lock says so.
                 return _Fold.HERE if money_lock(org_id).locked() else _Fold.ELSEWHERE

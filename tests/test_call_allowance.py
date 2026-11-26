@@ -2074,6 +2074,25 @@ async def test_a_call_told_the_lease_is_busy_by_its_own_process_waits_without_re
     assert await asyncio.gather(*calls) == [10] * 8
 
 
+async def test_a_call_cancelled_while_the_store_grants_its_lease_leaves_no_lease_behind(
+        org_id, store, monkeypatch):
+    """The store sets the lease, and the call's deadline passes before its answer arrives. The
+    lease is the call's token, and it is given back: the next refill gets it at once."""
+    acquire, granted = store.acquire_lease, asyncio.Event()
+
+    async def granted_then_slow(*args, **kwargs):
+        answer = await acquire(*args, **kwargs)
+        granted.set()
+        await asyncio.sleep(5)
+        return answer
+
+    monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert granted.is_set()
+    assert runtime.money_key(org_id) not in store.leases
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
