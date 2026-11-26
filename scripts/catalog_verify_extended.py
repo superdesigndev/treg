@@ -483,10 +483,13 @@ def merge_results(service: str, paths: list[Path]) -> int:
                 conflicts.append(f"{eid} (in {seen[eid].name} and {path.name})")
                 continue
             seen[eid] = path
-            hand_priced = priced_by_hand(ep)
+            # a batch never reprices a row a person priced, and reprices any other only from a
+            # cost it observed that day: an older verifier exported every row's price, observed or not
+            provenance = res.get("provenance") or {}
+            observed = (not priced_by_hand(ep) and isinstance(res.get("price"), dict) and bool(res.get("verified"))
+                        and provenance.get("source") == "observed" and provenance.get("checked") == res["verified"])
             for field in RESULT_FIELDS:
-                if field in ("price", "provenance") and hand_priced:
-                    # a batch never reprices a row a person priced, whichever verifier wrote it
+                if field in ("price", "provenance") and not observed:
                     continue
                 if field in res:
                     # an EMPTY value counts as absent, never as a claim. A state key present but
@@ -497,7 +500,7 @@ def merge_results(service: str, paths: list[Path]) -> int:
                     else:
                         ep[field] = res[field]
             # a merged price brings its settle with it: a free one opts out of the reported charge
-            if not hand_priced and isinstance(res.get("price"), dict):
+            if observed:
                 if Decimal(str(res["price"].get("value") or 0)) == 0:
                     ep["settle"] = None
                 elif "settle" in ep and ep["settle"] is None:
