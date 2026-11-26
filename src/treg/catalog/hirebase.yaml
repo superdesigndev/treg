@@ -68,6 +68,39 @@ endpoints:
     miss: {when: {path: response.jobs, op: empty}}
     docs_url: https://www.hirebase.org/docs/api-reference/jobs/search-post
 
+  - id: hirebase.linkedin.jobs.search
+    added: '2026-11-26'
+    capability: linkedin.search.jobs
+    platform: linkedin
+    domain: jobs
+    scope: any_account
+    method: POST
+    path: /jobs/search
+    name: Search LinkedIn job postings
+    summary: "Search Hirebase's index of LinkedIn job postings (about 1M open, refreshed about twice a day) by title, keyword, place, remote and posted date. Each job has its LinkedIn link, description, posted date and a company profile with website and size."
+    input:
+      bodyType: json
+      body:
+        job_board: {type: array, items: {type: string}, required: true, note: "[\"linkedin\"] keeps LinkedIn postings only. Leave it out to search employers' own career pages too", example: ["linkedin"]}
+        job_titles: {type: array, items: {type: string}, required: false, note: "OR'd. An unquoted entry needs every word in the title, in any order; wrap it in quotes for the exact phrase; prefix - to exclude", example: ["data engineer"]}
+        keywords: {type: array, items: {type: string}, required: false, note: "ranked against description, skills and technologies; prefix - to exclude"}
+        geo_locations: {type: array, items: {type: object}, required: false, note: "[{city, region, country}], any subset; each is geocoded, so a free-text place works in city alone ({city: 'New York, NY'}, {city: 'Texas'}). A city matches its metro area", example: [{country: "United States"}]}
+        location_types: {type: array, items: {type: string}, required: false, note: "Remote, Hybrid or In-Person"}
+        job_types: {type: array, items: {type: string}, required: false, note: "Full Time, Part Time, Contract or Internship"}
+        company_name: {type: string, required: false, note: "one company's name, case ignored"}
+        company_domain: {type: string, required: false, note: "one company's website, without scheme"}
+        days_ago: {type: integer, required: false, example: 7}
+        sort_by: {type: string, required: false, enum: [relevance, date_posted, first_ingested]}
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "jobs per page, and the price: each job returned is charged", example: 1}
+      note: "The same route as hirebase.jobs.search, which takes every other filter. An index of the LinkedIn pages of companies Hirebase tracks, not LinkedIn's live search: application_link is the linkedin.com/jobs/view URL. Unknown fields answer 422."
+    test_request: {body: {job_board: ["linkedin"], job_titles: ["data engineer"], geo_locations: [{country: "United States"}], days_ago: 7, limit: 1}}
+    price: {value: '1', currency: credit, unit: record, note: "One credit per job returned; an empty page is free. treg holds limit jobs (10 when omitted)."}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: {count: {path: response.jobs}}
+    miss: {when: {path: response.jobs, op: empty}}
+    docs_url: https://www.hirebase.org/docs/api-reference/jobs/search-post
+
   - id: hirebase.jobs.search.count
     added: '2026-11-14'
     verified: '2026-11-14'
