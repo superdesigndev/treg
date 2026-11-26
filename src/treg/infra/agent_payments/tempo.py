@@ -62,6 +62,7 @@ class MppTempoRail:
         self.network = f"tempo:{chain_id}"
         self.pay_to = recipient.lower()
         self.realm = realm.lower()
+        self.proof_host = self.realm
         self._challenge_ttl = timedelta(seconds=challenge_ttl_s)
         # Tempo's hosted RPC takes its console API key in this header, not in the URL. pympp sends
         # every RPC through this client, so its hook is where a verification first costs a call.

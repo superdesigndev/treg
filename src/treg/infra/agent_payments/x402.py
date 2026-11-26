@@ -40,6 +40,7 @@ class X402Rail:
         # SIWX proofs name the public origin, never the request's Host, which a caller controls.
         self._origin = origin.rstrip("/")
         self._domain = (urlsplit(self._origin).hostname or "") if self._origin else ""
+        self.proof_host = self._domain
         self._block_tag = block_tag
         self.pay_to = pay_to.lower()
         self.stripe_network = STRIPE_NETWORK.get(network)
@@ -145,13 +146,17 @@ class X402Rail:
             offered = (accepted["scheme"], accepted["network"], str(accepted["asset"]).lower(),
                        accepted["amount"], str(accepted["payTo"]).lower())
             extra = accepted.get("extra") or {}
-            terms = extra.get(TERMS_KEY, "") if isinstance(extra, dict) else ""
+            terms = extra.get(TERMS_KEY, "") if isinstance(extra, dict) else None
             resource_url = (payload.get("resource") or {}).get("url")
             authorization = payload["payload"].get("authorization") or {}
         except (KeyError, TypeError, AttributeError) as exc:
             raise PaymentRejected("malformed_credential", "PAYMENT-SIGNATURE is not an x402 v2 payment") from exc
+        if not isinstance(terms, str) or (TERMS_KEY in extra and not terms):
+            # Missing terms are a challenge issued without them; terms that are there but not a
+            # token string are a damaged payment, never today's terms.
+            raise PaymentRejected("malformed_credential", "the payment's terms cannot be read")
         # The facilitator checks the payment against the terms it was signed under.
-        requirements = self._requirements(offer, terms if isinstance(terms, str) else "")
+        requirements = self._requirements(offer, terms)
         if offered != (requirements["scheme"], requirements["network"], requirements["asset"].lower(),
                        requirements["amount"], requirements["payTo"].lower()):
             raise PaymentRejected("invalid_challenge", "this payment does not match the offer")

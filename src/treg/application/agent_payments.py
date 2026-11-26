@@ -274,13 +274,14 @@ def _terms_token(resource_url: str, terms: Terms) -> str:
     return f"{body}m{_terms_mac(resource_url, body)}"
 
 
-def signed_terms(token: str, resource_url: str, today: Terms) -> Terms | None:
+def signed_terms(token: str, resource_url: str, today: Terms, *,
+                 siwx_nonce: bool = False) -> Terms | None:
     """The terms a payment or proof was offered for this request: `today`'s when it carries no
     token (a challenge issued before tokens were, or with the switch off: no MPP or x402 terms,
     or a SIWX nonce of pympp's own; dropping one only gets what a fresh challenge offers), or
     None when it carries anything else treg did not issue for this request, or a token that
     expired."""
-    if not token or _LEGACY_NONCE.fullmatch(token):
+    if not token or (siwx_nonce and _LEGACY_NONCE.fullmatch(token)):
         return today
     found = _TERMS.fullmatch(token)
     if found is None:
@@ -444,7 +445,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     # The terms the payer was offered, which treg's own token names: a price that rose since then
     # is not what the payer agreed to.
     signed = signed_terms(verified.terms, paid.offer.resource_url,
-                          Terms(paid.quote_micro, get_settings().agent_payments_fee_bps))
+                          Terms(paid.quote_micro, get_settings().agent_payments_fee_bps),
+                          siwx_nonce=verified.kind == "proof" and verified.protocol == "x402")
     agreed = signed is not None and signed.quote_micro >= paid.quote_micro
     if verified.kind == "proof":
         if not agreed:
@@ -528,11 +530,15 @@ class PriceChanged(Exception):
 async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
                 settlement: Settlement | None, org_id: int, *,
                 used: bool) -> PaymentChallenge | PriceChanged:
-    """The answer for a transfer already sent on terms that no longer buy the call: it is the
-    wallet's credit now, and the answer says how much it paid, its transaction and the credit, so
-    the wallet can match the top-up. Where the paying rail offers this host its zero-amount proof
-    (an x402 proof cannot spend Tempo credit), the 402 asks for that proof; elsewhere a 402 could
-    only be answered by paying again, so it is a 409."""
+    """The answer for a transfer already sent that runs no call: it is the wallet's credit now,
+    and the answer names how much it paid, its transaction and the credit, so the wallet can
+    match the top-up.
+
+    A second transfer under a challenge whose call already ran (`used`) is final: 409, retry
+    nothing. A transfer on terms that no longer buy the call asks only for the paying rail's
+    zero-amount proof, which spends that credit (an x402 proof cannot spend Tempo credit, and a
+    payment challenge would be answered by paying again); where the rail offers this host no
+    proof, the 409 names the host where it does."""
     async with session_maker() as db:
         credit = max(await ledger.balance_of(db, org_id), 0)
     reference = settlement.reference if settlement is not None else ""
@@ -540,26 +546,33 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
                ("X-Treg-Credit-Micro", str(credit))]
     if reference:
         headers.append(("X-Treg-Payment-Reference", reference))
-    reason = "challenge_used" if used else "price_changed"
-    why = ("another payment already used this challenge's terms" if used else
-           "the price of this call changed after this transfer was signed")
-    kept = {"paid_micro": verified.amount_micro, "payment_reference": reference,
+    kept = {"endpoint_id": paid.endpoint_id, "estimated_cost_micro": paid.quote_micro,
+            "paid_micro": verified.amount_micro, "payment_reference": reference,
             "credit_micro": credit}
+    note = f"The transfer is kept as this wallet's credit (${ledger.usd(credit):g})"
+    if used:
+        return PriceChanged({
+            "error": "challenge_used", "reason": "challenge_used", **kept,
+            "message": ("This challenge already ran its call, so this transfer ran none. "
+                        f"{note}. Do not send this request again for that call."),
+        }, headers)
     if rail.proves(paid.offer):
-        asked = await challenge(paid, reason=reason, message=(
-            f"{why}; the transfer is kept as this wallet's credit, which pays this call with the "
-            "zero-amount proof"))
-        asked.detail.update(kept)
-        asked.headers += headers
-        return asked
-    realm = get_settings().public_url.rstrip("/")
+        proof = await _headers([rail], lambda only: only.challenge(paid.offer, pay=False, prove=True))
+        return PaymentChallenge({
+            "error": "payment_required", "reason": "price_changed", **kept,
+            "message": ("The price of this call changed after this transfer was signed. "
+                        f"{note}; do not pay again. Sign this zero-amount proof and send the same "
+                        f"request again to pay the new price (at most "
+                        f"${ledger.usd(paid.quote_micro):g}) from that credit."),
+        }, proof + headers)
+    where = f"https://{rail.proof_host}" if rail.proof_host else get_settings().public_url.rstrip("/")
     return PriceChanged({
-        "error": reason, "reason": reason, "endpoint_id": paid.endpoint_id,
-        "estimated_cost_micro": paid.quote_micro, **kept,
-        "message": (f"{why}. The transfer is kept as this wallet's credit "
-                    f"(${ledger.usd(credit):g}); do not pay again. Send the request to {realm} and "
-                    f"sign its zero-amount proof to pay this call (at most "
-                    f"${ledger.usd(paid.quote_micro):g}) from that credit."),
+        "error": "price_changed", "reason": "price_changed", **kept,
+        "message": ("The price of this call changed after this transfer was signed. "
+                    f"{note}; do not pay again. Send the request to {where} and sign its "
+                    f"zero-amount proof to pay this call (at most ${ledger.usd(paid.quote_micro):g}) "
+                    "from that credit."),
+        "proof_host": rail.proof_host,
     }, headers)
 
 

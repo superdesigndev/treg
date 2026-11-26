@@ -103,8 +103,11 @@ class PaymentRail(Protocol):
 
     def presented(self, headers: Mapping[str, str]) -> str | None: ...
 
-    # Whether this rail can ask for a wallet proof on this request (clients sign one only for the
-    # host they called).
+    # The host this rail offers its wallet proof on ("" for none): clients sign one only for the
+    # host they called.
+    proof_host: str
+
+    # Whether this rail can ask for a wallet proof on this request.
     def proves(self, offer: Offer) -> bool: ...
 
     # The 402 headers: a payment challenge when `pay`, and a wallet proof (first) when `prove` and

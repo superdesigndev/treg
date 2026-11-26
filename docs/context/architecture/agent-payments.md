@@ -305,13 +305,16 @@ headers (`X-Treg-Payment` among them) and no receipt.
   is charged. An MPP payment is checked against its own challenge's amount and terms, not today's:
   a push transfer (`Verified.moved`) is already on chain, so on changed terms it is claimed and
   credited first and then answered `price_changed`, and the wallet pays the new price from that
-  credit with the zero-amount proof. Only the paying rail's proof spends its network's credit (an
-  x402 proof cannot spend Tempo credit), so where that rail offers this host no proof (`Offer.host`
-  is not its realm) a 402 could only be answered by paying again, and the kept transfer answers
-  409 `price_changed` (`PriceChanged`, naming the host whose proof spends it) with no challenge,
-  recorded `refused_by=payment`. Either answer names the top-up the wallet can match:
-  `X-Treg-Payment: paid`, `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and
-  `X-Treg-Credit-Micro`, and `paid_micro`, `payment_reference`, `credit_micro` in the body. A payment is credited less the fee it was offered.
+  credit with the zero-amount proof. That 402 offers only the paying rail's zero-amount proof
+  (`_kept`): only that rail's proof spends its network's credit (an x402 proof cannot spend Tempo
+  credit), and a payment challenge there would be answered by paying again; a wallet whose credit
+  still falls short is then asked to pay through `credit_insufficient`. Where the paying rail
+  offers this host no proof (`Offer.host` is not its `proof_host`), the kept transfer answers 409
+  `price_changed` with no challenge, naming that rail's host (`proof_host`), where its proof spends
+  the credit. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
+  `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and `X-Treg-Credit-Micro`, and `paid_micro`,
+  `payment_reference`, `credit_micro` in the body; it is recorded `refused_by=payment`. A
+  payment is credited less the fee it was offered.
 - On x402 the token rides outside what the wallet signs (EIP-3009 covers the transfer, not
   `extra`), so the HMAC proves only that treg offered those terms. They therefore buy one
   authorization per rail, the first presented while the token is live (`agentpay-terms`, kept
@@ -319,11 +322,14 @@ headers (`X-Treg-Payment` among them) and no receipt.
   second one signed from the same challenge answers `challenge_used` with a fresh challenge. MPP's
   terms sit in the challenge the wallet echoes under pympp's HMAC, and SIWX's in the nonce it
   signs. The claim holds for MPP too, so one challenge runs one call: a second transfer pushed
-  under it is credited and answered `challenge_used` the way a kept transfer is above.
+  under it is credited and answered a final 409 `challenge_used` (no challenge, the top-up named as
+  above), since its call already ran and retrying it would run it again.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
-  data or x402's `extra`, or a SIWX nonce of pympp's own 32 hex digits) is taken on today's terms,
+  data, no `tregTerms` key in x402's `extra`, or, on a SIWX proof only, a nonce of pympp's own 32
+  hex digits) is taken on today's terms,
   which is what a fresh challenge would offer, while anything else that is not a live token treg
-  issued for this request buys nothing and is answered with a fresh challenge. Tokens are issued only
+  issued for this request buys nothing and is answered with a fresh challenge (an x402 `tregTerms`
+  that is present but not a non-empty string is `malformed_credential`). Tokens are issued only
   while `agent_payments_terms_binding` is on (off by default). Switch it on only once every
   instance runs the reading code: an instance that cannot read a token refuses an MPP credential
   carrying one before anything is recorded, which loses a pushed transfer. Rolling back reverses
