@@ -10,7 +10,11 @@ them), so the spend is counted where the call count already is: on the day's row
 team's, in the same conditional update that takes the attempt.
 
 One BIGINT NOT NULL column with a constant default on a table of one row per day: a catalog-only
-ALTER on Postgres, no rewrite. Rows written before this revision read 0.
+ALTER on Postgres, no rewrite. Each existing day's row is then given what that day's stored
+comparisons cost (B is paid whether it failed or not), so a day already under way when the
+revision lands keeps what it spent; what a team deleted earlier that day cost is gone. A
+collector of an earlier build that runs after this revision still adds nothing to the column, so
+the old cron must not run between this revision and the new build's cron.
 
 Rollback: an earlier build's `python -m treg upgrade` refuses a schema newer than itself, so the
 code is withdrawn by a forward release that keeps this revision; `downgrade` drops the column.
@@ -38,6 +42,12 @@ def upgrade() -> None:
     if present is None or "spent_micro" not in present:
         op.add_column("compareattemptday", sa.Column("spent_micro", sa.BigInteger(), nullable=False,
                                                      server_default="0"))
+    # `day` is `YYYYMMDD` in UTC; `created_at` is naive UTC.
+    day_of = ("to_char(c.created_at, 'YYYYMMDD')" if op.get_context().dialect.name == "postgresql"
+              else "strftime('%Y%m%d', c.created_at)")
+    op.execute(f"UPDATE compareattemptday SET spent_micro = COALESCE(("
+               f"SELECT SUM(c.b_cost_micro) FROM callcomparison c WHERE {day_of} = compareattemptday.day"
+               f"), 0)")
 
 
 def downgrade() -> None:

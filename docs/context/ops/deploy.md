@@ -388,6 +388,10 @@ any that must not be asked (`TREG_COMPARE_EXCLUDE`).
 Each run prints one JSON line; `skip_reasons` counts, per reason, the candidates that stopped
 before a call (`no_marker`, `a_not_archived`, `b_unavailable`, ...), so a run
 that calls nobody says where its candidates stopped.
+Migration 0134 moves the day's spend onto `compareattemptday.spent_micro` and fills each existing
+day from its stored comparisons; a job of an earlier build adds nothing to it, so no earlier job
+may run once that migration has: pause the cron before the web deploy that runs it and resume it
+on the new build.
 Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
 removes orphaned rows, which removing the cron would stop.
 
