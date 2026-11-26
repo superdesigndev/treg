@@ -3820,6 +3820,24 @@ async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_payi
     assert payment_id and draw is True
 
 
+@pytest.mark.parametrize("store_answers", [True, False])
+async def test_a_wallet_never_pays_again_for_credit_the_store_does_not_show(
+        org_id, store, monkeypatch, store_answers):
+    """Whether a proof draws credit or settles a transfer reads the database alone: a store
+    that times out, or a counter read before a refill moved the balance onto it, must not make
+    the wallet pay for credit the team has."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    if not store_answers:
+        async def silent(org_id):
+            return None
+        monkeypatch.setattr(store, "allowance_state", silent)
+    proof = Verified(protocol="x402", network="base", proof_id=uuid4().hex, payer="0xabc",
+                     amount_micro=50_000, asset="0xusdc", pay_to="0xtreg",
+                     expires_at=datetime(2099, 1, 1))
+    assert (await agent_payments._claim(proof, org_id, 50_000))[1] is True
+
+
 async def test_a_team_off_the_allowance_is_not_shown_what_its_counter_holds(
         org_id, store, monkeypatch):
     """No call of a team taken off the allowance takes from its counter, so what the counter

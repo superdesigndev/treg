@@ -727,8 +727,14 @@ a store read, taken before a session holds a connection or a lock where the call
 several teams at once in one round (`counter_offers`). `GET /orgs/{id}/balance`, the billing
 state the dashboard reads, the CLI's home, the Sheets panel's teams, the team choice on the MCP
 consent page, a paying wallet's `X-Treg-Credit-Micro`, and the arenas' quotes and start checks
-read this figure; the route's `holds` lists only calls on holds of their own. The column itself
-is unchanged and the invariant below still holds for it.
+read this figure; the route's `holds` lists only calls on holds of their own.
+
+Whether a paying wallet's proof draws credit or settles a transfer is the one decision that reads
+otherwise: settling moves the payer's money for good, so it reads `allowance.credit_bound`, the
+balance plus the whole allowance hold less what queued charges spent, from the database alone in
+one statement. It may count money a call cannot reach now; that call is refused like any other
+and the wallet pays then, never twice for credit the team has. The column itself is unchanged and
+the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 
