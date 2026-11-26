@@ -12,7 +12,8 @@ team's, in the same conditional update that takes the attempt.
 One BIGINT NOT NULL column with a constant default on a table of one row per day: a catalog-only
 ALTER on Postgres, no rewrite. Each existing day's row is then given what that day's stored
 comparisons cost (B is paid whether it failed or not), so a day already under way when the
-revision lands keeps what it spent; what a team deleted earlier that day cost is gone. A
+revision lands keeps what it spent; what a team deleted earlier that day cost is gone, so a
+day whose `attempts` exceed its stored rows is left off until the next UTC day (deploy notes). A
 collector of an earlier build that runs after this revision still adds nothing to the column, so
 the old cron must not run between this revision and the new build's cron.
 
