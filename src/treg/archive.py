@@ -544,9 +544,13 @@ async def drain() -> None:
     deadline = loop.time() + _STATS_DRAIN_S
     task, _stat_flush_task = _stat_flush_task, None
     if task is not None and not task.done() and task.get_loop() is loop:
-        # A flush in flight holds its deltas locally until it commits or puts them back.
+        # A flush in flight holds its deltas locally until it commits or puts them back. Waiting
+        # for it is bounded by the budget; one still finishing puts its deltas back later and
+        # re-arms the timer then.
         task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))
+        if not task.done():
+            task.add_done_callback(lambda _: _stat_deltas and _arm_stat_flush())
     _stat_rows.clear()
     while True:
         try:
@@ -639,6 +643,10 @@ _STATS_LOCK_TIMEOUT_MS = 200
 # still lands before shutdown, and shutdown is never held longer than this.
 _STATS_DRAIN_S = 5.0
 _STATS_DRAIN_RETRY_S = 0.25
+# A cancelled flush waits this long for its endpoint transaction in flight to say whether it
+# committed. `lock_timeout` bounds only lock waits; a stalled connection or COMMIT is not bounded
+# by the database, so past this the transaction is abandoned and its connection invalidated.
+_STATS_CANCEL_WAIT_S = 2.0
 
 
 def _restore_deltas(deltas: dict[str, dict]) -> None:
@@ -714,6 +722,30 @@ async def _land_and_commit(s, endpoint_id: str, d: dict, *, postgres: bool,
     return True
 
 
+async def _settle_cancelled_step(s, step: asyncio.Future) -> bool | None:
+    """After the flush is cancelled: whether the endpoint transaction in flight committed (True),
+    did not (False), or did not finish within `_STATS_CANCEL_WAIT_S` (None; it is then cancelled
+    and its connection invalidated, so nothing waits on the database). Further cancellations are
+    absorbed until then; the caller re-raises."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _STATS_CANCEL_WAIT_S
+    while not step.done() and (left := end - loop.time()) > 0:
+        try:
+            await asyncio.wait({step}, timeout=left)
+        except asyncio.CancelledError:
+            continue
+    if step.done():
+        return not step.cancelled() and step.exception() is None and bool(step.result())
+    step.cancel()
+    for cleanup in (asyncio.wait({step}, timeout=_STATS_CANCEL_WAIT_S),
+                    asyncio.wait_for(s.invalidate(), _STATS_CANCEL_WAIT_S)):
+        try:
+            await cleanup
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - best effort, already abandoned
+            pass
+    return None
+
+
 async def flush_stats(*, deadline: float | None = None) -> None:
     """Land every pending delta, one short transaction per endpoint, in endpoint order so two
     processes flushing the same endpoints cannot deadlock. No transaction holds one endpoint's row
@@ -765,14 +797,13 @@ async def flush_stats(*, deadline: float | None = None) -> None:
                 try:
                     landed = await asyncio.shield(step)
                 except asyncio.CancelledError:
-                    while not step.done():
-                        try:
-                            await asyncio.shield(step)
-                        except asyncio.CancelledError:
-                            continue
-                        except Exception:  # noqa: BLE001 - read from the task below
-                            break
-                    if not step.cancelled() and step.exception() is None and step.result():
+                    committed = await _settle_cancelled_step(s, step)
+                    if committed is None:
+                        # Unknown outcome: count it at most once rather than maybe twice.
+                        _log.warning("archive running totals: an endpoint transaction did not "
+                                     "finish within %ss of cancellation; its delta is dropped",
+                                     _STATS_CANCEL_WAIT_S)
+                    if committed is not False:
                         del unlanded[endpoint_id]
                     raise
                 if landed:

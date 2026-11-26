@@ -1534,10 +1534,11 @@ async def test_drain_stops_inside_its_budget_however_many_rows_are_busy(
 
 async def test_drain_counts_the_flush_it_takes_over_against_its_budget(
         clients: AsyncClient, monkeypatch):
-    """drain() waits out the timer's endpoint in flight inside its own budget: when that wait
-    uses it up, the in-flight endpoint still commits exactly once, the rest stay pending for the
-    re-armed timer, and the later flush lands them exactly once."""
+    """drain() waits out the timer's endpoint in flight only inside its own budget: when that
+    wait uses it up drain() returns, the in-flight endpoint still commits exactly once, the rest
+    go back pending with the timer re-armed, and the later flush lands them exactly once."""
     import asyncio
+    import time
 
     monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
     monkeypatch.setattr(archive, "_STATS_DRAIN_S", 0.3)
@@ -1558,9 +1559,14 @@ async def test_drain_counts_the_flush_it_takes_over_against_its_budget(
 
     if archive._stat_flush_task is not None:
         archive._stat_flush_task.cancel()
-    archive._stat_flush_task = asyncio.create_task(archive.flush_stats())
+    taken_over = asyncio.create_task(archive.flush_stats())
+    archive._stat_flush_task = taken_over
     await started.wait()
+    began = time.monotonic()
     await archive.drain()
+    assert time.monotonic() - began < 0.3 + 0.15
+    await asyncio.gather(taken_over, return_exceptions=True)
+    await asyncio.sleep(0)                              # its done-callback re-arms the timer
 
     got = await _stat_snapshots()
     assert (got["stats.a"], got["stats.b"]) == ((2, 20), (1, 10))
@@ -1570,6 +1576,48 @@ async def test_drain_counts_the_flush_it_takes_over_against_its_budget(
     got = await _stat_snapshots()
     assert (got["stats.a"], got["stats.b"]) == ((2, 20), (2, 20))
     assert archive._stat_deltas == {}
+
+
+async def test_a_cancelled_flush_does_not_wait_forever_on_a_stalled_transaction(
+        clients: AsyncClient, monkeypatch):
+    """lock_timeout bounds only lock waits. A transaction stalled on the connection is given
+    `_STATS_CANCEL_WAIT_S` after cancellation, then abandoned: its delta is dropped (counted at
+    most once), the endpoints not started go back pending, and the cancellation goes through."""
+    import asyncio
+    import time
+
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    monkeypatch.setattr(archive, "_STATS_CANCEL_WAIT_S", 0.1)
+    for ep in ("stats.a", "stats.b"):
+        _pending_stat(ep)
+    await archive.flush_stats()
+    for ep in ("stats.a", "stats.b"):
+        _pending_stat(ep)
+
+    real_land = archive._land_stat
+    started = asyncio.Event()
+    async def stalled_a(s, endpoint_id, d, **kw):
+        if endpoint_id == "stats.a":
+            started.set()
+            await asyncio.sleep(3600)                   # a connection that never answers
+        await real_land(s, endpoint_id, d, **kw)
+    monkeypatch.setattr(archive, "_land_stat", stalled_a)
+
+    flushing = asyncio.create_task(archive.flush_stats())
+    await started.wait()
+    began = time.monotonic()
+    flushing.cancel()
+    flushing.cancel()                                   # a second cancellation is absorbed too
+    with pytest.raises(asyncio.CancelledError):
+        async with asyncio.timeout(2):
+            await flushing
+    assert time.monotonic() - began < 1.0
+    assert set(archive._stat_deltas) == {"stats.b"}
+
+    monkeypatch.setattr(archive, "_land_stat", real_land)
+    await archive.flush_stats()
+    got = await _stat_snapshots()
+    assert (got["stats.a"], got["stats.b"]) == ((1, 10), (2, 20))
 
 
 async def test_drain_budget_holds_against_real_row_locks(clients: AsyncClient, monkeypatch):
