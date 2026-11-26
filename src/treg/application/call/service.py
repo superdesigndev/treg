@@ -1412,11 +1412,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         the child cycle's own failure."""
         caller_org = _required_caller_org(caller)
 
-        def _attempt(code: int = status, *, refused: str | None = "capacity",
-                     failure: CallFailure | None = None) -> dict | None:
-            # Recorded once the outcome is known, so the row is the answer the caller got.
-            return _audit(code, charged_micro=0, refused_by=refused, error_response=note,
-                          defer_analytics=True, failure=failure)
+        def _attempt(failure: CallFailure | None = None) -> dict | None:
+            # Recorded once the outcome is known, so the row is the answer the caller got: the
+            # attempt's own capacity refusal, or the child's refusal (a reservation's balance or
+            # cap, an org endpoint quota) with its own kind and detail.
+            if failure is None:
+                return _audit(status, charged_micro=0, refused_by="capacity", error_response=note,
+                              defer_analytics=True)
+            renderings = _safe_secret_renderings(tool, secrets)
+            return _audit(
+                failure.status_code, charged_micro=0, defer_analytics=True, failure=failure,
+                refused_by=("policy" if failure.kind in routed._QUOTA_REFUSALS
+                            else _refusal_kind(failure.status_code)),
+                error_response=(_ERROR_MASKING_FAILED if renderings is None else
+                                _redact_snippet(f"treg: {failure.detail}", renderings,
+                                                _ERROR_RESPONSE_MAX)))
         try:
             outcome = await overflow_cycle.maybe_overflow(
                 mk=mk, caller=caller, meta=meta, call_ref=call_ref, status=status,
@@ -1430,8 +1440,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             raise
         except CallFailure as exc:
             # The child's own reservation refusal: the caller gets it, unless `keep_refusal`.
-            _capture(_attempt() if keep_refusal else
-                     _attempt(exc.status_code, refused=_refusal_kind(exc.status_code), failure=exc))
+            _capture(_attempt() if keep_refusal else _attempt(exc))
             request.state.call_cost_micro = 0
             if exc.kind in _MEMBER_SPEND_REFUSALS:
                 await return_daily_slot(caller, slot_day)

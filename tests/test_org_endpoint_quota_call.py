@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlmodel import select
 
-from treg import archive
+from treg import archive, audit
 from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.infra import org_endpoint_quota
 from treg.infra.db import session_maker
-from treg.models import Hold, LedgerEntry
+from treg.models import CallRecord, Hold, LedgerEntry
 
 from test_archive import serve  # noqa: F401
 from test_bounceban_async import (
@@ -209,6 +209,14 @@ async def test_overflow_checks_original_endpoint_once(clients, monkeypatch, over
     assert used[EP] == limit and len(seen) == limit
     if not limit:
         await _assert_no_money()
+    if skip_direct and not limit:
+        # The record is the quota refusal the caller got, not the exhausted account it began as.
+        await audit.drain()
+        async with session_maker() as db:
+            row = (await db.execute(select(CallRecord).where(CallRecord.method != "OVERFLOW")
+                                    .order_by(CallRecord.id.desc()))).scalars().first()
+        assert (row.status_code, row.refused_by) == (429, "policy")
+        assert "org_endpoint_quota_exceeded" in (row.error_response or "")
 
 
 async def test_exhausted_routed_parent_cannot_fallback(
