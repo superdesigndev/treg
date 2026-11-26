@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import urlsplit
 
 FILL = "FILL_ME"
@@ -38,14 +38,22 @@ def resolve_secret_path(base: Path, rel: str) -> Path:
     The path comes from the contract, which is uploaded content on the server and a stranger's file
     in a downloaded skill, and its bytes become a secret. So it must name a file inside `base` after
     symlinks resolve: an absolute path, `..` or a link out raises SecretPathError."""
-    if not isinstance(rel, str) or not rel or Path(rel).is_absolute() or "\0" in rel:
+    if not isinstance(rel, str) or not rel or "\0" in rel:
         raise SecretPathError(f"secret file {rel!r} must be a path inside the skill folder")
-    exact = base / rel
+    normalized = rel.replace("\\", "/")
+    if (
+        PurePosixPath(normalized).is_absolute()
+        or PureWindowsPath(rel).is_absolute()
+        or bool(PureWindowsPath(rel).drive)
+        or Path(normalized).is_absolute()
+    ):
+        raise SecretPathError(f"secret file {rel!r} must be a path inside the skill folder")
+    exact = base / normalized
     if not _inside(base, exact):
         raise SecretPathError(f"secret file {rel!r} must be a path inside the skill folder")
     if exact.exists():
         return exact
-    parts = Path(rel).parts
+    parts = PurePosixPath(normalized).parts
     if parts and parts[0] in _SECRET_DIRS:
         for sd in _SECRET_DIRS:
             alt = base.joinpath(sd, *parts[1:])
@@ -78,7 +86,7 @@ def _matches_kind(f: Path, kind: str) -> bool:
     """Does a `.secret/` file look like the requested kind?
     oauth/secret_file → a JSON token blob (has token/access_token/refresh_token);
     env/cli_auth → a plain-text (non-JSON) file. This excludes client_secret.json from oauth."""
-    text = f.read_text(errors="replace")
+    text = f.read_text(encoding="utf-8", errors="replace")
     if f.name.endswith(".json"):
         try:
             data = json.loads(text)
@@ -116,7 +124,7 @@ def scaffold_skill(skill_dir: str | Path) -> dict:
     for cand in _RECIPE_FILES:
         f = p / cand
         if f.exists():
-            recipe = f.read_text(errors="replace")
+            recipe = f.read_text(encoding="utf-8", errors="replace")
             break
 
     secrets: list[dict] = []
@@ -125,7 +133,7 @@ def scaffold_skill(skill_dir: str | Path) -> dict:
         if d.is_dir():
             for f in sorted(d.iterdir()):
                 if f.is_file():
-                    text = f.read_text(errors="replace")
+                    text = f.read_text(encoding="utf-8", errors="replace")
                     secrets.append({"local_name": f.name, "value": text, "kind": _guess_kind(f.name, text)})
 
     # One tool stub bound to every discovered secret. The agent fixes base_url + per-binding
@@ -149,7 +157,7 @@ def _read_recipe(p: Path) -> str:
     for cand in _RECIPE_FILES:
         f = p / cand
         if f.exists():
-            return f.read_text(errors="replace")
+            return f.read_text(encoding="utf-8", errors="replace")
     return ""
 
 
@@ -159,7 +167,7 @@ def _guess_base_url(p: Path) -> tuple[str | None, list[str]]:
     verify (a real base often carries a version path like /v1 we can't infer reliably)."""
     text = _read_recipe(p)
     for py in sorted(p.glob("*.py")):
-        text += "\n" + py.read_text(errors="replace")
+        text += "\n" + py.read_text(encoding="utf-8", errors="replace")
     hosts: list[str] = []
     for m in _URL_RE.finditer(text):
         u = urlsplit(m.group(0))
@@ -182,7 +190,7 @@ def _guess_base_url(p: Path) -> tuple[str | None, list[str]]:
 def _oauth_secret_field(f: Path) -> str:
     """Google-style token.json stores the access token under `token`; most others `access_token`."""
     try:
-        data = json.loads(f.read_text(errors="replace"))
+        data = json.loads(f.read_text(encoding="utf-8", errors="replace"))
     except (json.JSONDecodeError, OSError):
         return "access_token"
     if isinstance(data, dict) and "access_token" not in data and "token" in data:
@@ -222,7 +230,7 @@ def auto_bindings(base: Path, files: list[Path]) -> tuple[list[dict], list[dict]
     creds = [f for f in files if not _is_app_config(f)]
     if not creds:
         return [], []
-    kinds = {f: _guess_kind(f.name, f.read_text(errors="replace")) for f in creds}
+    kinds = {f: _guess_kind(f.name, f.read_text(encoding="utf-8", errors="replace")) for f in creds}
     primary = next((f for f in creds if kinds[f] == "oauth"), creds[0])
     single = len(creds) == 1
     secrets: list[dict] = []
@@ -234,7 +242,7 @@ def auto_bindings(base: Path, files: list[Path]) -> tuple[list[dict], list[dict]
         while name in seen:  # two files with the same stem must not collide into one local_name
             name = f"{name}-{len(seen)}"
         seen.add(name)
-        secrets.append({"file": str(f.relative_to(base)), "name": name, "kind": kind})
+        secrets.append({"file": f.relative_to(base).as_posix(), "name": name, "kind": kind})
         if f is primary:
             bindings.append(_default_binding(name, kind, f))  # Authorization: Bearer {secret}
         else:  # a secondary credential -> its own header, value injected as-is (no Bearer)
@@ -295,7 +303,7 @@ def load_contract(skill_dir: str | Path) -> dict | None:
     if not f.exists():
         return None
     try:
-        contract = json.loads(f.read_text())
+        contract = json.loads(f.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"{CONTRACT_FILE} is not valid JSON: {exc}") from exc
     if contract.get("cli") is not None:
@@ -321,7 +329,7 @@ def contract_to_skill_payload(skill_dir: str | Path, contract: dict) -> dict:
             f = resolve_secret_path(p, s["file"])
             if not f.exists():
                 raise FileNotFoundError(f"{CONTRACT_FILE} references a missing secret file: {f}")
-            value = f.read_text().strip()  # a trailing newline becomes an illegal header value (as build_payload does)
+            value = f.read_text(encoding="utf-8").strip()  # a trailing newline becomes an illegal header value (as build_payload does)
         elif s.get("env"):                     # env-sourced (a treg-import contract) → read from the environment
             import os
             value = os.environ.get(s["env"])

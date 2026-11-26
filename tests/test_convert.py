@@ -210,3 +210,97 @@ def test_a_link_that_stays_inside_the_skill_folder_resolves(tmp_path):
     (d / ".secrets" / "real").write_text("tok")
     (d / ".secrets" / "alias").symlink_to(d / ".secrets" / "real")
     assert resolve_secret_path(d, ".secret/alias").read_text() == "tok"
+
+
+def test_auto_bindings_always_emits_posix_paths(tmp_path):
+    from treg.convert import auto_bindings
+
+    d = tmp_path / "svc"
+    nested = d / ".secrets" / "nested"
+    nested.mkdir(parents=True)
+    key_file = nested / "token.json"
+    key_file.write_text('{"access_token": "tok"}', encoding="utf-8")
+
+    secrets, _ = auto_bindings(d, [key_file])
+    assert secrets == [{"file": ".secrets/nested/token.json", "name": "svc", "kind": "secret_file"}]
+
+
+def test_resolve_secret_path_normalizes_windows_backslashes(tmp_path):
+    d = tmp_path / "skill"
+    nested = d / ".secrets" / "nested"
+    nested.mkdir(parents=True)
+    target = nested / "token.json"
+    target.write_text("tok", encoding="utf-8")
+
+    assert resolve_secret_path(d, r".secrets\nested\token.json") == target
+    assert resolve_secret_path(d, r".secret\nested\token.json") == target
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        r"\etc\hosts",
+        r"..\outside.txt",
+        r".secret\..\..\outside.txt",
+        r"C:\Windows\win.ini",
+        "C:secret.txt",
+    ],
+)
+def test_resolve_secret_path_rejects_backslash_and_drive_escapes(tmp_path, rel):
+    d = tmp_path / "skill"
+    (d / ".secrets").mkdir(parents=True)
+    with pytest.raises(SecretPathError):
+        resolve_secret_path(d, rel)
+
+
+def test_contract_and_secret_files_read_as_utf8(tmp_path):
+    import json
+
+    from treg import skills as sk
+
+    d = tmp_path / "svc"
+    (d / ".secrets").mkdir(parents=True)
+    # Include byte 0x81 in UTF-8 (\u0101 = b"\xc4\x81"), which fails under cp1252 if encoding="utf-8" is omitted.
+    (d / "SKILL.md").write_text("# Svc — API \u0101\nhttps://api.svc.example/v1\n", encoding="utf-8")
+    (d / ".secrets" / "token").write_text("secret-\u0101\n", encoding="utf-8")
+
+    generated = generate_contract(d)
+    assert generated["secrets"][0]["file"] == ".secrets/token"
+
+    contract = {
+        "name": "svc",
+        "base_url": "https://api.svc.example/v1",
+        "description": "caf\u00e9 \u0101",
+        "secrets": [{"file": r".secret\token", "name": "svc", "kind": "env"}],
+        "bindings": [{"secret": "svc", "injector": "env"}],
+    }
+    (d / "treg.json").write_text(json.dumps(contract, ensure_ascii=False), encoding="utf-8")
+
+    loaded = load_contract(d)
+    assert loaded is not None and loaded["description"] == "caf\u00e9 \u0101"
+    payload = contract_to_skill_payload(d, loaded)
+    assert payload["secrets"][0]["value"] == "secret-\u0101"
+
+    [det] = sk.scan_skills(str(tmp_path))
+    assert sk.build_payload(det, {})["secrets"][0]["value"] == "secret-\u0101"
+
+
+def test_sync_contract_secret_normalizes_to_posix_paths(tmp_path):
+    import json
+
+    from treg.cli import _sync_contract_secret
+
+    d = tmp_path / "svc"
+    nested = d / ".secrets" / "nested"
+    nested.mkdir(parents=True)
+    src = nested / "token"
+    src.write_text("tok", encoding="utf-8")
+    treg_json = d / "treg.json"
+    treg_json.write_text(
+        json.dumps({"secrets": [{"file": r".secrets\nested\token", "name": "old", "kind": "env"}]}),
+        encoding="utf-8",
+    )
+
+    _sync_contract_secret(d, src, "new", "bearer")
+    saved = json.loads(treg_json.read_text(encoding="utf-8"))
+    assert saved["secrets"] == [{"file": ".secrets/nested/token", "name": "new", "kind": "bearer"}]
