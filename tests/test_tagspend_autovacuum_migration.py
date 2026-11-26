@@ -13,6 +13,12 @@ from treg.infra import db
 
 
 migration = import_module("treg.alembic.versions.0136_tagspend_autovacuum")
+# Stated here, not read from the revision, so a wrong value in the revision fails the test.
+EXPECTED = {
+    "autovacuum_vacuum_scale_factor": "0.01",
+    "autovacuum_vacuum_insert_scale_factor": "0.01",
+    "autovacuum_analyze_scale_factor": "0.02",
+}
 
 
 async def _apply(direction):
@@ -37,9 +43,9 @@ async def test_the_thresholds_are_set_and_reset(clients):
     if db._engine.dialect.name != "postgresql":
         pytest.skip("SQLite has no autovacuum; the revision only records itself there")
     await _apply("upgrade")
-    assert await _options() == migration.SETTINGS
+    assert await _options() == EXPECTED
     await _apply("upgrade")          # a rerun sets the same values
-    assert await _options() == migration.SETTINGS
+    assert await _options() == EXPECTED
     await _apply("downgrade")
     assert await _options() == {}
     await _apply("upgrade")
