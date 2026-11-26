@@ -2722,7 +2722,7 @@ async def _resolve_catalog_tier(
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
-            call_cost.require_rows(ep, pricing.request_data)
+            call_cost.require_rows(ep, pricing.request_data, body)
             call_cost.require_entities(ep, pricing.request_data)
             call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
         if service == "contactout":

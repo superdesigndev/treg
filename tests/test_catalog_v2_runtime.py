@@ -532,6 +532,39 @@ def test_platform_max_bounds_treg_key_only_and_must_sit_below_max():
             row(reserve={"rows": bad})
 
 
+QUERY_ROWS = {"param": "query.limit", "default": {"value": 30, "source": "docs"}, "max": 1000, "platform_max": 100}
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"limit": 1000}', b'{"limit": 5, "location": "US"}', b'{"limit": null}',
+    b"limit=1000", b"location=US&limit=5", b"limit[]=5",
+])
+def test_treg_key_refuses_a_query_rows_parameter_sent_in_the_body(raw):
+    ep = row({"queryParams": {"limit": {"type": "integer"}, "location": {"type": "string"}}},
+             reserve={"rows": QUERY_ROWS})
+    request = settlement.request_evidence([("limit", "5")], raw)
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_rows(ep, request, raw)
+    assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "body.limit"
+    assert "query parameter limit" in exc.value.detail["message"]
+
+
+@pytest.mark.parametrize("raw", [
+    b"", b"{}", b'{"location": "US", "active_only": true}', b'{"filters": {"limit": 1000}}',
+    b'[{"limit": 1000}]', b"location=US", b"not a form", "limit=5".encode("utf-16"),
+])
+def test_a_body_without_the_query_rows_name_passes(raw):
+    ep = row({"queryParams": {"limit": {"type": "integer"}}}, reserve={"rows": QUERY_ROWS})
+    cost.require_rows(ep, settlement.request_evidence([("limit", "5")], raw), raw)
+    cost.require_rows(ep, settlement.request_evidence([], raw), raw)
+
+
+def test_a_body_rows_parameter_may_be_sent_in_the_body():
+    rows = {"param": "body.limit", "default": {"value": 3, "source": "docs"}, "max": 1000, "platform_max": 100}
+    ep = row({"body": {"limit": {"type": "integer"}}}, reserve={"rows": rows})
+    cost.require_rows(ep, settlement.request_evidence([], b'{"limit": 5}'), b'{"limit": 5}')
+
+
 def test_treg_key_refuses_a_plugin_request_priced_above_the_max(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.hold = lambda request: request.body["n"]

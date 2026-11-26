@@ -4361,3 +4361,36 @@ async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves
         assert len(relayed) == 1 and await _balance(clients) == 1_000_000
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("body,content_type", [
+    (b'{"limit": 100}', "application/json"),
+    (b"limit=100", "application/x-www-form-urlencoded"),
+])
+async def test_treg_key_refuses_a_query_rows_parameter_in_a_get_body(clients, monkeypatch, body, content_type):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "PLATFORM-HUNTER")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append(request)
+        return _dropleads_response(200, {"data": {"emails": []}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        refused = await clients.request("GET", "/call/hunter.companies.emails", params={"domain": "example.com"},
+                                        content=body, headers={"content-type": content_type})
+        assert refused.status_code == 400, refused.text
+        assert refused.json()["detail"]["parameter"] == "body.limit"
+        assert not seen and await _balance(clients) == before
+        passed = await clients.request("GET", "/call/hunter.companies.emails",
+                                       params={"domain": "example.com", "limit": "10"})
+        assert passed.status_code == 200, passed.text
+        saved = await clients.post("/secrets", json={"name": "hunter", "value": "OWN-HUNTER"})
+        assert saved.status_code == 200, saved.text
+        own = await clients.request("GET", "/call/hunter.companies.emails", params={"domain": "example.com"},
+                                    content=body, headers={"content-type": content_type})
+        assert own.status_code == 200, own.text
+    get_settings.cache_clear()
