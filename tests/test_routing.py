@@ -1139,6 +1139,88 @@ async def test_sampled_provider_only_filters_shared_key_routes(clients, monkeypa
         get_settings.cache_clear()
 
 
+async def test_a_zero_provider_sample_names_the_sample_in_the_drop_and_the_quote(clients, monkeypatch):
+    """A 0% sample is a deployment-wide omission: the live plan and the catalog quote say so in the
+    same words, instead of an opaque 'not selected' next to a list that still ranks the child."""
+    from treg.domain.catalog.routing.plan import SAMPLE_ZERO_WHY, sampled_provider_quote_skip
+    from treg.routers.catalog import _quote_skip
+
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
+    monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":0}')
+    get_settings.cache_clear()
+    try:
+        ep = catalog_store.load().by_id["treg.people.phone.find"]
+        options = call_route.RouteOptions.from_headers(lambda key: None)
+        identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
+
+        class Caller:
+            org_id = 1
+            org = SimpleNamespace(id=1, platform_overflow_disabled=False)
+
+        plan = await call_route.build_plan(ep, identity, Caller(), options)
+        why = SAMPLE_ZERO_WHY.format(provider="leadocean")
+        assert {"endpoint_id": "leadocean.people.phone.find", "why": why} in plan.dropped
+        assert all(c.endpoint["provider"] != "leadocean" for c in plan.candidates)
+        row = catalog_store.load().by_id["leadocean.people.phone.find"]
+        assert _quote_skip(row, catalog_store.load()) == why
+        assert sampled_provider_quote_skip("leadocean", {"leadocean": 0}) == why
+        assert sampled_provider_quote_skip("leadocean", {"leadocean": 50}) is None
+        assert sampled_provider_quote_skip("leadocean", {}) is None
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_partial_provider_sample_names_the_request_and_keeps_the_quote(clients, monkeypatch):
+    """A mid-range sample can omit one question and still list the child: the drop names the
+    request, and the catalog quote does not skip a child the router may call for another identity."""
+    from treg.domain.catalog.routing.plan import (
+        SAMPLE_REQUEST_WHY, sampled_provider_allowed, sampled_provider_quote_skip,
+    )
+    from treg.routers.catalog import _quote_skip
+
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
+    monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":50}')
+    get_settings.cache_clear()
+    try:
+        ep = catalog_store.load().by_id["treg.people.phone.find"]
+        options = call_route.RouteOptions.from_headers(lambda key: None)
+        percentages = {"leadocean": 50}
+
+        class Caller:
+            org_id = 1
+            org = SimpleNamespace(id=1, platform_overflow_disabled=False)
+
+        omitted = next(
+            {"linkedin_url": f"https://www.linkedin.com/in/example-{i}"}
+            for i in range(200)
+            if not sampled_provider_allowed(
+                "leadocean", percentages, org_id=1, capability="people.phone.find",
+                identity={"linkedin_url": f"https://www.linkedin.com/in/example-{i}"},
+            )
+        )
+        kept = next(
+            {"linkedin_url": f"https://www.linkedin.com/in/example-{i}"}
+            for i in range(200)
+            if sampled_provider_allowed(
+                "leadocean", percentages, org_id=1, capability="people.phone.find",
+                identity={"linkedin_url": f"https://www.linkedin.com/in/example-{i}"},
+            )
+        )
+        dropped_plan = await call_route.build_plan(ep, omitted, Caller(), options)
+        assert {"endpoint_id": "leadocean.people.phone.find", "why": SAMPLE_REQUEST_WHY} in dropped_plan.dropped
+        assert all(c.endpoint["provider"] != "leadocean" for c in dropped_plan.candidates)
+        kept_plan = await call_route.build_plan(ep, kept, Caller(), options)
+        assert any(c.endpoint["provider"] == "leadocean" for c in kept_plan.candidates)
+        assert all(d["endpoint_id"] != "leadocean.people.phone.find" for d in kept_plan.dropped)
+        row = catalog_store.load().by_id["leadocean.people.phone.find"]
+        assert _quote_skip(row, catalog_store.load()) is None
+        assert sampled_provider_quote_skip("leadocean", percentages) is None
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_sampled_provider_changes_routed_call_not_direct_call(clients, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")

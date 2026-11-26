@@ -1348,7 +1348,11 @@ an invalid extra never disables the primary.
     `health`, the call event's route summary) without acting; `off` neither records nor reads. An
     unreadable store reads as no evidence. These guards do not replace the capacity system: 429 and
     402 stay with rate windows and exhausted accounts. An operator can still take a provider out by
-    hand with `route_provider_sample_pct`.
+    hand with `route_provider_sample_pct`. A 0% sample skips that provider in every shared-key
+    routed plan and in the catalog quote, with why `{provider} is not in the routed provider
+    sample on this deployment`; a mid-range sample is stable per question and, when it omits a
+    child, says `not in this request's provider sample`. Direct calls and a team's own key are
+    unaffected.
   - **Ceiling.** `X-Treg-Route-Max-Cost` (default `DEFAULT_MAX_COST_MICRO`, or the contract's
     `default_max_cost_usd`) bounds the sum; each child receives the remaining ceiling and the shared
     reservation gate checks its estimate with margin, including overflow. A budget refusal skips that
