@@ -1,0 +1,145 @@
+provider: storeradar
+source:
+  docs: https://www.storeradar.io/api/docs
+  openapi: https://www.storeradar.io/api/v1/openapi.json
+  curated: 2026-11-26
+limits: "Per account and endpoint: search 20 a minute and 1,000 a day, count 30 and 2,000, describe 10 and 500, filter options 60 and 3,000, store lookup 30 and 500. StoreRadar Annual gets 5 times these. 120 requests a minute per IP across the API."
+pricing_url: https://www.storeradar.io/pricing
+proposed_capabilities:
+  companies.search.summary: Summarize a company search with its size and most common values
+  companies.search.filters: List the accepted values for a company-search filter
+defaults:
+  provenance: {source: docs, source_url: 'https://www.storeradar.io/pricing', checked: '2026-11-26', confidence: documented}
+endpoints:
+  - id: storeradar.companies.search
+    added: '2026-11-26'
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /stores/search
+    name: "Search Shopify stores"
+    summary: "Find Shopify stores by app, technology, theme, country, industry, product count and search traffic, with domain, contacts, apps and technologies per store"
+    note: "A page holds at most 20 stores and one query reaches about 500 rows: page with `cursor`. A free token returns anonymized domains and contacts, and below 25 matches it returns no rows, only a count range."
+    input:
+      queryParams:
+        shopify_apps: {type: string, required: false, note: "numeric app ids from storeradar.companies.search.filters (category shopify_apps), comma-separated", example: "14381"}
+        technologies: {type: string, required: false, note: "numeric technology ids from storeradar.companies.search.filters, comma-separated", example: "1706"}
+        app_added_within: {type: string, required: false, enum: ['7', '14', '30'], note: "days; keeps stores where one of the shopify_apps was first seen in that window; refused without shopify_apps", example: "30"}
+        theme_name: {type: string, required: false, note: "Shopify theme names, comma-separated", example: "Dawn"}
+        countries: {type: string, required: false, note: "ISO 3166 alpha-2 codes, comma-separated", example: "US"}
+        languages: {type: string, required: false, note: "language codes, comma-separated", example: "en"}
+        industries: {type: string, required: false, note: "industry names from storeradar.companies.search.filters, comma-separated", example: "Apparel & Accessories"}
+        known_plus: {type: string, required: false, enum: ['true'], note: "keeps only stores known to be on Shopify Plus", example: "true"}
+        live: {type: string, required: false, enum: ['true', 'false'], note: "'true' keeps only stores whose storefront answered", example: "true"}
+        has_email: {type: string, required: false, enum: ['true', 'false', 'valid'], note: "'valid' (an address a verifier marked valid) needs a paid plan", example: "true"}
+        product_count_min: {type: integer, required: false, min: 0, example: 50}
+        product_count_max: {type: integer, required: false, min: 0, example: 5000}
+        search_etv_min: {type: integer, required: false, min: 0, note: "StoreRadar Annual only: minimum estimated monthly Google search traffic", example: 1000}
+        q: {type: string, required: false, note: "free text over store name and domain", example: "coffee"}
+        sort: {type: string, required: false, enum: [storeradar_score, seo_lite_score, product_count, collections_count, articles_count, pages_count, first_seen_at, last_detected_at, domain_created_at, domain_expires_at, search_etv, search_etv_change_3m_pct, review_count, review_rating, review_count_change_30d], example: "storeradar_score"}
+        sort_direction: {type: string, required: false, enum: [asc, desc], example: "desc"}
+        limit: {type: integer, required: false, min: 1, max: 20, default: 20, note: "stores per page", example: 1}
+        cursor: {type: string, required: false, note: "`next_cursor` from the previous page; it carries the original filters"}
+    test_request:
+      queryParams: {countries: "US", live: "true", limit: 1}
+    price: {value: '0', currency: USD, unit: call, note: "No per-call charge on any plan; calls count against the daily budget in `limits`."}
+    miss: {when: {path: response.stores, op: empty}}
+    docs_url: https://www.storeradar.io/api/docs
+
+  - id: storeradar.companies.search.count
+    added: '2026-11-26'
+    domain: companies
+    kind: utility
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /stores/count
+    name: "Count Shopify stores"
+    summary: "Count the Shopify stores a search would return, with the same filters as storeradar.companies.search"
+    note: "Counts above 10,000 are estimates from a 2% sample (`count_is_estimate: true`). A free token gets a range below 25."
+    input:
+      queryParams:
+        shopify_apps: {type: string, required: false, note: "numeric app ids, comma-separated", example: "14381"}
+        technologies: {type: string, required: false, note: "numeric technology ids, comma-separated", example: "1706"}
+        app_added_within: {type: string, required: false, enum: ['7', '14', '30'], note: "refused without shopify_apps", example: "30"}
+        theme_name: {type: string, required: false, example: "Dawn"}
+        countries: {type: string, required: false, note: "ISO 3166 alpha-2 codes, comma-separated", example: "US"}
+        industries: {type: string, required: false, example: "Apparel & Accessories"}
+        known_plus: {type: string, required: false, enum: ['true'], example: "true"}
+        live: {type: string, required: false, enum: ['true', 'false'], example: "true"}
+        product_count_min: {type: integer, required: false, min: 0, example: 50}
+        search_etv_min: {type: integer, required: false, min: 0, note: "StoreRadar Annual only", example: 1000}
+    test_request:
+      queryParams: {countries: "US", live: "true"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.storeradar.io/api/docs
+
+  - id: storeradar.companies.enrich
+    added: '2026-11-26'
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /stores
+    name: "Look up a Shopify store by domain"
+    summary: "Get one Shopify store by domain: apps, technologies, theme, industry, product count, contacts, social profiles and search traffic"
+    note: "Send `crawl=false` to read the database only. Without it, a domain StoreRadar has not seen answers 202 and is queued for a crawl: poll the same URL for a minute or two."
+    input:
+      queryParams:
+        domain: {type: string, required: true, note: "bare hostname, no scheme or path", example: "allbirds.com"}
+        crawl: {type: string, required: false, enum: ['false'], note: "'false' never queues a crawl", example: "false"}
+    test_request:
+      queryParams: {domain: "allbirds.com", crawl: "false"}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {status: [404], means: "not a Shopify store, or not in StoreRadar's database when crawl=false"}
+    docs_url: https://www.storeradar.io/api/docs
+
+  - id: storeradar.companies.search.summary
+    added: '2026-11-26'
+    domain: companies
+    kind: utility
+    capability: companies.search.summary
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /stores/describe
+    name: "Describe a Shopify store segment"
+    summary: "Summarize the stores a search matches: size, top industries, countries, themes, apps and technologies with their share, contact shares and product-count quartiles"
+    note: "Estimated from a 2% sample and returns no store rows. Below 50 sampled stores, `described` is false and only the size label comes back."
+    input:
+      queryParams:
+        shopify_apps: {type: string, required: false, note: "numeric app ids, comma-separated", example: "14381"}
+        technologies: {type: string, required: false, note: "numeric technology ids, comma-separated", example: "1706"}
+        countries: {type: string, required: false, note: "ISO 3166 alpha-2 codes, comma-separated", example: "FR"}
+        industries: {type: string, required: false, example: "Apparel & Accessories"}
+        live: {type: string, required: false, enum: ['true', 'false'], example: "true"}
+        top: {type: integer, required: false, min: 1, max: 20, default: 10, note: "items per list", example: 1}
+    test_request:
+      queryParams: {countries: "FR", live: "true", top: 1}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.storeradar.io/api/docs
+
+  - id: storeradar.companies.search.filters
+    added: '2026-11-26'
+    domain: companies
+    kind: utility
+    capability: companies.search.filters
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /filter_options
+    name: "List StoreRadar filter values"
+    summary: "List the accepted values of a StoreRadar search filter: app and technology ids, industries, countries, themes and more"
+    note: "Without `category` it lists the categories. Apps and technologies come as {name, id} pairs: pass the id to the search."
+    input:
+      queryParams:
+        category: {type: string, required: false, enum: [industries, niches, countries, languages, technologies, shopify_apps, tlds, pixels, social_platforms, theme_name, tags], example: "shopify_apps"}
+        q: {type: string, required: false, note: "typeahead filter for the long lists", example: "klaviyo"}
+    test_request:
+      queryParams: {category: "shopify_apps", q: "klaviyo"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.storeradar.io/api/docs
