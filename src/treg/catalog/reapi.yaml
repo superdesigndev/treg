@@ -185,40 +185,40 @@ endpoints:
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low, body.size: 1024x1024}, value: 0.005, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low, body.size: 1024x1536}, value: 0.004, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low, body.size: 1536x1024}, value: 0.004, times: body.n}
-        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low}, value: 0.04}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low}, value: 0.04, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium, body.size: 1024x1024}, value: 0.01, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium, body.size: 1024x1536}, value: 0.008, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium, body.size: 1536x1024}, value: 0.008, times: body.n}
-        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium}, value: 0.08}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium}, value: 0.08, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high, body.size: 1024x1024}, value: 0.04, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high, body.size: 1024x1536}, value: 0.031, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high, body.size: 1536x1024}, value: 0.031, times: body.n}
-        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high}, value: 0.32}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high}, value: 0.32, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low, body.size: 1024x1024}, value: 0.005, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low, body.size: 1024x1536}, value: 0.004, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low, body.size: 1536x1024}, value: 0.004, times: body.n}
-        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low}, value: 0.04}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low}, value: 0.04, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium, body.size: 1024x1024}, value: 0.01, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium, body.size: 1024x1536}, value: 0.008, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium, body.size: 1536x1024}, value: 0.008, times: body.n}
-        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium}, value: 0.08}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium}, value: 0.08, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high, body.size: 1024x1024}, value: 0.04, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high, body.size: 1024x1536}, value: 0.031, times: body.n}
         - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high, body.size: 1536x1024}, value: 0.031, times: body.n}
-        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high}, value: 0.32}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high}, value: 0.32, times: body.n}
         - {when: {body.model: gpt-image-2.6-flare-official, body.quality: low, body.size: 1024x1024}, value: 0.019, times: body.n}
-        - {when: {body.model: gpt-image-2.6-flare-official, body.quality: low}, value: 0.15}
+        - {when: {body.model: gpt-image-2.6-flare-official, body.quality: low}, value: 0.15, times: body.n}
         - {when: {body.model: gpt-image-2.6-flare-official, body.quality: medium, body.size: 1024x1024}, value: 0.033, times: body.n}
-        - {when: {body.model: gpt-image-2.6-flare-official, body.quality: medium}, value: 0.26}
+        - {when: {body.model: gpt-image-2.6-flare-official, body.quality: medium}, value: 0.26, times: body.n}
         - {when: {body.model: gpt-image-2.6-flare-official, body.quality: high, body.size: 1024x1024}, value: 0.04, times: body.n}
-        - {when: {body.model: gpt-image-2.6-flare-official, body.quality: high}, value: 0.32}
+        - {when: {body.model: gpt-image-2.6-flare-official, body.quality: high}, value: 0.32, times: body.n}
         - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: low, body.size: 1024x1024}, value: 0.019, times: body.n}
-        - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: low}, value: 0.15}
+        - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: low}, value: 0.15, times: body.n}
         - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: medium, body.size: 1024x1024}, value: 0.033, times: body.n}
-        - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: medium}, value: 0.26}
+        - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: medium}, value: 0.26, times: body.n}
         - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: high, body.size: 1024x1024}, value: 0.04, times: body.n}
-        - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: high}, value: 0.32}
-      fallback: {value: 0.41, note: "Ten high-quality 1024x1024 images on the official channel ($0.40), rounded up a cent to clear float comparison. The table is the hold only; the credits reAPI reports settle."}
+        - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: high}, value: 0.32, times: body.n}
+      fallback: {value: 3.21, note: "Ten high-quality images at the largest frame on the official channel ($3.20), rounded up a cent to clear float comparison. The table is the hold only; the credits reAPI reports settle."}
       currency: USD
       settle: usage
       usage: {path: usage.credits, unit: credit}
@@ -226,7 +226,7 @@ endpoints:
       source_url: https://reapi.ai/models/gpt-image-2-5
       checked: 2026-11-26
       confidence: verified
-      note: "Every task settles at the credits reAPI reports on the completed task (usage.credits); failed tasks are refunded. The table is the hold, by model, quality, size and n: official GPT Image 2.5 rows with a size are the credits one image costs; official GPT Image 2.6 rows are reAPI's measured output tokens at the GPT Image 2.5 output rate ($22.50 per 1M); an official row without a size holds one image at the largest frame (3840x2160) at that quality, so a custom size of one image holds more than it is charged. A custom size with several images, or reference images (input tokens on the official channel), can settle above its hold. Flat-rate channel rows ($0.0173 Flare / $0.023 Sunburst per image) are documented only: both answered 'No available channel' upstream at listing time and charged nothing."
+      note: "Every task settles at the credits reAPI reports on the completed task (usage.credits); failed tasks are refunded. The table is the hold, by model, quality, size and n: official GPT Image 2.5 rows with a size are the credits one image costs; official GPT Image 2.6 rows are reAPI's measured output tokens at the GPT Image 2.5 output rate ($22.50 per 1M); an official row without a size holds n images at the largest frame (3840x2160) at that quality, so a custom size holds more than it is charged. Reference images add input tokens on the official channel, so such a call can settle above its hold. Flat-rate channel rows ($0.0173 Flare / $0.023 Sunburst per image) are documented only: both answered 'No available channel' upstream at listing time and charged nothing."
     verified: 2026-09-14
     added: '2026-09-14'
     example_response: examples/reapi.image-gen.gpt-image-2-5.json
