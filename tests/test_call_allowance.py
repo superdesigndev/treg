@@ -182,10 +182,14 @@ class FakeStore:
                                  "thawed": (counter or {}).get("thawed", 0)}
         return left
 
-    async def acquire_lease(self, key, token, ttl_ms):
+    async def acquire_lease(self, key, token, ttl_ms, *, unless=None, owner=None):
         if self.lease_answer is not None:
             return self.lease_answer
         if key in self.leases and self.lease_until.get(key, float("inf")) > time.monotonic():
+            return "busy"
+        owner = owner or token
+        if (self.leases.get(unless, owner) != owner
+                and self.lease_until.get(unless, float("inf")) > time.monotonic()):
             return "busy"
         self.leases[key] = token
         self.lease_until[key] = time.monotonic() + ttl_ms / 1000
@@ -2925,7 +2929,7 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
     folded: list[int] = []
     real = allowance_sweep._fold_team
 
-    async def first_only(session_maker, team, oldest=None):
+    async def first_only(session_maker, team, oldest=None, *args, **kwargs):
         folded.append(team)
         return await real(session_maker, team)
 
@@ -3187,6 +3191,313 @@ async def test_a_process_that_no_longer_gets_a_share_still_logs_the_skips_it_cou
             await task
     [line] = fold_skip_lines()
     assert line["top"][0][:2] == [7, 1] and line["top"][0][2] >= 40
+
+
+async def _busy_team(store, org_id: int, stop: asyncio.Event, turns: list) -> None:
+    """The team's own refills in other processes: whenever the team's lease is free one of them
+    takes it at once, as the refill path asks for it (`acquire_money_lease`), with no moment in
+    between for anyone else."""
+    key = runtime.money_key(org_id)
+    while not stop.is_set():
+        token = uuid4().hex
+        if await runtime.acquire_money_lease(store, org_id, token, 1000) == "acquired":
+            turns.append(time.monotonic())
+            await asyncio.sleep(0.02)
+            await store.release_lease(key, token)
+        else:
+            await asyncio.sleep(0.001)
+
+
+async def _queue_charge(org_id: int, call_id: str, waited_s: int) -> None:
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(call_id, org_id, "e.metered", 400, reserved_micro=400)])
+        await db.execute(update(CallCharge).where(CallCharge.call_id == call_id).values(
+            created_at=utcnow_naive() - timedelta(seconds=waited_s)))
+        await db.commit()
+
+
+@pytest.mark.parametrize("waited_s, starved", [(5, False), (60, True)])
+async def test_a_team_kept_busy_by_its_own_requests_is_still_folded_once_its_queue_is_stale(
+        org_id, store, monkeypatch, caplog, fold_skip_lines, waited_s, starved):
+    """A team whose own refills take its lease the moment it is free was skipped on every pass,
+    and its queue grew for as long as its traffic lasted. A queue younger than
+    `_STARVED_AFTER_S` is still skipped at once, so busy teams do not slow the pass; a staler
+    one gets a turn: the fold claims the team's lease, gets it after the current holder, folds,
+    and gives the team its lease back."""
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    await _queue_charge(org_id, "queued", waited_s)
+    stop, turns = asyncio.Event(), []
+    busy = asyncio.create_task(_busy_team(store, org_id, stop, turns))
+    try:
+        while not turns:
+            await asyncio.sleep(0.001)
+        began = time.monotonic()
+        with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+            folded = await allowance_sweep.fold_queued_once(session_maker)
+        took_s = time.monotonic() - began
+        before = len(turns)
+        await asyncio.sleep(0.1)
+        assert len(turns) > before, "the team's requests have the lease again"
+    finally:
+        stop.set()
+        await busy
+    if not starved:
+        assert folded == 0 and await _queued(org_id) == 1 and took_s < 0.1
+        [line] = fold_skip_lines()
+        assert line["reason"] == "lease_held"
+    else:
+        assert folded == 1 and await _queued(org_id) == 0
+        assert took_s < 1.0, "within one holder's turn, far inside the fold's own turn"
+        assert fold_skip_lines() == []
+        assert any(r.getMessage().startswith(f"allowance_fold_starved org_id={org_id} ")
+                   for r in caplog.records)
+    assert runtime.fold_claim_key(org_id) not in store.leases
+
+
+async def test_a_starved_team_whose_lease_never_frees_is_given_up_when_its_turn_ends(
+        org_id, store, monkeypatch, fold_skip_lines):
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.1)
+    await _queue_charge(org_id, "queued", 600)
+    store.leases[runtime.money_key(org_id)] = "a session that never ends"
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    assert 0.1 <= time.monotonic() - began < 0.5
+    [line] = fold_skip_lines()
+    assert line["reason"] == "lease_held" and line["oldest_s"] >= 599
+    assert runtime.fold_claim_key(org_id) not in store.leases, "the claim is given back"
+
+
+async def test_a_starved_turn_that_is_over_starts_no_batch_and_no_wait_outlasts_it(
+        org_id, store, monkeypatch):
+    """Once a starved team's turn is over its fold goes back to the other teams: a batch that
+    ends past the turn is the last, and no admission wait runs past the turn's end."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    await _queue_charge(org_id, "queued", 600)
+    waits, batches = [], []
+
+    @contextlib.asynccontextmanager
+    async def admit(org_ids, *, max_wait_s, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        waits.append(max_wait_s)
+        yield
+
+    async def a_full_batch_each_time(db, team, **kwargs):
+        batches.append(time.monotonic())
+        await asyncio.sleep(0.15)
+        return SimpleNamespace(calls=0, claimed=allowance_sweep._FOLD_BATCH)
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", a_full_batch_each_time)
+    began = time.monotonic()
+    await allowance_sweep.fold_queued_once(session_maker)
+    assert len(batches) == 2, "the batch begun inside the turn is the last"
+    assert waits[0] <= 0.2 and waits[1] <= 0.2 - (batches[1] - began) + 0.01
+
+
+async def test_a_starved_turn_waiting_for_a_connection_begins_no_transaction_past_its_end(
+        org_id, store, monkeypatch, fold_skip_lines):
+    """Admission is bounded by the turn, but the connection was then taken with the pool's own
+    timeout: a pool kept busy by other work could begin the fold's first transaction long after
+    the turn was over."""
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.1)
+    await _queue_charge(org_id, "queued", 600)
+    real_admit, began_at = allowance_sweep.money_admission.admit, []
+
+    def admit(org_ids, *, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        return real_admit(org_ids, priority=priority, **named)
+
+    sessions = []
+
+    def busy_pool():
+        """After the pass's listing, a session whose first use, however it comes, waits for
+        the pool."""
+        db, waited = session_maker(), []
+        sessions.append(db)
+        if len(sessions) == 1:
+            return db
+
+        def after_the_pool(method):
+            async def slow(*args, **kwargs):
+                if not waited:
+                    await asyncio.sleep(0.5)
+                    waited.append(True)
+                    began_at.append(time.monotonic())
+                return await method(*args, **kwargs)
+            return slow
+
+        db.connection, db.execute = after_the_pool(db.connection), after_the_pool(db.execute)
+        return db
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(busy_pool) == 0
+    assert time.monotonic() - began < 0.3 and began_at == []
+    assert await _queued(org_id) == 1
+    assert [line["reason"] for line in fold_skip_lines()] == ["admission_timeout"]
+
+
+async def test_a_starved_turns_row_lock_wait_is_capped_at_what_is_left_of_its_share(
+        org_id, store, monkeypatch):
+    """Every other wait of a starved turn ends with its share, but a statement waiting for the
+    team's row locks waited the full `LOCK_WAIT_MS`: rows held by another session could spend
+    the shares of the starved teams after it."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    await _queue_charge(org_id, "queued", 600)
+    real_admit, caps = allowance_sweep.money_admission.admit, []
+
+    def admit(org_ids, *, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        return real_admit(org_ids, priority=priority, **named)
+
+    async def record(db, wait_ms=1000):
+        caps.append(wait_ms)
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    monkeypatch.setattr(allowance_sweep, "bound_lock_wait", record)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    [cap] = caps
+    assert 0 < cap <= 200
+
+
+async def test_a_late_release_of_one_starved_batchs_lease_cannot_free_the_next(
+        org_id, store, monkeypatch):
+    """Every batch of a starved turn takes the team's lease as the claim's owner, but each under
+    a token of its own: a release of the first batch's lease that arrives late (a retried
+    release, a cancelled acquire's cleanup) leaves the second batch's lease in place."""
+    from types import SimpleNamespace
+
+    await _queue_charge(org_id, "queued", 600)
+    key, tokens, kept = runtime.money_key(org_id), [], []
+
+    async def two_batches(db, team, **kwargs):
+        tokens.append(store.leases[key])
+        if len(tokens) == 2:
+            await store.release_lease(key, tokens[0])
+            kept.append(store.leases.get(key))
+            return SimpleNamespace(calls=0, claimed=0)
+        return SimpleNamespace(calls=0, claimed=allowance_sweep._FOLD_BATCH)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", two_batches)
+    await allowance_sweep.fold_queued_once(session_maker)
+    assert len(tokens) == 2 and tokens[0] != tokens[1]
+    assert kept == [tokens[1]], "the late release deleted nothing"
+
+
+async def test_starved_turns_come_after_the_rest_of_the_shard_from_one_budget_a_pass(
+        org_id, store, monkeypatch, fold_skip_lines):
+    """The pass is one loop, so a starved team's turn would hold up every team listed after it,
+    and each starved team would add a turn of its own. Two starved teams whose leases never free
+    and one fresh team: the fresh one is folded at once, and the two share one turn."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    fresh = org_id + 2
+    async with session_maker() as db:
+        for team in (org_id + 1, fresh):
+            db.add(Org(id=team, name=f"team {team}", slug=uuid4().hex))
+        await db.flush()
+        for team in (org_id + 1, fresh):
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await db.commit()
+    for team, waited_s in ((org_id, 900), (org_id + 1, 600), (fresh, 5)):
+        await _queue_charge(team, f"queued-{team}", waited_s)
+    for team in (org_id, org_id + 1):
+        store.leases[runtime.money_key(team)] = "a session that never ends"
+    fold, folded_at = allowance.fold_charges_in_transaction, {}
+
+    async def timed(db, team, **kwargs):
+        folded_at[team] = time.monotonic()
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", timed)
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    took_s = time.monotonic() - began
+    assert folded_at[fresh] - began < 0.1, "not behind the starved teams' turn"
+    assert 0.2 <= took_s < 0.35, "one turn for both starved teams, not one each"
+    allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    [line] = fold_skip_lines()
+    assert line["reason"] == "lease_held" and line["orgs"] == 2
+
+
+async def test_the_stalest_starved_team_cannot_use_up_every_pass_turn(
+        org_id, store, monkeypatch):
+    """The stalest busy team stays stalest pass after pass; given the whole shared turn, it
+    would use it up every pass and the busy teams behind it would never get theirs. Each takes
+    at most an equal share of what is left, and the team behind is folded in its own share."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    behind = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=behind, name=f"team {behind}", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, behind, amount_micro=GRANT)
+        await db.commit()
+    await _queue_charge(org_id, "stalest", 900)
+    await _queue_charge(behind, "behind", 600)
+    store.leases[runtime.money_key(org_id)] = "a session that never ends"
+    real_admit = allowance_sweep.money_admission.admit
+
+    def admit(org_ids, *, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        return real_admit(org_ids, priority=priority, **named)
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(behind) == 0 and await _queued(org_id) == 1
+    assert time.monotonic() - began < 0.3
+
+
+async def test_a_starved_team_whose_first_try_folded_a_batch_still_logs_the_skip_after_it(
+        org_id, store, monkeypatch, fold_skip_lines):
+    """A starved team's first try does not log its skip, since its turn follows; but a try
+    that committed a batch gets no turn, so a skip after that batch is still logged."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    await _queue_charge(org_id, "queued", 600)
+    key = runtime.money_key(org_id)
+
+    async def a_full_batch_then_another_process(db, team, **kwargs):
+        store.leases[key] = "another process"
+        return SimpleNamespace(calls=0, claimed=allowance_sweep._FOLD_BATCH)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction",
+                        a_full_batch_then_another_process)
+    await allowance_sweep.fold_queued_once(session_maker)
+    [line] = fold_skip_lines()
+    assert line["reason"] == "lease_held" and line["oldest_s"] >= 599
+
+
+async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(
+        org_id, store, monkeypatch):
+    """Two folds of one team (a deploy that changes the number of shares): the one without the
+    claim could never get the lease, so it does not spend a turn waiting for it."""
+    await _queue_charge(org_id, "queued", 600)
+    store.leases[runtime.fold_claim_key(org_id)] = "another fold"
+    store.leases[runtime.money_key(org_id)] = "another fold"
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    assert time.monotonic() - began < 0.1
+    assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
+
+
+async def test_a_starved_team_waits_for_this_processs_money_session_within_its_turn(
+        org_id, store, monkeypatch):
+    await _queue_charge(org_id, "queued", 60)
+    lock = runtime.money_lock(org_id)
+    await lock.acquire()
+    asyncio.get_running_loop().call_later(0.05, lock.release)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert not lock.locked() and await _queued(org_id) == 0
 
 
 async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_lease(

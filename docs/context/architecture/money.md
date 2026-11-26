@@ -656,7 +656,9 @@ past the bound do not make every new team scan them.
   more shares shorten each share's list, not its walk). A pass works on at most
   `_TEAMS_PER_PASS` of them, not counting a team it committed nothing of (another process or a
   session of its own holds it, or its rows stayed locked), so teams stuck at the front never use
-  up a pass (the next pass comes back for the rest); it reads the list `_TEAMS_LISTED` at a
+  up a pass (the next pass comes back for the rest). A starved team folded in its turn
+  (below) is set aside uncounted, since counting it would let starved teams that stay busy take
+  every place, so a pass folds at most `_STARVED_TEAMS_MAX` teams more; it reads the list `_TEAMS_LISTED` at a
   time and reads on while it has places left, so a full list of such teams does not end it, and folds them a team at a time, a batch per
   transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once. An idle share pauses for
   every process (its holder keeps the lease through the pause), and the process goes on to the
@@ -677,7 +679,35 @@ past the bound do not make every new team scan them.
   emptied is still listed with that age. Reading the queue again for each skip would cost a
   query per skip for a diagnostic line.
   A team skipped on every pass is visible there, not only in the queue's age. The loop writes
-  due lines on every turn, so a process that lost its share still writes what it counted. The idle sweep
+  due lines on every turn, so a process that lost its share still writes what it counted.
+  Skipping a busy team cannot go on for good: a team whose oldest charge has waited `_STARVED_AFTER_S` gets a
+  turn of up to `_STARVED_TURN_S` instead. The fold claims the team's lease for the turn
+  (`allowance.fold_claim_key`, a token-owned key that expires shortly after the turn), and every
+  other taker of the lease, the refill, the drain, the give-back and the request-path fold, asks
+  for it `unless` that claim is held (`allowance.acquire_money_lease`; the fold passes the
+  claim as `owner` and takes each batch's lease under a token of its own, so a late release
+  of one batch's lease cannot delete the next's), so the fold gets the lease after its current holder rather than losing it each time to whichever refill polls
+  first. Within the turn it waits for this process's money lock and asks `admit` for priority
+  (below) over the team's other money sessions, then folds its batches. No wait outlasts the
+  turn (admission is asked for what is left of it, with no floor, a connection is taken
+  within it or the batch is not begun, `_connect_within`, and each statement's wait for the
+  team's row locks is capped at what is left of it, below `LOCK_WAIT_MS`, so rows another
+  session holds cannot spend the shares of the starved teams after it), and no batch or transaction starts
+  once the turn is over, so the turn bounds the fold's work on the team, not only its waits. It logs one
+  `allowance_fold_starved` line per turn. The claim is given back when the turn ends, on every
+  path. Meanwhile the team's calls keep taking from the counter; a call that needs a refill
+  waits for the lease as for any other holder, and goes to the exact path once its own wait is
+  over. That is the price: a starved team's own traffic yields to its fold for at most one
+  turn a pass. A pass is one loop over its share, so a turn would also hold up every team listed
+  after it: a starved team is tried once in its place, as any other, and one still busy is set
+  aside to take its turn once every other team of the pass is folded, sharing one `_STARVED_TURN_S` a pass, the stalest first (at most
+  `_STARVED_TEAMS_MAX` set aside). Each gets at most an equal share of what is left of it, so
+  the stalest team, whose wait stays longest while it is busy, cannot use up the turn on every
+  pass and leave the teams behind it with none; time a team does not use goes to the next. The
+  next pass, which follows at once, gives them all a new turn. The other teams of the share
+  wait at most that one turn longer for their next pass. A pause of new allowance takes was not chosen: the
+  exact path those calls would take writes the same team rows twice per call, and a fold
+  inside each refill cannot keep up, as a refill moves a chunk worth many calls. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own
   clock, which every process shares (a lease in the store taken for the sweep period and never
   given back, so a share handed to another process is not swept again within it), and it too goes through every idle hold of the share a page of teams at a time. A pass
@@ -714,7 +744,8 @@ past the bound do not make every new team scan them.
 
 - **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
   hold and then write it. All of them hold one lease in the store for the team
-  (`allowance.money_key`), and a per-team lock inside the process. PostgreSQL would make them
+  (`allowance.money_key`, taken through `acquire_money_lease`, which yields to a starved
+  team's fold claim), and a per-team lock inside the process. PostgreSQL would make them
   wait on the hold's row lock anyway; on SQLite, which has no row locks, the lease is what keeps
   two processes from both reading before either writes. A session that outlives the lease is
   still safe on PostgreSQL and is not on SQLite. When the store cannot answer nobody can take
@@ -886,6 +917,16 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   and cleanup must run. One caller opts out: work that can simply come back later (the allowance
   fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
   before the database, counted as `rejected`.
+- **Priority.** A waiter passing `priority` (only the allowance fold of a queue that has waited
+  too long, § Allowance) does not queue behind its process's local waiters, and once it finds the
+  lease busy it claims the next turn: a second key beside the lease (`…:claim`, token-owned,
+  expiring with the waiter's budget). Every acquisition asks for the lease `unless` another
+  token holds that claim (`kv.acquire_lease(unless=…)`, one script), so every other waiter of
+  the team, in any process, is turned away until the claimant has the lease; it gives the claim
+  back at once on entry, and on timeout, cancellation or a store fault (the TTL bounds one not
+  given back). Their own budgets keep running meanwhile, so a reserve behind it can shed load
+  as above. A process still running without `unless` ignores claims: priority is then lost, not
+  isolation.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before
