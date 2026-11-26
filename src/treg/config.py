@@ -654,6 +654,7 @@ class Settings(BaseSettings):
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
     platform_key_theirstack: str = ""  # Bearer key; jobs and companies draw API credits
     platform_key_jobspipe: str = ""   # Bearer key; Builder plan, 25,000 credits a month, one per new job
+    platform_key_shapers: str = ""  # X-API-Key for the workspace credit pool
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_enrichlayer: str = ""  # Bearer; pay-as-you-go credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
