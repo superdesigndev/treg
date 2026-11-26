@@ -229,7 +229,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
         db.add(row)
         await db.commit()
     if required > 0:
-        balance = await call_allowance.balance_for(caller.org_id, required)
+        balance = await call_allowance.balance_for(caller.org_id, balance, required)
     return {"id": row.id, "task": task, "mode": mode, "providers": [
         {k: a[k] for k in ("provider", "endpoint_id", "tier", "estimate_micro", "price_type")} for a in chosen],
         "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,

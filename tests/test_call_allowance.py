@@ -4519,9 +4519,11 @@ async def test_a_quote_shows_what_the_team_can_spend_or_where_its_money_sits(
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
     assert await runtime.take(org_id, 1_000)
-    assert await runtime.balance_for(org_id, 10_000) == GRANT - 1_000
+    assert await runtime.balance_for(org_id, 0, 10_000) == GRANT - 1_000
+    assert await runtime.balance_for(org_id, GRANT - 1_000, 2 * GRANT) == GRANT - 1_000, (
+        "short of the need: the quote's own figure, with what the counter offers")
     store.leases[runtime.money_key(org_id)] = "a refill"
-    assert await runtime.balance_for(org_id, 10_000) == GRANT, (
+    assert await runtime.balance_for(org_id, 0, 10_000) == GRANT, (
         "while another request holds the lease: the team's money wherever it sits, for the "
         "start to confirm")
 

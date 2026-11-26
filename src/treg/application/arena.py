@@ -177,7 +177,7 @@ async def manual_plan(caller, run_id, attempt_id):
         db.add(row)
         await db.commit()
     if required > 0:
-        balance = await call_allowance.balance_for(caller.org_id, required)
+        balance = await call_allowance.balance_for(caller.org_id, balance, required)
     return {"id": quote["id"], "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,
             "affordable": required == 0 or balance >= required, "expires_at": quote["expires_at"] + "Z"}
 
@@ -284,7 +284,7 @@ async def verification_plan(caller, run_id, attempt_id):
         db.add(row)
         await db.commit()
     if v["estimate_micro"] > 0:
-        balance = await call_allowance.balance_for(caller.org_id, v["estimate_micro"])
+        balance = await call_allowance.balance_for(caller.org_id, balance, v["estimate_micro"])
     return {"id":q["id"], "estimate_micro":v["estimate_micro"], "provider":v["provider"], "balance_micro":balance,
             "affordable":v["estimate_micro"] == 0 or balance >= v["estimate_micro"], "expires_at":q["expires_at"]+"Z"}
 
@@ -484,7 +484,7 @@ async def quote(caller, *, capability: str, mode: str, providers: list[str] | No
         db.add(row)
         await db.commit()
     if required > 0:
-        balance = await call_allowance.balance_for(caller.org_id, required)
+        balance = await call_allowance.balance_for(caller.org_id, balance, required)
     provider_quotes = {}
     for a in chosen:
         if a["provider"] not in provider_quotes:

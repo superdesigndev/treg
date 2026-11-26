@@ -784,11 +784,14 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
     return free + returned >= amount_micro
 
 
-async def balance_for(org_id: int, need_micro: int) -> int:
-    """The balance a quote for `need_micro` shows, from `reach`: what the team can spend now, or,
-    while another request holds its money lease, its money wherever it sits, which the run's
-    start asks about again. Opens its own sessions."""
-    return (await reach(org_id, need_micro)).found
+async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
+    """The balance a quote for `need_micro` shows. Whether it covers the need is `reach`'s: what
+    the team can spend now when it does, or, while another request holds its money lease, its
+    money wherever it sits, which the run's start asks about again. A team that cannot cover it
+    is shown `shown_micro`, the figure its quote read: `reach` answers that case from the
+    database alone, without what the counter offers. Opens its own sessions."""
+    found, sure = await reach(org_id, need_micro)
+    return found if found >= need_micro or not sure else min(shown_micro, need_micro - 1)
 
 
 class CreditShort(Exception):

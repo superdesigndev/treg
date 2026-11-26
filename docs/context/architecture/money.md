@@ -768,13 +768,14 @@ payment is recorded, so the same payment may be sent again; it never pays twice 
 nor is answered again and again with credit no call can reach. An arena run's start never decides
 inside its session: its check (`short_of`) raises `CreditShort`, `gives_counter_back` asks `reach`
 outside it and runs the start again with the answer, or refuses (402) or asks for another try (409);
-its quote shows `reach`'s figure (`balance_for`), the team's money wherever it sits while the lease
-is held. A reserve the balance refused, a hub price hold included, runs again when `onto_balance`
-finds the balance already covers it (another request gave the counter back) or gives the counter
-back under the same lease, waiting for it no longer than a call waits for a refill; a daily-cap
-refusal runs again when a give-back frees the day's excess or the day's committed figure, read
-again, now leaves room. The Sheets panel's teams, the consent page and the CLI's home end their read
-before asking the store, and the billing state's callers read the counter before opening their
+its quote takes whether the team can pay from `reach` (`balance_for`) and shows `reach`'s figure
+when it can, the team's money wherever it sits while the lease is held, and its own reading, counter
+included, when it cannot. A reserve the balance refused, a hub price hold included, runs again when
+`onto_balance` finds the balance already covers it (another request gave the counter back) or gives
+the counter back under the same lease, waiting for it no longer than a call waits for a refill; a
+daily-cap refusal runs again when a give-back frees the day's excess or the day's committed figure,
+read again, now leaves room. The Sheets panel's teams, the consent page and the CLI's home end their
+read before asking the store, and the billing state's callers read the counter before opening their
 session, so no connection waits on it. The column itself is unchanged and the invariant below still
 holds for it.
 
