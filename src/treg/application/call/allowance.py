@@ -59,6 +59,10 @@ _LAST_READ_S = 0.2
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+# Whether the refill this task's own take ran was turned away by money admission. A refill run by
+# a background refresh or by another process never sets it: it is no evidence about this call.
+_refill_turned_away: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "treg_allowance_refill_turned_away", default=False)
 # Takes this process admitted and has not finished. Each will hand the charge writer one row at
 # most, so admitting against the writer's room now is what keeps it from ever overflowing.
 _in_flight = [0]
@@ -119,6 +123,12 @@ def refills(org_id: int) -> int:
     return _refills.get(org_id, 0)
 
 
+def take_met_busy_refill() -> bool:
+    """Whether this task's last `take` ran a refill itself and money admission turned that refill
+    away. Only then is the call's refusal known to come from a busy money queue."""
+    return _refill_turned_away.get()
+
+
 def listed(org_id: int) -> bool:
     """Whether the operator put the team on the allowance: every team when
     `money_allowance_all_orgs`, else the ones in `money_allowance_org_ids`, never an excluded
@@ -166,6 +176,20 @@ def money_key(org_id: int) -> str:
     return f"treg:money-allowance-money:v1:{org_id}"
 
 
+def fold_claim_key(org_id: int) -> str:
+    """The claim the background fold sets on a team whose queue has waited too long
+    (`allowance_sweep`): while another token holds it, nobody else gets the team's lease."""
+    return f"treg:money-allowance-fold-claim:v1:{org_id}"
+
+
+async def acquire_money_lease(store, org_id: int, token: str, ttl_ms: int, *,
+                              owner: str | None = None) -> str:
+    """Take the team's lease (`money_key`), unless the background fold has claimed its next turn
+    (`fold_claim_key`) and this is not that claim's `owner`: then `busy`, as if held."""
+    return await store.acquire_lease(money_key(org_id), token, ttl_ms,
+                                     unless=fold_claim_key(org_id), owner=owner)
+
+
 async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
                after_refill: Callable[[], Awaitable[None]] | None = None) -> int | None:
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
@@ -174,6 +198,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
 
     A refill this call starts beside itself commits after this returns, so `refills` around the
     call does not show it: `after_refill` is awaited once that refill has moved the balance."""
+    _refill_turned_away.set(False)
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
             or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
@@ -219,7 +244,7 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int, after_refi
     key, token = money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFILL_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "unavailable":
             return None
         if acquired == "acquired":
@@ -294,7 +319,7 @@ async def _refresh_once(org_id: int, daily_cap_micro: int, after_refill) -> None
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFRESH_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "acquired":
             before = refills(org_id)
             try:
@@ -395,6 +420,9 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
+        _refill_turned_away.set(True)
+        log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
+                 org_id, need_micro, available)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
@@ -467,7 +495,7 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
             if money_lock(org_id).locked():
                 return _Fold.HERE
             try:
-                acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+                acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
             except BaseException:
                 # The store may have granted the lease before the call stopped waiting for its
                 # answer: give back whatever this token holds, or the team's refills and the
@@ -879,7 +907,7 @@ async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
         state = await store.allowance_state(org_id)
         if state is None or not state[3] or state[0] < max(1, short_micro):
             return False
-        leased = await store.acquire_lease(key, token, _REFILL_LEASE_MS) == "acquired"
+        leased = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS) == "acquired"
         if not leased:
             return False
         returned = await _give_back(org_id, state[3])

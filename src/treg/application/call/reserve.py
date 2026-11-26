@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import event, func
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -663,7 +664,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
             return
-        skip = "take_refused"
+        skip = ("refill_admission_busy" if allowance_runtime.take_met_busy_refill()
+                else "take_refused")
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
     # A listed team's call is counted once, when its reserve is decided (`_note_allowance_skip`);
@@ -802,6 +804,24 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             "provider": mk.provider,
             "endpoint_id": mk.endpoint_id,
         }) from exc
+    except DBAPIError as exc:
+        # The money session's statement_timeout cancelled a statement (57014): the transaction
+        # rolled back before its commit, so nothing is held and the provider was not reached.
+        if committed or getattr(exc.orig, "sqlstate", None) != "57014":
+            raise
+        retry_base_s = get_settings().money_admission_retry_after_s
+        retry_after_s = random.randint(retry_base_s, 2 * retry_base_s)
+        try:
+            logging.getLogger("treg.money_admission").warning(
+                "money_statement_timeout operation=reserve org_id=%s retry_after_s=%s",
+                caller.org_id, retry_after_s)
+        except Exception:  # noqa: BLE001 - diagnostics cannot change the refusal
+            pass
+        raise ReservationFailed("money_statement_timeout", status_code=503, detail={
+            "error": "money_statement_timeout",
+            "message": ("the team's money writes are slow right now; retry shortly. Nothing was "
+                        "reserved or charged."),
+        }, retry_after_s=retry_after_s) from exc
     finally:
         if not noted:
             _note_allowance_skip(caller.org_id, note, mk.reserved_micro if committed else 0,

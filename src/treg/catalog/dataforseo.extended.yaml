@@ -2436,6 +2436,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Amazon location codes by country"
   summary: You will receive the list of supported Amazon locations by this API call.
@@ -2608,6 +2609,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -2743,6 +2745,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -2975,6 +2978,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -3120,6 +3124,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -3517,6 +3522,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Baidu location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -3542,6 +3548,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -3708,6 +3715,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Bing Ads industries for audience targeting"
   summary: By calling this API you will receive the list of industries with industry_id supported by Bing Ads Audience Estimation endpoint.
@@ -3724,6 +3732,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Bing Ads job functions for audience targeting"
   summary: By calling this API you will receive the list of job functions with job_function_id supported by Bing Ads Audience Estimation endpoint.
@@ -4217,6 +4226,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Bing location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -4547,6 +4557,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  settle: null
   expect: null
   name: "ChatGPT model names for LLM responses"
   summary: The ChatGPT models dataforseo.x.ai-optimization-chat-gpt-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
@@ -4631,6 +4642,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -4765,6 +4777,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "ChatGPT search location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -4883,6 +4896,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  settle: null
   expect: null
   name: "Claude model names for LLM responses"
   summary: The Claude models dataforseo.x.ai-optimization-claude-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
@@ -4985,6 +4999,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  settle: null
   expect: null
   name: "Gemini model names for LLM responses"
   summary: The Gemini models dataforseo.x.ai-optimization-gemini-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
@@ -5069,6 +5084,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -5212,6 +5228,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -5570,6 +5587,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Google Business location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -5648,6 +5666,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -5844,6 +5863,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -6132,6 +6152,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Available dates for domain metrics history"
   summary: By calling this endpoint, you will find obtain a list of dates available for setting in the first_date and second_date fields of the Domain Metrics by Categories endpoint.
@@ -8394,6 +8415,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Google Ads location codes by country"
   summary: We use Google Geographical Targeting.
@@ -8498,6 +8520,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Google Trends location codes by country"
   summary: GoogleTrendsLocationsCountry
@@ -8514,6 +8537,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Google Shopping location codes by country"
   summary: MerchantGoogleLocationsCountry
@@ -8539,6 +8563,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -8690,6 +8715,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -8880,6 +8906,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -9095,6 +9122,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -9223,6 +9251,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -9460,6 +9489,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -10189,6 +10219,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -10409,6 +10440,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Google SERP location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -10528,6 +10560,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -10947,6 +10980,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -11183,6 +11217,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -11397,6 +11432,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -11532,6 +11568,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -11761,6 +11798,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -11910,6 +11948,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -12042,6 +12081,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Google Play location codes by country"
   summary: By calling this endpoint you will receive the list of Google locations supported in App Data API.
@@ -12067,6 +12107,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -12307,6 +12348,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  settle: null
   expect: null
   name: "Perplexity model names for LLM responses"
   summary: The Perplexity models dataforseo.x.ai-optimization-perplexity-llm-responses-live accepts in `model_name`, with whether each supports web search and reasoning.
@@ -12323,6 +12365,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Seznam location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -12348,6 +12391,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -12520,6 +12564,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Tripadvisor location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -12545,6 +12590,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -12714,6 +12760,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -12842,6 +12889,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -12964,6 +13012,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO does not bill task_get; the submission paid for the task
+  settle: null
   expect: null
   resource_ownership:
     requires:
@@ -13701,6 +13750,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Backlink index totals"
   summary: This endpoint will provide you with the total number of backlinks, domains, and pages our database contains for the moment when you make a request.
@@ -14040,6 +14090,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO documents this route as free ("Your account will not be charged for using this API")
+  settle: null
   expect: null
   name: "Business Listings categories"
   summary: Every category the Business Listings API knows, with its business count; the values `categories` filters in dataforseo.x.business-data-business-listings-search-live accept.
@@ -15010,6 +15061,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Website technology list"
   summary: This endpoint will provide you with the full list of available technologies structured by technology groups and categories each particular technology belongs to.
@@ -15490,6 +15542,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Keyword trend location codes"
   summary: You will receive the list of DataForSEO Trends locations by calling this API.
@@ -15660,8 +15713,9 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-content-parsing.json
-  price: {value: '0', currency: USD, per: 1, unit: call}
-  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  price: {value: '0', currency: USD, per: 1, unit: call, note: "free; DataForSEO does not charge for parsing a crawled page, though the answer's `cost` is not zero"}
+  settle: null
+  provenance: {source: docs, source_url: 'https://docs.dataforseo.com/v3/on_page/content_parsing/', checked: '2026-11-26', confidence: documented}
   resource_ownership:
     requires:
       kind: on_page_task
@@ -15753,6 +15807,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Duplicate page content"
   summary: This endpoint returns a list of pages that have content similar to the page specified in the request.
@@ -15803,6 +15858,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Duplicate title or meta tags"
   summary: This endpoint returns a list of pages that contain duplicate title or description tags.
@@ -15854,6 +15910,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Page keyword density"
   summary: This endpoint will provide you with keyword density and keyword frequency data for terms appearing on the specified website or web page.
@@ -15916,6 +15973,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Available Lighthouse checks"
   summary: The OnPage Lighthouse API is based on Google’s open-source Lighthouse project and provides data on the quality of web pages.
@@ -16023,6 +16081,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Crawl links"
   summary: This endpoint will provide you with a list of internal and external links detected on a target website.
@@ -16125,6 +16184,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Non-indexable pages"
   summary: This endpoint returns a list of pages that are blocked from being indexed by Google and other search engines through robots.txt, HTTP headers, or meta tags settings.
@@ -16243,6 +16303,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Crawled page checks"
   summary: This endpoint returns a list of crawled pages with on-page check-ups and other metrics related to the page performance.
@@ -16309,6 +16370,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Pages using a resource"
   summary: This endpoint will return the list of pages where a specific resource is located.
@@ -16365,6 +16427,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Crawled page HTML"
   summary: This endpoint returns the HTML of a page you indicate in the request.
@@ -16399,6 +16462,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Redirect chains"
   summary: Redirect chains occur when there are at least two redirects between the initial URL and the destination URL.
@@ -16450,6 +16514,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Crawl resources"
   summary: This endpoint will provide you with a list of resources, including images, scripts, stylesheets, and broken elements.
@@ -16525,6 +16590,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Site audit summary"
   summary: Using this function, you can get the overall information on a website as well as drill down into exact on-page issues of a website that has been scanned.
@@ -16766,6 +16832,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Uncrawlable resources"
   summary: This endpoint returns a list of resources detected on the target website that could not be crawled due to a content type inconsistency.
@@ -16821,6 +16888,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Page load waterfall"
   summary: This endpoint is designed to provide you with the page speed insights.
@@ -16860,6 +16928,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "Yahoo location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -17084,6 +17153,7 @@ endpoints:
     currency: USD
     unit: call
     note: DataForSEO reports cost 0 for this route on our own account — reference/utility data, not metered
+  settle: null
   expect: null
   name: "YouTube location codes by country"
   summary: You will receive the list of locations by this API call.
@@ -17349,7 +17419,8 @@ endpoints:
     value: '0'
     currency: USD
     unit: call
-    note: free; the route is missing from DataForSEO's public docs, OpenAPI spec and rate card, so the response `cost` settles the call if that ever changes
+    note: free; the route is missing from DataForSEO's public docs, OpenAPI spec and rate card
+  settle: null
   expect: null
   name: "Resolve Google goto redirect URLs"
   summary: The real page behind each google.com/goto URL that Google SERP results carry, returned as `result[] = {goto, url}`; a URL it cannot resolve comes back with no `url`.

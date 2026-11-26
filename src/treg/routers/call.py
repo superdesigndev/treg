@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
+from starlette.requests import ClientDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
@@ -56,6 +57,9 @@ app = APIRouter()
 router = app
 
 
+_CLIENT_GONE = "the client closed the request before sending its body"
+
+
 class _HttpRequestBody:
     def __init__(self, request: Request) -> None:
         self._request = request
@@ -64,7 +68,10 @@ class _HttpRequestBody:
         return self._request.stream()
 
     async def read(self) -> bytes:
-        return await self._request.body()
+        try:
+            return await self._request.body()
+        except ClientDisconnect as exc:
+            raise CallFailure("client_disconnected", status_code=499, detail=_CLIENT_GONE) from exc
 
 
 class _LeasedStreamingResponse(StreamingResponse):
@@ -450,11 +457,16 @@ async def _capped_body(request: Request) -> bytes:
     if declared.isdigit() and int(declared) > limit:
         raise HTTPException(status_code=413, detail="request body too large")
     chunks, size = [], 0
-    async for chunk in request.stream():
-        size += len(chunk)
-        if size > limit:
-            raise HTTPException(status_code=413, detail="request body too large")
-        chunks.append(chunk)
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise HTTPException(status_code=413, detail="request body too large")
+            chunks.append(chunk)
+    except ClientDisconnect as exc:
+        failure = CallFailure("client_disconnected", status_code=499, detail=_CLIENT_GONE)
+        request.state.call_failure = failure
+        raise _translate_call_failure(failure) from exc
     body = b"".join(chunks)
     # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
     # has been consumed; the call road reads the body again through those.

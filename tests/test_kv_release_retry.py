@@ -134,15 +134,16 @@ async def test_unobserved_real_acquire_is_cleaned_without_retry(local_redis, mon
     acquired = asyncio.Event()
     calls = 0
 
-    async def uncertain_reply(*args, **kwargs):
+    async def uncertain_reply(script, *args):
         nonlocal calls
+        if script != kv._ACQUIRE_LEASE_UNLESS_CLAIMED:
+            return await real._client.eval(script, *args)
         calls += 1
-        assert await real._client.set(*args, **kwargs)
+        assert await real._client.eval(script, *args)
         acquired.set()
         await asyncio.Event().wait()
 
     store = _store_with(uncertain_reply)
-    store._client.eval = real._client.eval
     monkeypatch.setattr(kv, "store", lambda: store)
     monkeypatch.setattr(kv, "configured", lambda: True)
     monkeypatch.setattr(kv, "_LEASE_ATTEMPT_TIMEOUT_S", 0.030)

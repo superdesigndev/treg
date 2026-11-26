@@ -149,15 +149,31 @@ def cost_of(ep: dict) -> float:
         return 0.0
 
 
-def observed_price(ep: dict, charged: float, day: str) -> None:
-    """Price a row no rate card prices at what the provider reported charging for this call. A row
-    priced this way carries an observed provenance and no note; one with a note was priced by hand."""
+def _price_state(ep: dict) -> dict:
+    return {"value": (ep.get("price") or {}).get("value"),
+            "checked": (ep.get("provenance") or {}).get("checked")}
+
+
+def priced_by_hand(ep: dict) -> bool:
     price, provenance = ep.get("price"), ep.get("provenance") or {}
-    if price is not None and (provenance.get("source") != "observed" or "note" in price):
-        return
+    return price is not None and (provenance.get("source") != "observed" or "note" in price)
+
+
+def observed_price(ep: dict, charged: float, day: str) -> bool:
+    """Price a row no rate card prices at what the provider reported charging for this call, and say
+    whether it did. A row priced this way carries an observed provenance and no note; one with a
+    note was priced by hand."""
+    if priced_by_hand(ep):
+        return False
     ep["price"] = {"value": format(Decimal(repr(charged)), "f") if charged else "0", "currency": "USD",
                    "per": 1, "unit": "call"}
     ep["provenance"] = {"source": "observed", "checked": day, "confidence": "verified"}
+    if charged and "settle" in ep and ep["settle"] is None:
+        del ep["settle"]
+    elif not charged:
+        # a free row inherits no settle from the provider's reported charge
+        ep["settle"] = None
+    return True
 
 
 def auth_headers(service: str, cred: str) -> tuple[dict, dict, str]:
@@ -374,8 +390,20 @@ LAST_ELAPSED = _Elapsed()
 # anyone else's on the same key), and the router has a real per-endpoint price to rank on.
 # TikHub is deliberately absent: it publishes no per-call charge in the response body, so its
 # rate card stays the only figure available.
+def _dfs_observed_cost(doc) -> float | None:
+    """A succeeded task's cost, or a failed one's only when the answer's total bills the same
+    amount: a failed task reports `cost: 0`, and some report a price the total does not charge."""
+    cost, total = dig(doc, "tasks.0.cost"), dig(doc, "cost")
+    if not isinstance(cost, (int, float)) or isinstance(cost, bool):
+        return None
+    code = dig(doc, "tasks.0.status_code")
+    if isinstance(code, int) and 20000 <= code < 30000:
+        return cost
+    return cost if cost > 0 and total == cost else None
+
+
 OBSERVED_COST = {
-    "dataforseo": lambda doc: dig(doc, "tasks.0.cost"),
+    "dataforseo": _dfs_observed_cost,
 }
 
 
@@ -460,7 +488,16 @@ def merge_results(service: str, paths: list[Path]) -> int:
                 conflicts.append(f"{eid} (in {seen[eid].name} and {path.name})")
                 continue
             seen[eid] = path
+            # A batch reprices a row only from a cost it observed (`repriced_from`, the price and
+            # check day it replaced), and only while the catalog still holds both: an older verifier
+            # exported every row's price, observed or not, and a replayed batch must not undo a later
+            # one. A row a person priced is never repriced.
+            observed = (not priced_by_hand(ep) and isinstance(res.get("price"), dict)
+                        and isinstance(res.get("repriced_from"), dict)
+                        and res["repriced_from"] == _price_state(ep))
             for field in RESULT_FIELDS:
+                if field in ("price", "provenance") and not observed:
+                    continue
                 if field in res:
                     # an EMPTY value counts as absent, never as a claim. A state key present but
                     # blank passes a "has a state" check while saying nothing, which is worse than
@@ -469,6 +506,12 @@ def merge_results(service: str, paths: list[Path]) -> int:
                         ep.pop(field, None)
                     else:
                         ep[field] = res[field]
+            # a merged price brings its settle with it: a free one opts out of the reported charge
+            if observed:
+                if Decimal(str(res["price"].get("value") or 0)) == 0:
+                    ep["settle"] = None
+                elif "settle" in ep and ep["settle"] is None:
+                    del ep["settle"]
             if res.get("verified"):
                 ep.pop("untestable", None)
             # exactly one outcome state survives a merge: a batch that reports an endpoint as
@@ -550,6 +593,7 @@ def main(argv: list[str]) -> int:
     spent = 0.0
     stats = {"pass": 0, "fail": 0, "skipped_budget": 0, "retried": 0}
     touched: set[str] = set()
+    repriced: dict[str, dict] = {}
     lock = threading.Lock()
     throttle = Throttle(RATE_LIMIT_PER_SEC)
     stop = threading.Event()
@@ -615,7 +659,10 @@ def main(argv: list[str]) -> int:
                 ep["example_response"] = rel
                 observed = (OBSERVED_COST.get(args.service) or (lambda _d: None))(doc)
                 if isinstance(observed, (int, float)) and not isinstance(observed, bool):
-                    observed_price(ep, observed, ep["verified"])
+                    before = _price_state(ep)
+                    if observed_price(ep, observed, ep["verified"]):
+                        with lock:
+                            repriced[ep["id"]] = before
                 if isinstance(LAST_ELAPSED.seconds, (int, float)):
                     ep["observed_time"] = LAST_ELAPSED.seconds
                 ep.pop("unverified", None)
@@ -649,7 +696,10 @@ def main(argv: list[str]) -> int:
     if args.out:
         # batch mode: report only what THIS run called, so the merge cannot resurrect a stale
         # verdict for an endpoint another batch owns
-        results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS}}
+        # a price travels only from the observation that set it; any other row reports its state
+        results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS
+                                      if e["id"] in repriced or f not in ("price", "provenance")},
+                    **({"repriced_from": repriced[e["id"]]} if e["id"] in repriced else {})}
                    for e in eps if e["id"] in touched]
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(

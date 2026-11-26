@@ -1215,7 +1215,7 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
@@ -1237,7 +1237,7 @@ class Hold(SQLModel, table=True):
     """
 
     id: str = Field(primary_key=True)  # == call_id
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
@@ -1434,7 +1434,7 @@ class TagSpend(SQLModel, table=True):
     __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     dim: str  # the tag key, e.g. "customer"
     val: str  # the tag value, e.g. "cust_8123"
     # The hold this belongs to (== call_id). Kept after settle so a row can be traced back to its call.
@@ -1779,7 +1779,7 @@ class IdempotentCall(SQLModel, table=True):
     # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit.
     # The response cache cannot outlive its caller: once a membership is revoked nobody can replay
     # its key, so the membership foreign key cascades instead of blocking token revocation.
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     membership_id: int = Field(foreign_key="membership.id", ondelete="CASCADE", index=True)
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")

@@ -324,6 +324,12 @@ ORG_SCOPED_MODELS = (
 )
 
 
+# Tables that name their team with no foreign key (data-model.md, "Call-path tables have no
+# foreign key to `org`"). `cascade_delete_org` deletes them through ORG_SCOPED_MODELS and once
+# more after the team row is gone, for the rows a call committed while the deletion waited.
+ORG_ROWS_WITHOUT_FOREIGN_KEY = (Hold, IdempotentCall, TagSpend, LedgerEntry)
+
+
 ARCHIVE_PRIVATE_SCOPES = ("org", "conn")
 
 
@@ -604,6 +610,14 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     # deletion that should also clear the object store runs `archive_erasure.erase_org` first.
     await erase_archive_rows(db, org.id)
     await db.delete(org)
+    await db.flush()
+    # PostgreSQL's DELETE of the team row waits for every transaction that updated it (a reserve,
+    # a refill) and lets nothing update it after; the walk's deletes of holds and queued charges
+    # waited likewise for every settle or fold that had claimed one. A row such a transaction
+    # wrote after the walk read its table committed before this point, and none can come after
+    # it, so one more pass leaves nothing of the team behind.
+    for model in ORG_ROWS_WITHOUT_FOREIGN_KEY:
+        await db.execute(delete(model).where(model.org_id == org.id))
 
 
 async def drop_member_deny_rules(db: AsyncSession, user_id: int, org_id: int | None = None) -> int:
