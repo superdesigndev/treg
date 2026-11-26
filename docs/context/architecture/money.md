@@ -739,8 +739,9 @@ cannot make up the difference (calls in flight hold the money, the store lost it
 the allowance) leaves the answer short. Whether a paying wallet's payment settles or its proof draws
 credit reads it, so the wallet neither pays twice for credit it has nor is answered again and again
 with credit no call can reach; so do the arenas' start checks, from outside their sessions
-(`CreditShort`, `gives_counter_back`), and their quotes (`balance_for`). The column itself is
-unchanged and the invariant below still holds for it.
+(`CreditShort`, `gives_counter_back`), and their quotes (`balance_for`). The Sheets panel's teams
+and the consent page end their read before asking the store, so no connection waits on it. The
+column itself is unchanged and the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 

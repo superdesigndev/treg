@@ -3882,6 +3882,19 @@ async def test_a_run_short_of_credit_inside_its_session_runs_again_once_the_coun
     assert runs == [GRANT - 1_000], "nothing to give back: refused without a second run"
 
 
+async def test_the_sheets_teams_end_their_read_before_the_store_is_asked(
+        org_id, store, monkeypatch):
+    caller = await _caller(org_id)
+    offers = runtime.counter_offers
+    async with session_maker() as db:
+        async def asked(org_ids):
+            assert not db.in_transaction(), "the session keeps no connection over the store read"
+            return await offers(org_ids)
+        monkeypatch.setattr(runtime, "counter_offers", asked)
+        [team] = await table.account_teams(db, user_id=caller.user.id, only_org_id=None)
+    assert team["org_id"] == org_id and team["balance_micro"] == GRANT
+
+
 async def test_a_team_off_the_allowance_is_not_shown_what_its_counter_holds(
         org_id, store, monkeypatch):
     """No call of a team taken off the allowance takes from its counter, so what the counter
