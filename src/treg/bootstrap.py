@@ -17,6 +17,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -1001,6 +1002,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
+    app.add_exception_handler(DBAPIError, api_module._db_id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     for busy in DB_BUSY_ERRORS:
         app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)

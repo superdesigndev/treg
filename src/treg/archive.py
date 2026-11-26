@@ -126,8 +126,8 @@ def policy(entry: dict[str, Any] | None) -> str:
     branches are non-negotiable whatever the default says: a missing entry or anything but a
     DATA read (an action, a utility poll, an account query — `_CACHEABLE_KINDS`) is never
     stored, and a JUDGED forbidden (a licence that was read and says no) is always respected.
-    An UNJUDGED entry takes `archive_default_policy` — "transient" since the founder's 2026-08-29
-    keep-all decision, flippable back to "forbidden" by env without a deploy."""
+    An UNJUDGED entry takes `archive_default_policy`, "transient" by default and flippable back to
+    "forbidden" by env without a deploy."""
     if not entry:
         return CACHE_FORBIDDEN
     if not cacheable_kind(entry):  # gate 1 — only a data read's answer is ever stored

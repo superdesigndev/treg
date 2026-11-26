@@ -22,7 +22,7 @@ from typing import cast
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, defer
 from sqlmodel import select
@@ -160,6 +160,17 @@ async def _id_out_of_range(request: Request, exc: OverflowError) -> JSONResponse
     # A huge all-digit path param (e.g. /secrets/999…) overflows SQLite's 64-bit INTEGER at bind
     # time; that's a non-existent id, not a server fault — surface a 404 instead of a 500.
     return JSONResponse({"detail": "identifier out of range"}, status_code=404)
+
+
+async def _db_id_out_of_range(request: Request, exc: DBAPIError) -> JSONResponse:
+    # asyncpg refuses a parameter past Postgres's 32-bit `integer` while binding it, and SQLAlchemy
+    # wraps that OverflowError in a DBAPIError. Any other database error stays a 500.
+    cause: BaseException | None = exc.orig
+    while cause is not None and not isinstance(cause, OverflowError):
+        cause = cause.__cause__
+    if cause is None:
+        raise exc
+    return await _id_out_of_range(request, cause)
 
 
 _app_version_cache: tuple[float, str] | None = None  # (index.html mtime, content hash)

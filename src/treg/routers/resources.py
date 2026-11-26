@@ -870,6 +870,9 @@ async def delete_bundle(
         await db.delete(t)
     for s in bundle_secrets:
         await db.delete(s)
+    # The models declare no relationships, so one flush may delete the bundle before the rows whose
+    # foreign keys reference it, which Postgres refuses.
+    await db.flush()
     await db.delete(bundle)
     await db.commit()
     return {"deleted": bundle_id}
