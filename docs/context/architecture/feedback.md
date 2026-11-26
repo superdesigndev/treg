@@ -289,7 +289,9 @@ compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared st
 (`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
 (`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
 `MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
-the summary) is never marked: B would be asked page one against A's later page. A team opted out of the archive gets no
+the summary) is never marked: B would be asked page one against A's later page. Nor is a merged
+answer (`merged_from` in the summary, several vendors' rows delivered as one): no single vendor's
+answer is A. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 Every decision is counted by reason and `X-Treg-Client` (`marked`, `not_sampled`, `route_header`,
@@ -319,8 +321,9 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
 4. Reads those teams' recent routed parents per comparable capability: `endpoint_id =
    treg.<capability>`, `org_id` among the eligible teams and `created_at` within
    `compare_lookback_hours` (at most two, the marker's life), newest first, at most
-   `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx and
-   `credential_tier` routed; drops calls already compared. Teams come first because other teams'
+   `SCAN_PER_CAPABILITY`, 2xx, `credential_tier` routed, and naming what the caller got
+   (`served_call_ref` and `served_content_hash` set, filtered before the limit so calls that cannot
+   be compared never fill it); drops calls already compared. Teams come first because other teams'
    calls can fill a newest-N window read over every team, leaving eligible teams' earlier marked
    calls unread until their markers expire.
 5. Reads every candidate's marker in one `MGET`: it must exist (none, or a store that cannot say,
@@ -368,7 +371,8 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    endpoints are tried in the order `build_plan` ranks a treg-key child (`plan.rank` over the
    caller's keys, the filters each endpoint can express, its price and observed stats; the worker
    has no bound stats cache, so it reads the same day buckets through
-   `PostgresEndpointObservationReader`), after the router's short-window health (`route_health`,
+   `PostgresEndpointObservationReader`, keeping the endpoints whose fold is ready when another's is
+   behind, as the web cache does), after the router's short-window health (`route_health`,
    when `on`: a failing endpoint is never asked, as a comparison never takes a probe turn, and a
    slow one ranks after the healthy ones), so B
    answers the question the router would have asked it (one that ignores a sent filter is not

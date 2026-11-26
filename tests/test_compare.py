@@ -1490,7 +1490,7 @@ async def test_a_parent_that_names_no_served_child_is_never_compared(clients, se
     await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=False)
     result = await _collect()
     assert sent == [] and await _rows() == []
-    assert result["skip_reasons"] == {"a_delivery_unknown": 1}, result
+    assert result["read"] == 0, result  # not even read: the scan asks for linked parents only
 
 
 async def test_a_string_answer_never_reaches_the_run_output(clients, search_on, monkeypatch):
@@ -1619,3 +1619,44 @@ async def test_a_slow_batch_read_still_leaves_its_children_the_rest_of_the_run(c
         result = await compare.collect(client=client, max_seconds=2)
     assert result["called"] == 2 and len(sent) == 2, result
     assert "scan_time" not in result["skip_reasons"], result
+
+
+async def test_a_merged_answer_is_never_marked(monkeypatch):
+    """Several vendors' rows delivered as one answer: no single vendor's answer is A."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+    await compare.mark_eligible("merged-1", "web.search", [(b"x-treg-client", b"mcp")],
+                                {"identity": {"q": "a"}, "merged_from": ["parallel.web.search", "exa.web.search"]})
+    assert compare._mark_counts == {"merged/mcp": 1}
+    assert await kv.store().get_text(compare.marker_key("merged-1")) is None
+
+
+async def test_unlinked_calls_never_fill_the_scan_window(clients, search_on, monkeypatch):
+    """Newer calls without a delivery link are left out before the per-capability limit, so an
+    older linked call is still read and compared."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "SCAN_PER_CAPABILITY", 3)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    linked = await _routed_call(org_id, "the linked question", minutes_ago=20)
+    for i in range(3):
+        await _routed_call(org_id, f"unlinked {i}", served_ref=False, minutes_ago=1 + i)
+    result = await _collect()
+    assert result["read"] == 1 and len(sent) == 1, result
+    assert [r.call_ref for r in await _rows()] == [linked]
+
+
+async def test_a_lagging_fold_keeps_the_other_endpoints_stats(monkeypatch):
+    from treg.application.call import route
+    from treg.infra import catalog_observations
+
+    class Reader:
+        def __init__(self, session_factory):
+            pass
+
+        async def get_many(self, ids):
+            raise catalog_observations.EndpointObservationUnavailable({"a.b": {"hit_rate": 0.9}})
+    monkeypatch.setattr(route, "_endpoint_observation_reader", None)
+    monkeypatch.setattr(catalog_observations, "PostgresEndpointObservationReader", Reader)
+    assert await compare._observed_stats(["a.b", "c.d"]) == {"a.b": {"hit_rate": 0.9}}

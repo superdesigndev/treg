@@ -148,6 +148,9 @@ def _mark_reason(capability: str | None, raw_headers, summary: dict, archive_opt
         return "archive_off"
     if "cursor" in summary:
         return "page_continuation"
+    if summary.get("merged_from"):
+        # The caller got several vendors' rows as one answer: no single vendor's answer is A.
+        return "merged"
     if not isinstance(summary.get("identity"), dict):
         return "no_input"
     if any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers):
@@ -446,9 +449,12 @@ async def _recent(session_factory, since: datetime, org_ids: set[int]) -> list[C
             parent = f"treg.{capability}"
             if parent not in cat.by_id:
                 continue
+            # Only a parent that names what its caller got can be compared (`_served`): filtered
+            # before the limit, so calls without that link never take the window.
             rows = (await db.execute(select(CallRecord).where(
                 CallRecord.endpoint_id == parent, CallRecord.created_at >= since,
-                CallRecord.org_id.in_(org_ids),
+                CallRecord.org_id.in_(org_ids), CallRecord.served_call_ref.is_not(None),
+                CallRecord.served_content_hash.is_not(None),
             ).order_by(CallRecord.created_at.desc()).limit(SCAN_PER_CAPABILITY))).scalars().all()
             out += [Candidate(r, capability) for r in rows
                     if r.org_id is not None and r.credential_tier == "routed" and r.call_ref
@@ -795,10 +801,14 @@ async def _observed_stats(endpoint_ids: list[str], session_factory=session_maker
 
     if route._endpoint_observation_reader is not None:
         return await route._observed_stats(endpoint_ids)
-    from ..infra.catalog_observations import PostgresEndpointObservationReader
+    from ..infra.catalog_observations import EndpointObservationUnavailable, PostgresEndpointObservationReader
 
     try:
         return await PostgresEndpointObservationReader(session_factory).get_many(endpoint_ids)
+    except EndpointObservationUnavailable as exc:
+        # One endpoint's fold behind keeps the others', as the web cache keeps them.
+        log.warning("endpoint stats fold unavailable for comparisons")
+        return exc.completed or {}
     except Exception:  # stats only order the endpoints
         log.warning("endpoint stats unavailable for comparisons", exc_info=True)
         return {}
