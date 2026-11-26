@@ -39,11 +39,7 @@ def _provider_display(service: str) -> str:
 
 
 def _run_hint(ep: dict) -> str:
-    auth = (
-        "no provider key required" if ep.get("platform_auth") == "anonymous"
-        else "key injected server-side"
-    )
-    return f"{catalog_store.call_template(ep)}   # run it — {auth}"
+    return f"{catalog_store.call_template(ep)}   # run it — {catalog_store.provider_auth_hint(ep)}"
 
 
 def _platform_rows() -> list[dict]:
@@ -607,6 +603,19 @@ async def _your_values(request: Request, db: AsyncSession, ep: dict) -> dict:
                                 "an alert email may only be yours."}
 
 
+def _sibling_sort_key(row: dict, cat: catalog_store.Catalog) -> tuple:
+    observed = row.get("observed") or {}
+    latency = observed.get("p50_ms")
+    price = cat.advertised_usd(row.get("cost"))
+    return (
+        row.get("platform_eligible") is False and not (row.get("hub") or row.get("kind") == "hub"),
+        catalog_store.reliability_band(observed),
+        latency if latency is not None else float("inf"),
+        price if price is not None else float("inf"),
+        row["id"],
+    )
+
+
 @app.get("/catalog/endpoints/{endpoint_id}")
 async def catalog_endpoint(
     request: Request,
@@ -654,7 +663,7 @@ async def catalog_endpoint(
         view |= personal
     siblings = [
         catalog_store.sibling_view(other, _provider_display(other["provider"]), cat)
-        for other in sorted(cat.for_capability(ep["capability"]), key=lambda e: e["id"])
+        for other in cat.for_capability(ep["capability"])
         if other["id"] != ep["id"]
     ]
     example = None
@@ -683,6 +692,7 @@ async def catalog_endpoint(
     from .hub_gate import reader
     slug, email = await reader(request, db)
     siblings += await hub_app.capability_siblings(db, ep.get("capability") or "", org_slug=slug, email=email)
+    siblings.sort(key=lambda row: _sibling_sort_key(row, cat))
 
     routing = None
     if ep.get("kind") == "routed":
@@ -768,11 +778,13 @@ async def catalog_endpoint(
                                                      "best measured quality first, each at its own price; the answer is "
                                                      "_treg.decision {decided, decided_by, ordered_by}"} if contract and contract.verdict_decisive else {})},
         }
+    overflow_hint = catalog_store.overflow_billing_hint(ep["provider"], overflow)
     return {
         "endpoint": view | ({"routed_children": ep.get("routed_children")} if ep.get("kind") == "routed" else {}),
         "provider": {"service": ep["provider"], "display_name": _provider_display(ep["provider"]),
                      **cat.provider_meta.get(ep["provider"], {})},
         "siblings": siblings,
+        "siblings_ranked": True,
         # The observation cache had not read some of these yet: ask again shortly for the numbers.
         **({"observed_pending": True} if _observation_pending(observations, observed_ids) else {}),
         **({"related_capabilities": rel} if (rel := _related_capabilities(ep, cat)) else {}),
@@ -780,11 +792,7 @@ async def catalog_endpoint(
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
         "hints": [_run_hint(ep)]
-                 + ([f"when treg's own {ep['provider']} account is out this may be served through the "
-                     f"overflow relay ({overflow['overflow_via']}) and bill "
-                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
-                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
-                    if overflow else [])
+                 + ([overflow_hint] if overflow_hint else [])
                  + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
                     if siblings else []),
     }
@@ -835,11 +843,12 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
     capability = await hub_app.approved_capability(db, row.tool_id)
     cat = catalog_store.load()
     siblings = [catalog_store.sibling_view(o, _provider_display(o["provider"]), cat)
-                for o in sorted(cat.for_capability(capability), key=lambda e: e["id"])] if capability else []
+                for o in cat.for_capability(capability)] if capability else []
     if siblings and observations is not None:
         stats = await _observed_or_empty(observations, [s["id"] for s in siblings])
         siblings = [s | {"observed": stats.get(s["id"])} for s in siblings]
     siblings += await hub_app.capability_siblings(db, capability, exclude=row.tool_id, org_slug=org_slug, email=email)
+    siblings.sort(key=lambda row: _sibling_sort_key(row, cat))
     mine = next(iter(await hub_app.capability_siblings(db, capability, org_slug=org_slug, email=email) if capability else []), None)
     mine = mine if mine and mine["id"] == row.tool_id else None
     return {

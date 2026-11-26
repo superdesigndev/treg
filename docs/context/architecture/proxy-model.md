@@ -505,7 +505,8 @@ name the label, never a credential, so reordering accounts or regenerating a key
    reaching the provider lands where it can be recognized. The idempotency claim cannot remember the
    account: a failed call deletes its claim, and that is exactly the retry that reaches the
    provider.
-3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating.
+3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating;
+   an account the sweep read below its drain mark (`low`) is passed over while another is not.
    Rules 1-2 run during resolution (`pinned`); rule 3 runs right before relay (`assign`) and takes
    the bucket's token with no await between, so a burst that resolved together still spreads.
 
@@ -516,8 +517,9 @@ carries no `account` and uses the provider's own bucket, so a one-account provid
 Capacity is per account: a signature strikes and locks only the account that answered
 (`marks.lock_key(..., slot)`, `<key>#<label>` for non-primary), a 2xx clears only its own strikes,
 and a probe goes to the locked account. A call is refused before reserve only when its pinned
-account, or every account of an open call, is out. The sweep reads only the primary, so another
-account's lock lifts at expiry or through its own probe.
+account, or every account of an open call, is out. The sweep reads every account, so one read
+empty gets no calls while another can serve, and the next sweep that reads it refilled returns it
+to rotation ([capacity](../ops/capacity.md)).
 
 ## Platform capacity: refuse before reserve
 

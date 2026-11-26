@@ -31,7 +31,7 @@ from treg.domain import money as ledger
 from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
-from treg.infra import kv
+from treg.infra import kv, money_session
 from treg.infra.agent_payments import Verified
 from treg.infra.db import reset_db, session_maker
 from treg.routers import billing as billing_routes
@@ -230,7 +230,10 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_refreshing", {})
     monkeypatch.setattr(runtime, "_refresh_again", {})
     monkeypatch.setattr(runtime, "_after_refills", set())
-    return fake
+    yield fake
+    # Folds a settled call left running, and the lease releases they started, belong to this
+    # test: the event loop is shared, so they must not write into the next one.
+    await _background_done()
 
 
 @pytest.fixture
@@ -270,6 +273,18 @@ async def _queued(org_id: int) -> int:
 
 async def _finish(org_id, call_id, epoch, reserved, **kwargs) -> int:
     return await runtime.finish(org_id, call_id, epoch, reserved, endpoint_id="e.metered", **kwargs)
+
+
+async def _lease_releases_done() -> None:
+    loop = asyncio.get_running_loop()
+    await asyncio.gather(*(task for task in runtime._lease_releases if task.get_loop() is loop))
+
+
+async def _background_done() -> None:
+    """The folds calls left running, then the lease releases they started."""
+    loop = asyncio.get_running_loop()
+    await asyncio.gather(*(task for task in runtime._background_folds if task.get_loop() is loop))
+    await _lease_releases_done()
 
 
 async def _fold(org_id: int) -> allowance.Folded:
@@ -1867,7 +1882,6 @@ async def test_a_refill_that_committed_before_an_overrun_cannot_lift_its_freeze(
         return published[-1]
 
     monkeypatch.setattr(store, "allowance_add", overrun_lands_first)
-    monkeypatch.setattr(runtime, "_SETTLED_TRIES", 1)  # the refill in progress holds the lease
     assert await runtime.take(org_id, 100) is None, "published, but still frozen"
     assert told == [1_500] and published == [400], "the refill did publish"
     counter = store.counters[org_id]
@@ -1954,6 +1968,507 @@ async def test_a_call_waits_for_another_process_to_apply_its_charge(org_id, stor
 
     monkeypatch.setattr(runtime.asyncio, "sleep", other_process_folds)
     assert await _finish(org_id, "second", second, 2_000_000, billable=True) == 0
+
+
+async def test_a_calls_fold_caps_its_wait_for_row_locks_and_then_answers_the_charge(
+        org_id, store, monkeypatch):
+    """The call holds a connection while it folds. Rows another session keeps locked end the
+    fold at the cap, and the call answers with its charge instead of folding again."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 400, reserved_micro=400)])
+        await db.commit()
+    capped, folds = [], []
+
+    async def cap(db):
+        capped.append(True)
+
+    async def locked(db, org, **kwargs):
+        folds.append(org)
+        raise DBAPIError("SELECT", None, Exception("canceling statement due to lock timeout"))
+
+    monkeypatch.setattr(runtime, "bound_lock_wait", cap)
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", locked)
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert capped == [True] and folds == [org_id], "one capped fold, not a retry loop"
+    assert await _queued(org_id) == 1, "left for the background fold"
+
+
+@pytest.mark.parametrize("pruned", [False, True], ids=["kept", "pruned_during_the_lease_wait"])
+async def test_calls_of_one_team_in_one_process_fold_one_at_a_time(
+        org_id, store, monkeypatch, pruned):
+    """Many calls of a busy team ask for their settle entries at once. One folds; until it is
+    done the others neither read the ledger nor take a connection, then each reads what it
+    wrote. Also when the team's idle lock is pruned while the first call waits for the lease:
+    the lock it then takes must be the one the others test."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"call-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(8)])
+        await db.commit()
+    fold, settled_micro, acquire = (allowance.fold_charges_in_transaction,
+                                    allowance.settled_micro, store.acquire_lease)
+    paused, resume, reads, sessions = asyncio.Event(), asyncio.Event(), [], []
+
+    async def first_fold_waits(db, org, **kwargs):
+        if not paused.is_set():
+            paused.set()
+            await resume.wait()
+        return await fold(db, org, **kwargs)
+
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return await settled_micro(db, org, call_id)
+
+    def counted_session():
+        sessions.append(True)
+        return session_maker()
+
+    async def lease_after_a_prune(*args, **kwargs):
+        if pruned:
+            runtime._prune()
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", first_fold_waits)
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    monkeypatch.setattr(runtime, "session_maker", counted_session)
+    monkeypatch.setattr(store, "acquire_lease", lease_after_a_prune)
+    calls = [asyncio.create_task(runtime._settled(org_id, f"call-{index}", 99))
+             for index in range(8)]
+    await paused.wait()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert reads == [] and sessions == [True], "only the folding call holds a connection"
+    resume.set()
+    told = await asyncio.gather(*calls)
+    assert told == [10] * 8, "each read its own settle entry, not the 99 it would fall back to"
+    assert await _queued(org_id) == 0
+
+
+async def test_a_call_told_the_lease_is_busy_by_its_own_process_waits_without_reading(
+        org_id, store, monkeypatch):
+    """Eight calls ask the store for the team's lease at once. The first gets it; the store tells
+    the others it is taken only after the first has begun folding. Their own process holds it,
+    so they wait for that fold instead of reading the ledger as if another process had it."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"call-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(8)])
+        await db.commit()
+    fold, settled_micro, acquire = (allowance.fold_charges_in_transaction,
+                                    allowance.settled_micro, store.acquire_lease)
+    folding, resume, reads, asked = asyncio.Event(), asyncio.Event(), [], []
+
+    async def first_fold_waits(db, org, **kwargs):
+        if not folding.is_set():
+            folding.set()
+            await resume.wait()
+        return await fold(db, org, **kwargs)
+
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return await settled_micro(db, org, call_id)
+
+    all_asked = asyncio.Event()
+
+    async def busy_once_the_first_folds(*args, **kwargs):
+        asked.append(True)
+        if len(asked) == 8:
+            all_asked.set()
+        if len(asked) == 1:
+            await all_asked.wait()
+            return await acquire(*args, **kwargs)
+        await folding.wait()
+        return "busy" if not resume.is_set() else await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", first_fold_waits)
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    monkeypatch.setattr(store, "acquire_lease", busy_once_the_first_folds)
+    calls = [asyncio.create_task(runtime._settled(org_id, f"call-{index}", 99))
+             for index in range(8)]
+    await folding.wait()
+    for _ in range(50):
+        await asyncio.sleep(0)
+    assert len(asked) == 8 and reads == []
+    resume.set()
+    assert await asyncio.gather(*calls) == [10] * 8
+
+
+async def test_a_fold_cancelled_while_the_store_grants_its_lease_leaves_no_lease_behind(
+        org_id, store, monkeypatch):
+    """The store sets the lease, and the fold is cancelled before its answer arrives. The lease
+    is the fold's token, and it is given back, without the fold waiting for the store."""
+    acquire, granted = store.acquire_lease, asyncio.Event()
+
+    async def granted_then_slow(*args, **kwargs):
+        answer = await acquire(*args, **kwargs)
+        granted.set()
+        await asyncio.sleep(5)
+        return answer
+
+    release = store.release_lease
+
+    async def slow_release(*args, **kwargs):
+        await asyncio.sleep(0.65)
+        return await release(*args, **kwargs)
+
+    monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await runtime._fold_backlog(org_id, [runtime._BACKLOG_BATCHES])
+    assert time.monotonic() - started < 0.4, "the fold does not wait for the release"
+    assert granted.is_set()
+    await _lease_releases_done()
+    assert runtime.money_key(org_id) not in store.leases
+
+
+async def test_a_call_answers_from_the_first_batch_that_wrote_its_entry(org_id, store, monkeypatch):
+    """The queue is longer than a batch and the call's charge is in the first one. It reads its
+    entry after that batch commits, rather than folding on and answering with its charge when
+    a slower second batch runs past the deadline."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.3)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(4)])
+        await db.commit()
+    fold, batches = allowance.fold_charges_in_transaction, []
+
+    async def second_batch_is_slow(db, org, **kwargs):
+        batches.append(True)
+        if len(batches) > 1:
+            await asyncio.sleep(5)
+        return await fold(db, org, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", second_batch_is_slow)
+    async with session_maker() as db:
+        first = set((await db.execute(select(CallCharge.call_id).where(
+            CallCharge.org_id == org_id).limit(2))).scalars())
+    call_id = sorted(first)[0]
+    assert await runtime._settled(org_id, call_id, 99) == 10
+    assert batches == [True]
+
+
+async def test_a_call_reads_no_ledger_once_its_deadline_has_passed(org_id, store, monkeypatch):
+    """The fold fails and its session is still closing when the deadline passes; the money
+    session re-raises the fold's own error. Whatever the fold does, the call opens no ledger
+    read after its deadline, and answers by then."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.1)
+    reads, started = [], time.monotonic()
+
+    async def fails_past_the_deadline(db, org, **kwargs):
+        await asyncio.sleep(0.15)
+        raise RuntimeError("database fault")
+
+    async def counted_read(db, org, call_id):
+        reads.append(time.monotonic() - started)
+        return None
+
+    @contextlib.asynccontextmanager
+    async def absorbs_the_cancel(db):
+        try:
+            yield db
+        except asyncio.CancelledError:
+            raise RuntimeError("database fault") from None
+        finally:
+            await db.close()
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", fails_past_the_deadline)
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    monkeypatch.setattr(runtime, "money_session", absorbs_the_cancel)
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 0.15
+    assert all(at < 0.1 for at in reads)
+    await _background_done()
+
+
+async def test_a_slow_lease_release_neither_holds_the_call_nor_loses_its_answer(
+        org_id, store, monkeypatch):
+    """The batch with the call's charge has committed, and the store is slow to take the lease
+    back. The call answers with what the ledger took, within its deadline, and the lease is
+    still given back after the call has gone."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 10, reserved_micro=10)])
+        await db.commit()
+    release = store.release_lease
+
+    async def slow_release(*args, **kwargs):
+        await asyncio.sleep(0.5)
+        return await release(*args, **kwargs)
+
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 99) == 10
+    assert time.monotonic() - started < 0.4
+    assert runtime.money_key(org_id) in store.leases, "still being given back"
+    await _background_done()
+    assert runtime.money_key(org_id) not in store.leases
+
+
+async def test_a_call_past_its_deadline_inside_the_fold_does_not_wait_for_the_release(
+        org_id, store, monkeypatch):
+    """The deadline passes while the fold waits for the database, holding the lease. The call
+    returns then, not once the store has also taken the lease back."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+
+    async def waits_for_a_connection(*args, **kwargs):
+        await asyncio.sleep(0.5)
+
+    release = store.release_lease
+
+    async def slow_release(*args, **kwargs):
+        await asyncio.sleep(0.65)
+        return await release(*args, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", waits_for_a_connection)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 0.4
+    await _background_done()
+    assert runtime.money_key(org_id) not in store.leases
+
+
+async def test_a_call_reads_its_entry_once_per_batch_and_once_at_the_end(org_id, store, monkeypatch):
+    """Each batch looks for the call's entry in its own transaction. A miss there needs no
+    second session for the same question; only the last look, once the call stops folding,
+    takes one."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    monkeypatch.setattr(runtime, "_BACKLOG_BATCHES", 3)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(8)])
+        await db.commit()
+    settled_micro, reads = allowance.settled_micro, []
+
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return await settled_micro(db, org, call_id)
+
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    assert await runtime._settled(org_id, "not-queued", 99) == 99
+    assert len(reads) == 3 + 1
+
+
+async def test_a_call_keeps_time_to_read_an_entry_another_process_wrote(org_id, store, monkeypatch):
+    """The first batch misses the call's charge. Another process then settles it, and the next
+    lease takes nearly the whole deadline to come. The call still reads its entry in the time
+    it kept for that, and answers with what the ledger took."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(4)])
+        await db.commit()
+    acquire, asked = store.acquire_lease, []
+
+    async def settled_elsewhere_then_slow(*args, **kwargs):
+        asked.append(True)
+        if len(asked) == 2:
+            async with session_maker() as db:
+                db.add(LedgerEntry(id=uuid4().hex, org_id=org_id, kind="settle", amount_micro=0,
+                                   call_id="elsewhere", endpoint_id="e"))
+                await db.commit()
+            await asyncio.sleep(5)
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(store, "acquire_lease", settled_elsewhere_then_slow)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "elsewhere", 2_000_000) == 0
+    assert time.monotonic() - started < runtime._SETTLED_WAIT_S + 0.2
+
+
+async def test_a_call_answers_on_time_while_the_teams_admission_is_slow_to_give_back(
+        org_id, store, monkeypatch):
+    """The deadline passes while the fold waits for the database, and leaving money admission
+    then waits on the store. The call answers at its deadline; the fold finishes behind it,
+    giving back the admission, then the lease and the team's lock, in that order."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    admit, order = runtime.money_admission.admit, []
+
+    @contextlib.asynccontextmanager
+    async def slow_to_give_back(org_ids, *args, operation, **kwargs):
+        async with admit(org_ids, *args, operation=operation, **kwargs):
+            yield
+        if operation == "close" and list(org_ids) == [org_id]:
+            await asyncio.sleep(0.65)
+            order.append("admission")
+
+    async def waits_for_a_connection(*args, **kwargs):
+        await asyncio.sleep(0.3)
+        return allowance.Folded()
+
+    release = store.release_lease
+
+    async def recorded_release(key, token):
+        if key == runtime.money_key(org_id):
+            order.append("lease")
+        return await release(key, token)
+
+    monkeypatch.setattr(runtime.money_admission, "admit", slow_to_give_back)
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", waits_for_a_connection)
+    monkeypatch.setattr(store, "release_lease", recorded_release)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 0.3
+    await _background_done()
+    assert order == ["admission", "lease"]
+    assert not runtime.money_lock(org_id).locked()
+
+
+async def test_a_fold_that_commits_during_the_last_look_still_gives_the_answer(
+        org_id, store, monkeypatch):
+    """The fold with the call's charge runs past the folding time; the last read finds no
+    entry yet, and the fold commits before the deadline. The call answers with what the
+    ledger took, not with its charge."""
+    # Folding stops at 0.48 s; the fold below commits at about 0.52 s.
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.6)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 10, reserved_micro=10)])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def commits_after_the_folding_time(db, org, **kwargs):
+        await asyncio.sleep(0.45)
+        return await fold(db, org, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", commits_after_the_folding_time)
+    assert await runtime._settled(org_id, "queued", 99) == 10
+    await _background_done()
+
+
+async def test_a_fold_still_waiting_for_a_connection_gives_up_at_the_deadline(
+        org_id, store, monkeypatch):
+    """The pool is full: the fold waits for a connection past the call's deadline. It then gives
+    up instead of taking a connection after the call has gone, ahead of calls waiting now, and
+    gives the team's lease back."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    pool_full, connected = asyncio.Event(), []
+    money_session = runtime.money_session
+
+    @contextlib.asynccontextmanager
+    async def full_pool(db):
+        await pool_full.wait()
+        connected.append(True)
+        async with money_session(db) as session:
+            yield session
+
+    monkeypatch.setattr(runtime, "money_session", full_pool)
+    try:
+        assert await runtime._settled(org_id, "queued", 400) == 400
+        await asyncio.sleep(0.05)
+        loop = asyncio.get_running_loop()
+        assert not [task for task in runtime._background_folds if task.get_loop() is loop]
+    finally:
+        # A fold still waiting would otherwise hold the store fixture's teardown forever.
+        pool_full.set()
+    await _background_done()
+    assert connected == [] and runtime.money_key(org_id) not in store.leases
+
+
+async def test_a_call_waiting_on_its_teams_fold_reads_what_that_fold_committed(
+        org_id, store, monkeypatch):
+    """Two calls of a team. The first folds both charges and commits after the folding time; the
+    second only waited for it. The second still answers with what the ledger took for it."""
+    # The fold below commits at about 0.55 s: after the second call's folding time (it starts at
+    # 0.02 s and folds until 0.50 s), before its deadline (0.62 s).
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.6)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(name, org_id, "e", 10, reserved_micro=10) for name in ("a", "b")])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def commits_after_the_folding_time(db, org, **kwargs):
+        await asyncio.sleep(0.5)
+        return await fold(db, org, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", commits_after_the_folding_time)
+    first = asyncio.create_task(runtime._settled(org_id, "a", 99))
+    await asyncio.sleep(0.02)
+    assert await runtime._settled(org_id, "b", 99) == 10
+    assert await first == 10
+
+
+async def test_a_failed_last_read_still_takes_the_answer_of_a_fold_still_running(
+        org_id, store, monkeypatch):
+    """The call's last read fails while its fold, on a connection of its own, is about to
+    commit. The call takes that fold's answer instead of giving up with its charge."""
+    # Folding stops at 0.8 s; the fold below commits at about 0.85 s, the deadline is 1 s.
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 1.0)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 10, reserved_micro=10)])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def commits_after_the_folding_time(db, org, **kwargs):
+        await asyncio.sleep(0.78)
+        return await fold(db, org, **kwargs)
+
+    async def read_fails(org, call_id):
+        raise DBAPIError("SELECT", None, Exception("server closed the connection"))
+
+    logged = []
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", commits_after_the_folding_time)
+    monkeypatch.setattr(runtime, "_read_settled", read_fails)
+    # Rendering the traceback takes long enough to make the timing depend on the terminal.
+    monkeypatch.setattr(runtime.log, "error", lambda *args, **kwargs: logged.append(args[0]))
+    assert await runtime._settled(org_id, "queued", 2_000_000) == 10
+    assert logged, "the failed read is logged"
+
+
+@pytest.mark.parametrize("slow", ["fold", "read"])
+async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
+        org_id, store, monkeypatch, slow):
+    """A full pool makes the fold's or the read's connection slow to come. Both share the
+    call's one deadline, so the call answers with its charge once it has passed."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 400, reserved_micro=400)])
+        await db.commit()
+
+    async def stuck(*args, **kwargs):
+        await asyncio.sleep(5)
+
+    target = "fold_charges_in_transaction" if slow == "fold" else "settled_micro"
+    monkeypatch.setattr(allowance, target, stuck)
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 1
+
+
+async def test_a_call_folds_no_more_batches_than_its_budget_across_retries(
+        org_id, store, monkeypatch):
+    """Another process takes the team's lease between two of this call's batches. The call
+    comes back to fold after it, but with the batches it has left, not a fresh budget."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    monkeypatch.setattr(runtime, "_BACKLOG_BATCHES", 3)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index:02}", org_id, "e", 10, reserved_micro=10)
+            for index in range(20)])
+        await db.commit()
+    acquire, asked = store.acquire_lease, []
+
+    async def busy_once(*args, **kwargs):
+        asked.append(True)
+        if len(asked) == 3:
+            return "held"
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(store, "acquire_lease", busy_once)
+    await runtime._settled(org_id, "not-queued", 10)
+    assert len(asked) > 3, "the call came back after the other process"
+    assert await _queued(org_id) == 20 - 3 * 2
 
 
 async def test_an_overrun_written_late_freezes_the_counter_when_it_lands(org_id, store, monkeypatch):
@@ -2636,11 +3151,11 @@ async def test_a_fold_on_postgresql_caps_its_wait_for_row_locks(monkeypatch):
             ran.append(str(statement))
 
     monkeypatch.setattr(infra_db, "_is_sqlite", False)
-    await allowance_sweep._bound_lock_wait(Recorder())
-    assert ran == [f"SET LOCAL lock_timeout = '{allowance_sweep._LOCK_WAIT_MS}ms'"]
+    await money_session.bound_lock_wait(Recorder())
+    assert ran == [f"SET LOCAL lock_timeout = '{money_session.LOCK_WAIT_MS}ms'"]
     monkeypatch.setattr(infra_db, "_is_sqlite", True)
     ran.clear()
-    await allowance_sweep._bound_lock_wait(Recorder())
+    await money_session.bound_lock_wait(Recorder())
     assert ran == []
 
 
@@ -2954,7 +3469,7 @@ async def test_no_allowance_money_session_starts_while_another_process_holds_the
         await db.commit()
     store.leases[runtime.money_key(org_id)] = "another-process"
     store.expire()
-    await runtime._fold_backlog(org_id)
+    await runtime._fold_backlog(org_id, [runtime._BACKLOG_BATCHES])
     assert await allowance_sweep.fold_queued_once(session_maker) == 0
     assert await allowance_sweep.sweep_once(session_maker) == 0
     assert await runtime.take(org_id, 600) is None

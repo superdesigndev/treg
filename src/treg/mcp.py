@@ -42,14 +42,16 @@ import hashlib
 import inspect
 import json
 import logging
+import math
 import os
 import re
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, ValidationError
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
@@ -136,6 +138,7 @@ _TEAM_SURFACE = _SurfacePolicy(
 # over supplied evidence) generates none of them and stays. The team `/mcp/` keeps every platform.
 _DIRECTORY_HIDDEN_PLATFORMS = frozenset({"image-gen", "video-gen", "voice-gen", "music-gen"})
 _DIRECTORY_HIDDEN_NOTE = "this connector does not offer image, video, voice or music generation"
+_DIRECTORY_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 _DIRECTORY_SURFACE = _SurfacePolicy(
     client_name="claude-connector",
     event_source="claude-connector",
@@ -1599,23 +1602,103 @@ async def catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
     return await _catalog_get_impl(endpoint_id, ctx, surface=_TEAM_SURFACE)
 
 
+def _mcp_call_template(ep: dict[str, Any], your_values: dict[str, Any] | None = None) -> str:
+    template = catalog_store.call_template_parts(ep, your_values, merge_path_params=True)
+    args: dict[str, Any] = {"endpoint_id": ep["id"]}
+    if template.authorization_method:
+        args["authorization_method"] = template.authorization_method
+
+    method, query, body = template.method, template.query_params, template.body
+    reads_query = method in ("GET", "HEAD", "DELETE")
+    if query:
+        args["params" if reads_query else "query"] = query
+    if template.body_type == "multipart":
+        files = template.files
+        if body is not None:
+            args["form"] = {name: value for name, value in body.items() if name not in files}
+        if files:
+            args["uploads"] = [
+                {"name": name, "filename": spec["filename"], "content_type": spec["content_type"],
+                 "data_base64": "<base64 file contents>"}
+                for name, spec in files.items()
+            ]
+    elif body is not None and method not in ("GET", "HEAD"):
+        args["body" if reads_query or query else "params"] = catalog_store.unflatten_dotted(body)
+    return json.dumps(args, separators=(",", ":"), ensure_ascii=False)
+
+
+def _compact_siblings(siblings: list[dict[str, Any]], cat: catalog_store.Catalog) -> list[dict[str, Any]]:
+    fields = ("id", "provider", "name", "kind", "hub", "status", "status_note",
+              "superseded_by", "verified", "estimated")
+    out = []
+    for sibling in siblings:
+        item = {key: sibling[key] for key in fields if sibling.get(key) is not None}
+        if not (sibling.get("hub") or sibling.get("kind") == "hub") and "platform_eligible" in sibling:
+            item["platform_eligible"] = sibling["platform_eligible"]
+        cost = sibling.get("cost")
+        if quote := catalog_store.quote_cost(cost):
+            item["cost"] = {key: value for key, value in quote.items() if value is not None}
+        if (usd := cat.advertised_usd(cost)) is not None:
+            item["usd"] = usd
+        if observed := {key: value for key, value in (sibling.get("observed") or {}).items()
+                        if value is not None}:
+            item["observed"] = observed
+        if reviews := sibling.get("reviews"):
+            item["reviews"] = {key: reviews[key] for key in ("teams", "share") if key in reviews}
+        out.append(item)
+    return out
+
+
+def _compact_routing(routing: dict[str, Any]) -> dict[str, Any]:
+    compacted = dict(routing)
+    if isinstance(compacted.get("plan"), list):
+        compacted["plan"] = [
+            {k: v for k, v in row.items() if v is not None} if isinstance(row, dict) else row
+            for row in compacted["plan"]
+        ]
+    return compacted
+
+
+def _mcp_catalog_hints(out: dict[str, Any], raw_ep: dict[str, Any], *, surface: _SurfacePolicy) -> list[str]:
+    if surface is _TEAM_SURFACE:
+        tool = "call"
+        ceiling_arg = "the `max_cost_usd` argument or "
+    else:
+        tool = "catalog_call_read" if raw_ep["method"] in _DIRECTORY_READ_METHODS else "catalog_call_write"
+        ceiling_arg = ""
+    auth = catalog_store.provider_auth_hint(raw_ep)
+    primary = f"Pass the JSON in `call_template` as arguments to `{tool}` ({auth})."
+    if (out.get("routing") or {}).get("plan"):
+        primary += (f" Set a USD ceiling with {ceiling_arg}`X-Treg-Route-Max-Cost` in `headers`."
+                    " Pass other routing controls in `headers`.")
+    hints_out = [primary]
+    if overflow := catalog_store.overflow_billing_hint(raw_ep["provider"], out):
+        hints_out.append(overflow)
+    sibs = out.get("siblings") if isinstance(out.get("siblings"), list) else []
+    if sibs and isinstance(sibs[0], dict) and sibs[0].get("id"):
+        top = sibs[0]
+        hints_out.append(f"Top alternative: catalog_get(endpoint_id={top['id']!r}) ({top.get('provider', '')})")
+    return hints_out
+
+
 async def _catalog_get_impl(
     endpoint_id: str, ctx: Context, *, surface: _SurfacePolicy
 ) -> CatalogGetOut:
     """Goes through the HTTP route rather than the store: that route attaches the observed
     reliability figures and the capability siblings, and those come from the database."""
-    ep = catalog_store.load().by_id.get(endpoint_id)
-    if surface.hides(ep):
+    cat = catalog_store.load()
+    raw_ep = cat.by_id.get(endpoint_id)
+    if surface.hides(raw_ep):
         return {"error": f"{endpoint_id} is not available here: {_DIRECTORY_HIDDEN_NOTE}"}
-    if ep is not None and catalog_store.paused(ep):
+    if raw_ep is not None and catalog_store.paused(raw_ep):
         # `provider` is a dict in this schema, so the typed code rides in `error`, the words in `detail`.
-        return {"error": "provider_paused", "detail": oauth_providers.paused_message(ep["provider"])}
+        return {"error": "provider_paused", "detail": oauth_providers.paused_message(raw_ep["provider"])}
     token = _bearer(ctx)
     api_context = (_api(token) if surface is _TEAM_SURFACE
                    else _api(token, client_name=surface.client_name))
     async with api_context as client:
         headers = {}
-        if token and ep is not None and (ep.get("team_label") or ep.get("caller_email")):
+        if token and raw_ep is not None and (raw_ep.get("team_label") or raw_ep.get("caller_email")):
             # Name the team, so a person signed in to several teams still gets its own values
             # (`your_values`): an identity token alone does not say which team is asking.
             _, slug, problem = await _resolve_org(client)
@@ -1624,7 +1707,6 @@ async def _catalog_get_impl(
         url = _segment_url("/catalog/endpoints", endpoint_id)
         r = await client.get(url, headers=headers) if url else None
     if r is None or r.status_code == 404:
-        cat = catalog_store.load()
         return {"error": f"unknown endpoint {endpoint_id!r}",
                 # Naming the near miss, not just the tool to go back to. An id one segment off is
                 # the common failure — and the loop breaks at its FIRST step, so an agent that only
@@ -1641,19 +1723,26 @@ async def _catalog_get_impl(
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.
-        out["usd_per_call"] = catalog_store.load().advertised_usd(ep.get("cost") or {})
+        out["usd_per_call"] = cat.advertised_usd(ep.get("cost"))
         if ep.get("overflow_price_usd") is not None:
             out["overflow_price_usd"] = ep["overflow_price_usd"]
             out["overflow_price_unit"] = ep.get("overflow_price_unit")
             out["overflow_via"] = ep.get("overflow_via")
-    if isinstance(out, dict) and (out.get("routing") or {}).get("plan"):
-        out.pop("siblings", None)
-    if isinstance(out, dict) and isinstance(out.get("siblings"), list):
-        # MCP hosts cap a tool result's size, and a crowded job lists dozens of siblings: each one
-        # carries its price, not how it settles. The full cost is that sibling's own catalog_get.
-        for sibling in out["siblings"]:
-            if isinstance(sibling, dict):
-                sibling["cost"] = catalog_store.quote_cost(sibling.get("cost"))
+        if raw_ep is not None:
+            ep.pop("call_template", None)
+    if isinstance(out, dict):
+        out.pop("siblings_ranked", None)
+        if raw_ep is not None:
+            out["call_template"] = _mcp_call_template(
+                raw_ep, ep.get("your_values") if isinstance(ep, dict) else None,
+            )
+        if (out.get("routing") or {}).get("plan"):
+            out.pop("siblings", None)
+            out["routing"] = _compact_routing(out["routing"])
+        elif isinstance(out.get("siblings"), list):
+            out["siblings"] = _compact_siblings(out["siblings"], cat)
+        if raw_ep is not None:
+            out["hints"] = _mcp_catalog_hints(out, raw_ep, surface=surface)
     return out
 
 
@@ -1684,12 +1773,16 @@ async def _catalog_get_impl(
         "For requests `params` can't express, the explicit slots mirror the CLI's flags: `query` "
         "is ALWAYS the query string (a list value expands to repeated keys), `body` is ALWAYS the "
         "request body (object/array → JSON; a STRING is sent raw, with `content_type` naming what "
-        "it is — sniffed as application/json when it parses as JSON), and `headers` adds upstream "
-        "request headers an endpoint needs per-call (e.g. Google Ads' login-customer-id); "
-        "injected credentials always win over them. Use `query` + `body` together for endpoints "
-        "that split a POST across both (Bright Data's ?dataset_id=… + array body). Giving `body` "
-        "implies POST. For multipart requests, put ordinary fields in `form` and files in "
-        "`uploads` as objects with name, filename, content_type and base64 data.\n\n"
+        "it is — sniffed as application/json when it parses as JSON), `headers` adds per-call "
+        "request headers (upstream headers like Google Ads' login-customer-id, or routing controls "
+        "like X-Treg-Route-*), and `max_cost_usd` sets a USD ceiling on metered calls billed "
+        "from the team's treg balance. It maps to X-Treg-Route-Max-Cost, which refuses with 402 "
+        "before charging if the estimate exceeds it. Calls on a team's own key are unmetered. "
+        "Injected credentials always win over caller headers. Use `query` + `body` "
+        "together for endpoints that split a POST across both (Bright Data's ?dataset_id=… + array "
+        "body, or POST pathParams). Giving `body` implies POST. For multipart requests, put "
+        "ordinary fields in `form` and files in `uploads` as objects with name, filename, "
+        "content_type and base64 data.\n\n"
         "Query values are sent the way HTTP spells them: booleans as `true`/`false`, nested "
         "objects as compact JSON. A null query value is OMITTED from the query string — if an "
         "upstream distinguishes an absent parameter from an empty one, send the empty string "
@@ -1704,6 +1797,7 @@ async def call(endpoint_id: str, params: dict | list | None = None,
                headers: dict | None = None, content_type: str | None = None,
                form: dict | None = None, uploads: list[dict] | None = None,
                authorization_method: str | None = None,
+               max_cost_usd: StrictFloat | None = None,
                prior: Annotated[Any, Field(description=PRIOR_DESCRIPTION)] = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
     # `prior` takes any value and is parsed here, so a malformed one (a string, a list, a bad
@@ -1719,7 +1813,7 @@ async def call(endpoint_id: str, params: dict | list | None = None,
         endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
         query=query, body=body, headers=headers, content_type=content_type,
         form=form, uploads=uploads,
-        authorization_method=authorization_method, ctx=ctx,
+        authorization_method=authorization_method, max_cost_usd=max_cost_usd, ctx=ctx,
         catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
     )
 
@@ -1781,6 +1875,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                      headers: dict | None = None, content_type: str | None = None,
                      form: dict | None = None, uploads: list[dict] | None = None,
                      authorization_method: str | None = None,
+                     max_cost_usd: float | None = None,
                      ctx: Context = None, *, catalog_only: bool,
                      allowed_methods: frozenset[str] | None,
                      surface: _SurfacePolicy) -> CallOut:
@@ -1875,6 +1970,23 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                                           "x-treg-authorization-method")}
     if authorization_method:
         extra_headers["X-Treg-Authorization-Method"] = authorization_method
+    if max_cost_usd is not None:
+        if isinstance(max_cost_usd, bool) or not math.isfinite(max_cost_usd) or max_cost_usd <= 0:
+            return {"error": "max_cost_usd must be a finite positive number", "endpoint_id": endpoint_id}
+        ceiling = repr(float(max_cost_usd))
+        ceiling_header = "X-Treg-Route-Max-Cost"
+        for name, value in extra_headers.items():
+            if name.lower() == ceiling_header.lower():
+                try:
+                    if Decimal(value) == Decimal(ceiling):
+                        continue
+                except InvalidOperation:
+                    pass
+                return {"error": f"max_cost_usd conflicts with the {ceiling_header} header",
+                        "endpoint_id": endpoint_id}
+        extra_headers = {name: value for name, value in extra_headers.items()
+                         if name.lower() != ceiling_header.lower()}
+        extra_headers[ceiling_header] = ceiling
     if isinstance(the_body, str):
         # A raw string body travels as-is. Content-Type: explicit wins, else sniff JSON — the
         # CLI's rule, because upstreams that require `application/json` reject a JSON body
@@ -2415,7 +2527,7 @@ async def directory_catalog_call_read(
         endpoint_id, params=params, idempotency_key=idempotency_key, query=query, headers=headers,
         authorization_method=authorization_method,
         ctx=ctx, catalog_only=True, surface=_DIRECTORY_SURFACE,
-        allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+        allowed_methods=_DIRECTORY_READ_METHODS,
     )
 
 

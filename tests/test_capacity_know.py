@@ -242,13 +242,13 @@ def test_capacity_view_getters_are_sync_and_io_free():
 def _apollo_profile(lead_left):
     """api_profile's credit fields as Apollo returns them: the "unified" meter moves with phone
     reveals only, so the lead pool minus it says nothing about lead credits."""
-    return {"num_credits_remaining": lead_left, "effective_num_lead_credits": 5000,
+    return {"num_credits_remaining": lead_left, "effective_num_lead_credits": 50000,
             "num_lead_credits_used": 0, "effective_num_direct_dial_credits": 5000,
             "num_direct_dial_credits_used": 40, "total_unified_credits_used": 40,
             "effective_num_ai_credits": 1000, "num_ai_credits_used": 0}
 
 
-@pytest.mark.parametrize("lead_left,health", [(0, "exhausted"), (1234, "ok")])
+@pytest.mark.parametrize("lead_left,health", [(0, "exhausted"), (1234, "low"), (12345, "ok")])
 async def test_sweep_reads_apollos_lead_credits_not_the_unified_meter(monkeypatch, lead_left, health):
     """Apollo answers every enrich with 422 `credit_type: lead credits, credit_balance: 0` while its
     unified meter still shows almost the whole pool unused. The sweep must read the lead pool, so a

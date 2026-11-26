@@ -15,6 +15,7 @@ from sqlalchemy import select
 from ...infra.db import session_maker
 from ...models import Ephemeral
 from ...timeutil import utcnow_naive
+from .collectors import account_key
 from .marks import LOCK_NS, Lock, lock_key
 from .policy import _CONCURRENCY, _ENDPOINT_CONCURRENCY, _ENDPOINT_RATE_LIMITS, _RATE_LIMITS, LatestState
 from .sweep import STATE_NS, state_key
@@ -41,9 +42,10 @@ class LatestStateView:
         self._loaded_at = time.monotonic()
         return self._states
 
-    def get(self, provider: str) -> LatestState | None:
-        """The sweep's state; call `load()` first. Sync and I/O-free on purpose (resolve.py rule)."""
-        return self._states.get(state_key(provider))
+    def get(self, provider: str, slot: str | None = None) -> LatestState | None:
+        """The sweep's state of one account (`slot` None is the primary); call `load()` first. Sync
+        and I/O-free on purpose (resolve.py rule)."""
+        return self._states.get(state_key(account_key(provider, slot)))
 
     def locks(self, provider: str, endpoint_id: str | None = None,
               slot: str | None = None, *, metered: bool = True) -> list[Lock]:
@@ -66,13 +68,17 @@ class LatestStateView:
     def exhausted_until(self, provider: str, endpoint_id: str | None = None, slot: str | None = None,
                         *, metered: bool = True):
         """When this call serves again per whichever source refuses it now, else None. The sweep
-        reads only the provider's own account, so it never speaks for a further one, and only its
-        balance, so it never speaks for a free route."""
+        reads only an account's balance, so it never speaks for a free route."""
         lock = self.active_lock(provider, endpoint_id, slot, metered=metered)
         if lock is not None:
             return lock.until
-        state = self._states.get(state_key(provider)) if slot is None and metered else None
+        state = self.get(provider, slot) if metered else None
         return state.exhausted_until if state and state.is_exhausted() else None
+
+    def is_low(self, provider: str, slot: str | None = None, *, metered: bool = True) -> bool:
+        """The sweep read this account below its provider's drain mark (`policy._DRAIN_BELOW`)."""
+        state = self.get(provider, slot) if metered else None
+        return state is not None and state.health == "low"
 
     def rate_bucket(self, provider: str, endpoint_id: str | None,
                     slot: str | None = None) -> tuple[str, int, float] | None:

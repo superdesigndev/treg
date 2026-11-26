@@ -373,10 +373,58 @@ async def test_team_and_directory_endpoint_details_and_balance_match(clients):
         team_balance = await _call_tool(client, "balance", {}, token, path="/mcp/")
         directory_balance = await _call_tool(client, "balance", {}, token)
 
+    team_hint, *team_other_hints = team_endpoint.pop("hints")
+    directory_hint, *directory_other_hints = directory_endpoint.pop("hints")
     assert team_endpoint == directory_endpoint
     assert team_endpoint["endpoint"]["id"] == endpoint_args["endpoint_id"]
-    assert team_endpoint["endpoint"]["cost"] == directory_endpoint["endpoint"]["cost"]
+    assert "`call`" in team_hint and "catalog_call_" not in team_hint
+    assert "`catalog_call_read`" in directory_hint
+    assert "`call`" not in directory_hint and "catalog_call_write" not in directory_hint
+    assert all(label not in hint for hint in (team_hint, directory_hint) for label in ("V1", "V2"))
+    assert all("X-Treg-Route-Max-Cost" not in hint for hint in (team_hint, directory_hint))
+    assert team_other_hints == directory_other_hints
+    assert any(hint.startswith("Top alternative: catalog_get(") for hint in directory_other_hints)
     assert team_balance == directory_balance
+
+
+async def test_routed_catalog_get_explains_the_ceiling_on_both_surfaces(clients):
+    from treg import api as A
+
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": "treg.people.email.find"}
+    async with paired_mcp_session() as client:
+        await _call_tool(client, "catalog_get", args, token, path="/mcp/")
+        await A.app.state.endpoint_observation_reader.wait_for_idle()
+        team = await _call_tool(client, "catalog_get", args, token, path="/mcp/")
+        directory = await _call_tool(client, "catalog_get", args, token)
+    team_hint, = team.pop("hints")
+    directory_hint, = directory.pop("hints")
+    assert team == directory
+    assert "`call`" in team_hint and "catalog_call_" not in team_hint
+    assert "`max_cost_usd`" in team_hint
+    assert "`catalog_call_write`" in directory_hint and "catalog_call_read" not in directory_hint
+    assert "`call`" not in directory_hint and "`max_cost_usd`" not in directory_hint
+    for hint in (team_hint, directory_hint):
+        assert "USD ceiling" in hint
+        assert "`X-Treg-Route-Max-Cost` in `headers`" in hint
+        assert "other routing controls in `headers`" in hint
+        assert "V1" not in hint and "V2" not in hint
+
+
+@pytest.mark.parametrize(("method", "tool"), [
+    ("GET", "catalog_call_read"),
+    ("HEAD", "catalog_call_read"),
+    ("OPTIONS", "catalog_call_read"),
+    ("POST", "catalog_call_write"),
+    ("PUT", "catalog_call_write"),
+    ("PATCH", "catalog_call_write"),
+    ("DELETE", "catalog_call_write"),
+])
+def test_directory_catalog_get_names_the_tool_for_each_http_method(method, tool):
+    ep = {"method": method, "provider": "example"}
+    hint, = mcp._mcp_catalog_hints({}, ep, surface=mcp._DIRECTORY_SURFACE)
+    tools = {"call", "catalog_call_read", "catalog_call_write"}
+    assert {name for name in tools if f"`{name}`" in hint} == {tool}
 
 
 async def test_only_the_team_surface_shows_a_rows_note(clients):
