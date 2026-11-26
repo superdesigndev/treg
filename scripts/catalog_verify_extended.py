@@ -158,6 +158,11 @@ def observed_price(ep: dict, charged: float, day: str) -> None:
     ep["price"] = {"value": format(Decimal(repr(charged)), "f") if charged else "0", "currency": "USD",
                    "per": 1, "unit": "call"}
     ep["provenance"] = {"source": "observed", "checked": day, "confidence": "verified"}
+    if charged:
+        ep.pop("settle", None)
+    else:
+        # a free row inherits no settle from the provider's reported charge
+        ep["settle"] = None
 
 
 def auth_headers(service: str, cred: str) -> tuple[dict, dict, str]:
@@ -375,7 +380,9 @@ LAST_ELAPSED = _Elapsed()
 # TikHub is deliberately absent: it publishes no per-call charge in the response body, so its
 # rate card stays the only figure available.
 OBSERVED_COST = {
-    "dataforseo": lambda doc: dig(doc, "tasks.0.cost"),
+    # a failed task reports `cost: 0`, which says nothing about the price
+    "dataforseo": lambda doc: dig(doc, "tasks.0.cost")
+    if isinstance(code := dig(doc, "tasks.0.status_code"), int) and 20000 <= code < 30000 else None,
 }
 
 
