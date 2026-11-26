@@ -19,7 +19,7 @@ import zlib
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import Integer, String, case, column, delete, func, literal_column, select, update, values
+from sqlalchemy import Integer, String, case, column, delete, func, literal_column, select, true, update, values
 
 from ..domain import arena, arena_insights as rules
 from .. import archive_bodies
@@ -246,9 +246,17 @@ async def collect_batch(session_factory=session_maker):
         await db.commit()
 
     async with session_factory() as db:
-        records = (await db.execute(select(CallRecord).where(CallRecord.id > cursor,
-            CallRecord.created_at >= until - timedelta(days=WINDOW_DAYS), CallRecord.created_at < until,
-            CallRecord.endpoint_id.in_(endpoints)).order_by(CallRecord.id).limit(BATCH_SIZE))).scalars().all()
+        window = (CallRecord.created_at >= until - timedelta(days=WINDOW_DAYS), CallRecord.created_at < until)
+        if db.bind.dialect.name == "postgresql":
+            end = (await db.execute(cycle_end_query(endpoints, until))).scalar()
+            ids = (await db.execute(batch_ids_query(endpoints, cursor, end))).scalars().all()
+            records = (await db.execute(select(CallRecord).where(CallRecord.id.in_(ids), *window)
+                .order_by(CallRecord.id))).scalars().all() if ids else []
+        else:
+            # SQLite has no LATERAL; its test tables are small enough for the plain question.
+            records = (await db.execute(select(CallRecord).where(CallRecord.id > cursor, *window,
+                CallRecord.endpoint_id.in_(endpoints)).order_by(CallRecord.id).limit(BATCH_SIZE))).scalars().all()
+            ids = [record.id for record in records]
     evidence = await _evidence(records, session_factory)
 
     async with session_factory() as db:
@@ -282,9 +290,9 @@ async def collect_batch(session_factory=session_maker):
         if observations:
             stmt = _insert(db, ArenaObservation).values(observations)
             await db.execute(stmt.on_conflict_do_update(index_elements=["id"], set_={k: getattr(stmt.excluded, k) for k in observations[0] if k != "id"}))
-        if records:
-            state.cursor = records[-1].id
-        backlog = len(records) == BATCH_SIZE
+        if ids:
+            state.cursor = ids[-1]
+        backlog = len(ids) == BATCH_SIZE
         if not backlog:
             state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
@@ -295,6 +303,38 @@ async def collect_batch(session_factory=session_maker):
         db.add(state)
         await db.commit()
     return backlog
+
+
+def _arena_endpoints(endpoints):
+    return values(column("endpoint_id", String), name="arena_endpoint").data([(e,) for e in endpoints])
+
+
+def batch_ids_query(endpoints, cursor: int, end: int | None):
+    """The next `BATCH_SIZE` audit ids of the Arena's endpoints after `cursor`, up to `end`.
+
+    Asked one endpoint at a time on `ix_callrecord_endpoint_id_id`, so it reads index entries of
+    the Arena's own rows only. The one-query form (`endpoint_id IN (...) AND id > cursor ORDER BY
+    id LIMIT n`) is planned as a walk of the primary key from the cursor that filters every row,
+    the other endpoints' included, and finding fewer than `n` walks to the end of the table."""
+    arena = _arena_endpoints(endpoints)
+    after = [CallRecord.endpoint_id == arena.c.endpoint_id, CallRecord.id > cursor]
+    if end is not None:
+        after.append(CallRecord.id <= end)
+    each = (select(CallRecord.id).where(*after).order_by(CallRecord.id).limit(BATCH_SIZE)
+            .lateral("each_endpoint"))
+    return (select(each.c.id).select_from(arena).join(each, true())
+            .order_by(each.c.id).limit(BATCH_SIZE))
+
+
+def cycle_end_query(endpoints, until: datetime):
+    """The last id a cycle cut off at `until` needs: the largest of the Arena endpoints' first
+    ids written at or after it (None when none was). One probe per endpoint on
+    `ix_callrecord_endpoint_id_created_at`. A row written late below it is the rewind's."""
+    arena = _arena_endpoints(endpoints)
+    first = (select(CallRecord.id).where(CallRecord.endpoint_id == arena.c.endpoint_id,
+             CallRecord.created_at >= until).order_by(CallRecord.created_at).limit(1)
+             .lateral("first_after"))
+    return select(func.max(first.c.id)).select_from(arena).join(first, true())
 
 
 def rewind_query(endpoints, until: datetime):

@@ -245,7 +245,14 @@ It must not run in web processes: every web process would contend for the cursor
 `REFRESH_SECONDS`, because each aggregate scans the whole window. The rewind that revisits recent
 evidence is constrained to Arena endpoints so it rides `ix_callrecord_endpoint_id_created_at`,
 and asks for `min(id + 0)`: PostgreSQL answers a bare `min(id)` by walking the primary key from
-the oldest row, filtering every row until it reaches the last ten minutes (`rewind_query`).
+the oldest row, filtering every row until it reaches the last ten minutes (`rewind_query`). The
+batch read has the same trap: `endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n` walks the
+primary key from the cursor through every endpoint's rows, and to the end of the table once fewer
+than `n` remain before the cycle's cutoff. On PostgreSQL it therefore asks one endpoint at a time
+(a `LATERAL` probe per endpoint on `ix_callrecord_endpoint_id_id`, `batch_ids_query`), up to the
+last id the cycle needs (`cycle_end_query`, the largest of the endpoints' first ids written at or
+after the cutoff), and then reads those rows by id. A row written late below that id is the
+rewind's.
 
 - It reads a bounded batch of audit records and archive pointers, closes the session, resolves
   bodies through `archive_bodies.read` (path `arena`), then reacquires the cursor lock and

@@ -375,3 +375,19 @@ def test_the_rewind_asks_for_an_expression_postgresql_cannot_answer_by_walking_t
     sql = str(service.rewind_query(["a.b"], now()).compile(dialect=postgresql.dialect()))
     assert "min(callrecord.id + 0)" in sql
     assert "callrecord.endpoint_id IN" in sql and "callrecord.created_at >=" in sql
+
+
+def test_the_batch_read_asks_each_arena_endpoint_on_its_own_index():
+    """`endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n` is planned as a primary-key
+    walk from the cursor that reads every endpoint's rows; one ordered probe per endpoint reads
+    `ix_callrecord_endpoint_id_id` entries of the Arena's rows only."""
+    from sqlalchemy.dialects import postgresql
+
+    dialect = postgresql.dialect()
+    ids = str(service.batch_ids_query(["a.b", "c.d"], 7, 99).compile(dialect=dialect))
+    assert "JOIN LATERAL" in ids and "VALUES" in ids and " IN " not in ids
+    assert "callrecord.endpoint_id = arena_endpoint.endpoint_id" in ids
+    assert "callrecord.id <=" in ids
+    assert "callrecord.id <=" not in str(service.batch_ids_query(["a.b"], 7, None).compile(dialect=dialect))
+    end = str(service.cycle_end_query(["a.b"], now()).compile(dialect=dialect))
+    assert "JOIN LATERAL" in end and "ORDER BY callrecord.created_at" in end
