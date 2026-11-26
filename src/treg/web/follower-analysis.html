@@ -382,7 +382,7 @@
       </div>
     </div>
 
-    <div id="cRoles" style="flex: 1; margin: 24px 0 20px; display: grid; gap: 20px"></div>
+    <div id="cRoles" style="flex: 1; margin: 34px 0 20px; display: grid; gap: 28px; align-content: start"></div>
     <div id="cFoot" style="display: flex; gap: 36px; text-align: left"></div>
   </div>
 </div>
@@ -520,7 +520,7 @@
     money: 'funding, revenue, pricing, cash, getting paid', team: 'hiring, managing a team, finding collaborators', time: 'focus, overload, burnout, too little time',
     none: 'no difficulty stated' };
   var PAIN_LABEL = { customers: 'Getting customers', audience: 'Growing an audience', shipping: 'Shipping faster', ai: 'Making AI reliable', money: 'Money and funding', team: 'Hiring and team', time: 'Time and focus' };
-  var PAIN_PER_ROLE = 12;
+  var PAIN_PER_ROLE = 25;
   /* a persona's name on the card: the role's top topic, then the role */
   var TOPIC_ADJ = { ai: 'AI', dev: 'Dev-tool', startups: 'Startup', growth: 'Growth', design: 'Product', creator: 'Audience-building', finance: 'Finance' };
   var ROLE_NOUN = { founder_exec: 'founders', engineer: 'engineers', gtm_growth: 'marketers', agency_freelancer: 'freelancers', creator_educator: 'creators', investor: 'investors' };
@@ -950,24 +950,21 @@
     var top = function (n, max) { var named = Object.keys(n).filter(function (k) { return k !== 'other' && k !== 'unclear' && k !== 'none'; }); return named.sort(function (a, b) { return n[b] - n[a]; }).slice(0, max); };
     var named = function (k, topic) { var noun = ROLE_NOUN[k] || (ROLE_LABEL[k] || k).toLowerCase(), adj = TOPIC_ADJ[topic]; return adj ? adj + ' ' + noun : noun.charAt(0).toUpperCase() + noun.slice(1); };
     var pains = function (list) {
-      var read = list.filter(function (r) { return r.pain; }), n = count(read, 'pain');
-      return read.length < 3 ? [] : top(n, 2).map(function (k) { return { text: PAIN_LABEL[k], share: n[k] / read.length }; });
+      return top(count(list, 'pain'), 2).map(function (k) { return PAIN_LABEL[k]; });
     };
     var n = count(rows, 'role'), keys = topRoles(rows);
     var roles = keys.map(function (k) {
       var mine = rows.filter(function (r) { return r.role === k; }), topics = top(count(mine, 'topic'), 2), levels = count(mine, 'level'), level = top(levels, 1)[0];
-      var reach = mine.map(function (r) { return r.followers || 0; }).sort(function (a, b) { return a - b; })[Math.floor(mine.length / 2)];
       return { text: ROLE_LABEL[k] || k, share: n[k] / rows.length, name: named(k, topics[0]), pains: pains(mine),
-        about: (level && levels[level] * 3 >= mine.length ? 'Mostly ' + LEVEL_TEXT[level] : 'A mix of levels') +
-          (topics.length ? ', into ' + topics.map(function (t) { return t === 'ai' ? 'AI' : (TOPIC_LABEL[t] || t).toLowerCase(); }).join(' and ') : '') + '.' +
-          (reach ? ' Typically ' + (reach >= 1000 ? (reach / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : reach) + ' followers of their own.' : '') };
+        about: (level && levels[level] * 3 >= mine.length ? 'Mostly ' + LEVEL_TEXT[level] + '.' : 'All levels.') +
+          (topics.length ? ' Into ' + topics.map(function (t) { return t === 'ai' ? 'AI' : (TOPIC_LABEL[t] || t).toLowerCase(); }).join(' and ') + '.' : '') };
     });
     var nouns = keys.slice(0, 3).map(function (k) { return ROLE_NOUN[k] || (ROLE_LABEL[k] || k).toLowerCase(); }), adj = TOPIC_ADJ[top(count(rows, 'topic'), 1)[0]];
     var headline = (adj ? adj + ' ' : '') + (nouns.length > 1 ? nouns.slice(0, -1).join(', ') + ' and ' + nouns[nouns.length - 1] : nouns[0] || 'A mixed crowd');
     /* who buys: the role whose share among the leads most exceeds its share of everyone */
     var ln = count(leads, 'role'), buyer = leads.length < 3 ? '' : Object.keys(ln).filter(function (k) { return k !== 'other' && ln[k] >= 2; })
       .sort(function (a, b) { return ln[b] / n[b] - ln[a] / n[a]; })[0];
-    var foot = [['Top struggles', pains(rows).map(function (x) { return x.text + ' ' + Math.round(x.share * 100) + '%'; }).join(' · ')],
+    var foot = [['Top pain points', pains(rows).join(' · ')],
       ['Most likely to buy', buyer ? named(buyer, top(count(leads.filter(function (r) { return r.role === buyer; }), 'topic'), 1)[0]) : ''],
       ['Company badge', rows.some(function (r) { return r.badge; }) ? Math.round(rows.filter(function (r) { return r.badge; }).length / rows.length * 100) + '% of followers' : '']];
     return { roles: roles, headline: headline.charAt(0).toUpperCase() + headline.slice(1), foot: foot.filter(function (f) { return f[1]; }) };
@@ -991,12 +988,12 @@
     $('cRoles').innerHTML = f.roles.map(function (r, i) {
       return '<div style="text-align: left; display: flex; flex-direction: column; min-height: 0"><div style="display: flex; align-items: flex-end; gap: 12px"><div style="font-family: \'Geist Pixel\', monospace; font-size: 60px; line-height: 0.85">' + Math.round(r.share * 100) + '%</div>' +
         '<div style="display: flex; align-items: center; gap: 7px; font-size: 16px; font-weight: 600; line-height: 1.15; color: #3F3F3F"><span style="width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: ' + COLORS[i] + '"></span>' + esc(r.text) + '</div></div>' +
-        '<div style="flex: 1; margin-top: 14px; padding: 16px 16px 14px; border-radius: 18px; background: rgba(255,255,255,0.72); border: 1px solid rgba(0,0,0,0.06); border-top: 4px solid ' + COLORS[i] + '">' +
-        '<div style="font-size: 23px; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px">' + esc(r.name) + '</div>' +
-        '<div style="margin-top: 8px; font-size: 15px; font-weight: 500; line-height: 1.38; color: #5E5E5E">' + esc(r.about) + '</div>' +
-        (r.pains.length ? '<div style="margin-top: 12px">' + label('Struggles with') + r.pains.map(function (x) {
-          return '<div style="margin-top: 4px; display: flex; justify-content: space-between; gap: 8px; font-size: 16px; font-weight: 600; color: #111111">' + esc(x.text) + '<span style="color: #8A8A8A">' + Math.round(x.share * 100) + '%</span></div>';
-        }).join('') + '</div>' : '') + '</div></div>';
+        '<div style="margin-top: 18px; padding-top: 16px; border-top: 3px solid ' + COLORS[i] + '">' +
+        '<div style="font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px">' + esc(r.name) + '</div>' +
+        '<div style="margin-top: 8px; font-size: 17px; font-weight: 500; line-height: 1.38; color: #5E5E5E">' + esc(r.about) + '</div>' +
+        '<div style="margin-top: 18px">' + label('Pain points') + (r.pains.length ? r.pains : ['None in recent posts']).map(function (x) {
+          return '<div style="margin-top: 5px; font-size: 19px; font-weight: 600; letter-spacing: -0.2px; color: ' + (r.pains.length ? '#111111' : '#8A8A8A') + '">' + esc(x) + '</div>';
+        }).join('') + '</div></div></div>';
     }).join('');
     $('cFoot').innerHTML = f.foot.map(function (x) {
       return '<div>' + label(x[0]) + '<div style="margin-top: 3px; font-size: 19px; font-weight: 600; letter-spacing: -0.2px">' + esc(x[1]) + '</div></div>';
