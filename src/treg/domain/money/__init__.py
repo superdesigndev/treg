@@ -1064,6 +1064,22 @@ async def balance_of(db: AsyncSession, org_id: int) -> int:
     return int((await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar() or 0)
 
 
+async def spendable_of(db: AsyncSession, org_id: int) -> int:
+    """The balance a team is shown: `org.balance_micro` plus its allowance hold, less what its
+    queued charges have spent. A refill moves up to a chunk out of the balance into that hold,
+    which for a small team is all of it; the hold's unspent part is still the team's to spend.
+    One statement; the hold and the queue are read only for this team."""
+    from_hold, outright = _charge_parts(org_id)
+    queued = func.coalesce(
+        select(func.sum(from_hold + outright)).where(CallCharge.org_id == org_id)
+        .scalar_subquery(), 0)
+    held = func.coalesce(
+        select(Hold.amount_micro).where(Hold.id == f"allowance:{org_id}").scalar_subquery(), 0)
+    shown = (await db.execute(
+        select(Org.balance_micro + held - queued).where(Org.id == org_id))).scalar()
+    return max(0, int(shown or 0))
+
+
 async def blocks_of(db: AsyncSession, org_id: int) -> list[CreditBlock]:
     rows = (await db.execute(
         select(CreditBlock).where(CreditBlock.org_id == org_id).order_by(CreditBlock.created_at.desc())

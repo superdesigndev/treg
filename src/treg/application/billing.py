@@ -2166,11 +2166,12 @@ async def billing_state(db: AsyncSession, org: Org) -> dict:
     prefs = autotopup_prefs(org)
     s = get_settings()
     spent = await monthly_autotopup_spend(db, org.id) if org.id else 0
+    balance = await ledger.spendable_of(db, org.id) if org.id else 0
     return {
         "org_id": org.id,
         "configured": configured(),
-        "balance_micro": int(org.balance_micro or 0),
-        "balance_usd": ledger.usd(int(org.balance_micro or 0)),
+        "balance_micro": balance,
+        "balance_usd": ledger.usd(balance),
         "customer": bool(org.stripe_customer_id),
         "card_on_file": bool(org.stripe_default_pm),
         # Whether the hosted portal can be opened at all. It hangs off the Stripe customer, which only

@@ -51,7 +51,7 @@ async def org_balance(
     detailed = _role_at_least(caller.role, "admin")
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    balance = await ledger.balance_of(db, org_id)
+    balance = await ledger.spendable_of(db, org_id)
     # An auto-top-up trigger point besides `reserve`. Fire-and-forget by contract (see billing.maybe_schedule_autotopup): it starts a background task at most, so no
     # Stripe latency lands in this response, and reading a balance can therefore never be slow.
     billing.maybe_schedule_autotopup(caller.org)
@@ -71,10 +71,12 @@ async def org_balance(
              "created_at": b.created_at.isoformat() if b.created_at else None}
             for b in blocks
         ],
+        # Calls in flight on holds of their own. The allowance hold is not one: what it has not
+        # spent is in `balance_micro`.
         "holds": [
             {"call_id": h.id, "endpoint_id": h.endpoint_id, "amount_micro": h.amount_micro,
              "created_at": h.created_at.isoformat() if h.created_at else None}
-            for h in holds
+            for h in holds if not h.allowance
         ],
         "entries": {
             "limit": limit, "offset": offset,

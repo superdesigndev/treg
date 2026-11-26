@@ -708,7 +708,17 @@ such hold in full (`close_stale_allowance_in_transaction`, under the release lea
 its counter so a late writer is refused. A charge recorded after that still finds no hold and
 comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
 in it stays there; the team's balance is lower by up to a refill's target (a chunk, unless
-refills are sized to the team's spend) plus that, and the hold is in `/balance`.
+refills are sized to the team's spend) plus that.
+
+**The balance a team is shown** is `money.spendable_of`: `org.balance_micro` plus the allowance
+hold, less what the team's queued charges have spent (`_charge_parts`, so an overrun or a charge
+of a closed hold counts against the balance), in one statement. What the hold has not spent is the
+team's to spend: the next call reaching the exact path takes it back if it needs it. `GET
+/orgs/{id}/balance`, the billing state the dashboard reads, the CLI's home and the team choice on
+the MCP consent page show this figure; the route's `holds` lists only calls on holds of their own.
+The column itself is unchanged and the invariant below still holds for it; only the figure shown
+adds the hold back. Calls in flight on the allowance are inside it, the way a call's own hold is
+outside `org.balance_micro`.
 
 ## The six operations (`domain/money`)
 
@@ -1250,8 +1260,8 @@ cumulative target per block (the bonus target is `bonus * refunded // paid`).
 ### Who sees what, history and portal
 
 `_billing_org` (every `/billing/*` route) requires **admin or owner**: cards, spend policy and
-invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure and in-flight
-holds (a machine identity must read the balance it spends, and every 402 already carries
+invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure (with the allowance
+hold's unspent part, "The balance a team is shown") and in-flight holds (a machine identity must read the balance it spends, and every 402 already carries
 `balance_micro`); credit blocks and the ledger stay admin+, and `entries.withheld` says when an
 empty ledger was withheld rather than empty.
 

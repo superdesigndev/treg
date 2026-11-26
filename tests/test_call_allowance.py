@@ -17,6 +17,7 @@ from sqlalchemy import event, select, update
 from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
+from treg.application import billing, home
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
@@ -30,6 +31,7 @@ from treg.domain.governance.teams import cascade_delete_org, lock_allowance_hold
 from treg.infra import db as infra_db
 from treg.infra import kv
 from treg.infra.db import reset_db, session_maker
+from treg.routers import billing as billing_routes
 from treg.domain.identity.access import Caller
 from treg.models import (
     ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, TagBudget, TagSpend, Tool, User,
@@ -3722,6 +3724,32 @@ async def test_with_the_window_off_a_team_whose_balance_sits_in_its_allowance_is
     assert await _per_call_holds(org_id) == ["routed:r0"]
     assert await _state(org_id) == (GRANT - 4_000 - 80_000, 4_000), "what the take stands on"
     assert await _given_back(org_id) == [GRANT - 4_000]
+
+
+async def test_a_team_whose_balance_sits_in_its_allowance_is_shown_what_it_can_spend(
+        org_id, store, monkeypatch):
+    """The refill moves the whole balance into the allowance hold and `org.balance_micro`
+    reads 0. The route, the dashboard's billing state and the CLI's home show the balance plus
+    what the hold has not spent, before the fold and after it; the hold is not a call in flight."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    epoch = await runtime.take(org_id, 4_000)
+    assert await _finish(org_id, "spent", epoch, 4_000, billable=True, actual_micro=3_500) == 3_500
+    assert await _state(org_id) == (0, GRANT) and await _queued(org_id) == 1
+
+    async def shown() -> set[int]:
+        async with session_maker() as db:
+            route = await billing_routes.org_balance(org_id, limit=1, offset=0, caller=caller, db=db)
+            assert route["holds"] == []
+            state = await billing.billing_state(db, await db.get(Org, org_id))
+            summary = await home.summary(db, caller.user.email, caller, teams=1)
+            return {await ledger.spendable_of(db, org_id), route["balance_micro"],
+                    state["balance_micro"], summary["balance_micro"]}
+
+    assert await shown() == {GRANT - 3_500}
+    await _fold(org_id)
+    assert await _state(org_id) == (0, GRANT - 3_500)
+    assert await shown() == {GRANT - 3_500}
 
 
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):

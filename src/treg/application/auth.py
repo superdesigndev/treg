@@ -26,6 +26,7 @@ from ..application.onboard import first_run
 from ..infra import db as database
 from ..infra import turnstile
 from ..config import get_settings
+from ..domain import money
 from ..domain.identity import session as sess
 from ..domain.identity import mcp_oauth
 from ..domain.identity import api_keys as managed_keys
@@ -1166,7 +1167,7 @@ async def prepare_oauth_authorization(
                 # client spends for the life of the grant, and a list of slugs makes the one question
                 # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
                 teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
-                              "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
+                              "balance_usd": round(await money.spendable_of(db, org.id) / 1_000_000, 4)})
         new_team = (first_run.team_names(user.email)[0]
                     if _first_team_due(client, user, memberships, sso_org_id) else "")
         if not teams and not new_team:
