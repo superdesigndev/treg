@@ -733,15 +733,20 @@ read this figure; the route's `holds` lists only calls on holds of their own.
 The figure reads two stores one after the other, so a refill or a give-back moving money between
 them can make one reading short or long by what moved. A long reading costs nothing: every call
 still reserves its own money and is refused when it is not there. A decision a short reading would
-cost reads `covers`: the figure, and when it falls short, the counter given back
+cost reads `reach` (`covers`): the figure, and when it falls short, the counter given back
 (`give_back_for_exact_path`) and the database read again, where the money now is. A counter that
-cannot make up the difference (calls in flight hold the money, the store lost it, the team is off
-the allowance) leaves the answer short. Whether a paying wallet's payment settles or its proof draws
-credit reads it, so the wallet neither pays twice for credit it has nor is answered again and again
-with credit no call can reach; so do the arenas' start checks, from outside their sessions
-(`CreditShort`, `gives_counter_back`), and their quotes (`balance_for`). The Sheets panel's teams
-and the consent page end their read before asking the store, so no connection waits on it. The
-column itself is unchanged and the invariant below still holds for it.
+gives nothing back is no answer by itself, since another request may have emptied it and not yet
+released its money, or a refill may hold the team's lease while it publishes: while the team's money
+wherever it sits (`allowance.credit_bound`, the balance plus the whole hold less what queued charges
+spent, from the database alone) would cover the amount, it reads again, for as long as a call waits
+for a refill. Money that stays out of reach that long (calls in flight hold it, the store lost the
+counter, the team is off the allowance) leaves the answer short. Whether a paying wallet's payment
+settles or its proof draws credit reads it, so the wallet neither pays twice for credit it has nor
+is answered again and again with credit no call can reach; so do the arenas' start checks, from
+outside their sessions (`CreditShort`, `gives_counter_back`), and their quotes keep the figure it
+confirmed (`balance_for`). The Sheets panel's teams and the consent page end their read before
+asking the store, so no connection waits on it. The column itself is unchanged and the invariant
+below still holds for it.
 
 ## The six operations (`domain/money`)
 

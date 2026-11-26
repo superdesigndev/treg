@@ -503,36 +503,53 @@ async def spendable(db, org_id: int, offer: Offer | None = None) -> int:
     return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
 
 
-async def covers(org_id: int, amount_micro: int) -> bool:
-    """Whether the team can pay `amount_micro` now, for a decision a wrong answer costs: a
-    wallet settling a transfer or drawing credit, an arena run starting. The balance shown is
-    read across the store and the database and can miss money a refill or a give-back is moving
-    between them, so a short answer asks for the counter back (`give_back_for_exact_path`) and
-    reads the database alone again: money on the counter is then on the balance. A counter
-    that cannot make up the difference (calls in flight hold the money, the store lost it, the
-    team is off the allowance) leaves the answer short. Opens its own sessions: call it with
-    none held."""
+async def reach(org_id: int, amount_micro: int) -> int:
+    """What the team was found able to pay, deciding on `amount_micro`: at least that much when
+    it can pay it now, and the last reading when it cannot. For a decision a short reading
+    would cost: a wallet settling a transfer or drawing credit, an arena run starting.
+
+    The balance shown is read across the store and the database, and a refill or a give-back
+    can be moving money between them while it is read. A short reading asks for the counter
+    back (`give_back_for_exact_path`) and reads the database alone again: money on the counter
+    is then on the balance. A counter that gives nothing back is no answer by itself: another
+    request may have emptied it and not yet released its money, or a refill may hold the team's
+    lease. So while the team's money anywhere (`allowance.credit_bound`) would still cover the
+    amount, it is read again, for as long as a call waits for a refill. Money that stays out of
+    reach that long (calls in flight hold it, the store lost the counter, the team is off the
+    allowance) leaves the answer short. Opens its own sessions: call it with none held."""
     if amount_micro <= 0:
-        return True
-    offer = await counter_offer(org_id)
-    async with session_maker() as db:
-        free = await allowance.spendable(db, org_id)
-        have = await spendable(db, org_id, offer)
-    if have >= amount_micro:
-        return True
-    if not await give_back_for_exact_path(org_id, amount_micro - free):
-        return False
-    async with session_maker() as db:
-        return await allowance.spendable(db, org_id) >= amount_micro
+        return 0
+    deadline = time.monotonic() + _REFILL_WAIT_S
+    while True:
+        offer = await counter_offer(org_id)
+        async with session_maker() as db:
+            free = await allowance.spendable(db, org_id)
+            have = await spendable(db, org_id, offer)
+            anywhere = await allowance.credit_bound(db, org_id)
+        if have >= amount_micro:
+            return have
+        if await give_back_for_exact_path(org_id, amount_micro - free):
+            async with session_maker() as db:
+                have = await allowance.spendable(db, org_id)
+            if have >= amount_micro:
+                return have
+        if anywhere < amount_micro or time.monotonic() >= deadline:
+            return have
+        await asyncio.sleep(0.02 + random.random() * 0.03)
+
+
+async def covers(org_id: int, amount_micro: int) -> bool:
+    """Whether the team can pay `amount_micro` now (`reach`)."""
+    return amount_micro <= 0 or await reach(org_id, amount_micro) >= amount_micro
 
 
 async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
-    """The balance to quote against `need_micro`: `shown_micro` when it covers it, and when it
-    does not but `covers` finds the money, the balance read after that. Opens its own sessions."""
-    if shown_micro >= need_micro or not await covers(org_id, need_micro):
+    """The balance to quote against `need_micro`: `shown_micro` when it covers it, and otherwise
+    what `reach` confirmed, when that does. Opens its own sessions."""
+    if shown_micro >= need_micro:
         return shown_micro
-    async with session_maker() as db:
-        return await spendable(db, org_id)
+    found = await reach(org_id, need_micro)
+    return found if found >= need_micro else shown_micro
 
 
 class CreditShort(Exception):
