@@ -659,12 +659,13 @@
         const id=this.run.id,team=this.runTeam,task=({'people.email.find':'people.email.verify','people.phone.find':'people.phone.verify'})[this.run.capability];
         this.verificationPending[r.id]=true;this.error='';
         try{
-          let q=this.verificationQuotes[r.id];const displayed=q?.estimate_micro??this.verificationEstimate(task);
+          let q=this.verificationQuotes[r.id];const displayed=q?.estimate_micro??this.verificationEstimate(task),askedTopUp=q?.affordable===false;
           if(!q||Date.parse(q.expires_at)<=Date.now()){
             q=await this.api('/arena/runs/'+id+'/attempts/'+r.id+'/verification/plan',{method:'POST'},team);
             if(this.run?.id!==id||this.runTeam!==team)return;
             this.verificationQuotes[r.id]=q;this.balance=q.balance_micro;
             if(displayed==null||q.estimate_micro>displayed){this.error='Review the verification price and click Verify again.';return;}
+            if(askedTopUp&&q.affordable){this.error='Your credits now cover this. Click Verify to run it.';return;}
           }
           if(!q.affordable){this.topUp();return;}
           await this.api('/arena/runs/'+id+'/attempts/'+r.id+'/verification/start',{method:'POST',body:JSON.stringify({quote_id:q.id})},team);
@@ -696,12 +697,13 @@
         if(this.busy||this.manualPending[r.id]||!r.can_try)return;
         const runId=this.run.id,team=this.runTeam;this.manualPending[r.id]=true;this.error='';
         try{
-          let q=this.manualQuotes[r.id];const displayed=this.manualPrice(r);
+          let q=this.manualQuotes[r.id];const displayed=this.manualPrice(r),askedTopUp=this.manualUnaffordable(r);
           if(!q||Date.parse(q.expires_at)<=Date.now()){
             q=await this.api('/arena/runs/'+runId+'/attempts/'+r.id+'/plan',{method:'POST'},team);
             if(this.run?.id!==runId||this.runTeam!==team)return;
             this.manualQuotes[r.id]=q;this.balance=q.balance_micro;
             if(this.manualPrice(r)>displayed){this.error='This service’s price changed. Review the updated price and click Try again.';return;}
+            if(askedTopUp&&q.affordable){this.error='Your credits now cover this. Click Try to run it.';return;}
           }
           if(!q.affordable){this.topUp();return;}
           await this.api('/arena/runs/'+runId+'/attempts/'+r.id+'/start',{method:'POST',body:JSON.stringify({quote_id:q.id})},team);
