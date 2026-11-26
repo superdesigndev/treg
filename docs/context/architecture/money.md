@@ -690,8 +690,10 @@ past the bound do not make every new team scan them.
   that wait (`_LAST_READ_S`) is kept for one last read of the entry, so folding that runs out
   the time still leaves the call a look at an entry another process wrote meanwhile. Each
   batch runs in a task of its own (`_fold_beside`) that the call waits for only until its
-  deadline: past it, the batch and what follows its commit (closing the session, giving back
-  the team's admission and lease, its lock in this process) finish in order without the call. A
+  deadline: past it, a batch that holds a connection finishes in order without the call
+  (commit or rollback, closing the session, giving back the team's admission and lease, its
+  lock in this process), and one still waiting for a connection gives up, so it never takes one
+  ahead of calls waiting now. The call's last look waits for that batch as well as its read. A
   busy team's calls therefore cannot each hold a request connection queued on the team's hold
   row; the queue they leave is the loop's.
 

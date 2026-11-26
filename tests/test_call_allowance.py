@@ -2336,6 +2336,32 @@ async def test_a_fold_that_commits_during_the_last_look_still_gives_the_answer(
     await _background_done()
 
 
+async def test_a_fold_still_waiting_for_a_connection_gives_up_at_the_deadline(
+        org_id, store, monkeypatch):
+    """The pool is full: the fold waits for a connection past the call's deadline. It then gives
+    up instead of taking a connection after the call has gone, ahead of calls waiting now, and
+    gives the team's lease back."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    pool_full, connected = asyncio.Event(), []
+    money_session = runtime.money_session
+
+    @contextlib.asynccontextmanager
+    async def full_pool(db):
+        await pool_full.wait()
+        connected.append(True)
+        async with money_session(db) as session:
+            yield session
+
+    monkeypatch.setattr(runtime, "money_session", full_pool)
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    await asyncio.sleep(0.05)
+    loop = asyncio.get_running_loop()
+    assert not [task for task in runtime._background_folds if task.get_loop() is loop]
+    pool_full.set()
+    await _background_done()
+    assert connected == [] and runtime.money_key(org_id) not in store.leases
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
