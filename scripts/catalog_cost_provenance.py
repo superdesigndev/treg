@@ -76,8 +76,6 @@ PROVIDERS: dict[str, dict] = {
     # Providers whose prices live in prose only; see PRICES below.
     "majestic": {"source": "docs", "confidence": "documented",
                  "url": "https://majestic.com/plans-pricing", "units": {"*": "call"}},
-    "semrush": {"source": "docs", "confidence": "documented",
-                "url": "https://www.semrush.com/api-documentation/", "units": {"*": "call"}},
     "seranking": {"source": "docs", "confidence": "documented",
                   "url": "https://seranking.com/pricing.html", "units": {"*": "call"}},
     "spyfu": {"source": "docs", "confidence": "documented",
@@ -101,21 +99,7 @@ def _cr(value, unit, per=1, **extra):
     return {"value": value, "currency": "credit", "unit": unit, "per": per, **extra}
 
 
-# Semrush: "N API units per LINE returned" / "per REQUEST" — units are pre-purchased in packages,
-# so the unit price in dollars is unpublished and stays null in fx.yaml.
 PRICES: dict[str, dict] = {
-    "semrush.google.domain.ranked_keywords": _u(10, "api_unit"),
-    "semrush.google.domain.paid_keywords": _u(20, "api_unit"),
-    "semrush.google.domain.competitors": _u(40, "api_unit"),
-    "semrush.google.keywords.volume": _u(10, "api_unit"),
-    "semrush.google.keywords.ideas": _u(40, "api_unit"),
-    "semrush.google.serp.organic": _u(10, "api_unit"),
-    "semrush.web.backlinks.summary": _u(40, "api_unit"),
-    "semrush.web.backlinks.list": _u(40, "api_unit"),
-    "semrush.web.linking_domains.list": _u(40, "api_unit"),
-    "semrush.web.anchors.list": _u(40, "api_unit"),
-    "semrush.web.backlinks.competitors": _u(40, "api_unit"),
-
     # Majestic: three independent meters. A list command charges a flat ANALYSIS fee plus 1
     # RETRIEVAL unit per row; the schema records one price, so it records the dominant flat fee and
     # the note keeps the per-row half. `confidence: inferred` says exactly that: the figure is a

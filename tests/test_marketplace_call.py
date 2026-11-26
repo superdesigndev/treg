@@ -3709,7 +3709,7 @@ def test_every_catalog_row_prices_an_empty_request():
 
 def test_platform_eligible_row_with_a_null_rate_still_raises(monkeypatch):
     cat = catalog_store.load()
-    ep = cat.by_id["semrush.google.keywords.volume"]
+    ep = cat.by_id["findymail.verify"]
     monkeypatch.setattr(type(cat), "platform_eligible", lambda self, endpoint: True)
     with pytest.raises(ValueError):
         call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
