@@ -1611,7 +1611,10 @@ row.
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
   it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
   its default; with no default treg's key refuses a request without it, and with `platform_max`
-  treg's key refuses a count above it while a team's own key keeps `max`), `entities` (list items,
+  treg's key refuses a count above it while a team's own key keeps `max`; when the parameter is a
+  `query.` path, treg's key also refuses a body that carries its name, as a JSON object's top-level
+  key or a form field, since a provider that reads the body would bill a count the hold never saw),
+  `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
   request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
   priced at the frozen rates and capped at `max` (treg's key refuses a request the plugin prices
