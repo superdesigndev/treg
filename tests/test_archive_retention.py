@@ -252,11 +252,6 @@ async def test_a_recording_whose_key_went_meanwhile_records_it_again(clients: As
 
 
 async def test_the_worker_command(clients: AsyncClient, monkeypatch, capsys):
-    import treg.infra.db as infra_db
-
-    async def verified():      # the server's startup check, not this command's, to test
-        return None
-    monkeypatch.setattr(infra_db, "verify_db", verified)
     await _key("dormant", age_days=40)
     args = argparse.Namespace(dry_run=True, days=None, batch_size=None, pause_seconds=0,
                               max_seconds=None, max_keys=None, after=None)
@@ -414,14 +409,11 @@ async def test_a_run_stops_after_max_keys_and_the_next_resumes(clients: AsyncCli
 async def test_a_dry_run_reads_through_the_read_session_maker(clients: AsyncClient, monkeypatch, capsys):
     import treg.infra.db as infra_db
 
-    async def verified():
-        return None
     opened = []
 
     def replica():
         opened.append(1)
         return session_maker()
-    monkeypatch.setattr(infra_db, "verify_db", verified)
     monkeypatch.setattr(infra_db, "read_session_maker", replica)
     await _key("dormant", age_days=40)
     args = argparse.Namespace(dry_run=True, days=None, batch_size=None, pause_seconds=0,

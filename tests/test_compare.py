@@ -24,6 +24,7 @@ from treg.domain.catalog.routing.contracts import adapter_accepts, canonical_ide
 from treg.domain.feedback import comparisons
 from treg.infra import kv
 from treg.infra.db import session_maker
+from conftest import seed_teams
 from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CallReview, CapabilityPin,
                          CompareAttemptDay,
                          DenyRule, Membership, Org)
@@ -535,6 +536,7 @@ async def test_a_team_deleted_during_the_run_gets_no_row(clients, search_on, mon
 
 async def test_a_row_settled_as_the_team_goes_is_taken_back(clients, monkeypatch):
     from contextlib import asynccontextmanager
+    from treg.domain.governance import teams
 
     org_id = await _org_id(clients)
     values = dict(org_id=org_id, user_email="x@example.com", call_ref="racing", capability="web.search",
@@ -547,9 +549,7 @@ async def test_a_row_settled_as_the_team_goes_is_taken_back(clients, monkeypatch
         opened[0] += 1
         if opened[0] == 2:  # the team row goes between the settle and the look after it
             async with session_maker() as db:
-                from sqlalchemy import text
-                await db.execute(text("DELETE FROM membership WHERE org_id = :o"), {"o": org_id})
-                await db.execute(text("DELETE FROM org WHERE id = :o"), {"o": org_id})
+                await teams.cascade_delete_org(await db.get(Org, org_id), db)
                 await db.commit()
         async with session_maker() as db:
             yield db
@@ -1064,6 +1064,7 @@ async def test_a_busy_team_elsewhere_never_hides_an_eligible_teams_call(clients,
     monkeypatch.setattr(compare, "SCAN_PER_CAPABILITY", 2)
     org_id = await _org_id(clients)
     await _routed_call(org_id, "earlier and marked", minutes_ago=50)
+    await seed_teams(org_id + 1000)
     async with session_maker() as db:
         for i in range(5):
             db.add(CallRecord(org_id=org_id + 1000, user_email="pipeline@example.com",

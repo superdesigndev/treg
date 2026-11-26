@@ -21,7 +21,7 @@ from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
 from treg.models import Secret, User
-from conftest import verified_signup, accept_with_code
+from conftest import verified_signup, accept_with_code, email_code, seed_teams
 
 
 def make_upstream() -> FastAPI:
@@ -54,7 +54,7 @@ async def _register(c: AsyncClient, email: str) -> dict:
 
 
 async def _otp_login(c: AsyncClient, email: str) -> dict:
-    code = (await c.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(c, email)
     r = await c.post("/auth/email/verify", json={"email": email, "code": code})
     assert r.status_code == 200, r.text
     return r.json()
@@ -85,7 +85,7 @@ async def test_invite_case_insensitive_accept(c):
 
 
 async def test_otp_start_verify_case_mismatch_ok(c):
-    code = (await c.post("/auth/email/start", json={"email": "Neo@Matrix.io"})).json()["dev_code"]
+    code = await email_code(c, "Neo@Matrix.io")
     r = await c.post("/auth/email/verify", json={"email": "neo@matrix.io", "code": code})
     assert r.status_code == 200, r.text  # code minted under one casing, verified under another
 
@@ -117,7 +117,7 @@ async def test_session_key_not_hardcoded_constant():
 # ---- OTP brute-force ----------------------------------------------------------------------
 async def test_otp_code_dies_after_max_wrong_attempts(c):
     from treg.routers.auth import MAX_OTP_ATTEMPTS
-    good = (await c.post("/auth/email/start", json={"email": "trinity@matrix.io"})).json()["dev_code"]
+    good = await email_code(c, "trinity@matrix.io")
     for _ in range(MAX_OTP_ATTEMPTS):
         bad = await c.post("/auth/email/verify", json={"email": "trinity@matrix.io", "code": "000001"})
         assert bad.status_code == 401
@@ -137,7 +137,7 @@ async def _suspend_user(email: str) -> None:
 async def test_suspended_user_cannot_otp_login(c):
     await _otp_login(c, "banned@x.io")  # first login creates the user
     await _suspend_user("banned@x.io")
-    code = (await c.post("/auth/email/start", json={"email": "banned@x.io"})).json()["dev_code"]
+    code = await email_code(c, "banned@x.io")
     r = await c.post("/auth/email/verify", json={"email": "banned@x.io", "code": code})
     assert r.status_code == 403  # was 200 (issued a live token to a banned account)
 
@@ -620,6 +620,7 @@ def test_safe_webhook_url_blocks_internal():
 
 async def test_oauth_callback_replay_keeps_done(c):
     from treg.models import PendingOAuth
+    await seed_teams(1)
     async with session_maker() as db:
         db.add(PendingOAuth(org_id=1, state="ST123", name="s", owner="o@x.io", client_id="c",
                             client_secret=crypto_encrypt("sec"), auth_uri="a", token_uri="t",
@@ -763,6 +764,7 @@ async def test_failed_call_is_audited(c):
 async def test_expired_oauth_pending_rejected(c):
     from treg.models import PendingOAuth
     from datetime import datetime, timedelta, timezone
+    await seed_teams(1)
     async with session_maker() as db:
         db.add(PendingOAuth(org_id=1, state="OLD", name="s", owner="o@x.io", client_id="c",
                             client_secret=crypto.encrypt("x"), auth_uri="a", token_uri="t",

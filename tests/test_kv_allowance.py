@@ -105,7 +105,10 @@ async def test_a_counter_low_again_after_a_refill_that_paid_asks_at_once(counter
 async def test_takes_stop_once_the_counter_is_no_longer_fresh_and_resume_on_the_next_add(counter):
     store, org_id = counter
     assert await _state(store, org_id) == (0, 0, 0, 0)
-    await _add(store, org_id, 7, 100, until_ms=_soon(40), ttl_ms=60_000, seen_frozen=0)
+    # Redis judges the deadline by its own clock, which need not agree with this machine's.
+    seconds, micros = await store._client.time()
+    until = seconds * 1000 + micros // 1000 + 40
+    await _add(store, org_id, 7, 100, until_ms=until, ttl_ms=60_000, seen_frozen=0)
     assert await store.allowance_take(org_id, 10) == 7
     await asyncio.sleep(0.08)
     assert await store.allowance_take(org_id, 10) == 0

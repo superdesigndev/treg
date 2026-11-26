@@ -23,6 +23,7 @@ from treg.config import get_settings
 from treg.domain.identity.access import _is_blocked_email
 from treg.infra.db import reset_db, session_maker
 from treg.models import Org, User
+from conftest import email_code
 
 # The list under test. `.example` is reserved by RFC 2606 and can never be a real user's domain, so
 # these tests can never collide with a customer.
@@ -55,7 +56,7 @@ async def _otp_start(c: AsyncClient, email: str):
 
 
 async def _otp_login(c: AsyncClient, email: str) -> str:
-    code = (await _otp_start(c, email)).json()["dev_code"]
+    code = await email_code(c, email)
     r = await c.post("/auth/email/verify", json={"email": email, "code": code})
     assert r.status_code == 200, r.text
     return r.json()["token"]
@@ -148,7 +149,7 @@ async def test_otp_refusal_names_no_list_and_no_domain(client, ops):
 
 async def test_otp_verify_refuses_a_code_minted_before_the_domain_was_listed(client, ops):
     email = "farm@farm-b.example"
-    code = (await _otp_start(client, email)).json()["dev_code"]  # not yet listed: code issued
+    code = await email_code(client, email)  # not yet listed: code issued
     ops()
     r = await client.post("/auth/email/verify", json={"email": email, "code": code})
     assert r.status_code == 403 and r.json()["detail"] == REFUSAL
