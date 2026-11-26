@@ -24,21 +24,30 @@ def _merge(tmp_path, monkeypatch, *batches: dict) -> dict:
     return yaml.safe_load(file.read_text())["endpoints"][0]
 
 
+def _observed(value: str, day: str, before: str | None) -> dict:
+    return {"verified": day, "price": {**PRICED, "value": value},
+            "provenance": {"source": "observed", "checked": day, "confidence": "verified"},
+            "repriced_from": {"value": before}}
+
+
 def test_a_batch_that_observed_no_cost_never_reprices_a_row(tmp_path, monkeypatch):
-    free = {"verified": "2026-11-26", "price": {**PRICED, "value": "0"},
-            "provenance": {"source": "observed", "checked": "2026-11-26", "confidence": "verified"}}
-    skipped = {"skipped": "budget"}
-    # an older verifier exported the row's price as it stood, though it called nothing
-    stale = {"skipped": "budget", "price": PRICED,
-             "provenance": {"source": "observed", "checked": "2026-07-28", "confidence": "verified"}}
-    row = _merge(tmp_path, monkeypatch, free, skipped, stale)
+    # an older verifier exported the row's price as it stood, same-day provenance included
+    stale = {"verified": "2026-11-26", "price": PRICED,
+             "provenance": {"source": "observed", "checked": "2026-11-26", "confidence": "verified"}}
+    row = _merge(tmp_path, monkeypatch, _observed("0", "2026-11-26", "0.0102"), {"skipped": "budget"}, stale)
     assert row["price"]["value"] == "0" and "settle" in row and row["settle"] is None
+    old_free = {**stale, "price": {**PRICED, "value": "0"}}
+    row = _merge(tmp_path, monkeypatch, old_free)
+    assert row["price"]["value"] == "0.0102" and "settle" not in row
+
+
+def test_a_replayed_batch_never_undoes_a_later_observation(tmp_path, monkeypatch):
+    free = _observed("0", "2026-11-25", "0.0102")
+    priced = _observed("0.015", "2026-11-26", "0")
+    row = _merge(tmp_path, monkeypatch, free, priced, free, priced)
+    assert row["price"]["value"] == "0.015" and "settle" not in row
 
 
 def test_an_observed_price_brings_its_settle_with_it(tmp_path, monkeypatch):
-    free = {"verified": "2026-11-26", "price": {**PRICED, "value": "0"},
-            "provenance": {"source": "observed", "checked": "2026-11-26", "confidence": "verified"}}
-    priced = {"verified": "2026-11-27", "price": PRICED,
-              "provenance": {"source": "observed", "checked": "2026-11-27", "confidence": "verified"}}
-    row = _merge(tmp_path, monkeypatch, free, priced)
-    assert row["price"]["value"] == "0.0102" and "settle" not in row
+    row = _merge(tmp_path, monkeypatch, _observed("0", "2026-11-26", "0.0102"))
+    assert row["price"]["value"] == "0" and row["settle"] is None

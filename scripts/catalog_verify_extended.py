@@ -483,11 +483,13 @@ def merge_results(service: str, paths: list[Path]) -> int:
                 conflicts.append(f"{eid} (in {seen[eid].name} and {path.name})")
                 continue
             seen[eid] = path
-            # a batch never reprices a row a person priced, and reprices any other only from a
-            # cost it observed that day: an older verifier exported every row's price, observed or not
-            provenance = res.get("provenance") or {}
-            observed = (not priced_by_hand(ep) and isinstance(res.get("price"), dict) and bool(res.get("verified"))
-                        and provenance.get("source") == "observed" and provenance.get("checked") == res["verified"])
+            # A batch reprices a row only from a cost it observed (`repriced_from`, the price it
+            # replaced), and only while the catalog still holds that price: an older verifier exported
+            # every row's price, observed or not, and a replayed batch must not undo a later one.
+            # A row a person priced is never repriced.
+            observed = (not priced_by_hand(ep) and isinstance(res.get("price"), dict)
+                        and isinstance(res.get("repriced_from"), dict)
+                        and res["repriced_from"].get("value") == (ep.get("price") or {}).get("value"))
             for field in RESULT_FIELDS:
                 if field in ("price", "provenance") and not observed:
                     continue
@@ -586,7 +588,7 @@ def main(argv: list[str]) -> int:
     spent = 0.0
     stats = {"pass": 0, "fail": 0, "skipped_budget": 0, "retried": 0}
     touched: set[str] = set()
-    repriced: set[str] = set()
+    repriced: dict[str, str | None] = {}
     lock = threading.Lock()
     throttle = Throttle(RATE_LIMIT_PER_SEC)
     stop = threading.Event()
@@ -652,9 +654,10 @@ def main(argv: list[str]) -> int:
                 ep["example_response"] = rel
                 observed = (OBSERVED_COST.get(args.service) or (lambda _d: None))(doc)
                 if isinstance(observed, (int, float)) and not isinstance(observed, bool):
+                    before = (ep.get("price") or {}).get("value")
                     if observed_price(ep, observed, ep["verified"]):
                         with lock:
-                            repriced.add(ep["id"])
+                            repriced[ep["id"]] = before
                 if isinstance(LAST_ELAPSED.seconds, (int, float)):
                     ep["observed_time"] = LAST_ELAPSED.seconds
                 ep.pop("unverified", None)
@@ -690,7 +693,8 @@ def main(argv: list[str]) -> int:
         # verdict for an endpoint another batch owns
         # a price travels only from the observation that set it; any other row reports its state
         results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS
-                                      if e["id"] in repriced or f not in ("price", "provenance")}}
+                                      if e["id"] in repriced or f not in ("price", "provenance")},
+                    **({"repriced_from": {"value": repriced[e["id"]]}} if e["id"] in repriced else {})}
                    for e in eps if e["id"] in touched]
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(
