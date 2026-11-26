@@ -1431,9 +1431,8 @@ class TagSpend(SQLModel, table=True):
     and errs toward refusing, which is the right direction for money.
     """
 
-    __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),
-                      Index("ix_tagspend_org_dim_val_created_amount", "org_id", "dim", "val",
-                            "created_at", postgresql_include=["amount_micro", "settled"]))
+    __table_args__ = (Index("ix_tagspend_org_dim_val_created_amount", "org_id", "dim", "val",
+                            "created_at", postgresql_include=["amount_micro", "settled"]),)
 
     id: int | None = Field(default=None, primary_key=True)
     org_id: int

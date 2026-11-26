@@ -1742,8 +1742,11 @@ reserve of the team into `money_admission_timeout`. `ix_tagspend_org_dim_val_cre
 carries `amount_micro` and `settled`, so the `TagSpend` sums of both reads can be index-only
 scans. That covers only the `TagSpend` half of the cap read (its queued `CallCharge` sum is a
 separate aggregate), and it skips only heap pages vacuum has marked all-visible, so recently
-written rows may still be fetched. In exchange, the settle update of a `TagSpend` row changes an
-indexed column and is never HOT.
+written rows may still be fetched. It is the table's only index on that key (0135 dropped the
+older `ix_tagspend_org_dim_val_created`, the same key without the included columns): every
+`TagSpend` read filters on a leading part of `(org_id, dim, val, created_at)`, the rest go by
+`hold_id`. The settle update rewrites an included column, so it cannot be a HOT update; it rarely
+was one before the column was included either.
 
 **Tag caps are SOFT and must never be sold as hard.** A per-tag total is an aggregate, so concurrent
 calls can each read a compliant figure; overshoot is bounded by concurrency times the estimate, which
