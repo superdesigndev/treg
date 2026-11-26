@@ -831,7 +831,6 @@ adapters:
     in:  {email: body.email}
     out: {full_name: name, first_name: first_name, last_name: last_name, title: position,
           linkedin_url: socials.linkedin_url, location: location.address}
-    miss: "name == null"
   aviato.people.enrich:
     accepts: [[linkedin_url], [email]]
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
@@ -996,10 +995,9 @@ adapters:
     in: {domain: body.domains}
     in_expr: {body.domains: "list(domain)"}
     const: {body.page: 1, body.pageSize: 10}
-    # pageSize is the price, and an empty page settles at the whole hold.
+    # pageSize is the price.
     cost_units: "10"
     out: {companies: items, count: totalItems}
-    miss: "items == []"
   oceanio.companies.lookalike:
     accepts: [[domain]]
     in: {domain: body.companiesFilters.lookalikeDomains}
@@ -1114,8 +1112,8 @@ adapters:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.domains, title: body.positionQuery}
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
+    max: {limit: 100}
     out: {people: items, count: totalItems}
-    miss: "items == []"
     # The employer is the experience the search matched (else the current one), as a company
     # object or a bare companyName.
     row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url,
@@ -1309,13 +1307,11 @@ adapters:
     in:  {domain: queryParams.domain}
     out: {name: name, domain: domain, website: website, description: description, industry: industry,
           employees: employees, founded: founded_year}
-    miss: "name == null"
   companyenrich.companies.enrich.by_properties:
     accepts: [[name], [linkedin_url]]
     in:  {name: body.name, linkedin_url: body.linkedinUrl}
     out: {name: name, domain: domain, website: website, description: description, industry: industry,
           employees: employees, founded: founded_year}
-    miss: "name == null"
   findymail.search.company:
     accepts: [[domain]]
     in:  {domain: body.domain}
@@ -1503,8 +1499,8 @@ adapters:
     accepts: [[technology]]
     in:  {technology: body.technologies, country: body.countries}
     in_expr: {body.technologies: "list(technology)", body.countries: "list(country)", body.pageSize: limit, body.page: "1"}
+    max: {limit: 100}
     out: {companies: items, count: totalItems}
-    miss: "items == []"
   icypeas.companies.search:
     accepts: [[domain]]
     in:  {domain: body.query.companyId.include}
