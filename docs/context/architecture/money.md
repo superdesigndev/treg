@@ -384,11 +384,14 @@ Every listed team's call that keeps its own hold is counted by why, on its own l
 `member_spend_cap`, ...; a routed child its root lets take is counted under these too), with any other child call named by its own suffix (`child_call:routed` for a
 routed child `:rN`, `child_call:overflow`, `child_call:hub_step` for `:sN`, `child_call:other` for
 polls and verifications), `in_flight_unmarked`, or `take_refused` when an eligible call's take
-returned it to the exact path. A take refused within `_REFILL_WAIT_S` of a refill of the team that
-money admission turned away is counted as `refill_admission_busy` instead: the team's money queue
-was too busy for the refill, not its balance too short, and the exact path it falls back to waits
-in that same queue. Each such refill also logs
-`allowance_refill_admission_busy org_id=.. need=.. counter_before=..`.
+returned it to the exact path. A take that ran the team's refill itself, and whose refill money
+admission turned away, is counted as `refill_admission_busy` instead: the team's money queue was
+too busy for the refill, not its balance too short, and the exact path it falls back to waits in
+that same queue. Only the call's own refill decides it (a per-task flag, no store read): a take
+refused while another process or a background refresh met that queue is still `take_refused`, so
+the two buckets do not split "queue busy" from "balance short". Every refill money admission turns
+away, wherever it ran, logs `allowance_refill_admission_busy org_id=.. need=.. counter_before=..`;
+that line is the exact count.
 
 Each process writes one line per reason a minute for every team together:
 `allowance_skips {"reason":..,"calls":..,"held_micro":..,"orgs":..,"window_s":..,"top":[[org_id,calls,held_micro],..]}`,

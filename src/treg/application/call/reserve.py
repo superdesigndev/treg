@@ -625,7 +625,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
             return
-        skip = ("refill_admission_busy" if allowance_runtime.refill_admission_busy(caller.org_id)
+        skip = ("refill_admission_busy" if allowance_runtime.take_met_busy_refill()
                 else "take_refused")
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)

@@ -10,6 +10,7 @@ spends money the hold does not have.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import functools
 import logging
 import random
@@ -50,9 +51,10 @@ _SETTLED_TRIES = 20
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
-# Until when a call the counter cannot serve is said to have met a refill that money admission
-# turned away: the team's money queue was busy, not its balance short.
-_admission_busy_until: dict[int, float] = {}
+# Whether the refill this task's own take ran was turned away by money admission. A refill run by
+# a background refresh or by another process never sets it: it is no evidence about this call.
+_refill_turned_away: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "treg_allowance_refill_turned_away", default=False)
 # Takes this process admitted and has not finished. Each will hand the charge writer one row at
 # most, so admitting against the writer's room now is what keeps it from ever overflowing.
 _in_flight = [0]
@@ -80,7 +82,7 @@ _next_prune_at = 0
 
 
 def _team_state_size() -> int:
-    return max(len(_money_locks), len(_refills), len(_refused_until), len(_admission_busy_until))
+    return max(len(_money_locks), len(_refills), len(_refused_until))
 
 
 def _prune_if_full() -> None:
@@ -95,8 +97,6 @@ def _prune() -> None:
     now = time.monotonic()
     for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
         del _refused_until[org_id]
-    for org_id in [org_id for org_id, until in _admission_busy_until.items() if until <= now]:
-        del _admission_busy_until[org_id]
     # asyncio has no public count of a lock's waiters.
     for key in [key for key, lock in _money_locks.items()
                 if not lock.locked() and not lock._waiters]:
@@ -115,10 +115,10 @@ def refills(org_id: int) -> int:
     return _refills.get(org_id, 0)
 
 
-def refill_admission_busy(org_id: int) -> bool:
-    """Whether a refill of the team was turned away by money admission within the last
-    `_REFILL_WAIT_S`: a take refused now most likely met that refill, not a short balance."""
-    return _admission_busy_until.get(org_id, 0.0) > time.monotonic()
+def take_met_busy_refill() -> bool:
+    """Whether this task's last `take` ran a refill itself and money admission turned that refill
+    away. Only then is the call's refusal known to come from a busy money queue."""
+    return _refill_turned_away.get()
 
 
 def listed(org_id: int) -> bool:
@@ -176,6 +176,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
 
     A refill this call starts beside itself commits after this returns, so `refills` around the
     call does not show it: `after_refill` is awaited once that refill has moved the balance."""
+    _refill_turned_away.set(False)
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
             or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
@@ -397,9 +398,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
-        if org_id not in _admission_busy_until:
-            _prune_if_full()
-        _admission_busy_until[org_id] = time.monotonic() + _REFILL_WAIT_S
+        _refill_turned_away.set(True)
         log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
                  org_id, need_micro, available)
         return False
