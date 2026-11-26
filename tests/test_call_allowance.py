@@ -4369,10 +4369,11 @@ async def test_a_balance_an_overrun_left_below_zero_takes_the_counter_back_for_a
     assert await _given_back(org_id) == [GRANT - 1_000]
 
 
-async def test_a_counter_that_cannot_be_given_back_is_no_shortfall(org_id, store, monkeypatch):
+async def test_a_counter_that_cannot_be_given_back_is_no_confirmed_shortfall(
+        org_id, store, monkeypatch):
     """The balance is short and the counter holds the money, but another request holds the
-    team's money lease past the wait: `onto_balance` cannot confirm the shortfall, which a
-    caller that pays on a shortfall must not read as one. A team with no money says so."""
+    team's money lease past the wait: `onto_balance` refuses, and only `short_everywhere`, one
+    reading of the database, says whether the team is short. A team with no money is."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
     assert await runtime.take(org_id, 1_000)
@@ -4381,8 +4382,9 @@ async def test_a_counter_that_cannot_be_given_back_is_no_shortfall(org_id, store
         return "held"
 
     monkeypatch.setattr(store, "acquire_lease", held)
-    assert await runtime.onto_balance(org_id, 50_000) is None
-    assert await runtime.onto_balance(org_id, 2 * GRANT) is False
+    assert await runtime.onto_balance(org_id, 50_000) is False
+    assert await runtime.short_everywhere(org_id, 50_000) is False
+    assert await runtime.short_everywhere(org_id, 2 * GRANT) is True
 
 
 async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short(
@@ -4422,7 +4424,8 @@ def _moved_by_another(store, org_id: int, move) -> asyncio.Task:
 async def test_credit_another_request_is_giving_back_is_read_once(org_id, store, monkeypatch):
     """Calls in flight hold most of the hold, and another request is giving the rest of the
     counter back to the balance. The reading waits for its lease, so the money is counted once,
-    where it landed, and a wallet asked for more than that settles rather than drawing it."""
+    where it landed. More than that is not a sure shortfall while the calls in flight still
+    hold the team's money: the answer is unsure, and shows that money."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     epoch = await runtime.take(org_id, GRANT - 100_000)
 
@@ -4430,8 +4433,9 @@ async def test_credit_another_request_is_giving_back_is_read_once(org_id, store,
         assert await runtime._give_back(org_id, epoch) == 100_000
 
     moving = _moved_by_another(store, org_id, give_back)
-    assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
+    assert await runtime.reach(org_id, 150_000) == runtime.Reach(GRANT, False)
     await moving
+    assert await runtime.reach(org_id, 100_000) == runtime.Reach(100_000, True)
 
 
 async def test_a_team_whose_money_is_not_there_is_answered_without_the_store(

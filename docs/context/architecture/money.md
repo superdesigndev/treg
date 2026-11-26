@@ -548,10 +548,10 @@ past the bound do not make every new team scan them.
   leaves room (another request gave the counter back first). A reserve the balance refuses, the
   hub's price hold (`hub.runner._reserve_price`) included, asks `onto_balance`, which gives the
   counter back, or finds it already given back, and runs again when the balance then covers the
-  call. It answers None, not False, when the money may be there but could not be moved (the
-  lease busy past the wait, the store or the give-back failing): a refusal either way, but only
-  False is a confirmed shortfall, the one a keyless wallet's payment settles on
-  (agent-payments.md).
+  call. Its False is a refusal, not a confirmed shortfall: it reads the balance and the counter
+  apart, and the lease, the store or the give-back may fail. Only `short_everywhere`, one
+  reading of `credit_bound`, confirms one; a keyless wallet's payment settles on it alone
+  (agent-payments.md), and an arena's `reach` shows a team short only on that reading.
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing
@@ -762,13 +762,15 @@ plus the whole hold less what queued charges spent, from the database alone) bel
 team off the allowance, is answered from the database, and the store is not asked. Otherwise the
 counter and the database are read under the team's money lease (`_team_lease`), which every request
 that moves the team's money between them holds (a refill, a give-back, a fold, the idle sweep), so
-the reading is one moment of both: what the counter offers plus the balance, each micro counted
-once. A store that cannot answer leaves the database alone, as no call can take from a counter then
-either. A lease another request keeps for as long as a call waits for a refill makes the answer
-unsure. A paying wallet decides nothing on it: a payment draws credit when the team's money wherever
-it sits covers the call, and settles only when the call's own reservation is then refused for money,
-once, the call running again paid (agent-payments.md); the reservation is where every call's credit
-is read. An arena run's start never decides inside its session: its check (`short_of`) raises
+no money moves between them while they are read. A hold released or a take made between the two
+readings still can make their sum short, so only a sum that covers the amount is a sure answer;
+short of it, the answer is unsure and shows the team's money wherever it sits. A store that cannot
+answer leaves the database alone, as no call can take from a counter then either. A lease another
+request keeps for as long as a call waits for a refill makes the answer unsure. A paying wallet
+decides nothing on it: a payment draws credit when the team's money wherever it sits covers the
+call, and settles only when a reservation of the call is then refused for money and that money,
+read once (`short_everywhere`), is short too; the reservation alone runs again, paid
+(agent-payments.md). An arena run's start never decides inside its session: its check (`short_of`) raises
 `CreditShort`, `gives_counter_back` asks `reach` outside it and runs the start again with the
 answer, or refuses (402) or asks for another try (409); its quote takes whether the team can pay
 from `reach` (`balance_for`) and shows `reach`'s figure when it can, the team's money wherever it
