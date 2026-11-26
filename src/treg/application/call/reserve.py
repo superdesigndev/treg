@@ -1,12 +1,14 @@
 """Reservation and spend-cap helpers for metered calls."""
 
+import contextvars
+import dataclasses
 import functools
 import json
 import logging
 import random
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -35,6 +37,31 @@ from . import idempotency
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall
 from .types import ReservationFailed
+
+
+@dataclasses.dataclass
+class PayOnShort:
+    """A request that can pay for itself when its balance is short: a keyless wallet's call that
+    drew the wallet's credit (docs/context/architecture/agent-payments.md). Only the request's
+    first reservation asks `pay`, before any of its calls has gone out, and only when the team's
+    money is confirmed short; the reservation then runs again in place, under the same
+    Idempotency-Key claim and rate admission. `pay` returns whether it moved money onto the
+    balance. `unsure` records a refusal for which the money could not be confirmed, which pays
+    nothing."""
+
+    pay: Callable[[], Awaitable[bool]]
+    armed: bool = True
+    unsure: bool = False
+
+
+pay_on_short: contextvars.ContextVar[PayOnShort | None] = contextvars.ContextVar(
+    "treg_pay_on_short", default=None)
+
+
+def outbound() -> None:
+    """A call is about to go out: no later reservation of the request may pay (`PayOnShort`)."""
+    if (payer := pay_on_short.get()) is not None:
+        payer.armed = False
 
 
 @asynccontextmanager
@@ -586,6 +613,11 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
     the balance gate already, so only a hold that covers the worst case bounds them."""
+    payer = pay_on_short.get() if retry_short else None
+    if payer is not None and payer.armed:
+        payer.armed = False
+    else:
+        payer = None
     if (allow_holdless and not mark_in_flight and mk.holdless_eligible and not meta.tags
             and _holdless_listed(caller.org_id)):
         await _holdless_reserve(mk, caller)
@@ -727,7 +759,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             billing.maybe_schedule_autotopup(refused_org)
         # The team's counter may hold what the balance is short of, or another request may just
         # have given it back: `onto_balance` puts it on the balance, or says it is not there.
-        if retry_short and await allowance_runtime.onto_balance(caller.org_id, exc.required_micro):
+        moved = await allowance_runtime.onto_balance(caller.org_id, exc.required_micro) \
+            if retry_short else False
+        if moved is None and payer is not None:
+            payer.unsure = True
+        elif not moved and payer is not None:
+            # No session is held here: a payment rail is never awaited inside one.
+            moved = await payer.pay()
+        if moved:
             noted = True
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless,

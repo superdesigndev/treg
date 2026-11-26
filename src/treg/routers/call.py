@@ -16,6 +16,7 @@ from .. import audit
 from .. import hints
 from ..application import agent_payments
 from ..application.call import call_errors
+from ..application.call import reserve as call_reserve
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -367,32 +368,25 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 503, exc.detail, [])
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
+    # A call drawing the wallet's credit pays from its own first reservation when that credit
+    # is confirmed short, before anything has gone out (`call_reserve.PayOnShort`).
+    drawn = agent_payments.DrawnCall(paid) if paid.admission.settlement is None else None
+    payer = call_reserve.PayOnShort(drawn.pay) if drawn is not None else None
+    token = call_reserve.pay_on_short.set(payer)
     try:
-        try:
-            response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
-                                              finish=_relay_answer, headers=paid.headers)
-        except HTTPException as exc:
-            # The call drew the wallet's credit and its own reservation found it short: the
-            # payment it carried settles now, and the call, which reached no provider, runs
-            # again paid.
-            if not (exc.status_code == 402 and _refused_for_money(exc)):
-                raise
-            try:
-                settled = await agent_payments.settle_after_refusal(paid)
-            except agent_payments.PaymentChallenge as refusal:
-                return await _payment_refusal(request, 402, refusal.detail, refusal.headers)
-            except agent_payments.PaymentPending as pending:
-                return await _payment_refusal(request, 503, pending.detail, [])
-            if settled is None:
-                raise
-            paid = settled
-            # The refused attempt's Idempotency-Key claim is released, as its answer would have
-            # released it, so the paid attempt claims the key afresh.
-            await _release_idempotent_claim(request)
-            request.state.call_failure = None
-            response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
-                                              finish=_relay_answer, headers=paid.headers)
+        response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                          finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
+        if drawn is not None:
+            paid = drawn.call
+            if isinstance(drawn.refusal, agent_payments.PaymentChallenge):
+                return await _payment_refusal(request, 402, drawn.refusal.detail,
+                                              drawn.refusal.headers)
+            if isinstance(drawn.refusal, agent_payments.PaymentPending):
+                return await _payment_refusal(request, 503, drawn.refusal.detail, [])
+        if exc.status_code == 402 and payer is not None and payer.unsure:
+            return await _payment_refusal(request, 503, _CREDIT_UNCONFIRMED,
+                                          [("Retry-After", "2")])
         if exc.status_code == 402 and paid.admission.settlement is None:
             # The credit was spent by another call between the check and the hold: ask this
             # wallet to pay, as a payment client expects of a 402.
@@ -405,6 +399,10 @@ async def _paid_call(rest: str, request: Request) -> Response:
         exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
                        **dict(await paid.answer_headers())}
         raise
+    finally:
+        call_reserve.pay_on_short.reset(token)
+    if drawn is not None:
+        paid = drawn.call
     for name, value in await paid.answer_headers():
         response.headers[name] = value
     for name, value in paid.receipt_headers(response.status_code):
@@ -431,9 +429,11 @@ async def agent_payment_credit(request: Request) -> Response:
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
 
 
-def _refused_for_money(exc: HTTPException) -> bool:
-    detail = exc.detail if isinstance(exc.detail, dict) else {}
-    return detail.get("error") == "insufficient_balance"
+_CREDIT_UNCONFIRMED = {
+    "error": "credit_unconfirmed",
+    "message": ("treg could not confirm this wallet's credit just now, so the call was not made "
+                "and the payment did not move. Send the same request again in a moment."),
+}
 
 
 def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:

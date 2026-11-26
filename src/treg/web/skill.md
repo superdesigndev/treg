@@ -321,7 +321,8 @@ The payment is the sign-in: no signup, no token.
   what you plan to use.
 - **Spending credit.** The first challenge asks for zero: a wallet with enough credit signs it and
   pays nothing new. Too little credit answers 402 `credit_insufficient` with the payment challenge
-  only, and the client pays it.
+  only, and the client pays it. A 503 `credit_unconfirmed` (with `Retry-After`) means treg could
+  not confirm the credit just then: nothing was paid or called, so send the same request again.
 - **Headers.** Every answer carries `X-Treg-Payment: paid` or `credit`, `X-Treg-Credit-Micro`
   (credit left) and `X-Treg-Cost-Micro`; a payment adds `X-Treg-Payment-Reference` (its
   transaction).

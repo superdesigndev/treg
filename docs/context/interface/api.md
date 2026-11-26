@@ -379,8 +379,10 @@ The request sent again with a payment credential is answered as a normal call, i
 carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
 `route_max_cost`) answer 503 there, except that credit spent by another call between the check and
 the hold answers the `credit_insufficient` 402. A settlement treg cannot confirm answers 503
-`payment_outcome_unknown` with no call. A payment that drew credit whose call's own hold then
-found it short settles and runs the call again, paid. A keyless body over 1 MiB is 413; too many requests from one
+`payment_outcome_unknown` with no call. A payment that drew credit whose call's first hold then
+found it short settles there and the hold is taken again, paid, before the call goes out; when
+the shortfall could not be confirmed it answers 503 `credit_unconfirmed` with `Retry-After`,
+nothing paid. A keyless body over 1 MiB is 413; too many requests from one
 address (with or without a payment), or too many payment checks across all clients, answer 429
 `rate_limited` with `Retry-After`. A wallet whose payer team or its member is suspended answers 403
 `payer_suspended` (`reason: org_suspended|account_suspended`) before any payment is taken. Every other keyless call

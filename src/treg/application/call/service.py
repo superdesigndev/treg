@@ -61,7 +61,7 @@ from .evidence import (
 )
 from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
 from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_intake
-from .reserve import _enforce_tag_budgets, _platform_reserve
+from .reserve import _enforce_tag_budgets, _platform_reserve, outbound as _outbound
 from .resolve import (
     AUTHORIZATION_METHOD_HEADER,
     MarketplaceCall,
@@ -1519,6 +1519,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             if exc.kind in _MEMBER_SPEND_REFUSALS:
                 await return_daily_slot(caller, slot_day)
             raise
+    _outbound()
     body = b""
     task_answer: bytes | None = None
     task_answer_read = False

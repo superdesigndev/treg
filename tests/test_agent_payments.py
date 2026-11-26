@@ -21,6 +21,8 @@ from sqlmodel import select
 
 from treg.api import app
 from treg.application import agent_payments
+from treg.application.call import allowance as call_allowance
+from treg.application.call import reserve as call_reserve
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
@@ -433,9 +435,9 @@ async def test_a_known_wallet_polls_as_its_team_and_never_pays(anon: AsyncClient
 async def test_a_payment_drawn_on_credit_its_call_cannot_reserve_settles_and_the_call_runs(
         anon: AsyncClient, payments_on, facilitator, monkeypatch):
     """The wallet's credit looked enough, so the payment drew it, and the call's own reservation
-    found it short: another call holds it. The same payment settles then, once, and the call,
-    which reached no provider, runs paid, its Idempotency-Key claimed afresh. Nothing settles
-    while the credit covers a call."""
+    found it short: another call holds it. The same payment settles then, once, and the
+    reservation runs again in place, under the same Idempotency-Key claim. Nothing settles while
+    the credit covers a call."""
     calls: list = []
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
     account = Account.create()
@@ -464,6 +466,69 @@ async def test_a_payment_drawn_on_credit_its_call_cannot_reserve_settles_and_the
     assert r.headers["X-Treg-Payment"] == "paid"
     assert facilitator.settles == 2 and len(calls) == 3
     assert await _balance(payer) == FLOOR - EP_MICRO
+
+
+async def _drawn_on_credit_held_elsewhere(anon, account, monkeypatch) -> str:
+    """A wallet with credit, all of it held by another call, whose next payment draws it."""
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge, account)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    async with session_maker() as db:
+        await ledger.reserve(db, await _payer_org(payer), "held.elsewhere",
+                             await _balance(payer))
+
+    async def looks_enough(org_id, quote_micro):
+        return True
+
+    monkeypatch.setattr(agent_payments, "_may_draw", looks_enough)
+    return payer
+
+
+async def test_a_drawn_call_whose_credit_cannot_be_confirmed_pays_nothing(
+        anon: AsyncClient, payments_on, facilitator, monkeypatch):
+    """The team's money could not be moved onto its balance (its money lease busy, the store
+    unanswered): that is no shortfall, so the payment does not settle and the wallet hears a
+    503 to send the request again, not a 402 to pay."""
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    payer = await _drawn_on_credit_held_elsewhere(anon, account, monkeypatch)
+    balance = await _balance(payer)
+
+    async def unconfirmed(org_id, amount_micro):
+        return None
+
+    monkeypatch.setattr(call_allowance, "onto_balance", unconfirmed)
+    challenge = await anon.get(f"/call/{EP}?aweme_id=9")
+    credential, _ = _x402_credential(challenge, account)
+    r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 503, r.text
+    assert r.json()["detail"]["error"] == "credit_unconfirmed" and r.headers["Retry-After"]
+    assert facilitator.settles == 1 and len(calls) == 1
+    assert await _balance(payer) == balance
+
+
+async def test_a_drawn_call_refused_after_a_call_went_out_pays_nothing(
+        anon: AsyncClient, payments_on, facilitator, monkeypatch):
+    """Only a reservation before anything has gone out pays: one after (an overflow child once
+    the direct call answered) is the wallet's ordinary 402, its payment unsettled."""
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    await _drawn_on_credit_held_elsewhere(anon, account, monkeypatch)
+    reserve = call_service._platform_reserve
+
+    async def after_a_call_went_out(*args, **kwargs):
+        call_reserve.outbound()
+        return await reserve(*args, **kwargs)
+
+    monkeypatch.setattr(call_service, "_platform_reserve", after_a_call_went_out)
+    challenge = await anon.get(f"/call/{EP}?aweme_id=9")
+    credential, _ = _x402_credential(challenge, account)
+    r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 402, r.text
+    assert facilitator.settles == 1 and len(calls) == 1
 
 
 # ---- paying -------------------------------------------------------------------------------------

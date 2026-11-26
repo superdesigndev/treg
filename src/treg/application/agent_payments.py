@@ -96,7 +96,7 @@ class PayerAdmission:
     verified: Verified
     settlement: Settlement | None   # None: the call draws credit the payer already holds
     # A payment drawing credit keeps what settling it needs, for a call the credit turns out
-    # not to cover (`settle_after_refusal`). None for a proof, which moves no money.
+    # not to cover (`DrawnCall.pay`). None for a proof, which moves no money.
     rail: PaymentRail | None = None
     payment_id: int | None = None
 
@@ -437,25 +437,35 @@ async def _settle(rail: PaymentRail, verified: Verified, paid: PaidOffer, paymen
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
 
 
-async def settle_after_refusal(call: "PaidCall") -> "PaidCall | None":
-    """The call drew credit and its own reservation was refused for money: settle the payment it
-    carried and return the call to run again, paid. None when it carried no payment to settle
-    (a proof): the wallet is asked to pay. The refusal is the team's credit read where every
-    call's is, at the moment the call reserved, so the payment moves only when that credit did
-    not cover the call. Raises PaymentPending or a PaymentChallenge."""
-    admission = call.admission
-    if admission.settlement is not None or admission.rail is None or admission.payment_id is None:
-        return None
-    org_id = int(call.caller.org.id)
-    async with session_maker() as db:
-        row = await db.get(AgentPayment, admission.payment_id)
-        row.status, row.fee_micro, row.updated_at = (
-            "settling", fee_of(admission.verified.amount_micro), _now())
-        db.add(row)
-        await db.commit()
-    settlement = await _settle(admission.rail, admission.verified, call.paid,
-                               admission.payment_id, org_id)
-    return replace(call, admission=replace(admission, settlement=settlement))
+class DrawnCall:
+    """A call that drew its wallet's credit, as the reservation's `PayOnShort` sees it: when the
+    team's credit is confirmed short of the call, before any of it has gone out, `pay` settles
+    the payment the call carried and the reservation runs again in place. `call` is the call as
+    it stands (settled once paid); `refusal` is the PaymentChallenge or PaymentPending a failed
+    settlement raised, for the caller to answer with."""
+
+    def __init__(self, call: "PaidCall") -> None:
+        self.call, self.refusal = call, None
+
+    async def pay(self) -> bool:
+        admission = self.call.admission
+        if admission.settlement is not None or admission.rail is None or admission.payment_id is None:
+            return False
+        org_id = int(self.call.caller.org.id)
+        async with session_maker() as db:
+            row = await db.get(AgentPayment, admission.payment_id)
+            row.status, row.fee_micro, row.updated_at = (
+                "settling", fee_of(admission.verified.amount_micro), _now())
+            db.add(row)
+            await db.commit()
+        try:
+            settlement = await _settle(admission.rail, admission.verified, self.call.paid,
+                                       admission.payment_id, org_id)
+        except (PaymentChallenge, PaymentPending) as exc:
+            self.refusal = exc
+            return False
+        self.call = replace(self.call, admission=replace(admission, settlement=settlement))
+        return True
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
@@ -587,7 +597,7 @@ async def _may_draw(org_id: int, quote_micro: int) -> bool:
     """Whether the call is tried on the credit the wallet already holds: when the team's money
     wherever it sits (`allowance.credit_bound`, from the database alone) covers it. Below that
     the team cannot pay now, so the payment settles. Above it, whether the credit can be spent
-    is the call's own reservation to find (`settle_after_refusal`): a reading taken here, across
+    is the call's own reservation to find (`DrawnCall.pay`): a reading taken here, across
     the store and the database while calls take and give back, could only guess."""
     async with session_maker() as db:
         return await money_allowance.credit_bound(db, org_id) >= quote_micro
