@@ -694,7 +694,6 @@
       },
       async tryVendor(r){
         if(this.busy||this.manualPending[r.id]||!r.can_try)return;
-        if(this.manualUnaffordable(r)){this.topUp();return;}
         const runId=this.run.id,team=this.runTeam;this.manualPending[r.id]=true;this.error='';
         try{
           let q=this.manualQuotes[r.id];const displayed=this.manualPrice(r);
