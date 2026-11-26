@@ -1555,6 +1555,124 @@ def test_login_ignores_a_malformed_ad_link_file(monkeypatch, tmp_path):
 
     assert opened and "ad=" not in opened[0]
 
+def test_onboarding_offer_skips_when_stdin_is_not_a_tty(monkeypatch):
+    """Piped stdin without a TTY must not prompt or call the registry."""
+    called = []
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(cli.httpx, "get", lambda *a, **k: called.append("get") or None)
+    monkeypatch.setattr("builtins.input", lambda prompt="": called.append("input") or "y")
+    cli._maybe_offer_onboarding({"base_url": "https://treg.to", "token": "tok"})
+    assert called == []
+
+
+@pytest.mark.parametrize("interrupt", [EOFError, KeyboardInterrupt])
+def test_onboarding_offer_returns_when_a_pty_prompt_is_unanswered(monkeypatch, interrupt):
+    """Agent PTYs report isatty() True; an unanswered prompt must not fail login or persist a skip."""
+    posts = []
+
+    class Resp:
+        def json(self):
+            return {"onboarded": False}
+
+    def boom(prompt=""):
+        raise interrupt
+
+    class Client:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, path):
+            posts.append(path)
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.httpx, "get", lambda *a, **k: Resp())
+    monkeypatch.setattr("builtins.input", boom)
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    cli._maybe_offer_onboarding({"base_url": "https://treg.to", "token": "tok"})
+    assert posts == []
+
+
+def test_onboarding_offer_still_records_a_typed_decline(monkeypatch):
+    posts = []
+
+    class Resp:
+        def json(self):
+            return {"onboarded": False}
+
+    class Client:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, path):
+            posts.append(path)
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.httpx, "get", lambda *a, **k: Resp())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_dim", lambda *a, **k: None)
+    cli._maybe_offer_onboarding({"base_url": "https://treg.to", "token": "tok"})
+    assert posts == ["/onboard/skip"]
+
+
+def test_onboarding_offer_still_starts_setup_when_accepted(monkeypatch):
+    seen = []
+
+    class Resp:
+        def json(self):
+            return {"onboarded": False}
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.httpx, "get", lambda *a, **k: Resp())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    monkeypatch.setattr(cli, "_pick_path", lambda cfg: "catalog")
+    monkeypatch.setattr(cli, "_dispatch_onboard", lambda *a, **k: seen.append(a[1]))
+    cli._maybe_offer_onboarding({"base_url": "https://treg.to", "token": "tok"})
+    assert seen == ["catalog"]
+
+
+def test_login_returns_after_eof_on_the_onboarding_prompt(monkeypatch, tmp_path):
+    """A successful login must keep the token and return normally if the post-login prompt gets EOF."""
+
+    class Resp:
+        def __init__(self, payload, status_code=200):
+            self._payload, self.status_code, self.cookies = payload, status_code, {}
+
+        def json(self):
+            return self._payload
+
+    posts = []
+
+    class Client:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, path):
+            posts.append(path)
+
+    def fake_get(url, **kw):
+        if "/auth/cli/poll" in str(url):
+            return Resp({"token": "tok", "email": "a@b.c", "active_org": "team-a"})
+        if "/auth/me" in str(url):
+            return Resp({"onboarded": False})
+        raise AssertionError(url)
+
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: None)
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: Resp({"login_id": "L" * 24, "code": "ABCD"}))
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    monkeypatch.setattr(cli, "_pin_token_to_active_org", lambda cfg, **kw: None)
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": (_ for _ in ()).throw(EOFError()))
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    cfg = {"base_url": "https://treg.to", "token": None}
+    cli.cmd_login(type("A", (), {"token": None, "email": None})(), cfg)
+    assert cfg.get("token") == "tok"
+    assert posts == []
 
 def test_onboard_catalog_never_tells_a_keyless_public_api_to_connect(monkeypatch, capsys):
     """A keyless public API the server has not enabled has nothing to connect: the server sends an

@@ -54,7 +54,9 @@ random secrets shown once. Rotating the Default changes only this team's generat
 Four paths (`_PATHS`): **catalog** (default when interactive), **setup**, **access**, **demo**.
 Non-interactive runs pick by team state: a team with tools -> access, an empty team you admin ->
 setup, else catalog. After a first human `treg login`, `_maybe_offer_onboarding` offers it once
-(TTY only); a decline posts `/onboard/skip`.
+when stdin is a TTY; a decline posts `/onboard/skip`. EOF or Ctrl-C on that
+prompt returns without failing the login and without posting skip (agent PTYs
+report `isatty()` but have no one to answer).
 
 - **catalog** needs no team, secret or tool. It asks `/catalog/endpoints/<id>/access` how that
   exact call would be served and branches on the answer instead of hardcoding an endpoint: treg's
