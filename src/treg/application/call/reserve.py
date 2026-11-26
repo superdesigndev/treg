@@ -42,26 +42,31 @@ from .types import ReservationFailed
 @dataclasses.dataclass
 class PayOnShort:
     """A request that can pay for itself when its balance is short: a keyless wallet's call that
-    drew the wallet's credit (docs/context/architecture/agent-payments.md). Only the request's
-    first reservation asks `pay`, before any of its calls has gone out, and only when the team's
-    money is confirmed short; the reservation then runs again in place, under the same
-    Idempotency-Key claim and rate admission. `pay` returns whether it moved money onto the
-    balance. `unsure` records a refusal for which the money could not be confirmed, which pays
-    nothing."""
+    drew the wallet's credit (docs/context/architecture/agent-payments.md). A reservation of the
+    request that the team's money cannot cover anywhere (`allowance_runtime.short_everywhere`)
+    asks `pay` once, with no session held, and runs again in place: the reservation alone, under
+    the same Idempotency-Key claim and rate admission, so nothing that has gone out is sent
+    again. `pay` returns whether it moved money onto the balance. A shortfall the team's money
+    could cover pays nothing: the call is refused `credit_unconfirmed`."""
 
     pay: Callable[[], Awaitable[bool]]
     armed: bool = True
-    unsure: bool = False
+    sent: bool = False   # a call of the request has gone out (`going_out`)
 
 
 pay_on_short: contextvars.ContextVar[PayOnShort | None] = contextvars.ContextVar(
     "treg_pay_on_short", default=None)
+CREDIT_UNCONFIRMED = {
+    "error": "credit_unconfirmed",
+    "message": ("treg could not confirm this wallet's credit just now, so the call was not made "
+                "and the payment did not move. Send the request again in a moment."),
+}
 
 
-def outbound() -> None:
-    """A call is about to go out: no later reservation of the request may pay (`PayOnShort`)."""
+def going_out() -> None:
+    """A call of the request is about to go out: a later refusal can no longer say nothing did."""
     if (payer := pay_on_short.get()) is not None:
-        payer.armed = False
+        payer.sent = True
 
 
 @asynccontextmanager
@@ -613,11 +618,6 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
     the balance gate already, so only a hold that covers the worst case bounds them."""
-    payer = pay_on_short.get() if retry_short else None
-    if payer is not None and payer.armed:
-        payer.armed = False
-    else:
-        payer = None
     if (allow_holdless and not mark_in_flight and mk.holdless_eligible and not meta.tags
             and _holdless_listed(caller.org_id)):
         await _holdless_reserve(mk, caller)
@@ -759,11 +759,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             billing.maybe_schedule_autotopup(refused_org)
         # The team's counter may hold what the balance is short of, or another request may just
         # have given it back: `onto_balance` puts it on the balance, or says it is not there.
-        moved = await allowance_runtime.onto_balance(caller.org_id, exc.required_micro) \
-            if retry_short else False
-        if moved is None and payer is not None:
-            payer.unsure = True
-        elif not moved and payer is not None:
+        moved = retry_short and await allowance_runtime.onto_balance(
+            caller.org_id, exc.required_micro)
+        payer = pay_on_short.get()
+        if not moved and payer is not None and payer.armed:
+            if not await allowance_runtime.short_everywhere(caller.org_id, exc.required_micro):
+                raise ReservationFailed("credit_unconfirmed", status_code=503, retry_after_s=2,
+                                        detail=CREDIT_UNCONFIRMED) from exc
+            payer.armed = False
             # No session is held here: a payment rail is never awaited inside one.
             moved = await payer.pay()
         if moved:

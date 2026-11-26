@@ -24,7 +24,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
-from sqlalchemy import and_, false, or_
+from sqlalchemy import and_, delete, false, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select, update
 
@@ -466,6 +466,22 @@ class DrawnCall:
             return False
         self.call = replace(self.call, admission=replace(admission, settlement=settlement))
         return True
+
+
+async def release_draw(call: "PaidCall") -> None:
+    """The call drew credit and was refused before anything moved or went out
+    (`credit_unconfirmed`): its proof is unclaimed, the `credit` row deleted or the zero-amount
+    proof's claim dropped, so the same request with the same signature is admitted again."""
+    admission = call.admission
+    if admission.settlement is not None:
+        return
+    async with session_maker() as db:
+        if admission.payment_id is not None:
+            await db.execute(delete(AgentPayment).where(
+                AgentPayment.id == admission.payment_id, AgentPayment.status == "credit"))
+        else:
+            await ratestore.kv_pop(db, PROOF_NS, admission.verified.proof_id)
+        await db.commit()
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:

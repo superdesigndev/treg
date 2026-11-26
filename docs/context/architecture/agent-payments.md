@@ -204,15 +204,21 @@ that account's access key.
    call; below that the team cannot pay now, and it settles. Above it, whether the credit can be
    spent is the call's own reservation to find: a reading here, across the allowance's store and
    the database while calls take and give back, could only guess. A call that drew credit and
-   whose first reservation finds the team's money confirmed short (the hold's own check, the
-   allowance counter given back first, `onto_balance` answering False) settles the same payment
-   there (`DrawnCall.pay` through the reservation's `PayOnShort`, the row moving from `credit`
-   to `settling` with its fee), and that reservation runs again in place: under the same
-   Idempotency-Key claim and rate admission, before any of the call has gone out. Only the
-   request's first reservation pays, and none once a call has gone out (`reserve.outbound`): an
-   overflow or routed child refused later is the ordinary 402. A shortfall that could not be
-   confirmed (`onto_balance` answering None: the money lease busy, the store or the give-back
-   failing) pays nothing and answers 503 `credit_unconfirmed` with `Retry-After`. The proof path (`_admit_proof`) asks the same before it claims the proof;
+   whose reservation is refused for money (the hold's own check, the allowance counter given
+   back first, `onto_balance` refusing) asks one reading whether the team's money is short
+   anywhere (`short_everywhere`: `credit_bound` below what the hold needs). If it is, the same
+   payment settles there (`DrawnCall.pay` through the request's `PayOnShort`, the row moving
+   from `credit` to `settling` with its fee), once per request, with no session held, and that
+   reservation runs again in place: the reservation alone, under the same Idempotency-Key claim
+   and rate admission, so an overflow or routed child that reserves after an earlier call went
+   out pays without sending anything again, and a reservation run again after a daily-cap
+   recheck still can. If the team's money still covers the call (in the counter, or held by
+   a call in flight), nothing settles: the call is refused `credit_unconfirmed`, a 503 with
+   `Retry-After`, logged as treg's (`refused_by` empty), not as the team's balance. When
+   nothing of the call had gone out (`reserve.going_out`), its proof is given back
+   (`release_draw`: the `credit` row deleted, or a zero-amount proof's claim dropped), so the
+   same request with the same signature is admitted again; otherwise a resent signature is a
+   replay and gets a fresh challenge. The proof path (`_admit_proof`) asks the same before it claims the proof;
    a proof has nothing to settle, so its refused call answers the `credit_insufficient` 402.
 4. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
    `settling` and commits. A unique violation is a replay: 402 with a fresh challenge.

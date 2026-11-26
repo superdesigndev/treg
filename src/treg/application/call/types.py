@@ -47,6 +47,8 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "trial_allowance_reached": ("caller", "caller_balance_or_cap"),
     "platform_cap_unavailable": ("treg", "treg_capacity"),
     "money_admission_timeout": ("treg", "treg_capacity"),
+    # A keyless wallet's call short of a balance the team's money could still cover.
+    "credit_unconfirmed": ("treg", "treg_capacity"),
     "catalog_price_invalid": ("treg", "treg_error"),
     "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
     "tag_budget_unavailable": ("treg", "treg_capacity"),

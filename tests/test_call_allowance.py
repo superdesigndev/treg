@@ -4331,6 +4331,59 @@ async def test_a_balance_refusal_read_before_another_request_gave_the_counter_ba
     assert await _per_call_holds(org_id) == ["routed:r0"] and len(seen) == 2
 
 
+async def test_a_wallet_pays_after_a_cap_recheck_when_the_team_is_short_everywhere(
+        org_id, store, monkeypatch):
+    """The day's cap refused, the counter went back and every check ran again: the rerun is
+    the same reservation, so a keyless wallet short everywhere still pays from it, once, and
+    the hold is taken. Short only of what the counter could cover, it pays nothing."""
+    caller = await _caller(org_id)
+    cap, short, paid = [], [True], []
+
+    async def cap_once(caller, add_micro, db):
+        cap.append(1)
+        if len(cap) == 1:
+            raise ReservationFailed("platform_daily_cap_reached", status_code=429, detail={
+                "error": "platform_daily_cap_reached", "spent_today_micro": GRANT,
+                "daily_cap_micro": GRANT, "estimated_cost_micro": add_micro})
+
+    real = ledger.reserve_in_transaction
+
+    async def short_until_paid(db, org, *args, **kwargs):
+        if not paid:
+            raise ledger.InsufficientBalance(org, 0, 80_000)
+        return await real(db, org, *args, **kwargs)
+
+    async def everywhere(org_id, amount_micro):
+        return short[0]
+
+    async def given_back(org_id, excess_micro):
+        return True
+
+    async def pay():
+        paid.append(1)
+        return True
+
+    monkeypatch.setattr(call_reserve, "_enforce_platform_daily_cap", cap_once)
+    monkeypatch.setattr(ledger, "reserve_in_transaction", short_until_paid)
+    monkeypatch.setattr(runtime, "short_everywhere", everywhere)
+    monkeypatch.setattr(runtime, "give_back_for_exact_path", given_back)
+    monkeypatch.setattr(runtime, "listed", lambda org_id: True)
+    token = call_reserve.pay_on_short.set(call_reserve.PayOnShort(pay))
+    try:
+        await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                             call_ref="paid-after-cap")
+        assert paid == [1] and await _per_call_holds(org_id) == ["paid-after-cap"]
+        short[0], paid[:], cap[:] = False, [], []
+        call_reserve.pay_on_short.set(call_reserve.PayOnShort(pay))
+        with pytest.raises(ReservationFailed) as refused:
+            await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                                 call_ref="covered")
+        assert refused.value.kind == "credit_unconfirmed" and refused.value.status_code == 503
+        assert paid == []
+    finally:
+        call_reserve.pay_on_short.reset(token)
+
+
 async def test_a_cap_refusal_read_before_another_request_gave_the_counter_back_runs_again(
         org_id, store, monkeypatch):
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)

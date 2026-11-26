@@ -19,6 +19,7 @@ from eth_account import Account
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
+from treg import audit
 from treg.api import app
 from treg.application import agent_payments
 from treg.application.call import allowance as call_allowance
@@ -32,7 +33,7 @@ from treg.infra.agent_payments.evm import TRANSFER_TOPIC, Chain, topic_address
 from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.agent_payments.x402 import X402Rail
 from treg.infra.db import session_maker
-from treg.models import AgentPayer, AgentPayment, Hold, LedgerEntry, Membership
+from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry, Membership
 
 EP = "tikhub.tiktok.video.comments"   # $0.001 per call on treg's key
 EP_MICRO = 1_000
@@ -468,67 +469,80 @@ async def test_a_payment_drawn_on_credit_its_call_cannot_reserve_settles_and_the
     assert await _balance(payer) == FLOOR - EP_MICRO
 
 
-async def _drawn_on_credit_held_elsewhere(anon, account, monkeypatch) -> str:
-    """A wallet with credit, all of it held by another call, whose next payment draws it."""
+async def _drawn_on_credit_held_elsewhere(anon, account, monkeypatch) -> tuple[str, str]:
+    """A wallet with credit, all of it held by another call, whose next payment draws it: the
+    payer and the other call's hold."""
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, payer = _x402_credential(challenge, account)
     assert (await anon.get(f"/call/{EP}?aweme_id=7",
                            headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
     async with session_maker() as db:
-        await ledger.reserve(db, await _payer_org(payer), "held.elsewhere",
-                             await _balance(payer))
+        held = await ledger.reserve(db, await _payer_org(payer), "held.elsewhere",
+                                    await _balance(payer))
 
     async def looks_enough(org_id, quote_micro):
         return True
 
     monkeypatch.setattr(agent_payments, "_may_draw", looks_enough)
-    return payer
+    return payer, held
 
 
-async def test_a_drawn_call_whose_credit_cannot_be_confirmed_pays_nothing(
+async def test_a_drawn_call_whose_shortfall_is_unconfirmed_pays_nothing_and_its_proof_comes_back(
         anon: AsyncClient, payments_on, facilitator, monkeypatch):
-    """The team's money could not be moved onto its balance (its money lease busy, the store
-    unanswered): that is no shortfall, so the payment does not settle and the wallet hears a
-    503 to send the request again, not a 402 to pay."""
+    """The reservation was refused while the team's money, read once, still covered the call
+    (in the allowance counter, or a call in flight): no shortfall, so the payment does not
+    settle. The wallet hears a 503, not a 402 to pay, the refusal is logged as treg's, and the
+    same request, signature and all, runs once the credit is free."""
     calls: list = []
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
     account = Account.create()
-    payer = await _drawn_on_credit_held_elsewhere(anon, account, monkeypatch)
+    payer, held = await _drawn_on_credit_held_elsewhere(anon, account, monkeypatch)
     balance = await _balance(payer)
 
-    async def unconfirmed(org_id, amount_micro):
-        return None
+    async def covered(org_id, amount_micro):
+        return False
 
-    monkeypatch.setattr(call_allowance, "onto_balance", unconfirmed)
+    monkeypatch.setattr(call_allowance, "short_everywhere", covered)
     challenge = await anon.get(f"/call/{EP}?aweme_id=9")
     credential, _ = _x402_credential(challenge, account)
-    r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential})
+    headers = {"PAYMENT-SIGNATURE": credential, "Idempotency-Key": "unconfirmed"}
+    r = await anon.get(f"/call/{EP}?aweme_id=9", headers=headers)
     assert r.status_code == 503, r.text
     assert r.json()["detail"]["error"] == "credit_unconfirmed" and r.headers["Retry-After"]
     assert facilitator.settles == 1 and len(calls) == 1
     assert await _balance(payer) == balance
+    await audit.drain()
+    async with session_maker() as db:
+        record = (await db.execute(select(CallRecord).order_by(CallRecord.id.desc()))).scalars().first()
+        assert (record.status_code, record.refused_by) == (503, None)
+        await ledger.release(db, held)
+    r = await anon.get(f"/call/{EP}?aweme_id=9", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Payment"] == "credit"
+    assert facilitator.settles == 1 and len(calls) == 2
 
 
-async def test_a_drawn_call_refused_after_a_call_went_out_pays_nothing(
+async def test_a_drawn_call_short_after_a_call_went_out_pays_in_place(
         anon: AsyncClient, payments_on, facilitator, monkeypatch):
-    """Only a reservation before anything has gone out pays: one after (an overflow child once
-    the direct call answered) is the wallet's ordinary 402, its payment unsettled."""
+    """A reservation made after a call went out (an overflow child once the direct call failed)
+    pays there too: the reservation runs again alone, so nothing that went out is sent again."""
     calls: list = []
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
     account = Account.create()
-    await _drawn_on_credit_held_elsewhere(anon, account, monkeypatch)
+    payer, _ = await _drawn_on_credit_held_elsewhere(anon, account, monkeypatch)
     reserve = call_service._platform_reserve
 
     async def after_a_call_went_out(*args, **kwargs):
-        call_reserve.outbound()
+        call_reserve.going_out()
         return await reserve(*args, **kwargs)
 
     monkeypatch.setattr(call_service, "_platform_reserve", after_a_call_went_out)
     challenge = await anon.get(f"/call/{EP}?aweme_id=9")
     credential, _ = _x402_credential(challenge, account)
     r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential})
-    assert r.status_code == 402, r.text
-    assert facilitator.settles == 1 and len(calls) == 1
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Payment"] == "paid"
+    assert facilitator.settles == 2 and len(calls) == 2
 
 
 # ---- paying -------------------------------------------------------------------------------------
