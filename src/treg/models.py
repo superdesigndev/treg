@@ -1215,7 +1215,7 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)

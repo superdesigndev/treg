@@ -87,3 +87,45 @@ async def test_a_hold_committed_while_its_team_is_deleted_goes_with_the_team(
     async with session_maker() as db:
         assert await db.get(Org, org_id) is None
     assert await _holds(org_id) == (0 if sweep else 1)
+
+
+@pytest.mark.parametrize("sweep", [True, False], ids=["swept", "without-the-sweep"])
+async def test_a_settle_that_claimed_its_hold_before_the_deletion_leaves_no_ledger_entry(
+        postgres, monkeypatch, sweep):
+    """Settled at exactly what it reserved, the settle never touches the team row: only its claim
+    on the hold, which the deletion's walk also deletes, makes the deletion wait for it."""
+    from treg.config import get_settings
+    from treg.domain import money
+    from treg.models import LedgerEntry
+
+    monkeypatch.setattr(get_settings(), "platform_margin", 0)
+    if not sweep:
+        monkeypatch.setattr(teams, "ORG_ROWS_WITHOUT_FOREIGN_KEY", ())
+    org_id = await _team()
+    async with session_maker() as db:
+        await money.grant(db, org_id, amount_micro=1_000_000)
+        await db.commit()
+        call_id = await money.reserve(db, org_id, "test.race", 1_000)
+
+    call = session_maker()
+    assert await money.settle_in_transaction(call, call_id, 1_000) == 1_000
+    await call.flush()
+
+    async def delete_team() -> None:
+        async with session_maker() as db:
+            pid.set_result((await db.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+            await teams.cascade_delete_org(await db.get(Org, org_id), db)
+            await db.commit()
+
+    pid: asyncio.Future = asyncio.get_running_loop().create_future()
+    deletion = asyncio.create_task(delete_team())
+    # The walk has passed `ledgerentry` and waits on the hold the settle claimed.
+    await _waiting_on_a_lock(await pid)
+    await call.commit()
+    await call.close()
+    await asyncio.wait_for(deletion, 10)
+
+    async with session_maker() as db:
+        left = (await db.execute(select(func.count()).select_from(LedgerEntry)
+                                 .where(LedgerEntry.org_id == org_id))).scalar_one()
+    assert left == (0 if sweep else 1)
