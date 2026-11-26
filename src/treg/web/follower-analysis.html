@@ -172,14 +172,12 @@
   #again2 { padding: 8px 16px; font-size: 13px; }
   .cap { margin: 0; text-align: center; font-weight: 500; font-size: clamp(30px, 3.6vw, 52px); letter-spacing: -.025em; line-height: 1.15; }
   .cap small { display: block; margin: 14px auto 0; max-width: 620px; font-size: 17px; font-weight: 400; letter-spacing: 0; line-height: 1.55; color: var(--grey); }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 36px 0 18px; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 36px 0 12px; }
   .stat { border-radius: 18px; padding: 20px; background: #fafaf9; }
-  .stat b { display: block; font: 400 44px/1 var(--pixel); letter-spacing: -.02em; }
-  .stat b { width: fit-content; margin: 0 auto; color: #e64fc4; background: linear-gradient(90deg, #f05bc8, #b277f0 50%, #22a7ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-  .stat span { display: block; margin-top: 8px; font-size: 13px; color: var(--grey); font-weight: 400; }
-  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-  .stats.two { grid-template-columns: repeat(2, 1fr); margin-bottom: 12px; }
-  .stats.two b { font-size: 72px; }
+  .stat b { display: block; font: 400 72px/1 var(--pixel); letter-spacing: -.02em; color: var(--ink); }
+  .stat span { display: block; margin-top: 8px; font-size: 15px; font-weight: 500; }
+  .stat small { display: block; margin-top: 4px; font-size: 13px; line-height: 1.45; color: var(--grey); font-weight: 400; }
+  .spent { margin: -4px 0 14px; text-align: center; font-size: 12.5px; color: var(--grey); }
   .resbar { display: flex; justify-content: center; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
   .card { max-width: 760px; margin: 30px auto 16px; aspect-ratio: 1200 / 675; overflow: hidden; border-radius: 18px; box-shadow: 0 30px 80px -40px rgba(20,18,12,.35), 0 1px 2px rgba(0,0,0,.06); }
   .cardscale { width: 1200px; height: 675px; transform-origin: 0 0; }
@@ -384,10 +382,11 @@
   </div>
 </div>
 </div></div>
+  <p class="spent" id="spentNote"></p>
   <div class="resbar"><button class="pill dark" id="shareX">Share on X</button><button class="pill" id="copyPng">Copy card</button><span class="note" id="cardNote"></span></div>
-  <div class="stats two">
-    <div class="stat"><b id="sRate">0%</b><span>lead rate</span></div>
-    <div class="stat"><b id="sRev">$0</b><span>potential revenue / year</span></div>
+  <div class="stats">
+    <div class="stat"><b id="sRate">0%</b><span>lead rate</span><small>How many of your followers could buy from you.</small></div>
+    <div class="stat"><b id="sRev">$0</b><span>potential revenue / year</span><small id="sRevHow"></small></div>
   </div>
   <p class="resnote" id="resNote"></p>
     <div class="again"><button class="pill dark" id="again">Scan again</button></div>
@@ -901,12 +900,13 @@
 
   function show(judged, ms, band) {
     $('progress').hidden = true; $('results').hidden = false;
-    $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min for $' + (spent / 1e6).toFixed(2) + '. Followers with no bio count as misses.';
+    $('spentNote').textContent = 'This scan read ' + all.length + ' followers and cost $' + (spent / 1e6).toFixed(2) + '.';
     var b = BANDS[band.key], scanned = all.length, total = Math.max((ownerInfo || {}).followers || followerTotal || 0, scanned);
     var rate = scanned ? leads.length / scanned : 0, revenue = Math.round(total * rate * 0.02 * b.usd);
     $('sRate').textContent = pct(rate); $('sRev').textContent = money(revenue);
-    $('resNote').textContent += ' Potential revenue: ' + total.toLocaleString('en-US') + ' followers × ' + pct(rate) + ' lead rate × 2% close × USD ' + b.usd.toLocaleString('en-US') + ' a year (' + b.label +
-      (band.read ? ', as Jev read your profile' : ', the default: Jev could not read your profile') + '). What your followers could bring in, not a forecast.';
+    $('sRevHow').textContent = 'All ' + total.toLocaleString('en-US') + ' followers × ' + pct(rate) + ' lead rate × 2% who buy × $' + b.usd.toLocaleString('en-US') + ' a year each.';
+    $('resNote').textContent = 'Lead rate comes from the ' + scanned + ' followers read; followers with no bio count as misses. $' + b.usd.toLocaleString('en-US') + ' a year is the price of ' + b.label +
+      (band.read ? ', as Jev read your profile' : ', the default: Jev could not read your profile') + '. An estimate of what your followers could bring in, not a forecast.';
     drawCard({ handle: cleanHandle($('handle').value), image: (ownerInfo || {}).image || '', facts: cardFacts(judgedAll, leads) });
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
