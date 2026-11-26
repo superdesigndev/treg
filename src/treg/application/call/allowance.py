@@ -755,7 +755,7 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
     Waits for the lease no longer than a call waits for a refill. Opens its own sessions: call
     it with none held."""
     async with session_maker() as db:
-        free = await allowance.spendable(db, org_id)
+        free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
             return True
         if not enabled_for(org_id) or await allowance.credit_bound(db, org_id) < amount_micro:
@@ -764,7 +764,7 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
         if lease != "acquired":
             return False
         async with session_maker() as db:
-            free = await allowance.spendable(db, org_id)
+            free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
             return True
         state = await _counter_state(org_id)

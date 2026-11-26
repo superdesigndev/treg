@@ -4356,6 +4356,19 @@ async def test_a_cap_refusal_read_before_another_request_gave_the_counter_back_r
     assert await _per_call_holds(org_id) == ["routed:r0"] and len(seen) == 2
 
 
+async def test_a_balance_an_overrun_left_below_zero_takes_the_counter_back_for_a_free_call(
+        org_id, store, monkeypatch):
+    """An overrun left the balance below zero, so a reserve of nothing fails. The counter makes
+    that up: it goes back to the balance, which `onto_balance` reads unclamped."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(balance_micro=-10))
+        await db.commit()
+    assert await runtime.onto_balance(org_id, 0) is True
+    assert await _given_back(org_id) == [GRANT - 1_000]
+
+
 async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short(
         org_id, store, monkeypatch):
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)

@@ -346,6 +346,15 @@ def _epoch_of(created_at: datetime) -> int:
     return (created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
 
 
+async def unheld_free(db: AsyncSession, org_id: int) -> int:
+    """`org.balance_micro` less what queued charges owe it (`_queued_unbacked`): what a reserve
+    meets. Below zero when an overrun is owed, which a reserve of anything, nothing included,
+    then cannot pass."""
+    return int((await db.execute(
+        select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+    )).scalar() or 0)
+
+
 async def spendable(db: AsyncSession, org_id: int, *, counter_micro: int = 0,
                     counter_epoch: int | None = None) -> int:
     """The balance a team is shown: what it can spend now. `org.balance_micro` less what its
@@ -357,9 +366,7 @@ async def spendable(db: AsyncSession, org_id: int, *, counter_micro: int = 0,
     The rest of the hold is not counted: calls in flight took it, or a counter lost with the
     store left it behind until the idle sweep returns it. A counter built for another hold, or
     showing more than this hold has, counts for nothing beyond the hold."""
-    free = int((await db.execute(
-        select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
-    )).scalar() or 0)
+    free = await unheld_free(db, org_id)
     offered = 0
     if counter_micro > 0 and counter_epoch:
         hold = (await db.execute(select(Hold.created_at, Hold.amount_micro).where(
