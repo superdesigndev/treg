@@ -2059,7 +2059,6 @@ adapters:
     in:  {target: body.targets}
     in_expr: {body.targets: "list(target)"}
     out: {summary: "results[0]", backlinks: "results[0].external_pages_to_subdomain", referring_domains: "results[0].root_domains_to_subdomain"}
-    miss: "results == []"
 
   scrapecreators.reddit.subreddit.posts:
     accepts: [[subreddit]]
@@ -2217,9 +2216,9 @@ adapters:
     accepts: [[target]]
     in:  {target: body.target}
     in_expr: {body.limit: limit}
+    max: {limit: 50}
     const: {body.target_scope: page, body.filter: external}
     out: {backlinks: results, next_cursor: next_token}
-    miss: "results == []"
   seranking.web.backlinks.list:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -2240,7 +2239,6 @@ adapters:
     in:  {target: body.targets}
     in_expr: {body.targets: "list(target)"}
     out: {metrics: "results[0]"}
-    miss: "results == []"
   seranking.web.url.metrics:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -2611,9 +2609,9 @@ adapters:
     accepts: [[target]]
     in:  {target: body.target}
     in_expr: {body.limit: limit}
+    max: {limit: 50}
     const: {body.scope: root_domain}
     out: {anchors: results, next_cursor: next_token}
-    miss: "results == []"
   seranking.web.anchors.list:
     accepts: [[target]]
     in:  {target: queryParams.target}

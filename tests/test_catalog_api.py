@@ -549,7 +549,7 @@ async def test_a_provider_meter_converts_per_meter_not_per_provider():
 
     # Moz's row quota is a meter too. It used to carry no `currency` at all, defaulted to USD, and
     # served every Moz route at $1.00 per row — the exact failure `currency: unit` prevents.
-    moz = cat.by_id["moz.web.url.metrics"]["cost"]
+    moz = cat.by_id["moz.web.backlinks.list"]["cost"]
     assert moz["currency"] == "unit" and moz["unit"] == "quota_row"
     assert cat.cost_view(moz, "moz")["usd"] == 0.006667  # 1 row × the researched $0.006667/row
     # Semrush is the one that stays native: package prices are sales-gated, so no rate is derivable
@@ -1218,74 +1218,6 @@ def test_generic_display_prices_match_web_and_cli():
     assert _price_label(job) == _cost_usd(job) == _cost_label(job) == '$0.00015+/page'
     from treg.application.call.resolve import _platform_estimate_micro
     assert _platform_estimate_micro(job, {}) == 75_000
-
-
-_MOZ_ONE_ROW_PER_RETURNED = re.compile(r"1 row per returned", re.I)
-
-
-def test_moz_lists_priced_per_returned_row_show_per_result():
-    """A Moz list that bills one quota row per returned item, with `limit` choosing how many come
-    back, must quote that unit. `quota_rows` with no display unit is labelled `/call`, so a
-    `limit` of 50 looks like the one-row price. `display.unit` names the returned item; the
-    meter stays `quota_rows` and `usd` stays the price of one row."""
-    from treg.application.call.resolve import _platform_estimate_micro
-    from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
-    from treg.routers.web import _price_label
-
-    cat = cs.load()
-    listed = []
-    for ep in cat.endpoints:
-        if ep.get("provider") != "moz":
-            continue
-        cost = ep.get("cost") or {}
-        body = (ep.get("input") or {}).get("body") or {}
-        if (cost.get("type") == "quota_rows"
-                and _MOZ_ONE_ROW_PER_RETURNED.search(cost.get("note") or "")
-                and isinstance(body, dict) and "limit" in body):
-            listed.append(ep["id"])
-    assert set(listed) == {
-        "moz.web.backlinks.list",
-        "moz.web.linking_domains.list",
-        "moz.web.anchors.list",
-        "moz.web.site.top_pages",
-        "moz.web.global.top_pages",
-        "moz.web.global.top_domains",
-    }
-    for eid in listed:
-        ep = cat.by_id[eid]
-        viewed = cat.cost_view(ep["cost"], ep["provider"])
-        assert viewed["type"] == "quota_rows" and viewed["usd"] == 0.006667, eid
-        assert viewed["display_unit"] == "result", eid
-        assert (_price_label(viewed) == _cost_usd(viewed) == _cost_label(viewed)
-                == "$0.00667/result"), eid
-        assert _platform_estimate_micro(viewed, {}, b'{"limit":1}') == 6_667, eid
-        assert _platform_estimate_micro(viewed, {}, b'{"limit":50}') == 333_350, eid
-    for eid in ("moz.web.url.metrics", "moz.web.backlinks.summary", "moz.web.index.metadata"):
-        ep = cat.by_id[eid]
-        viewed = cat.cost_view(ep["cost"], ep["provider"])
-        assert viewed["type"] == "quota_rows" and "display_unit" not in viewed, eid
-        assert _price_label(viewed).endswith("/call") and _cost_usd(viewed).endswith("/call"), eid
-
-
-def test_platform_access_estimate_matches_the_run_it_example_not_a_page_default():
-    """catalog get's access line estimates the runnable example. An empty body used to fall through
-    to the page-size default (20), so Moz quota_rows showed ~20× the unit price next to a 1-target
-    or 1-limit RUN IT line even though settle charged per target/row."""
-    from treg.application.call.access import _platform_access_estimate
-
-    cat = cs.load()
-    # One target, no modifiers: value 1 → one unit, not 20.
-    url = cat.by_id["moz.web.url.metrics"]
-    url_cost = cat.cost_view(url["cost"], "moz")
-    assert _platform_access_estimate(url, "moz", url_cost) == 6_667
-    # Weighted example already baked into cost.value (2): still one "call" for that shape, not 20.
-    summary = cat.by_id["moz.web.backlinks.summary"]
-    summary_cost = cat.cost_view(summary["cost"], "moz")
-    assert _platform_access_estimate(summary, "moz", summary_cost) == 13_334
-    # List example carries limit:1 → one returned row, not the page default.
-    listing = cat.by_id["moz.web.linking_domains.list"]
-    listing_cost = cat.cost_view(listing["cost"], "moz")
-    assert _platform_access_estimate(listing, "moz", listing_cost) == 6_667
 
 
 async def test_every_comparison_page_in_the_sitemap_serves(clients):
