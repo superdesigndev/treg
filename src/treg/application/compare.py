@@ -787,19 +787,18 @@ async def _a_answer(served: Served, session_factory) -> tuple[Any, str | None]:
         return None, "a_answer_unreadable"
 
 
-async def _observed_stats(endpoint_ids: list[str]) -> dict:
+async def _observed_stats(endpoint_ids: list[str], session_factory=session_maker) -> dict:
     """The endpoints' observed routing stats, as the router ranks with them. A web process reads
     its bound cache (`route._observed_stats`); the worker has none bound, so it reads the same
-    day buckets straight from Postgres. Unavailable stats read as none."""
+    day buckets straight from Postgres through the run's own pool. Unavailable stats read as none."""
     from .call import route
 
     if route._endpoint_observation_reader is not None:
         return await route._observed_stats(endpoint_ids)
     from ..infra.catalog_observations import PostgresEndpointObservationReader
-    from ..infra.db import background_session_maker
 
     try:
-        return await PostgresEndpointObservationReader(background_session_maker).get_many(endpoint_ids)
+        return await PostgresEndpointObservationReader(session_factory).get_many(endpoint_ids)
     except Exception:  # stats only order the endpoints
         log.warning("endpoint stats unavailable for comparisons", exc_info=True)
         return {}
@@ -841,7 +840,7 @@ async def _choose_b(served: Served, contract, identity: dict, tally: dict, faili
         remaining = _spend_limit_micro() - await comparisons.spent(db, _day())
     cat = catalog_store.load()
     ids = [e["id"] for e in cat.for_capability(capability) if e["provider"] in others]
-    stats, health = await _observed_stats(ids), await _health(ids)
+    stats, health = await _observed_stats(ids, session_factory), await _health(ids)
     reason = "b_unavailable"
     for provider in others:
         target = _b_target(contract, identity, provider, org_id=org_id, given=served.given, stats=stats,
