@@ -1046,11 +1046,17 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
     "nothing" would be the one answer known to be wrong."""
     budget = [_BACKLOG_BATCHES]
     try:
-        async with asyncio.timeout(_SETTLED_WAIT_S):
+        async with asyncio.timeout(_SETTLED_WAIT_S) as deadline:
+            loop = asyncio.get_running_loop()
             while True:
                 outcome = await _fold_backlog(org_id, budget)
                 if outcome is _Fold.HERE:
                     await _team_session_ended(org_id)
+                # The timeout's cancel can be absorbed on the way out: a money session that
+                # fails and is cancelled while it closes re-raises its own failure, which the
+                # fold reports as giving up. So the deadline is looked at, not only awaited.
+                if loop.time() >= deadline.when():
+                    break
                 async with session_maker() as db:
                     settled = await allowance.settled_micro(db, org_id, call_id)
                 if settled is not None:

@@ -2121,6 +2121,37 @@ async def test_a_call_answers_from_the_first_batch_that_wrote_its_entry(org_id, 
     assert batches == [True]
 
 
+async def test_a_call_reads_no_ledger_once_its_deadline_has_passed(org_id, store, monkeypatch):
+    """The fold fails and its session is still closing when the deadline passes; the money
+    session re-raises the fold's own error, so no cancel reaches the call. It must still not
+    open a ledger read after its deadline."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.1)
+    reads = []
+
+    async def fails_past_the_deadline(db, org, **kwargs):
+        await asyncio.sleep(0.15)
+        raise RuntimeError("database fault")
+
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return None
+
+    @contextlib.asynccontextmanager
+    async def absorbs_the_cancel(db):
+        try:
+            yield db
+        except asyncio.CancelledError:
+            raise RuntimeError("database fault") from None
+        finally:
+            await db.close()
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", fails_past_the_deadline)
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    monkeypatch.setattr(runtime, "money_session", absorbs_the_cancel)
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert reads == []
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
