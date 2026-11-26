@@ -87,15 +87,15 @@ endpoints:
     path: /stores
     name: "Look up a Shopify store by domain"
     summary: "Get one Shopify store by domain: apps, technologies, theme, industry, product count, contacts, social profiles and search traffic"
-    note: "Send `crawl=false` to read the database only. Without it, a domain StoreRadar has not seen answers 202 and is queued for a crawl: poll the same URL for a minute or two."
+    note: "Reads the database only: a domain that StoreRadar has not seen answers 404 and is not crawled."
     input:
       queryParams:
         domain: {type: string, required: true, note: "bare hostname, no scheme or path", example: "allbirds.com"}
-        crawl: {type: string, required: false, enum: ['false'], note: "'false' never queues a crawl", example: "false"}
+        crawl: {type: string, required: true, enum: ['false'], note: "always 'false': without it, StoreRadar queues a crawl of an unknown domain and stores the result", example: "false"}
     test_request:
       queryParams: {domain: "allbirds.com", crawl: "false"}
     price: {value: '0', currency: USD, unit: call}
-    miss: {status: [404], means: "not a Shopify store, or not in StoreRadar's database when crawl=false"}
+    miss: {status: [404], means: "not a Shopify store, or not in StoreRadar's database"}
     docs_url: https://www.storeradar.io/api/docs
 
   - id: storeradar.companies.search.summary
