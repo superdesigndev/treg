@@ -26,6 +26,7 @@ limits: "no published per-second rate limit; a monthly credit quota enforced wit
 pricing_url: https://predictleads.com/pricing
 
 defaults:
+  provenance: {source: docs, source_url: 'https://docs.predictleads.com/schemas/open_api_schema.json', checked: '2026-11-26', confidence: documented}
   settle: {reported: {header: x-credits-used, unit: credit}}
 
 proposed_capabilities:
@@ -62,8 +63,7 @@ endpoints:
       note: "the record carries firmographics plus PredictLeads' own fields — ticker, meta title/description, long and short LLM descriptions, structured location_data, extraction states and subsidiary domains"
     test_request:
       pathParams: {id_or_domain: "stripe.com"}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
     miss: {when: [{path: response.data, op: present}, {path: response.data, op: empty}]}
@@ -91,11 +91,10 @@ endpoints:
         revenue_range_high: {type: integer, required: false, note: "maximum annual revenue in USD", example: 100000000}
         page: {type: integer, required: false, note: "1-based; omitting it drops meta.count for performance"}
         limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — THIS IS THE PRICE DIAL: 1 credit per company returned", example: 1}
-      note: "returns an ESTIMATED count, not an exact one. Always set an explicit small `limit` first — the default of 30 bills 30 credits"
+      note: "returns an ESTIMATED count, not an exact one. Always set an explicit small `limit`: without one, PredictLeads returns up to 30 records at 1 credit each"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'; the pricing FAQ confirms discovery endpoints bill per returned company, not per request"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -121,8 +120,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'; the pricing FAQ calls out Similar Companies by name as priced per returned company"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 20, source: docs}, max: 50}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -158,8 +156,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response' — up to 1,000 records for one credit"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
     miss: {when: [{path: response.data, op: present}, {path: response.data, op: empty}]}
@@ -182,8 +179,7 @@ endpoints:
         id: {type: string, required: true, note: "JobOpening UUID, from any job_openings listing", example: "284eb966-142d-47ac-8430-83ef870ff77f"}
     test_request:
       pathParams: {id: "284eb966-142d-47ac-8430-83ef870ff77f"}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -212,8 +208,7 @@ endpoints:
       note: "only returns postings found within the last year — this is the hiring-signal prospecting route ('who is hiring sales engineers in Texas right now')"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -243,8 +238,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -274,8 +268,7 @@ endpoints:
     test_request:
       pathParams: {technology_id_or_fuzzy_name: "hubspot"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -300,8 +293,7 @@ endpoints:
       note: "the ~54,000-row technology dictionary behind the detection endpoints. Expensive per record: to resolve one name, call /technologies/{id_or_fuzzy_name} (3 credits a call) instead of listing"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '3', currency: credit, unit: record, note: "docs label this endpoint '3 Credits / Record' — the only non-1-credit data route"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '3', currency: credit, unit: record, note: "3 credits per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 100, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -323,8 +315,7 @@ endpoints:
       note: "3 credits a call. The reverse lookup (predictleads.technologies.users) takes a fuzzy name itself, so call this only when you need the Technology record"
     test_request:
       pathParams: {id_or_fuzzy_name: "996ad860-2a9a-504f-8861-aeafd0b2ae29"}
-    price: {value: '3', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '3', currency: credit, unit: call, note: "3 credits per request. A 400, 404 or 422 answer is charged the credits PredictLeads reports"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -347,8 +338,7 @@ endpoints:
       note: "NOT VERIFIED — Extended Technology Detections are a separately licensed dataset. On the free/trial plan used for curation, technology_detection responses carried no extended_technology_detection relationship, so no valid ID was obtainable and the route could not be exercised. Path and parameter read from the OpenAPI schema"
     test_request:
       pathParams: {id: "<ExtendedTechnologyDetection UUID>"}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     docs_url: https://docs.predictleads.com/v3/api_endpoints/extended_technology_detections_dataset/retrieve_a_single_extended_technology_detection_by_id
 
@@ -375,8 +365,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
     miss: {when: [{path: response.data, op: present}, {path: response.data, op: empty}]}
@@ -399,8 +388,7 @@ endpoints:
         id: {type: string, required: true, note: "NewsEvent UUID from any news_events listing", example: "d378cf5a-01b4-4f81-8f9d-64c38df3ca03"}
     test_request:
       pathParams: {id: "d378cf5a-01b4-4f81-8f9d-64c38df3ca03"}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -426,8 +414,7 @@ endpoints:
       note: "the market-wide signal feed: 'every company that opened a new location this week'. Ordered newest-first by found_at (when PredictLeads found the event), so found_at on the first record is the watermark for the next poll. found_at is discovery time, not event time: for a timeline use effective_date, which can be null, month-precision or older than found_at, and check it against the source article"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -455,8 +442,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -481,8 +467,7 @@ endpoints:
       note: "the 'who just raised' feed — the standard trigger list for outbound to newly funded companies. Recency here is discovery recency: found_at is when PredictLeads found the event, not when the round happened, and there is no filter on the round date, so a recently found row can be a round from a prior year. Before treating a row as a new round, check effective_date (can be null, and can disagree with the announcement) against the articles in source_urls"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -511,8 +496,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "microsoft.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -533,8 +517,7 @@ endpoints:
         id: {type: string, required: true, note: "SecFiling UUID from any sec_filings listing", example: "019fea12-bfd4-77ca-b958-3706a5afcb56"}
     test_request:
       pathParams: {id: "019fea12-bfd4-77ca-b958-3706a5afcb56"}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -563,8 +546,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -588,11 +570,10 @@ endpoints:
         last_seen_at_until: {type: string, required: false}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
-      note: "a portfolio page addition often lands before the funding is announced anywhere else, which is why this is a separate feed from financing events"
+      note: "lists companies as they appear on VC, accelerator and incubator portfolio pages, a separate source from financing events"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -620,7 +601,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
@@ -649,8 +630,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -680,8 +660,7 @@ endpoints:
     test_request:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request, however many records come back. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -702,8 +681,7 @@ endpoints:
         id: {type: string, required: true, note: "Product UUID from any products listing", example: "db60bc8e-d43b-4551-ae0b-e64fd5e945e2"}
     test_request:
       pathParams: {id: "db60bc8e-d43b-4551-ae0b-e64fd5e945e2"}
-    price: {value: '1', currency: credit, unit: call, note: "docs label this endpoint '1 Credit / Response'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per request. A 400, 404 or 422 answer also costs 1 credit"}
     bill: {miss: charged, error: charged}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -728,8 +706,7 @@ endpoints:
       note: "the path is /discover/products; there is no /discover/products/latest route"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -755,8 +732,7 @@ endpoints:
       note: "each post is already resolved to a company_domain and company_name, with a fuzzy_match flag when the resolution is uncertain — that resolution is the point, versus scraping the platforms yourself"
     test_request:
       queryParams: {limit: 1}
-    price: {value: '1', currency: credit, unit: record, note: "docs label this endpoint '1 Credit / Record'"}
-    provenance: {source: docs, source_url: 'https://predictleads.com/pricing', checked: '2026-08-20', confidence: documented}
+    price: {value: '1', currency: credit, unit: record, note: "1 credit per record returned, so an empty list costs nothing. A 400, 404 or 422 answer also costs 1 credit"}
     reserve: {rows: {param: query.limit, default: {value: 30, source: docs}, max: 1000, platform_max: 100}}
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -774,7 +750,7 @@ endpoints:
     name: "Check your subscription and credit usage"
     summary: "Returns the current subscription status along with monthly credit limits and usage details."
     input:
-      note: "no parameters. Returns status (active | disabled | disabled_due_to_error), monthly_credits_quota and monthly_credits_used — call it before and after a discovery request to measure what that request actually cost"
+      note: "no parameters. Returns status (active | disabled | disabled_due_to_error), monthly_credits_quota and monthly_credits_used — call it before and after a discovery request to measure what that request cost"
     test_request:
       queryParams: {}
     price: {value: '0', currency: USD, unit: call}
