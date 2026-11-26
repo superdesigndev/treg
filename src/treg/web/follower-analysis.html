@@ -179,10 +179,7 @@
   .stat span { display: block; margin-top: 8px; font-size: 13px; color: var(--grey); font-weight: 400; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
   .stats.two { grid-template-columns: repeat(2, 1fr); margin-bottom: 12px; }
-  .stats.two + .stats { margin-top: 0; }
   .stats.two b { font-size: 72px; }
-  .roles { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 18px; }
-  .roles span { font: 500 13px var(--sans); padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; }
   .resbar { display: flex; justify-content: center; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
   .card { max-width: 760px; margin: 30px auto 16px; aspect-ratio: 1200 / 675; overflow: hidden; border-radius: 18px; box-shadow: 0 30px 80px -40px rgba(20,18,12,.35), 0 1px 2px rgba(0,0,0,.06); }
   .cardscale { width: 1200px; height: 675px; transform-origin: 0 0; }
@@ -392,13 +389,6 @@
     <div class="stat"><b id="sRate">0%</b><span>lead rate</span></div>
     <div class="stat"><b id="sRev">$0</b><span>potential revenue / year</span></div>
   </div>
-  <div class="stats">
-    <div class="stat"><b id="sLeads">0</b><span>leads</span></div>
-    <div class="stat"><b id="sDm">0</b><span>decision makers</span></div>
-    <div class="stat"><b id="sScanned">0</b><span>followers scanned</span></div>
-    <div class="stat"><b id="sCost">$0</b><span>spent</span></div>
-  </div>
-  <div class="roles" id="roles"></div>
   <p class="resnote" id="resNote"></p>
     <div class="again"><button class="pill dark" id="again">Scan again</button></div>
   </section>
@@ -911,13 +901,7 @@
 
   function show(judged, ms, band) {
     $('progress').hidden = true; $('results').hidden = false;
-    $('sLeads').textContent = leads.length;
-    $('sDm').textContent = leads.filter(function (r) { return r.tier === 'decision maker'; }).length;
-    $('sScanned').textContent = all.length.toLocaleString('en-US');
-    $('sCost').textContent = '$' + (spent / 1e6).toFixed(2);
-    var by = {}; leads.forEach(function (r) { by[r.role] = (by[r.role] || 0) + 1; });
-    $('roles').innerHTML = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return '<span>' + esc(ROLE_LABEL[k] || k) + ' · ' + by[k] + '</span>'; }).join('');
-    $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min. Followers with no bio count as misses.';
+    $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min for $' + (spent / 1e6).toFixed(2) + '. Followers with no bio count as misses.';
     var b = BANDS[band.key], scanned = all.length, total = Math.max((ownerInfo || {}).followers || followerTotal || 0, scanned);
     var rate = scanned ? leads.length / scanned : 0, revenue = Math.round(total * rate * 0.02 * b.usd);
     $('sRate').textContent = pct(rate); $('sRev').textContent = money(revenue);
