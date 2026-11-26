@@ -24,9 +24,14 @@ def curl(*args):
 def verify(url, path):
     if not url.startswith("http"): return False
     with tempfile.NamedTemporaryFile(delete=False) as t: tmp = t.name
-    subprocess.run(["curl", "-sL", "-A", UA, "-o", tmp, url])
-    ok = os.path.getsize(tmp) == os.path.getsize(path) and filecmp.cmp(path, tmp, shallow=False)
-    os.unlink(tmp); return ok
+    try:
+        subprocess.run(["curl", "-sL", "-A", UA, "-o", tmp, url])
+        return os.path.getsize(tmp) == os.path.getsize(path) and filecmp.cmp(path, tmp, shallow=False)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 def uguu(path):
     r = curl("-F", f"files[]=@{path}", "https://uguu.se/upload")
