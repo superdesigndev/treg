@@ -496,11 +496,12 @@ def merge_results(service: str, paths: list[Path]) -> int:
                         ep.pop(field, None)
                     else:
                         ep[field] = res[field]
-            # `settle: null` is a reviewed opt-out a null result field would delete, so it travels as a flag
-            if not hand_priced and res.get("settle_null") is True:
-                ep["settle"] = None
-            elif not hand_priced and res.get("settle_null") is False and "settle" in ep and ep["settle"] is None:
-                del ep["settle"]
+            # a merged price brings its settle with it: a free one opts out of the reported charge
+            if not hand_priced and isinstance(res.get("price"), dict):
+                if Decimal(str(res["price"].get("value") or 0)) == 0:
+                    ep["settle"] = None
+                elif "settle" in ep and ep["settle"] is None:
+                    del ep["settle"]
             if res.get("verified"):
                 ep.pop("untestable", None)
             # exactly one outcome state survives a merge: a batch that reports an endpoint as
@@ -684,8 +685,9 @@ def main(argv: list[str]) -> int:
     if args.out:
         # batch mode: report only what THIS run called, so the merge cannot resurrect a stale
         # verdict for an endpoint another batch owns
-        results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS},
-                    **({"settle_null": "settle" in e and e["settle"] is None} if e["id"] in repriced else {})}
+        # a price travels only from the observation that set it; any other row reports its state
+        results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS
+                                      if e["id"] in repriced or f not in ("price", "provenance")}}
                    for e in eps if e["id"] in touched]
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(
