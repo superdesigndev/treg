@@ -380,9 +380,12 @@ LAST_ELAPSED = _Elapsed()
 # TikHub is deliberately absent: it publishes no per-call charge in the response body, so its
 # rate card stays the only figure available.
 OBSERVED_COST = {
-    # a failed task reports `cost: 0`, which says nothing about the price
-    "dataforseo": lambda doc: dig(doc, "tasks.0.cost")
-    if isinstance(code := dig(doc, "tasks.0.status_code"), int) and 20000 <= code < 30000 else None,
+    # a failed task reports `cost: 0`, which says nothing about the price; a positive cost is a
+    # charge whatever the status (a task with no results is billed too)
+    "dataforseo": lambda doc: cost
+    if isinstance(cost := dig(doc, "tasks.0.cost"), (int, float)) and not isinstance(cost, bool) and (
+        cost > 0 or (isinstance(code := dig(doc, "tasks.0.status_code"), int) and 20000 <= code < 30000))
+    else None,
 }
 
 
