@@ -540,10 +540,11 @@ past the bound do not make every new team scan them.
   calling leaves what its counter held there for the same time.
 
   The same give-back serves two more refusals. The platform daily cap
-  (`_enforce_platform_daily_cap`) counts all of an allowance hold opened today as committed, so
-  a call it refuses asks for the counter back by what the day is over, and on a give-back runs
-  every check again. The hub's price hold (`hub.runner._reserve_price`) is a reserve of its own
-  and asks the same way when the balance is short.
+  (`_enforce_platform_daily_cap`) counts all of an allowance hold opened today as committed, and
+  checks a call at what its hold will take, margin applied, the figure the day's committed spend
+  counts it at; so a call it refuses asks for the counter back by what the day is over, and on a
+  give-back runs every check again. The hub's price hold (`hub.runner._reserve_price`) is a reserve
+  of its own and asks the same way when the balance is short.
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing

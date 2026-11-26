@@ -3849,6 +3849,25 @@ async def test_a_team_off_the_allowance_is_not_shown_what_its_counter_holds(
     assert await _shown(org_id, caller) == {0}
 
 
+async def test_the_daily_cap_counts_a_call_with_the_platform_margin(org_id, store, monkeypatch):
+    """The day's committed spend counts holds as they are taken, margin applied, so a call is
+    checked against the cap at that same figure: what a give-back must free, and what the
+    retry admits, are the margin-applied amount."""
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.5)
+    cap = CHUNK + 100_000
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=cap))
+        await db.commit()
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    await call_reserve._platform_reserve(_call(org_id, estimate=100_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"]
+    assert await _given_back(org_id) == [CHUNK - 4_000]
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id) == 4_000 + 150_000 <= cap
+
+
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):
     assert await runtime.take(org_id, 600_000)
     store.age_pace(org_id, 3_600)

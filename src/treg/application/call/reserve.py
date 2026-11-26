@@ -652,7 +652,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 with timing.phase("preflight"), money_stage(db, "preflight"):
                     await _enforce_tag_budgets(caller, meta, db, add_micro=held)
                     member_id = await _enforce_member_spend_cap(caller, charged, db)
-                    await _enforce_platform_daily_cap(caller, held, db)
+                    # What the hold will take, margin applied, as the day's committed spend counts it.
+                    await _enforce_platform_daily_cap(caller, charged, db)
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
                     with timing.phase("ledger"):
