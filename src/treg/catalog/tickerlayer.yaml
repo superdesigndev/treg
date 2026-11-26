@@ -1,0 +1,280 @@
+provider: tickerlayer
+source:
+  docs: https://tickerlayer.com/docs
+  openapi: https://tickerlayer.com/openapi.json
+  curated: 2026-11-26
+# OWN-KEY-ONLY: TickerLayer sells flat monthly plans per feed (a REST call allowance, no per-call
+# price). Prices below are the Individual plan divided down to one call (SKILL.md step 5). The
+# licence allows a customer's own use of the data; serving it to other teams on one shared key is
+# redistribution, which needs a written agreement, so this listing ships no platform-key slot.
+limits: "10 requests a second on Free and Individual, 100 on Business; bar ranges run at up to 10 a second on every plan"
+pricing_url: https://tickerlayer.com/pricing
+defaults:
+  provenance: {source: docs, source_url: 'https://tickerlayer.com/pricing', checked: '2026-11-26', confidence: documented}
+proposed_capabilities:
+  markets.forex.quote: Get the current bid and ask for a currency pair
+  markets.forex.history: Get historical OHLC bars for a currency pair
+  markets.commodities.quote: Get the current price of a commodity such as gold or oil
+  markets.indices.quote: Get the current level of a stock index
+  markets.perpetuals.quote: Get the current bid and ask of a perpetual futures contract
+  markets.bonds.curve: Get a country's government bond yield curve
+endpoints:
+  - id: tickerlayer.stocks.quote.live
+    added: '2026-11-26'
+    capability: stocks.quote.live
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /stocks/quote/{symbol}
+    name: "Stock quote by ticker, 20 markets"
+    summary: "Get the latest bid, ask and sizes for a stock, keyed by country and ticker (US:KO, DE:BMW), with a millisecond timestamp"
+    note: "Symbols always carry the two-letter country prefix: KO alone is a 404, US:KO answers. Each market lists its most traded stocks; resolve unsure tickers with tickerlayer.stocks.tickers.search first."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "COUNTRY:TICKER with the listing country's two-letter code", example: "US:KO"}
+    test_request: {pathParams: {symbol: "US:KO"}}
+    price: {value: '0.000396', currency: USD, per: 1, unit: call, note: "Flat plan: US stocks Individual 99 USD a month for 250,000 REST calls (other markets 59 to 89 USD). A free key covers US stocks with 3,000 REST calls every 30 days. Errors use no call."}
+    miss: {status: [404], means: "The symbol is not in the catalog; the body is {\"statusCode\":404,\"message\":\"symbol not available\"}."}
+    docs_url: https://tickerlayer.com/docs/products/stocks
+
+  - id: tickerlayer.stocks.eod.history
+    added: '2026-11-26'
+    capability: stocks.eod.history
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /stocks/agg/{symbol}/{multiplier}/{timespan}/{from}/{to}
+    name: "Stock OHLCV bars by date range, daily to 1 minute"
+    summary: "Get open, high, low, close and volume bars for a stock between two dates: daily, hourly, 4-hour or 1, 5 and 15 minute bars"
+    note: "Bars come newest first unless sort=asc. A page holds up to 5000 bars: pass next_offset back as offset for the rest. Minute bars take at most 31 days per request."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "COUNTRY:TICKER", example: "US:KO"}
+        multiplier: {type: integer, required: true, note: "bar size: 1, 5 or 15 with minute; 1 or 4 with hour; 1 with day", example: 1}
+        timespan: {type: string, required: true, note: "minute, hour or day", example: day}
+        from: {type: string, required: true, note: "first UTC date, YYYY-MM-DD, inclusive", example: "2026-11-17"}
+        to: {type: string, required: true, note: "last UTC date, YYYY-MM-DD, inclusive", example: "2026-11-21"}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 5000, default: 500, note: "bars per page", example: 2}
+        offset: {type: integer, required: false, min: 0, default: 0, note: "bars to skip, from next_offset"}
+        sort: {type: string, required: false, enum: [asc, desc], default: desc}
+    test_request: {pathParams: {symbol: "US:KO", multiplier: 1, timespan: day, from: "2026-11-17", to: "2026-11-21"}, queryParams: {limit: 2}}
+    price: {value: '0.000396', currency: USD, per: 1, unit: call, note: "Flat plan: US stocks Individual 99 USD a month for 250,000 REST calls. A free key covers US stocks. An answer with no bars still uses a call; an error uses none."}
+    # A range with no trading days answers 200 with an empty `results`; an unknown symbol is a free 404 error.
+    miss: {when: {path: response.results, op: empty}}
+    bill: {miss: charged}
+    docs_url: https://tickerlayer.com/docs/products/stocks
+
+  - id: tickerlayer.stocks.quote.live.etf
+    added: '2026-11-26'
+    capability: stocks.quote.live
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /etfs/quote/{symbol}
+    name: "US-listed ETF quote by fund ticker"
+    summary: "Get the latest bid, ask and sizes for a US-listed ETF by its plain fund ticker (SPY, GLD, IWM)"
+    note: "ETFs use the bare ticker with no country prefix: SPY, not US:SPY."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "fund ticker", example: "SPY"}
+    test_request: {pathParams: {symbol: "SPY"}}
+    price: {value: '0.000236', currency: USD, per: 1, unit: call, note: "Flat plan: ETFs Individual 59 USD a month for 250,000 REST calls. Not on the free key. Errors use no call."}
+    miss: {status: [404], means: "The fund is not in the catalog; the body is {\"statusCode\":404,\"message\":\"symbol not available\"}."}
+    docs_url: https://tickerlayer.com/docs/rest/etfs
+
+  - id: tickerlayer.stocks.tickers.search
+    added: '2026-11-26'
+    capability: stocks.tickers.search
+    platform: stocks
+    scope: any_account
+    method: POST
+    path: /symbols/coverage
+    name: "Resolve a pasted symbol list to TickerLayer symbols"
+    summary: "Resolve up to 100 tickers, pairs or coins in any common notation (KO, EUR/USD, BTC) to the exact symbol, asset class and REST path to call"
+    note: "Each row comes back with a verdict: ready, needs review, not in the catalog or not recognized. One call covers the whole list."
+    input:
+      body:
+        text: {type: string, required: true, maxLength: 8000, note: "symbols one per line or comma separated, at most 100 rows", example: "KO\nEUR/USD\nBTC"}
+    test_request: {body: {text: "KO\nEUR/USD\nBTC"}}
+    price: {value: '0.000196', currency: USD, per: 1, unit: call, note: "Included in every plan, the free key too: one call from the account's monthly allowance."}
+    docs_url: https://tickerlayer.com/docs/rest/symbols
+
+  - id: tickerlayer.stocks.market.status
+    added: '2026-11-26'
+    capability: stocks.market.status
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /markets/status
+    name: "Is a market open now: phase, holiday and local time"
+    summary: "Check whether a stock market, forex, crypto or commodities is open now or at a given instant, with the session phase, holiday reason and local time"
+    input:
+      queryParams:
+        market: {type: string, required: false, note: "CRYPTO, FOREX, COMMODITIES, GLOBAL or a two-letter market code such as US, DE, JP", example: "US"}
+        asset: {type: string, required: false, enum: [crypto, forex, stocks, indices, etfs, commodities, cfds]}
+        symbol: {type: string, required: false, note: "instrument code when the calendar depends on it, such as an index code"}
+        at: {type: string, required: false, note: "ISO 8601 instant to evaluate; default now"}
+    test_request: {queryParams: {market: "US"}}
+    price: {value: '0.000196', currency: USD, per: 1, unit: call, note: "Included in every plan, the free key too: one call from the account's monthly allowance."}
+    docs_url: https://tickerlayer.com/docs/market-status
+
+  - id: tickerlayer.crypto.price.current
+    added: '2026-11-26'
+    capability: crypto.price.current
+    platform: crypto
+    scope: any_account
+    method: GET
+    path: /crypto/quote/{symbol}
+    name: "Crypto quote by pair, quoted in USD"
+    summary: "Get the latest bid, ask and sizes for a crypto pair quoted in US dollars (BTCUSD, ETHUSD, SOLUSD), with a millisecond timestamp"
+    note: "Pairs are quoted in USD only: BTCEUR is a 404. For another currency, combine with tickerlayer.markets.forex.quote at the same moment."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "coin ticker followed by USD", example: "BTCUSD"}
+    test_request: {pathParams: {symbol: "BTCUSD"}}
+    price: {value: '0.000196', currency: USD, per: 1, unit: call, note: "Flat plan: crypto Individual 49 USD a month for 250,000 REST calls. A free key covers crypto with 3,000 REST calls every 30 days. Errors use no call."}
+    miss: {status: [404], means: "The pair is not in the catalog; the body is {\"statusCode\":404,\"message\":\"symbol not available\"}."}
+    docs_url: https://tickerlayer.com/docs/products/crypto
+
+  - id: tickerlayer.crypto.price.ohlc
+    added: '2026-11-26'
+    capability: crypto.price.ohlc
+    platform: crypto
+    scope: any_account
+    method: GET
+    path: /crypto/agg/{symbol}/{multiplier}/{timespan}/{from}/{to}
+    name: "Crypto OHLCV bars by date range, daily to 1 minute"
+    summary: "Get open, high, low, close and volume bars for a crypto pair between two dates: daily, hourly, 4-hour or 1, 5 and 15 minute bars"
+    note: "Bars come newest first unless sort=asc. A page holds up to 5000 bars: pass next_offset back as offset for the rest. Minute bars take at most 31 days per request."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "coin ticker followed by USD", example: "BTCUSD"}
+        multiplier: {type: integer, required: true, note: "bar size: 1, 5 or 15 with minute; 1 or 4 with hour; 1 with day", example: 1}
+        timespan: {type: string, required: true, note: "minute, hour or day", example: day}
+        from: {type: string, required: true, note: "first UTC date, YYYY-MM-DD, inclusive", example: "2026-11-20"}
+        to: {type: string, required: true, note: "last UTC date, YYYY-MM-DD, inclusive", example: "2026-11-22"}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 5000, default: 500, note: "bars per page", example: 2}
+        offset: {type: integer, required: false, min: 0, default: 0, note: "bars to skip, from next_offset"}
+        sort: {type: string, required: false, enum: [asc, desc], default: desc}
+    test_request: {pathParams: {symbol: "BTCUSD", multiplier: 1, timespan: day, from: "2026-11-20", to: "2026-11-22"}, queryParams: {limit: 2}}
+    price: {value: '0.000196', currency: USD, per: 1, unit: call, note: "Flat plan: crypto Individual 49 USD a month for 250,000 REST calls. A free key covers crypto. An answer with no bars still uses a call; an error uses none."}
+    miss: {when: {path: response.results, op: empty}}
+    bill: {miss: charged}
+    docs_url: https://tickerlayer.com/docs/products/crypto
+
+  - id: tickerlayer.markets.forex.quote
+    added: '2026-11-26'
+    capability: markets.forex.quote
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /forex/quote/{symbol}
+    name: "Forex quote by currency pair"
+    summary: "Get the latest bid, ask and sizes for a currency pair (EURUSD, USDJPY, GBPUSD), majors, minors and emerging-market pairs, with a millisecond timestamp"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "six-letter pair, no slash", example: "EURUSD"}
+    test_request: {pathParams: {symbol: "EURUSD"}}
+    price: {value: '0.000236', currency: USD, per: 1, unit: call, note: "Flat plan: forex Individual 59 USD a month for 250,000 REST calls. A free key covers forex with 3,000 REST calls every 30 days. Errors use no call."}
+    miss: {status: [404], means: "The pair is not in the catalog; the body is {\"statusCode\":404,\"message\":\"symbol not available\"}."}
+    docs_url: https://tickerlayer.com/docs/products/forex
+
+  - id: tickerlayer.markets.forex.history
+    added: '2026-11-26'
+    capability: markets.forex.history
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /forex/agg/{symbol}/{multiplier}/{timespan}/{from}/{to}
+    name: "Forex OHLC bars by date range, daily to 1 minute"
+    summary: "Get open, high, low and close bars for a currency pair between two dates: daily, hourly, 4-hour or 1, 5 and 15 minute bars"
+    note: "Volume `v` is null for forex. Bars come newest first unless sort=asc; pass next_offset back as offset for the next page. Minute bars take at most 31 days per request."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "six-letter pair, no slash", example: "EURUSD"}
+        multiplier: {type: integer, required: true, note: "bar size: 1, 5 or 15 with minute; 1 or 4 with hour; 1 with day", example: 1}
+        timespan: {type: string, required: true, note: "minute, hour or day", example: day}
+        from: {type: string, required: true, note: "first UTC date, YYYY-MM-DD, inclusive", example: "2026-11-17"}
+        to: {type: string, required: true, note: "last UTC date, YYYY-MM-DD, inclusive", example: "2026-11-21"}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 5000, default: 500, note: "bars per page", example: 2}
+        offset: {type: integer, required: false, min: 0, default: 0, note: "bars to skip, from next_offset"}
+        sort: {type: string, required: false, enum: [asc, desc], default: desc}
+    test_request: {pathParams: {symbol: "EURUSD", multiplier: 1, timespan: day, from: "2026-11-17", to: "2026-11-21"}, queryParams: {limit: 2}}
+    price: {value: '0.000236', currency: USD, per: 1, unit: call, note: "Flat plan: forex Individual 59 USD a month for 250,000 REST calls. A free key covers forex. An answer with no bars still uses a call; an error uses none."}
+    # A weekend-only range answers 200 with an empty `results`.
+    miss: {when: {path: response.results, op: empty}}
+    bill: {miss: charged}
+    docs_url: https://tickerlayer.com/docs/products/forex
+
+  - id: tickerlayer.markets.commodities.quote
+    added: '2026-11-26'
+    capability: markets.commodities.quote
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /commodities/quote/{symbol}
+    name: "Commodity quote: gold, oil, metals and crops"
+    summary: "Get the latest bid and ask for a commodity priced in US dollars: gold, silver, Brent, copper, coffee and more (XAUUSD, BRENTUSD)"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "commodity code ending in USD; the list is at GET /commodities/symbols", example: "XAUUSD"}
+    test_request: {pathParams: {symbol: "XAUUSD"}}
+    price: {value: '0.000196', currency: USD, per: 1, unit: call, note: "Flat plan: commodities Individual 49 USD a month for 250,000 REST calls. A free key reads XAUUSD and XAGUSD only. Errors use no call."}
+    miss: {status: [404], means: "The code is not in the catalog; the body is {\"statusCode\":404,\"message\":\"symbol not available\"}."}
+    docs_url: https://tickerlayer.com/docs/products/commodities
+
+  - id: tickerlayer.markets.indices.quote
+    added: '2026-11-26'
+    capability: markets.indices.quote
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /indices/quote/{symbol}
+    name: "Stock index level by region code"
+    summary: "Get the latest bid and ask for a stock index by its region code (US500, US30, DE40, UK100, JP225)"
+    note: "Indices use bare region codes with no country prefix: US500, not US:SPX."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "region code; the list is at GET /indices/symbols", example: "US500"}
+    test_request: {pathParams: {symbol: "US500"}}
+    price: {value: '0.000196', currency: USD, per: 1, unit: call, note: "Flat plan: indices Individual 49 USD a month for 250,000 REST calls. Not on the free key. Errors use no call."}
+    miss: {status: [404], means: "The code is not in the catalog; the body is {\"statusCode\":404,\"message\":\"symbol not available\"}."}
+    docs_url: https://tickerlayer.com/docs/rest/indices
+
+  - id: tickerlayer.markets.perpetuals.quote
+    added: '2026-11-26'
+    capability: markets.perpetuals.quote
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /perpetuals/quote/{symbol}
+    name: "Perpetual futures quote, 24/7"
+    summary: "Get the composite bid and ask of a USDT-quoted perpetual futures contract on crypto, stocks, gold or indices (BTCUSDT, XAUUSDT, SPYUSDT), weekends included"
+    note: "A code ending in USDT is a perpetual contract, not a spot pair: spot bitcoin is tickerlayer.crypto.price.current with BTCUSD."
+    input:
+      pathParams:
+        symbol: {type: string, required: true, note: "contract code ending in USDT", example: "BTCUSDT"}
+    test_request: {pathParams: {symbol: "BTCUSDT"}}
+    price: {value: '0.000716', currency: USD, per: 1, unit: call, note: "Flat plan: Perpetuals Individual 179 USD a month for 250,000 REST calls. Not on the free key. Errors use no call."}
+    miss: {status: [404], means: "The contract is not listed; the body is {\"message\":\"unknown symbol\",\"error\":\"Not Found\",\"statusCode\":404}."}
+    docs_url: https://tickerlayer.com/docs/products/perpetuals
+
+  - id: tickerlayer.markets.bonds.curve
+    added: '2026-11-26'
+    capability: markets.bonds.curve
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /bond/curve/{country}
+    name: "Government bond yield curve by country"
+    summary: "Get a country's whole government yield curve in one call (US, DE, UK, JP, FR, IT, ES): each tenor's yield in percent with the prior day's value and the change in basis points"
+    note: "One dated observation per tenor per day, not intraday prices."
+    input:
+      pathParams:
+        country: {type: string, required: true, note: "two-letter code: US, JP, FR, IT, UK, DE or ES", example: "US"}
+    test_request: {pathParams: {country: "US"}}
+    price: {value: '0.000156', currency: USD, per: 1, unit: call, note: "Bonds add-on: Individual 39 USD a month for 250,000 REST calls. Not on the free key. Errors use no call."}
+    docs_url: https://tickerlayer.com/docs/products/bonds
