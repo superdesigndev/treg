@@ -38,6 +38,12 @@ async def test_org_delete_clears_EVERY_org_scoped_table(clients):
     assert not missing, (
         f"these models reference org but cascade_delete_org never deletes them: {missing}. "
         f"A team holding any of these rows cannot be deleted - the foreign key fails with a 500.")
+    # These name a team with no foreign key, so the walk above cannot see them.
+    from treg.domain.governance.teams import ORG_ROWS_WITHOUT_FOREIGN_KEY
+    without_foreign_key = {model.__name__ for model in ORG_ROWS_WITHOUT_FOREIGN_KEY}
+    assert without_foreign_key <= covered
+    assert not any(fk.column.table.name == "org" for model in ORG_ROWS_WITHOUT_FOREIGN_KEY
+                   for fk in model.__table__.foreign_keys)
     # And there is only ONE list: a reaper that names its own tables misses the next one added.
     from treg.application.onboard import demo
 

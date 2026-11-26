@@ -96,6 +96,15 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
   (`DELETE FROM callcharge WHERE EXISTS (SELECT 1 FROM ledgerentry WHERE ledgerentry.call_id =
   callcharge.call_id AND ledgerentry.org_id = callcharge.org_id AND ledgerentry.kind =
   'settle')`).
+- **Rolling back past a revision.** A build cannot downgrade a revision it does not ship, and its
+  `python -m treg upgrade` refuses a newer stamp, so a rollback deploy whose release phase runs
+  `upgrade` fails there until the schema is back at that build's head. Downgrade first, with the
+  newer build (a running instance of it, or a checkout of its commit pointed at the database):
+  `alembic downgrade <older build's head>`. An upgrade that committed some revisions and then
+  failed leaves the old build serving on a newer stamp (`verify_db` warns) with no running
+  instance that has those downgrades; rolling forward resumes at the revision that failed. A
+  revision that only drops a constraint the old code never relied on can stay applied: revert the
+  code with a forward commit that keeps the revision file, never by deleting it.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
