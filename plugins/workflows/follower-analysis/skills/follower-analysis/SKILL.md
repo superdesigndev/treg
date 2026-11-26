@@ -501,16 +501,22 @@ dark via `prefers-color-scheme`.
 - Two numbers, the first largest: **leads** ("potential customers follow me, checked by treg") ·
   **revenue** ("if they became customers").
   Several platforms → one small per-platform line under the leads number.
-- **Who follows me**: the top 3 roles side by side, all judged followers, each with its share,
-  its persona's name and the persona's three facts from `personas.json` ("Founders 18% · Solo AI
-  agency owners · 62% senior ICs · 41% US West · median 2.4K followers"). A role with no persona
-  shows its share alone. Under them one line of the top 3 topics and the top 3 places with their
-  shares. A trait under a third coverage is left out. Never age or pronouns on the card.
+- **Headline**, under the identity row: the audience in one line, built in code from the top
+  topic and the top 3 roles ("AI founders, engineers and creators").
+- **Who follows me**: the top 4 roles side by side, all judged followers. Each column: the role's
+  share, its persona's name, the persona's two sentences, and "Struggles with": that role's top 2
+  pain points with their shares, all from `personas.json`. A role with no persona shows its share
+  alone; a persona with no pain points shows none.
+- **One row of audience facts** under the columns: the top 3 pain points across everyone read,
+  with shares · "Most likely to buy": the persona whose share among leads most exceeds its share
+  of the audience (needs 20+ leads, else left out) · the share of followers carrying a company
+  badge or verification. A trait under a third coverage is left out. Never age or pronouns on the
+  card.
 - **Cluster chips**: top 9 tags with 2+ leads ("Founder 13"), colour per family; a one-line legend
   of the families shown under them, generated from `tags.py`.
-- **What they care about**: one row under the chips, the top 3 pain points and the top 3 personal
-  interests with their counts ("Lead quality 14 · Running 9"), labels from `signals.py`. No quotes
-  on the card. Under 20 leads with signals → leave the row out.
+- **What they care about as people**: one row under the chips, the top 3 personal interests with
+  their counts ("Running 9"), labels from `signals.py`. No quotes on the card. Under 20 leads with
+  signals → leave the row out.
 - Up to 12 lead avatars, overlapping.
 - Small print, in order: date · followers read per platform, empty accounts, private accounts,
   judged by Jev, company lookups, leads · the arena rule in one sentence · the sample
