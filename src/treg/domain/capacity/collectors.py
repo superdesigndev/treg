@@ -114,6 +114,20 @@ async def _fishaudio(c, key, cred):
     }
 
 
+async def _agentline(c, key):
+    d = await _get(c, "https://api.agentline.cloud/v1/billing/balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    raw = d.get("balance") if isinstance(d, dict) else None
+    try:
+        balance = Decimal(str(raw)) if not isinstance(raw, bool) and raw is not None else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite() or balance < 0:
+        raise ValueError("AgentLine returned no valid balance")
+    return {"value": float(balance), "unit": str(d.get("currency") or "USD").upper(),
+            "note": "prepaid wallet balance"}
+
+
 async def _search1api(c, key):
     d = await _get(c, "https://api.search1api.com/usage",
                    headers={"Authorization": f"Bearer {key}"})
@@ -1212,6 +1226,7 @@ BALANCE_ROUTES = {
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
     "fishaudio": _fishaudio,
+    "agentline": _agentline,
     "tavily": _tavily,
     "search1api": _search1api,
     "linkup": _linkup,

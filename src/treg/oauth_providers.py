@@ -1988,6 +1988,36 @@ FISHAUDIO = OAuthProvider(
     probe_reject_statuses=(401, 403),
 )
 
+AGENTLINE = OAuthProvider(
+    service="agentline",
+    display_name="AgentLine",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="al_live_…",
+    # Bearer header only: AgentLine answers 401 to any other scheme, X-API-Key included.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://agentline.cloud/dashboard",
+    setup_action_label="Get your AgentLine API key",
+    setup_steps=(
+        "Sign in to AgentLine and open Dashboard → API keys.",
+        "Create a key (it starts with al_live_) and copy it; it is shown once.",
+    ),
+    setup_note="Calls, phone numbers and text messages spend your AgentLine balance; agent setup, "
+               "knowledge, contacts and the balance check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Communication",
+    summary="Give an AI agent its own US or Canadian phone number, then have it place calls, "
+            "answer calls and send texts.",
+    base_url="https://api.agentline.cloud",
+    docs_url="https://api.agentline.cloud/docs",
+    # Free and read-only. GET /v1/voices is not a probe: it needs no key and answers 200 to any.
+    probe_path="/v1/billing/balance",
+    token_verify_field="account_id",
+)
+
 OPENROUTER = OAuthProvider(
     service="openrouter",
     display_name="OpenRouter",
@@ -4616,6 +4646,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
+        # Communication: phone numbers, calls and text messages for agents
+        AGENTLINE,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
@@ -4643,7 +4675,8 @@ DEFAULT_CAPABILITY = "read"
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
 CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
-                  "Market data", "Research & public data", "Jobs data", "Community", "Other")
+                  "Market data", "Research & public data", "Jobs data", "Community", "Communication",
+                  "Other")
 
 
 def get(service: str) -> OAuthProvider | None:
