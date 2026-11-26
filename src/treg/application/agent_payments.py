@@ -352,8 +352,9 @@ async def credit_short(paid: PaidOffer, org_id: int | None) -> PaymentChallenge:
     """The 402 for a proven wallet whose credit does not cover the call: payment challenges only."""
     credit = 0
     if org_id is not None:
+        offer = await call_allowance.counter_offer(org_id)
         async with session_maker() as db:
-            credit = max(await call_allowance.spendable(db, org_id), 0)
+            credit = max(await call_allowance.spendable(db, org_id, offer), 0)
     return await challenge(paid, reason="credit_insufficient", offer_proof=False,
                            message=f"this wallet's credit (${ledger.usd(credit):g}) does not cover "
                                    "this call")
@@ -647,8 +648,9 @@ class PaidCall:
 
     async def answer_headers(self) -> list[tuple[str, str]]:
         """Which money paid, and the credit left once the call has settled or released."""
+        offer = await call_allowance.counter_offer(int(self.caller.org.id))
         async with session_maker() as db:
-            credit = await call_allowance.spendable(db, int(self.caller.org.id))
+            credit = await call_allowance.spendable(db, int(self.caller.org.id), offer)
         return [*payment_headers(self.admission), ("X-Treg-Credit-Micro", str(max(credit, 0)))]
 
     def receipt_headers(self, status: int) -> list[tuple[str, str]]:
@@ -722,8 +724,9 @@ async def credit_of(headers: Mapping[str, str]) -> dict:
     org_id = await _known_payer_org(verified.network, verified.payer)
     credit, recent = 0, []
     if org_id is not None:
+        offer = await call_allowance.counter_offer(org_id)
         async with session_maker() as db:
-            credit = max(await call_allowance.spendable(db, org_id), 0)
+            credit = max(await call_allowance.spendable(db, org_id, offer), 0)
             rows = (await db.execute(
                 select(AgentPayment).where(AgentPayment.org_id == org_id)
                 .order_by(AgentPayment.created_at.desc(), AgentPayment.id.desc())

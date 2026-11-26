@@ -1160,6 +1160,7 @@ async def prepare_oauth_authorization(
         memberships = (await db.execute(
             select(Membership).where(Membership.user_id == user.id))).scalars().all()
         teams = []
+        offers = await call_allowance.counter_offers(m.org_id for m in memberships)
         for membership in memberships:
             org = await db.get(Org, membership.org_id)
             if org is not None and not org.suspended and await sso_team_allowed(db, membership, sso_org_id):
@@ -1167,7 +1168,7 @@ async def prepare_oauth_authorization(
                 # client spends for the life of the grant, and a list of slugs makes the one question
                 # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
                 teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
-                              "balance_usd": round(await call_allowance.spendable(db, org.id) / 1_000_000, 4)})
+                              "balance_usd": round(await call_allowance.spendable(db, org.id, offers[org.id]) / 1_000_000, 4)})
         new_team = (first_run.team_names(user.email)[0]
                     if _first_team_due(client, user, memberships, sso_org_id) else "")
         if not teams and not new_team:

@@ -213,6 +213,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
     payload = {"input": value.strip(), "query": query.strip() if task == "sitemap" else "",
                "identity": identity, "attempts": chosen, "jev": jev,
                "stop_reason": "", "dropped": dropped, "quality_state": "pending" if jev else "off"}
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         await _prune(db)
         stale = list((await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
@@ -220,7 +221,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
             .offset(99))).scalars())
         if stale:
             await db.execute(delete(WebArenaRun).where(WebArenaRun.id.in_(stale)))
-        balance = await money.balance_of(db, caller.org_id)
+        balance = await call_allowance.spendable(db, caller.org_id, offered)
         row = WebArenaRun(id=uuid.uuid4().hex, org_id=caller.org_id, user_id=caller.user.id,
                           task=task, mode=mode, state="quoted", payload=arena._pack(payload),
                           deadline_at=now() + timedelta(minutes=5),
@@ -237,6 +238,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
 
 async def start(caller, run_id, client, client_ip):
     _check_enabled()
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         await db.execute(update(User).where(User.id == caller.user.id).values(token_version=User.token_version))
         row = await _owned(db, run_id, caller)
@@ -253,7 +255,7 @@ async def start(caller, run_id, client, client_ip):
         required = sum(a["estimate_micro"] for a in payload["attempts"]) if row.mode == "battle" else payload["attempts"][0]["estimate_micro"]
         if row.mode == "battle" and required > 10_000_000:
             raise rules.WebArenaError("This Battle exceeds the $10 run limit. Select fewer providers.", 409)
-        if await call_allowance.spendable(db, caller.org_id) < required:
+        if await call_allowance.spendable(db, caller.org_id, offered) < required:
             raise rules.WebArenaError("Not enough team credits.", 402)
         active = (await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
             WebArenaRun.state == "running", WebArenaRun.deadline_at > now()).limit(3))).all()

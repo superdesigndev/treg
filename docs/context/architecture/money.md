@@ -719,14 +719,16 @@ refills are sized to the team's spend) plus that.
 **The balance a team is shown** is what it can spend now
 (`application/call/allowance.spendable`, figured by `allowance.spendable`): `org.balance_micro`
 less what queued charges owe the balance (`_queued_unbacked`), plus what the team's counter
-offers, read from the store and counted only for the hold its epoch names, never past that
-hold's amount. The rest of the hold is not counted: calls in flight took it, or a counter lost
-with the store left it there until the idle sweep. A store that cannot answer shows the balance
-alone. `GET /orgs/{id}/balance`, the billing state the dashboard reads, the CLI's home, the
-Sheets panel's teams, the team choice on the MCP consent page, a paying wallet's credit (its
-`X-Treg-Credit-Micro`, and whether a proof draws credit or settles a transfer) and the web
-arena's start check read this figure; the route's `holds` lists only calls on holds of their
-own. The column itself is unchanged and the invariant below still holds for it.
+offers (`counter_offer`), counted only for the hold its epoch names, never past that hold's
+amount, and only for a team on the allowance: a team taken off it takes from no counter. The
+rest of the hold is not counted: calls in flight took it, or a counter lost with the store left
+it there until the idle sweep. A store that cannot answer shows the balance alone. The counter is
+a store read, taken before a session holds a connection or a lock where the caller can, and for
+several teams at once in one round (`counter_offers`). `GET /orgs/{id}/balance`, the billing
+state the dashboard reads, the CLI's home, the Sheets panel's teams, the team choice on the MCP
+consent page, a paying wallet's `X-Treg-Credit-Micro`, and the arenas' quotes and start checks
+read this figure; the route's `holds` lists only calls on holds of their own. The column itself
+is unchanged and the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 

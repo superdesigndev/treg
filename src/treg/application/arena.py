@@ -30,6 +30,7 @@ from ..domain.identity import api_keys as managed_keys
 from ..infra.db import session_maker
 from ..models import ApiKey, ArenaEvaluation, ArenaRun, LedgerEntry, Membership, Org, User
 from ..timeutil import utcnow_naive as now
+from .call import allowance as call_allowance
 from .call import async_bridge, route, service
 from .call.resolve import _marketplace_pricing
 from .call.types import CallInput, CallerSnapshot, CallFailure
@@ -165,13 +166,14 @@ async def manual_plan(caller, run_id, attempt_id):
              "estimate_micro": estimate, "tier": candidate.tier, "query": query, "body": body,
              "method": ep["method"], "price_type": (ep.get("cost") or {}).get("type"),
              "endpoint_hash": _hash(ep), "adapter_hash": _hash(candidate.adapter.__dict__)}
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         row = await _locked_owned(db, run_id, caller)
         payload = _unpack(row.payload)
         attempt = _uncalled(row, payload, attempt_id)
         attempt["manual_quote"] = quote
         row.payload = _pack(payload)
-        balance = await money.balance_of(db, caller.org_id)
+        balance = await call_allowance.spendable(db, caller.org_id, offered)
         db.add(row)
         await db.commit()
     return {"id": quote["id"], "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,
@@ -180,6 +182,7 @@ async def manual_plan(caller, run_id, attempt_id):
 
 async def start_manual(caller, run_id, attempt_id, quote_id, client, client_ip):
     from datetime import datetime
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         row = await _locked_owned(db, run_id, caller)
         payload = _unpack(row.payload)
@@ -192,7 +195,7 @@ async def start_manual(caller, run_id, attempt_id, quote_id, client, client_ip):
         if not ep or not ad or _hash(ep) != quote["endpoint_hash"] or _hash(ad.__dict__) != quote["adapter_hash"]:
             raise rules.ArenaError("The catalog changed. Refresh this service's price.", 409)
         required = quote.get("required_micro", quote["estimate_micro"])
-        if required > 0 and await money.balance_of(db, caller.org_id) < required:
+        if required > 0 and await call_allowance.spendable(db, caller.org_id, offered) < required:
             raise rules.ArenaError("Not enough team credits.", 402)
         active = (await db.execute(select(ArenaRun.id).where(ArenaRun.user_id == caller.user.id,
             ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
@@ -267,12 +270,13 @@ async def verification_plan(caller, run_id, attempt_id):
     if v["estimate_micro"] > 10_000_000:
         raise rules.ArenaError("Verification exceeds the per-call limit.")
     q = {"id":uuid.uuid4().hex, "expires_at":(now()+timedelta(minutes=5)).isoformat(), "attempt":{**v, "capability":capability}}
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         row = await _locked_owned(db, run_id, caller)
         payload = _unpack(row.payload)
         a, _, _ = _verification_source(row, payload, attempt_id)
         a["verification_quote"] = q
-        balance = await money.balance_of(db, caller.org_id)
+        balance = await call_allowance.spendable(db, caller.org_id, offered)
         row.payload = _pack(payload)
         db.add(row)
         await db.commit()
@@ -282,6 +286,7 @@ async def verification_plan(caller, run_id, attempt_id):
 
 async def start_verification(caller, run_id, attempt_id, quote_id, client, client_ip):
     from datetime import datetime
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         row = await _locked_owned(db, run_id, caller)
         payload = _unpack(row.payload)
@@ -292,7 +297,7 @@ async def start_verification(caller, run_id, attempt_id, quote_id, client, clien
         v, cat = q["attempt"], catalog_store.load()
         if not _verification_catalog_matches(cat, v):
             raise rules.ArenaError("The catalog changed. Refresh verification pricing.", 409)
-        if v["estimate_micro"] > 0 and await money.balance_of(db, caller.org_id) < v["estimate_micro"]:
+        if v["estimate_micro"] > 0 and await call_allowance.spendable(db, caller.org_id, offered) < v["estimate_micro"]:
             raise rules.ArenaError("Not enough team credits.", 402)
         active = (await db.execute(select(ArenaRun.id).where(ArenaRun.user_id == caller.user.id, ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
         if row.state != "running" and len(active) >= 3:
@@ -454,6 +459,7 @@ async def quote(caller, *, capability: str, mode: str, providers: list[str] | No
         raise rules.ArenaError(f"The first waterfall step for all entries exceeds the ${max_cost_micro / 1e6:g} run limit. Use fewer entries or vendors.")
     snapshot = {"identity": entries[0], "identities": entries, "attempts": chosen, "max_cost_micro": max_cost_micro,
                 "version": rules.VERSION, "fields": fields, "stop_reason": "", "auto_verify":verification, "verification_required_micro":verification_total}
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         await db.execute(update(User).where(User.id == caller.user.id).values(token_version=User.token_version))
         await prune(db)
@@ -464,7 +470,7 @@ async def quote(caller, *, capability: str, mode: str, providers: list[str] | No
             .order_by(ArenaRun.created_at.desc(), ArenaRun.id.desc()).offset(99))).scalars().all()
         if stale:
             await db.execute(delete(ArenaRun).where(ArenaRun.id.in_(stale), ArenaRun.state == "quoted"))
-        balance = await money.balance_of(db, caller.org_id)
+        balance = await call_allowance.spendable(db, caller.org_id, offered)
         row = ArenaRun(id=uuid.uuid4().hex, org_id=caller.org_id, user_id=caller.user.id,
                        request_key=uuid.uuid4().hex, fingerprint=_hash(snapshot), capability=capability,
                        mode=mode, state="quoted", payload=_pack(snapshot),
@@ -487,6 +493,7 @@ async def quote(caller, *, capability: str, mode: str, providers: list[str] | No
 
 
 async def start(caller, run_id: str, client, client_ip: str) -> dict:
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         # Serialize admission for one user across distinct drafts and teams.
         await db.execute(update(User).where(User.id == caller.user.id).values(token_version=User.token_version))
@@ -507,7 +514,7 @@ async def start(caller, run_id: str, client, client_ip: str) -> dict:
             if not ep or not ad or _hash(ep) != a["endpoint_hash"] or _hash(ad.__dict__) != a["adapter_hash"]:
                 raise rules.ArenaError("The catalog changed. Refresh your quote before running.", 409)
         required = rules.required_credit(payload["attempts"], row.mode) + payload.get("verification_required_micro", 0)
-        if required > 0 and await money.balance_of(db, caller.org_id) < required:
+        if required > 0 and await call_allowance.spendable(db, caller.org_id, offered) < required:
             raise rules.ArenaError("Not enough team credits. Add credits or choose fewer services.", 402)
         active = (await db.execute(select(ArenaRun.id).where(
             ArenaRun.user_id == caller.user.id, ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()

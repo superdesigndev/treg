@@ -3820,6 +3820,17 @@ async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_payi
     assert payment_id and draw is True
 
 
+async def test_a_team_off_the_allowance_is_not_shown_what_its_counter_holds(
+        org_id, store, monkeypatch):
+    """No call of a team taken off the allowance takes from its counter, so what the counter
+    holds is not spendable until the idle sweep returns it."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 1_000)
+    monkeypatch.setattr(get_settings(), "money_allowance_excluded_org_ids", [org_id])
+    assert await _shown(org_id, caller) == {0}
+
+
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):
     assert await runtime.take(org_id, 600_000)
     store.age_pace(org_id, 3_600)

@@ -250,7 +250,9 @@ async def account_teams(db, *, user_id: int, only_org_id: int | None,
     rows = (await db.execute(q.order_by(Membership.id))).all()
     if oauth:
         rows = [(m, org) for m, org in rows if await sso_team_allowed(db, m, oauth_sso_org_id)]
+    rows = [(m, org) for m, org in rows if not org.suspended]
+    offers = await call_allowance.counter_offers(org.id for _, org in rows)
     return [{"org_id": org.id, "slug": org.slug, "name": org.name, "role": m.role,
-             "balance_micro": await call_allowance.spendable(db, org.id)}
-            for m, org in rows if not org.suspended]
+             "balance_micro": await call_allowance.spendable(db, org.id, offers[org.id])}
+            for m, org in rows]
 

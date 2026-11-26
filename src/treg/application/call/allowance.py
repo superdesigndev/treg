@@ -470,15 +470,36 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
         await db.commit()
 
 
-async def spendable(db, org_id: int) -> int:
-    """The balance a team is shown (`allowance.spendable`): its balance plus what its counter
-    offers now. A store that cannot answer shows the balance alone."""
+Offer = tuple[int, int | None]
+
+
+async def counter_offer(org_id: int) -> Offer:
+    """What a team's allowance counter offers now, and the epoch of the hold it was built for;
+    `(0, None)` for a team off the allowance (no call of its takes from a counter, so what one
+    holds is not its to spend until the sweep returns it) or when the store cannot answer. A
+    store read: take it before a session holds a connection or a lock."""
+    if not enabled_for(org_id):
+        return 0, None
     state = None
     try:
         state = await kv.store().allowance_state(org_id)
     except Exception:
         log.warning("reading the allowance counter of org %s failed", org_id, exc_info=True)
-    counter, epoch = (state[0], state[3]) if state else (0, None)
+    return (state[0], state[3]) if state else (0, None)
+
+
+async def counter_offers(org_ids) -> dict[int, Offer]:
+    """`counter_offer` for several teams at once: the reads run together, so a slow store costs
+    one wait, not one per team."""
+    ids = list(dict.fromkeys(org_ids))
+    return dict(zip(ids, await asyncio.gather(*(counter_offer(org_id) for org_id in ids))))
+
+
+async def spendable(db, org_id: int, offer: Offer | None = None) -> int:
+    """The balance a team is shown (`allowance.spendable`): its balance plus what its counter
+    offers now (`offer`, read here when not given). A store that cannot answer shows the
+    balance alone. For a decision whose wrong side costs money, see `allowance.credit_bound`."""
+    counter, epoch = offer if offer is not None else await counter_offer(org_id)
     return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
 
 
