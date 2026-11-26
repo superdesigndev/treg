@@ -243,7 +243,9 @@ database returns `warming`. No production metrics ship in assets or fixtures.
 It must not run in web processes: every web process would contend for the cursor row and walk
 `callrecord` on the money-path database. Once caught up it re-aggregates only every
 `REFRESH_SECONDS`, because each aggregate scans the whole window. The rewind that revisits recent
-evidence is constrained to Arena endpoints so it rides `ix_callrecord_endpoint_id_created_at`.
+evidence is constrained to Arena endpoints so it rides `ix_callrecord_endpoint_id_created_at`,
+and asks for `min(id + 0)`: PostgreSQL answers a bare `min(id)` by walking the primary key from
+the oldest row, filtering every row until it reaches the last ten minutes (`rewind_query`).
 
 - It reads a bounded batch of audit records and archive pointers, closes the session, resolves
   bodies through `archive_bodies.read` (path `arena`), then reacquires the cursor lock and

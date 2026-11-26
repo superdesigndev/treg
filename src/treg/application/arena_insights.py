@@ -16,10 +16,10 @@ import logging
 import statistics
 import time
 import zlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import Integer, String, case, column, delete, func, select, update, values
+from sqlalchemy import Integer, String, case, column, delete, func, literal_column, select, update, values
 
 from ..domain import arena, arena_insights as rules
 from .. import archive_bodies
@@ -288,18 +288,26 @@ async def collect_batch(session_factory=session_maker):
         if not backlog:
             state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
-            # Revisit recent evidence for delayed archive writes / concurrent audit commits. Only
-            # the Arena's own endpoints are ever consumed, so the rewind asks about those rows and
-            # rides `ix_callrecord_endpoint_id_created_at`; `callrecord` has no bare `created_at`
-            # index, and the unconstrained form of this question is a walk of the whole table.
-            rewind = (await db.execute(select(func.min(CallRecord.id)).where(
-                CallRecord.endpoint_id.in_(endpoints),
-                CallRecord.created_at >= until - timedelta(minutes=10)))).scalar_one()
+            # Revisit recent evidence for delayed archive writes / concurrent audit commits.
+            rewind = (await db.execute(rewind_query(endpoints, until))).scalar_one()
             state.cursor = max(0, rewind - 1) if rewind else state.cursor
             state.scan_until = current - timedelta(seconds=60)
         db.add(state)
         await db.commit()
     return backlog
+
+
+def rewind_query(endpoints, until: datetime):
+    """The first audit row of the Arena's endpoints in the ten minutes before `until`.
+
+    Only the Arena's own endpoints are ever consumed, so it asks about those rows and rides
+    `ix_callrecord_endpoint_id_created_at`; `callrecord` has no bare `created_at` index. It asks
+    for `min(id + 0)`, not `min(id)`: PostgreSQL answers a bare `min(id)` by walking the primary
+    key from the oldest row and filtering every row until one matches, which reaches the last
+    ten minutes only after reading the whole table."""
+    return select(func.min(CallRecord.id + literal_column("0"))).where(
+        CallRecord.endpoint_id.in_(endpoints),
+        CallRecord.created_at >= until - timedelta(minutes=10))
 
 
 async def prune(session_factory=session_maker) -> None:
