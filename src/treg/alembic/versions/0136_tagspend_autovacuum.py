@@ -22,6 +22,8 @@ than the default's rare, large one.
 `ALTER TABLE ... SET (...)` of autovacuum storage parameters takes SHARE UPDATE EXCLUSIVE, which
 does not block reads or writes. It waits for a running vacuum of the table, under the migration's
 lock timeout and retries. SQLite has no autovacuum: the revision only records itself there.
+`autovacuum_vacuum_insert_scale_factor` exists from PostgreSQL 13; an older server gets the other
+two.
 
 Rollback floor: the expand-safety check counts the `ALTER` as non-additive, so 0136 is marked a
 contract revision. It changes no column, index or constraint: code from before it reads and writes
@@ -42,16 +44,34 @@ SETTINGS = {
     "autovacuum_vacuum_insert_scale_factor": "0.01",
     "autovacuum_analyze_scale_factor": "0.02",
 }
+_INSERT_SINCE = 130000   # server_version_num of PostgreSQL 13
+
+
+def settings_for(server_version_num: int) -> dict[str, str]:
+    """The parameters this server knows."""
+    if server_version_num >= _INSERT_SINCE:
+        return dict(SETTINGS)
+    return {name: value for name, value in SETTINGS.items()
+            if name != "autovacuum_vacuum_insert_scale_factor"}
+
+
+def _server_settings() -> dict[str, str] | None:
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
+        return None
+    return settings_for(int(bind.exec_driver_sql("SHOW server_version_num").scalar_one()))
 
 
 def upgrade() -> None:
-    if op.get_bind().dialect.name != "postgresql":
+    settings = _server_settings()
+    if settings is None:
         return
     op.execute("ALTER TABLE tagspend SET ("
-               + ", ".join(f"{name} = {value}" for name, value in SETTINGS.items()) + ")")
+               + ", ".join(f"{name} = {value}" for name, value in settings.items()) + ")")
 
 
 def downgrade() -> None:
-    if op.get_bind().dialect.name != "postgresql":
+    settings = _server_settings()
+    if settings is None:
         return
-    op.execute("ALTER TABLE tagspend RESET (" + ", ".join(SETTINGS) + ")")
+    op.execute("ALTER TABLE tagspend RESET (" + ", ".join(settings) + ")")

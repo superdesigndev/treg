@@ -56,3 +56,11 @@ async def test_sqlite_records_the_revision_only(clients):
         pytest.skip("PostgreSQL sets the thresholds")
     await _apply("upgrade")
     await _apply("downgrade")
+
+
+def test_a_server_before_postgresql_13_is_not_given_the_insert_threshold():
+    assert migration.settings_for(160004) == EXPECTED
+    assert migration.settings_for(120020) == {
+        "autovacuum_vacuum_scale_factor": "0.01",
+        "autovacuum_analyze_scale_factor": "0.02",
+    }
