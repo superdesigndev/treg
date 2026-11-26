@@ -7364,7 +7364,13 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-keyword-suggestions-live.json
-  price: {value: '0.01212', currency: USD, per: 1, unit: call}
+  price:
+    value: '0.01212'
+    currency: USD
+    per: 1
+    unit: call
+    display: {unit: call, variable: true}
+    note: '$0.012 per request + $0.00012 per returned keyword, so the quoted $0.01212 is the floor: a full default page (limit 100) is $0.024 and limit 1000 is $0.132. The response `cost` is the exact charge and settles the call.'
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-keywords-for-app-live
   platform: google
