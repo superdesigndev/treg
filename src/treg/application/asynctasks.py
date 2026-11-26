@@ -61,6 +61,10 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
     submission, which settlement adds to the terminal usage meter."""
     now = utcnow_naive()
     basis = call_cost.persisted(dict(mk.settlement_basis), mk.cost_terms)
+    if mk.charge_cap_micro is not None:
+        # A wallet's quote outlives its request: the terminal settle, on a poll or the worker,
+        # charges within it.
+        basis["charge_cap_micro"] = int(mk.charge_cap_micro)
     submission = settlement.non_deferred_charge_micro(basis, json.loads(body))
     if submission:
         basis["submission_charge_micro"] = submission
@@ -423,12 +427,18 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
                 await db.commit()
                 return "awaiting_usage"
             raw = call_cost.settle_terminal(row.settlement_basis, outcome, document)
+            provider, cap = None, row.settlement_basis.get("charge_cap_micro")
+            if raw is not None and ledger.capped_cost(raw, cap) < raw:
+                log.warning("wallet task %s on %s cost %s micro, above its quote; charged the quote",
+                            row.call_id, row.endpoint_id, raw)
+                provider, raw = raw, ledger.capped_cost(raw, cap)
             if unobserved:
                 row.error = "usage field missing from the terminal response; settled at the reserve"
                 log.error("ASYNC USAGE UNOBSERVED: call %s on %s succeeded but %s carried no usage "
                           "figure; settled at the reserve - check the provider's response shape",
                           row.call_id, row.provider, row.endpoint_id)
-            row.settled_micro = await ledger.settle_in_transaction(db, row.call_id, raw, meta={
+            row.settled_micro = await ledger.settle_in_transaction(
+                db, row.call_id, raw, observed_micro=provider, meta={
                 "provider": row.provider, "cost_source": row.settlement_basis["amount"]["kind"],
                 "async_task": True, "terminal_outcome": outcome,
                 **({"reconcile_review": True} if unobserved else {}),

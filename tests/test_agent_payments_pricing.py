@@ -13,6 +13,7 @@ from treg import audit
 from treg.application import agent_payments
 from treg.application.call import overflow as O
 from treg.application.call import service as call_service
+from treg.application.call import wallet as call_wallet
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
@@ -217,3 +218,42 @@ async def test_an_overflow_s_own_refusal_is_recorded_as_the_answer(clients: Asyn
     async with session_maker() as db:
         assert {e.kind for e in (await db.execute(select(LedgerEntry).where(
             LedgerEntry.org_id == org_id))).scalars()} == {"grant", "reserve"}
+
+
+async def test_a_wallet_s_task_settles_within_its_quote(clients: AsyncClient, monkeypatch):
+    """The quote outlives the submission: the terminal settle, on a later poll, charges within
+    it."""
+    from test_asynctasks import _response
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")
+    get_settings.cache_clear()
+    job = "01a0e894-a4fd-77fe-8131-e3f2d5720dbe"
+
+    async def submit(*args, **kwargs):
+        return _response(200, {"success": True, "id": job,
+                               "url": f"https://api.firecrawl.dev/v2/crawl/{job}"})
+
+    async def poll(*args, **kwargs):
+        return _response(200, {"success": True, "status": "completed", "total": 3,
+                               "completed": 3, "creditsUsed": 4, "data": []})
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    balance = f"/orgs/{org_id}/balance"
+    before = (await clients.get(balance)).json()["balance_micro"]
+    monkeypatch.setattr(call_service, "relay", submit)
+    quote = 15_000   # the crawl's hold
+    marked = call_wallet.current.set(call_wallet.WalletCall(quote_micro=quote, paid=True))
+    try:
+        submitted = await clients.post("/call/firecrawl.web.crawl", json={
+            "url": "https://example.com", "limit": 3, "scrapeOptions": {"parsers": []}})
+    finally:
+        call_wallet.current.reset(marked)
+    assert submitted.status_code == 200, submitted.text
+    monkeypatch.setattr(call_service, "relay", poll)
+    assert (await clients.get(f"/call/firecrawl.web.crawl.status?id={job}")).status_code == 200
+    assert before - (await clients.get(balance)).json()["balance_micro"] == quote
+    async with session_maker() as db:
+        settle = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == submitted.headers["X-Treg-Call-Id"],
+            LedgerEntry.kind == "settle"))).scalar_one()
+    assert settle.meta["observed_micro"] == 20_000
