@@ -4620,14 +4620,17 @@ ANCHORBROWSER = OAuthProvider(
         "Create or copy an API key.",
     ),
     setup_note=(
-        "Web Unlocker is billed per 200 response; 4xx and 5xx responses are free. "
-        "Connecting checks the free billing endpoint."
+        "Browser sessions bill $0.01 per browser plus $0.05 per browser hour; web tasks bill "
+        "per AI step; Web Unlocker bills per 200 response. Connecting checks the free billing "
+        "endpoint."
     ),
     auth_uri="", token_uri="",
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="SEO",
-    summary="Fetch rendered pages behind CAPTCHA and bot protection through a stealth cloud browser.",
+    summary=("Cloud browsers for AI agents: configurable sessions with residential proxies, "
+             "CAPTCHA solving, stealth and saved logins, plus page fetch, screenshots and "
+             "natural-language web tasks."),
     base_url="https://api.anchorbrowser.io",
     docs_url="https://docs.anchorbrowser.io",
     probe_path="/v1/billing",

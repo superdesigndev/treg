@@ -120,6 +120,8 @@ credit_rates_usd:
 # sales-gated. Majestic's three pools share ONE subscription price, so each pool's rate divides the
 # WHOLE subscription by that pool's allowance -- an upper bound per pool; never sum pools per call.
 unit_rates_usd:
+  anchorbrowser:
+    step: {usd: 0.05, basis: "An AI step costs $0.01, $0.05 or $0.10 by the tier of the model; the default model of Perform Web Task is in the $0.05 tier", source: "https://docs.anchorbrowser.io/pricing", checked: "2026-11-26"}
   tinyfish:
     step: {usd: 0.016, basis: "TinyFish Agent is billed at $0.016 for each agent step reported as num_of_steps on the terminal run", source: "https://www.tinyfish.ai/pricing", checked: "2026-09-23"}
   semrush:

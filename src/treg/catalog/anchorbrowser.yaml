@@ -3,13 +3,307 @@ source:
   docs: https://docs.anchorbrowser.io
   openapi: https://docs.anchorbrowser.io/openapi.yaml
   curated: 2026-11-26
-limits: "Web Unlocker: 2,000 requests a minute per key"
+limits: "Web Unlocker: 2,000 requests a minute per key. Browser sessions: 25 concurrent and 25 created a minute on the Starter plan."
 pricing_url: https://docs.anchorbrowser.io/pricing
+proposed_capabilities:
+  web.agent.run: "Run an asynchronous browser agent toward a goal"
+  web.browser.start: "Start a cloud browser session"
+  web.browser.detail: "Read a browser session's status, settings and cost"
+  web.browser.end: "End a browser session"
+  web.browser.list: "List your running browser sessions"
+  web.browser.navigate: "Open a URL in a browser session"
+  web.browser.screenshot: "Capture a browser session's screen"
+  web.browser.click: "Click at a point in a browser session"
+  web.browser.type: "Type text into a browser session"
 defaults:
   provenance: {source: docs, source_url: 'https://docs.anchorbrowser.io/pricing', checked: '2026-11-26', confidence: documented}
 endpoints:
-  - id: anchorbrowser.web.extract
+  - id: anchorbrowser.web.browser.start
     added: '2026-11-26'
+    capability: web.browser.start
+    platform: web
+    scope: own_account
+    method: POST
+    path: /v1/sessions
+    name: "Start a browser session"
+    summary: "Start a cloud Chromium session with the proxy, stealth, CAPTCHA, profile and login settings you choose, and get its id, CDP URL and live view URL"
+    note: "The session runs, and bills browser time, until you end it or a timeout ends it: call the end endpoint when the work is done. Connect Playwright, Puppeteer or any CDP client to cdp_url, or drive the session with the navigate, click, type and screenshot endpoints."
+    input:
+      body:
+        session:
+          type: object
+          required: false
+          properties:
+            initial_url: {type: string, required: false, note: "page to open at start; an empty page when left out", example: "https://example.com"}
+            proxy:
+              type: object
+              required: false
+              note: "residential proxy; data through it is billed per GB"
+              properties:
+                active: {type: boolean, required: true, example: true}
+                type: {type: string, required: false, enum: [anchor_proxy], example: "anchor_proxy"}
+                country_code: {type: string, required: false, note: "ISO 2 code in lowercase", example: "us"}
+                region: {type: string, required: false, note: "region code for closer targeting", example: "ca"}
+                city: {type: string, required: false, note: "accepted only together with region", example: "los angeles"}
+            timeout:
+              type: object
+              required: false
+              properties:
+                max_duration: {type: integer, required: false, default: 20, note: "minutes before the session ends by itself; -1 removes the limit", example: 5}
+                idle_timeout: {type: integer, required: false, default: 5, note: "minutes the session waits with no connection before it stops; -1 removes the limit", example: 1}
+            recording:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: true, note: "video recording of the session", example: true}
+            live_view:
+              type: object
+              required: false
+              properties:
+                read_only: {type: boolean, required: false, default: false, note: "viewers can watch and cannot interact", example: false}
+            tags: {type: array, items: {type: string}, required: false, note: "labels to find the session by", example: ["checkout-test"]}
+            domain_allowlist: {type: array, items: {type: string}, required: false, maxItems: 100, note: "the session navigates only to these domains and their subdomains; other sites are blocked", example: ["example.com"]}
+        browser:
+          type: object
+          required: false
+          properties:
+            profile:
+              type: object
+              required: false
+              note: "saved cookies, local storage and cache"
+              properties:
+                name: {type: string, required: false, note: "profile to load, unique in your team", example: "my-profile"}
+                persist: {type: boolean, required: false, default: false, note: "save the profile when the session ends", example: true}
+            captcha_solver:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: false, note: "solves CAPTCHAs automatically; needs the proxy active", example: true}
+            extra_stealth:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, note: "patched Chromium build made to avoid bot detection; needs the Anchor proxy active", example: true}
+            adblock:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: true, example: true}
+            popup_blocker:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: true, note: "needs adblock active", example: true}
+            headless:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: false, example: false}
+            viewport:
+              type: object
+              required: false
+              properties:
+                width: {type: integer, required: false, default: 1440, example: 1440}
+                height: {type: integer, required: false, default: 900, example: 900}
+            web_bot_auth:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: false, note: "signs requests with Cloudflare Web Bot Auth", example: false}
+            disable_dialogs:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: false, note: "suppresses alert, confirm and prompt dialogs", example: true}
+            sensitive_data_mask:
+              type: object
+              required: false
+              properties:
+                active: {type: boolean, required: false, default: false, note: "masks passwords, emails, phone numbers and card fields in pages", example: false}
+        identities:
+          type: array
+          items: {type: object}
+          required: false
+          note: "saved logins to start the session signed in with, each as {id: <identity id>}"
+          example: [{id: "123e4567-e89b-12d3-a456-426614174000"}]
+    test_request:
+      body: {session: {initial_url: "https://example.com", timeout: {max_duration: 2, idle_timeout: 1}}}
+    price: {value: '0.01', currency: credit, per: 1, unit: call, note: "charged for creating the browser; the running session then bills 0.05 credits per browser hour, and proxy data bills 8 credits per GB"}
+    provenance: {source: observed, source_url: 'https://docs.anchorbrowser.io/pricing', checked: '2026-11-26', confidence: verified}
+    docs_url: https://docs.anchorbrowser.io/api-reference/browser-sessions/start-browser-session
+
+  - id: anchorbrowser.web.browser.detail
+    added: '2026-11-26'
+    kind: utility
+    capability: web.browser.detail
+    platform: web
+    scope: own_account
+    method: GET
+    path: /v1/sessions/{session_id}
+    name: "Get a browser session"
+    summary: "Read one browser session: status, duration, credits used so far, steps, proxy bytes and the settings it runs with"
+    input:
+      pathParams:
+        session_id: {type: string, required: true, note: "the id the start endpoint returned", example: "6508cbaa-3a29-4b26-8112-5812db3293cc"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.anchorbrowser.io/api-reference/browser-sessions/get-browser-session
+
+  - id: anchorbrowser.web.browser.end
+    added: '2026-11-26'
+    kind: utility
+    capability: web.browser.end
+    platform: web
+    scope: own_account
+    method: DELETE
+    path: /v1/sessions/{session_id}
+    name: "End a browser session"
+    summary: "End a running browser session and stop its billing"
+    input:
+      pathParams:
+        session_id: {type: string, required: true, note: "the id the start endpoint returned", example: "6508cbaa-3a29-4b26-8112-5812db3293cc"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.anchorbrowser.io/api-reference/browser-sessions/end-browser-session
+
+  - id: anchorbrowser.web.browser.list
+    added: '2026-11-26'
+    kind: utility
+    capability: web.browser.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /v1/sessions/all/status
+    name: "List running browser sessions"
+    summary: "List the browser sessions running on your key, with each session's id, status, tags and start time"
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.anchorbrowser.io/api-reference/browser-sessions/list-all-sessions-status
+
+  - id: anchorbrowser.web.browser.navigate
+    added: '2026-11-26'
+    capability: web.browser.navigate
+    platform: web
+    scope: own_account
+    method: POST
+    path: /v1/sessions/{sessionId}/goto
+    name: "Navigate a browser session"
+    summary: "Open a URL in a running browser session and wait for the page to load"
+    input:
+      pathParams:
+        sessionId: {type: string, required: true, note: "the id the start endpoint returned", example: "6508cbaa-3a29-4b26-8112-5812db3293cc"}
+      body:
+        url: {type: string, required: true, note: "fully qualified, with the scheme", example: "https://example.com"}
+    price: {value: '0', currency: USD, unit: call, note: "the session's browser time is billed by the session"}
+    docs_url: https://docs.anchorbrowser.io/api-reference/os-level-control/navigate-to-url
+
+  - id: anchorbrowser.web.browser.screenshot
+    added: '2026-11-26'
+    capability: web.browser.screenshot
+    platform: web
+    scope: own_account
+    method: GET
+    path: /v1/sessions/{sessionId}/screenshot
+    name: "Screenshot a browser session"
+    summary: "Capture the current screen of a running browser session as a PNG image"
+    note: "The answer is the image itself, as binary image/png, not a JSON envelope."
+    input:
+      pathParams:
+        sessionId: {type: string, required: true, note: "the id the start endpoint returned", example: "6508cbaa-3a29-4b26-8112-5812db3293cc"}
+    price: {value: '0', currency: USD, unit: call, note: "the session's browser time is billed by the session"}
+    docs_url: https://docs.anchorbrowser.io/api-reference/os-level-control/take-screenshot
+
+  - id: anchorbrowser.web.browser.click
+    added: '2026-11-26'
+    capability: web.browser.click
+    platform: web
+    scope: own_account
+    method: POST
+    path: /v1/sessions/{sessionId}/mouse/click
+    name: "Click in a browser session"
+    summary: "Click at screen coordinates in a running browser session, as an operating-system mouse event"
+    input:
+      pathParams:
+        sessionId: {type: string, required: true, note: "the id the start endpoint returned", example: "6508cbaa-3a29-4b26-8112-5812db3293cc"}
+      body:
+        x: {type: integer, required: true, note: "pixels from the left of the screen", example: 200}
+        y: {type: integer, required: true, note: "pixels from the top of the screen", example: 200}
+        button: {type: string, required: false, enum: [left, middle, right], example: "left"}
+    price: {value: '0', currency: USD, unit: call, note: "the session's browser time is billed by the session"}
+    docs_url: https://docs.anchorbrowser.io/api-reference/os-level-control/mouse-click
+
+  - id: anchorbrowser.web.browser.type
+    added: '2026-11-26'
+    capability: web.browser.type
+    platform: web
+    scope: own_account
+    method: POST
+    path: /v1/sessions/{sessionId}/keyboard/type
+    name: "Type in a browser session"
+    summary: "Type text at the cursor in a running browser session, as operating-system key events"
+    input:
+      pathParams:
+        sessionId: {type: string, required: true, note: "the id the start endpoint returned", example: "6508cbaa-3a29-4b26-8112-5812db3293cc"}
+      body:
+        text: {type: string, required: true, example: "hello"}
+        delay: {type: integer, required: false, note: "milliseconds between keystrokes", example: 50}
+    price: {value: '0', currency: USD, unit: call, note: "the session's browser time is billed by the session"}
+    docs_url: https://docs.anchorbrowser.io/api-reference/os-level-control/type-text
+
+  - id: anchorbrowser.web.agent.run
+    added: '2026-11-26'
+    capability: web.agent.run
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/tools/perform-web-task
+    name: "Run a web task"
+    summary: "Give a browser agent a goal in plain language and a start URL, and get its answer, as text or as JSON matching your schema, with the step count"
+    note: "The call answers when the task is done, which took 12 seconds for a 3-step task: set a client timeout of several minutes. The task's browser session stays running after the answer until its idle timeout: end it with the sessionId in the answer."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "the task to complete", example: "Return the main heading of this page."}
+        url: {type: string, required: false, note: "page to start from", example: "https://example.com"}
+        max_steps: {type: integer, required: false, default: 200, note: "upper limit on the agent's steps; each step is billed", example: 5}
+        output_schema: {type: object, required: false, note: "JSON Schema the result must match", example: {type: object, properties: {heading: {type: string}}}}
+        agent: {type: string, required: false, default: browser-use, enum: [browser-use, openai-cua, gemini-computer-use, anthropic-cua, yutori, jev], example: "browser-use"}
+        provider: {type: string, required: false, enum: [openai, gemini, groq, azure, xai], example: "openai"}
+        model: {type: string, required: false, note: "model for the agent; its tier sets the price of a step", example: "gpt-4.1-mini"}
+        detect_elements: {type: boolean, required: false, note: "element detection for more accurate clicks", example: false}
+    test_request:
+      body: {url: "https://example.com", prompt: "Return the main heading of this page.", max_steps: 5}
+    price: {value: '0.05', currency: credit, per: 1, unit: step, note: "a step costs 0.01, 0.05 or 0.10 credits by the model's tier, and the default model is in the 0.05 tier; the task's browser adds 0.01 credits plus 0.05 credits per browser hour"}
+    provenance: {source: observed, source_url: 'https://docs.anchorbrowser.io/pricing', checked: '2026-11-26', confidence: verified}
+    reserve: {rows: {param: body.max_steps, default: {value: 200, source: docs}, max: 200}}
+    settle: {reported: {path: response.steps, unit: step}}
+    expect: {path: response.status, op: equals, value: success}
+    docs_url: https://docs.anchorbrowser.io/api-reference/ai-tools/perform-web-task
+
+  - id: anchorbrowser.web.screenshot
+    added: '2026-11-26'
+    capability: web.screenshot
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/tools/screenshot
+    name: "Screenshot a web page"
+    summary: "Capture a rendered web page as an image in one call, at the viewport size you set or at full page height"
+    note: "The answer is the image itself as binary, not a JSON envelope. The browser session the call opens stays running after the answer until its idle timeout, and that time is billed."
+    input:
+      body:
+        url: {type: string, required: true, note: "fully qualified, with the scheme", example: "https://example.com"}
+        width: {type: integer, required: false, note: "viewport width in pixels", example: 1280}
+        height: {type: integer, required: false, note: "viewport height in pixels", example: 800}
+        image_quality: {type: integer, required: false, min: 1, max: 100, note: "100 applies no compression", example: 80}
+        wait: {type: integer, required: false, note: "milliseconds to wait after the page loads", example: 1000}
+        scroll_all_content: {type: boolean, required: false, note: "scrolls the page so all content is rendered first", example: false}
+        capture_full_height: {type: boolean, required: false, note: "captures the whole page height, not only the viewport", example: false}
+    test_request:
+      body: {url: "https://example.com", width: 1280, height: 800}
+    price: {value: '0.01', currency: credit, per: 1, unit: call, note: "charged for the browser the call opens; its running time adds 0.05 credits per browser hour"}
+    provenance: {source: observed, source_url: 'https://docs.anchorbrowser.io/pricing', checked: '2026-11-26', confidence: verified}
+    docs_url: https://docs.anchorbrowser.io/api-reference/tools/screenshot-webpage
+
+  - id: anchorbrowser.web.extract
     capability: web.extract
     platform: web
     domain: extract
@@ -33,9 +327,9 @@ endpoints:
     provenance: {source: observed, source_url: 'https://docs.anchorbrowser.io/api-reference/tools/web-unlocker', checked: '2026-11-26', confidence: verified}
     miss: {status: [422], means: "the URL could not be reached, its hostname did not resolve, or the challenge could not be solved"}
     docs_url: https://docs.anchorbrowser.io/api-reference/tools/web-unlocker
+    added: '2026-11-26'
 
   - id: anchorbrowser.account.usage
-    added: '2026-11-26'
     kind: account
     domain: account
     capability: account.usage
@@ -49,3 +343,4 @@ endpoints:
       queryParams: {}
     price: {value: '0', currency: USD, unit: call}
     docs_url: https://docs.anchorbrowser.io/api-reference/billing/get-billing-info
+    added: '2026-11-26'
