@@ -862,8 +862,7 @@ bill when treg's own account is out.
   writes; the worker owns transactions. Async endpoints with result adapters publish only when
   every applicable day is `terminal_reconciled` and no correction is older than `STALE_AFTER_S`;
   one untrustworthy day suppresses the endpoint's whole observation, because dropping the day would
-  bias its rate. Async hit rates use terminal evidence only. `catalog_stats.requeue_async_stats` and
-  `repair_status` are the explicit, manifest-driven requeue and its completion check.
+  bias its rate. Async hit rates use terminal evidence only.
 - Merging days weights each day's latency sample by the calls it stands for (`Tally.merge`), or the
   window's p95 would be the quiet days'. `stats.Tally` is the one shape for a day, a window and the
   live aggregate; `tests/test_catalog_stats_refresh.py` holds fold and SQL equal.

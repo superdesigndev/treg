@@ -220,8 +220,6 @@ jobs:
           tests/test_catalog_stats_corrections.py
           tests/test_catalog_stats_concurrency.py
           tests/test_catalog_stats_hot_corrections.py
-          tests/test_catalog_stats_requeue.py
-          tests/test_catalog_stats_requeue_concurrency.py
           tests/test_catalog_stat_dirty_audit.py
           tests/test_catalog_observation_folds.py
           tests/test_catalog_observation_concurrency.py

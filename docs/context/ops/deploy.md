@@ -631,11 +631,8 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   readers read only these summaries: missing or stale worker evidence shows reliability as
   unmeasured, and the reader logs `endpoint stats fold unavailable`. A persistently failing bucket
   needs investigation, not unlimited time. Writers older than the summary schema must be retired
-  before a historical correction, or their unmarked changes need another one.
-  `catalog requeue-async-stats --apply` is one-shot (never schedule it); save its output as the
-  manifest for the read-only `catalog repair-status --manifest`, which exits 0 when every in-window
-  target is reconciled, 1 while any is pending or missing, 2 for an invalid manifest. `repair_pending
-  > 0` on active buckets is normal.
+  before a historical correction, or their unmarked changes need another one. `repair_pending > 0`
+  on active buckets is normal.
 - **`rankings refresh`** rebuilds /rankings from `endpointdaystat`, as its own job so a failure only
   leaves rankings a run older.
 - **`capacity sweep`**, **`overflow verify`** (spends real money) and **`overflow sync`**: see
