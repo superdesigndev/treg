@@ -104,5 +104,5 @@ self-checks. The allowlist includes the archive body PUT and the post-relay prov
 ownership writes because each must be made by the call that received the provider's successful
 response, outside any DB transaction.
 
-The `test-postgres` CI job runs a database-sensitive subset on Postgres because SQLite's permissive
-adapter hides naive-UTC datetime mistakes that asyncpg rejects.
+The `test-postgres` CI job runs the whole suite on Postgres because SQLite's permissive adapter
+hides naive-UTC datetime mistakes that asyncpg rejects.

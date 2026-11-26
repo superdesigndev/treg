@@ -247,7 +247,7 @@ isolation boundary. Read the fragment before touching any of them.
 ## Development
 
 ```bash
-uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
+uv run --with pytest-xdist pytest -n auto -q   # daily local default, on SQLite
 uv run --frozen python -m pytest -q            # serial: debugging one test, or order
 uv run treg --help                             # the CLI from this checkout
 uv run python -m treg                          # the server
@@ -258,9 +258,12 @@ scripts/dev-local.sh up                        # live dev stack on :18790 with i
 TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
-xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
+xdist is pulled via `--with`, not the lockfile, as in CI. Every test process gets its own
 database (a sqlite file per pid; under `TREG_TEST_DB_URL`, a Postgres database per xdist worker),
-so parallel runs and side-by-side runs never share one.
+so parallel runs and side-by-side runs never share one. CI runs the whole suite on Postgres, where
+production runs, and only a few local-development files on SQLite: a test must pass on both, and
+Postgres enforces what SQLite lets by (foreign keys, 32-bit integers, no dev sign-in code; seed
+teams with `conftest.seed_teams`, read sign-in codes with `conftest.email_code`).
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.

@@ -855,3 +855,22 @@ def pytest_runtest_teardown(item, nextitem):
                              "use monkeypatch.chdir so it is restored")
     return result
 
+
+def pytest_collection_modifyitems(config, items):
+    """`TREG_TEST_SHARD=k/n` keeps one of n disjoint shards of the collected tests, so CI can split
+    the suite across machines. A test's shard follows from its id alone, so every xdist worker and
+    every machine agrees, and the shards together are exactly the suite."""
+    shard = os.environ.get("TREG_TEST_SHARD", "")
+    if not shard:
+        return
+    k, n = (int(part) for part in shard.split("/"))
+    if not 1 <= k <= n:
+        raise pytest.UsageError(f"TREG_TEST_SHARD={shard}: want k/n with 1 <= k <= n")
+    import zlib
+
+    kept, dropped = [], []
+    for item in items:
+        (kept if zlib.crc32(item.nodeid.encode()) % n == k - 1 else dropped).append(item)
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+        items[:] = kept
