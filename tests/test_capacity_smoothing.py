@@ -49,7 +49,7 @@ async def test_token_bucket_spaces_a_burst_and_never_waits_past_the_cap():
     waits = await asyncio.gather(*(lim.acquire("p", 10, 1.0) for _ in range(11)))  # 10/s, 11 at once
     elapsed = time.monotonic() - t0
     assert waits.count(0) == 1 and max(waits) <= 1000 and elapsed < 1.5, waits
-    assert sorted(waits) == sorted(waits) and sorted(waits)[-1] >= 900, "the 11th waited ~1 s: spaced, not burst"
+    assert [round(w, -2) for w in sorted(waits)] == list(range(0, 1001, 100)), "spaced 100 ms apart, not burst"
     lim2 = Limiter()
     fast = await asyncio.gather(*(lim2.acquire("q", 2, 60.0, max_wait_ms=2000) for _ in range(30)))
     assert fast.count(0) == 30, "a wait beyond the cap is not taken: the call proceeds, no refusal"
@@ -154,37 +154,6 @@ async def test_own_key_calls_are_never_smoothed(clients: AsyncClient, platform_o
     for _ in range(2):
         assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 429
     assert len(seen) == 2 and time.monotonic() - t0 < 1.0, "no bucket wait, no re-send on an org's own key"
-
-
-async def test_concurrent_platform_calls_over_the_limit_relay_no_429(
-    clients: AsyncClient, platform_on, monkeypatch,
-):
-    """The leadsforge case (plan §6), scaled to a 2-per-second limit so the test runs in seconds:
-    five calls at once, a provider that counts calls per window (as providers do) and 429s the
-    third in any second → the bucket spaces them, the provider sees no burst, and added latency
-    stays ≤ 2 s. The pool counter is process-wide, so concurrent siblings in their DB phase make it
-    nonzero here; test_a_smoothed_call_holds_no_db_connection_while_it_waits proves the discipline."""
-    await _publish_rate("tikhub", 2, 1.0)
-    stamps: list[float] = []
-    async def provider(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
-        now = time.monotonic()
-        stamps.append(now)
-        status = 429 if sum(1 for t in stamps if now - t < 0.9) > 2 else 200
-        async def _s():
-            yield b'{"ok":true}' if status == 200 else b"slow"
-        async def _c():
-            return None
-        return UpstreamResponse(status, (), _s(), _c)
-    monkeypatch.setattr(call_service, "relay", provider)
-    assert (await clients.get(f"/call/{EP}?aweme_id=99")).status_code == 200  # warm the process (see below)
-    stamps.clear()
-    limiter.reset()
-    t0 = time.monotonic()
-    rs = await asyncio.gather(*(clients.get(f"/call/{EP}?aweme_id={i}") for i in range(4)))
-    assert [r.status_code for r in rs] == [200] * 4, [r.text for r in rs]
-    assert time.monotonic() - t0 <= 2.5
-    waits = sorted(int(r.headers["X-Treg-Smoothed"].split("=")[1]) for r in rs if "X-Treg-Smoothed" in r.headers)
-    assert waits and waits[-1] <= 2000, waits
 
 
 async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(

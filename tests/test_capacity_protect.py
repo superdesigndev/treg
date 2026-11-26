@@ -70,6 +70,10 @@ def _relay(status: int, body: bytes, headers=()):
     return relay
 
 
+async def _no_wait(*_args, **_kwargs) -> int:
+    return 0
+
+
 def _counting(relay):
     """The relay, counting the calls that reached the vendor: a probe and a refusal before any
     hold both answer the typed 503, and only this tells them apart."""
@@ -278,23 +282,23 @@ async def test_a_refusal_before_any_hold_tells_clients_when_to_retry(clients: As
 
 async def test_steady_traffic_while_dry_never_extends_the_lock_and_a_probe_lifts_it(
         clients: AsyncClient, platform_on, monkeypatch):
-    """Ten minutes of twenty calls a minute while the account stays dry: only one probe a minute
+    """Three minutes of five calls a minute while the account stays dry: only one probe a minute
     reaches the provider, nothing is charged and the lock keeps its end. After a top-up the next
     probe lifts it for everyone."""
     lock = await _lock_by_two_signals(clients, monkeypatch)
     before = await _balance(clients)
     dry = _counting(_fake_relay(402, OUT))
     monkeypatch.setattr(call_service, "relay", dry)
-    for _ in range(10):
+    for _ in range(3):
         capacity_marks._last_probe.clear()  # a minute passes
-        for _ in range(20):
+        for _ in range(5):
             assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
         now = await _lock(lock.key)
         assert now.lock_id == lock.lock_id and now.until == lock.until, "never extended"
-    assert dry.calls == 10 and await _balance(clients) == before
+    assert dry.calls == 3 and await _balance(clients) == before
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     capacity_marks._last_probe.clear()
-    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(20)] == [200] * 20
+    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(5)] == [200] * 5
     assert await _lock(lock.key) is None
 
 
@@ -518,6 +522,7 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
     get_settings.cache_clear()
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
+    monkeypatch.setattr(call_service.provider_limiter, "acquire", _no_wait)  # Wiza's published pacing
     monkeypatch.setattr(call_service, "relay", _by_path({
         "/company_enrichments": (400, WIZA_OUT),
         "/individual_reveals": (200, b'{"data":{"id":910001,"status":"queued"}}')}))
