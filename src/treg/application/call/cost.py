@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import parse_qsl
 
@@ -88,9 +89,23 @@ def amount(terms: dict, units: int | float | Decimal) -> int:
     return _micro_up(blocks * Decimal(terms["block_micro"]))
 
 
+def _base(terms: dict, times: int | float = 1) -> int:
+    """`price.base`, `times` over, at the frozen rate; 0 on a row without one."""
+    base = terms.get("base_micro")
+    return 0 if base is None else _micro_up(Decimal(str(times)) * Decimal(base))
+
+
 def _priced(terms: dict, quantity: object) -> int | None:
     """A plugin's quantity priced: a number at the unit price, or `{rate: quantity}` at the frozen
-    rates. None when the quantity is not one."""
+    rates. On a row with `price.base`, a number bills the base once and `{units: n, base: k}` bills
+    n units and the base k times. None when the quantity is not one."""
+    if terms.get("base_micro") is not None:
+        if isinstance(quantity, dict):
+            units, times = quantity.get("units"), quantity.get("base")
+            if set(quantity) != {"units", "base"} or not _count(units) or not _count(times):
+                return None
+            return amount(terms, units) + _base(terms, times)
+        return amount(terms, quantity) + _base(terms) if _count(quantity) else None
     if terms.get("rates_micro") is not None:
         if not isinstance(quantity, dict):
             return None
@@ -243,6 +258,50 @@ def require_entities(ep: dict, request_data: dict) -> None:
                        "request or connect your own key"})
 
 
+_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+
+
+def money_micro(ep: dict, request_data: dict) -> int | None:
+    """RAW micro-USD of the spend cap a `reserve.money` row's request names: its parameter sent
+    once as a plain ASCII decimal above 0 and at most `max`, else None."""
+    rule = (ep.get("reserve") or {}).get("money")
+    if not rule:
+        return None
+    found = select(rule["param"], request_document(ep, request_data, defaults=False))
+    raw = found[0] if found else None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        raw = str(raw)
+    if not isinstance(raw, str) or not _DECIMAL.fullmatch(raw):
+        return None
+    value = Decimal(raw)
+    return _micro_up(value * _MICRO) if 0 < value <= Decimal(rule["max"]) else None
+
+
+def money_floor_micro(ep: dict, cat) -> int:
+    """The least spend cap a `reserve.money` row takes on treg's key: with
+    `settle.hold_within_units`, the base and one unit more than those units, so an answer that
+    bills only its base is not taken for one that reached the cap; else 1."""
+    within = (ep.get("settle") or {}).get("hold_within_units")
+    if not within:
+        return 1
+    _hold, _unit, _credit, terms = price(ep, cat, {})
+    return _base(terms) + amount(terms, int(within) + 1)
+
+
+def require_money(ep: dict, cat, request_data: dict) -> None:
+    """On treg's key, a `reserve.money` row refuses a request whose spend cap is missing, not a
+    plain decimal, above `max` or below the floor, before anything is held."""
+    rule = (ep.get("reserve") or {}).get("money")
+    if not rule:
+        return
+    cap, floor = money_micro(ep, request_data), money_floor_micro(ep, cat)
+    if cap is None or cap < floor:
+        name = rule["param"]
+        raise _invalid(ep, name, "platform",
+                       f"{ep['id']} needs {name} on treg's key: the spend cap in USD, from "
+                       f"{Decimal(floor) / _MICRO:f} to {Decimal(rule['max']):f}")
+
+
 def require_plugin_max(ep: dict, cat, request_data: dict) -> None:
     """On treg's key, a request a `reserve.plugin` prices above the row's `max` is refused before
     anything is held: the hold stops at the max, and a reported settle is not capped by it."""
@@ -285,6 +344,7 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
         "block_micro": None if rates else str(_block(price_, request, ep.get("input") or {}, rate)
                                               if rate else Decimal(0)),
         "rates_micro": {name: str(Decimal(v) * rate) for name, v in rates.items()} if rates else None,
+        "base_micro": str(Decimal(price_["base"]) * rate) if price_.get("base") is not None else None,
         "reported_micro": None,
         **{key: ep.get(key) for key in ("expect", "error", "miss", "bill", "settle")},
     }
@@ -304,13 +364,18 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
                 "message": f"{ep['id']} could not price this request"})
         terms["count_max_micro"] = _micro_up(Decimal(reserve["max"]) * rate)
         hold = min(held, terms["count_max_micro"])
+    elif "money" in reserve:
+        # The caller's spend cap, which the provider enforces, plus one base; a request without a
+        # readable cap (refused on treg's key) holds the most the row takes.
+        cap = money_micro(ep, request_data)
+        hold = (_micro_up(Decimal(reserve["money"]["max"]) * _MICRO) if cap is None else cap) + _base(terms)
     else:
         units = ((_rows(reserve["rows"], raw) or 1) if "rows" in reserve
                  else _entities(reserve["entities"], raw) if "entities" in reserve else 1)
-        hold = amount(terms, units)
+        hold = amount(terms, units) + _base(terms)
         top = (reserve.get("rows") or reserve.get("entities") or {}).get("max")
         if top is not None:
-            terms["count_max_micro"] = amount(terms, int(top))
+            terms["count_max_micro"] = amount(terms, int(top)) + _base(terms)
     scalar = (price_.get("value") if price_.get("value") is not None
               else (price_.get("fallback") or {}).get("value"))
     unit = _micro_up(Decimal(scalar) * rate) if scalar is not None else 0
@@ -403,8 +468,13 @@ def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | No
     """What a `count` or `plugin` settle reads off this answer, capped at the row's declared
     maximum (its `reserve` max at the unit price), or at the hold when the row declares none."""
     found = _uncapped(terms, doc, request, answer)
+    if found is None:
+        return None
+    within = (terms.get("settle") or {}).get("hold_within_units")
+    if within and found + amount(terms, int(within)) >= hold:
+        return hold
     cap = terms.get("count_max_micro")
-    return None if found is None else min(found, hold if cap is None else int(cap))
+    return min(found, hold if cap is None else int(cap))
 
 
 def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
@@ -420,7 +490,7 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
             return None
         else:
             found = found[0]
-        return amount(terms, sum(item is not None for item in found))
+        return amount(terms, sum(item is not None for item in found)) + _base(terms)
     if "plugin" in settle:
         return _priced(terms, plugins.call(settle["plugin"], terms["provider"], request, answer))
     return None
@@ -502,7 +572,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if rule == "free":
         return (0 if evidence is None else evidence), 0
     if rule != "charged":
-        return evidence, min(amount(terms, rule), hold)
+        return evidence, min(amount(terms, rule) + _base(terms), hold)
     return evidence, _settled(terms, basis_, hold, doc, raw, evidence)
 
 

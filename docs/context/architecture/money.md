@@ -1619,7 +1619,15 @@ row.
   request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
   priced at the frozen rates and capped at `max` (treg's key refuses a request the plugin prices
   above `max` before any hold, `catalog_parameter_invalid` 400, so an uncapped `settle.reported`
-  cannot pass the hold's ceiling); absent, one unit. A reserve plugin that raises
+  cannot pass the hold's ceiling), or `money` (a request parameter naming a spend cap in USD that
+  the provider enforces: the hold is that cap, rounded up to whole micro-USD, when it is one plain
+  ASCII decimal above 0 and at most `money.max`, else `money.max`; treg's key refuses a request
+  without a readable cap or with one below the floor, `require_money`, `catalog_parameter_invalid`
+  400; the floor is 1 micro-USD, or with `settle.hold_within_units` the base and one unit more than
+  those units, so an answer that bills only its base is not taken for one that reached the cap);
+  absent, one unit. `price.base` is a fixed amount every charged answer bills on top of its units,
+  a charged miss included; the hold carries it once on every reserve form, and a declared count
+  maximum includes it. A reserve plugin that raises
   or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
   does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
   fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
@@ -1642,14 +1650,18 @@ row.
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
   spelling records a free miss, so the call record and the stats fallback read it alike. A charged
-  answer costs its `count` (non-null items) or `plugin` quantity capped at the row's declared
+  answer costs its `count` (non-null items; `response` itself counts a bare top-level array) or
+  `plugin` quantity, plus `price.base` (a plugin on a row with a base may return `{units: n, base:
+  k}` to bill the base k times; a plain number bills it once), capped at the row's declared
   maximum, not at the hold: `reserve.rows.max` or a declared `reserve.entities.max` units at the
   unit price, or a reserve plugin's `max`; capped at the hold when the row declares none (no
   `reserve`, or `reserve.entities` without `max`); its `usage` meters, which may exceed the
   estimate, and are held up to a declared `settle.worst_case`; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
-  list (an empty one counts 0). An answer that would be billed is released when it carries a
-  capacity signature.
+  list (an empty one counts 0). With `settle.hold_within_units: N` beside a count or plugin, a
+  bill that comes within N units (at the unit price) of the hold, or passes it, is the hold: a
+  provider that stops a run at the caller's cap may bill an event it never returned. An answer that
+  would be billed is released when it carries a capacity signature.
 - **The frozen basis** keeps the vocabulary both spellings share, so either settles through the
   same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
   settle is `observed` with the hold as its fallback. An async v2 row's terms ride its persisted
@@ -1979,7 +1991,10 @@ the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeout` are acce
 plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`) would make the
 returned rows disagree with the events billed. `_marketplace_pricing` holds the cap plus
 `cost.call_fee` (the flat per-run charge), multiplied by the body arrays named in `cost.call_fee_per`
-for actors that bill a start per query. `_observed_cost_micro` settles returned rows times the row
+for actors that bill a start per query. A v2 row says the same with `reserve.money` on
+`query.maxTotalChargeUsd`, `price.base` and `settle.hold_within_units: 2`; the run-options guard
+(`_enforce_apify_run_options`) then reads the cap's ceiling from `reserve.money.max` and its floor
+from `money_floor_micro`. `_observed_cost_micro` settles returned rows times the row
 price plus the fee; within two rows of the hold the cap was reached and the hold is the bill (a run
 stops when its next event would pass the cap and may have billed an event it never pushed). The cap
 must cover `call_fee` plus three rows, or an empty answer would bill in full.

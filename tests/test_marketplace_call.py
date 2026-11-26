@@ -1323,6 +1323,38 @@ def test_apify_platform_hold_is_the_charge_cap_plus_call_fee(items, hold):
         == (hold, 5_000)
 
 
+@pytest.mark.parametrize(('items', 'hold'), [
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '60')), 50_000),
+    ((('maxTotalChargeUsd', '0.025'), ('timeout', '90')), 35_000),
+    ((('maxTotalChargeUsd', '0.024'), ('timeout', '60')), None),
+    ((('maxTotalChargeUsd', '0.6'), ('timeout', '60')), None),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '91')), None),
+    ((('maxTotalChargeUsd', '0.04'), ('limit', '1'), ('timeout', '60')), None),
+    ((('timeout', '60'),), None),
+])
+def test_apify_run_options_read_a_v2_row_s_spend_cap_and_floor(items, hold):
+    """On a v2 row the cap's ceiling is `reserve.money.max` and its floor the base plus one unit
+    more than `settle.hold_within_units`; the run options stay Apify's."""
+    from treg.domain.catalog.schema import V2Row, served
+    keys = {"price": {"value": "0.005", "base": "0.01"},
+            "provenance": {"source": "docs", "source_url": "https://example.com",
+                           "checked": "2026-11-27", "confidence": "documented"},
+            "reserve": {"money": {"param": "query.maxTotalChargeUsd", "max": "0.5"}},
+            "settle": {"count": {"path": "response"}, "hold_within_units": 2}}
+    parsed = V2Row.model_validate({"id": "apify.demo", "method": "POST", "path": "/x", **keys})
+    inputs = {"queryParams": {"maxTotalChargeUsd": {"type": "number"}}}
+    ep = {"id": "apify.demo", "provider": "apify", "method": "POST", "input": inputs,
+          **served(parsed, inputs)}
+    query = call_resolution.QueryValues(items)
+    if hold is None:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, b'{}', query=query)
+        assert exc.value.detail['parameter'] == 'queryParams'
+        return
+    call_resolution._enforce_platform_request(ep, b'{}', query=query)
+    assert call_resolution.price_call(ep, query, b'{}', set()).estimate_micro == hold
+
+
 @pytest.mark.parametrize(("endpoint", "doc", "expected"), [
     *[("serper.web.extract", {"credits": reported, "text": "served"}, expected)
       for reported, expected in

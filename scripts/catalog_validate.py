@@ -1634,6 +1634,13 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
         for path in sources:
             if not parse_path(path).many and fields.get(_v2_field(path, inp)) is None:
                 fail(errors, where, f"reserve.entities.from '{path}' must name a declared input field")
+    if reserve is not None and reserve.money is not None:
+        spec = fields.get(_v2_field(reserve.money.param, inp))
+        if spec is None or spec.get("type") not in ("number", "string"):
+            fail(errors, where, f"reserve.money.param '{reserve.money.param}' must name a declared "
+                                "number or string input field")
+        if price is None:
+            fail(errors, where, "reserve.money needs a price beside it")
     if price is None or price.table is None:
         return
     view = schema.served(row, inp)["cost"]

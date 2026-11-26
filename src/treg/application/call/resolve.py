@@ -1829,30 +1829,42 @@ def _apify_charge_cap(query) -> float | None:
     return cap if 0 < cap <= _APIFY_PLATFORM_MAX_CHARGE_USD else None
 
 
+def _apify_cap_rule(ep: dict, query) -> tuple[float, int | None, int]:
+    """(the most a cap may be in USD, the cap in RAW micro-USD or None, the least it may be): a v2
+    row reads them from `reserve.money` and its price, a row in today's spelling from `cost`."""
+    if schema.is_v2(ep):
+        top = float(((ep.get("reserve") or {}).get("money") or {}).get("max") or 0)
+        request_data = settlement_basis.request_evidence(query.multi_items(), b"")
+        return (top, call_cost.money_micro(ep, request_data),
+                call_cost.money_floor_micro(ep, catalog_store.load()))
+    cap = _apify_charge_cap(query)
+    cost = ep.get("cost") or {}
+    floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
+        float(cost.get("value") or 0) / float(cost.get("per") or 1))
+    return _APIFY_PLATFORM_MAX_CHARGE_USD, None if cap is None else _usd_to_micro(cap), floor
+
+
 def _enforce_apify_run_options(ep: dict, query) -> None:
     names = [name for name, _ in query.multi_items()] if query is not None else []
+    top, cap, floor = _apify_cap_rule(ep, query if query is not None else QueryValues(()))
     problem = None
     if any(name not in _APIFY_PLATFORM_QUERY for name in names):
         problem = "only maxTotalChargeUsd, maxItems, memory and timeout"
     elif len(names) != len(set(names)):
         problem = "each run option at most once"
-    elif _apify_charge_cap(query) is None:
-        problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
+    elif cap is None:
+        problem = f"maxTotalChargeUsd above 0 and at most {top:g}"
     elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
               and 1 <= int(query.get("timeout")) <= _apify_max_timeout()):
         problem = f"timeout from 1 to {_apify_max_timeout()} seconds"
     elif query.get("maxItems") is not None and not (
             _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
         problem = "maxItems as a positive integer"
-    else:
+    elif cap < floor:
         # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
         # empty answer in full.
-        cost = ep.get("cost") or {}
-        floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
-            float(cost.get("value") or 0) / float(cost.get("per") or 1))
-        if _usd_to_micro(_apify_charge_cap(query)) < floor:
-            problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
-                       "(the call fee plus three rows)")
+        problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
+                   "(the call fee plus three rows)")
     if problem:
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400, rule="platform", detail={
@@ -1991,7 +2003,9 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
+    if ep.get("provider") == "apify" and (
+            (ep.get("reserve") or {}).get("money") if schema.is_v2(ep)
+            else (ep.get("cost") or {}).get("type") == "per_result"):
         _enforce_apify_run_options(ep, query)
 
     input_schema = ep.get("input") or {}
@@ -2710,6 +2724,7 @@ async def _resolve_catalog_tier(
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data, body)
+            call_cost.require_money(ep, catalog_store.load(), pricing.request_data)
             call_cost.require_entities(ep, pricing.request_data)
             call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
         if service == "contactout":

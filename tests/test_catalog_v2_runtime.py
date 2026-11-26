@@ -624,3 +624,84 @@ def test_an_archive_hit_settles_from_the_header_stored_with_its_answer(stored, a
     assert hit.actual_micro == actual
     assert call(ep, answer={"items": [1]}, headers=live, cached_headers={"x-cost": "3"})[1].actual_micro \
         == 180000                       # a live answer reads its own header, never a stored one
+
+
+# -- a spend cap the caller names, a fixed base, and a bill near the hold ------------------------
+
+CAP = {"queryParams": {"cap": {"type": "number"}}}
+
+
+def capped(**keys) -> dict:
+    keys.setdefault("price", {"value": "0.001", "base": "0.0005"})
+    keys.setdefault("reserve", {"money": {"param": "query.cap", "max": "1"}})
+    keys.setdefault("settle", {"count": {"path": "response"}})
+    return row(CAP, **keys)
+
+
+def test_a_bare_top_level_array_is_counted():
+    ep = row(price={"value": "0.001"}, reserve={"rows": {"param": "body.n", "default": {"value": 5, "source": "docs"},
+                                                        "max": 5}},
+             settle={"count": {"path": "response"}})
+    assert call(ep, answer=[{"a": 1}, {"a": 2}])[1].actual_micro == 2000
+    assert call(ep, answer=[])[1].actual_micro == 0
+    assert call(ep, answer={"items": [1]})[1].actual_micro == 5000      # not a list: the hold
+
+
+def test_a_money_hold_is_the_request_s_spend_cap_plus_one_base():
+    ep = capped()
+    assert call(ep, query=[("cap", "0.05")])[0] == 50500
+    assert call(ep, query=[("cap", "0.0500001")])[0] == 50501             # rounded up
+    for bad in ([], [("cap", "0")], [("cap", "1.5")], [("cap", "1e-2")], [("cap", "0.1"), ("cap", "0.2")]):
+        assert call(ep, query=bad)[0] == 1000500                          # unreadable: the row's max
+    assert ep["cost"]["type"] == "per_result" and ep["cost"]["call_fee"] == 0.0005
+
+
+def test_a_base_is_billed_on_top_of_the_counted_units_and_on_a_charged_miss():
+    ep = capped(miss={"when": {"path": "response", "op": "empty"}}, bill={"miss": "charged"})
+    free = capped(miss={"when": {"path": "response", "op": "empty"}})
+    assert call(ep, query=[("cap", "0.05")], answer=[1, 2, 3])[1].actual_micro == 3500
+    assert call(ep, query=[("cap", "0.05")], answer=[])[1].actual_micro == 500
+    assert call(free, query=[("cap", "0.05")], answer=[])[1].actual_micro == 0
+    assert call(ep, query=[("cap", "0.05")], answer=b"")[1].actual_micro == 50500   # no evidence: the hold
+    units = capped(miss={"when": {"path": "response", "op": "empty"}}, bill={"miss": 1})
+    assert call(units, query=[("cap", "0.05")], answer=[])[1].actual_micro == 1500  # a fixed-unit miss carries the base
+
+
+def test_a_bill_within_the_declared_units_of_the_hold_is_the_hold():
+    ep = capped(settle={"count": {"path": "response"}, "hold_within_units": 2})
+    query = [("cap", "0.01")]                                             # hold 10,500
+    assert call(ep, query=query, answer=[1] * 7)[1].actual_micro == 7500
+    assert call(ep, query=query, answer=[1] * 8)[1].actual_micro == 10500  # 8,500 + 2 units reaches it
+    assert call(ep, query=query, answer=[1] * 30)[1].actual_micro == 10500  # never above the hold
+    plain = capped()
+    assert call(plain, query=query, answer=[1] * 8)[1].actual_micro == 8500
+    with pytest.raises(ValueError, match="hold_within_units belongs beside"):
+        row(settle={"reported": {"path": "response.cost", "unit": "usd"}, "hold_within_units": 2})
+
+
+def test_a_settle_plugin_may_bill_the_base_more_than_once(monkeypatch):
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.runs = lambda request, answer: {"units": len(answer.body), "base": request.body["runs"]}
+    module.bad = lambda request, answer: {"units": 1}
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = capped(settle={"plugin": "demo.runs", "hold_within_units": 2}, bill={"miss": "charged"})
+    query = [("cap", "0.01")]
+    assert call(ep, {"runs": 3}, query=query, answer=[1, 2])[1].actual_micro == 3500
+    assert call(ep, {"runs": 16}, query=query, answer=[])[1].actual_micro == 8000
+    assert call(ep, {"runs": 17}, query=query, answer=[])[1].actual_micro == 10500   # 8,500 + 2 units
+    bad = capped(settle={"plugin": "demo.bad"})
+    assert call(bad, {"runs": 1}, query=query, answer=[1])[1].actual_micro == 10500  # not a quantity
+    with pytest.raises(ValueError, match="price.base needs a unit price"):
+        row(price={"rates": {"r": "1"}, "base": "1", "currency": "USD"},
+            reserve={"plugin": "demo.runs", "max": "1"})
+
+
+def test_treg_key_refuses_a_money_row_without_a_spend_cap_from_its_floor_to_its_max():
+    ep = capped(settle={"count": {"path": "response"}, "hold_within_units": 2})
+    assert cost.money_floor_micro(ep, Rates()) == 3500                   # the base and three units
+    assert cost.money_floor_micro(capped(), Rates()) == 1
+    cost.require_money(ep, Rates(), settlement.request_evidence([("cap", "0.0035")], b""))
+    for bad in ([], [("cap", "0.0034")], [("cap", "2")], [("cap", "-1")]):
+        with pytest.raises(ResolutionFailed) as exc:
+            cost.require_money(ep, Rates(), settlement.request_evidence(bad, b""))
+        assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "query.cap"
