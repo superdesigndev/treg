@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Email inboxes">
+  <g fill="none" stroke="#345E85" stroke-width="1.7" stroke-linejoin="round">
+    <rect x="2.5" y="5" width="19" height="14" rx="2"/>
+    <path d="m3.5 6.5 8.5 6.6 8.5-6.6"/>
+  </g>
+</svg>
