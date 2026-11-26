@@ -37,7 +37,6 @@ from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, 
 from ..connect import _host_of, _provider_bindings
 from . import cost as call_cost
 from . import keyslots
-from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
 
 _param_log = logging.getLogger("treg.param_check")
@@ -2758,9 +2757,7 @@ async def _resolve_catalog_tier(
     key_slot = None
     if cost is not None:
         # None: any of treg's accounts may serve it; the call path picks one before the relay.
-        key_slot = keyslots.pinned(
-            service, owners=async_owners + resource_owners,
-            idempotency_key=_key_affinity(caller, request_headers))
+        key_slot = keyslots.pinned(service, owners=async_owners + resource_owners)
     metered = cost is not None and capacity_marks.spends_balance(str(cost.get("type") or "per_call"))
     if cost is not None and (keyslots.exhausted(service, ep["id"], key_slot, metered=metered)
                              if key_slot is not None
@@ -2799,13 +2796,6 @@ async def _resolve_catalog_tier(
                                key_slot=key_slot, **{
             **common, "cost_type": str(cost.get("type") or "per_call")})
     raise _marketplace_no_credential(service, ep["id"], provider, ep, caller.org)
-
-
-def _key_affinity(caller: Caller, headers) -> str:
-    """The caller's Idempotency-Key, scoped to the org: what pins a retry to one of treg's
-    accounts (`keyslots`). Empty without the header."""
-    key = _idempotency_key(headers.get(IDEMPOTENCY_HEADER) if headers is not None else None)
-    return f"{caller.org_id}{_IDEM_SCOPE_SEP}{key}" if key else ""
 
 
 CAPACITY_RETRY_AFTER_S = 60

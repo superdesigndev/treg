@@ -501,14 +501,12 @@ name the label, never a credential, so reordering accounts or regenerating a key
    `platform_account_unavailable`, which the worker backs off on, so a worker that lost its
    environment never releases a task it could poll once restored. Objects on different accounts:
    409 `platform_account_split`.
-2. A call carrying `Idempotency-Key` uses the account the org-scoped key hashes to, so a retry
-   reaching the provider lands where it can be recognized. The idempotency claim cannot remember the
-   account: a failed call deletes its claim, and that is exactly the retry that reaches the
-   provider.
-3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating;
+2. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating;
    an account the sweep read below its drain mark (`low`) is passed over while another is not.
-   Rules 1-2 run during resolution (`pinned`); rule 3 runs right before relay (`assign`) and takes
+   Rule 1 runs during resolution (`pinned`); rule 2 runs right before relay (`assign`) and takes
    the bucket's token with no await between, so a burst that resolved together still spreads.
+   `Idempotency-Key` does not pin an account: few providers read the header, and a pin would hold
+   a retry on an account that has run dry. treg's own idempotency table answers the retry.
 
 A non-primary call carries `account: <provider>/<label>` on its platform binding; the relay injects
 that account's values or fails `injection_failed`, never substituting another account. The primary
