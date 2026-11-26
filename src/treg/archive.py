@@ -645,27 +645,33 @@ def _is_lock_timeout(exc: BaseException) -> bool:
 async def _land_stat(s, endpoint_id: str, d: dict, *, postgres: bool) -> None:
     """One endpoint's delta as one atomic `col = col + n`; a missing row is inserted and the racing
     loser retries as an update. The caller commits."""
-    from sqlalchemy import text
+    from sqlalchemy import case, literal, or_, text
     from sqlalchemy import update as sa_update
     from sqlalchemy.exc import IntegrityError
 
-    from .models import ArchiveEndpointStat
+    from .models import ArchiveEndpointStat as Stat
 
     if postgres:
         await s.execute(text(f"SET LOCAL lock_timeout = '{_STATS_LOCK_TIMEOUT_MS}ms'"))
-    values = {"provider": d["provider"], "policy": d["policy"],
-              "newest_fetch": d["newest_fetch"],
-              **{c: getattr(ArchiveEndpointStat, c) + d[c] for c in _STAT_COUNTS}}
-    where = ArchiveEndpointStat.endpoint_id == endpoint_id
-    res = await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
+    # A delta kept back by a busy row can land after a newer one: it still adds its counts, but
+    # the newest fetch and the provider and policy seen with it only move forward.
+    fetched = literal(d["newest_fetch"], type_=Stat.newest_fetch.type)
+    newer = or_(Stat.newest_fetch.is_(None), Stat.newest_fetch <= fetched)
+    values = {"provider": case((newer, literal(d["provider"], type_=Stat.provider.type)),
+                               else_=Stat.provider),
+              "policy": case((newer, literal(d["policy"], type_=Stat.policy.type)),
+                             else_=Stat.policy),
+              "newest_fetch": case((newer, fetched), else_=Stat.newest_fetch),
+              **{c: getattr(Stat, c) + d[c] for c in _STAT_COUNTS}}
+    where = Stat.endpoint_id == endpoint_id
+    res = await s.execute(sa_update(Stat).where(where).values(**values))
     if res.rowcount == 0:
         try:
             async with s.begin_nested():
-                s.add(ArchiveEndpointStat(
-                    endpoint_id=endpoint_id, provider=d["provider"], policy=d["policy"],
-                    newest_fetch=d["newest_fetch"], **{c: d[c] for c in _STAT_COUNTS}))
+                s.add(Stat(endpoint_id=endpoint_id, provider=d["provider"], policy=d["policy"],
+                           newest_fetch=d["newest_fetch"], **{c: d[c] for c in _STAT_COUNTS}))
         except IntegrityError:  # a concurrent flush inserted the row first
-            await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
+            await s.execute(sa_update(Stat).where(where).values(**values))
 
 
 async def flush_stats() -> None:

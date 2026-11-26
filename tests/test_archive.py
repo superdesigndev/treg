@@ -1314,13 +1314,14 @@ async def test_drain_lands_the_deltas_of_a_flush_it_interrupts(clients: AsyncCli
     assert (st.snapshots, st.kept_bytes) == (1, 123)
 
 
-def _pending_stat(endpoint_id: str, *, snapshots: int = 1, size: int = 10) -> None:
+def _pending_stat(endpoint_id: str, *, snapshots: int = 1, size: int = 10, day: int = 1,
+                  pol: str = "forbidden") -> None:
     from datetime import datetime
 
     for _ in range(snapshots):
-        archive._count_stats(endpoint_id=endpoint_id, provider="p", pol="forbidden", new_key=False,
+        archive._count_stats(endpoint_id=endpoint_id, provider="p", pol=pol, new_key=False,
                              stable_d=0, changed_d=0, kept=True, size=size,
-                             now=datetime(2026, 1, 1))
+                             now=datetime(2026, 1, day))
 
 
 async def _stat_snapshots() -> dict[str, tuple[int, int]]:
@@ -1445,6 +1446,44 @@ async def test_a_row_held_by_another_transaction_is_skipped_not_waited_for(
     await archive.flush_stats()
     got = await _stat_snapshots()
     assert got["stats.b"] == (2, 20) and archive._stat_deltas == {}
+
+
+async def test_a_late_delta_adds_its_counts_but_not_its_older_fetch(
+        clients: AsyncClient, monkeypatch):
+    """A delta kept back by a busy row can land after a newer one: it still counts, but the
+    newest fetch and the policy and provider seen with it never move backwards. A row with no
+    fetch yet takes the delta's."""
+    from datetime import datetime
+
+    from sqlalchemy import update
+
+    from treg.models import ArchiveEndpointStat
+
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    async with session_maker() as s:
+        s.add(ArchiveEndpointStat(endpoint_id="stats.a", provider="p", policy="forbidden"))
+        await s.commit()
+    _pending_stat("stats.a", day=2, pol="forbidden")
+    await archive.flush_stats()
+    async with session_maker() as s:
+        st = await s.get(ArchiveEndpointStat, "stats.a")
+        assert (st.snapshots, st.newest_fetch, st.policy) == (1, datetime(2026, 1, 2), "forbidden")
+
+    _pending_stat("stats.a", day=3, pol="transient")
+    await archive.flush_stats()
+    _pending_stat("stats.a", day=2, pol="forbidden")       # the late one
+    await archive.flush_stats()
+    async with session_maker() as s:
+        st = await s.get(ArchiveEndpointStat, "stats.a", populate_existing=True)
+        assert (st.snapshots, st.newest_fetch, st.policy) == (3, datetime(2026, 1, 3), "transient")
+        await s.execute(update(ArchiveEndpointStat).values(newest_fetch=None))
+        await s.commit()
+    _pending_stat("stats.a", day=1, pol="forbidden")
+    await archive.flush_stats()
+    async with session_maker() as s:
+        st = await s.get(ArchiveEndpointStat, "stats.a", populate_existing=True)
+        assert (st.snapshots, st.newest_fetch, st.policy) == (4, datetime(2026, 1, 1), "forbidden")
+
 
 
 async def test_any_other_flush_failure_keeps_only_what_did_not_land(

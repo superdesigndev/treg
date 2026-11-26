@@ -480,7 +480,8 @@ the archive's write semaphore. A flush never holds one endpoint's row while it w
 next, so a busy row costs the others nothing. On PostgreSQL each statement runs under a short
 `lock_timeout`; an endpoint whose row another writer (a flush in another process, the pruner,
 erasure) still holds past it keeps its delta, merged with newer ones, for the next flush, and the
-flush moves on. Any other failure, or an interrupted flush, puts back the deltas that have not
+flush moves on. Such a late delta still adds its counts, but `newest_fetch`, and the
+provider and policy seen with it, only move forward (a `CASE` in the same `UPDATE`). Any other failure, or an interrupted flush, puts back the deltas that have not
 committed and raises; the ones already committed are not counted again. Across endpoints the
 totals are not one snapshot, which is fine for a staff report; a process that dies between
 flushes loses that window, which is fine because nothing serves or bills from the totals.
