@@ -34,12 +34,18 @@ source:
 #     reports it is effectively required: they serve no default column set, so omitting it returns
 #     an empty or near-empty row that you were still billed for. It is marked required there.
 #  5. BILLING IS IN API UNITS, NOT DOLLARS. Units are bought as a package on top of a Business
-#     subscription (packages of 2M / 5M / 10M / 20M units), so there is no fixed per-call $ price
-#     and `cost.value` is null throughout — the unit price per report lives in `cost.note` and is
-#     quoted verbatim from each report's docs page. Most reports charge PER LINE RETURNED, so
-#     `display_limit` is the cost dial: a domain_organic call with the default limit (10,000 lines)
-#     costs 100,000 units. ALWAYS send an explicit small `display_limit`.
-#     Historical data (`display_date` in the past) costs 5x the live price on most reports.
+#     subscription (packages of 2M / 5M / 10M / 20M units), so there is no fixed per-call $ price:
+#     `price.value` is the unit price per report from each report's docs page, and fx.yaml holds
+#     no USD rate for api_unit, so no row here is metered on any key. Most reports charge PER LINE
+#     RETURNED, so `display_limit` is the cost dial. Historical data (`display_date` in the past)
+#     costs 5x the live price on most reports.
+#  6. NO `reserve` ON THE PER-LINE ROWS, deliberately: a `reserve.rows` max binds every tier, own
+#     keys included, and refuses 0, while Semrush reads `display_limit=0` as its default and its
+#     stated maxima differ by report page. The rows are never metered, so a hold would only refuse.
+#     A per-line settle needs a CSV line count, which v2 has no form for yet.
+#
+# The v3 Domain, Keyword and Backlinks reports are marked deprecated in favour of the v4 API on
+# Semrush's docs (re-read 2026-11-27); these rows still call v3.
 #
 # NO account.usage ENTRY, deliberately: Semrush's free unit-balance check is
 # `GET http://www.semrush.com/users/countapiunits.html?key=…`, which is on www.semrush.com — a
@@ -52,6 +58,8 @@ source:
 
 limits: "10 requests/second"
 pricing_url: https://www.semrush.com/api-documentation/  # API units are bought separately from the UI subscription; cost scales with the number of rows requested.
+defaults:
+  bill: {miss: charged, error: charged}
 endpoints:
   # --- Domain & keyword reports (host root) -----------------------------------------------------
   - id: semrush.google.domain.ranked_keywords
@@ -78,17 +86,13 @@ endpoints:
         export_columns: {type: string, required: false, note: "comma-separated; default Ph,Po,Pp,Pd,Nq,Cp,Ur,Tr,Tc,Co,Nr,Td. Ph=phrase Po=position Nq=volume Cp=CPC Ur=ranking URL Tr=traffic share Kd=difficulty", example: "Ph,Po,Nq,Cp,Ur,Tr"}
         export_escape: {type: integer, required: false, note: "1 wraps every CSV column in double quotes — set it if any field can contain a semicolon"}
       note: "CSV response, semicolon-separated. The `key` query param is injected by treg."
-    cost:
-      type: per_result
-      value: 10
+    price:
+      value: '10'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 10 API units per LINE returned (50 units per line for historical data via display_date). Units are pre-purchased in packages, so there is no fixed $ price. Send display_limit — the default is 10,000 lines = 100,000 units.
+      note: 10 API units per line returned, 50 per line with a past display_date
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/domain-reports/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#domain-organic-search-keywords
 
   - id: semrush.google.domain.paid_keywords
@@ -114,17 +118,13 @@ endpoints:
         export_columns: {type: string, required: false, note: "default Ph,Po,Pp,Pd,Nq,Cp,Vu,Tr,Tc,Co,Nr,Td. Vu=visible ad URL, Tt=ad title, Ds=ad description", example: "Ph,Po,Nq,Cp,Vu,Tt,Ds"}
         export_escape: {type: integer, required: false}
       note: "CSV response. Semrush's paid-search view of a domain — the PPC counterpart of domain_organic."
-    cost:
-      type: per_result
-      value: 20
+    price:
+      value: '20'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 20 API units per LINE returned (100 units per line for historical data). Send display_limit — the default is 10,000 lines.
+      note: 20 API units per line returned, 100 per line with a past display_date
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/domain-reports/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#domain-paid-search-keywords
 
   - id: semrush.google.domain.competitors
@@ -146,17 +146,13 @@ endpoints:
         export_columns: {type: string, required: false, note: "default Dn,Cr,Np,Or,Ot,Oc,Ad. Dn=competitor domain, Cr=competition level, Np=common keywords, Or=organic keyword count, Ot=organic traffic", example: "Dn,Cr,Np,Or,Ot"}
         export_escape: {type: integer, required: false}
       note: "CSV response. `Cr` (competition level) is Semrush's overlap score, not a market-share figure."
-    cost:
-      type: per_result
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per LINE returned (200 units per line for historical data). Send display_limit — the default is 10,000 lines.
+      note: 40 API units per line returned, 200 per line with a past display_date
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/domain-reports/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#competitors-in-organic-search
 
   - id: semrush.google.keywords.volume
@@ -180,17 +176,13 @@ endpoints:
         CSV response, one data line per keyword. `phrase_this` takes ONE keyword; for a batch use
         `type=phrase_these` with keywords joined by semicolons (phrase=ebay;seo), same price per
         line, which is much cheaper per keyword than looping this endpoint.
-    cost:
-      type: per_result
-      value: 10
+    price:
+      value: '10'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 10 API units per LINE returned (50 units per line for historical data via display_date). One keyword = one line.
+      note: 10 API units per line returned, one line per keyword; 50 per line with a past display_date
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/keyword-reports/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#keyword-overview-one-database
 
   - id: semrush.google.keywords.ideas
@@ -217,17 +209,13 @@ endpoints:
         CSV response. `phrase_related` is the semantic-similarity report. Two nearby alternatives with
         different economics: `phrase_fullsearch` (broad match, 20 units/line) and `phrase_questions`
         (question keywords only, 40 units/line) — same parameter shape, different `type`.
-    cost:
-      type: per_result
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per LINE returned. Send display_limit — the default is 10,000 lines = 400,000 units.
+      note: 40 API units per line returned
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/keyword-reports/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#related-keywords
 
   - id: semrush.google.serp.organic
@@ -255,17 +243,13 @@ endpoints:
         CSV response. This is Semrush's DATABASE view of the SERP, not a live scrape — positions come
         from Semrush's last crawl of that keyword in that regional database, so it is cheaper and
         faster than a live SERP API but can lag by days. Use a live SERP provider when freshness matters.
-    cost:
-      type: per_result
-      value: 10
+    price:
+      value: '10'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 10 API units per LINE returned (50 units per line for historical data). One ranking URL = one line, so a full top-100 pull costs 1,000 units.
+      note: 10 API units per line returned, 50 per line with a past display_date
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/keyword-reports/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#organic-results
 
   # --- Backlinks reports (host path /analytics/v1/) ----------------------------------------------
@@ -288,17 +272,13 @@ endpoints:
         export_columns: {type: string, required: true, note: "EFFECTIVELY REQUIRED on the backlinks family — unlike the domain/keyword reports these serve no default column set, so omitting it gets you an empty or near-empty row. Columns: ascore (Authority Score), total, domains_num, urls_num, ips_num, ipclassc_num, follows_num, nofollows_num, texts_num, images_num, forms_num, frames_num", example: "ascore,total,domains_num,urls_num,ips_num,follows_num,nofollows_num"}
         export_escape: {type: integer, required: false}
       note: "CSV response, a single data line. This is the one backlinks report priced per REQUEST rather than per line, so it is the cheap way to compare many domains' authority one call at a time."
-    cost:
-      type: per_call
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per REQUEST (not per line) — the whole summary is one flat charge.
+      note: 40 API units per request, not per line
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/backlinks/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks-overview
 
   - id: semrush.web.backlinks.list
@@ -322,17 +302,13 @@ endpoints:
         export_columns: {type: string, required: true, note: "EFFECTIVELY REQUIRED — the backlinks family serves no default column set. Columns: page_ascore, source_title, source_url, target_url, anchor, external_num, internal_num, first_seen, last_seen, nofollow", example: "page_ascore,source_url,target_url,anchor,nofollow,last_seen"}
         export_escape: {type: integer, required: false, note: "worth setting here — anchor text and page titles routinely contain semicolons"}
       note: "CSV response, one line per backlink."
-    cost:
-      type: per_result
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per LINE returned. Send display_limit — the default is 10,000 lines = 400,000 units.
+      note: 40 API units per line returned
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/backlinks/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks
 
   - id: semrush.web.linking_domains.list
@@ -356,17 +332,13 @@ endpoints:
         export_columns: {type: string, required: true, note: "EFFECTIVELY REQUIRED — the backlinks family serves no default column set. Columns: domain_ascore, domain, backlinks_num, ip, country, first_seen, last_seen", example: "domain_ascore,domain,backlinks_num,country,first_seen,last_seen"}
         export_escape: {type: integer, required: false}
       note: "CSV response, one line per referring domain."
-    cost:
-      type: per_result
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per LINE returned. Send display_limit — the default is 10,000 lines.
+      note: 40 API units per line returned
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/backlinks/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#referring-domains
 
   - id: semrush.web.anchors.list
@@ -390,17 +362,13 @@ endpoints:
         export_columns: {type: string, required: true, note: "EFFECTIVELY REQUIRED — the backlinks family serves no default column set. Columns: anchor, domains_num, backlinks_num, first_seen, last_seen", example: "anchor,domains_num,backlinks_num,first_seen,last_seen"}
         export_escape: {type: integer, required: false, note: "set it — anchor text frequently contains semicolons"}
       note: "CSV response, one line per anchor phrase."
-    cost:
-      type: per_result
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per LINE returned. Send display_limit — the default is 10,000 lines.
+      note: 40 API units per line returned
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/backlinks/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#anchors
 
   - id: semrush.web.backlinks.competitors
@@ -424,15 +392,11 @@ endpoints:
         export_columns: {type: string, required: true, note: "EFFECTIVELY REQUIRED — the backlinks family serves no default column set. Columns: ascore, neighbour (the competitor domain), similarity, common_refdomains, domains_num, backlinks_num", example: "ascore,neighbour,similarity,common_refdomains,domains_num"}
         export_escape: {type: integer, required: false}
       note: "CSV response, one line per competitor. `neighbour` is the competing domain and `common_refdomains` is the overlap count — this is the link-gap prospecting report."
-    cost:
-      type: per_result
-      value: 40
+    price:
+      value: '40'
       currency: unit
       per: 1
       unit: api_unit
-      source: docs
-      source_url: https://www.semrush.com/api-documentation/
-      checked: '2026-07-28'
-      confidence: documented
-      note: 40 API units per LINE returned. Send display_limit — the default is 10,000 lines.
+      note: 40 API units per line returned
+    provenance: {source: docs, source_url: 'https://developer.semrush.com/api/v3/analytics/backlinks/', checked: '2026-11-27', confidence: documented}
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks-competitors
