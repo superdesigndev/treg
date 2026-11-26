@@ -544,10 +544,21 @@ async def drain() -> None:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     _stat_rows.clear()
-    try:
-        await flush_stats()
-    except Exception:  # noqa: BLE001 - already logged; shutdown must go on
-        pass
+    deadline = time.monotonic() + _STATS_DRAIN_S
+    while True:
+        try:
+            await flush_stats()
+        except Exception:  # noqa: BLE001 - already logged; shutdown must go on
+            pass
+        if not _stat_deltas or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(_STATS_DRAIN_RETRY_S)
+    if _stat_deltas:
+        # Still running (refresh_once drains mid-life): the timer tries again. At shutdown the
+        # loop cancels it and these counts are lost, which is what the warning records.
+        _log.warning("archive running totals: %d endpoint delta(s) not landed by drain",
+                     len(_stat_deltas))
+        _arm_stat_flush()
 
 
 # The running totals (ArchiveEndpointStat) are one row per endpoint shared by every team, so a
@@ -587,7 +598,6 @@ async def _ensure_stat_row(s, *, endpoint_id: str, provider: str, pol: str) -> N
 def _count_stats(*, endpoint_id: str, provider: str, pol: str, new_key: bool,
                  stable_d: int, changed_d: int, kept: bool, size: int, now) -> None:
     """Add one committed recording to its endpoint's pending delta and make sure a flush is due."""
-    global _stat_flush_task
     d = _stat_deltas.setdefault(endpoint_id, {
         "keys": 0, "stable": 0, "changed": 0, "snapshots": 0, "bodies_kept": 0, "kept_bytes": 0})
     d["provider"], d["policy"] = provider, pol
@@ -598,6 +608,11 @@ def _count_stats(*, endpoint_id: str, provider: str, pol: str, new_key: bool,
     d["snapshots"] += 1
     d["bodies_kept"] += 1 if kept else 0
     d["kept_bytes"] += size if kept else 0
+    _arm_stat_flush()
+
+
+def _arm_stat_flush() -> None:
+    global _stat_flush_task
     if _stat_flush_task is None or _stat_flush_task.done():
         _stat_flush_task = asyncio.create_task(_flush_stats_soon())
 
@@ -616,6 +631,10 @@ _STAT_COUNTS = ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_b
 # delta for the next one. Another writer (a flush in another process, the pruner, erasure) is on
 # the row; waiting would hold this background connection for as long as it does.
 _STATS_LOCK_TIMEOUT_MS = 200
+# drain() retries endpoints left busy for at most this long, so a row held past one lock timeout
+# still lands before shutdown, and shutdown is never held longer than this.
+_STATS_DRAIN_S = 5.0
+_STATS_DRAIN_RETRY_S = 0.25
 
 
 def _restore_deltas(deltas: dict[str, dict]) -> None:

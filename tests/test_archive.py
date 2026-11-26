@@ -1518,6 +1518,68 @@ async def test_a_flush_cancelled_after_its_commit_does_not_count_it_again(
 
 
 
+async def test_drain_retries_a_row_released_after_its_first_lock_timeout(
+        clients: AsyncClient, monkeypatch):
+    """Shutdown does not give up on a held row at the first lock timeout: drain() retries it
+    within its bound, so a row let go meanwhile still lands, exactly once."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("row locks are PostgreSQL's")
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    _pending_stat("stats.b")
+    await archive.flush_stats()
+    _pending_stat("stats.b")
+
+    async with session_maker() as holder:
+        await holder.execute(text(
+            "SELECT 1 FROM archiveendpointstat WHERE endpoint_id = 'stats.b' FOR UPDATE"))
+        draining = asyncio.create_task(archive.drain())
+        await asyncio.sleep(archive._STATS_LOCK_TIMEOUT_MS / 1000 * 2)
+        assert not draining.done()
+        await holder.rollback()
+    async with asyncio.timeout(archive._STATS_DRAIN_S):
+        await draining
+    assert (await _stat_snapshots())["stats.b"] == (2, 20)
+    assert archive._stat_deltas == {}
+
+
+
+async def test_a_drain_that_runs_out_of_time_leaves_the_timer_to_retry(
+        clients: AsyncClient, monkeypatch):
+    """A row still busy when drain()'s bound runs out keeps its delta and re-arms the timer, so a
+    drain in a running process (refresh_once) does not strand it; the later flush lands it once."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    monkeypatch.setattr(archive, "_STATS_DRAIN_S", 0.3)
+    monkeypatch.setattr(archive, "_STATS_DRAIN_RETRY_S", 0.05)
+    for ep in ("stats.a", "stats.b"):
+        _pending_stat(ep)
+    await archive.flush_stats()
+    for ep in ("stats.a", "stats.b"):
+        _pending_stat(ep)
+
+    hook = _lock_timeout_on("stats.b")
+    event.listen(Engine, "before_cursor_execute", hook)
+    try:
+        await archive.drain()
+    finally:
+        event.remove(Engine, "before_cursor_execute", hook)
+    got = await _stat_snapshots()
+    assert (got["stats.a"], got["stats.b"]) == ((2, 20), (1, 10))
+    assert set(archive._stat_deltas) == {"stats.b"}
+    assert archive._stat_flush_task is not None and not archive._stat_flush_task.done()
+
+    await archive.flush_stats()
+    assert (await _stat_snapshots())["stats.b"] == (2, 20)
+    assert archive._stat_deltas == {}
+
+
+
 async def test_any_other_flush_failure_keeps_only_what_did_not_land(
         clients: AsyncClient, monkeypatch):
     """A failure that is not a lock timeout still raises, and puts back only the deltas whose

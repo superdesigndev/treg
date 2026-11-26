@@ -483,7 +483,9 @@ erasure) still holds past it keeps its delta, merged with newer ones, for the ne
 flush moves on. Such a late delta still adds its counts, but `newest_fetch`, and the
 provider and policy seen with it, only move forward (a `CASE` in the same `UPDATE`). Any other failure, or an interrupted flush, puts back the deltas that have not
 committed and raises; a cancellation first waits for the endpoint transaction in flight to
-finish, so the ones already committed are not counted again. Across endpoints the
+finish, so the ones already committed are not counted again. `drain()` (shutdown, and `refresh_once`
+mid-life) retries endpoints left busy for a bounded few seconds, then logs how many deltas did
+not land and re-arms the timer, which shutdown cancels. Across endpoints the
 totals are not one snapshot, which is fine for a staff report; a process that dies between
 flushes loses that window, which is fine because nothing serves or bills from the totals.
 The pruner, erasure and row retention subtract directly. Arithmetic commutes only while the row exists, so the
