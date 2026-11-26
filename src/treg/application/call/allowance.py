@@ -519,15 +519,44 @@ _lease_releases: set[asyncio.Task] = set()
 _background_folds: set[asyncio.Task] = set()
 
 
-async def _fold_beside(org_id: int, budget: list[int], call_id: str,
-                       found: list[int]) -> _Fold:
+async def _fold_beside(org_id: int, budget: list[int], call_id: str, found: list[int],
+                       started: list[asyncio.Task]) -> _Fold:
     """`_fold_backlog` in a task of its own, which the call waits for only until its deadline.
     The batch, and what follows its commit (closing the session, giving back the team's
-    admission and lease, its lock in this process), then finishes in order without the call."""
+    admission and lease, its lock in this process), then finishes in order without the call.
+    The task is appended to `started`, so the call can still take its answer later."""
     task = asyncio.ensure_future(_fold_backlog(org_id, budget, call_id, found))
     _background_folds.add(task)
     task.add_done_callback(_background_folds.discard)
+    started.append(task)
     return await asyncio.shield(task)
+
+
+async def _last_look(org_id: int, call_id: str, found: list[int],
+                     fold: asyncio.Task | None) -> int | None:
+    """Read the call's entry once, while a fold the call left running may still commit it:
+    whichever brings an answer first. The caller bounds it with its deadline."""
+    read = asyncio.ensure_future(_read_settled(org_id, call_id))
+    waiting = {read} if fold is None or fold.done() else {read, fold}
+    try:
+        while waiting:
+            done, waiting = await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+            if found:
+                return found[0]
+            if read in done:
+                settled = read.result()
+                if settled is not None:
+                    return settled
+                if fold not in waiting:
+                    return None
+        return found[0] if found else None
+    finally:
+        read.cancel()
+
+
+async def _read_settled(org_id: int, call_id: str) -> int | None:
+    async with session_maker() as db:
+        return await allowance.settled_micro(db, org_id, call_id)
 
 
 def _release_lease_soon(store, key: str, token: str) -> asyncio.Task:
@@ -1088,14 +1117,14 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
     call meanwhile, still leaves the call that look. `amount`, the charge, when the entry is not
     there by then or cannot be read: the charge is written, and "nothing" would be the one
     answer known to be wrong."""
-    budget, found = [_BACKLOG_BATCHES], []
+    budget, found, started = [_BACKLOG_BATCHES], [], []
     loop = asyncio.get_running_loop()
     end = loop.time() + _SETTLED_WAIT_S
     folding_until = end - min(_LAST_READ_S, _SETTLED_WAIT_S / 5)
     try:
         async with asyncio.timeout_at(folding_until):
             while True:
-                outcome = await _fold_beside(org_id, budget, call_id, found)
+                outcome = await _fold_beside(org_id, budget, call_id, found, started)
                 if found:
                     return found[0]
                 if outcome is _Fold.MORE:
@@ -1120,14 +1149,13 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
         pass
     except Exception:
         log.error("reading the settle entry of allowance call %s failed", call_id, exc_info=True)
-        return amount
+        return found[0] if found else amount
     if found:  # committed before the deadline cut the fold's cleanup short
         return found[0]
     if loop.time() < end:
         try:
             async with asyncio.timeout_at(end):
-                async with session_maker() as db:
-                    settled = await allowance.settled_micro(db, org_id, call_id)
+                settled = await _last_look(org_id, call_id, found, started[-1] if started else None)
             if settled is not None:
                 return settled
         except TimeoutError:
@@ -1135,6 +1163,7 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
         except Exception:
             log.error("reading the settle entry of allowance call %s failed", call_id,
                       exc_info=True)
-            return amount
+    if found:  # a fold the call left running committed it while the call last looked
+        return found[0]
     log.warning("allowance call %s was answered before its charge was applied", call_id)
     return amount

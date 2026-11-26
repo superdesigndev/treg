@@ -2314,6 +2314,28 @@ async def test_a_call_answers_on_time_while_the_teams_admission_is_slow_to_give_
     assert not runtime.money_lock(org_id).locked()
 
 
+async def test_a_fold_that_commits_during_the_last_look_still_gives_the_answer(
+        org_id, store, monkeypatch):
+    """The fold with the call's charge runs past the folding time; the last read finds no
+    entry yet, and the fold commits before the deadline. The call answers with what the
+    ledger took, not with its charge."""
+    # Folding stops at 0.48 s; the fold below commits at about 0.52 s.
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.6)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 10, reserved_micro=10)])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def commits_after_the_folding_time(db, org, **kwargs):
+        await asyncio.sleep(0.45)
+        return await fold(db, org, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", commits_after_the_folding_time)
+    assert await runtime._settled(org_id, "queued", 99) == 10
+    await _background_done()
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
