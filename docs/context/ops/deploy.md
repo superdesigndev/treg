@@ -220,8 +220,11 @@ A connection the pool closes or terminates has its socket aborted afterwards if 
 on anything, and its abort does nothing once that mark is set, so a close interrupted by a
 cancellation (a request cancelled again while its checkout pre-ping fails) used to leave the
 socket open with nothing owning it: the server kept the session `idle in transaction` after the
-pre-ping's `BEGIN` until the process exited, holding a connection slot and blocking every
-`CREATE INDEX CONCURRENTLY`. `tests/test_db_cancelled_close.py` pins it against a real server.
+pre-ping's `BEGIN` until the process exited, holding one of the database's connection slots. Such
+a session has no xid and no snapshot (`backend_xid` and `backend_xmin` are null), so it does not
+hold back `CREATE INDEX CONCURRENTLY`; for a build that waits, look for conflicting locks on the
+table or a session with an old `backend_xmin`. `tests/test_db_cancelled_close.py` pins the abort
+against a real server.
 
 `TREG_BACKGROUND_DATABASE_URL` sends the background pool through a transaction-pooling PgBouncer
 in front of the same database. The API and admin pools, the read pool, migrations (`maintenance.py`
