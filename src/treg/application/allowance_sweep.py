@@ -393,7 +393,7 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     at most `_TEAMS_PER_PASS` teams; a team it folded nothing of (another process or a session
     of the team's own is on it, or its rows stayed locked) does not count, so teams stuck at the
     front never use up a pass and the teams behind them are still reached. The next pass, which follows at once, comes
-    back for the rest. The teams are read `_TEAMS_LISTED` at a time, and a pass reads on while it
+    back for the rest; the starved teams' turns, below, come on top of those places. The teams are read `_TEAMS_LISTED` at a time, and a pass reads on while it
     has places left, so a full list of teams it cannot have does not end it either. Stops between
     teams once `keep_going` says so. Returns how many charges
     were folded.

@@ -656,7 +656,9 @@ past the bound do not make every new team scan them.
   more shares shorten each share's list, not its walk). A pass works on at most
   `_TEAMS_PER_PASS` of them, not counting a team it committed nothing of (another process or a
   session of its own holds it, or its rows stayed locked), so teams stuck at the front never use
-  up a pass (the next pass comes back for the rest); it reads the list `_TEAMS_LISTED` at a
+  up a pass (the next pass comes back for the rest). A starved team folded in its turn
+  (below) is set aside uncounted, since counting it would let starved teams that stay busy take
+  every place, so a pass folds at most `_STARVED_TEAMS_MAX` teams more; it reads the list `_TEAMS_LISTED` at a
   time and reads on while it has places left, so a full list of such teams does not end it, and folds them a team at a time, a batch per
   transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once. An idle share pauses for
   every process (its holder keeps the lease through the pause), and the process goes on to the
