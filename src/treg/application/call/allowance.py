@@ -10,6 +10,7 @@ spends money the hold does not have.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import enum
 import functools
 import logging
@@ -57,6 +58,10 @@ _LAST_READ_S = 0.2
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+# Whether the refill this task's own take ran was turned away by money admission. A refill run by
+# a background refresh or by another process never sets it: it is no evidence about this call.
+_refill_turned_away: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "treg_allowance_refill_turned_away", default=False)
 # Takes this process admitted and has not finished. Each will hand the charge writer one row at
 # most, so admitting against the writer's room now is what keeps it from ever overflowing.
 _in_flight = [0]
@@ -115,6 +120,12 @@ def refills(org_id: int) -> int:
     """How many refills this process has committed for the team: a caller compares it around a
     take to learn that the balance moved."""
     return _refills.get(org_id, 0)
+
+
+def take_met_busy_refill() -> bool:
+    """Whether this task's last `take` ran a refill itself and money admission turned that refill
+    away. Only then is the call's refusal known to come from a busy money queue."""
+    return _refill_turned_away.get()
 
 
 def listed(org_id: int) -> bool:
@@ -186,6 +197,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
 
     A refill this call starts beside itself commits after this returns, so `refills` around the
     call does not show it: `after_refill` is awaited once that refill has moved the balance."""
+    _refill_turned_away.set(False)
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
             or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
@@ -407,6 +419,9 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
+        _refill_turned_away.set(True)
+        log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
+                 org_id, need_micro, available)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
