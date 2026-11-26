@@ -93,7 +93,7 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
                        marked: bool = True, cached: bool = False, reviewing: bool = True,
-                       served_ref: bool | str = False, served_hash: str | None = None) -> str:
+                       served_ref: bool | str = True, served_hash: str | None = None) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
     and the call path's eligibility marker, as a real sampled routed call leaves them. `reviewing`
     gives the team one recent review, which a team needs to be compared at all."""
@@ -112,6 +112,8 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
     identity, _ = canonical_identity(cat.contracts[capability], given or {"q": q})
     query, body = adapter.to_upstream(identity, adapter_accepts(adapter, identity))
     ref = uuid.uuid4().hex
+    answer_body = json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()
+    answer_hash = archive.content_hash(answer_body)
     at = utcnow_naive() - timedelta(minutes=minutes_ago)
     async with session_maker() as db:
         db.add(CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=f"treg.{capability}",
@@ -119,7 +121,7 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                           provider="treg", credential_tier="routed", call_ref=ref, created_at=at,
                           served_call_ref=f"{ref}:{served_ref if isinstance(served_ref, str) else 'r1'}"
                           if served_ref else None,
-                          served_content_hash=(served_hash or f"body-{ref}") if served_ref else None))
+                          served_content_hash=(served_hash or answer_hash) if served_ref else None))
         child = CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=eid, method="POST",
                            path="/x", status_code=200, endpoint_id=eid, provider=a,
                            credential_tier=tier, call_ref=f"{ref}:r1", created_at=at, cached=cached)
@@ -130,9 +132,9 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                              req_body=json.dumps(body).encode())
             db.add(key)
             await db.flush()
-            db.add(ArchiveSnapshot(key_id=key.id, content_hash=f"body-{ref}",
-                                   body=json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()))
-            child.archive_key_hash, child.archive_content_hash = key.key_hash, f"body-{ref}"
+            db.add(ArchiveSnapshot(key_id=key.id, content_hash=answer_hash, body=answer_body,
+                                   size_bytes=len(answer_body)))
+            child.archive_key_hash, child.archive_content_hash = key.key_hash, answer_hash
         await db.commit()
     if marked:  # the marker holds the input the caller sent, as the call path writes it
         await kv.store().set_text(compare.marker_key(ref), json.dumps(given or {"q": q}),
@@ -289,7 +291,7 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
     assert sent == [] and await _rows() == [], result
     # A candidate the run read is counted under the reason it stopped at.
     expected = {"b_excluded": "b_unavailable", "own_key": "a_not_on_treg_key",
-                "not_archived": "a_not_archived", "no_marker": "no_marker",
+                "not_archived": "a_answer_not_delivered", "no_marker": "no_marker",
                 "store_down": "no_marker", "suspended": "team_no_longer_eligible",
                 "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
                 "flow_raises": "team_no_longer_eligible", "flow_invalid": "team_no_longer_eligible",
@@ -1480,41 +1482,72 @@ async def test_a_b_that_keeps_failing_stops_taking_calls(clients, search_on, mon
     assert names == ["parallel.web.search"] * compare.FAIL_STREAK + ["exa.web.search"], names
 
 
-async def test_a_slow_scan_still_leaves_the_calls_their_turn(clients, search_on, monkeypatch):
-    """Each served-child lookup takes a second, the run two: the scan stops at its share and the
-    call it found is made."""
-    import asyncio
-
+async def test_a_parent_that_names_no_served_child_is_never_compared(clients, search_on, monkeypatch):
+    """No `served_call_ref` (an answer the call path could not check, such as a large one): which
+    attempt the caller got cannot be told, so A could be the wrong vendor. The call is skipped."""
     _compare_on(monkeypatch)
     sent = _relay_b(monkeypatch)
-    real = compare._served_child
-
-    async def slow(db, parent):
-        await asyncio.sleep(1)
-        return await real(db, parent)
-    monkeypatch.setattr(compare, "_served_child", slow)
-    org_id = await _org_id(clients)
-    await _routed_call(org_id, "first question", minutes_ago=3)
-    await _routed_call(org_id, "second question", minutes_ago=4)
-    async with httpx.AsyncClient(trust_env=False) as client:
-        result = await compare.collect(client=client, max_seconds=2)
-    assert result["called"] == 1 and len(sent) == 1, result
-    assert result["skip_reasons"] == {"scan_time": 1}, result
-
-
-async def test_served_children_are_read_together(clients, search_on, monkeypatch):
-    """Parents that name their served child are resolved in one read, never one by one."""
-    _compare_on(monkeypatch)
-    sent = _relay_b(monkeypatch)
-
-    async def never(db, parent):
-        raise AssertionError("looked up alone")
-    monkeypatch.setattr(compare, "_served_child", never)
-    org_id = await _org_id(clients)
-    for i in range(3):
-        await _routed_call(org_id, f"question {i}", served_ref=True)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=False)
     result = await _collect()
-    assert result["ready"] == 3 and len(sent) == 3, result
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"a_delivery_unknown": 1}, result
+
+
+async def test_a_string_answer_never_reaches_the_run_output(clients, search_on, monkeypatch):
+    """A vendor answering 200 with a JSON string: the run reports a fixed reason, never the text."""
+    _compare_on(monkeypatch)
+    _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", answer="SECRET-BODY-TEXT")
+    result = await _collect()
+    assert "SECRET-BODY-TEXT" not in json.dumps(result), result
+    assert set(result["skip_reasons"]) <= {"a_output_unreadable"}, result
+
+
+async def test_a_damaged_archive_copy_is_not_compared(clients, search_on, monkeypatch):
+    """The stored bytes no longer hash to what was delivered, though they still parse."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    ref = await _routed_call(await _org_id(clients), "who makes the best espresso")
+    async with session_maker() as db:
+        child = (await db.execute(select(CallRecord).where(CallRecord.call_ref == f"{ref}:r1"))).scalar_one()
+        snap = (await db.execute(select(ArchiveSnapshot).where(
+            ArchiveSnapshot.content_hash == child.archive_content_hash))).scalar_one()
+        snap.body = json.dumps({"results": [{"title": "tampered", "url": "https://example.com/x"}]}).encode()
+        await db.commit()
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"a_answer_not_delivered": 1}, result
+
+
+async def test_a_failing_endpoint_is_never_b_and_a_slow_one_goes_after(clients, monkeypatch):
+    _platform(monkeypatch, "leadmagic")
+    contract = catalog_store.load().contracts["people.search"]
+    identity, _ = canonical_identity(contract, {"company_domain": "acme.com"})
+    first = compare._b_target(contract, identity, "leadmagic")
+    assert first is not None
+    for verdict in ("failing", "slow"):
+        other = compare._b_target(contract, identity, "leadmagic", health={first.ep["id"]: verdict})
+        assert other is None or other.ep["id"] != first.ep["id"], verdict
+
+
+async def test_the_worker_reads_endpoint_stats_without_a_bound_reader(monkeypatch):
+    """The web process binds a cached reader; the worker has none and reads the same buckets."""
+    from treg.application.call import route
+    from treg.infra import catalog_observations
+
+    seen = []
+
+    class Reader:
+        def __init__(self, session_factory):
+            pass
+
+        async def get_many(self, ids):
+            seen.append(list(ids))
+            return {i: {"hit_rate": 0.9} for i in ids}
+    monkeypatch.setattr(route, "_endpoint_observation_reader", None)
+    monkeypatch.setattr(catalog_observations, "PostgresEndpointObservationReader", Reader)
+    assert await compare._observed_stats(["a.b", "c.d"]) == {"a.b": {"hit_rate": 0.9}, "c.d": {"hit_rate": 0.9}}
+    assert seen == [["a.b", "c.d"]]
 
 
 def test_the_daily_spend_is_read_as_a_decimal(monkeypatch):
@@ -1552,7 +1585,7 @@ async def test_an_async_answer_is_read_from_its_terminal_archive(clients, search
     hash, not the submission's, matches what the caller got."""
     _compare_on(monkeypatch)
     sent = _relay_b(monkeypatch)
-    terminal = json.dumps(TAVILY_HIT).encode()
+    terminal = json.dumps(TAVILY_HIT, indent=1).encode()  # not the submission's archived bytes
     ref = await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=True,
                              served_hash=archive.content_hash(terminal))
     asked = []

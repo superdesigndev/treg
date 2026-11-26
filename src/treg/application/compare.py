@@ -61,9 +61,6 @@ READY_DAYS = 3
 INPUT_MAX_BYTES = 2048
 # Recent routed calls read per capability per run, newest first: the bound on what a run scans.
 SCAN_PER_CAPABILITY = 500
-# The share of a run's time the scan before any call may take, so a slow read still leaves the
-# calls their turn.
-SCAN_SHARE = 0.5
 # A B whose last `FAIL_STREAK` answers in `FAIL_WINDOW_H` hours all failed is not asked again until
 # the oldest of them leaves the window: a vendor that keeps failing stops taking the day's calls.
 FAIL_STREAK = 2
@@ -271,7 +268,7 @@ class Target:
 
 def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = None,
               max_price_micro: int | None = None, given: dict | None = None,
-              stats: dict | None = None) -> Target | None:
+              stats: dict | None = None, health: dict | None = None) -> Target | None:
     """B's endpoint for this input when treg's own key can serve it: one the router would ask for
     this input (`plan.candidates_for` and `build_plan`'s cap, declaration, scope and per-provider
     sampling checks; a judge-only `route: false` adapter builds no request), not paused,
@@ -280,7 +277,9 @@ def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = N
     The provider's endpoints are tried in the order the router ranks them (`plan.rank` over the
     caller's keys `given`, the filters each can express, its price and the endpoints' observed
     `stats`), so B answers the question the router would have asked it, and one dear endpoint does
-    not hide a cheaper one that answers the same input."""
+    not hide a cheaper one that answers the same input. `health` is the short-window verdict per
+    endpoint (`route_health`): a failing endpoint is never asked (a comparison never takes a
+    probe turn), a slow one ranks after the healthy ones, as the router ranks it."""
     from httpx import QueryParams
 
     from ..domain.capacity.marks import spends_balance
@@ -326,6 +325,9 @@ def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = N
     sent = {k for k, v in (identity if given is None else given).items() if v not in (None, "") and v is not False}
     ranked = []
     for ep, adapter, variant in fitting:
+        verdict = (health or {}).get(ep["id"], "ok")
+        if verdict == "failing":
+            continue
         st = (stats or {}).get(ep["id"]) or {}
         cv = cat.cost_view(ep.get("cost"), provider)
         price = route._table_price(cat, ep, adapter, identity, variant) or cost_at(cv, identity, adapter)
@@ -336,7 +338,7 @@ def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = N
             hit_rate=st.get("hit_rate"), ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"),
             last_ok_days=st.get("last_ok_days"), p95_ms=st.get("p95_ms"), ignored=ignored,
             hinted=tuple(k for k in ignored if k not in hard),
-            miss_micro=miss_charge_micro(cv, identity, adapter, price)))
+            miss_micro=miss_charge_micro(cv, identity, adapter, price), health=verdict))
     for c in rank(ranked, given=sent, derive=contract.derive, one_subject=contract.one_subject,
                   last=contract.ask_last):
         ep, adapter, variant = c.endpoint, c.adapter, c.variant
@@ -496,11 +498,11 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
     return teams - policy
 
 
-def _usable_child(child: CallRecord | None, *, named: bool = False) -> CallRecord | None:
+def _usable_child(child: CallRecord | None) -> CallRecord | None:
     """An archive-served (cached) answer is stale next to a live B, so such a parent is not
-    compared. A child the parent names (`named`) is the one whose answer was delivered, whatever
-    status its own row carries (an async submission's row holds the ticket's)."""
-    if child is None or child.cached or (not named and not 200 <= (child.status_code or 0) < 300):
+    compared. The child the parent names is the one whose answer was delivered, whatever status
+    its own row carries (an async submission's row holds the ticket's)."""
+    if child is None or child.cached:
         return None
     return child
 
@@ -509,7 +511,9 @@ async def _served_children(session_factory, parents: list[CallRecord]) -> dict[s
     """For each parent that names the child its caller got (`served_call_ref`), by parent
     `call_ref`: that child, in one read through `ix_callrecord_call_ref`, or None when the row is
     gone or cached. Such a parent is compared on that child alone, never on another attempt. A
-    parent naming none is absent and is looked up alone (`_served_child`)."""
+    parent naming none is absent: what its caller got cannot be told (`served_call_ref` is NULL
+    on an answer the call path could not check, such as one over `route.SERVED_CHECK_MAX`), so it
+    is never compared."""
     refs = {p.served_call_ref: p for p in parents if p.served_call_ref}
     out: dict[str, CallRecord | None] = {p.call_ref: None for p in refs.values()}
     if not refs:
@@ -521,21 +525,8 @@ async def _served_children(session_factory, parents: list[CallRecord]) -> dict[s
     for row in rows:
         parent = refs.get(row.call_ref)
         if parent is not None and row.org_id == parent.org_id:
-            out[parent.call_ref] = _usable_child(row, named=True)
+            out[parent.call_ref] = _usable_child(row)
     return out
-
-
-async def _served_child(db, parent: CallRecord) -> CallRecord | None:
-    """The routed parent's credited child when the parent names none: its latest successful
-    attempt, never an async poll."""
-    escaped = parent.call_ref.replace("/", "//").replace("%", "/%").replace("_", "/_")
-    child = (await db.execute(select(CallRecord).where(
-        CallRecord.org_id == parent.org_id,
-        CallRecord.call_ref.startswith(f"{parent.call_ref}:r", autoescape=True),
-        CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
-        CallRecord.status_code >= 200, CallRecord.status_code < 300,
-    ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
-    return _usable_child(child)
 
 
 async def _still_eligible(session_factory, org_id: int) -> bool:
@@ -646,7 +637,6 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     on every run, the feature on or off."""
     from ..domain.capacity.view import view as capacity_view
     from ..domain.catalog.routing.contracts import canonical_identity
-    from .arena_insights import _evidence
 
     # The budget covers the whole run, choosing the teams and reading their calls included.
     deadline = time.monotonic() + max_seconds
@@ -697,21 +687,19 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             skip(cand, "no_marker")
         else:
             marked.append((cand, marker))
-    # Lookups one parent at a time take at most their share of what is left, so the calls keep
-    # theirs; a child already read goes on whatever the time.
-    scan_deadline = time.monotonic() + (deadline - time.monotonic()) * SCAN_SHARE
+    # The children the parents name, in one read; no lookup one parent at a time.
     children = await _served_children(session_factory, [c.record for c, _ in marked])
     served: list[Served] = []
     for cand, marker in marked:
         ref = cand.record.call_ref
-        if ref in children and children[ref] is None:
+        if ref not in children:
+            skip(cand, "a_delivery_unknown")
+            continue
+        if children[ref] is None:
             skip(cand, "served_child_missing")
             continue
-        if ref not in children and time.monotonic() >= scan_deadline:
-            skip(cand, "scan_time")
-            continue
         try:
-            got = await _served(cand, marker, session_factory, children.get(ref))
+            got = _served(cand, marker, children[ref])
         except Exception:
             log.warning("comparison for %s failed", cand.record.call_ref, exc_info=True)
             got = "error"
@@ -734,7 +722,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             served.remove(pick)
             try:
                 outcome = await _one(pick, cat, now, session_factory, client, store, totals, tally,
-                                     failing, canonical_identity, _evidence)
+                                     failing, canonical_identity)
             except Exception:
                 log.warning("comparison for %s failed", pick.cand.record.call_ref, exc_info=True)
                 outcome = "skipped:error"
@@ -751,11 +739,9 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
     return {"status": "ran", **totals}
 
 
-async def _served(cand: Candidate, marker: str | None, session_factory,
-                  child: CallRecord | None = None) -> Served | str:
-    """A marked call whose served child can be compared, or the reason it cannot: no archive body
-    is read and no vendor chosen yet. `child` is the one `_served_children` already read; without
-    it the child is looked up here."""
+def _served(cand: Candidate, marker: str | None, child: CallRecord) -> Served | str:
+    """A marked call whose served child (the one its parent names, `_served_children`) can be
+    compared, or the reason it cannot: no archive body is read and no vendor chosen yet."""
     if marker is None:
         return "no_marker"
     try:
@@ -764,49 +750,73 @@ async def _served(cand: Candidate, marker: str | None, session_factory,
         given = None
     if not isinstance(given, dict):
         return "marker_without_input"
-    cat = catalog_store.load()
-    if child is None:
-        async with session_factory() as db:
-            child = await _served_child(db, cand.record)
-    a_ep = cat.by_id.get(child.endpoint_id or "") if child is not None else None
-    if child is None:
-        return "no_served_child"
+    a_ep = catalog_store.load().by_id.get(child.endpoint_id or "")
     if a_ep is None or a_ep["provider"] not in comparable().get(cand.capability, ()):
         return "a_not_comparable"
     if child.credential_tier != "platform":
         return "a_not_on_treg_key"
-    if cand.record.served_call_ref:
-        if not cand.record.served_content_hash:
-            return "a_delivery_unknown"
-    elif not child.archive_key_hash:
-        return "a_not_archived"
+    if not cand.record.served_content_hash:
+        return "a_delivery_unknown"
     if _retention_forbidden(child.endpoint_id):
         return "a_retention_forbidden"
     return Served(cand=cand, child=child, a_ep=a_ep, given=given)
 
 
-async def _a_answer(served: Served, session_factory, _evidence):
-    """A's answer as JSON, or the reason there is none. A parent that names its served child is
-    compared only on the bytes its caller got: the child's own archived answer or, for an async
-    provider, the terminal answer filed under the child's ref, whichever has the parent's
-    `served_content_hash`. Anything else is skipped as `a_answer_not_delivered`."""
+async def _a_answer(served: Served, session_factory) -> tuple[Any, str | None]:
+    """(A's answer as JSON, None), or (None, the reason there is none): the reason is one of a
+    fixed set, never anything read from the answer, since a JSON string is an answer too. Only the
+    bytes the caller got count: the child's own archived answer (`archive.answer_bytes`, which
+    checks the bytes read against the hash) or, for an async provider, the terminal answer filed
+    under the child's ref, whichever hashes to the parent's `served_content_hash`."""
     from .. import archive
 
-    child, parent = served.child, served.cand.record
-    delivered = parent.served_content_hash if parent.served_call_ref else None
-    if delivered is None or child.archive_content_hash == delivered:
-        got = (await _evidence([child], session_factory)).get(child.id) if child.archive_key_hash else None
-        if got is None:
-            return "a_archive_unreadable" if delivered is None else "a_answer_not_delivered"
-        return "a_answer_missing" if got[2] is None else got[2]
-    terminal = (await archive.load_terminal_snapshots([(child.call_ref, child.endpoint_id)],
-                                                      session_factory=session_factory)).get(child.call_ref)
-    if terminal is None or archive.content_hash(terminal[1]) != delivered:
-        return "a_answer_not_delivered"
+    child, delivered = served.child, served.cand.record.served_content_hash
+    raw = None
+    if child.archive_key_hash and child.archive_content_hash == delivered:
+        raw = await archive.answer_bytes(child.archive_key_hash, delivered)
+    else:
+        terminal = (await archive.load_terminal_snapshots(
+            [(child.call_ref, child.endpoint_id)], session_factory=session_factory)).get(child.call_ref)
+        if terminal is not None and archive.content_hash(terminal[1]) == delivered:
+            raw = terminal[1]
+    if raw is None:
+        return None, "a_answer_not_delivered"
     try:
-        return json.loads(terminal[1])
+        return json.loads(raw), None
     except ValueError:
-        return "a_answer_not_delivered"
+        return None, "a_answer_unreadable"
+
+
+async def _observed_stats(endpoint_ids: list[str]) -> dict:
+    """The endpoints' observed routing stats, as the router ranks with them. A web process reads
+    its bound cache (`route._observed_stats`); the worker has none bound, so it reads the same
+    day buckets straight from Postgres. Unavailable stats read as none."""
+    from .call import route
+
+    if route._endpoint_observation_reader is not None:
+        return await route._observed_stats(endpoint_ids)
+    from ..infra.catalog_observations import PostgresEndpointObservationReader
+    from ..infra.db import background_session_maker
+
+    try:
+        return await PostgresEndpointObservationReader(background_session_maker).get_many(endpoint_ids)
+    except Exception:  # stats only order the endpoints
+        log.warning("endpoint stats unavailable for comparisons", exc_info=True)
+        return {}
+
+
+async def _health(endpoint_ids: list[str]) -> dict[str, str]:
+    """Each endpoint's short-window verdict (`route_health`) when health guarding is `on`, as the
+    router applies it to a treg-key child; nothing in `observe` or `off`."""
+    from ..domain.catalog.routing import health as health_rules
+    from .call import route_health
+
+    if route_health.mode() != "on" or not endpoint_ids:
+        return {}
+    tallies = await route_health.read(endpoint_ids)
+    limits = route_health.thresholds()
+    return {eid: v for eid, tally in tallies.items()
+            if (v := health_rules.verdict(tally, limits)) != health_rules.OK}
 
 
 async def _choose_b(served: Served, contract, identity: dict, tally: dict, failing: dict,
@@ -829,18 +839,17 @@ async def _choose_b(served: Served, contract, identity: dict, tally: dict, faili
         # Read again at the claim; here it only keeps a B the day cannot pay for from blocking a
         # cheaper one.
         remaining = _spend_limit_micro() - await comparisons.spent(db, _day())
-    from .call import route
-
     cat = catalog_store.load()
-    stats = await route._observed_stats([e["id"] for e in cat.for_capability(capability)
-                                         if e["provider"] in others])
+    ids = [e["id"] for e in cat.for_capability(capability) if e["provider"] in others]
+    stats, health = await _observed_stats(ids), await _health(ids)
     reason = "b_unavailable"
     for provider in others:
         target = _b_target(contract, identity, provider, org_id=org_id, given=served.given, stats=stats,
-                           max_price_micro=min(settings.compare_max_b_micro, remaining))
+                           health=health, max_price_micro=min(settings.compare_max_b_micro, remaining))
         if target is None:
             # Only to say why: the provider's first servable endpoint at any price.
-            dear = _b_target(contract, identity, provider, org_id=org_id, given=served.given, stats=stats)
+            dear = _b_target(contract, identity, provider, org_id=org_id, given=served.given, stats=stats,
+                             health=health)
             if dear is not None:
                 reason = "b_too_dear" if dear.price_micro > settings.compare_max_b_micro else "day_spend_cap"
             continue
@@ -857,7 +866,7 @@ async def _choose_b(served: Served, contract, identity: dict, tally: dict, faili
 
 
 async def _one(served: Served, cat, now, session_factory, client, store, totals, tally, failing,
-               canonical_identity, _evidence) -> str:
+               canonical_identity) -> str:
     """One served call, to `ready`, `failed`, `skipped:<reason>` or `at_limit`. The reasons are
     counted in the run's output (`skip_reasons`), so an empty run says where candidates stopped."""
     settings = get_settings()
@@ -874,9 +883,9 @@ async def _one(served: Served, cat, now, session_factory, client, store, totals,
     if isinstance(chosen, str):
         return f"skipped:{chosen}"
     b_provider, target = chosen
-    answer = await _a_answer(served, session_factory, _evidence)
-    if isinstance(answer, str):
-        return f"skipped:{answer}"
+    answer, missing = await _a_answer(served, session_factory)
+    if missing is not None:
+        return f"skipped:{missing}"
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     if a_output is None:
         return "skipped:a_output_unreadable"
