@@ -538,16 +538,35 @@ async def drain() -> None:
                 _log.error("archive recording dropped: database did not answer in %ss",
                            _STORE_TIMEOUT_S)
     global _stat_flush_task
+    # The budget starts before taking over the timer's flush: waiting out its endpoint in flight
+    # is part of it, not extra.
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _STATS_DRAIN_S
     task, _stat_flush_task = _stat_flush_task, None
-    if task is not None and not task.done() and task.get_loop() is asyncio.get_running_loop():
-        # A flush in flight holds its deltas locally until it commits or puts them back.
+    if task is not None and not task.done() and task.get_loop() is loop:
+        # A flush in flight holds its deltas locally until it commits or puts them back. Waiting
+        # for it is bounded by the budget; one still finishing puts its deltas back later and
+        # re-arms the timer then.
         task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))
+        if not task.done():
+            task.add_done_callback(lambda _: _stat_deltas and _arm_stat_flush())
     _stat_rows.clear()
-    try:
-        await flush_stats()
-    except Exception:  # noqa: BLE001 - already logged; shutdown must go on
-        pass
+    while True:
+        try:
+            await flush_stats(deadline=deadline)
+        except Exception:  # noqa: BLE001 - already logged; shutdown must go on
+            pass
+        remaining = deadline - loop.time()
+        if not _stat_deltas or remaining <= 0:
+            break
+        await asyncio.sleep(min(_STATS_DRAIN_RETRY_S, remaining))
+    if _stat_deltas:
+        # Still running (refresh_once drains mid-life): the timer tries again. At shutdown the
+        # loop cancels it and these counts are lost, which is what the warning records.
+        _log.warning("archive running totals: %d endpoint delta(s) not landed by drain",
+                     len(_stat_deltas))
+        _arm_stat_flush()
 
 
 # The running totals (ArchiveEndpointStat) are one row per endpoint shared by every team, so a
@@ -587,7 +606,6 @@ async def _ensure_stat_row(s, *, endpoint_id: str, provider: str, pol: str) -> N
 def _count_stats(*, endpoint_id: str, provider: str, pol: str, new_key: bool,
                  stable_d: int, changed_d: int, kept: bool, size: int, now) -> None:
     """Add one committed recording to its endpoint's pending delta and make sure a flush is due."""
-    global _stat_flush_task
     d = _stat_deltas.setdefault(endpoint_id, {
         "keys": 0, "stable": 0, "changed": 0, "snapshots": 0, "bodies_kept": 0, "kept_bytes": 0})
     d["provider"], d["policy"] = provider, pol
@@ -598,6 +616,11 @@ def _count_stats(*, endpoint_id: str, provider: str, pol: str, new_key: bool,
     d["snapshots"] += 1
     d["bodies_kept"] += 1 if kept else 0
     d["kept_bytes"] += size if kept else 0
+    _arm_stat_flush()
+
+
+def _arm_stat_flush() -> None:
+    global _stat_flush_task
     if _stat_flush_task is None or _stat_flush_task.done():
         _stat_flush_task = asyncio.create_task(_flush_stats_soon())
 
@@ -611,51 +634,192 @@ async def _flush_stats_soon() -> None:
             pass
 
 
-async def flush_stats() -> None:
-    """Land every pending delta: one atomic `col = col + n` per endpoint, in endpoint order so two
-    processes flushing the same endpoints cannot deadlock. A missing row is inserted and the racing
-    loser retries as an update. A failed flush puts its deltas back for the next one."""
+_STAT_COUNTS = ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_bytes")
+# How long one endpoint's UPDATE may wait for its row before the flush moves on and leaves that
+# delta for the next one. Another writer (a flush in another process, the pruner, erasure) is on
+# the row; waiting would hold this background connection for as long as it does.
+_STATS_LOCK_TIMEOUT_MS = 200
+# drain() retries endpoints left busy for at most this long, so a row held past one lock timeout
+# still lands before shutdown, and shutdown is never held longer than this.
+_STATS_DRAIN_S = 5.0
+_STATS_DRAIN_RETRY_S = 0.25
+# A cancelled flush waits this long for its endpoint transaction in flight to say whether it
+# committed. `lock_timeout` bounds only lock waits; a stalled connection or COMMIT is not bounded
+# by the database, so past this the transaction is abandoned and its connection invalidated.
+_STATS_CANCEL_WAIT_S = 2.0
+
+
+def _restore_deltas(deltas: dict[str, dict]) -> None:
+    """Put deltas that did not land back, merged with any newer delta for the same endpoint."""
+    for endpoint_id, d in deltas.items():
+        cur = _stat_deltas.get(endpoint_id)
+        if cur is None:
+            _stat_deltas[endpoint_id] = d
+            continue
+        for c in _STAT_COUNTS:
+            cur[c] += d[c]
+        cur["newest_fetch"] = max(cur["newest_fetch"], d["newest_fetch"])
+
+
+def _is_lock_timeout(exc: BaseException) -> bool:
+    """PostgreSQL cancelled the statement because `lock_timeout` elapsed (asyncpg's
+    `LockNotAvailableError`, SQLSTATE 55P03), however SQLAlchemy wrapped it."""
+    from sqlalchemy.exc import DBAPIError
+
+    if not isinstance(exc, DBAPIError):
+        return False
+    origin = exc.orig
+    return getattr(origin, "sqlstate", None) == "55P03" or (
+        origin is not None and "LockNotAvailableError" in type(origin).__name__)
+
+
+async def _land_stat(s, endpoint_id: str, d: dict, *, postgres: bool,
+                     lock_timeout_ms: int = _STATS_LOCK_TIMEOUT_MS) -> None:
+    """One endpoint's delta as one atomic `col = col + n`; a missing row is inserted and the racing
+    loser retries as an update. The caller commits."""
+    from sqlalchemy import case, literal, or_, text
     from sqlalchemy import update as sa_update
     from sqlalchemy.exc import IntegrityError
 
+    from .models import ArchiveEndpointStat as Stat
+
+    if postgres:
+        # At least 1 ms: PostgreSQL reads 0 as no timeout at all.
+        await s.execute(text(f"SET LOCAL lock_timeout = '{max(1, lock_timeout_ms)}ms'"))
+    # A delta kept back by a busy row can land after a newer one: it still adds its counts, but
+    # the newest fetch and the provider and policy seen with it only move forward.
+    fetched = literal(d["newest_fetch"], type_=Stat.newest_fetch.type)
+    newer = or_(Stat.newest_fetch.is_(None), Stat.newest_fetch <= fetched)
+    values = {"provider": case((newer, literal(d["provider"], type_=Stat.provider.type)),
+                               else_=Stat.provider),
+              "policy": case((newer, literal(d["policy"], type_=Stat.policy.type)),
+                             else_=Stat.policy),
+              "newest_fetch": case((newer, fetched), else_=Stat.newest_fetch),
+              **{c: getattr(Stat, c) + d[c] for c in _STAT_COUNTS}}
+    where = Stat.endpoint_id == endpoint_id
+    res = await s.execute(sa_update(Stat).where(where).values(**values))
+    if res.rowcount == 0:
+        try:
+            async with s.begin_nested():
+                s.add(Stat(endpoint_id=endpoint_id, provider=d["provider"], policy=d["policy"],
+                           newest_fetch=d["newest_fetch"], **{c: d[c] for c in _STAT_COUNTS}))
+        except IntegrityError:  # a concurrent flush inserted the row first
+            await s.execute(sa_update(Stat).where(where).values(**values))
+
+
+async def _land_and_commit(s, endpoint_id: str, d: dict, *, postgres: bool,
+                           lock_timeout_ms: int) -> bool:
+    """True once the endpoint's transaction committed, False when its row stayed locked past the
+    lock timeout (rolled back); any other failure rolls back and raises."""
+    try:
+        await _land_stat(s, endpoint_id, d, postgres=postgres, lock_timeout_ms=lock_timeout_ms)
+        await s.commit()
+    except Exception as exc:
+        await s.rollback()
+        if not _is_lock_timeout(exc):
+            raise
+        return False
+    return True
+
+
+async def _settle_cancelled_step(s, step: asyncio.Future) -> bool | None:
+    """After the flush is cancelled: whether the endpoint transaction in flight committed (True),
+    did not (False), or did not finish within `_STATS_CANCEL_WAIT_S` (None; it is then cancelled
+    and its connection invalidated, so nothing waits on the database). Further cancellations are
+    absorbed until then; the caller re-raises."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _STATS_CANCEL_WAIT_S
+    while not step.done() and (left := end - loop.time()) > 0:
+        try:
+            await asyncio.wait({step}, timeout=left)
+        except asyncio.CancelledError:
+            continue
+    if step.done():
+        return not step.cancelled() and step.exception() is None and bool(step.result())
+    step.cancel()
+    for cleanup in (asyncio.wait({step}, timeout=_STATS_CANCEL_WAIT_S),
+                    asyncio.wait_for(s.invalidate(), _STATS_CANCEL_WAIT_S)):
+        try:
+            await cleanup
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - best effort, already abandoned
+            pass
+    return None
+
+
+async def flush_stats(*, deadline: float | None = None) -> None:
+    """Land every pending delta, one short transaction per endpoint, in endpoint order so two
+    processes flushing the same endpoints cannot deadlock. No transaction holds one endpoint's row
+    while it waits for another's. An endpoint whose row stays locked past the lock timeout keeps
+    its delta for the next flush and the flush moves on; any other failure puts back every delta
+    that has not landed and raises.
+
+    With `deadline` (the event loop's clock, drain()'s budget) the wait for a write slot, each
+    endpoint's lock wait and the start of each endpoint all fit inside it; endpoints not started
+    by then keep their deltas. An endpoint already started is still waited for."""
     from .infra.db import background_session_maker
-    from .models import ArchiveEndpointStat
 
     global _stat_deltas
     if not _stat_deltas:
         return
+    loop = asyncio.get_running_loop()
     taken, _stat_deltas = _stat_deltas, {}
+    unlanded = dict(taken)
+    busy = 0
+    sem = _get_sem()
     try:
         # The archive's write semaphore: the flush is one of its budgeted background sessions.
-        async with _get_sem(), background_session_maker() as s:
-            for endpoint_id in sorted(taken):
-                d = taken[endpoint_id]
-                counts = ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_bytes")
-                values = {"provider": d["provider"], "policy": d["policy"],
-                          "newest_fetch": d["newest_fetch"],
-                          **{c: getattr(ArchiveEndpointStat, c) + d[c] for c in counts}}
-                where = ArchiveEndpointStat.endpoint_id == endpoint_id
-                res = await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
-                if res.rowcount == 0:
-                    try:
-                        async with s.begin_nested():
-                            s.add(ArchiveEndpointStat(
-                                endpoint_id=endpoint_id, provider=d["provider"], policy=d["policy"],
-                                newest_fetch=d["newest_fetch"], **{c: d[c] for c in counts}))
-                    except IntegrityError:  # a concurrent flush inserted the row first
-                        await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
-            await s.commit()
+        if deadline is None:
+            await sem.acquire()
+        else:
+            try:
+                await asyncio.wait_for(sem.acquire(), max(0.0, deadline - loop.time()))
+            except TimeoutError:
+                _restore_deltas(unlanded)
+                return
     except BaseException:
-        for endpoint_id, d in taken.items():
-            cur = _stat_deltas.get(endpoint_id)
-            if cur is None:
-                _stat_deltas[endpoint_id] = d
-                continue
-            for c in ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_bytes"):
-                cur[c] += d[c]
-            cur["newest_fetch"] = max(cur["newest_fetch"], d["newest_fetch"])
+        _restore_deltas(unlanded)
+        raise
+    try:
+        async with background_session_maker() as s:
+            postgres = s.get_bind().dialect.name == "postgresql"
+            for endpoint_id in sorted(taken):
+                lock_timeout_ms = _STATS_LOCK_TIMEOUT_MS
+                if deadline is not None:
+                    remaining_ms = int((deadline - loop.time()) * 1000)
+                    if remaining_ms <= 0:
+                        break
+                    lock_timeout_ms = min(lock_timeout_ms, remaining_ms)
+                # Shielded: a cancellation (drain, shutdown) waits for this endpoint's transaction
+                # to finish, so whether it committed is known and its delta is put back only if not.
+                step = asyncio.ensure_future(_land_and_commit(
+                    s, endpoint_id, taken[endpoint_id], postgres=postgres,
+                    lock_timeout_ms=lock_timeout_ms))
+                try:
+                    landed = await asyncio.shield(step)
+                except asyncio.CancelledError:
+                    committed = await _settle_cancelled_step(s, step)
+                    if committed is None:
+                        # Unknown outcome: count it at most once rather than maybe twice.
+                        _log.warning("archive running totals: an endpoint transaction did not "
+                                     "finish within %ss of cancellation; its delta is dropped",
+                                     _STATS_CANCEL_WAIT_S)
+                    if committed is not False:
+                        del unlanded[endpoint_id]
+                    raise
+                if landed:
+                    del unlanded[endpoint_id]
+                else:
+                    busy += 1
+    except BaseException:
+        _restore_deltas(unlanded)
         _log.warning("archive running totals flush failed; kept for the next one", exc_info=True)
         raise
+    finally:
+        sem.release()
+    _restore_deltas(unlanded)
+    if busy:
+        _log.warning("archive running totals: %d endpoint row(s) busy past the lock timeout; "
+                     "kept for the next flush", busy)
 
 
 async def _store(
