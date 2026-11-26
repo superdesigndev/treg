@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
+from starlette.requests import ClientDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
@@ -63,7 +64,11 @@ class _HttpRequestBody:
         return self._request.stream()
 
     async def read(self) -> bytes:
-        return await self._request.body()
+        try:
+            return await self._request.body()
+        except ClientDisconnect as exc:
+            raise CallFailure("client_disconnected", status_code=499,
+                              detail="the client closed the request before sending its body") from exc
 
 
 class _LeasedStreamingResponse(StreamingResponse):
