@@ -3358,6 +3358,35 @@ async def test_starved_turns_come_after_the_rest_of_the_shard_from_one_budget_a_
     assert line["reason"] == "lease_held" and line["orgs"] == 2
 
 
+async def test_the_stalest_starved_team_cannot_use_up_every_pass_turn(
+        org_id, store, monkeypatch):
+    """The stalest busy team stays stalest pass after pass; given the whole shared turn, it
+    would use it up every pass and the busy teams behind it would never get theirs. Each takes
+    at most an equal share of what is left, and the team behind is folded in its own share."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    behind = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=behind, name=f"team {behind}", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, behind, amount_micro=GRANT)
+        await db.commit()
+    await _queue_charge(org_id, "stalest", 900)
+    await _queue_charge(behind, "behind", 600)
+    store.leases[runtime.money_key(org_id)] = "a session that never ends"
+    real_admit = allowance_sweep.money_admission.admit
+
+    def admit(org_ids, *, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        return real_admit(org_ids, priority=priority, **named)
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert await _queued(behind) == 0 and await _queued(org_id) == 1
+    assert time.monotonic() - began < 0.3
+
+
 async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(
         org_id, store, monkeypatch):
     """Two folds of one team (a deploy that changes the number of shares): the one without the

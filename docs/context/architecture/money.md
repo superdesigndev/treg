@@ -696,8 +696,10 @@ past the bound do not make every new team scan them.
   turn a pass. A pass is one loop over its share, so a turn would also hold up every team listed
   after it: a starved team is tried once in its place, as any other, and one still busy is set
   aside to take its turn once every other team of the pass is folded, sharing one `_STARVED_TURN_S` a pass, the stalest first (at most
-  `_STARVED_TEAMS_MAX` set aside); once it is used up the rest are tried once, as any team, and
-  the next pass, which follows at once, gives them a new turn. The other teams of the share
+  `_STARVED_TEAMS_MAX` set aside). Each gets at most an equal share of what is left of it, so
+  the stalest team, whose wait stays longest while it is busy, cannot use up the turn on every
+  pass and leave the teams behind it with none; time a team does not use goes to the next. The
+  next pass, which follows at once, gives them all a new turn. The other teams of the share
   wait at most that one turn longer for their next pass. A pause of new allowance takes was not chosen: the
   exact path those calls would take writes the same team rows twice per call, and a fold
   inside each refill cannot keep up, as a refill moves a chunk worth many calls. The idle sweep

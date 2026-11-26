@@ -391,8 +391,8 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     A starved team (`_starved`) is tried once in its place, as any other; one that could not be
     folded then is set aside and given its turn after every other team of the pass, so the
     turn delays no other team of the shard. The starved teams share one turn of
-    `_STARVED_TURN_S` per pass, the stalest first; once it is used up, the rest are tried once
-    as any other team, and the next pass gives them a new turn."""
+    `_STARVED_TURN_S` per pass, the stalest first, each at most an equal share of what is left
+    of it, so the stalest cannot use it up and every starved team gets a turn each pass."""
     total, worked, after, queued_before = 0, 0, None, utcnow_naive()
     starved: list = []
     try:
@@ -419,10 +419,11 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
             break
         loop = asyncio.get_running_loop()
         turn_ends = loop.time() + _STARVED_TURN_S
-        for org_id, oldest in starved:
+        for left, (org_id, oldest) in zip(range(len(starved), 0, -1), starved):
             if not keep_going():
                 return total
-            until = turn_ends if loop.time() < turn_ends else None
+            now = loop.time()
+            until = now + (turn_ends - now) / left if now < turn_ends else None
             folded = await _fold_team(session_maker, org_id, oldest, until)
             if folded is not None:
                 total += folded
