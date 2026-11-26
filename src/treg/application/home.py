@@ -26,7 +26,7 @@ async def summary(db: AsyncSession, email: str, caller: Caller | None, *, teams:
            "catalog_tools": catalog_store.headline_counts(cat)[0].replace(",", "")}
     if caller is None:
         return out
-    balance = await call_allowance.spendable(db, caller.org_id)
+    balance = await call_allowance.spendable_ending_read(db, caller.org_id)
     # Reading the balance is one of auto top-up's trigger points, as on GET /orgs/{id}/balance.
     billing.maybe_schedule_autotopup(caller.org)
     rows = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
