@@ -1853,7 +1853,7 @@ async def test_catalog_get_preserves_sibling_order_and_comparison_evidence(clien
     assert out["siblings"][2]["reviews"] == reviews
 
 
-async def test_catalog_get_siblings_quote_grouped_prices_and_trial_limits(clients):
+async def test_catalog_get_siblings_quote_grouped_and_per_record_prices(clients):
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_get", {"endpoint_id": "apollo.people.search"}, token=token)
@@ -1863,8 +1863,9 @@ async def test_catalog_get_siblings_quote_grouped_prices_and_trial_limits(client
     assert hunter["cost"]["usd"] == 0.00245
     assert hunter["cost"]["display_unit"] == "started 10 emails"
     assert hunter["cost"]["per"] == 10 and "reported_charge" not in hunter["cost"]
-    trial = siblings["getleadsio.people.search"]
-    assert trial["usd"] == 0 and trial["cost"]["trial_calls_per_team_day"] == 5
+    per_record = siblings["getleadsio.people.search"]
+    assert per_record["usd"] == per_record["cost"]["usd"] == 0.00032
+    assert "trial_calls_per_team_day" not in per_record["cost"]
 
 
 async def test_catalog_get_uses_personal_values_in_query_and_nested_body(clients):

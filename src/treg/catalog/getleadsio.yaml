@@ -21,6 +21,7 @@ endpoints:
     method: POST
     path: /api/v1/enrich/from-email
     strict_body: true
+    expect: {json_path: results.0.success, equals: true}
     name: Enrich one person from a work email
     summary: Enrich one person from a known work email address.
     input:
@@ -60,6 +61,7 @@ endpoints:
     method: POST
     path: /api/v1/enrich/from-linkedin
     strict_body: true
+    expect: {json_path: results.0.success, equals: true}
     name: Enrich one person from a LinkedIn URL
     summary: Enrich one person from a public LinkedIn profile URL.
     input:
@@ -92,6 +94,7 @@ endpoints:
     method: POST
     path: /api/v1/enrich/from-person
     strict_body: true
+    expect: {json_path: results.0.success, equals: true}
     name: Enrich one person from name and company
     summary: Enrich one person from a name plus a company name or email domain.
     input:
@@ -123,6 +126,7 @@ endpoints:
     method: GET
     path: /api/v1/contacts/lookup/phone
     strict_query: true
+    expect: {json_path: success, equals: true}
     name: Look up one contact by phone
     summary: Find one contact record from a phone number.
     input:
@@ -141,7 +145,7 @@ endpoints:
       source_url: https://www.getleads.io/docs/#get-apiv1contactslookupphone
       checked: '2026-09-16'
       confidence: verified
-      note: One credit when success is true; a live synthetic-number miss returned success=false and used zero credits. Platform access is a $0 limited treg trial, not the vendor's database-credit price.
+      note: One credit when success is true; a live synthetic-number miss returned success=false and used zero credits.
     docs_url: https://www.getleads.io/docs/#get-apiv1contactslookupphone
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -171,6 +175,8 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      reserve: {rows: {param: body.limit_per_item, default: {value: 100, source: docs}, max: 5000}}
+      reported_charge: {path: query_credits_used, unit: credit}
       source: observed
       source_url: https://www.getleads.io/docs/#post-apiv1contactslookupcolleagues
       checked: '2026-09-16'
@@ -202,6 +208,7 @@ endpoints:
       body: {domain: treg-nonexistent-20260916.invalid, limit: 1, offset: 0}
     cost:
       <<: *one_credit_record
+      reserve: {rows: {param: body.limit, default: {value: 5000, source: docs}, max: 5000}}
       source_url: https://www.getleads.io/docs/#post-apiv1contactslookupdecision-makers
     docs_url: https://www.getleads.io/docs/#post-apiv1contactslookupdecision-makers
     verified: '2026-09-16'
@@ -233,9 +240,18 @@ endpoints:
     test_request:
       body: {filters: {domains: [treg-nonexistent-20260916.invalid], email_status: [VALID]}, limit: 1, offset: 0}
     cost:
-      <<: *one_credit_record
+      type: per_result
+      value: 0.00032
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: body.limit, default: {value: 1000, source: docs}, max: 5000}}
+      settle: {count: {path: contacts}}
+      source: observed
       source_url: https://www.getleads.io/docs/#post-apiv1contactssearch
-      note: One credit per returned record. Live one-row pages each reported and consumed one credit; a zero-row page reported and consumed zero.
+      checked: '2026-11-27'
+      confidence: verified
+      note: Priced per returned contact at treg's agreed search rate, which is lower than the provider's other credit-priced tools. GetLeads.io charges one credit per returned record. Live one-row pages each reported and consumed one credit; a zero-row page reported and consumed zero.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactssearch
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -316,6 +332,8 @@ endpoints:
       queryParams: {limit: 1, min_confidence: 0.5}
     cost:
       <<: *one_credit_record
+      reserve: {rows: {param: queryParams.limit, default: {value: 50, source: docs}, max: 200}}
+      reported_charge: {path: queryCreditsUsed, unit: credit}
       source_url: https://www.getleads.io/docs/#get-apiv1fundingsignals
       note: One credit per returned record; a live limit=1 request returned one record and reported queryCreditsUsed=1.
     docs_url: https://www.getleads.io/docs/#get-apiv1fundingsignals
@@ -346,6 +364,8 @@ endpoints:
       queryParams: {limit: 1, min_confidence: 0.5}
     cost:
       <<: *one_credit_record
+      reserve: {rows: {param: queryParams.limit, default: {value: 50, source: docs}, max: 200}}
+      reported_charge: {path: queryCreditsUsed, unit: credit}
       source_url: https://www.getleads.io/docs/#get-apiv1acquisitionssignals
       note: One credit per returned record; a live zero-record response reported queryCreditsUsed=0.
     docs_url: https://www.getleads.io/docs/#get-apiv1acquisitionssignals

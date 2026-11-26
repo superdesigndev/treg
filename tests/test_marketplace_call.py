@@ -2356,15 +2356,6 @@ def trial_on(monkeypatch):
     get_settings.cache_clear()
 
 
-@pytest.fixture()
-def getleadsio_trial_on(monkeypatch):
-    monkeypatch.setenv("TREG_PLATFORM_KEY_GETLEADSIO", "PLATFORM-GETLEADSIO")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "getleadsio")
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
-
-
 async def test_a_trial_call_is_served_keyless_and_charges_NOTHING(clients: AsyncClient, trial_on,
                                                                   monkeypatch):
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"c": 231.5, "pc": 230.1}'))
@@ -2498,31 +2489,6 @@ async def test_another_orgs_usage_never_burns_MY_trial(clients: AsyncClient, tri
         await db.commit()
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"c": 1}'))
     assert (await clients.get("/call/finnhub.quote?symbol=AAPL")).status_code == 200
-
-
-@pytest.mark.parametrize(("seeded", "called", "body"), [
-    # free calls do not consume the paid trial allowance
-    (("getleadsio.people.search.count", "/api/v1/contacts/search/count"),
-     "getleadsio.people.search", {"filters": {"domains": ["example.com"]}, "limit": 1}),
-    # free calls still work after the paid trial allowance is spent
-    (("getleadsio.people.search", "/api/v1/contacts/search"),
-     "getleadsio.people.search.count", {"filters": {"domains": ["example.com"]}}),
-])
-async def test_getleadsio_free_and_paid_calls_keep_separate_trial_allowances(
-        clients: AsyncClient, getleadsio_trial_on, seeded, called, body):
-    from treg.models import CallRecord
-
-    tool_name, path = seeded
-    async with session_maker() as db:
-        for _ in range(5):
-            db.add(CallRecord(
-                org_id=1, user_email="u@example.com",
-                tool_name=tool_name, method="POST", path=path, status_code=200,
-                credential_tier="platform",
-            ))
-        await db.commit()
-    result = await clients.post(f"/call/{called}", json=body)
-    assert result.status_code == 200, result.text
 
 
 # ---- X: the catalog price and the metered price are the same number ----------------------------
