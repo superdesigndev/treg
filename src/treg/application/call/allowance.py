@@ -432,7 +432,8 @@ class _Fold(enum.Enum):
     GAVE_UP = "gave_up"  # admission or row locks not free in time, too long a queue, or a fault
 
 
-async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
+async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = None,
+                        found: list[int] | None = None) -> _Fold:
     """Fold one batch of a team's queued charges now, in its own transaction. For a call that
     must know what the ledger took for it (`_settled`), which reads its entry after each batch
     and comes back while the queue is long; everything else is left to the background loop.
@@ -442,7 +443,10 @@ async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
     It never waits on another fold, here or elsewhere, and never waits long for the team's
     admission or row locks while it holds a connection: the call is answering, and the
     background fold applies the queue anyway. `budget` holds the batches the call has left and
-    is spent here, so a call folds no more than `_BACKLOG_BATCHES` in all."""
+    is spent here, so a call folds no more than `_BACKLOG_BATCHES` in all. With `call_id`, the
+    call's settle entry is read in the fold's own transaction and appended to `found` once that
+    transaction has committed, so what the ledger took is known even if the call's deadline
+    passes while the session closes or the lease is given back."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     try:
         if budget[0] <= 0:
@@ -482,9 +486,15 @@ async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
                 await bound_lock_wait(db)
                 folded = await allowance.fold_charges_in_transaction(
                     db, org_id, limit=_BACKLOG_FOLD)
+                settled = (await allowance.settled_micro(db, org_id, call_id)
+                           if call_id is not None else None)
                 await db.commit()
+                if settled is not None and found is not None:
+                    found.append(settled)
         finally:
-            await store.release_lease(key, token)
+            # Given back by a task of its own: a deadline that passes while the store answers
+            # stops this wait, not the release, which deletes only this token's lease.
+            await asyncio.shield(_release_lease_soon(store, key, token))
         return _Fold.SHORT if folded.claimed < _BACKLOG_FOLD else _Fold.MORE
     except money_admission.AdmissionTimeout:
         return _Fold.GAVE_UP
@@ -494,6 +504,17 @@ async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
         else:
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
         return _Fold.GAVE_UP
+
+
+_lease_releases: set[asyncio.Task] = set()
+
+
+def _release_lease_soon(store, key: str, token: str) -> asyncio.Task:
+    """Release `token`'s lease in a task that outlives a cancelled caller."""
+    task = asyncio.ensure_future(store.release_lease(key, token))
+    _lease_releases.add(task)
+    task.add_done_callback(_lease_releases.discard)
+    return task
 
 
 async def _team_session_ended(org_id: int) -> None:
@@ -1044,12 +1065,14 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
     shares one deadline, `_SETTLED_WAIT_S`, and a fold that gives up ends it. `amount`, the
     charge, when the entry is not there by then or cannot be read: the charge is written, and
     "nothing" would be the one answer known to be wrong."""
-    budget = [_BACKLOG_BATCHES]
+    budget, found = [_BACKLOG_BATCHES], []
     try:
         async with asyncio.timeout(_SETTLED_WAIT_S) as deadline:
             loop = asyncio.get_running_loop()
             while True:
-                outcome = await _fold_backlog(org_id, budget)
+                outcome = await _fold_backlog(org_id, budget, call_id, found)
+                if found:
+                    return found[0]
                 if outcome is _Fold.HERE:
                     await _team_session_ended(org_id)
                 # The timeout's cancel can be absorbed on the way out: a money session that
@@ -1066,7 +1089,8 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
                 if outcome is _Fold.ELSEWHERE:
                     await asyncio.sleep(0.05)
     except TimeoutError:
-        pass
+        if found:  # committed before the deadline cut the fold's cleanup short
+            return found[0]
     except Exception:
         log.error("reading the settle entry of allowance call %s failed", call_id, exc_info=True)
         return amount

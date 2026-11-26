@@ -2152,6 +2152,31 @@ async def test_a_call_reads_no_ledger_once_its_deadline_has_passed(org_id, store
     assert reads == []
 
 
+async def test_a_slow_lease_release_neither_holds_the_call_nor_loses_its_answer(
+        org_id, store, monkeypatch):
+    """The batch with the call's charge has committed, and the store is slow to take the lease
+    back. The call answers with what the ledger took, within its deadline, and the lease is
+    still given back after the call has gone."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 10, reserved_micro=10)])
+        await db.commit()
+    release = store.release_lease
+
+    async def slow_release(*args, **kwargs):
+        await asyncio.sleep(0.5)
+        return await release(*args, **kwargs)
+
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 99) == 10
+    assert time.monotonic() - started < 0.4
+    assert runtime.money_key(org_id) in store.leases, "still being given back"
+    await asyncio.gather(*runtime._lease_releases)
+    assert runtime.money_key(org_id) not in store.leases
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
