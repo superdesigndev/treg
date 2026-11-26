@@ -929,7 +929,7 @@
       return { text: ROLE_LABEL[k] || k, share: n[k] / rows.length, name: adj ? adj + ' ' + noun : noun.charAt(0).toUpperCase() + noun.slice(1),
         facts: [['Level', level && levels[level] * 3 >= mine.length ? LEVEL_LABEL[level] + ' ' + Math.round(levels[level] / mine.length * 100) + '%' : ''],
                 ['Into', topics.map(function (t) { return TOPIC_LABEL[t] || t; }).join(', ')],
-                ['Reach', reach ? (reach >= 1000 ? (reach / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : reach) + ' followers' : '']].filter(function (f) { return f[1]; }) };
+                ['Their own audience', reach ? (reach >= 1000 ? (reach / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : reach) + ' followers, typical' : '']].filter(function (f) { return f[1]; }) };
     });
   }
   function drawCard(c) {
