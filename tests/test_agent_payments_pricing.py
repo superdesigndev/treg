@@ -4,6 +4,8 @@ recorded as the answer the wallet got. docs/context/architecture/agent-payments.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from eth_account import Account
 from httpx import AsyncClient
@@ -34,6 +36,19 @@ def overflow_on(monkeypatch, payments_on):
     monkeypatch.setenv("TREG_OVERFLOW_KEY_ORTHOGONAL", "ORTH-KEY")
     get_settings.cache_clear()
     yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def terms_on(monkeypatch, payments_on):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TERMS_BINDING", "1")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _terms_switch(monkeypatch, on: bool) -> None:
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TERMS_BINDING", "1" if on else "0")
     get_settings.cache_clear()
 
 
@@ -129,7 +144,7 @@ async def test_a_wallet_on_credit_is_not_asked_to_pay_again_for_an_overflow(
 
 # ---- a signed payment binds its price -----------------------------------------------------------
 async def test_an_x402_payment_signed_before_a_price_change_is_refused(
-        anon: AsyncClient, payments_on, facilitator, monkeypatch):
+        anon: AsyncClient, payments_on, facilitator, monkeypatch, terms_on):
     calls: list = []
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
@@ -146,7 +161,7 @@ async def test_an_x402_payment_signed_before_a_price_change_is_refused(
 
 
 async def test_an_mpp_payment_signed_before_a_price_change_is_refused(
-        anon: AsyncClient, payments_on, chain, monkeypatch):
+        anon: AsyncClient, payments_on, chain, monkeypatch, terms_on):
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     monkeypatch.setenv("TREG_PLATFORM_MARGIN", "1.0")
     get_settings.cache_clear()
@@ -163,7 +178,7 @@ def _raise_margin(monkeypatch) -> None:
 
 @pytest.mark.parametrize("proof", ["mpp", "siwx"])
 async def test_credit_does_not_pay_a_price_raised_after_the_proof(
-        wallet: AsyncClient, payments_on, chain, monkeypatch, proof):
+        wallet: AsyncClient, payments_on, chain, monkeypatch, proof, terms_on):
     account = Account.create()
     if proof == "mpp":
         assert (await _mpp_paid(wallet, chain, account)).status_code == 200
@@ -185,7 +200,7 @@ async def test_credit_does_not_pay_a_price_raised_after_the_proof(
 
 
 async def test_a_pushed_transfer_signed_before_a_price_change_is_kept_as_credit(
-        wallet: AsyncClient, payments_on, chain, monkeypatch):
+        wallet: AsyncClient, payments_on, chain, monkeypatch, terms_on):
     """A push transfer is on chain before treg sees it: it is credited on the terms it was sent
     under, and the wallet confirms the new price with its credit."""
     from mpp import Credential
@@ -205,7 +220,7 @@ async def test_a_pushed_transfer_signed_before_a_price_change_is_kept_as_credit(
 
 
 async def test_a_payment_is_credited_at_the_fee_it_was_offered(anon: AsyncClient, payments_on,
-                                                               monkeypatch):
+                                                               monkeypatch, terms_on):
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, payer = _x402_credential(challenge)
     monkeypatch.setenv("TREG_AGENT_PAYMENTS_FEE_BPS", "500")   # the payment floor is unchanged
@@ -227,6 +242,48 @@ async def test_an_x402_payment_without_a_resource_description_still_pays(anon: A
     r = await anon.get(f"/call/{EP}?aweme_id=7",
                        headers={"PAYMENT-SIGNATURE": encode_payment_signature(payload)})
     assert r.status_code == 200, r.text
+
+
+@pytest.mark.parametrize("issued_by", ["new", "old"])
+async def test_a_rolling_deploy_reads_both_challenge_formats(wallet: AsyncClient, payments_on,
+                                                             chain, monkeypatch, issued_by):
+    """An instance with the switch off still reads a challenge that carries terms, and one with it
+    on reads a challenge that carries none: a pushed transfer pays wherever its retry lands."""
+    from mpp import Credential
+
+    _terms_switch(monkeypatch, issued_by == "new")
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "ce" * 32})
+    _terms_switch(monkeypatch, issued_by == "old")
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 200, r.text
+
+
+async def test_terms_expire(anon: AsyncClient, payments_on, terms_on, facilitator, monkeypatch):
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    later = time.time() + agent_payments._terms_ttl_s() + 1
+    monkeypatch.setattr(agent_payments.time, "time", lambda: later)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
+    assert facilitator.settles == 0
+
+
+async def test_one_x402_challenge_s_terms_buy_one_authorization(anon: AsyncClient, payments_on,
+                                                                terms_on, facilitator):
+    """The terms ride outside what the wallet signs, so they are claimed by the first
+    authorization made under them; another one signed from the same challenge buys nothing."""
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    first, _ = _x402_credential(challenge)
+    second, _ = _x402_credential(challenge)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": first})).status_code == 200
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": second})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "challenge_used", r.text
+    assert facilitator.settles == 1
+    again = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": first})
+    assert again.json()["detail"]["reason"] == "payment_replayed"
 
 
 # ---- the record is the answer -------------------------------------------------------------------

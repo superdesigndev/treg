@@ -230,19 +230,33 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     offer = Offer(
         amount_micro=amount, method=method.upper(), path=path, query=query,
         resource_url=resource_url, description=description, host=_hostname(host),
-        terms=_terms_token(resource_url, Terms(max(charged, 0), settings.agent_payments_fee_bps)))
+        terms=(_terms_token(resource_url, Terms(max(charged, 0), settings.agent_payments_fee_bps))
+               if settings.agent_payments_terms_binding else ""))
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
                      proof_only=proof_only, is_async=bool(ep.get("async")))
 
 
 @dataclass(frozen=True)
 class Terms:
-    """What a payer was offered for one call: its quote (margin included) and treg's fee."""
+    """What a payer was offered for one call: its quote (margin included) and treg's fee. `nonce`
+    (the token's random part) and `expires` (Unix seconds) are set for terms read from a token."""
     quote_micro: int
     fee_bps: int
+    nonce: str = ""
+    expires: int = 0
 
 
-_TERMS = re.compile(r"q(\d{1,15})f(\d{1,5})r([0-9a-f]{16})m([0-9a-f]{32})")
+_TERMS = re.compile(r"q(\d{1,15})f(\d{1,5})e(\d{1,12})r([0-9a-f]{16})m([0-9a-f]{32})")
+_TERMS_SHAPE = re.compile(r"q\d+f\d+e\d+r[0-9a-f]+m[0-9a-f]+")
+TERMS_NS = "agentpay-terms"
+# Past the longest a challenge lives (MPP's TTL, x402's timeout, SIWX's five minutes) by a grace.
+TERMS_GRACE_S = 60
+
+
+def _terms_ttl_s() -> int:
+    settings = get_settings()
+    return max(settings.agent_payments_mpp_challenge_ttl_s,
+               settings.agent_payments_x402_max_timeout_s, 300) + TERMS_GRACE_S
 
 
 def _terms_mac(resource_url: str, body: str) -> str:
@@ -254,19 +268,28 @@ def _terms_token(resource_url: str, terms: Terms) -> str:
     """An opaque, letters-and-digits token for `terms` on this request, authenticated with treg's
     secret. It rides where the payer echoes or signs it (MPP's challenge data, x402's `extra`, the
     SIWX nonce), so a payment pays on the terms it was offered, not today's."""
-    body = f"q{terms.quote_micro}f{terms.fee_bps}r{secrets.token_hex(8)}"
+    expires = int(time.time()) + _terms_ttl_s()
+    body = f"q{terms.quote_micro}f{terms.fee_bps}e{expires}r{secrets.token_hex(8)}"
     return f"{body}m{_terms_mac(resource_url, body)}"
 
 
-def signed_terms(token: str, resource_url: str) -> Terms | None:
-    """The terms `token` names for this request, or None when treg did not issue it for it."""
-    found = _TERMS.fullmatch(token or "")
+def signed_terms(token: str, resource_url: str, today: Terms) -> Terms | None:
+    """The terms a payment or proof was offered for this request: `today`'s when it carries no
+    token (a challenge issued before tokens were, or with the switch off; dropping one only gets
+    what a fresh challenge offers), or None when it carries one treg did not issue for this
+    request or one that expired."""
+    if not _TERMS_SHAPE.fullmatch(token or ""):
+        return today
+    found = _TERMS.fullmatch(token)
     if found is None:
         return None
     body = token[:token.rindex("m")]
-    if not hmac.compare_digest(found.group(4), _terms_mac(resource_url, body)):
+    if not hmac.compare_digest(found.group(5), _terms_mac(resource_url, body)):
         return None
-    return Terms(int(found.group(1)), int(found.group(2)))
+    if int(found.group(3)) < time.time():
+        return None
+    return Terms(int(found.group(1)), int(found.group(2)), nonce=found.group(4),
+                 expires=int(found.group(3)))
 
 
 def _hostname(host: str) -> str:
@@ -418,7 +441,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     # The terms the payer was offered, which treg's own token names: a price that rose since then
     # is not what the payer agreed to.
-    signed = signed_terms(verified.terms, paid.offer.resource_url)
+    signed = signed_terms(verified.terms, paid.offer.resource_url,
+                          Terms(paid.quote_micro, get_settings().agent_payments_fee_bps))
     agreed = signed is not None and signed.quote_micro >= paid.quote_micro
     if verified.kind == "proof":
         if not agreed:
@@ -449,6 +473,11 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
+    if agreed and signed.nonce and not verified.moved and not await _claim_terms(signed, verified):
+        # The token rides outside what an x402 wallet signs, so it buys one authorization: the
+        # first one made under it, before it expires.
+        raise await challenge(paid, reason="challenge_used",
+                              message="another payment already used this challenge's terms")
     # A transfer the payer already sent is kept on the terms it was sent under, whatever the call
     # costs now; it never draws credit, so it settles below.
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro,
@@ -477,6 +506,20 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     if not agreed:
         raise await _price_changed(paid, kept=True)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+async def _claim_terms(terms: Terms, verified: Verified) -> bool:
+    """One authorization per terms token, claimed until the token expires. The same authorization
+    presented again passes here, so its replay is refused as one (`_claim`)."""
+    async with session_maker() as db:
+        await ratestore.sweep(db, TERMS_NS)
+        key = f"{verified.protocol}:{terms.nonce}"   # one 402 offers every rail the same terms
+        claimed = await ratestore.kv_claim(db, TERMS_NS, key,
+                                           max(terms.expires - time.time(), 0) + TERMS_GRACE_S,
+                                           v={"proof": verified.proof_id})
+        held = None if claimed else await ratestore.kv_get(db, TERMS_NS, key)
+        await db.commit()
+    return claimed or (held or {}).get("proof") == verified.proof_id
 
 
 async def _price_changed(paid: PaidOffer, *, kept: bool = False) -> PaymentChallenge:

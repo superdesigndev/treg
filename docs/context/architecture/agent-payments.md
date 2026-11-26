@@ -259,7 +259,8 @@ the wallet's credit (not paid back as money), the fee when it is not 0, and, wit
 challenge, that a wallet with credit signs it and pays nothing now. A first challenge has
 `reason: payment_required`; a refusal names `reason`: `credit_insufficient` (a proof whose credit
 does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query or amount),
-`price_changed` (signed on terms that no longer buy the call),
+`price_changed` (signed on terms that no longer buy the call), `challenge_used` (x402: another
+payment already used this challenge's terms),
 `payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
 `valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`, `unknown_wallet` and
@@ -289,8 +290,9 @@ headers (`X-Treg-Payment` among them) and no receipt.
 - A payment or proof is bound to the terms it was offered, not only to its amount: every quote
   under the floor asks the same amount, so a price change between the 402 and the payment (a
   markup or fee change) would otherwise let it pay at the new price. `quote` mints a terms token
-  (`agent_payments.signed_terms`: the quote and `fee_bps`, a random part, and an HMAC with
-  `agent_payments_secret` over the resource URL), letters and digits only. Each rail carries it
+  (`agent_payments.signed_terms`: the quote and `fee_bps`, an expiry past the longest-lived
+  challenge, a random part, and an HMAC with `agent_payments_secret` over the resource URL),
+  letters and digits only. Each rail carries it
   where the payer echoes or signs it: MPP's challenge opaque data (`meta`, HMAC-bound by pympp)
   on the proof and the payment challenges; x402's `accepted.extra.tregTerms` (the payment echoes
   `accepted` whole, and the facilitator is asked with the requirements the payment was signed
@@ -301,6 +303,19 @@ headers (`X-Treg-Payment` among them) and no receipt.
   a push transfer (`Verified.moved`) is already on chain, so on changed terms it is claimed and
   credited first and then answered `price_changed`, and the wallet pays the new price from that
   credit with the zero-amount proof. A payment is credited less the fee it was offered.
+- On x402 the token rides outside what the wallet signs (EIP-3009 covers the transfer, not
+  `extra`), so the HMAC proves only that treg offered those terms. They therefore buy one
+  authorization per rail, the first presented while the token is live (`agentpay-terms`, kept
+  until the token expires; the same authorization presented again is refused as a replay), and a
+  second one signed from the same challenge answers `challenge_used` with a fresh challenge. MPP's
+  terms sit in the challenge the wallet echoes under pympp's HMAC, and SIWX's in the nonce it
+  signs.
+- **Rollout.** Every instance reads both formats: a credential without a token (`signed_terms`
+  finds none) is taken on today's terms, which is what a fresh challenge would offer, while a
+  token that is malformed, not this request's, or expired buys nothing. Tokens are issued only
+  while `agent_payments_terms_binding` is on (off by default). Switch it on only once every
+  instance runs the reading code: an instance that cannot read a token refuses an MPP credential
+  carrying one before anything is recorded, which loses a pushed transfer.
 - Neither rail binds the request body. Every call with the same terms asks the same amount, so a
   copied, unused payment can pay once for another body of the same route and query on the same
   terms, as its wallet.
@@ -402,7 +417,7 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 
 `agent_payments_enabled`, `agent_payments_secret` (32+ characters), `agent_payments_realm`,
 `agent_payments_min_payment_micro`, `agent_payments_fee_bps`, `agent_payments_credit_proof_max_s`,
-`agent_payments_mpp_challenge_ttl_s`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
+`agent_payments_mpp_challenge_ttl_s`, `agent_payments_terms_binding`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
 Tempo: `..._tempo_recipient`,
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
 `..._tempo_rpc_api_key` (needs `..._tempo_rpc_url`),

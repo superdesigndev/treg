@@ -1076,6 +1076,10 @@ class Settings(BaseSettings):
     agent_payments_credit_proof_max_s: int = Field(default=150, ge=30, le=3600)
     # How long an MPP challenge is valid; standard clients cap the signed transfer's expiry by it.
     agent_payments_mpp_challenge_ttl_s: int = Field(default=120, ge=30, le=3600)
+    # Issue the terms token (quote and fee) in every challenge. Every instance reads it either
+    # way; switch it on only once no instance runs code that cannot, or a pushed transfer could
+    # reach one that refuses it before anything is recorded.
+    agent_payments_terms_binding: bool = False
     agent_payments_tempo_recipient: str = ""
     agent_payments_tempo_chain_id: int = 42431          # Tempo Moderato testnet; 4217 is mainnet
     agent_payments_tempo_rpc_url: str = ""              # empty: the chain's public RPC

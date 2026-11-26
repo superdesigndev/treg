@@ -1252,6 +1252,7 @@ async def test_a_wallet_whose_team_was_deleted_gets_a_new_team(anon: AsyncClient
         await db.execute(delete(AgentPayer).where(AgentPayer.address == payer))
         await db.execute(delete(Membership).where(Membership.org_id == old_org))
         await db.commit()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, _ = _x402_credential(challenge, account)
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
     assert r.status_code == 200, r.text
