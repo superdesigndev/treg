@@ -486,7 +486,8 @@ committed and raises; a cancellation first waits for the endpoint transaction in
 finish, so the ones already committed are not counted again. `drain()` (shutdown, and `refresh_once`
 mid-life) retries endpoints left busy within a budget of a few seconds that bounds the whole
 pass: the wait for a write slot, each endpoint's lock wait (cut to what is left) and the start of
-each endpoint all fit in it, and an endpoint already started is still waited for. It then logs
+each endpoint all fit in it, and so does waiting out the timer's endpoint in flight, which
+drain() takes over; an endpoint already started is still waited for. It then logs
 how many deltas did not land and re-arms the timer, which shutdown cancels. Across endpoints the
 totals are not one snapshot, which is fine for a staff report; a process that dies between
 flushes loses that window, which is fine because nothing serves or bills from the totals.

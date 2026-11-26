@@ -1531,6 +1531,46 @@ async def test_drain_stops_inside_its_budget_however_many_rows_are_busy(
     assert archive._stat_deltas == {}
 
 
+async def test_drain_counts_the_flush_it_takes_over_against_its_budget(
+        clients: AsyncClient, monkeypatch):
+    """drain() waits out the timer's endpoint in flight inside its own budget: when that wait
+    uses it up, the in-flight endpoint still commits exactly once, the rest stay pending for the
+    re-armed timer, and the later flush lands them exactly once."""
+    import asyncio
+
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    monkeypatch.setattr(archive, "_STATS_DRAIN_S", 0.3)
+    for ep in ("stats.a", "stats.b"):
+        _pending_stat(ep)
+    await archive.flush_stats()
+    for ep in ("stats.a", "stats.b"):
+        _pending_stat(ep)
+
+    real_land = archive._land_stat
+    started = asyncio.Event()
+    async def slow_a(s, endpoint_id, d, **kw):
+        if endpoint_id == "stats.a" and not started.is_set():
+            started.set()
+            await asyncio.sleep(0.5)                    # longer than drain's whole budget
+        await real_land(s, endpoint_id, d, **kw)
+    monkeypatch.setattr(archive, "_land_stat", slow_a)
+
+    if archive._stat_flush_task is not None:
+        archive._stat_flush_task.cancel()
+    archive._stat_flush_task = asyncio.create_task(archive.flush_stats())
+    await started.wait()
+    await archive.drain()
+
+    got = await _stat_snapshots()
+    assert (got["stats.a"], got["stats.b"]) == ((2, 20), (1, 10))
+    assert set(archive._stat_deltas) == {"stats.b"}
+    assert archive._stat_flush_task is not None and not archive._stat_flush_task.done()
+    await archive.flush_stats()
+    got = await _stat_snapshots()
+    assert (got["stats.a"], got["stats.b"]) == ((2, 20), (2, 20))
+    assert archive._stat_deltas == {}
+
+
 async def test_drain_budget_holds_against_real_row_locks(clients: AsyncClient, monkeypatch):
     """The same bound against PostgreSQL row locks: one pass over the held rows would wait far
     longer than the budget, yet drain() returns while they are still held, and every delta lands

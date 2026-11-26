@@ -538,14 +538,16 @@ async def drain() -> None:
                 _log.error("archive recording dropped: database did not answer in %ss",
                            _STORE_TIMEOUT_S)
     global _stat_flush_task
+    # The budget starts before taking over the timer's flush: waiting out its endpoint in flight
+    # is part of it, not extra.
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _STATS_DRAIN_S
     task, _stat_flush_task = _stat_flush_task, None
-    if task is not None and not task.done() and task.get_loop() is asyncio.get_running_loop():
+    if task is not None and not task.done() and task.get_loop() is loop:
         # A flush in flight holds its deltas locally until it commits or puts them back.
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     _stat_rows.clear()
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + _STATS_DRAIN_S
     while True:
         try:
             await flush_stats(deadline=deadline)
