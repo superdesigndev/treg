@@ -4,7 +4,10 @@ recorded as the answer the wallet got. docs/context/architecture/agent-payments.
 
 from __future__ import annotations
 
+import json
 import time
+
+import httpx
 
 import pytest
 from eth_account import Account
@@ -324,6 +327,7 @@ async def test_a_kept_transfer_sent_again_gets_its_answer_again(
     ("https://registry.test:8443/tools", "pay.registry.test",
      f"https://pay.registry.test:8443/tools/call/{EP}?aweme_id=7"),
     ("https://registry.test:8443", "::1", f"https://[::1]:8443/call/{EP}?aweme_id=7"),
+    ("https://registry.test:8443", "[::1]", f"https://[::1]:8443/call/{EP}?aweme_id=7"),
 ])
 async def test_the_proof_url_keeps_the_prefix_and_brackets_an_ipv6_host(
         wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch, public_url, realm, expected):
@@ -346,9 +350,109 @@ async def test_the_proof_url_keeps_the_prefix_and_brackets_an_ipv6_host(
     there = expected.replace("/tools", "")
     async with AsyncClient(transport=ASGITransport(app=app)) as client:
         asked = await client.get(there)
-        assert any(c.request["amount"] == "0" for c in _mpp_challenges(asked)), asked.text
+        proofs = [c for c in _mpp_challenges(asked) if c.request["amount"] == "0"]
+        # The realm a wallet compares with the host it called: never bracketed.
+        assert proofs and {c.realm for c in proofs} == {realm.strip("[]")}, asked.text
         paid = await client.get(there, headers={"Authorization": await _mpp_proof(asked, account)})
     assert paid.status_code == 200 and paid.headers["X-Treg-Payment"] == "credit", paid.text
+
+
+from mpp.methods.tempo.intents import ChargeIntent  # noqa: E402
+
+# pympp's own checks, captured before the `chain` fixture replaces them.
+_SDK_CHARGE = (ChargeIntent.validate, ChargeIntent.broadcast)
+
+
+@pytest.fixture
+def sdk_tempo(monkeypatch, payments_on):
+    """The MPP rail as production runs it, pympp's validation, settlement and treg's replay store
+    included; only the Tempo node is faked. `receipts` maps a transaction hash to its receipt."""
+    monkeypatch.setattr(ChargeIntent, "validate", _SDK_CHARGE[0])
+    monkeypatch.setattr(ChargeIntent, "broadcast", _SDK_CHARGE[1])
+    receipts: dict[str, dict] = {}
+
+    def node(request: httpx.Request) -> httpx.Response:
+        call = json.loads(request.content)
+        result = {"eth_chainId": hex(42431),
+                  "eth_getTransactionReceipt": receipts.get((call["params"] or [""])[0])}.get(
+                      call["method"])
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": call["id"], "result": result})
+
+    rail = MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT,
+                        chain_id=42431, store=agent_payments.ReplayStore())
+    rail._chain._client._transport = httpx.MockTransport(node)
+    x402 = next(r for r in agent_payments._rails if r.protocol == "x402")
+    agent_payments.configure([rail, x402])
+    return receipts
+
+
+def _landed(receipts: dict, challenge: httpx.Response, payer: str, tx: str) -> str:
+    """A transfer of the challenge's amount, bound to it by its memo, as the node reports it;
+    returns the push credential."""
+    from mpp import Credential
+    from mpp.methods.tempo._attribution import encode
+    from mpp.methods.tempo.intents import TRANSFER_WITH_MEMO_TOPIC
+
+    offered = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0")
+    word = lambda address: "0x" + address.lower().removeprefix("0x").rjust(64, "0")  # noqa: E731
+    receipts[tx] = {"status": "0x1", "transactionHash": tx, "from": payer, "logs": [{
+        "address": offered.request["currency"],
+        "topics": [TRANSFER_WITH_MEMO_TOPIC, word(payer), word(RECIPIENT),
+                   encode(offered.id, offered.realm)],
+        "data": "0x" + format(int(offered.request["amount"]), "064x")}]}
+    return Credential(challenge=offered.to_echo(),
+                      payload={"type": "hash", "hash": tx}).to_authorization()
+
+
+async def test_a_kept_transfer_resent_through_the_sdk_gets_its_answer_again(
+        wallet: AsyncClient, sdk_tempo, terms_on, monkeypatch):
+    """pympp refuses a transaction hash it has seen, so the resend is answered before it is
+    verified: the same final 409, never a challenge to pay."""
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    payer = Account.create().address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    first = _landed(sdk_tempo, challenge, payer, "0x" + "e1" * 32)
+    second = _landed(sdk_tempo, challenge, payer, "0x" + "e2" * 32)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": first})).status_code == 200
+    answers = [await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": second})
+               for _ in range(2)]
+    assert [a.status_code for a in answers] == [409, 409], answers[-1].text
+    assert answers[1].json()["detail"]["reason"] == "challenge_used"
+    assert answers[1].headers["X-Treg-Payment-Reference"] == answers[0].headers["X-Treg-Payment-Reference"]
+    assert "www-authenticate" not in answers[1].headers
+    assert len(calls) == 1 and await _balance(payer) == 2 * FLOOR - EP_MICRO
+
+
+async def test_a_kept_transfer_settled_by_the_reconciler_keeps_its_answer(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """A kept transfer whose settlement went unanswered is credited later by the reconciler; a
+    resend still gets the kept answer, recorded with the payment when it was claimed."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    first = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "e3" * 32})
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": first.to_authorization()})).status_code == 200
+    second = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "e4" * 32}).to_authorization()
+    chain.unknown = True
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": second})
+    assert r.status_code == 503, r.text
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": second})).status_code == 503
+    async with session_maker() as db:
+        pending = (await db.execute(select(AgentPayment).where(
+            AgentPayment.status == "settling"))).scalar_one()
+    await agent_payments._credit(pending.id, "0x" + "ab" * 32)   # what the reconciler books
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": second})
+    assert r.status_code == 409 and r.json()["detail"]["reason"] == "challenge_used", r.text
+    assert r.headers["X-Treg-Payment-Reference"] == "0x" + "ab" * 32
+    assert len(calls) == 1
 
 
 async def test_challenge_used_does_not_claim_the_first_call_ran(

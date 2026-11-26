@@ -438,6 +438,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         raise await challenge(paid, reason="ambiguous_payment",
                               message="send one payment credential, not several")
     rail, credential = presented[0]
+    if (resent := await _resent_kept(paid, rail, credential)) is not None:
+        raise resent
     check = _once(_limit_verification)
     try:
         verified = await rail.verify(credential, paid.offer, before_remote=check)
@@ -492,15 +494,10 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         agreed, used = False, True
     # A transfer the payer already sent is kept on the terms it was sent under, whatever the call
     # costs now; it never draws credit, so it settles below.
-    payment_id, draw = await _claim(verified, org_id, paid.quote_micro,
-                                    fee_bps=signed.fee_bps if signed is not None else None)
+    payment_id, draw = await _claim(
+        verified, org_id, paid.quote_micro, fee_bps=signed.fee_bps if signed is not None else None,
+        kept=(_digest(credential), used) if not agreed else None)
     if draw is None:
-        if verified.moved and (kept := await _kept_before(verified.proof_id)) is not None:
-            # The same pushed transfer sent again after its answer was lost: it ran no call
-            # then, so it gets that answer again, never a challenge to pay anew.
-            org, reference, was_used = kept
-            raise await _kept(paid, rail, verified, Settlement(reference=reference), org,
-                              used=was_used)
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
     settlement = None
@@ -522,32 +519,40 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                 }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     if not agreed:
-        await _note_kept(payment_id, used=used)
-        raise await _kept(paid, rail, verified, settlement, org_id, used=used)
+        raise await _kept(paid, rail, verified.amount_micro,
+                          settlement.reference if settlement is not None else "", org_id, used=used)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
 
 
-# `AgentPayment.error` of a settled transfer that ran no call, so a resend gets the same answer.
-KEPT_USED, KEPT_REPRICED = "kept:challenge_used", "kept:price_changed"
+KEPT_NS = "agentpay-kept"
 
 
-async def _note_kept(payment_id: int | None, *, used: bool) -> None:
+def _digest(credential: str) -> str:
+    return hashlib.sha256(credential.encode()).hexdigest()
+
+
+async def _resent_kept(paid: PaidOffer, rail: PaymentRail,
+                       credential: str) -> PaymentChallenge | PriceChanged | PaymentPending | None:
+    """The answer for a credential treg already kept as credit without running a call, sent
+    again after that answer was lost; None for any other credential. Read before verification:
+    the SDK refuses a transaction hash it has seen, and only the exact credential, which only its
+    wallet holds, reads the receipt (a transaction hash is public)."""
     async with session_maker() as db:
-        await db.execute(update(AgentPayment).where(
-            AgentPayment.id == payment_id, AgentPayment.status == "settled",
-        ).values(error=KEPT_USED if used else KEPT_REPRICED, updated_at=_now()))
+        seen = await ratestore.kv_get(db, KEPT_NS, _digest(credential))
+        row = await db.get(AgentPayment, int(seen["payment"])) if seen else None
         await db.commit()
-
-
-async def _kept_before(proof_id: str) -> tuple[int, str, bool] | None:
-    """(team, transaction, whether its challenge was used) of a settled transfer that ran no
-    call, or None."""
-    async with session_maker() as db:
-        row = (await db.execute(select(AgentPayment).where(
-            AgentPayment.proof_id == proof_id))).scalars().first()
-    if row is None or row.status != "settled" or row.error not in (KEPT_USED, KEPT_REPRICED):
+    if row is None:
         return None
-    return row.org_id, row.reference or "", row.error == KEPT_USED
+    if row.status == "settling":
+        return PaymentPending({
+            "error": "payment_outcome_unknown", "endpoint_id": paid.endpoint_id,
+            "message": ("treg has not confirmed this transfer yet; it runs no call and is kept as "
+                        "this wallet's credit once it lands. Do not send it again."),
+        })
+    if row.status != "settled":
+        return None
+    return await _kept(paid, rail, row.amount_micro, row.reference or "", row.org_id,
+                       used=bool(seen.get("used")))
 
 
 class PriceChanged(Exception):
@@ -561,9 +566,8 @@ class PriceChanged(Exception):
         self.headers = headers
 
 
-async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
-                settlement: Settlement | None, org_id: int, *,
-                used: bool) -> PaymentChallenge | PriceChanged:
+async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: str,
+                org_id: int, *, used: bool) -> PaymentChallenge | PriceChanged:
     """The answer for a transfer already sent that runs no call: it is the wallet's credit now,
     and the answer names how much it paid, its transaction and the credit, so the wallet can
     match the top-up.
@@ -575,13 +579,12 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
     proof, the 409 names the host where it does."""
     async with session_maker() as db:
         credit = max(await ledger.balance_of(db, org_id), 0)
-    reference = settlement.reference if settlement is not None else ""
-    headers = [("X-Treg-Payment", "paid"), ("X-Treg-Paid-Micro", str(verified.amount_micro)),
+    headers = [("X-Treg-Payment", "paid"), ("X-Treg-Paid-Micro", str(paid_micro)),
                ("X-Treg-Credit-Micro", str(credit))]
     if reference:
         headers.append(("X-Treg-Payment-Reference", reference))
     kept = {"endpoint_id": paid.endpoint_id, "estimated_cost_micro": paid.quote_micro,
-            "paid_micro": verified.amount_micro, "payment_reference": reference,
+            "paid_micro": paid_micro, "payment_reference": reference,
             "credit_micro": credit}
     note = f"The transfer is kept as this wallet's credit (${ledger.usd(credit):g})"
     if used:
@@ -778,9 +781,13 @@ async def _payer_org(network: str, address: str) -> int:
 
 
 async def _claim(verified: Verified, org_id: int, quote_micro: int, *,
-                 fee_bps: int | None = None) -> tuple[int | None, bool | None]:
+                 fee_bps: int | None = None,
+                 kept: tuple[str, bool] | None = None) -> tuple[int | None, bool | None]:
     """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
-    before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
+    before returns `(None, None)`: the unique `proof_id` is what refuses a replay. `kept` is
+    (credential digest, whether its challenge was used) for a transfer already sent that will run
+    no call: recorded in the same transaction, so a resend of that credential gets its answer
+    however the payment is settled (here or by the reconciler)."""
     async with session_maker() as db:
         balance = await ledger.balance_of(db, org_id)
         draw = verified.deferrable and balance >= quote_micro
@@ -792,6 +799,10 @@ async def _claim(verified: Verified, org_id: int, quote_micro: int, *,
             status="credit" if draw else "settling")
         db.add(row)
         try:
+            await db.flush()
+            if kept is not None:
+                await ratestore.kv_put(db, KEPT_NS, kept[0], {"payment": row.id, "used": kept[1]},
+                                       ttl_s=REPLAY_KEEP_S)
             await db.commit()
         except IntegrityError:
             await db.rollback()
