@@ -10,6 +10,8 @@ spends money the hold does not have.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import contextvars
 import enum
 import functools
 import logging
@@ -57,6 +59,10 @@ _LAST_READ_S = 0.2
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+# Whether the refill this task's own take ran was turned away by money admission. A refill run by
+# a background refresh or by another process never sets it: it is no evidence about this call.
+_refill_turned_away: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "treg_allowance_refill_turned_away", default=False)
 # Takes this process admitted and has not finished. Each will hand the charge writer one row at
 # most, so admitting against the writer's room now is what keeps it from ever overflowing.
 _in_flight = [0]
@@ -117,6 +123,12 @@ def refills(org_id: int) -> int:
     return _refills.get(org_id, 0)
 
 
+def take_met_busy_refill() -> bool:
+    """Whether this task's last `take` ran a refill itself and money admission turned that refill
+    away. Only then is the call's refusal known to come from a busy money queue."""
+    return _refill_turned_away.get()
+
+
 def listed(org_id: int) -> bool:
     """Whether the operator put the team on the allowance: every team when
     `money_allowance_all_orgs`, else the ones in `money_allowance_org_ids`, never an excluded
@@ -164,6 +176,20 @@ def money_key(org_id: int) -> str:
     return f"treg:money-allowance-money:v1:{org_id}"
 
 
+def fold_claim_key(org_id: int) -> str:
+    """The claim the background fold sets on a team whose queue has waited too long
+    (`allowance_sweep`): while another token holds it, nobody else gets the team's lease."""
+    return f"treg:money-allowance-fold-claim:v1:{org_id}"
+
+
+async def acquire_money_lease(store, org_id: int, token: str, ttl_ms: int, *,
+                              owner: str | None = None) -> str:
+    """Take the team's lease (`money_key`), unless the background fold has claimed its next turn
+    (`fold_claim_key`) and this is not that claim's `owner`: then `busy`, as if held."""
+    return await store.acquire_lease(money_key(org_id), token, ttl_ms,
+                                     unless=fold_claim_key(org_id), owner=owner)
+
+
 async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
                after_refill: Callable[[], Awaitable[None]] | None = None) -> int | None:
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
@@ -172,6 +198,7 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
 
     A refill this call starts beside itself commits after this returns, so `refills` around the
     call does not show it: `after_refill` is awaited once that refill has moved the balance."""
+    _refill_turned_away.set(False)
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
             or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
@@ -217,7 +244,7 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int, after_refi
     key, token = money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFILL_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "unavailable":
             return None
         if acquired == "acquired":
@@ -292,7 +319,7 @@ async def _refresh_once(org_id: int, daily_cap_micro: int, after_refill) -> None
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFRESH_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "acquired":
             before = refills(org_id)
             try:
@@ -393,6 +420,9 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
+        _refill_turned_away.set(True)
+        log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
+                 org_id, need_micro, available)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
@@ -465,7 +495,7 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
             if money_lock(org_id).locked():
                 return _Fold.HERE
             try:
-                acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+                acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
             except BaseException:
                 # The store may have granted the lease before the call stopped waiting for its
                 # answer: give back whatever this token holds, or the team's refills and the
@@ -637,39 +667,255 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
         await db.commit()
 
 
+Offer = tuple[int, int | None]
+
+
+async def _counter_state(org_id: int) -> Offer | None:
+    """`counter_offer`, with None when the store cannot answer."""
+    try:
+        state = await kv.store().allowance_state(org_id)
+    except Exception:
+        log.warning("reading the allowance counter of org %s failed", org_id, exc_info=True)
+        return None
+    return (state[0], state[3]) if state else None
+
+
+async def counter_offer(org_id: int) -> Offer:
+    """What a team's allowance counter offers now, and the epoch of the hold it was built for;
+    `(0, None)` for a team off the allowance (no call of its takes from a counter, so what one
+    holds is not its to spend until the sweep returns it) or when the store cannot answer. A
+    store read: take it before a session holds a connection or a lock."""
+    if not enabled_for(org_id):
+        return 0, None
+    return await _counter_state(org_id) or (0, None)
+
+
+async def counter_offers(org_ids) -> dict[int, Offer]:
+    """`counter_offer` for several teams at once: the reads run together, so a slow store costs
+    one wait, not one per team."""
+    ids = list(dict.fromkeys(org_ids))
+    return dict(zip(ids, await asyncio.gather(*(counter_offer(org_id) for org_id in ids))))
+
+
+async def spendable(db, org_id: int, offer: Offer | None = None) -> int:
+    """The balance a team is shown (`allowance.spendable`): its balance plus what its counter
+    offers now (`offer`, read here when not given). A store that cannot answer shows the
+    balance alone. For a decision a short reading would cost, see `covers`."""
+    counter, epoch = offer if offer is not None else await counter_offer(org_id)
+    return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
+
+
+async def spendable_ending_read(db, org_id: int) -> int:
+    """`spendable` for a read-only request whose session has already read (its caller, its
+    team): the read is ended first, so the store read holds no connection. Only where the
+    session has written nothing: ending it commits."""
+    await db.commit()
+    return await spendable(db, org_id, await counter_offer(org_id))
+
+
+class Reach(NamedTuple):
+    """What `reach` found. `sure`: the reading was taken with nothing moving the team's money,
+    and `found` is what the team can spend now. Not `sure`: the team's money would cover the
+    amount (`found` is it wherever it sits, `allowance.credit_bound`), but another request held
+    the team's money lease for as long as a call waits for a refill, so where it is now is not
+    known."""
+
+    found: int
+    sure: bool
+
+
+@contextlib.asynccontextmanager
+async def _team_lease(org_id: int, *, wait: bool = True):
+    """The team's money lease for a reading or a give-back: yields "acquired", "unavailable"
+    (the store cannot answer: no call can take from a counter either) or "busy" (another
+    request kept it, or the background fold claimed its next turn, for as long as a call waits
+    for a refill, or at once without `wait`). Every request that moves the team's money between
+    the store and the database (a refill, a give-back, a fold, the idle sweep) holds it, so what
+    is read under it is one moment of both. Whatever this token may hold is given back on every
+    way out but "busy", in a task of its own: a store that timed out or a cancel may have come
+    after the lease was granted."""
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
+    deadline = time.monotonic() + (_REFILL_WAIT_S if wait else 0.0)
+    pause, answer = 0.01, "busy"
+    while True:
+        try:
+            # A background fold that claimed the team's next turn is not passed by a reading.
+            answer = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
+        except Exception:
+            log.warning("asking for the allowance lease of org %s failed", org_id, exc_info=True)
+            answer = "unavailable"
+        except BaseException:
+            # The store may have granted the lease before a cancel stopped the wait for its
+            # answer: give back whatever this token holds, or the team's refills, give-backs and
+            # fold wait for it to expire.
+            _release_lease_soon(store, key, token)
+            raise
+        if answer != "busy" or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(pause + random.random() * pause)
+        pause = min(pause * 2, 0.1)
+    try:
+        yield answer
+    finally:
+        if answer == "acquired":
+            await asyncio.shield(_release_lease_soon(store, key, token))
+        elif answer == "unavailable":
+            # A store that timed out may have granted it first; release deletes only this token's.
+            _release_lease_soon(store, key, token)
+
+
+async def reach(org_id: int, amount_micro: int) -> Reach:
+    """Whether the team can pay `amount_micro` now, for a decision a wrong reading would cost: an
+    arena run starting or quoted.
+
+    The team's money wherever it sits (`allowance.credit_bound`, the database alone) below the
+    amount, or a team off the allowance, is answered from the database and the store is not
+    asked. Otherwise the counter and the database are read under the team's money lease
+    (`_team_lease`), so no refill or give-back moves money between them while they are read:
+    what the counter offers plus the balance is what calls can spend. A hold released or a take
+    made between the two readings can still move it by that much; an arena decision costs only
+    a refusal or a start whose calls each reserve their own money. Opens its own sessions: call
+    it with none held."""
+    if amount_micro <= 0:
+        return Reach(0, True)
+    async with session_maker() as db:
+        anywhere = await allowance.credit_bound(db, org_id)
+        if anywhere < amount_micro or not enabled_for(org_id):
+            return Reach(await allowance.spendable(db, org_id), True)
+    async with _team_lease(org_id) as lease:
+        if lease == "busy":
+            return Reach(anywhere, False)
+        offer = await _counter_state(org_id) if lease == "acquired" else None
+        async with session_maker() as db:
+            return Reach(await spendable(db, org_id, offer or (0, None)), True)
+
+
+async def onto_balance(org_id: int, amount_micro: int) -> bool:
+    """Whether the balance, free of the queue's claims, covers `amount_micro`, the team's
+    counter given back to it under the team's money lease when it does not: for a reserve the
+    balance refused, which runs again on True. A balance that already covers it (another
+    request gave the counter back after the refusal read it) answers at once, and so does a
+    team whose money is not there at all (`allowance.credit_bound`): one statement, no store.
+    Waits for the lease no longer than a call waits for a refill. False is a refusal, not a
+    confirmed shortfall: the balance and the counter are read apart, and the lease, the store
+    or the give-back may fail. Opens its own sessions: call it with none held."""
+    async with session_maker() as db:
+        free = await allowance.unheld_free(db, org_id)
+        if free >= amount_micro:
+            return True
+        if not enabled_for(org_id) or await allowance.credit_bound(db, org_id) < amount_micro:
+            return False
+    async with _team_lease(org_id) as lease:
+        if lease != "acquired":
+            return False
+        async with session_maker() as db:
+            free = await allowance.unheld_free(db, org_id)
+        if free >= amount_micro:
+            return True
+        state = await _counter_state(org_id)
+        if state is None or not state[1] or state[0] < amount_micro - free:
+            return False
+        try:
+            returned = await _give_back(org_id, state[1])
+        except money_admission.AdmissionTimeout:
+            return False
+        except Exception:
+            # The call is refused as it would have been: never an error of the give-back's own.
+            log.error("returning the allowance of org %s for the exact path failed", org_id,
+                      exc_info=True)
+            return False
+    if returned:
+        log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
+    return free + returned >= amount_micro
+
+
+async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
+    """The balance a quote for `need_micro` shows. Whether it covers the need is `reach`'s: what
+    the team can spend now when it does, or, while another request holds its money lease, its
+    money wherever it sits, which the run's start asks about again. A team that cannot cover it
+    is shown `shown_micro`, the figure its quote read: `reach` answers that case from the
+    database alone, without what the counter offers. Opens its own sessions."""
+    found, sure = await reach(org_id, need_micro)
+    return found if found >= need_micro or not sure else min(shown_micro, need_micro - 1)
+
+
+class CreditShort(Exception):
+    """Raised from inside a session by a check (`short_of`) that wants the team's credit
+    confirmed, so `gives_counter_back` can ask `reach` with no session held. `refusal` is what
+    the caller raises when the money is not there, `busy` when it could not be confirmed."""
+
+    def __init__(self, need_micro: int, refusal: Exception, busy: Exception | None = None) -> None:
+        super().__init__(need_micro)
+        self.need_micro, self.refusal, self.busy = need_micro, refusal, busy or refusal
+
+
+# What `gives_counter_back` confirmed for the run it is running again: (org id, amount).
+_confirmed: contextvars.ContextVar[tuple[int, int] | None] = contextvars.ContextVar(
+    "treg_allowance_confirmed", default=None)
+
+
+def short_of(org_id: int, need_micro: int) -> bool:
+    """Whether a check inside a session must have the team's credit for `need_micro` confirmed
+    first: True until `gives_counter_back` runs the check again with `reach`'s answer. Read
+    inside the session, the two stores could miss money or count it twice."""
+    if need_micro <= 0:
+        return False
+    confirmed = _confirmed.get()
+    return confirmed is None or confirmed[0] != org_id or confirmed[1] < need_micro
+
+
+def gives_counter_back(run):
+    """`run(caller, ...)` raises `CreditShort` from its check (`short_of`); this asks `reach` with
+    no session held and runs it again with the answer, once. Money that is not there raises the
+    refusal, money that could not be confirmed the `busy` error. `run` must change nothing
+    before it raises, as a check inside a transaction it rolls back."""
+    @functools.wraps(run)
+    async def again(caller, *args, **kwargs):
+        try:
+            return await run(caller, *args, **kwargs)
+        except CreditShort as short:
+            found, sure = await reach(caller.org_id, short.need_micro)
+            if not sure:
+                raise short.busy from None
+            if found < short.need_micro:
+                raise short.refusal from None
+        token = _confirmed.set((caller.org_id, found))
+        try:
+            return await run(caller, *args, **kwargs)
+        except CreditShort as short:
+            raise short.refusal from None
+        finally:
+            _confirmed.reset(token)
+    return again
+
+
 async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
     """Return what a team's counter holds to its balance, for a call on the exact path that the
     balance alone could not pay for, by `short_micro`: money set aside for the allowance is out
     of that balance's sight. True when that much went back, and the call may try once more.
-    Only while refills are sized to the team's spend, which can set aside much more than a
-    chunk.
+    A chunk can be all a small team has, so this holds with refills at the chunk too.
 
     It costs a refusal as little as it can. The counter is read first, without the team's
     lease, and a counter that cannot make up the difference is left alone. The team's lease is
     asked for once: held by a refill or a fold, the call is refused as before, not kept
     waiting. Then `_give_back`."""
-    if not (_sizing() and enabled_for(org_id)):
+    if not enabled_for(org_id):
         return False
-    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    leased = False
     # Whatever fails here, the call is refused as it would have been: never an error of its own.
     try:
-        state = await store.allowance_state(org_id)
+        state = await kv.store().allowance_state(org_id)
         if state is None or not state[3] or state[0] < max(1, short_micro):
             return False
-        leased = await store.acquire_lease(key, token, _REFILL_LEASE_MS) == "acquired"
-        if not leased:
-            return False
-        returned = await _give_back(org_id, state[3])
+        async with _team_lease(org_id, wait=False) as lease:
+            if lease != "acquired":
+                return False
+            returned = await _give_back(org_id, state[3])
     except money_admission.AdmissionTimeout:
         return False
     except Exception:
         log.error("returning the allowance of org %s for the exact path failed", org_id,
                   exc_info=True)
         return False
-    finally:
-        if leased:
-            await store.release_lease(key, token)
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
     return returned >= max(1, short_micro)

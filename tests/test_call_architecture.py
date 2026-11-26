@@ -308,7 +308,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # a refill that folded a full batch leaves the rest of the queue to a background fold
     ("application/call/allowance.py", "_fold_backlog", "allowance.fold_charges_in_transaction"),
     ("application/call/allowance.py", "_fold_backlog", "money_admission.admit"),
-    ("application/call/allowance.py", "_fold_backlog", "store.acquire_lease"),
     ("application/call/allowance.py", "_release_lease_soon", "store.release_lease"),
     ("application/call/allowance.py", "_refill", "allowance.refill_allowance_in_transaction"),
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
@@ -322,15 +321,14 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_write", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     # a call near the counter's deadline refills it beside itself, under the same lease
-    ("application/call/allowance.py", "_refresh_once", "store.acquire_lease"),
     ("application/call/allowance.py", "_refresh_once", "store.release_lease"),
-    ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
+    # every taker of the team's lease (a refill, its refresh, the request-path fold, a
+    # give-back) asks for it through one helper, which yields to a starved team's fold claim
+    ("application/call/allowance.py", "acquire_money_lease", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.release_lease"),
     # an exact-path call the balance alone cannot pay for gets the sized counter back first:
     # the team's lease asked for once, then admission, the drop and the release in one session
-    ("application/call/allowance.py", "give_back_for_exact_path", "store.acquire_lease"),
-    ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
     ("application/call/allowance.py", "_give_back", "money_admission.admit"),
     ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
     ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),

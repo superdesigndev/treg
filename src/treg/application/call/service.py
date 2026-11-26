@@ -1187,6 +1187,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         try:
             caller_body = await _await_before_reserve(request.body(), request, call_ref)
             caller_body_read = True
+        except CallFailure:
+            raise
         except Exception:  # noqa: BLE001 — a caller that hung up must not become a 500 here
             caller_body = b""
 

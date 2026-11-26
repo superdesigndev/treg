@@ -188,8 +188,9 @@ rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
-declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
-USD, and the request
+declared `usd: null`, which keeps the row off treg's key; a settle may not), a free price inherits
+no `settle.reported` (it opts out with `settle: null`, as today's spelling refuses
+`reported_charge` beside `type: free`), usage `terms` are in USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
 declared input fields; an equality-only table also meets today's table checks (enum and range, a
 bounded `times`, a fallback at least every row's maximum), except that it may compare an optional

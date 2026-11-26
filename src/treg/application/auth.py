@@ -1155,18 +1155,25 @@ async def prepare_oauth_authorization(
         if user is None:
             return None
 
+        from .call import allowance as call_allowance
         sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
         memberships = (await db.execute(
             select(Membership).where(Membership.user_id == user.id))).scalars().all()
-        teams = []
+        usable = []
         for membership in memberships:
             org = await db.get(Org, membership.org_id)
             if org is not None and not org.suspended and await sso_team_allowed(db, membership, sso_org_id):
-                # The BALANCE belongs on this list. Choosing a team here decides which balance the
-                # client spends for the life of the grant, and a list of slugs makes the one question
-                # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
-                teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
-                              "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
+                usable.append((membership.role, org.id, org.slug))
+        # The read ends before the store is asked for the counters: a slow store must not keep
+        # this session's connection.
+        await db.commit()
+        offers = await call_allowance.counter_offers(org_id for _, org_id, _ in usable)
+        # The BALANCE belongs on this list. Choosing a team here decides which balance the
+        # client spends for the life of the grant, and a list of slugs makes the one question
+        # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
+        teams = [{"org_id": org_id, "slug": slug, "role": role,
+                  "balance_usd": round(await call_allowance.spendable(db, org_id, offers[org_id]) / 1_000_000, 4)}
+                 for role, org_id, slug in usable]
         new_team = (first_run.team_names(user.email)[0]
                     if _first_team_due(client, user, memberships, sso_org_id) else "")
         if not teams and not new_team:

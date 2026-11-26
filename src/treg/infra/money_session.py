@@ -31,13 +31,14 @@ def _bound_transaction(_session, _transaction, connection) -> None:
         connection.exec_driver_sql(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'")
 
 
-async def bound_lock_wait(db: AsyncSession) -> None:
-    """Cap how long this transaction waits for another session's row locks (`LOCK_WAIT_MS`).
-    PostgreSQL only: SQLite has no row locks to wait for."""
+async def bound_lock_wait(db: AsyncSession, wait_ms: int = LOCK_WAIT_MS) -> None:
+    """Cap how long each statement of this transaction waits for another session's row locks
+    (`LOCK_WAIT_MS`, or less). PostgreSQL only: SQLite has no row locks to wait for."""
     from . import db as infra_db
 
+    wait_ms = max(1, min(int(wait_ms), LOCK_WAIT_MS))
     if not infra_db._is_sqlite:
-        await db.execute(text(f"SET LOCAL lock_timeout = '{LOCK_WAIT_MS}ms'"))
+        await db.execute(text(f"SET LOCAL lock_timeout = '{wait_ms}ms'"))
 
 
 def lock_timed_out(exc: BaseException) -> bool:

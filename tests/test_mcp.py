@@ -383,6 +383,7 @@ async def test_a_team_default_token_resolves_its_team(clients):
         out = await _call_tool(c, "balance", {}, token=identity)
     assert "balance_usd" in out, out
     assert out.get("team")
+    assert out.get("holds_micro") == 0, "summed from the route's holds, which carry no total"
 
 
 

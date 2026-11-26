@@ -25,6 +25,7 @@ from ..models import LedgerEntry, User, WebArenaRun
 from ..timeutil import utcnow_naive as now
 from . import arena
 from . import web_arena_quality
+from .call import allowance as call_allowance
 from .call import route, service
 from .call.resolve import _marketplace_pricing
 from .call.types import CallFailure, CallInput, CallerSnapshot
@@ -212,6 +213,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
     payload = {"input": value.strip(), "query": query.strip() if task == "sitemap" else "",
                "identity": identity, "attempts": chosen, "jev": jev,
                "stop_reason": "", "dropped": dropped, "quality_state": "pending" if jev else "off"}
+    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         await _prune(db)
         stale = list((await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
@@ -219,13 +221,15 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
             .offset(99))).scalars())
         if stale:
             await db.execute(delete(WebArenaRun).where(WebArenaRun.id.in_(stale)))
-        balance = await money.balance_of(db, caller.org_id)
+        balance = await call_allowance.spendable(db, caller.org_id, offered)
         row = WebArenaRun(id=uuid.uuid4().hex, org_id=caller.org_id, user_id=caller.user.id,
                           task=task, mode=mode, state="quoted", payload=arena._pack(payload),
                           deadline_at=now() + timedelta(minutes=5),
                           expires_at=now() + timedelta(days=rules.RETENTION_DAYS))
         db.add(row)
         await db.commit()
+    if required > 0:
+        balance = await call_allowance.balance_for(caller.org_id, balance, required)
     return {"id": row.id, "task": task, "mode": mode, "providers": [
         {k: a[k] for k in ("provider", "endpoint_id", "tier", "estimate_micro", "price_type")} for a in chosen],
         "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,
@@ -234,6 +238,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
         "jev": jev, "jev_cost": "Covered by treg; not part of the provider quote."}
 
 
+@call_allowance.gives_counter_back
 async def start(caller, run_id, client, client_ip):
     _check_enabled()
     async with session_maker() as db:
@@ -252,8 +257,9 @@ async def start(caller, run_id, client, client_ip):
         required = sum(a["estimate_micro"] for a in payload["attempts"]) if row.mode == "battle" else payload["attempts"][0]["estimate_micro"]
         if row.mode == "battle" and required > 10_000_000:
             raise rules.WebArenaError("This Battle exceeds the $10 run limit. Select fewer providers.", 409)
-        if await money.balance_of(db, caller.org_id) < required:
-            raise rules.WebArenaError("Not enough team credits.", 402)
+        if call_allowance.short_of(caller.org_id, required):
+            raise call_allowance.CreditShort(required, rules.WebArenaError("Not enough team credits.", 402),
+                                             rules.WebArenaError("Credits are being updated. Try again in a moment.", 409))
         active = (await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
             WebArenaRun.state == "running", WebArenaRun.deadline_at > now()).limit(3))).all()
         if len(active) >= 3:

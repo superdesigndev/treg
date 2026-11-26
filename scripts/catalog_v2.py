@@ -266,11 +266,15 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
     if defaults and "bill" in defaults:
         keys.pop("bill", None)
         bill = defaults["bill"]
+    price = keys["price"] if "price" in keys else (defaults or {}).get("price")
+    free = isinstance(price, dict) and price.get("value") is not None and Decimal(str(price["value"])) == 0
     for key in (*COST_KEYS, *OUTCOME_KEYS):
         if key not in (defaults or {}) or key == "bill":
             continue
         if key not in keys:
-            if key == "settle":
+            if key == "settle" and free and (defaults[key] or {}).get("reported") is not None:
+                keys[key] = None
+            elif key == "settle":
                 # like `bill`, a settle default translates the provider's branch the batch deletes
                 continue
             keys[key] = None
