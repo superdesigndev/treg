@@ -35,6 +35,7 @@ endpoints:
       queryParams: {}
     price: {value: '0', currency: USD, unit: call}
     provenance: null
+    settle: null
     verified: '2026-07-28'
     added: '2026-07-28'
     example_response: examples/scrapecreators.account.usage.json
