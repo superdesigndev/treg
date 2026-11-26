@@ -77,6 +77,17 @@ class MppTempoRail:
         # pympp refuses to start on a production or multi-instance platform without a shared
         # replay store; `store` is one (`agent_payments.ReplayStore`), tests may omit it.
         self._mpp = Mpp(methods=methods, realm=self.realm, secret_key=secret, store=store)
+        # Code before the realm was normalized issued challenges with the realm as configured,
+        # and pympp compares it exactly: one still in flight through a rolling deploy (its
+        # transfer may already be on chain) verifies and settles against that realm.
+        self._legacy = (Mpp(methods=methods, realm=realm, secret_key=secret, store=store)
+                        if realm != self.realm else None)
+
+    def _server_for(self, parsed):
+        """The pympp server whose realm issued this credential's challenge."""
+        if self._legacy is not None and parsed.challenge.realm != self.realm:
+            return self._legacy
+        return self._mpp
 
     def presented(self, headers: Mapping[str, str]) -> str | None:
         value = headers.get("authorization") or ""
@@ -135,7 +146,7 @@ class MppTempoRail:
         gate = _Gate(before_remote) if before_remote else None
         token = _gate.set(gate)
         try:
-            validation = await self._mpp.validate_credential(
+            validation = await self._server_for(parsed).validate_credential(
                 parsed, intent="charge", http_request=self._request(offer),
                 request={"amount": amount}, meta=meta)
         except Exception as exc:
@@ -193,7 +204,7 @@ class MppTempoRail:
         from mpp.errors import InternalPaymentError, PaymentOutcomeUnknownError
 
         try:
-            receipt = await self._mpp.broadcast_credential(
+            receipt = await self._server_for(verified.credential).broadcast_credential(
                 verified.credential, intent="charge", http_request=self._request(offer),
                 request={"amount": micro_to_decimal(verified.amount_micro)},
                 meta=_echoed_meta(verified.credential))

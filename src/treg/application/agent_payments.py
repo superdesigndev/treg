@@ -245,9 +245,10 @@ class Terms:
     fee_bps: int
     nonce: str = ""
     expires: int = 0
+    recovery: bool = False   # offered to spend a kept transfer's credit: one call, ever
 
 
-_TERMS = re.compile(r"q(\d{1,15})f(\d{1,5})e(\d{1,12})r([0-9a-f]{16})m([0-9a-f]{32})")
+_TERMS = re.compile(r"q(\d{1,15})f(\d{1,5})e(\d{1,12})([rk])([0-9a-f]{16})m([0-9a-f]{32})")
 # A SIWX challenge issued without a token carries pympp's own random nonce in its place.
 _LEGACY_NONCE = re.compile(r"[0-9a-f]{32}")
 TERMS_NS = "agentpay-terms"
@@ -266,12 +267,16 @@ def _terms_mac(resource_url: str, body: str) -> str:
     return hmac.new(secret, f"{resource_url}|{body}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def _terms_token(resource_url: str, terms: Terms) -> str:
+def _terms_token(resource_url: str, terms: Terms, *, recovery_of: str = "") -> str:
     """An opaque, letters-and-digits token for `terms` on this request, authenticated with treg's
     secret. It rides where the payer echoes or signs it (MPP's challenge data, x402's `extra`, the
     SIWX nonce), so a payment pays on the terms it was offered, not today's."""
     expires = int(time.time()) + _terms_ttl_s()
-    body = f"q{terms.quote_micro}f{terms.fee_bps}e{expires}r{secrets.token_hex(8)}"
+    # A kept transfer's recovery terms share one nonce, derived from the transfer, however many
+    # times they are offered: only one proof under them runs a call.
+    kind, nonce = (("k", hashlib.sha256(recovery_of.encode()).hexdigest()[:16]) if recovery_of
+                   else ("r", secrets.token_hex(8)))
+    body = f"q{terms.quote_micro}f{terms.fee_bps}e{expires}{kind}{nonce}"
     return f"{body}m{_terms_mac(resource_url, body)}"
 
 
@@ -288,12 +293,12 @@ def signed_terms(token: str, resource_url: str, today: Terms, *,
     if found is None:
         return None
     body = token[:token.rindex("m")]
-    if not hmac.compare_digest(found.group(5), _terms_mac(resource_url, body)):
+    if not hmac.compare_digest(found.group(6), _terms_mac(resource_url, body)):
         return None
     if int(found.group(3)) < time.time():
         return None
-    return Terms(int(found.group(1)), int(found.group(2)), nonce=found.group(4),
-                 expires=int(found.group(3)))
+    return Terms(int(found.group(1)), int(found.group(2)), nonce=found.group(5),
+                 expires=int(found.group(3)), recovery=found.group(4) == "k")
 
 
 def _hostname(host: str) -> str:
@@ -444,6 +449,9 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     try:
         verified = await rail.verify(credential, paid.offer, before_remote=check)
     except PaymentRejected as exc:
+        # A concurrent send of the same kept credential may have recorded it since the check.
+        if (resent := await _resent_kept(paid, rail, credential)) is not None:
+            raise resent from exc
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     # The terms the payer was offered, which treg's own token names: a price that rose since then
     # is not what the payer agreed to.
@@ -454,7 +462,7 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     if verified.kind == "proof":
         if not agreed:
             raise await _price_changed(paid)
-        return await _admit_proof(paid, verified)
+        return await _admit_proof(paid, verified, signed)
     # A verified payment is settled or looked up on chain next, even one its rail checked
     # locally (an MPP pull transfer is first broadcast at settlement).
     await check()
@@ -496,8 +504,11 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     # costs now; it never draws credit, so it settles below.
     payment_id, draw = await _claim(
         verified, org_id, paid.quote_micro, fee_bps=signed.fee_bps if signed is not None else None,
-        kept=(_digest(credential), used) if not agreed else None)
+        kept=({"digest": _digest(credential), "used": used, "scope": _scope(paid.offer)}
+              if not agreed else None))
     if draw is None:
+        if (resent := await _resent_kept(paid, rail, credential)) is not None:
+            raise resent
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
     settlement = None
@@ -520,7 +531,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     if not agreed:
         raise await _kept(paid, rail, verified.amount_micro,
-                          settlement.reference if settlement is not None else "", org_id, used=used)
+                          settlement.reference if settlement is not None else "", org_id,
+                          used=used, proof_id=verified.proof_id)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
 
 
@@ -531,15 +543,25 @@ def _digest(credential: str) -> str:
     return hashlib.sha256(credential.encode()).hexdigest()
 
 
+def _scope(offer: Offer) -> str:
+    """The request a credential was sent with: a kept receipt answers only that request."""
+    return f"{offer.method} {offer.path}?{offer.query}"
+
+
 async def _resent_kept(paid: PaidOffer, rail: PaymentRail,
                        credential: str) -> PaymentChallenge | PriceChanged | PaymentPending | None:
     """The answer for a credential treg already kept as credit without running a call, sent
-    again after that answer was lost; None for any other credential. Read before verification:
-    the SDK refuses a transaction hash it has seen, and only the exact credential, which only its
-    wallet holds, reads the receipt (a transaction hash is public)."""
+    again with the same request after that answer was lost; None for anything else. Read before
+    verification, since the SDK refuses a transaction hash it has seen, and again after a refusal
+    or a claim conflict, since a concurrent send may have recorded it meanwhile. Only the exact
+    credential, which only its wallet holds, reads the receipt (a transaction hash is public), and
+    only while its payment row (found by its unique proof id) still exists."""
     async with session_maker() as db:
         seen = await ratestore.kv_get(db, KEPT_NS, _digest(credential))
-        row = await db.get(AgentPayment, int(seen["payment"])) if seen else None
+        row = None
+        if seen and seen.get("scope") == _scope(paid.offer):
+            row = (await db.execute(select(AgentPayment).where(
+                AgentPayment.proof_id == seen.get("proof")))).scalars().first()
         await db.commit()
     if row is None:
         return None
@@ -552,7 +574,7 @@ async def _resent_kept(paid: PaidOffer, rail: PaymentRail,
     if row.status != "settled":
         return None
     return await _kept(paid, rail, row.amount_micro, row.reference or "", row.org_id,
-                       used=bool(seen.get("used")))
+                       used=bool(seen.get("used")), proof_id=row.proof_id)
 
 
 class PriceChanged(Exception):
@@ -567,7 +589,7 @@ class PriceChanged(Exception):
 
 
 async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: str,
-                org_id: int, *, used: bool) -> PaymentChallenge | PriceChanged:
+                org_id: int, *, used: bool, proof_id: str) -> PaymentChallenge | PriceChanged:
     """The answer for a transfer already sent that runs no call: it is the wallet's credit now,
     and the answer names how much it paid, its transaction and the credit, so the wallet can
     match the top-up.
@@ -595,7 +617,12 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: 
                         "payment; do not send this request again with this challenge."),
         }, headers)
     if rail.proves(paid.offer):
-        proof = await _headers([rail], lambda only: only.challenge(paid.offer, pay=False, prove=True))
+        # Recovery terms: every proof offered for this transfer shares one nonce, so however many
+        # the wallet signs (an answer lost and the transfer sent again), one call runs.
+        recovery = replace(paid.offer, terms=_terms_token(
+            paid.offer.resource_url,
+            Terms(paid.quote_micro, get_settings().agent_payments_fee_bps), recovery_of=proof_id))
+        proof = await _headers([rail], lambda only: only.challenge(recovery, pay=False, prove=True))
         return PaymentChallenge({
             "error": "payment_required", "reason": "price_changed", **kept,
             "message": ("The price of this call changed after this transfer was signed. "
@@ -647,7 +674,8 @@ async def _price_changed(paid: PaidOffer) -> PaymentChallenge:
                            message="the price of this call changed after this was signed")
 
 
-async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
+async def _admit_proof(paid: PaidOffer, verified: Verified,
+                       signed: Terms | None = None) -> PayerAdmission:
     """A zero-amount proof names the wallet and moves no money: the call runs on the credit that
     wallet already holds on this network, or it is asked to pay."""
     org_id = await _known_payer_org(verified.network, verified.payer)
@@ -666,7 +694,21 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
         raise PayerSuspended(reason)
     if not await _claim_proof(verified):
         raise await challenge(paid, reason="payment_replayed", message="this proof was already used")
+    if signed is not None and signed.recovery and not await _claim_recovery(signed.nonce):
+        raise PriceChanged({
+            "error": "challenge_used", "reason": "challenge_used", "endpoint_id": paid.endpoint_id,
+            "message": ("A proof already spent this kept transfer's credit on this call, so this "
+                        "proof ran none. Check that request's answer; do not send it again."),
+        }, [("X-Treg-Payment", "credit")])
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None)
+
+
+async def _claim_recovery(nonce: str) -> bool:
+    """A kept transfer's recovery terms run one call, however many proofs were signed for them."""
+    async with session_maker() as db:
+        claimed = await ratestore.kv_claim(db, KEPT_NS, f"spent:{nonce}", REPLAY_KEEP_S)
+        await db.commit()
+    return claimed
 
 
 REPLAY_NS = "agentpay-mpp"
@@ -782,12 +824,13 @@ async def _payer_org(network: str, address: str) -> int:
 
 async def _claim(verified: Verified, org_id: int, quote_micro: int, *,
                  fee_bps: int | None = None,
-                 kept: tuple[str, bool] | None = None) -> tuple[int | None, bool | None]:
+                 kept: dict | None = None) -> tuple[int | None, bool | None]:
     """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
-    before returns `(None, None)`: the unique `proof_id` is what refuses a replay. `kept` is
-    (credential digest, whether its challenge was used) for a transfer already sent that will run
-    no call: recorded in the same transaction, so a resend of that credential gets its answer
-    however the payment is settled (here or by the reconciler)."""
+    before returns `(None, None)`: the unique `proof_id` is what refuses a replay. `kept` (the
+    credential's digest, whether its challenge was used, and the request it came with) is set for
+    a transfer already sent that will run no call: recorded in the same transaction, so a resend
+    of that credential gets its answer however the payment is settled (here or by the
+    reconciler)."""
     async with session_maker() as db:
         balance = await ledger.balance_of(db, org_id)
         draw = verified.deferrable and balance >= quote_micro
@@ -801,8 +844,10 @@ async def _claim(verified: Verified, org_id: int, quote_micro: int, *,
         try:
             await db.flush()
             if kept is not None:
-                await ratestore.kv_put(db, KEPT_NS, kept[0], {"payment": row.id, "used": kept[1]},
-                                       ttl_s=REPLAY_KEEP_S)
+                await ratestore.sweep(db, KEPT_NS)
+                await ratestore.kv_put(db, KEPT_NS, kept["digest"],
+                                       {"proof": verified.proof_id, "used": kept["used"],
+                                        "scope": kept["scope"]}, ttl_s=REPLAY_KEEP_S)
             await db.commit()
         except IntegrityError:
             await db.rollback()

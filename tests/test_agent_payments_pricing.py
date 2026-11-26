@@ -24,6 +24,7 @@ from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.db import session_maker
+from treg.timeutil import utcnow_naive
 from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
@@ -453,6 +454,111 @@ async def test_a_kept_transfer_settled_by_the_reconciler_keeps_its_answer(
     assert r.status_code == 409 and r.json()["detail"]["reason"] == "challenge_used", r.text
     assert r.headers["X-Treg-Payment-Reference"] == "0x" + "ab" * 32
     assert len(calls) == 1
+
+
+async def test_a_concurrent_resend_refused_by_the_sdk_gets_the_kept_answer(
+        wallet: AsyncClient, sdk_tempo, terms_on, monkeypatch):
+    """Two sends of the same kept credential race: the one whose first look found nothing is
+    refused by pympp as a seen hash, looks again and gets the kept answer, never a challenge."""
+    payer = Account.create().address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    first = _landed(sdk_tempo, challenge, payer, "0x" + "f1" * 32)
+    second = _landed(sdk_tempo, challenge, payer, "0x" + "f2" * 32)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": first})).status_code == 200
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": second})).status_code == 409
+    looked, real = [], agent_payments._resent_kept
+
+    async def racing(*args):
+        looked.append(1)
+        return None if len(looked) == 1 else await real(*args)   # the race's first look
+
+    monkeypatch.setattr(agent_payments, "_resent_kept", racing)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": second})
+    assert r.status_code == 409 and r.json()["detail"]["reason"] == "challenge_used", r.text
+    assert len(looked) == 2
+
+
+async def test_a_kept_receipt_answers_only_its_own_request_and_payment(
+        wallet: AsyncClient, sdk_tempo, terms_on):
+    payer = Account.create().address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    first = _landed(sdk_tempo, challenge, payer, "0x" + "f3" * 32)
+    second = _landed(sdk_tempo, challenge, payer, "0x" + "f4" * 32)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": first})).status_code == 200
+    kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": second})
+    assert kept.status_code == 409
+    # Another request with the same credential is not that receipt's.
+    other = await wallet.get(f"/call/{EP}?aweme_id=8", headers={"Authorization": second})
+    assert other.status_code == 402 and "X-Treg-Payment-Reference" not in other.headers
+    # A payment row that is gone (its team deleted) answers nothing, whatever reuses its id.
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment).where(
+            AgentPayment.proof_id == f"mpp:tempo:42431:tx:{'0x' + 'f4' * 32}"))).scalar_one()
+        stale_id = row.id
+        await db.delete(row)
+        await db.commit()
+        db.add(AgentPayment(id=stale_id, proof_id="another-wallet", protocol="mpp",
+                            network="tempo:42431", payer_address="0x" + "99" * 20, org_id=1,
+                            amount_micro=FLOOR, fee_micro=0, asset="", pay_to="",
+                            expires_at=utcnow_naive(), status="settled", reference="0xother"))
+        await db.commit()
+    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
+                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
+                                      body=b"", host="registry.test")
+    assert await agent_payments._resent_kept(paid, agent_payments._rails[0], second) is None
+
+
+async def test_a_kept_transfer_s_recovery_runs_one_call_however_many_proofs(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The kept 402 was lost and the transfer sent again: each answer offers a proof, and the
+    wallet signs both. One runs the call; the other is told it ran none."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "f5" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    answers = [await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+               for _ in range(2)]
+    assert [a.status_code for a in answers] == [402, 402], answers[1].text
+    proofs = [await _mpp_proof(a, account) for a in answers]
+    runs = [await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": p})
+            for p in proofs]
+    assert [r.status_code for r in runs] == [200, 409], runs[1].text
+    assert runs[1].json()["detail"]["reason"] == "challenge_used"
+    assert len(calls) == 1
+
+
+async def test_a_challenge_issued_with_the_configured_realm_still_pays(
+        wallet: AsyncClient, payments_on, chain, monkeypatch):
+    """Through a rolling deploy, an instance that normalizes the realm still verifies a challenge
+    an older one issued with the realm exactly as configured, so its pushed transfer is kept."""
+    from mpp import Challenge, Credential
+
+    x402 = next(r for r in agent_payments._rails if r.protocol == "x402")
+    rail = MppTempoRail(secret="s" * 40, realm="REGISTRY.TEST", recipient=RECIPIENT,
+                        chain_id=42431)
+    agent_payments.configure([rail, x402])
+    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
+                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
+                                      body=b"", host="registry.test")
+    old = await rail._legacy["tempo/charge"](amount="0.050000", description="old",
+                                             expires_in=rail._challenge_ttl)(rail._request(paid.offer))
+    offered = Challenge.from_www_authenticate(old.challenge.headers.get_list("www-authenticate")[0])
+    assert offered.realm == "REGISTRY.TEST"
+    pushed = Credential(challenge=offered.to_echo(), payload={"type": "hash", "hash": "0x" + "f6" * 32})
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 200, r.text
+    fresh = await wallet.get(f"/call/{EP}?aweme_id=7")
+    assert {c.realm for c in _mpp_challenges(fresh)} == {"registry.test"}
 
 
 async def test_challenge_used_does_not_claim_the_first_call_ran(

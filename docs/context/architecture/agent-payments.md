@@ -313,8 +313,11 @@ headers (`X-Treg-Payment` among them) and no receipt.
   `price_changed` with no challenge and `proof_url`: this request's own URL (`resource_url`, so
   `public_url`'s scheme, port and path prefix) on that rail's host, bracketed when it is an IPv6
   literal, where its proof spends the credit. Hosts compare without an IPv6 literal's brackets
-  (`_hostname`, `proof_host`), and the MPP realm is configured into pympp the same way, since a
-  wallet compares the challenge's realm with the host it called. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
+  (`_hostname`, `proof_host`), and the MPP realm is configured into pympp the same way (lowercase,
+  no brackets), since a wallet compares the challenge's realm with the host it called. A realm
+  configured otherwise also keeps a pympp server with the realm exactly as configured, which
+  verifies and settles a challenge that older code issued with it, still in flight through a
+  rolling deploy; new challenges carry the normalized realm. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
   `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and `X-Treg-Credit-Micro`, and `paid_micro`,
   `payment_reference`, `credit_micro` in the body; it is recorded `refused_by=payment`. A
   payment is credited less the fee it was offered.
@@ -333,9 +336,16 @@ headers (`X-Treg-Payment` among them) and no receipt.
   the sha256 of its whole credential (`agentpay-kept`, a week, written in the transaction that
   claims the payment, so a settlement the reconciler finishes keeps it), and the same credential
   sent again after its answer was lost is answered from that record before it is verified (pympp
-  refuses a transaction hash it has seen): the same answer and transaction once settled, 503
-  `payment_outcome_unknown` while it is still `settling`. Only the exact credential, which only
-  its wallet holds, reads the record; a transaction hash alone is public.
+  refuses a transaction hash it has seen), and again after a refusal or a claim conflict (a
+  concurrent send may have written it meanwhile): the same answer and transaction once settled,
+  503 `payment_outcome_unknown` while it is still `settling`. The record names the payment by its
+  unique proof id and the request (method, path, query) it came with; it answers only that
+  request, and nothing once that payment row is gone (a deleted team's; a reused row id is never
+  read). Only the exact credential, which only its wallet holds, reads it; a transaction hash
+  alone is public. Writing one sweeps the namespace's expired rows. The kept 402's proof
+  challenge carries recovery terms whose nonce is derived from the transfer (`k` in the token),
+  so every proof offered for one kept transfer shares it, and only the first proof under it runs
+  a call (`spent:<nonce>`, a week); another answers 409 `challenge_used`.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
   data, no `tregTerms` key in x402's `extra`, or, on a SIWX proof only, a nonce of pympp's own 32
   hex digits) is taken on today's terms,
