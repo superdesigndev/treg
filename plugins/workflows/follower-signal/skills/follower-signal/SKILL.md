@@ -381,6 +381,29 @@ Each trait has its own denominator: the followers for whom it is known. Show tha
 every share ("Founders 18% of 1,240 with a role"). Put the leads' share beside the audience's for
 role, seniority, topic and region, so the user sees how buyers differ from the crowd.
 
+**Personas — one per role, no calls.** A share says how many founders follow; a persona says
+what kind of founder. For each of the top 4 roles with at least 20 judged followers,
+`personas.py` prints that role's own numbers, each over the role's followers for whom the trait
+is known: share of the audience, seniority, top 3 topics, top region and country, median reach,
+company size and what the companies build where looked up, and, once the signals below are
+filed, its top 2 pain points and top 2 personal interests with one quote each. From that output
+and nothing else, write the persona into `personas.json`:
+
+- **A name** of two to four words saying what they do ("Solo AI agency owners", "Staff engineers
+  shipping agents"). Never a person's name, never a stock character ("Marketing Mary").
+- **Two sentences.** Who they are and what their work looks like; then what they want and what
+  gets in the way. Plain words, specific to this audience: a line that would fit any audience is
+  cut.
+- **Three facts with their numbers** ("62% senior ICs · 41% US West · median 2.4K followers").
+- **What sets them apart**: the one pain point and the one interest this role carries more than
+  the other roles do, each with its count and one quote, no handle.
+
+Every claim traces to a number `personas.py` printed. A trait known for under a third of the
+role is left out, never guessed; no age, gender, names, handles or company names. A role with
+under 20 followers gets its counts and no persona. Signals covering under 10 people of a role →
+the persona has no pain point or interest, and says so. Personas are your reading of the counts:
+label them "written by the agent from the counts above" wherever they appear.
+
 **Signals — the people worth understanding one by one.** Four things per person, each in their
 own words where it can be:
 
@@ -439,6 +462,7 @@ role, work_cares, pain_points, pain_quote, personal_interests, personal_quote, s
 
 - **Who follows you**: the audience profile above, one line per trait, the leads' share beside
   the audience's. Then the top backgrounds among leads, each with its count.
+- **Personas**: one block per role from `personas.json`, largest role first, labelled as yours.
 - **Where they are**: regions, countries and cities, with how many followers stated a place.
 - **What they talk about**: topics ranked by count.
 - **What hurts at work**: the pain points ranked by count, each with two quotes; leads first,
@@ -477,9 +501,11 @@ dark via `prefers-color-scheme`.
 - Two numbers, the first largest: **leads** ("potential customers follow me, checked by treg") ·
   **revenue** ("if they became customers").
   Several platforms → one small per-platform line under the leads number.
-- **Who follows me**: one row from the audience profile, all judged followers: the top 3 roles,
-  the top 3 topics and the top 3 places, each with its share ("Founders 18% · AI agents 31% ·
-  US 42%"). A trait under a third coverage is left out. Never age or pronouns on the card.
+- **Who follows me**: the top 3 roles side by side, all judged followers, each with its share,
+  its persona's name and the persona's three facts from `personas.json` ("Founders 18% · Solo AI
+  agency owners · 62% senior ICs · 41% US West · median 2.4K followers"). A role with no persona
+  shows its share alone. Under them one line of the top 3 topics and the top 3 places with their
+  shares. A trait under a third coverage is left out. Never age or pronouns on the card.
 - **Cluster chips**: top 9 tags with 2+ leads ("Founder 13"), colour per family; a one-line legend
   of the families shown under them, generated from `tags.py`.
 - **What they care about**: one row under the chips, the top 3 pain points and the top 3 personal
@@ -498,7 +524,7 @@ dark via `prefers-color-scheme`.
 - Also write a ready post for the user's platform: 3-4 short lines in their numbers, ending with
   the link, card attached.
 
-Card mode ends here: deliver the card, the post text, `audience.md`, `audience.csv`, `leads.csv`,
+Card mode ends here: deliver the card, the post text, `audience.md`, `personas.json`, `audience.csv`, `leads.csv`,
 `signals.csv`, the method notes and the bill. Lead with the audience read: it is the part they
 can act on today.
 
