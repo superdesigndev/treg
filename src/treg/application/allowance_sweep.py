@@ -113,6 +113,13 @@ def _log_due_skips(now: float) -> None:
             _log_skips(now, kind, reason, window)
 
 
+def _log_due_skips_safely() -> None:
+    try:
+        _log_due_skips(time.monotonic())
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _log_skips(now: float, kind: str, reason: str, window: dict) -> None:
     _skips.pop((kind, reason), None)
     teams = sorted(window["orgs"].items(), key=lambda item: (-(item[1][1] or 0), -item[1][0],
@@ -412,9 +419,12 @@ async def worker(*, fold_every_s: float = _FOLD_EVERY_S,
     share pauses for every process (the holder keeps its lease through the pause), but the
     process goes on to another share: it pauses only once every share is taken or pausing, or
     when it ran over every team because the store could not answer. Each share's idle sweep is
-    due on a clock every process shares (`_sweep_due`). A bad pass never kills the loop."""
+    due on a clock every process shares (`_sweep_due`). Skips already counted are logged when
+    due on every turn, so a process that no longer gets a share still writes them. A bad pass
+    never kills the loop."""
     next_sweep: dict[allowance.Shard | None, float] = {}
     while True:
+        _log_due_skips_safely()
         folded, pause = 0, True
         try:
             async with _pass_lease() as turn:

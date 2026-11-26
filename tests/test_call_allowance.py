@@ -2878,6 +2878,32 @@ async def test_a_minute_of_skips_is_one_line_per_reason_with_the_stalest_teams_f
     assert allowance_sweep._skips == {}
 
 
+async def test_a_process_that_no_longer_gets_a_share_still_logs_the_skips_it_counted(
+        store, monkeypatch, fold_skip_lines):
+    """Skips are otherwise logged at the end of a pass: a process whose share went to another
+    process would keep them unwritten for as long as every share stays taken."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.05)
+    store.leases[allowance_sweep.pass_key((0, 1))] = "another process"
+
+    async def no_pass(*args, **kwargs):
+        raise AssertionError("every share is taken, so this process runs no pass")
+    monkeypatch.setattr(allowance_sweep, "run_once", no_pass)
+    allowance_sweep._note_skip("fold", 7, "lease_held", utcnow_naive() - timedelta(seconds=40))
+    task = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.01))
+    try:
+        for _ in range(100):
+            if fold_skip_lines():
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    [line] = fold_skip_lines()
+    assert line["top"][0][:2] == [7, 1] and line["top"][0][2] >= 40
+
+
 async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_lease(
         store, monkeypatch):
     """Asked again only at the usual interval, two failed renewals in a row could miss the store
