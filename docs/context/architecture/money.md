@@ -835,7 +835,12 @@ sets `idle_in_transaction_session_timeout` (`IDLE_IN_TRANSACTION_TIMEOUT`): a pr
 running between two statements (an event-loop stall) is disconnected by Postgres, its transaction
 rolls back and the team's org and credit-block rows are free again. The stalled request then fails
 as on any database error; a rolled-back settle leaves its hold open for the reaper, so each hold is
-still closed exactly once by its claim.
+still closed exactly once by its claim. It also sets `statement_timeout` (`STATEMENT_TIMEOUT`), far
+above any money statement's own running time: a statement queued behind another session's row
+locks is cancelled there, so the request behind a slow holder gives its connection back instead of
+waiting for as long as the holder keeps the row, and each of the holder's own statements is bounded
+too (PostgreSQL before 17 has no `transaction_timeout`). A cancelled statement fails the
+transaction like any database error, with the same outcomes.
 
 ### Optional admission before the settlement session
 
