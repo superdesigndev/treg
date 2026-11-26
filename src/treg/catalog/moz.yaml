@@ -8,41 +8,27 @@ source:
 # integrations at a unified V3 JSON-RPC API (api.moz.com); V2 is still live and is what treg's
 # registry entry (oauth_providers.MOZ.base_url) targets, so that is what is catalogued here.
 #
-# Billing model: Moz meters a ROW QUOTA per billing period, not per call — `cost.value` below is
-# rows consumed by ONE call of the shape in `test_request`. For list endpoints one returned result
-# = one row, so `limit` is the cost dial. Three endpoints are "weighted" and burn more than one row
-# per result: link_intersect (5x per result), link_status (2x per source), url_metrics (+1 row per
-# history/distribution modifier). POST /v2/usage_data reports rows consumed so far and is free.
+# Billing model: Moz meters a ROW QUOTA per billing period, not per call. For list endpoints one
+# returned result = one row, so `limit` is the cost dial. Three endpoints are "weighted" and burn
+# more than one row per result: link_intersect (5 per result), link_status (2 per source),
+# url_metrics (+1 row per target for `distributions` and for each history list entry). Every billed
+# answer reports the rows it spent in the X-Row-Count response header; an empty result and an error
+# carry none and spend no rows. POST /v2/usage_data reports rows consumed so far and is free; its
+# count updates minutes late, so it cannot attribute a single call.
 # Errors use real HTTP status codes (400/401/403), so no `expect` blocks are needed.
-#
-# ROW COSTS MEASURED 2026-07-31 — every `cost` below now carries `source: observed`. Each endpoint
-# was called once with exactly the `test_request` shown, with a free POST /v2/usage_data read
-# immediately before and after, and rows_consumed moved by exactly the documented value on all ten
-# priced endpoints — including all three WEIGHTED ones (link_status 2x, url_metrics+distributions
-# 2x, link_intersect 5x), which were the figures most likely to be wrong and were not. The whole
-# 12-endpoint sweep cost 17 rows. Moz's meter updates synchronously, which is what makes per-call
-# attribution possible here and is NOT true of every row/credit provider (SE Ranking's lags ~30s
-# and cannot be attributed this way).
-#   The one CHANGE: /v2/index_metadata was `value: null, confidence: unknown` because the 07-28 run
-#   had exhausted its quota before reaching it. It is 1 row.
 #
 # CONFIRMED ENDPOINT LIST: the API enumerated its own valid V2 actions in an error message, so this
 # list is authoritative rather than transcribed from docs —
 #   /v2/anchor_text, /v2/final_redirect, /v2/global_top_pages, /v2/global_top_root_domains,
 #   /v2/index_metadata, /v2/link_intersect, /v2/link_status, /v2/linking_root_domains, /v2/links,
 #   /v2/top_pages, /v2/url_metrics, /v2/usage_data
-# There is NO /v2/quota route (oauth_providers.MOZ.probe_path points at one — registry bug).
+# There is NO /v2/quota route.
 #
 # QUOTA TRAP — read before probing this provider: /v2/global_top_pages and /v2/global_top_root_domains
 # have NO required parameters, so a "schema probe" with an empty body `{}` does not error, it returns
-# the FULL default result set (25 rows each) and bills you for it. Two such probes burned this
-# account's entire 50-row period allowance. The target-taking endpoints (url_metrics, links,
-# anchor_text, linking_root_domains, top_pages) do reject `{}` for free with HTTP 400.
-#
-# VERIFICATION STATUS: three endpoints answered HTTP 200 and are stamped — moz.account.usage,
-# moz.web.global.top_pages, moz.web.global.top_domains. The remaining nine are unverified because the
-# credential's row quota was exhausted (they now all answer HTTP 403 {"issue": "insufficient-quota"});
-# their paths and parameters come from the official V2 docs linked in each entry's docs_url.
+# the FULL default result set (25 rows each) and bills you for it. The target-taking endpoints
+# (url_metrics, links, anchor_text, linking_root_domains, top_pages) do reject `{}` for free with
+# HTTP 400.
 pricing_url: https://moz.com/api/pricing
 
 defaults:
