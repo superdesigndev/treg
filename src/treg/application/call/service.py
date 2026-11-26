@@ -1227,6 +1227,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # Audit the attempt too — failures are results worth recording. A marketplace call additionally
         # carries its telemetry (which endpoint, which credential tier, what it cost): still
         # fire-and-forget, because the money itself already landed synchronously in the ledger.
+        if failure is not None and (paid_by := wallet.current.get()) is not None:
+            status_code, refused_by = paid_by.answer(status_code, refused_by)
         request.state.call_audited = True  # the refusal fallback in _mark_treg_own_errors stands down
         # The root request log's outcome: whose account answered and whether treg refused first.
         request.context.refused_by = refused_by

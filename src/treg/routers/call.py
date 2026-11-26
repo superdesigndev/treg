@@ -379,21 +379,20 @@ async def _paid_call(rest: str, request: Request) -> Response:
     # The wallet's credit is its team's balance, which decided whether this payment draws it:
     # no reservation of the call moves that balance into the allowance (`keyless_payer`).
     keyless = call_reserve.keyless_payer.set(True)
-    marked = call_wallet.current.set(call_wallet.WalletCall(
-        quote_micro=paid.paid.quote_micro, paid=paid.admission.settlement is not None))
+    paid_by = call_wallet.WalletCall(quote_micro=paid.paid.quote_micro,
+                                     paid=paid.admission.settlement is not None)
+    marked = call_wallet.current.set(paid_by)
     try:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
-        if exc.status_code == 402 and paid.admission.settlement is None:
+        status, refused_by = paid_by.answer(exc.status_code, None)
+        if refused_by == "payment":
             # The credit was spent by another call between the check and the hold: ask this
             # wallet to pay, as a payment client expects of a 402.
             challenge = await agent_payments.credit_short(paid.paid, int(paid.caller.org.id))
             return await _payment_refusal(request, 402, challenge.detail, challenge.headers)
-        if exc.status_code == 402:
-            # A payment client answers every 402 with a payment; treg's own balance refusal is
-            # not a payment challenge.
-            exc.status_code = 503
+        exc.status_code = status
         exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
                        **dict(await paid.answer_headers())}
         raise

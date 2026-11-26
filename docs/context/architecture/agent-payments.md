@@ -238,7 +238,10 @@ that account's access key.
    `Cache-Control` gets `Cache-Control: private`. treg's own 402 refusals after a payment
    (`insufficient_balance`, `route_max_cost`) answer 503 on this path, because a payment client
    answers every 402 with another payment; after a credit draw, `insufficient_balance` is the
-   `credit_insufficient` payment challenge instead.
+   `credit_insufficient` payment challenge instead. The call's record says the same: the call road
+   records its own 402 refusal through the same rule (`call.wallet.WalletCall.answer`) as 503
+   after a payment, or as a 402 with `refused_by=payment` after a credit draw. A refused
+   settlement (`settlement_failed`) runs no call and is recorded as the 402 payment step it is.
 
 ## The challenge, and the 402s it is not
 
