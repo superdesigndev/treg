@@ -1000,13 +1000,21 @@ class SettleDecision:
 
 def decide_settle(
     mk: MarketplaceCall, status_code: int | None, body: bytes = b"", *, headers=None,
-    reason: str = "", observed_override: int | None = None, cached_repeat: bool = False,
+    reason: str = "", observed_override: int | None = None, cached_hit: bool = False,
+    cached_repeat: bool = False, cached_headers: dict | None = None,
 ) -> SettleDecision:
     """The decision half of `_platform_settle`: charge or release, and how much. Pure: no session,
-    no network; reads the catalog and settings of this checkout."""
+    no network; reads the catalog and settings of this checkout. `cached_headers` are the
+    reported-charge headers the archive stored with a hit's answer ({name: value or None}); a hit
+    whose snapshot stored none for the row's header settles with that figure unknown."""
     if mk.cost_terms is not None:
+        header = ((mk.cost_terms.get("settle") or {}).get("reported") or {}).get("header")
+        if cached_hit and header and header.lower() in (cached_headers or {}):
+            # The figure the archive stored with this answer, read as the live answer read it.
+            stored = cached_headers[header.lower()]
+            headers, cached_hit = ({header: stored} if stored is not None else {}), False
         billable, reason, observed, actual = _decide_v2(mk, status_code, body, headers, reason,
-                                                        observed_override)
+                                                        observed_override, cached_hit)
     else:
         billable, reason, observed, actual = _decide_legacy(mk, status_code, body, headers, reason,
                                                             observed_override)
@@ -1043,17 +1051,19 @@ def _capacity_release(mk: MarketplaceCall, status_code: int, headers, body: byte
 
 
 def _decide_v2(mk: MarketplaceCall, status_code: int | None, body: bytes, headers, reason: str,
-               observed_override: int | None) -> tuple[bool, str, int | None, int | None]:
+               observed_override: int | None,
+               cached_hit: bool = False) -> tuple[bool, str, int | None, int | None]:
     """The v2 settlement order (`call.cost`): no answer and a 3xx or 5xx release; a 4xx releases
     unless it reports a charge and is the caller's fault; a 2xx is billed by `free_when`, the
     reported charge, the outcome and `bill`, then the `settle` form; and an answer that would be
-    billed is released when it carries a capacity signature."""
+    billed is released when it carries a capacity signature. A `cached_hit` has no provider
+    headers, so a header-reported charge is unknown on it."""
     if status_code is None or not (200 <= status_code < 300 or 400 <= status_code < 500):
         return False, reason, None, None
     doc = call_cost.document(body)
     if 400 <= status_code < 500:
         figure = (observed_override if observed_override is not None
-                  else call_cost.reported(mk.cost_terms, doc, headers))
+                  else call_cost.reported(mk.cost_terms, doc, headers, archived=cached_hit))
         billable = bool(figure) and status_code not in _NOT_THE_CALLERS_FAULT
         observed = actual = figure if billable else None
         if not billable and _platform_billable(status_code, mk.cost_type):
@@ -1065,7 +1075,7 @@ def _decide_v2(mk: MarketplaceCall, status_code: int | None, body: bytes, header
         billable = True
         observed, actual = call_cost.charge(
             mk.cost_terms, mk.settlement_basis, mk.estimate_micro, status_code, doc, raw=body,
-            headers=headers, request_data=mk.request_data)
+            headers=headers, request_data=mk.request_data, archived=cached_hit)
     if billable and (capacity := _capacity_release(mk, status_code, headers, body)):
         return False, capacity, None, None
     return billable, reason, observed, actual
@@ -1116,7 +1126,7 @@ async def _platform_settle(
     reason: str = "", finalized: Callable[[], None] | None = None,
     observed_override: int | None = None, overflow_spend: tuple[str, int, int] | None = None,
     archive_use: tuple[int, str] | None = None, cached_hit: bool = False,
-    cached_repeat: bool = False,
+    cached_repeat: bool = False, cached_headers: dict | None = None,
 ) -> tuple[int, int | None]:
     """Close the hold for a metered call → (charged_micro, observed_micro). `charged_micro` is what
     actually hit the org's balance (0 on a release) — the number the Activity feed must show, because
@@ -1137,7 +1147,8 @@ async def _platform_settle(
     may be mid-rollback from the very error we are releasing for."""
     if mk.metered and mk.holdless:
         decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
-                                 observed_override=observed_override, cached_repeat=cached_repeat)
+                                 observed_override=observed_override, cached_hit=cached_hit,
+                                 cached_headers=cached_headers, cached_repeat=cached_repeat)
         if decision.charged_micro:
             logging.getLogger("treg.ledger").error(
                 "holdless call on %s computed a charge of %s micro; nothing was held, treg absorbs it",
@@ -1148,7 +1159,8 @@ async def _platform_settle(
     if not mk.metered or not mk.call_id:
         return 0, None
     decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
-                             observed_override=observed_override, cached_repeat=cached_repeat)
+                             observed_override=observed_override, cached_hit=cached_hit,
+                             cached_headers=cached_headers, cached_repeat=cached_repeat)
     billable, reason, observed, actual = (
         decision.billable, decision.reason, decision.observed_micro, decision.actual_micro)
     repeat_percent = decision.repeat_percent

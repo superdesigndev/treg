@@ -215,6 +215,17 @@ never pass through because SQLAlchemy treats some as unlimited. `bootstrap.pool_
 per-pool peak, capacity and headroom: resize from measurements, one pool at a time. A larger pool
 does not repair a slow scan, lock queue or missing index.
 
+A connection the pool closes or terminates has its socket aborted afterwards if it is still open
+(`_abort_socket_after_close`). asyncpg marks a connection closing before its graceful close waits
+on anything, and its abort does nothing once that mark is set, so a close interrupted by a
+cancellation (a request cancelled again while its checkout pre-ping fails) used to leave the
+socket open with nothing owning it: the server kept the session `idle in transaction` after the
+pre-ping's `BEGIN` until the process exited, holding one of the database's connection slots. Such
+a session has no xid and no snapshot (`backend_xid` and `backend_xmin` are null), so it does not
+hold back `CREATE INDEX CONCURRENTLY`; for a build that waits, look for conflicting locks on the
+table or a session with an old `backend_xmin`. `tests/test_db_cancelled_close.py` pins the abort
+against a real server.
+
 `TREG_BACKGROUND_DATABASE_URL` sends the background pool through a transaction-pooling PgBouncer
 in front of the same database. The API and admin pools, the read pool, migrations (`maintenance.py`
 reads `_db_url`) and startup checks keep `TREG_DATABASE_URL`. Only the background pool may go
@@ -376,16 +387,24 @@ secret stable: changing it breaks every join across the change.
 **Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
 `treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
 settings of the web service; every run also removes rows a team deletion missed, so that latency is
-one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
-0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+one run. Sampling is off unless `TREG_COMPARE_CAPABILITIES` lists a capability and
+`TREG_COMPARE_MAX_PER_DAY` and `TREG_COMPARE_DAILY_USD` are above 0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
 job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
 so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
-treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
-vendors' price per call only where that price is the request's maximum cost. The calls bypass the
-shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_DAILY_USD` of B's catalog prices,
+no request above `TREG_COMPARE_MAX_B_MICRO`, only where that price is the request's maximum cost.
+B is chosen per call among the capability's vendors and the calls bypass the shared provider
+limiter: check every vendor of a capability for price and capacity before listing it, and exclude
+any that must not be asked (`TREG_COMPARE_EXCLUDE`).
 Each run prints one JSON line; `skip_reasons` counts, per reason, the candidates that stopped
 before a call (`no_marker`, `a_not_archived`, `b_unavailable`, ...), so a run
 that calls nobody says where its candidates stopped.
+Migration 0137 moves the day's spend onto `compareattemptday.spent_micro` and fills each existing
+day from its stored comparisons; a job of an earlier build adds nothing to it, so no earlier job
+may run once that migration has: pause the cron before the web deploy that runs it and resume it
+on the new build. The fill cannot see what a team deleted earlier that day cost: when the day's
+`attempts` exceed its stored `callcomparison` rows, keep `TREG_COMPARE_MAX_PER_DAY=0` until the
+next UTC day.
 Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
 removes orphaned rows, which removing the cron would stop.
 

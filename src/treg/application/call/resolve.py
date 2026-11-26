@@ -37,7 +37,6 @@ from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, 
 from ..connect import _host_of, _provider_bindings
 from . import cost as call_cost
 from . import keyslots
-from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
 
 _param_log = logging.getLogger("treg.param_check")
@@ -1903,18 +1902,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "predictleads" and (ep.get("cost") or {}).get("type") == "per_result":
-        limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
-        if len(limits) > 1 or (limits and re.fullmatch(r"(?:[1-9][0-9]?|100)", limits[0]) is None):
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
-                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                    "parameter": "queryParams.limit", "expected": "one integer from 1 to 100",
-                    "message": "PredictLeads shared-key lists bill per record and take a limit from 1 to 100; "
-                               "page for more, or connect your own key",
-                },
-            )
-
     if ep.get("provider") == "theirstack":
         endpoint_id = ep["id"]
         if endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
@@ -2733,7 +2720,7 @@ async def _resolve_catalog_tier(
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
-            call_cost.require_rows(ep, pricing.request_data)
+            call_cost.require_rows(ep, pricing.request_data, body)
             call_cost.require_entities(ep, pricing.request_data)
             call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
         if service == "contactout":
@@ -2769,9 +2756,7 @@ async def _resolve_catalog_tier(
     key_slot = None
     if cost is not None:
         # None: any of treg's accounts may serve it; the call path picks one before the relay.
-        key_slot = keyslots.pinned(
-            service, owners=async_owners + resource_owners,
-            idempotency_key=_key_affinity(caller, request_headers))
+        key_slot = keyslots.pinned(service, owners=async_owners + resource_owners)
     metered = cost is not None and capacity_marks.spends_balance(str(cost.get("type") or "per_call"))
     if cost is not None and (keyslots.exhausted(service, ep["id"], key_slot, metered=metered)
                              if key_slot is not None
@@ -2810,13 +2795,6 @@ async def _resolve_catalog_tier(
                                key_slot=key_slot, **{
             **common, "cost_type": str(cost.get("type") or "per_call")})
     raise _marketplace_no_credential(service, ep["id"], provider, ep, caller.org)
-
-
-def _key_affinity(caller: Caller, headers) -> str:
-    """The caller's Idempotency-Key, scoped to the org: what pins a retry to one of treg's
-    accounts (`keyslots`). Empty without the header."""
-    key = _idempotency_key(headers.get(IDEMPOTENCY_HEADER) if headers is not None else None)
-    return f"{caller.org_id}{_IDEM_SCOPE_SEP}{key}" if key else ""
 
 
 CAPACITY_RETRY_AFTER_S = 60

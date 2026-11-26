@@ -1437,9 +1437,8 @@ class TagSpend(SQLModel, table=True):
     and errs toward refusing, which is the right direction for money.
     """
 
-    __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),
-                      Index("ix_tagspend_org_dim_val_created_amount", "org_id", "dim", "val",
-                            "created_at", postgresql_include=["amount_micro", "settled"]))
+    __table_args__ = (Index("ix_tagspend_org_dim_val_created_amount", "org_id", "dim", "val",
+                            "created_at", postgresql_include=["amount_micro", "settled"]),)
 
     id: int | None = Field(default=None, primary_key=True)
     org_id: int
@@ -2045,7 +2044,7 @@ class CallMark(SQLModel, table=True):
 class CallComparison(SQLModel, table=True):
     """Two vendors' answers to one routed call's input, and the team's agent's blinded verdict.
 
-    A is the answer the team was served; B is the other vendor of a configured pair, asked later by
+    A is the answer the team was served; B is another vendor of the capability, chosen per call and asked later by
     `treg-worker compare collect` on treg's key (application/compare.py). `first` is which of the
     two is shown as answer 1. Bodies are stored truncated; `input` is the capability input,
     truncated. Written only by `domain/feedback/comparisons.py`.
@@ -2085,11 +2084,14 @@ class CallComparison(SQLModel, table=True):
 
 
 class CompareAttemptDay(SQLModel, table=True):
-    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`): the daily
-    limit's count. Not a team's row, so deleting a team gives no quota back."""
+    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`) and B's catalog
+    prices of those claims: the daily limits' counts. Not a team's row, so deleting a team gives no
+    quota and no spend back."""
 
     day: str = Field(primary_key=True)
     attempts: int = Field(default=0)
+    spent_micro: int = Field(default=0, sa_column=Column("spent_micro", BigInteger, nullable=False,
+                                                        server_default="0"))
 
 
 class Media(SQLModel, table=True):
@@ -2443,6 +2445,11 @@ class ArchiveSnapshot(SQLModel, table=True):
     # Provenance for the admin views - what confines the answer is the KEY's scope, not this
     # column. Declared LAST (migration 0039).
     origin_org_id: int | None = Field(default=None)
+    # The response headers this answer's settlement reads (a v2 row's `settle.reported.header`),
+    # as {name: raw value}; {} when the provider sent none. NULL when nothing was recorded: the
+    # row reads no header, or the snapshot predates the column. A hit settles from it. Declared
+    # LAST (migration 0138).
+    reported_headers: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class ArchiveKeyOrg(SQLModel, table=True):

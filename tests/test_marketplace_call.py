@@ -1112,33 +1112,6 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
-@pytest.mark.parametrize(("items", "valid"), [
-    ((), True),
-    ((("limit", "1"),), True),
-    ((("limit", "100"),), True),
-    ((("limit", "101"),), False),
-    ((("limit", "1000"),), False),
-    ((("limit", "0"),), False),
-    ((("limit", "ten"),), False),
-    ((("limit", "5"), ("limit", "5")), False),
-])
-def test_predictleads_shared_key_lists_take_at_most_100_records(items, valid):
-    ep = {"id": "predictleads.jobs.discover", "provider": "predictleads", "cost": {"type": "per_result"}}
-    query = call_resolution.QueryValues(items)
-    if valid:
-        call_resolution._enforce_platform_request(ep, b"", query=query)
-    else:
-        with pytest.raises(ResolutionFailed) as exc:
-            call_resolution._enforce_platform_request(ep, b"", query=query)
-        assert exc.value.detail["parameter"] == "queryParams.limit"
-
-
-def test_predictleads_per_response_rows_keep_the_vendor_limit():
-    ep = {"id": "predictleads.companies.job_openings", "provider": "predictleads", "cost": {"type": "per_call"}}
-    call_resolution._enforce_platform_request(
-        ep, b"", query=call_resolution.QueryValues((("limit", "1000"),)))
-
-
 def test_a_null_platform_request_body_field_must_be_absent_on_treg_key():
     ep = {"id": "demo.enrich", "provider": "demo",
           "input": {"bodyType": "json", "body": {"person": {"type": "object"}, "revealPhones": {"type": "object"}}},
@@ -4361,3 +4334,36 @@ async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves
         assert len(relayed) == 1 and await _balance(clients) == 1_000_000
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("body,content_type", [
+    (b'{"limit": 100}', "application/json"),
+    (b"limit=100", "application/x-www-form-urlencoded"),
+])
+async def test_treg_key_refuses_a_query_rows_parameter_in_a_get_body(clients, monkeypatch, body, content_type):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "PLATFORM-HUNTER")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append(request)
+        return _dropleads_response(200, {"data": {"emails": []}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        refused = await clients.request("GET", "/call/hunter.companies.emails", params={"domain": "example.com"},
+                                        content=body, headers={"content-type": content_type})
+        assert refused.status_code == 400, refused.text
+        assert refused.json()["detail"]["parameter"] == "body.limit"
+        assert not seen and await _balance(clients) == before
+        passed = await clients.request("GET", "/call/hunter.companies.emails",
+                                       params={"domain": "example.com", "limit": "10"})
+        assert passed.status_code == 200, passed.text
+        saved = await clients.post("/secrets", json={"name": "hunter", "value": "OWN-HUNTER"})
+        assert saved.status_code == 200, saved.text
+        own = await clients.request("GET", "/call/hunter.companies.emails", params={"domain": "example.com"},
+                                    content=body, headers={"content-type": content_type})
+        assert own.status_code == 200, own.text
+    get_settings.cache_clear()

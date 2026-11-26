@@ -8,6 +8,7 @@ import sys
 import types
 from dataclasses import dataclass, field
 
+import httpx
 import pytest
 
 from treg.application.call import cost
@@ -40,7 +41,7 @@ def row(input_schema: dict | None = None, **keys) -> dict:
 
 
 def call(ep: dict, body: dict | None = None, query: list | None = None, *, status=200, answer=b"{}",
-         headers=None, routed=False):
+         headers=None, routed=False, cached_hit=False, cached_headers=None):
     request = settlement.request_evidence(query or [], json.dumps(body).encode() if body else b"")
     hold, unit, credit, terms = cost.price(ep, Rates(), request)
     basis = cost.basis(Rates(), ep, hold, terminal=False)
@@ -50,7 +51,8 @@ def call(ep: dict, body: dict | None = None, query: list | None = None, *, statu
                          cost_terms=terms, call_id="c", deferred=[] if routed else None,
                          cost_type=(ep.get("cost") or {}).get("type") or "")
     raw = answer if isinstance(answer, bytes) else json.dumps(answer).encode()
-    return hold, decide_settle(mk, status, raw, headers=headers)
+    return hold, decide_settle(mk, status, raw, headers=headers, cached_hit=cached_hit,
+                               cached_headers=cached_headers)
 
 
 # -- paths and predicates ------------------------------------------------------------------------
@@ -532,6 +534,39 @@ def test_platform_max_bounds_treg_key_only_and_must_sit_below_max():
             row(reserve={"rows": bad})
 
 
+QUERY_ROWS = {"param": "query.limit", "default": {"value": 30, "source": "docs"}, "max": 1000, "platform_max": 100}
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"limit": 1000}', b'{"limit": 5, "location": "US"}', b'{"limit": null}',
+    b"limit=1000", b"location=US&limit=5", b"limit[]=5",
+])
+def test_treg_key_refuses_a_query_rows_parameter_sent_in_the_body(raw):
+    ep = row({"queryParams": {"limit": {"type": "integer"}, "location": {"type": "string"}}},
+             reserve={"rows": QUERY_ROWS})
+    request = settlement.request_evidence([("limit", "5")], raw)
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_rows(ep, request, raw)
+    assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "body.limit"
+    assert "query parameter limit" in exc.value.detail["message"]
+
+
+@pytest.mark.parametrize("raw", [
+    b"", b"{}", b'{"location": "US", "active_only": true}', b'{"filters": {"limit": 1000}}',
+    b'[{"limit": 1000}]', b"location=US", b"not a form", "limit=5".encode("utf-16"),
+])
+def test_a_body_without_the_query_rows_name_passes(raw):
+    ep = row({"queryParams": {"limit": {"type": "integer"}}}, reserve={"rows": QUERY_ROWS})
+    cost.require_rows(ep, settlement.request_evidence([("limit", "5")], raw), raw)
+    cost.require_rows(ep, settlement.request_evidence([], raw), raw)
+
+
+def test_a_body_rows_parameter_may_be_sent_in_the_body():
+    rows = {"param": "body.limit", "default": {"value": 3, "source": "docs"}, "max": 1000, "platform_max": 100}
+    ep = row({"body": {"limit": {"type": "integer"}}}, reserve={"rows": rows})
+    cost.require_rows(ep, settlement.request_evidence([], b'{"limit": 5}'), b'{"limit": 5}')
+
+
 def test_treg_key_refuses_a_plugin_request_priced_above_the_max(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.hold = lambda request: request.body["n"]
@@ -557,3 +592,35 @@ def test_reported_missing_zero_settles_an_absent_figure_at_zero(reported, answer
              input_schema={"body": {"n": {"type": "integer"}}})
     _, decision = call(ep, answer=answer, headers=headers)
     assert decision.actual_micro == actual
+
+
+@pytest.mark.parametrize("reported,answer,actual", [
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {"items": [1]}, 20000),  # unknown: the hold
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {"items": []}, 0),       # a free miss stays free
+    ({"header": "x-cost", "unit": "credit"}, {"items": [1]}, 20000),
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {"used": 3}, 60000),  # the body is stored
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {}, 0),
+])
+def test_an_archive_hit_has_no_header_figure_so_missing_zero_does_not_apply(reported, answer, actual):
+    ep = row(settle={"reported": reported}, miss={"when": {"path": "response.items", "op": "empty"}})
+    served = {"x-cost": "3", "x-treg-cache": "hit"}  # whatever headers a hit carries, none is the vendor's
+    assert call(ep, answer=answer, headers=served, cached_hit=True)[1].actual_micro == actual
+    rejected = call(ep, status=400, answer=answer, headers=served, cached_hit=True)[1]
+    assert rejected.billable is ("path" in reported and "used" in answer)
+    assert call(ep, status=400, answer=answer, headers=served)[1].billable is ("used" in answer or "header" in reported)
+
+
+@pytest.mark.parametrize("stored,actual", [
+    ({"x-cost": "3"}, 60000),          # the stored figure, read as the live answer read it
+    ({"x-cost": None}, 0),             # stored as absent: missing: 0 applies, as it did live
+    ({"x-cost": "bad"}, 20000),        # unreadable: the outcome, then the hold
+    ({"x-other": "3"}, 20000),         # stored for another header: unknown, the hold
+    (None, 20000),                     # nothing stored: unknown, the hold
+])
+def test_an_archive_hit_settles_from_the_header_stored_with_its_answer(stored, actual):
+    ep = row(settle={"reported": {"header": "X-Cost", "unit": "credit", "missing": 0}})
+    live = httpx.Headers({"x-cost": "9"})
+    hit = call(ep, answer={"items": [1]}, headers=live, cached_hit=True, cached_headers=stored)[1]
+    assert hit.actual_micro == actual
+    assert call(ep, answer={"items": [1]}, headers=live, cached_headers={"x-cost": "3"})[1].actual_micro \
+        == 180000                       # a live answer reads its own header, never a stored one

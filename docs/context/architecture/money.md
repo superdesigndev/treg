@@ -1611,7 +1611,10 @@ row.
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
   it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
   its default; with no default treg's key refuses a request without it, and with `platform_max`
-  treg's key refuses a count above it while a team's own key keeps `max`), `entities` (list items,
+  treg's key refuses a count above it while a team's own key keeps `max`; when the parameter is a
+  `query.` path, treg's key also refuses a body that carries its name, as a JSON object's top-level
+  key or a form field, since a provider that reads the body would bill a count the hold never saw),
+  `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
   request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
   priced at the frozen rates and capped at `max` (treg's key refuses a request the plugin prices
@@ -1630,7 +1633,12 @@ row.
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped, and with `missing: 0` an absent figure (header or path
-  missing, or null) is a charge of 0; otherwise the outcome picks `bill.error` or `bill.miss`
+  missing, or null) is a charge of 0. An archive hit carries no provider header: it reads the
+  header value the archive stored with its answer (`ArchiveSnapshot.reported_headers`), so it
+  settles as that live answer did, a stored absence included. A snapshot that stored nothing for
+  the row's header (one older than the column, or recorded while the row read no header) leaves
+  the figure unknown, and `missing` does not apply. A path figure reads the stored body;
+  otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
   spelling records a free miss, so the call record and the stats fallback read it alike. A charged
@@ -1795,8 +1803,14 @@ reserve of the team into `money_admission_timeout`. `ix_tagspend_org_dim_val_cre
 carries `amount_micro` and `settled`, so the `TagSpend` sums of both reads can be index-only
 scans. That covers only the `TagSpend` half of the cap read (its queued `CallCharge` sum is a
 separate aggregate), and it skips only heap pages vacuum has marked all-visible, so recently
-written rows may still be fetched. In exchange, the settle update of a `TagSpend` row changes an
-indexed column and is never HOT.
+written rows may still be fetched. Every tagged call inserts a row and its settle rewrites it, so
+0136 lowers the table's `autovacuum_vacuum_scale_factor` and
+`autovacuum_vacuum_insert_scale_factor` from 0.2 to 0.01 and its `autovacuum_analyze_scale_factor`
+from 0.1 to 0.02; PostgreSQL adds each threshold's base row count to these fractions. It is the table's only index on that key (0135 dropped the
+older `ix_tagspend_org_dim_val_created`, the same key without the included columns): every
+`TagSpend` read filters on a leading part of `(org_id, dim, val, created_at)`, the rest go by
+`hold_id`. The settle update rewrites an included column, so it cannot be a HOT update; it rarely
+was one before the column was included either.
 
 **Tag caps are SOFT and must never be sold as hard.** A per-tag total is an aggregate, so concurrent
 calls can each read a compliant figure; overshoot is bounded by concurrency times the estimate, which

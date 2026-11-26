@@ -11,22 +11,24 @@ from urllib.parse import urlencode
 
 import httpx
 import pytest
+from sqlalchemy import delete
 from sqlmodel import select
 
-from treg import hints
+from treg import archive, hints
 from treg.application import compare
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import Settings, get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import adapter_accepts, canonical_identity
+from treg.domain.feedback import comparisons
 from treg.infra import kv
 from treg.infra.db import session_maker
 from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CallReview, CapabilityPin,
+                         CompareAttemptDay,
                          DenyRule, Membership, Org)
 from treg.timeutil import utcnow_naive
 
-PAIR = {"web.search": [["tavily", "exa"]]}
 TAVILY_HIT = {"results": [{"title": "Tavily says", "url": "https://example.com/t"}], "usage": {"credits": 1}}
 EXA_HIT = {"results": [{"title": "Exa says", "url": "https://example.com/e"}], "costDollars": {"total": 0.007}}
 
@@ -41,10 +43,11 @@ def search_on(monkeypatch):
     get_settings.cache_clear()
 
 
-def _compare_on(monkeypatch, *, pairs=PAIR, **values):
+def _compare_on(monkeypatch, *, capabilities=("web.search",), **values):
     settings = get_settings()
-    for field, value in {"compare_rate": 1.0, "compare_pairs": json.dumps(pairs),
+    for field, value in {"compare_rate": 1.0, "compare_capabilities": list(capabilities),
                          "compare_max_per_run": 20, "compare_max_per_day": 50,
+                         "compare_daily_usd": 100.0, "compare_exclude": [],
                          "compare_lookback_hours": 2, "compare_budget_per_hour": 3,
                          "compare_team_cap": 10, **values}.items():
         monkeypatch.setattr(settings, field, value)
@@ -89,7 +92,8 @@ async def _org_id(clients) -> int:
 async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict | None = None,
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
-                       marked: bool = True, cached: bool = False, reviewing: bool = True) -> str:
+                       marked: bool = True, cached: bool = False, reviewing: bool = True,
+                       served_ref: bool | str = True, served_hash: str | None = None) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
     and the call path's eligibility marker, as a real sampled routed call leaves them. `reviewing`
     gives the team one recent review, which a team needs to be compared at all."""
@@ -108,11 +112,16 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
     identity, _ = canonical_identity(cat.contracts[capability], given or {"q": q})
     query, body = adapter.to_upstream(identity, adapter_accepts(adapter, identity))
     ref = uuid.uuid4().hex
+    answer_body = json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()
+    answer_hash = archive.content_hash(answer_body)
     at = utcnow_naive() - timedelta(minutes=minutes_ago)
     async with session_maker() as db:
         db.add(CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=f"treg.{capability}",
                           method="POST", path="/x", status_code=200, endpoint_id=f"treg.{capability}",
-                          provider="treg", credential_tier="routed", call_ref=ref, created_at=at))
+                          provider="treg", credential_tier="routed", call_ref=ref, created_at=at,
+                          served_call_ref=f"{ref}:{served_ref if isinstance(served_ref, str) else 'r1'}"
+                          if served_ref else None,
+                          served_content_hash=(served_hash or answer_hash) if served_ref else None))
         child = CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=eid, method="POST",
                            path="/x", status_code=200, endpoint_id=eid, provider=a,
                            credential_tier=tier, call_ref=f"{ref}:r1", created_at=at, cached=cached)
@@ -123,9 +132,9 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                              req_body=json.dumps(body).encode())
             db.add(key)
             await db.flush()
-            db.add(ArchiveSnapshot(key_id=key.id, content_hash=f"body-{ref}",
-                                   body=json.dumps(answer or {"tavily": TAVILY_HIT, "exa": EXA_HIT}[a]).encode()))
-            child.archive_key_hash, child.archive_content_hash = key.key_hash, f"body-{ref}"
+            db.add(ArchiveSnapshot(key_id=key.id, content_hash=answer_hash, body=answer_body,
+                                   size_bytes=len(answer_body)))
+            child.archive_key_hash, child.archive_content_hash = key.key_hash, answer_hash
         await db.commit()
     if marked:  # the marker holds the input the caller sent, as the call path writes it
         await kv.store().set_text(compare.marker_key(ref), json.dumps(given or {"q": q}),
@@ -138,9 +147,9 @@ async def _collect() -> dict:
         return await compare.collect(client=client)
 
 
-async def _claim(values: dict, limit: int, team_cap: int = 10) -> str:
+async def _claim(values: dict, limit: int, team_cap: int = 10, spend: int = 10**9) -> str:
     now = utcnow_naive()
-    return await compare._claim(session_maker, values, limit, team_cap=team_cap,
+    return await compare._claim(session_maker, values, limit, spend_limit_micro=spend, team_cap=team_cap,
                                 since=now - timedelta(days=14), ready_since=now - timedelta(days=3))
 
 
@@ -154,29 +163,25 @@ async def _rows() -> list[CallComparison]:
         return list((await db.execute(select(CallComparison).order_by(CallComparison.id))).scalars())
 
 
-def test_pairs_setting_is_validated_and_parsed():
-    assert Settings(compare_pairs="").compare_pair_map == {}
-    parsed = Settings(compare_pairs=json.dumps({"web.search": [["provider-a", "provider-b"]]}))
-    assert parsed.compare_pair_map == {"web.search": [("provider-a", "provider-b")]}
-    for bad in ("[", "[]", '{"web.search": [["a"]]}', '{"web.search": [["a", "a"]]}',
-                '{"web.search": [["A", "b"]]}', '{"web.search": "a,b"}'):
+def test_capabilities_setting_is_validated():
+    for bad in ({"compare_capabilities": ["Web.Search"]}, {"compare_exclude": ["Exa"]}):
         with pytest.raises(ValueError):
-            Settings(compare_pairs=bad)
+            Settings(**bad)
     settings = Settings()
-    assert (settings.compare_rate, settings.compare_max_per_day) == (0, 0)
+    assert (settings.compare_rate, settings.compare_max_per_day, settings.compare_daily_usd) == (0, 0, 0)
     assert not settings.compare_configured
-    assert not Settings(compare_pairs=json.dumps(PAIR)).compare_configured  # no daily limit
-    assert Settings(compare_pairs=json.dumps(PAIR), compare_max_per_day=1).compare_configured
+    listed = {"compare_capabilities": ["web.search"]}
+    assert not Settings(**listed, compare_max_per_day=1).compare_configured  # no spend limit
+    assert not Settings(**listed, compare_daily_usd=5).compare_configured  # no call limit
+    assert Settings(**listed, compare_max_per_day=1, compare_daily_usd=5).compare_configured
 
 
-def test_a_pair_without_an_adapter_is_skipped(monkeypatch, caplog):
-    _compare_on(monkeypatch, pairs={"web.search": [["tavily", "exa"], ["tavily", "no-such-vendor"]],
-                                    "no.such.capability": [["tavily", "exa"]]})
+def test_a_capability_short_of_two_vendors_is_skipped(monkeypatch, caplog):
+    _compare_on(monkeypatch, capabilities=("web.search", "no.such.capability"))
     with caplog.at_level("WARNING"):
-        assert compare.pairs() == {"web.search": [("tavily", "exa")]}
-    assert "no-such-vendor" in caplog.text
-    assert compare.other_side("web.search", "exa") == "tavily"
-    assert compare.other_side("no.such.capability", "exa") is None
+        vendors = compare.comparable()
+    assert set(vendors) == {"web.search"} and {"tavily", "exa"} <= vendors["web.search"]
+    assert "no.such.capability" in caplog.text
 
 
 async def test_off_by_default(clients, search_on, monkeypatch):
@@ -224,11 +229,11 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 
 
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
-                                  "capability_pin", "not_in_pair", "own_key", "not_archived",
+                                  "capability_pin", "b_excluded", "own_key", "not_archived",
                                   "too_old", "no_marker", "store_down", "suspended", "paused",
                                   "flow_unavailable", "flow_raises", "flow_invalid"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
-    _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR)
+    _compare_on(monkeypatch, compare_exclude=["exa"] if case == "b_excluded" else [])
     sent = _relay_b(monkeypatch)
     org_id = await _org_id(clients)
     async with session_maker() as db:
@@ -249,9 +254,9 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
             db.add(CapabilityPin(org_id=org_id, capability="web.search", provider="tavily"))
         await db.commit()
     if case == "store_down":
-        async def unknown(key):
-            return None  # what `get_text` answers when the store cannot
-        monkeypatch.setattr(kv.store(), "get_text", unknown)
+        async def unknown(keys):
+            return [None] * len(keys)  # what `get_texts` answers when the store cannot
+        monkeypatch.setattr(kv.store(), "get_texts", unknown)
     late = ("suspended", "paused", "flow_unavailable", "flow_raises", "flow_invalid")
     if case in late:
         # Revoked after the run picked the call, before it is sent: checked again right then.
@@ -284,9 +289,9 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
                        marked=case != "no_marker")
     result = await _collect()
     assert sent == [] and await _rows() == [], result
-    # A candidate that reached `_one` is counted under the reason it stopped at.
-    expected = {"not_in_pair": "b_unavailable", "own_key": "a_not_on_treg_key",
-                "not_archived": "a_not_archived", "no_marker": "no_marker",
+    # A candidate the run read is counted under the reason it stopped at.
+    expected = {"b_excluded": "b_unavailable", "own_key": "a_not_on_treg_key",
+                "not_archived": "a_answer_not_delivered", "no_marker": "no_marker",
                 "store_down": "no_marker", "suspended": "team_no_longer_eligible",
                 "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
                 "flow_raises": "team_no_longer_eligible", "flow_invalid": "team_no_longer_eligible",
@@ -474,7 +479,7 @@ READY_PAIRS = [
 @pytest.mark.parametrize("capability,a,b,given", READY_PAIRS)
 async def test_a_vendor_example_answer_is_stored_ready(clients, monkeypatch, capability, a, b, given):
     _platform(monkeypatch, a, b)
-    _compare_on(monkeypatch, pairs={capability: [[a, b]]})
+    _compare_on(monkeypatch, capabilities=(capability,))
     cat = catalog_store.load()
     a_endpoint = next(e["id"] for e in cat.for_capability(capability)
                       if e["provider"] == a and e["id"] in cat.adapters)
@@ -496,7 +501,7 @@ async def test_an_off_question_answer_is_failed_as_the_router_reads_it(clients, 
     """A `site:` question answered with no row on that site is the router's miss (`question_miss`),
     so the pair fails even on a 200: why a DataForSEO answer to such a question was never a hit."""
     _platform(monkeypatch, "anyapi", "dataforseo")
-    _compare_on(monkeypatch, pairs={"google.serp.organic": [["anyapi", "dataforseo"]]})
+    _compare_on(monkeypatch, capabilities=("google.serp.organic",))
     org_id = await _org_id(clients)
     given = {"q": "espresso grinders site:nowhere.example"}
     a_answer = json.loads(_example("anyapi.google.serp.organic"))
@@ -591,7 +596,8 @@ async def test_deleting_a_team_gives_no_quota_back(clients, search_on, monkeypat
     assert (await _collect())["status"] == "at_limit" and len(sent) == 1
 
 
-@pytest.mark.parametrize("off", [{}, {"compare_pairs": ""}, {"compare_max_per_day": 0}])
+@pytest.mark.parametrize("off", [{}, {"compare_capabilities": []}, {"compare_max_per_day": 0},
+                                 {"compare_daily_usd": 0}])
 async def test_rows_of_a_deleted_team_are_removed_by_every_run(clients, search_on, monkeypatch, off):
     _compare_on(monkeypatch, **off)
     _relay_b(monkeypatch)
@@ -1086,7 +1092,7 @@ async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch
     await compare.mark_eligible("m4", "people.email.find", mcp, {"identity": {"q": "d"}})
     await compare.mark_eligible("m5", "web.search", mcp, {"identity": {"q": "e"}}, archive_opted_out=True)
     assert compare._mark_counts == {"marked/mcp": 1, "route_header/mcp": 1, "page_continuation/-": 1,
-                                    "not_paired/mcp": 1, "archive_off/mcp": 1}
+                                    "not_listed/mcp": 1, "archive_off/mcp": 1}
     monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 0)
     with caplog.at_level(logging.INFO, logger=compare.__name__):
         await compare.mark_eligible("m6", "web.search", mcp, {"identity": {"q": "f"}})
@@ -1305,3 +1311,364 @@ async def test_a_verdict_on_a_pair_not_shown_is_refused(clients, monkeypatch, st
     response = await clients.post("/comparisons", json={"comparison_id": cid, "choice": "1"})
     assert response.status_code == 404
     assert (await _rows())[0].status == status
+
+
+async def _seed_decided(org_id: int, n: int, a: str, b: str, capability: str = "web.search") -> None:
+    """`n` decided comparisons of one direction, as earlier runs leave them (on an existing team:
+    a run removes the rows of teams that are gone)."""
+    async with session_maker() as db:
+        for i in range(n):
+            db.add(CallComparison(org_id=org_id, user_email="x@example.com", call_ref=f"seed-{a}-{b}-{i}",
+                                  capability=capability, a_endpoint=f"{a}.{capability}", a_provider=a,
+                                  b_provider=b, status="decided", choice="a"))
+        await db.commit()
+
+
+async def test_b_is_the_least_compared_vendor_next_to_a(clients, search_on, monkeypatch):
+    """No pair is configured: B is chosen per call, among the vendors treg's key can serve."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PARALLEL", "PLATFORM-PARALLEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa,parallel")
+    get_settings.cache_clear()
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 3, "tavily", "exa")
+    await _routed_call(org_id, "who makes the best espresso")
+    result = await _collect()
+    assert [s["tool"].name for s in sent] == ["parallel.web.search"], result
+    assert result["called_by"] == {"web.search/tavily/parallel": 1}
+
+
+async def test_an_excluded_vendor_is_never_b(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch, compare_exclude=["exa"])
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso")
+    result = await _collect()
+    assert sent == [] and result["skip_reasons"] == {"b_unavailable": 1}
+
+
+async def test_the_least_compared_served_vendor_goes_first(clients, search_on, monkeypatch):
+    """A vendor that rarely serves still gets compared as A: the run does not spend its calls on
+    whichever calls it read first."""
+    _compare_on(monkeypatch, compare_max_per_run=1)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 5, "tavily", "exa")
+    await _routed_call(org_id, "served by the busy vendor", a="tavily", minutes_ago=3)
+    rare = await _routed_call(org_id, "served by the rare vendor", a="exa", minutes_ago=10)
+    result = await _collect()
+    assert result["called"] == 1 and result["called_by"] == {"web.search/exa/tavily": 1}, result
+    row, = [r for r in await _rows() if not r.call_ref.startswith("seed-")]
+    assert (row.call_ref, row.a_provider, row.b_provider) == (rare, "exa", "tavily")
+    assert len(sent) == 1
+
+
+async def test_a_dear_b_is_never_asked(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch, compare_max_b_micro=0)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso")
+    result = await _collect()
+    assert sent == [] and result["skip_reasons"] == {"b_too_dear": 1}
+
+
+async def test_the_day_stops_at_its_spend(clients, search_on, monkeypatch):
+    """The spend limit holds B's catalog prices of the day's claims, read inside the claim."""
+    _compare_on(monkeypatch, compare_daily_usd=0.000001)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "over the day's spend")
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"day_spend_cap": 1}, result
+    # A day already spent stops a run before it reads anything.
+    _compare_on(monkeypatch, compare_daily_usd=0.01)
+    async with session_maker() as db:
+        db.add(CompareAttemptDay(day=compare._day(), attempts=1, spent_micro=10_000))
+        await db.commit()
+    assert (await _collect())["status"] == "at_limit"
+
+
+async def test_a_deleted_teams_spend_still_counts(clients, search_on, monkeypatch):
+    """The day's spend is on the day's row, not summed from comparisons a team deletion removes."""
+    _compare_on(monkeypatch)
+    _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "who makes the best espresso")
+    assert (await _collect())["ready"] == 1
+    async with session_maker() as db:
+        before = await comparisons.spent(db, compare._day())
+        await db.execute(delete(CallComparison))
+        await db.commit()
+        assert before > 0 and await comparisons.spent(db, compare._day()) == before
+
+
+async def test_a_b_the_day_cannot_pay_for_gives_way_to_a_cheaper_one(clients, search_on, monkeypatch):
+    """The least compared B costs more than what is left of the day: the next one that fits is asked."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PARALLEL", "PLATFORM-PARALLEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa,parallel")
+    get_settings.cache_clear()
+    exa = catalog_store.load().cost_view(catalog_store.load().by_id["exa.web.search"].get("cost"), "exa")
+    _compare_on(monkeypatch, compare_daily_usd=exa["usd"] / 2)  # parallel fits, exa does not
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 3, "tavily", "parallel")  # exa is the least compared
+    await _routed_call(org_id, "who makes the best espresso")
+    result = await _collect()
+    assert [s["tool"].name for s in sent] == ["parallel.web.search"], result
+
+
+async def test_the_day_counter_refuses_what_it_cannot_hold(clients):
+    async with session_maker() as db:
+        day = "20261126"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=60, spend_limit_micro=100) == "taken"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=60, spend_limit_micro=100) == "over_spend"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=40, spend_limit_micro=100) == "taken"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=0, spend_limit_micro=100) == "at_limit"
+        assert await comparisons.take_attempt(db, "20261127", 2, price_micro=101,
+                                              spend_limit_micro=100) == "over_spend"
+        await db.commit()
+        assert (await comparisons.attempts(db, day), await comparisons.spent(db, day)) == (2, 100)
+
+
+async def test_a_vendor_the_router_samples_out_is_never_b(clients, search_on, monkeypatch):
+    """`route_provider_sample_pct` at 0 keeps a provider out of routed requests, and out of B."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(get_settings(), "route_provider_sample_pct", '{"exa": 0}')
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso")
+    result = await _collect()
+    assert sent == [] and result["skip_reasons"] == {"b_unavailable": 1}, result
+
+
+async def test_b_asks_the_endpoint_the_router_would_rank_first(clients, monkeypatch):
+    """A people search with a location: QuickEnrich's catalog-first endpoint ignores the location,
+    its free one sends it, and the router ranks that one first. B asks it too, so both vendors
+    answer the same question."""
+    _platform(monkeypatch, "quickenrich")
+    contract = catalog_store.load().contracts["people.search"]
+    given = {"company_domain": "acme.com", "title": "engineer", "location": "Berlin"}
+    identity, _ = canonical_identity(contract, given)
+    target = compare._b_target(contract, identity, "quickenrich", given=given)
+    assert target is not None and target.ep["id"] == "quickenrich.people.search"
+
+
+async def test_a_dear_endpoint_gives_way_to_a_cheaper_one_of_the_same_vendor(clients, monkeypatch):
+    """The endpoint the router ranks first costs more than one B may: the next one that answers
+    the same input within the limit is asked."""
+    _platform(monkeypatch, "leadmagic")
+    contract = catalog_store.load().contracts["people.search"]
+    identity, _ = canonical_identity(contract, {"company_domain": "acme.com"})
+    first = compare._b_target(contract, identity, "leadmagic")
+    assert first is not None
+    cheaper = compare._b_target(contract, identity, "leadmagic", max_price_micro=first.price_micro - 1)
+    assert cheaper is None or (cheaper.ep["id"] != first.ep["id"]
+                               and cheaper.price_micro < first.price_micro)
+    assert compare._b_target(contract, identity, "leadmagic", max_price_micro=0) is None
+
+
+async def test_a_b_that_keeps_failing_stops_taking_calls(clients, search_on, monkeypatch):
+    """Parallel fails `FAIL_STREAK` times in a row: the next run asks another vendor."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PARALLEL", "PLATFORM-PARALLEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa,parallel")
+    get_settings.cache_clear()
+    _compare_on(monkeypatch, compare_max_per_run=1)
+    sent = _relay_b(monkeypatch, status=503)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 1, "tavily", "exa")  # parallel is the least compared
+    for i in range(compare.FAIL_STREAK + 1):
+        await _routed_call(org_id, f"question {i}")
+        assert (await _collect())["failed"] == 1
+    names = [s["tool"].name for s in sent]
+    assert names == ["parallel.web.search"] * compare.FAIL_STREAK + ["exa.web.search"], names
+
+
+async def test_a_parent_that_names_no_served_child_is_never_compared(clients, search_on, monkeypatch):
+    """No `served_call_ref` (an answer the call path could not check, such as a large one): which
+    attempt the caller got cannot be told, so A could be the wrong vendor. The call is skipped."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=False)
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["read"] == 0, result  # not even read: the scan asks for linked parents only
+
+
+async def test_a_string_answer_never_reaches_the_run_output(clients, search_on, monkeypatch):
+    """A vendor answering 200 with a JSON string: the run reports a fixed reason, never the text."""
+    _compare_on(monkeypatch)
+    _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", answer="SECRET-BODY-TEXT")
+    result = await _collect()
+    assert "SECRET-BODY-TEXT" not in json.dumps(result), result
+    assert set(result["skip_reasons"]) <= {"a_output_unreadable"}, result
+
+
+async def test_a_damaged_archive_copy_is_not_compared(clients, search_on, monkeypatch):
+    """The stored bytes no longer hash to what was delivered, though they still parse."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    ref = await _routed_call(await _org_id(clients), "who makes the best espresso")
+    async with session_maker() as db:
+        child = (await db.execute(select(CallRecord).where(CallRecord.call_ref == f"{ref}:r1"))).scalar_one()
+        snap = (await db.execute(select(ArchiveSnapshot).where(
+            ArchiveSnapshot.content_hash == child.archive_content_hash))).scalar_one()
+        snap.body = json.dumps({"results": [{"title": "tampered", "url": "https://example.com/x"}]}).encode()
+        await db.commit()
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"a_answer_not_delivered": 1}, result
+
+
+async def test_a_failing_endpoint_is_never_b_and_a_slow_one_goes_after(clients, monkeypatch):
+    _platform(monkeypatch, "leadmagic")
+    contract = catalog_store.load().contracts["people.search"]
+    identity, _ = canonical_identity(contract, {"company_domain": "acme.com"})
+    first = compare._b_target(contract, identity, "leadmagic")
+    assert first is not None
+    for verdict in ("failing", "slow"):
+        other = compare._b_target(contract, identity, "leadmagic", health={first.ep["id"]: verdict})
+        assert other is None or other.ep["id"] != first.ep["id"], verdict
+
+
+async def test_the_worker_reads_endpoint_stats_without_a_bound_reader(monkeypatch):
+    """The web process binds a cached reader; the worker has none and reads the same buckets."""
+    from treg.application.call import route
+    from treg.infra import catalog_observations
+
+    seen = []
+
+    class Reader:
+        def __init__(self, session_factory):
+            pass
+
+        async def get_many(self, ids):
+            seen.append(list(ids))
+            return {i: {"hit_rate": 0.9} for i in ids}
+    monkeypatch.setattr(route, "_endpoint_observation_reader", None)
+    monkeypatch.setattr(catalog_observations, "PostgresEndpointObservationReader", Reader)
+    assert await compare._observed_stats(["a.b", "c.d"]) == {"a.b": {"hit_rate": 0.9}, "c.d": {"hit_rate": 0.9}}
+    assert seen == [["a.b", "c.d"]]
+
+
+def test_the_daily_spend_is_read_as_a_decimal(monkeypatch):
+    monkeypatch.setattr(get_settings(), "compare_daily_usd", 2.01)
+    assert compare._spend_limit_micro() == 2_010_000
+
+
+async def test_a_parent_is_compared_only_on_the_child_it_names(clients, search_on, monkeypatch):
+    """The parent names `:r2`, the audit kept only `:r1`: `:r1` is not what the caller got."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref="r2")
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"served_child_missing": 1}, result
+
+
+async def test_an_archived_answer_that_was_not_delivered_is_not_compared(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=True,
+                       served_hash="another-body")
+    monkeypatch.setattr(archive, "load_terminal_snapshots", _no_terminal)
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"a_answer_not_delivered": 1}, result
+
+
+async def _no_terminal(tasks, *, session_factory=None):
+    return {}
+
+
+async def test_an_async_answer_is_read_from_its_terminal_archive(clients, search_on, monkeypatch):
+    """An async provider's delivered answer is the terminal one filed under the child's ref; its
+    hash, not the submission's, matches what the caller got."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    terminal = json.dumps(TAVILY_HIT, indent=1).encode()  # not the submission's archived bytes
+    ref = await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=True,
+                             served_hash=archive.content_hash(terminal))
+    asked = []
+
+    async def snapshots(tasks, *, session_factory=None):
+        asked.extend(tasks)
+        return {f"{ref}:r1": (200, terminal)}
+    monkeypatch.setattr(archive, "load_terminal_snapshots", snapshots)
+    result = await _collect()
+    assert result["ready"] == 1 and len(sent) == 1, result
+    assert asked == [(f"{ref}:r1", "tavily.web.search")]
+
+
+async def test_a_slow_batch_read_still_leaves_its_children_the_rest_of_the_run(clients, search_on, monkeypatch):
+    """The served children are read together in more than half the run's time: they are already
+    read, so the calls are made; only lookups one parent at a time stop at the scan's share."""
+    import asyncio
+
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    real = compare._served_children
+
+    async def slow(session_factory, parents):
+        await asyncio.sleep(1.1)
+        return await real(session_factory, parents)
+    monkeypatch.setattr(compare, "_served_children", slow)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "first question", served_ref=True, minutes_ago=3)
+    await _routed_call(org_id, "second question", served_ref=True, minutes_ago=4)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        result = await compare.collect(client=client, max_seconds=2)
+    assert result["called"] == 2 and len(sent) == 2, result
+    assert "scan_time" not in result["skip_reasons"], result
+
+
+async def test_a_merged_answer_is_never_marked(monkeypatch):
+    """Several vendors' rows delivered as one answer: no single vendor's answer is A."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
+    await compare.mark_eligible("merged-1", "web.search", [(b"x-treg-client", b"mcp")],
+                                {"identity": {"q": "a"}, "merged_from": ["parallel.web.search", "exa.web.search"]})
+    assert compare._mark_counts == {"merged/mcp": 1}
+    assert await kv.store().get_text(compare.marker_key("merged-1")) is None
+
+
+async def test_unlinked_calls_never_fill_the_scan_window(clients, search_on, monkeypatch):
+    """Newer calls without a delivery link are left out before the per-capability limit, so an
+    older linked call is still read and compared."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "SCAN_PER_CAPABILITY", 3)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    linked = await _routed_call(org_id, "the linked question", minutes_ago=20)
+    for i in range(3):
+        await _routed_call(org_id, f"unlinked {i}", served_ref=False, minutes_ago=1 + i)
+    result = await _collect()
+    assert result["read"] == 1 and len(sent) == 1, result
+    assert [r.call_ref for r in await _rows()] == [linked]
+
+
+async def test_a_lagging_fold_keeps_the_other_endpoints_stats(monkeypatch):
+    from treg.application.call import route
+    from treg.infra import catalog_observations
+
+    class Reader:
+        def __init__(self, session_factory):
+            pass
+
+        async def get_many(self, ids):
+            raise catalog_observations.EndpointObservationUnavailable({"a.b": {"hit_rate": 0.9}})
+    monkeypatch.setattr(route, "_endpoint_observation_reader", None)
+    monkeypatch.setattr(catalog_observations, "PostgresEndpointObservationReader", Reader)
+    assert await compare._observed_stats(["a.b", "c.d"]) == {"a.b": {"hit_rate": 0.9}}
+
+
+async def test_a_marker_an_earlier_build_wrote_is_ignored(clients, search_on, monkeypatch):
+    """An earlier build marked merged answers under the unversioned key: the run never reads it."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    ref = await _routed_call(await _org_id(clients), "who makes the best espresso", marked=False)
+    await kv.store().set_text(f"compare-ok:{ref}", json.dumps({"q": "who makes the best espresso"}),
+                              compare.MARKER_TTL_S)
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"no_marker": 1}, result

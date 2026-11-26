@@ -882,6 +882,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # into memory. A spooled body is settled from its usage evidence and never retained.
     spooled_bytes: int | None = None
     served_hit = False  # a cached hit — set where the archive answers instead of the vendor
+    served_headers = None  # the reported-charge headers stored with the hit's answer, if any
     served_repeat = False  # …and this team had already paid for the question: the repeat price
     # The archive identities of this call's answer (question key + exact bytes), set where the
     # archive records or serves; kept on the audit row so `/calls/{id}/result` can find it.
@@ -1641,6 +1642,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 body = served["body"]
                 served_hit = True
                 served_repeat = bool(served.get("repeat_for_org"))
+                served_headers = served.get("reported_headers")
                 cache_diagnostics["cache_price"] = (
                     "free" if not mk.metered else "repeat" if served_repeat else "full")
                 request.context.cached = served_hit
@@ -1814,7 +1816,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation,
                         origin_org_id=caller.org_id if own_credential else None,
-                        scope=cache_scopes[0])
+                        scope=cache_scopes[0], response_headers=response.raw_headers)
             elif (served is None and own_key_archivable and 200 <= response.status < 300
                   and _identity_encoded(response)):
                 # An own-key answer: read whole when it fits the archive's cap (bounded, before
@@ -1840,7 +1842,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation, origin_org_id=caller.org_id,
-                        scope=cache_scopes[0])
+                        scope=cache_scopes[0], response_headers=response.raw_headers)
             elif response.status >= 400:
                 # A provider can echo the injected credential anywhere in an error body, so the
                 # caller receives only a body scanned whole (bounded). One too large to scan streams
@@ -1997,6 +1999,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                  and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id))
                                  else None),
                     cached_hit=served_hit, cached_repeat=served_repeat,
+                    cached_headers=served_headers,
                     # `provider_failed_`, not `call_failed_`: the latter is the branch above, where treg
                     # never got an answer (timeout, SSRF refusal, a failed oauth refresh). Both release a
                     # 502 the same way, so a shared prefix would make the two indistinguishable in the

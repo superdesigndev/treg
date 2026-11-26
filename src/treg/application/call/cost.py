@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
+from urllib.parse import parse_qsl
 
 from ...domain import plugins
 from ...domain.catalog import outcome as outcomes
@@ -155,12 +156,34 @@ def require_request(ep: dict, request_data: dict) -> None:
                            f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
-def require_rows(ep: dict, request_data: dict) -> None:
+def _body_names(request_data: dict, raw_body: bytes) -> set[str]:
+    """The top-level names a request body carries: a JSON object's keys, else the names of a
+    form-encoded body. Any other body names nothing."""
+    body = request_data.get("body")
+    if isinstance(body, dict) and body:
+        return set(body)
+    if not raw_body:
+        return set()
+    try:
+        pairs = parse_qsl(raw_body.decode("ascii"), keep_blank_values=True, strict_parsing=True)
+    except (UnicodeDecodeError, ValueError):
+        return set()
+    return {name.removesuffix("[]") for name, _ in pairs}
+
+
+def require_rows(ep: dict, request_data: dict, raw_body: bytes = b"") -> None:
     """On treg's key, a `reserve.rows` with no default refuses a request without its parameter,
-    and one with `platform_max` refuses a count above it, before anything is held."""
+    one with `platform_max` refuses a count above it, and one whose parameter is a query path
+    refuses a body that carries the same name, before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if not rule:
         return
+    param = rule.get("param") or ""
+    if param.startswith("query.") and param.removeprefix("query.") in _body_names(request_data, raw_body):
+        name = param.removeprefix("query.")
+        raise _invalid(ep, f"body.{name}", "platform",
+                       f"{ep['id']} reads {name} from the query on treg's key; send it as the query "
+                       f"parameter {name}, not in the body")
     top = int(rule.get("platform_max") or rule["max"])
     rows = _rows(rule, request_document(ep, request_data, defaults=False))
     if rows is None:
@@ -348,10 +371,14 @@ def _last_line(raw: bytes) -> object:
     return document(last)
 
 
-def reported(terms: dict, doc: object, headers=None) -> int | None:
-    """The provider's own charge for this answer after `scale`, or None when it is unreadable."""
+def reported(terms: dict, doc: object, headers=None, *, archived: bool = False) -> int | None:
+    """The provider's own charge for this answer after `scale`, or None when it is unreadable.
+    An `archived` answer is stored bytes without the provider's headers, so a header figure is
+    unknown on it: None, whatever `missing` says."""
     rule = (terms.get("settle") or {}).get("reported")
     if rule is None or terms.get("reported_micro") is None:
+        return None
+    if "header" in rule and archived:
         return None
     if "header" in rule:
         raw = headers.get(rule["header"]) if headers is not None else None
@@ -438,23 +465,25 @@ def _settled(terms: dict, basis_: dict, hold: int, doc: object, raw: bytes, evid
     return hold if evidence is None else evidence
 
 
-def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None) -> int | None:
+def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None,
+            archived: bool = False) -> int | None:
     """The provider's reported charge: read off this answer, or for an async task the one it
     reported on the submission, which is when the task was billed; a terminal answer's own figure
     is never read."""
     if terminal:
         return submitted if (terms.get("settle") or {}).get("reported") else None
-    return reported(terms, doc, headers)
+    return reported(terms, doc, headers, archived=archived)
 
 
 def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, raw: bytes = b"",
            headers=None, request_data: dict | None = None, terminal: bool = False,
-           submitted: int | None = None) -> tuple[int | None, int]:
+           submitted: int | None = None, archived: bool = False) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
     what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
     today's spelling records it. A `terminal` answer is an async task's, settled with what the
-    provider reported on its `submitted` submission."""
+    provider reported on its `submitted` submission. An `archived` answer is an archive hit,
+    which carries no provider header to report a charge."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -465,7 +494,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if free_when is not None and holds(free_when, {
             **request_document(endpoint, request_values, defaults=True), "response": doc}):
         return 0, 0
-    if (figure := _figure(terms, doc, headers, terminal, submitted)) is not None:
+    if (figure := _figure(terms, doc, headers, terminal, submitted, archived)) is not None:
         return figure, figure
     evidence = _evidence(terms, hold, doc, request, answer)
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
