@@ -388,10 +388,7 @@ def test_the_batch_read_asks_each_arena_endpoint_on_its_own_index():
     ids = str(service.batch_ids_query(["a.b", "c.d"], 7, 99, window).compile(dialect=dialect))
     assert "JOIN LATERAL" in ids and "VALUES" in ids and " IN " not in ids
     assert "callrecord.endpoint_id = arena_endpoint.endpoint_id" in ids
-    assert "callrecord.id <=" in ids
-    assert "callrecord.id <=" not in str(service.batch_ids_query(["a.b"], 7, None, window).compile(dialect=dialect))
-    end = str(service.cycle_end_query(["a.b"], now()).compile(dialect=dialect))
-    assert "JOIN LATERAL" in end and "ORDER BY callrecord.created_at" in end
+    assert "callrecord.id <=" in ids and "callrecord.created_at >=" in ids
 
 
 async def _bulk(rows):
@@ -415,4 +412,28 @@ async def test_rows_older_than_the_window_do_not_take_a_batchs_places(clients):
     old = now() - timedelta(days=service.WINDOW_DAYS + 1)
     await _bulk([(EP, old)] * 1000 + [(EP, now() - timedelta(seconds=180))])
     assert not await service.collect_batch(session_maker), "published in one batch"
+    assert await _observed() == 1
+
+
+async def test_a_row_written_before_the_cutoff_is_read_whatever_its_id(clients):
+    """Ids follow insertion, not `created_at`: a row of the cycle can have a larger id than one
+    written after the cutoff. Both are committed before the batch, so the cycle counts it."""
+    # collect_batch cuts the cycle off 60 s before now.
+    await _bulk([(EP, now() - timedelta(seconds=58)), (EP, now() - timedelta(seconds=62))])
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1
+
+
+async def test_a_cycle_cut_off_long_ago_publishes_without_reading_past_it(clients):
+    """The cycle's cutoff fell behind while a busy endpoint kept writing. The one row of the
+    cycle is published in one batch, not after the rows written since."""
+    _, _, version = service._catalog()
+    until = now() - timedelta(hours=1)
+    async with session_maker() as db:
+        db.add(ArenaInsightState(id=version, cursor=0, scan_until=until, updated_at=None, payload={}))
+        await db.commit()
+    other = "hunter.people.email.find"
+    await _bulk([(EP, until - timedelta(seconds=30))]
+                + [(other, until + timedelta(seconds=5 + index)) for index in range(1000)])
+    assert not await service.collect_batch(session_maker)
     assert await _observed() == 1

@@ -249,10 +249,13 @@ the oldest row, filtering every row until it reaches the last ten minutes (`rewi
 batch read has the same trap: `endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n` walks the
 primary key from the cursor through every endpoint's rows, and to the end of the table once fewer
 than `n` remain before the cycle's cutoff. On PostgreSQL it therefore asks one endpoint at a time
-(a `LATERAL` probe per endpoint on `ix_callrecord_endpoint_id_id`, `batch_ids_query`), up to the
-last id the cycle needs (`cycle_end_query`, the largest of the endpoints' first ids written at or
-after the cutoff), and then reads those rows by id. A row written late below that id is the
-rewind's.
+(a `LATERAL` probe per endpoint on `ix_callrecord_endpoint_id_id` with the window applied before
+each limit, `batch_ids_query`), over at most `SCAN_SPAN` ids after the cursor and no further than
+the first row written at or after the cutoff plus `LATE` (`_batch_span`, a binary search on the
+primary key), and then reads those rows by id. Ids follow insertion, not `created_at`, so the
+bound holds only for rows inserted within `LATE` of their `created_at`, the same allowance the
+rewind makes. A span with fewer than `n` rows of the window is read whole and the cursor moves
+to its end.
 
 - It reads a bounded batch of audit records and archive pointers, closes the session, resolves
   bodies through `archive_bodies.read` (path `arena`), then reacquires the cursor lock and

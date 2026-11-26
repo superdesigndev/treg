@@ -17,6 +17,7 @@ import statistics
 import time
 import zlib
 from datetime import datetime, timedelta
+from typing import NamedTuple
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy import Integer, String, case, column, delete, func, literal_column, select, true, update, values
@@ -34,6 +35,10 @@ WINDOW_DAYS = 30
 # table, evicting the money path's cached pages). A 30-day leaderboard does not need minutes.
 REFRESH_SECONDS = 1800
 BATCH_SIZE = 100
+# The most audit ids one batch reads past its cursor, and how late a row may be written after
+# its `created_at` and still be counted in its cycle (the rewind's own allowance).
+SCAN_SPAN = 200_000
+LATE = timedelta(minutes=10)
 MAX_BODY_BYTES = 2_000_000
 log = logging.getLogger(__name__)
 
@@ -248,8 +253,9 @@ async def collect_batch(session_factory=session_maker):
     async with session_factory() as db:
         window = (CallRecord.created_at >= until - timedelta(days=WINDOW_DAYS), CallRecord.created_at < until)
         if db.bind.dialect.name == "postgresql":
-            end = (await db.execute(cycle_end_query(endpoints, until))).scalar()
-            ids = (await db.execute(batch_ids_query(endpoints, cursor, end, window))).scalars().all()
+            span = await _batch_span(db, cursor, until)
+            ids = (await db.execute(batch_ids_query(endpoints, span.start, span.end, window))
+                   ).scalars().all() if span.end > span.start else []
             records = (await db.execute(select(CallRecord).where(CallRecord.id.in_(ids))
                 .order_by(CallRecord.id))).scalars().all() if ids else []
         else:
@@ -257,6 +263,14 @@ async def collect_batch(session_factory=session_maker):
             records = (await db.execute(select(CallRecord).where(CallRecord.id > cursor, *window,
                 CallRecord.endpoint_id.in_(endpoints)).order_by(CallRecord.id).limit(BATCH_SIZE))).scalars().all()
             ids = [record.id for record in records]
+            span = _Span(cursor, None, False)
+        if len(ids) == BATCH_SIZE:
+            next_cursor, backlog = ids[-1], True
+        elif span.end is not None:
+            # Every row of the window in the span has been read: the next batch starts after it.
+            next_cursor, backlog = max(cursor, span.end), span.more
+        else:
+            next_cursor, backlog = (ids[-1] if ids else cursor), False
     evidence = await _evidence(records, session_factory)
 
     async with session_factory() as db:
@@ -290,9 +304,7 @@ async def collect_batch(session_factory=session_maker):
         if observations:
             stmt = _insert(db, ArenaObservation).values(observations)
             await db.execute(stmt.on_conflict_do_update(index_elements=["id"], set_={k: getattr(stmt.excluded, k) for k in observations[0] if k != "id"}))
-        if ids:
-            state.cursor = ids[-1]
-        backlog = len(ids) == BATCH_SIZE
+        state.cursor = next_cursor
         if not backlog:
             state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
@@ -309,7 +321,7 @@ def _arena_endpoints(endpoints):
     return values(column("endpoint_id", String), name="arena_endpoint").data([(e,) for e in endpoints])
 
 
-def batch_ids_query(endpoints, cursor: int, end: int | None, window):
+def batch_ids_query(endpoints, cursor: int, end: int, window):
     """The next `BATCH_SIZE` audit ids of the Arena's endpoints after `cursor`, up to `end`,
     whose rows are in `window`.
 
@@ -319,24 +331,50 @@ def batch_ids_query(endpoints, cursor: int, end: int | None, window):
     endpoints' included, and finding fewer than `n` walks to the end of the table. The window
     is applied before each endpoint's limit, so rows outside it never take a batch's places."""
     arena = _arena_endpoints(endpoints)
-    after = [CallRecord.endpoint_id == arena.c.endpoint_id, CallRecord.id > cursor, *window]
-    if end is not None:
-        after.append(CallRecord.id <= end)
+    after = [CallRecord.endpoint_id == arena.c.endpoint_id, CallRecord.id > cursor,
+             CallRecord.id <= end, *window]
     each = (select(CallRecord.id).where(*after).order_by(CallRecord.id).limit(BATCH_SIZE)
             .lateral("each_endpoint"))
     return (select(each.c.id).select_from(arena).join(each, true())
             .order_by(each.c.id).limit(BATCH_SIZE))
 
 
-def cycle_end_query(endpoints, until: datetime):
-    """The last id a cycle cut off at `until` needs: the largest of the Arena endpoints' first
-    ids written at or after it (None when none was). One probe per endpoint on
-    `ix_callrecord_endpoint_id_created_at`. A row written late below it is the rewind's."""
-    arena = _arena_endpoints(endpoints)
-    first = (select(CallRecord.id).where(CallRecord.endpoint_id == arena.c.endpoint_id,
-             CallRecord.created_at >= until).order_by(CallRecord.created_at).limit(1)
-             .lateral("first_after"))
-    return select(func.max(first.c.id)).select_from(arena).join(first, true())
+class _Span(NamedTuple):
+    """The ids one batch reads after its cursor: up to `end`, and whether the cycle has more
+    after it."""
+
+    start: int
+    end: int | None
+    more: bool
+
+
+async def _first_id_written_at(db, at: datetime, top: int) -> int | None:
+    """The first audit id from which rows were written at or after `at`, or None when none was:
+    a binary search on the primary key, one single-row probe a step. Ids follow the order rows
+    were inserted, which follows `created_at` except for rows written late."""
+    lo, hi = 1, top + 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        row = (await db.execute(select(CallRecord.id, CallRecord.created_at)
+                                .where(CallRecord.id >= mid).order_by(CallRecord.id).limit(1))).first()
+        if row is None or row.created_at >= at:
+            hi = mid
+        else:
+            lo = row.id + 1
+    return lo if lo <= top else None
+
+
+async def _batch_span(db, cursor: int, until: datetime) -> _Span:
+    """At most `SCAN_SPAN` ids after the cursor, and no further than the last id the cycle cut
+    off at `until` needs. Past the first row written at or after `until + LATE` every row was
+    inserted after it and so written after `until`, as long as no row is inserted more than
+    `LATE` after its `created_at` (the rewind's own allowance). So no batch reads past the
+    cycle, however far `until` is behind."""
+    top = (await db.execute(select(func.max(CallRecord.id)))).scalar() or 0
+    after = await _first_id_written_at(db, until + LATE, top)
+    last = top if after is None else after - 1
+    end = min(last, cursor + SCAN_SPAN)
+    return _Span(cursor, end, end < last)
 
 
 def rewind_query(endpoints, until: datetime):
@@ -349,7 +387,7 @@ def rewind_query(endpoints, until: datetime):
     ten minutes only after reading the whole table."""
     return select(func.min(CallRecord.id + literal_column("0"))).where(
         CallRecord.endpoint_id.in_(endpoints),
-        CallRecord.created_at >= until - timedelta(minutes=10))
+        CallRecord.created_at >= until - LATE)
 
 
 async def prune(session_factory=session_maker) -> None:
