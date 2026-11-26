@@ -1718,14 +1718,17 @@ adapters:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {reels: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.paginationToken}
   tikhub.x.instagram-v2-search-reels:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {reels: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   scrapecreators.x.v2-instagram-reels-search:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {reels: reels, next_cursor: next_page}
+    paging: {cursor: queryParams.page}
 
   # ---- tiktok.video.comments (batch 5) ---------------------------------------------------------
   justoneapi.tiktok.video.comments:
@@ -2039,15 +2042,18 @@ adapters:
   justoneapi.x.instagram-get-post-comments-v1:
     accepts: [[shortcode]]
     in:  {shortcode: queryParams.code}
-    out: {comments: data.comments, count: data.comment_count}
+    out: {comments: data.comments, count: data.comment_count, next_cursor: data.next_min_id}
+    paging: {cursor: queryParams.minId}
   scrapecreators.instagram.post.comments:
     accepts: [[url]]
     in:  {url: queryParams.url}
     out: {comments: comments, next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   tikhub.x.instagram-v2-fetch-post-comments:
     accepts: [[shortcode]]
     in:  {shortcode: queryParams.code_or_url}
     out: {comments: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
 
   dataforseo.web.backlinks.summary:
     accepts: [[target]]
@@ -2145,10 +2151,12 @@ adapters:
     in:  {tweet_id: queryParams.tweetId}
     const: {queryParams.cursor: "0"}
     out: {comments: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
   tikhub.x.twitter-web-fetch-latest-post-comments:
     accepts: [[tweet_id]]
     in:  {tweet_id: queryParams.tweet_id}
     out: {comments: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
 
   dataforseo.x.serp-bing-organic-live-advanced:
     accepts: [[q]]
@@ -3080,6 +3088,7 @@ adapters:
     in_expr: {body.url: "fmt('https://x.com/i/status/{}', tweet_id)"}
     test_identity: {tweet_id: "20"}
     out: {comments: output.data.items, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.tiktok.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -3119,6 +3128,7 @@ adapters:
     accepts: [[url]]
     in:  {url: body.url}
     out: {comments: output.data.comments, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.hashtag.posts:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
@@ -3128,6 +3138,7 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.facebook.user.posts:
     accepts: [[url]]
     in:  {url: body.url}
