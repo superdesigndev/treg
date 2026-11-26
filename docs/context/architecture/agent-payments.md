@@ -225,8 +225,10 @@ that account's access key.
    money moves. An unknown outcome (`settlement_unknown`: the node or facilitator did not answer
    after the transfer may have been sent, or x402 `settlement_pending`) leaves the row `settling`
    and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again; the
-   reconciler resolves it later. Success tops up and marks the row `settled` in one transaction
-   (`_credit`).
+   reconciler resolves it later. A pushed MPP transfer (`Verified.moved`) is already on chain, so
+   any refusal at settlement (its challenge may have expired since verification) is treated as
+   unknown: the row stays `settling` and the reconciler credits it from the chain's receipt.
+   Success tops up and marks the row `settled` in one transaction (`_credit`).
 5. The request headers minus every payment credential header, whichever rails are on
    (`agent_payments.consumes`), go to the call as
    the payer team. The call takes no allowance (`call.wallet.current`, set by the router for

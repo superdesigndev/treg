@@ -622,9 +622,13 @@ async def _settle_and_credit(rail: PaymentRail, verified: Verified, paid: PaidOf
     try:
         settlement = await rail.settle(verified, paid.offer)
     except PaymentRejected as exc:
+        if verified.moved and exc.code != "settlement_unknown":
+            # A pushed transfer is on chain whatever settlement said (its challenge may have
+            # expired since verification): the reconciler reads the chain and credits it.
+            exc = PaymentRejected("settlement_unknown", exc.message)
         status = "settling" if exc.code == "settlement_unknown" else "failed"
         await _mark(payment_id, status=status, error=exc.code)
-        raise
+        raise exc from None
     await _credit(payment_id, settlement.reference)
     return settlement
 

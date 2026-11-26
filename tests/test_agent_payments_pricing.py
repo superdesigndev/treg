@@ -19,7 +19,7 @@ from treg.application.call import wallet as call_wallet
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
-from treg.models import AgentPayer, CallRecord, Hold, LedgerEntry
+from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
     EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
@@ -284,6 +284,22 @@ async def test_one_x402_challenge_s_terms_buy_one_authorization(anon: AsyncClien
     assert facilitator.settles == 1
     again = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": first})
     assert again.json()["detail"]["reason"] == "payment_replayed"
+
+
+async def test_a_pushed_transfer_refused_at_settlement_is_left_to_the_reconciler(
+        anon: AsyncClient, payments_on, chain):
+    """A pushed transfer is on chain before treg sees it: a settlement that refuses it (its
+    challenge expired since verification) leaves it for the reconciler, never `failed`."""
+    from mpp import Credential
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "cf" * 32})
+    chain.fail = True
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "payment_outcome_unknown", r.text
+    async with session_maker() as db:
+        assert (await db.execute(select(AgentPayment.status))).scalar_one() == "settling"
 
 
 # ---- the record is the answer -------------------------------------------------------------------
