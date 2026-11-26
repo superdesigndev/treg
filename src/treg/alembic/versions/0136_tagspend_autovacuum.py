@@ -22,7 +22,10 @@ than the default's rare, large one.
 `ALTER TABLE ... SET (...)` of autovacuum storage parameters takes SHARE UPDATE EXCLUSIVE, which
 does not block reads or writes. It waits for a running vacuum of the table, under the migration's
 lock timeout and retries. SQLite has no autovacuum: the revision only records itself there.
-Downgrade resets the three parameters to the server's defaults.
+
+Rollback floor: the expand-safety check counts the `ALTER` as non-additive, so 0136 is marked a
+contract revision. It changes no column, index or constraint: code from before it reads and writes
+`tagspend` exactly as before, and downgrade resets the three parameters to the server's defaults.
 """
 from collections.abc import Sequence
 
@@ -32,6 +35,7 @@ revision: str = "0136"
 down_revision: str | Sequence[str] | None = "0135"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+contract = True  # see the rollback floor note: three table-level autovacuum parameters
 
 SETTINGS = {
     "autovacuum_vacuum_scale_factor": "0.01",
