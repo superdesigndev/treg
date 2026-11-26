@@ -1038,6 +1038,11 @@ async def test_orthogonals_own_422_on_the_skip_direct_ladder_is_a_typed_503_nami
     lock = await _orthogonal_lock()
     assert lock is None or not lock.is_active(), "one refused request must not take the relay offline"
     assert len(seen) == 1
+    # The call id names the call, not the child the relay refused.
+    await audit.drain()
+    call_id = r.headers["X-Treg-Call-Id"]
+    assert (await clients.get(f"/calls/{call_id}")).json()["call"]["status_code"] == 503
+    assert (await clients.get(f"/calls/{call_id}/result")).json()["status_code"] == 503
 
 
 # ---- the catalog discloses what a relayed call bills -------------------------------------------

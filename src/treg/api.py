@@ -719,6 +719,12 @@ async def list_calls(
 _ROUTED_CHILD_WINDOW = timedelta(hours=1)
 
 
+def _call_first():
+    """A call ref names the call's own row before an overflow child's, which shares the ref and
+    may be written first."""
+    return (CallRecord.method == "OVERFLOW", CallRecord.id)
+
+
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
     call_id: str, request: Request, caller: Caller = Depends(require_member),
@@ -745,7 +751,8 @@ async def get_call_result(
         .where(CallRecord.org_id == caller.org_id,
                CallRecord.id == int(call_id) if call_id.isdigit() and len(call_id) < 19
                else CallRecord.call_ref == call_id,
-               *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
+               *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags))
+        .order_by(*_call_first()))).scalars().first()
     if row is None:
         raise HTTPException(status_code=404, detail="no call with that id")
     out = {"id": row.id, "call_ref": row.call_ref, "endpoint_id": row.endpoint_id,
@@ -815,7 +822,8 @@ async def get_call(
         .options(defer(cast(QueryableAttribute, CallRecord.error_request), raiseload=True),
                  defer(cast(QueryableAttribute, CallRecord.error_response), raiseload=True))
         .where(CallRecord.org_id == caller.org_id, CallRecord.call_ref == call_ref,
-               *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
+               *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags))
+        .order_by(*_call_first()))).scalars().first()
     # Before the ledger: a fold commits the charge's removal with its settle entry, so a fold in
     # between moves the call into the next read, never out of both.
     queued = (await db.execute(select(CallCharge.call_id).where(

@@ -352,7 +352,8 @@ every pinned tag; foreign and unattributed ids answer 404. Tag for counting, tok
 invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` defers those columns
 with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
 `async_task_app.views_for`. `GET /calls/{id}/result` is described in
-[archive](../architecture/archive.md).
+[archive](../architecture/archive.md). An overflow child shares its call's ref and can be written
+first, so both routes read the call's own row before an `OVERFLOW` one (`api._call_first`).
 
 ### Async tasks
 
