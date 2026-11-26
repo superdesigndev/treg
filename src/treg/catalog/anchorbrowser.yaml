@@ -253,9 +253,10 @@ endpoints:
     added: '2026-11-26'
     capability: web.agent.run
     platform: web
-    scope: any_account
+    scope: own_account
     method: POST
     path: /v1/tools/perform-web-task
+    body_allowlist: true
     name: "Run a web task"
     summary: "Give a browser agent a goal in plain language and a start URL, and get its answer, as text or as JSON matching your schema, with the step count"
     note: "The call answers when the task is done, which took 12 seconds for a 3-step task: set a client timeout of several minutes. The task's browser session stays running after the answer until its idle timeout: end it with the sessionId in the answer."
@@ -282,7 +283,7 @@ endpoints:
     added: '2026-11-26'
     capability: web.screenshot
     platform: web
-    scope: any_account
+    scope: own_account
     method: POST
     path: /v1/tools/screenshot
     name: "Screenshot a web page"
