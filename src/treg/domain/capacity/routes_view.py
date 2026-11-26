@@ -20,7 +20,7 @@ TTL_S = 60.0
 class RouteView:
     def __init__(self, ttl_s: float = TTL_S) -> None:
         self._ttl = ttl_s
-        self._loaded_at = -1.0
+        self._loaded_at = float("-inf")
         self._routes: list[OverflowRoute] = []
 
     async def load(self, *, force: bool = False) -> list[OverflowRoute]:
@@ -40,7 +40,7 @@ class RouteView:
         return route_for(self._routes, endpoint_id)
 
     def invalidate(self) -> None:
-        self._loaded_at = -1.0
+        self._loaded_at = float("-inf")
 
 
 view = RouteView()
