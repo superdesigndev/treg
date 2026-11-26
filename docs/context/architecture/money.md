@@ -1687,7 +1687,11 @@ the allowance: the fold of its charge, settled at once; "Allowance"), each carry
 total, across dimensions double-counts, so every report names its key). `amount_micro` tracks the
 hold: estimate in flight, consumed figure at settle, deleted on release. Hence two deliberately
 separate reads: `tag_spent_since` (cap, counts in-flight work and errs toward refusing) and
-`tag_invoice_since` (invoice, settled rows only). Do not deduplicate them.
+`tag_invoice_since` (invoice, settled rows only). Do not deduplicate them. Both sum a window of up
+to a month inside the reserve's money session, under the team's money admission lease, so they read
+`ix_tagspend_org_dim_val_created_amount` alone (it carries `amount_micro` and `settled`): a heap
+fetch per row of a busy tag's month would hold the lease long enough to turn every other reserve of
+the team into `money_admission_timeout`.
 
 **Tag caps are SOFT and must never be sold as hard.** A per-tag total is an aggregate, so concurrent
 calls can each read a compliant figure; overshoot is bounded by concurrency times the estimate, which
