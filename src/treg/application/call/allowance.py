@@ -567,7 +567,13 @@ async def _last_look(org_id: int, call_id: str, found: list[int],
             if found:
                 return found[0]
             if read in done:
-                settled = read.result()
+                try:
+                    settled = read.result()
+                except Exception:
+                    # The fold has a connection of its own and may still answer.
+                    log.error("reading the settle entry of allowance call %s failed", call_id,
+                              exc_info=True)
+                    settled = None
                 if settled is not None:
                     return settled
             if fold in done:

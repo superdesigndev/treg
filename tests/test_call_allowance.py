@@ -2389,6 +2389,34 @@ async def test_a_call_waiting_on_its_teams_fold_reads_what_that_fold_committed(
     assert await first == 10
 
 
+async def test_a_failed_last_read_still_takes_the_answer_of_a_fold_still_running(
+        org_id, store, monkeypatch):
+    """The call's last read fails while its fold, on a connection of its own, is about to
+    commit. The call takes that fold's answer instead of giving up with its charge."""
+    # Folding stops at 0.8 s; the fold below commits at about 0.85 s, the deadline is 1 s.
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 1.0)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 10, reserved_micro=10)])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def commits_after_the_folding_time(db, org, **kwargs):
+        await asyncio.sleep(0.78)
+        return await fold(db, org, **kwargs)
+
+    async def read_fails(org, call_id):
+        raise DBAPIError("SELECT", None, Exception("server closed the connection"))
+
+    logged = []
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", commits_after_the_folding_time)
+    monkeypatch.setattr(runtime, "_read_settled", read_fails)
+    # Rendering the traceback takes long enough to make the timing depend on the terminal.
+    monkeypatch.setattr(runtime.log, "error", lambda *args, **kwargs: logged.append(args[0]))
+    assert await runtime._settled(org_id, "queued", 2_000_000) == 10
+    assert logged, "the failed read is logged"
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
