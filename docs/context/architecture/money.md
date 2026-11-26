@@ -512,7 +512,9 @@ past the bound do not make every new team scan them.
   conditional debit and the `free` check are unchanged, so a refill still never sets aside
   money the team does not have.
 
-  Money set aside this way is out of the balance's sight. A call on the exact path that the
+  Money set aside this way is out of the balance's sight, and so is a chunk: for a team with
+  about a chunk of credit, a signup grant among them, the first refill moves all of it into the
+  hold. Whatever the refills are sized to, a call on the exact path that the
   balance alone cannot pay for (`reserve_in_transaction` refuses it) therefore asks for the
   team's counter back (`give_back_for_exact_path`, handed what the call is short of), at as
   little cost to a refusal as it can. It reads the counter first, without the team's lease,

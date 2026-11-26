@@ -3697,15 +3697,31 @@ async def test_a_give_back_cancelled_before_the_counter_is_emptied_changes_nothi
     assert await _given_back(org_id) == []
 
 
-async def test_with_the_window_off_an_exact_path_call_short_of_money_is_refused_as_before(
+async def test_with_the_window_off_a_call_the_counter_cannot_make_up_is_refused_as_before(
         org_id, store):
     caller = await _caller(org_id)
     assert await runtime.take(org_id, 600_000)
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(
-            _call(org_id, estimate=4_200_000), caller, call_ref="exact-1")
+            _call(org_id, estimate=4_500_000), caller, call_ref="exact-1")
     assert refused.value.status_code == 402
     assert store.counters[org_id]["avail"] == CHUNK - 600_000, "the counter is left alone"
+
+
+async def test_with_the_window_off_a_team_whose_balance_sits_in_its_allowance_is_served(
+        org_id, store, monkeypatch):
+    """The chunk is all a small team has, so the refill moves its whole balance into the
+    allowance hold. A call that keeps its own hold (a routed child, an async call) then finds
+    the balance at 0: the counter goes back to the balance and the call is served."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    assert await _state(org_id) == (0, GRANT)
+    await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"]
+    assert await _state(org_id) == (GRANT - 4_000 - 80_000, 4_000), "what the take stands on"
+    assert await _given_back(org_id) == [GRANT - 4_000]
 
 
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):

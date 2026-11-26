@@ -474,14 +474,13 @@ async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
     """Return what a team's counter holds to its balance, for a call on the exact path that the
     balance alone could not pay for, by `short_micro`: money set aside for the allowance is out
     of that balance's sight. True when that much went back, and the call may try once more.
-    Only while refills are sized to the team's spend, which can set aside much more than a
-    chunk.
+    A chunk can be all a small team has, so this holds with refills at the chunk too.
 
     It costs a refusal as little as it can. The counter is read first, without the team's
     lease, and a counter that cannot make up the difference is left alone. The team's lease is
     asked for once: held by a refill or a fold, the call is refused as before, not kept
     waiting. Then `_give_back`."""
-    if not (_sizing() and enabled_for(org_id)):
+    if not enabled_for(org_id):
         return False
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     leased = False
