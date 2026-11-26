@@ -225,7 +225,10 @@ async def store(monkeypatch):
     monkeypatch.setattr(runtime, "_refreshing", {})
     monkeypatch.setattr(runtime, "_refresh_again", {})
     monkeypatch.setattr(runtime, "_after_refills", set())
-    return fake
+    yield fake
+    # Folds a settled call left running, and the lease releases they started, belong to this
+    # test: the event loop is shared, so they must not write into the next one.
+    await _background_done()
 
 
 @pytest.fixture
