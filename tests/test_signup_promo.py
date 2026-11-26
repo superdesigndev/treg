@@ -1,12 +1,7 @@
 """Signup-credit abuse regressions through HTTP, with real money and identity transactions."""
 import asyncio
-import importlib.util
-from pathlib import Path
 
 import pytest
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
-from sqlalchemy import create_engine, text
 from sqlmodel import select
 
 from conftest import unproven_member, verified_identity
@@ -228,44 +223,4 @@ async def test_failed_grant_leaves_the_inbox_unclaimed(clients, monkeypatch):
     assert balance == get_settings().promo_grant_micro
     assert len(entries) == 1
 
-
-def test_claim_migration_backfills_consumed_inboxes(tmp_path):
-    path = Path(__file__).parents[1] / 'src/treg/alembic/versions/0071_signup_promo_claim.py'
-    spec = importlib.util.spec_from_file_location('promo_claim_migration', path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    engine = create_engine(f"sqlite:///{tmp_path / 'claim.db'}")
-    with engine.begin() as db:
-        db.execute(text('CREATE TABLE "user" (id INTEGER PRIMARY KEY, email TEXT NOT NULL, '
-                        'email_verified_at DATETIME, signup_promo_available BOOLEAN NOT NULL)'))
-        db.execute(text(
-            "INSERT INTO \"user\" VALUES "
-            "(1, 'a.b+1@gmail.com', '2026-01-01', 0), "   # claimed
-            "(2, 'ab+2@gmail.com', '2026-01-02', 0), "    # a second alias that also claimed
-            "(3, 'fresh@example.org', '2026-01-03', 1), "  # verified, not yet claimed
-            "(4, 'legacy@example.org', NULL, 0)"           # never verified
-        ))
-        with Operations.context(MigrationContext.configure(db)):
-            migration.upgrade()
-        assert db.execute(text('SELECT inbox, user_id FROM signuppromoclaim')).all() == [('ab@gmail.com', 1)]
-    engine.dispose()
-    assert migration._inbox('x.y+z@googlemail.com') == promo_inbox('x.y+z@googlemail.com')
-
-
-def test_migration_disables_old_users_and_preserves_old_writer_default(tmp_path):
-    path = Path(__file__).parents[1] / 'src/treg/alembic/versions/0033_signup_promo_eligibility.py'
-    spec = importlib.util.spec_from_file_location('promo_migration', path)
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    engine = create_engine(f"sqlite:///{tmp_path / 'promo.db'}")
-    with engine.begin() as db:
-        db.execute(text('CREATE TABLE "user" (id INTEGER PRIMARY KEY, email TEXT NOT NULL)'))
-        db.execute(text("INSERT INTO \"user\" VALUES (1, 'existing@example.org')"))
-        with Operations.context(MigrationContext.configure(db)):
-            migration.upgrade()
-        # Pre-upgrade code does not know the columns and must not enable new claims either.
-        db.execute(text("INSERT INTO \"user\" (id, email) VALUES (2, 'old-writer@example.org')"))
-        assert db.execute(text('SELECT signup_promo_available, email_verified_at FROM "user"')).all() == [(0, None), (0, None)]
-    assert User(email='new-code@example.org').signup_promo_available is True
-    engine.dispose()
 

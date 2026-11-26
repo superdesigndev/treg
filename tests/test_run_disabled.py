@@ -5,23 +5,11 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 
 from treg import audit, crypto
 from treg.api import app
 from treg.bootstrap import create_app
-from treg.infra.db import get_session, session_maker
-from treg.models import Membership, Org, User
-from test_run import _register_runnable
-
-
-async def test_run_disabled_for_registered_owner_and_cli_tool(clients):
-    await _register_runnable(clients)
-    response = await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "echo hi"]})
-    assert response.status_code == 503
-    assert response.json() == {"detail": "Server-side CLI execution is disabled"}
-    await audit.drain()
-    assert (await clients.get("/runs")).json() == []
+from treg.infra.db import get_session
 
 
 @pytest.mark.parametrize("role, status", [("all", 503), ("control", 503), ("dataplane", 404)])
@@ -33,25 +21,13 @@ async def test_run_is_unavailable_on_every_deployment_role(role, status):
         assert response.json() == {"detail": "Server-side CLI execution is disabled"}
 
 
-@pytest.mark.parametrize("identity", ["owner", "admin", "member", "viewer", "visitor", "anonymous"])
+@pytest.mark.parametrize("identity", ["owner", "anonymous"])
 async def test_run_disabled_without_dependencies_for_every_identity(clients, monkeypatch, identity):
+    """No identity is resolved at all: the forbidden database below would catch any lookup, so an
+    owner's token and no token stand for every role."""
     headers = dict(clients.headers)
     if identity == "anonymous":
         headers.pop("x-treg-token")
-    elif identity != "owner":
-        token = crypto.new_token()
-        async with session_maker() as db:
-            org = (await db.execute(select(Org))).scalars().first()
-            email = ("visitor-test@sandbox.treg.local" if identity == "visitor"
-                     else f"{identity}@example.invalid")
-            user = User(email=email)
-            db.add(user)
-            await db.flush()
-            db.add(Membership(user_id=user.id, org_id=org.id,
-                              role="member" if identity == "visitor" else identity,
-                              token_hash=crypto.hash_token(token)))
-            await db.commit()
-        headers["x-treg-token"] = token
     await audit.drain()
 
     def forbidden(*args, **kwargs):

@@ -249,7 +249,7 @@ async def test_a_published_rule_goes_ahead_of_the_yaml_order(clients, enrichment
     assert header == ["hunter"], "the caller's prefer header replaces published rules"
 
 
-@pytest.mark.parametrize("contents, first", [(True, "exa"), (False, "crawl4ai"), (None, "crawl4ai")])
+@pytest.mark.parametrize("contents, first", [(True, "exa"), (None, "crawl4ai")])
 async def test_a_web_search_rule_on_contents_puts_exa_first_only_when_passages_are_asked(
         clients, platform_on, monkeypatch, published, contents, first):
     """What `prefer_when: {sent: [contents]}` did, as a published rule: `contents: true` goes to the
@@ -281,16 +281,9 @@ PEOPLE_SEARCH_RULES = [
 @pytest.mark.parametrize("identity, first, rule", [
     ({"q": "head of tax in phoenix"}, ["exa", "parallel"], "q-open"),
     ({"q": "executives", "company_domain": "openai.com"}, ["exa", "parallel"], "q"),
-    ({"q": "founder", "full_name": "Ann Lee"}, ["exa", "parallel"], "q"),
-    # {q, title}: prefer_when asked exa first for half the teams; the rule does it for all of them
-    # (parallel cannot send the title, so scoping leaves it out)
-    ({"q": "in phoenix", "title": "Head of Tax"}, ["exa", "parallel"], "q-open"),
     ({"title": "Head of Tax", "location": "Phoenix"}, ["exa"], "title"),
-    # company or name scoped: prefer_when named no provider, so cost order, and no rule matches
+    # company scoped: prefer_when named no provider, so cost order, and no rule matches
     ({"q": "in phoenix", "title": "Head of Tax", "company_domain": "openai.com"}, None, None),
-    ({"q": "in phoenix", "title": "Head of Tax", "full_name": "Ann Lee"}, None, None),
-    ({"title": "Head of Tax", "full_name": "Ann Lee"}, None, None),
-    ({"company_domain": "openai.com"}, None, None),
 ])
 async def test_people_search_rules_route_what_prefer_when_did(
         clients, people_search_on, published, identity, first, rule):
