@@ -327,7 +327,7 @@ ORG_SCOPED_MODELS = (
 # Tables that name their team with no foreign key (data-model.md, "Call-path tables have no
 # foreign key to `org`"). `cascade_delete_org` deletes them through ORG_SCOPED_MODELS and once
 # more after the team row is gone, for the rows a call committed while the deletion waited.
-ORG_ROWS_WITHOUT_FOREIGN_KEY = (Hold, IdempotentCall)
+ORG_ROWS_WITHOUT_FOREIGN_KEY = (Hold, IdempotentCall, TagSpend)
 
 
 ARCHIVE_PRIVATE_SCOPES = ("org", "conn")

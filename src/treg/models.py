@@ -1434,7 +1434,7 @@ class TagSpend(SQLModel, table=True):
     __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     dim: str  # the tag key, e.g. "customer"
     val: str  # the tag value, e.g. "cust_8123"
     # The hold this belongs to (== call_id). Kept after settle so a row can be traced back to its call.
