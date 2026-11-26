@@ -627,6 +627,19 @@ async def test_a_recovery_on_another_host_runs_one_call(
     assert [r.status_code for r in runs] == [200, 409], runs[1].text
     assert len(calls) == 1
     assert all("x-treg-recovery" not in str(call).lower() for call in calls)
+    # The reference stops working with its receipt, before the mark that makes its recovery
+    # final can expire: past it, a request carrying it is offered no recovery terms.
+    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
+                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
+                                      body=b"", recovery=detail["recovery"])
+    assert agent_payments.signed_terms(paid.offer.terms, paid.offer.resource_url,
+                                       agent_payments.Terms(0, 0)).recovery
+    later = time.time() + agent_payments.REPLAY_KEEP_S + 1
+    monkeypatch.setattr(agent_payments.time, "time", lambda: later)
+    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
+                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
+                                      body=b"", recovery=detail["recovery"])
+    assert agent_payments._TERMS.fullmatch(paid.offer.terms).group(4) == "r", "plain terms"
 
 
 async def test_with_the_switch_off_a_kept_transfer_offers_a_plain_proof(

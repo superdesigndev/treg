@@ -350,7 +350,8 @@ headers (`X-Treg-Payment` among them) and no receipt.
   proof that can be offered); another answers 409 `challenge_used`, checked before price, credit
   or a replay could ask for a payment (the nonce is read from a token treg issued, expired or
   not). The 409 for another host carries `recovery`, an HMAC'd reference to that nonce and this
-  request; sent to `proof_url` in `X-Treg-Recovery` (consumed, never relayed), it makes that host
+  request that expires with the receipt (the transfer's time plus the week), so terms offered from
+  it end before the spent mark can; sent to `proof_url` in `X-Treg-Recovery` (consumed, never relayed), it makes that host
   offer the same recovery terms, so following the receipt twice still runs one call. Recovery
   terms and the reference exist only while the switch is on.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's

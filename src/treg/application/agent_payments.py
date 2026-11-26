@@ -27,7 +27,7 @@ import time
 from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 from sqlalchemy import and_, false, or_
 from sqlalchemy.exc import IntegrityError
@@ -290,26 +290,34 @@ def _recovery_nonce(proof_id: str) -> str:
 
 
 RECOVERY_HEADER = "x-treg-recovery"
-_RECOVERY = re.compile(r"k([0-9a-f]{16})m([0-9a-f]{32})")
+_RECOVERY = re.compile(r"k([0-9a-f]{16})e(\d{1,12})m([0-9a-f]{32})")
 
 
-def _recovery_mac(nonce: str, scope: str) -> str:
+def _recovery_mac(nonce: str, until: int, scope: str) -> str:
     secret = get_settings().agent_payments_secret.encode()
-    return hmac.new(secret, f"recovery|{nonce}|{scope}".encode(), hashlib.sha256).hexdigest()[:32]
+    return hmac.new(secret, f"recovery|{nonce}|{until}|{scope}".encode(),
+                    hashlib.sha256).hexdigest()[:32]
 
 
-def recovery_ref(nonce: str, offer: Offer) -> str:
+def _recovery_until(kept_at) -> int:
+    """When a kept transfer's recovery reference stops working: its receipt's week from the
+    transfer, so terms offered from it expire before the spent mark can (`_claim_recovery`, kept
+    the week plus the terms' life from the first recovery, which comes after the transfer)."""
+    return int(kept_at.replace(tzinfo=UTC).timestamp()) + REPLAY_KEEP_S
+
+
+def recovery_ref(nonce: str, until: int, offer: Offer) -> str:
     """What a kept transfer's 409 hands the wallet for the host where its proof is offered: sent
-    there in `X-Treg-Recovery` with the same request, it makes that host offer the transfer's own
-    recovery terms."""
-    return f"k{nonce}m{_recovery_mac(nonce, _scope(offer))}"
+    there in `X-Treg-Recovery` with the same request before `until`, it makes that host offer the
+    transfer's own recovery terms."""
+    return f"k{nonce}e{until}m{_recovery_mac(nonce, until, _scope(offer))}"
 
 
 def _recovery_from(ref: str, offer: Offer) -> str:
-    """The recovery nonce `ref` names for this request, or ""."""
+    """The recovery nonce `ref` names for this request while it is live, or ""."""
     found = _RECOVERY.fullmatch((ref or "").strip())
-    if found is None or not hmac.compare_digest(found.group(2),
-                                                _recovery_mac(found.group(1), _scope(offer))):
+    if found is None or int(found.group(2)) < time.time() or not hmac.compare_digest(
+            found.group(3), _recovery_mac(found.group(1), int(found.group(2)), _scope(offer))):
         return ""
     return found.group(1)
 
@@ -583,7 +591,7 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     if not agreed:
         raise await _kept(paid, rail, verified.amount_micro,
                           settlement.reference if settlement is not None else "", org_id,
-                          used=used, proof_id=verified.proof_id)
+                          used=used, proof_id=verified.proof_id, kept_at=_now())
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
 
 
@@ -625,7 +633,7 @@ async def _resent_kept(paid: PaidOffer, rail: PaymentRail,
     if row.status != "settled":
         return None
     return await _kept(paid, rail, row.amount_micro, row.reference or "", row.org_id,
-                       used=bool(seen.get("used")), proof_id=row.proof_id)
+                       used=bool(seen.get("used")), proof_id=row.proof_id, kept_at=row.created_at)
 
 
 class PriceChanged(Exception):
@@ -640,7 +648,8 @@ class PriceChanged(Exception):
 
 
 async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: str,
-                org_id: int, *, used: bool, proof_id: str) -> PaymentChallenge | PriceChanged:
+                org_id: int, *, used: bool, proof_id: str,
+                kept_at) -> PaymentChallenge | PriceChanged:
     """The answer for a transfer already sent that runs no call: it is the wallet's credit now,
     and the answer names how much it paid, its transaction and the credit, so the wallet can
     match the top-up.
@@ -695,7 +704,8 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: 
                     + f" and sign its zero-amount proof to pay this call (at most "
                     f"${ledger.usd(paid.quote_micro):g}) from that credit."),
         "proof_url": where,
-        **({"recovery": recovery_ref(_recovery_nonce(proof_id), paid.offer)}
+        **({"recovery": recovery_ref(_recovery_nonce(proof_id), _recovery_until(kept_at),
+                                     paid.offer)}
            if get_settings().agent_payments_terms_binding else {}),
     }, headers)
 
