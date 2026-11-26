@@ -182,14 +182,15 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if not claimed:
         return Folded()
     charges = sorted(claimed, key=lambda row: (row.created_at, row.call_id))
-    if charges and not await team_exists(db, org_id):
-        charges = []
+    charged = sum(row.amount_micro for row in charges)
+    blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
+    # Blocks, then the team row: the order a team's deletion deletes them in.
+    if not await _lock_team(db, org_id):
+        charges, charged, blocks = [], 0, []
     orphaned = len(claimed) - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
                   "for has been deleted", org_id, orphaned)
-    charged = sum(row.amount_micro for row in charges)
-    blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
     folded_at = _now()
     consumed = 0
     for row in charges:
@@ -220,6 +221,17 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
     return Folded(len(charges), charged, consumed, orphaned)
+
+
+async def _lock_team(db: AsyncSession, org_id: int) -> bool:
+    """Whether there is still a team to charge, holding it until this transaction ends. A fold
+    may write no balance or block change and still write the team's settle entries and tag rows;
+    the share lock is what makes a deletion of the team wait for those rows (PostgreSQL's DELETE
+    conflicts with it) and then take them, or makes this fold wait for the deletion and find no
+    team. One lock per fold, not per row."""
+    with money_stage(db, "lock_team"):
+        return (await db.execute(select(Org.id).where(Org.id == org_id)
+                                 .with_for_update(key_share=True))).first() is not None
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:

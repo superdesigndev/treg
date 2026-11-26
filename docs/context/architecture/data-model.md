@@ -263,8 +263,9 @@ Team deletion deletes these tables in its walk and once more after the team row:
 for every transaction that updated the row and lets none update it after, so a row a call
 committed while the walk ran is taken too (`tests/test_org_delete_race_postgres.py`). A table joins
 the list only when no write to it can commit after the team row is gone: each of its writers
-updates the team row first, or claims a row the deletion also deletes, or writes through a foreign
-key that still stands. `CallRecord` keeps its foreign key for that reason: the audit queue writes it
+updates the team row first, share-locks it (the allowance fold, once per fold, since a fold of
+unpaid or late-queued charges may touch no balance, block or hold of the team's), claims a row the
+deletion also deletes, or writes through a foreign key that still stands. `CallRecord` keeps its foreign key for that reason: the audit queue writes it
 from memory after the call, holding no lock on anything of the team's, so without the constraint a
 row with the caller's email, tags and error evidence could land after the team is gone.
 

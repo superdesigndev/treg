@@ -129,3 +129,92 @@ async def test_a_settle_that_claimed_its_hold_before_the_deletion_leaves_no_ledg
         left = (await db.execute(select(func.count()).select_from(LedgerEntry)
                                  .where(LedgerEntry.org_id == org_id))).scalar_one()
     assert left == (0 if sweep else 1)
+
+
+async def _deletion_done_or_waiting(deletion: asyncio.Task, pid: int) -> None:
+    async with session_maker() as db:
+        for _ in range(200):
+            if deletion.done():
+                return
+            waiting = (await db.execute(text(
+                "SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = :pid"),
+                {"pid": pid})).scalar()
+            if waiting:
+                return
+            await asyncio.sleep(0.02)
+    raise AssertionError("the deletion neither ended nor waited")
+
+
+@pytest.mark.parametrize("amount, team_lock", [(0, True), (1_000, True), (0, False)],
+                         ids=["unpaid-charge", "paid-charge", "unpaid-charge-plain-read"])
+async def test_a_charge_queued_after_the_deletion_read_the_queue_leaves_nothing_behind(
+        postgres, monkeypatch, amount, team_lock):
+    """A team with no allowance hold, so neither the charge writer nor the fold locks anything
+    of the team's before the fold's own check. The charge is queued after the deletion's walk
+    read `callcharge`, and the fold writes its settle entry and tag row while the deletion waits
+    to delete the team row."""
+    from treg.config import get_settings
+    from treg.domain.money import allowance
+    from treg.models import LedgerEntry, TagSpend
+
+    monkeypatch.setattr(get_settings(), "platform_margin", 0)
+    if not team_lock:
+        async def plain_read(db, org_id):
+            return await allowance.team_exists(db, org_id)
+        monkeypatch.setattr(allowance, "_lock_team", plain_read)
+    org_id = await _team()
+    async with session_maker() as db:
+        await money_grant(db, org_id)
+
+    # Something else holds the team row, so the deletion stops just before deleting it, its
+    # walk done.
+    blocker = session_maker()
+    await blocker.execute(select(Org.id).where(Org.id == org_id).with_for_update(key_share=True))
+
+    pid: asyncio.Future = asyncio.get_running_loop().create_future()
+
+    async def delete_team() -> None:
+        async with session_maker() as db:
+            pid.set_result((await db.execute(text("SELECT pg_backend_pid()"))).scalar_one())
+            await teams.cascade_delete_org(await db.get(Org, org_id), db)
+            await db.commit()
+
+    deletion = asyncio.create_task(delete_team())
+    await _waiting_on_a_lock(await pid)
+
+    async with session_maker() as db:
+        await allowance.record_charges(db, [allowance.Charge(
+            call_id=uuid4().hex, org_id=org_id, endpoint_id="test.race", actual_micro=amount,
+            meta={"tags": {"customer": "c-1"}})])
+        await db.commit()
+
+    fold_session = session_maker()
+    folded = asyncio.Event()
+
+    async def fold() -> None:
+        await allowance.fold_charges_in_transaction(fold_session, org_id)
+        await fold_session.flush()
+        folded.set()
+
+    folding = asyncio.create_task(fold())
+    await asyncio.sleep(0.2)  # a paid charge waits here on the blocks the deletion deleted
+    await blocker.commit()
+    await blocker.close()
+    await _deletion_done_or_waiting(deletion, await pid)
+    await asyncio.wait_for(folding, 10)
+    await fold_session.commit()
+    await fold_session.close()
+    await asyncio.wait_for(deletion, 10)
+
+    async with session_maker() as db:
+        left = [(await db.execute(select(func.count()).select_from(model)
+                                  .where(model.org_id == org_id))).scalar_one()
+                for model in (LedgerEntry, TagSpend)]
+    assert left == ([0, 0] if team_lock else [1, 1])
+
+
+async def money_grant(db, org_id: int) -> None:
+    from treg.domain import money
+
+    await money.grant(db, org_id, amount_micro=1_000_000)
+    await db.commit()
