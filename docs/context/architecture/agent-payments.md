@@ -199,13 +199,16 @@ that account's access key.
    refuses a suspended team or member with 403 `payer_suspended`, as `require_member` does on the
    account path, before the proof is claimed or anything settles. `agentpayer` and `agentpayment`
    carry `org_id` with no foreign key (AGENTS.md); team deletion removes both.
-3. `_draws`: whether the call is paid from the credit the wallet already holds, read with
-   `call_allowance.reach` (money.md, "The balance a team is shown"): credit it can spend now draws,
-   credit that is not there settles. When neither is confirmed (the team's money would cover the
-   call but another request still holds the team's money lease after the wait), it answers 503
-   `credit_unconfirmed` with `Retry-After` before the payment is recorded, so the same payment or
-   proof may be sent again: settling then could pay twice for credit the wallet has. The proof
-   path (`_admit_proof`) asks the same before it claims the proof.
+3. `_may_draw`: a deferrable payment is tried on the credit the wallet already holds when the
+   team's money wherever it sits (`allowance.credit_bound`, from the database alone) covers the
+   call; below that the team cannot pay now, and it settles. Above it, whether the credit can be
+   spent is the call's own reservation to find: a reading here, across the allowance's store and
+   the database while calls take and give back, could only guess. A call that drew credit and
+   whose reservation is refused for money (`insufficient_balance`, the hold's own check, the
+   allowance counter given back first) settles the same payment then (`settle_after_refusal`,
+   the row moving from `credit` to `settling` with its fee) and runs again, paid: the refusal
+   reached no provider. The proof path (`_admit_proof`) asks the same before it claims the proof;
+   a proof has nothing to settle, so its refused call answers the `credit_insufficient` 402.
 4. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
    `settling` and commits. A unique violation is a replay: 402 with a fresh challenge.
 5. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that

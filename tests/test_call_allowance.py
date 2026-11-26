@@ -32,7 +32,6 @@ from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
 from treg.infra import kv, money_session
-from treg.infra.agent_payments import Verified
 from treg.infra.db import reset_db, session_maker
 from treg.routers import billing as billing_routes
 from treg.domain.identity.access import Caller
@@ -4375,36 +4374,7 @@ async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_payi
     balance it is shown: credit on the allowance counter is credit."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     assert await runtime.take(org_id, 1_000)
-    assert await agent_payments._draws(_offer(), org_id) is True
-
-
-def _offer(quote_micro: int = 50_000):
-    return SimpleNamespace(quote_micro=quote_micro, endpoint_id="test.paid")
-
-
-def _proof() -> Verified:
-    return Verified(protocol="x402", network="base", proof_id=uuid4().hex, payer="0xabc",
-                    amount_micro=50_000, asset="0xusdc", pay_to="0xtreg",
-                    expires_at=datetime(2099, 1, 1))
-
-
-@pytest.mark.parametrize("case", ["store_down", "held_by_calls_in_flight"])
-async def test_a_wallet_pays_only_for_credit_no_call_can_reach(org_id, store, monkeypatch, case):
-    """Money calls in flight hold, or a counter the store cannot answer for, no call can reach:
-    the payment settles, and the retry it was asked for is never answered with credit that is
-    not there."""
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    if case == "held_by_calls_in_flight":
-        assert await runtime.take(org_id, GRANT)
-    else:
-        assert await runtime.take(org_id, 1_000)
-
-        async def silent(org_id):
-            return None
-        monkeypatch.setattr(store, "allowance_state", silent)
-    for _ in range(2):
-        assert await agent_payments._draws(_offer(), org_id) is False
-    assert await _given_back(org_id) == []
+    assert await agent_payments._may_draw(org_id, 50_000) is True
 
 
 def _moved_by_another(store, org_id: int, move) -> asyncio.Task:
@@ -4420,7 +4390,7 @@ def _moved_by_another(store, org_id: int, move) -> asyncio.Task:
     return asyncio.create_task(run())
 
 
-async def test_credit_another_request_is_giving_back_is_counted_once(org_id, store, monkeypatch):
+async def test_credit_another_request_is_giving_back_is_read_once(org_id, store, monkeypatch):
     """Calls in flight hold most of the hold, and another request is giving the rest of the
     counter back to the balance. The reading waits for its lease, so the money is counted once,
     where it landed, and a wallet asked for more than that settles rather than drawing it."""
@@ -4433,38 +4403,6 @@ async def test_credit_another_request_is_giving_back_is_counted_once(org_id, sto
     moving = _moved_by_another(store, org_id, give_back)
     assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
     await moving
-    assert await agent_payments._draws(_offer(50_000), org_id) is True
-
-
-async def test_a_wallet_does_not_pay_for_credit_a_refill_is_publishing(org_id, store, monkeypatch):
-    """A refill has moved the balance into the hold and holds the lease while it publishes the
-    counter: read under the lease, the money is on the counter, and the wallet draws."""
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    assert await runtime.take(org_id, 1_000)
-    avail = store.counters[org_id]["avail"]
-    store.counters[org_id]["avail"] = 0
-
-    async def publish():
-        store.counters[org_id]["avail"] = avail
-
-    moving = _moved_by_another(store, org_id, publish)
-    assert await agent_payments._draws(_offer(), org_id) is True
-    await moving
-    assert await _given_back(org_id) == []
-
-
-async def test_a_wallet_is_asked_to_send_the_same_payment_again_while_its_credit_moves(
-        org_id, store, monkeypatch):
-    """Another request holds the team's lease past the wait, its money between the store and the
-    database: neither drawing nor settling is safe. The wallet is asked to send the same payment
-    again, and nothing records it as used."""
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.1)
-    epoch = await runtime.take(org_id, 1_000)
-    await store.allowance_drop(org_id, epoch)
-    store.leases[runtime.money_key(org_id)] = "a give-back"
-    with pytest.raises(agent_payments.CreditMoving):
-        await agent_payments._draws(_offer(), org_id)
 
 
 async def test_a_team_whose_money_is_not_there_is_answered_without_the_store(

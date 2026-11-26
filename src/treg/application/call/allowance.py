@@ -723,8 +723,8 @@ async def _team_lease(org_id: int):
 
 
 async def reach(org_id: int, amount_micro: int) -> Reach:
-    """Whether the team can pay `amount_micro` now, for a decision a wrong reading would cost: a
-    wallet settling a transfer or drawing credit, an arena run starting or quoted.
+    """Whether the team can pay `amount_micro` now, for a decision a wrong reading would cost: an
+    arena run starting or quoted.
 
     The team's money wherever it sits (`allowance.credit_bound`, the database alone) below the
     amount, or a team off the allowance, is answered from the database and the store is not

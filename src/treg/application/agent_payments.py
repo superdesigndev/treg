@@ -32,6 +32,7 @@ from .. import ratestore
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.governance.teams import make_payer_team
+from ..domain.money import allowance as money_allowance
 from ..domain.identity.access import Caller
 from ..infra import stripe as stripe_api
 from ..infra.agent_payments import (
@@ -94,6 +95,10 @@ class PayerAdmission:
     caller: Caller
     verified: Verified
     settlement: Settlement | None   # None: the call draws credit the payer already holds
+    # A payment drawing credit keeps what settling it needs, for a call the credit turns out
+    # not to cover (`settle_after_refusal`). None for a proof, which moves no money.
+    rail: PaymentRail | None = None
+    payment_id: int | None = None
 
 
 class PaymentPending(Exception):
@@ -102,20 +107,6 @@ class PaymentPending(Exception):
     def __init__(self, detail: dict) -> None:
         super().__init__(detail["message"])
         self.detail = detail
-
-
-class CreditMoving(Exception):
-    """The wallet's credit would cover the call but treg could not confirm it can be spent now:
-    calls in flight hold it, or it is moving between treg's stores. Nothing was charged and the
-    payment or proof was not used: the same one may be sent again."""
-
-    def __init__(self, endpoint_id: str) -> None:
-        message = ("this wallet's credit could not be confirmed for this call just now; nothing "
-                   "was charged and this payment was not used. Send the same payment again "
-                   "in a moment.")
-        super().__init__(message)
-        self.detail = {"error": "credit_unconfirmed", "reason": "credit_unconfirmed",
-                       "endpoint_id": endpoint_id, "message": message}
 
 
 class RateLimited(Exception):
@@ -413,30 +404,58 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
-    draw = verified.deferrable and await _draws(paid, org_id)
+    draw = verified.deferrable and await _may_draw(org_id, paid.quote_micro)
     payment_id, draw = await _claim(verified, org_id, draw)
     if draw is None:
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
-    settlement = None
-    if not draw:
-        # A settlement outlives the request: a caller that disconnects mid-settlement must still
-        # be credited for a transfer that lands, so the work runs as its own task.
-        work = asyncio.ensure_future(_settle_and_credit(rail, verified, paid, payment_id, org_id))
-        _inflight.add(work)
-        work.add_done_callback(_forget)
-        try:
-            settlement = await asyncio.shield(work)
-        except PaymentRejected as exc:
-            if exc.code == "settlement_unknown":
-                raise PaymentPending({
-                    "error": "payment_outcome_unknown", "endpoint_id": paid.endpoint_id,
-                    "message": ("treg could not confirm the settlement of this payment, so the "
-                                "call was not made. If the transfer lands it is kept as this "
-                                "wallet's credit; do not send this payment again."),
-                }) from exc
-            raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    if draw:
+        return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None,
+                              rail=None if paid.proof_only else rail, payment_id=payment_id)
+    settlement = await _settle(rail, verified, paid, payment_id, org_id)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+async def _settle(rail: PaymentRail, verified: Verified, paid: PaidOffer, payment_id: int | None,
+                  org_id: int) -> Settlement:
+    """Settle the payment and credit the payer team. A settlement outlives the request: a caller
+    that disconnects mid-settlement must still be credited for a transfer that lands, so the
+    work runs as its own task. Raises PaymentPending or a PaymentChallenge."""
+    work = asyncio.ensure_future(_settle_and_credit(rail, verified, paid, payment_id, org_id))
+    _inflight.add(work)
+    work.add_done_callback(_forget)
+    try:
+        return await asyncio.shield(work)
+    except PaymentRejected as exc:
+        if exc.code == "settlement_unknown":
+            raise PaymentPending({
+                "error": "payment_outcome_unknown", "endpoint_id": paid.endpoint_id,
+                "message": ("treg could not confirm the settlement of this payment, so the "
+                            "call was not made. If the transfer lands it is kept as this "
+                            "wallet's credit; do not send this payment again."),
+            }) from exc
+        raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+
+
+async def settle_after_refusal(call: "PaidCall") -> "PaidCall | None":
+    """The call drew credit and its own reservation was refused for money: settle the payment it
+    carried and return the call to run again, paid. None when it carried no payment to settle
+    (a proof): the wallet is asked to pay. The refusal is the team's credit read where every
+    call's is, at the moment the call reserved, so the payment moves only when that credit did
+    not cover the call. Raises PaymentPending or a PaymentChallenge."""
+    admission = call.admission
+    if admission.settlement is not None or admission.rail is None or admission.payment_id is None:
+        return None
+    org_id = int(call.caller.org.id)
+    async with session_maker() as db:
+        row = await db.get(AgentPayment, admission.payment_id)
+        row.status, row.fee_micro, row.updated_at = (
+            "settling", fee_of(admission.verified.amount_micro), _now())
+        db.add(row)
+        await db.commit()
+    settlement = await _settle(admission.rail, admission.verified, call.paid,
+                               admission.payment_id, org_id)
+    return replace(call, admission=replace(admission, settlement=settlement))
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
@@ -448,7 +467,7 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
             raise await challenge(paid, reason="unknown_wallet",
                                   message="this wallet has started no task on treg")
     else:
-        if org_id is None or not await _draws(paid, org_id):
+        if org_id is None or not await _may_draw(org_id, paid.quote_micro):
             raise await credit_short(paid, org_id)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
@@ -564,21 +583,18 @@ async def _payer_org(network: str, address: str) -> int:
     raise RuntimeError("payer team could not be created")
 
 
-async def _draws(paid: PaidOffer, org_id: int) -> bool:
-    """Whether the call is paid from the credit the wallet already holds: True when it can be
-    spent now, False when it is not there. Raises CreditMoving when another request held the
-    team's money lease too long to read it (`call_allowance.reach`): settling then could pay
-    twice for credit the wallet has, and drawing could answer it with credit no call can reach,
-    so the wallet sends the same payment again instead. Before the payment is recorded, so that
-    it can."""
-    found, sure = await call_allowance.reach(org_id, paid.quote_micro)
-    if not sure:
-        raise CreditMoving(paid.endpoint_id)
-    return found >= paid.quote_micro
+async def _may_draw(org_id: int, quote_micro: int) -> bool:
+    """Whether the call is tried on the credit the wallet already holds: when the team's money
+    wherever it sits (`allowance.credit_bound`, from the database alone) covers it. Below that
+    the team cannot pay now, so the payment settles. Above it, whether the credit can be spent
+    is the call's own reservation to find (`settle_after_refusal`): a reading taken here, across
+    the store and the database while calls take and give back, could only guess."""
+    async with session_maker() as db:
+        return await money_allowance.credit_bound(db, org_id) >= quote_micro
 
 
 async def _claim(verified: Verified, org_id: int, draw: bool) -> tuple[int | None, bool | None]:
-    """Record the proof as used, with whether it draws credit (`_draws`) or must settle. A proof
+    """Record the proof as used, with whether it draws credit (`_may_draw`) or must settle. A proof
     seen before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
     async with session_maker() as db:
         row = AgentPayment(
@@ -684,8 +700,7 @@ async def open_call(*, rest: str, method: str, path: str, query: str,
                     headers: Mapping[str, str],
                     raw_headers: Sequence[tuple[bytes, bytes]]) -> PaidCall:
     """Price the call, take its payment or draw credit, and return the call to run. Raises
-    NotServed, RateLimited, PaymentChallenge, PaymentPending or CreditMoving; no call has run
-    when it raises.
+    NotServed, RateLimited, PaymentChallenge or PaymentPending; no call has run when it raises.
     `limit_request` has already run for this request."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
                        query_items=query_items, body=body, host=headers.get("host", ""))

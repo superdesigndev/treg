@@ -753,31 +753,30 @@ read this figure; the route's `holds` lists only calls on holds of their own.
 
 The figure reads two stores one after the other, so a refill or a give-back moving money between
 them can make one reading short or long by what moved. It is shown, and a long reading costs
-nothing, since every call still reserves its own money; nothing is decided on it alone. A decision
-reads `reach`. The team's money wherever it sits (`allowance.credit_bound`, the balance plus the
-whole hold less what queued charges spent, from the database alone) below the amount, or a team off
-the allowance, is answered from the database, and the store is not asked. Otherwise the counter and
-the database are read under the team's money lease (`_team_lease`), which every request that moves
-the team's money between them holds (a refill, a give-back, a fold, the idle sweep), so the reading
-is one moment of both: what the counter offers plus the balance, each micro counted once. A store
-that cannot answer leaves the database alone, as no call can take from a counter then either. A
-lease another request keeps for as long as a call waits for a refill makes the answer unsure. A
-paying wallet draws credit `reach` confirms, settles when it is not there (calls in flight hold it,
-the store lost the counter), and on an unsure answer is answered 503 `credit_unconfirmed` before its
-payment is recorded, so the same payment may be sent again; it never pays twice for credit it has,
-nor is answered again and again with credit no call can reach. An arena run's start never decides
-inside its session: its check (`short_of`) raises `CreditShort`, `gives_counter_back` asks `reach`
-outside it and runs the start again with the answer, or refuses (402) or asks for another try (409);
-its quote takes whether the team can pay from `reach` (`balance_for`) and shows `reach`'s figure
-when it can, the team's money wherever it sits while the lease is held, and its own reading, counter
-included, when it cannot. A reserve the balance refused, a hub price hold included, runs again when
-`onto_balance` finds the balance already covers it (another request gave the counter back) or gives
-the counter back under the same lease, waiting for it no longer than a call waits for a refill; a
-daily-cap refusal runs again when a give-back frees the day's excess or the day's committed figure,
-read again, now leaves room. The Sheets panel's teams, the consent page and the CLI's home end their
-read before asking the store, and the billing state's callers read the counter before opening their
-session, so no connection waits on it. The column itself is unchanged and the invariant below still
-holds for it.
+nothing, since every call still reserves its own money; nothing is decided on it alone. An arena
+decision reads `reach`. The team's money wherever it sits (`allowance.credit_bound`, the balance
+plus the whole hold less what queued charges spent, from the database alone) below the amount, or a
+team off the allowance, is answered from the database, and the store is not asked. Otherwise the
+counter and the database are read under the team's money lease (`_team_lease`), which every request
+that moves the team's money between them holds (a refill, a give-back, a fold, the idle sweep), so
+the reading is one moment of both: what the counter offers plus the balance, each micro counted
+once. A store that cannot answer leaves the database alone, as no call can take from a counter then
+either. A lease another request keeps for as long as a call waits for a refill makes the answer
+unsure. A paying wallet decides nothing on it: a payment draws credit when the team's money wherever
+it sits covers the call, and settles only when the call's own reservation is then refused for money,
+once, the call running again paid (agent-payments.md); the reservation is where every call's credit
+is read. An arena run's start never decides inside its session: its check (`short_of`) raises
+`CreditShort`, `gives_counter_back` asks `reach` outside it and runs the start again with the
+answer, or refuses (402) or asks for another try (409); its quote takes whether the team can pay
+from `reach` (`balance_for`) and shows `reach`'s figure when it can, the team's money wherever it
+sits while the lease is held, and its own reading, counter included, when it cannot. A reserve the
+balance refused, a hub price hold included, runs again when `onto_balance` finds the balance already
+covers it (another request gave the counter back) or gives the counter back under the same lease,
+waiting for it no longer than a call waits for a refill; a daily-cap refusal runs again when a
+give-back frees the day's excess or the day's committed figure, read again, now leaves room. The
+Sheets panel's teams, the consent page and the CLI's home end their read before asking the store,
+and the billing state's callers read the counter before opening their session, so no connection
+waits on it. The column itself is unchanged and the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 

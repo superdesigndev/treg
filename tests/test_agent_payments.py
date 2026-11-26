@@ -430,6 +430,40 @@ async def test_a_known_wallet_polls_as_its_team_and_never_pays(anon: AsyncClient
     assert await _balance(payer) == balance
 
 
+async def test_a_payment_drawn_on_credit_its_call_cannot_reserve_settles_and_the_call_runs(
+        anon: AsyncClient, payments_on, facilitator, monkeypatch):
+    """The wallet's credit looked enough, so the payment drew it, and the call's own reservation
+    found it short: another call holds it. The same payment settles then, once, and the call,
+    which reached no provider, runs paid. Nothing settles while the credit covers a call."""
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge, account)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    challenge = await anon.get(f"/call/{EP}?aweme_id=8")
+    credential, _ = _x402_credential(challenge, account)
+    r = await anon.get(f"/call/{EP}?aweme_id=8", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200 and r.headers["X-Treg-Payment"] == "credit"
+    assert facilitator.settles == 1
+    async with session_maker() as db:
+        await ledger.reserve(db, await _payer_org(payer), "held.elsewhere",
+                             await _balance(payer))
+
+    async def looks_enough(org_id, quote_micro):
+        return True
+
+    monkeypatch.setattr(agent_payments, "_may_draw", looks_enough)
+    challenge = await anon.get(f"/call/{EP}?aweme_id=9")
+    credential, _ = _x402_credential(challenge, account)
+    r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Payment"] == "paid"
+    assert facilitator.settles == 2 and len(calls) == 3
+    assert await _balance(payer) == FLOOR - EP_MICRO
+
+
 # ---- paying -------------------------------------------------------------------------------------
 async def test_an_mpp_payment_relays_the_answer_and_settles_the_cost(anon: AsyncClient, payments_on,
                                                                     chain):

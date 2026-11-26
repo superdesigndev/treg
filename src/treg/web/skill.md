@@ -340,8 +340,6 @@ When it refuses:
 - **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.
   treg checks the chain and credits the wallet if it landed; read `/agentpay/credit` a few minutes
   later.
-- **503 `credit_unconfirmed`**: nothing was charged and the payment was not used. Wait
-  `Retry-After` seconds and send the same payment again.
 - **429 `rate_limited`**: wait `Retry-After` seconds.
 
 <!--/agentpay-->

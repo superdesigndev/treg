@@ -365,13 +365,29 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 402, exc.detail, exc.headers)
     except agent_payments.PaymentPending as exc:
         return await _payment_refusal(request, 503, exc.detail, [])
-    except agent_payments.CreditMoving as exc:
-        return await _payment_refusal(request, 503, exc.detail, [("Retry-After", "1")])
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
     try:
-        response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
-                                          finish=_relay_answer, headers=paid.headers)
+        try:
+            response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                              finish=_relay_answer, headers=paid.headers)
+        except HTTPException as exc:
+            # The call drew the wallet's credit and its own reservation found it short: the
+            # payment it carried settles now, and the call, which reached no provider, runs
+            # again paid.
+            if not (exc.status_code == 402 and _refused_for_money(exc)):
+                raise
+            try:
+                settled = await agent_payments.settle_after_refusal(paid)
+            except agent_payments.PaymentChallenge as refusal:
+                return await _payment_refusal(request, 402, refusal.detail, refusal.headers)
+            except agent_payments.PaymentPending as pending:
+                return await _payment_refusal(request, 503, pending.detail, [])
+            if settled is None:
+                raise
+            paid = settled
+            response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                              finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
         if exc.status_code == 402 and paid.admission.settlement is None:
             # The credit was spent by another call between the check and the hold: ask this
@@ -409,6 +425,11 @@ async def agent_payment_credit(request: Request) -> Response:
     except agent_payments.PaymentChallenge as exc:
         return _credit_refusal(402, exc.detail, exc.headers)
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
+
+
+def _refused_for_money(exc: HTTPException) -> bool:
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    return detail.get("error") == "insufficient_balance"
 
 
 def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:
