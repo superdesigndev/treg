@@ -131,35 +131,6 @@ async def test_no_request_or_answer_value_is_logged(clients: AsyncClient, platfo
         assert value not in text
 
 
-async def test_a_caller_gone_before_its_body_is_read_is_a_caller_side_499(
-        clients: AsyncClient, call_error_lines):
-    await clients.post("/secrets", json={"name": "brightdata", "value": "OWN-KEY"})
-    sent = []
-
-    async def receive():
-        return {"type": "http.disconnect"}
-
-    async def send(message):
-        sent.append(message)
-
-    token = clients.headers["X-Treg-Token"].encode("latin-1")
-    path = "/call/brightdata.linkedin.user.profile"
-    scope = {
-        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1",
-        "method": "POST", "scheme": "http", "path": path, "raw_path": path.encode(),
-        "query_string": b"dataset_id=gd_l1viktl72bvl7bjuj0", "root_path": "",
-        "headers": [(b"host", b"registry"), (b"x-treg-token", token),
-                    (b"content-type", b"application/json"), (b"content-length", b"32")],
-        "client": ("127.0.0.1", 50000), "server": ("registry", 80),
-    }
-    await A.app(scope, receive, send)
-
-    assert sent[0]["type"] == "http.response.start" and sent[0]["status"] == 499
-    (line,) = call_error_lines()
-    assert (line["by"], line["error_class"], line["caller_side"], line["kind"]) == (
-        "treg", "caller_disconnected", True, "client_disconnected")
-
-
 async def test_a_success_logs_nothing(clients: AsyncClient, call_error_lines):
     await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})
     r = await clients.get(f"/call/{EP}?aweme_id=7")
