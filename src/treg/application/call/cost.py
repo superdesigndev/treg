@@ -572,7 +572,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if rule == "free":
         return (0 if evidence is None else evidence), 0
     if rule != "charged":
-        return evidence, min(amount(terms, rule), hold)
+        return evidence, min(amount(terms, rule) + _base(terms), hold)
     return evidence, _settled(terms, basis_, hold, doc, raw, evidence)
 
 

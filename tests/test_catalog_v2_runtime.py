@@ -663,6 +663,8 @@ def test_a_base_is_billed_on_top_of_the_counted_units_and_on_a_charged_miss():
     assert call(ep, query=[("cap", "0.05")], answer=[])[1].actual_micro == 500
     assert call(free, query=[("cap", "0.05")], answer=[])[1].actual_micro == 0
     assert call(ep, query=[("cap", "0.05")], answer=b"")[1].actual_micro == 50500   # no evidence: the hold
+    units = capped(miss={"when": {"path": "response", "op": "empty"}}, bill={"miss": 1})
+    assert call(units, query=[("cap", "0.05")], answer=[])[1].actual_micro == 1500  # a fixed-unit miss carries the base
 
 
 def test_a_bill_within_the_declared_units_of_the_hold_is_the_hold():
