@@ -800,7 +800,6 @@ adapters:
     in: {linkedin_url: body.person.linkedin, full_name: body.person.name, domain: body.company.domain}
     out: {full_name: name, first_name: firstName, last_name: lastName, title: jobTitle,
           company_domain: domain, linkedin_url: linkedinUrl, location: location}
-    miss: "name == null"
   hunter.people.enrich:
     accepts: [[email], [linkedin_handle]]
     in:  {email: queryParams.email, linkedin_handle: queryParams.linkedin_handle}
@@ -1009,7 +1008,6 @@ adapters:
     const: {body.size: 10}
     cost_units: "10"
     out: {companies: companies, count: total}
-    miss: "companies == []"
 
   # ---- people.search ------------------------------------------------------------------------
   dropleads.people.search:
@@ -1155,7 +1153,6 @@ adapters:
               body.size: "at_most(limit, 100)"}
     cost_units: "at_most(limit, 100)"
     out: {people: people, count: total, next_cursor: searchAfter}
-    miss: "people == []"
     row: {name: name, title: jobTitle, company_domain: domain, location: location, profile_url: linkedinUrl, summary: headline}
 
   apollo.people.enrich:
@@ -1491,7 +1488,6 @@ adapters:
     in_expr: {body.companiesFilters.includeDomains: "list(domain)", body.size: "at_most(limit, 100)"}
     cost_units: "at_most(limit, 100)"
     out: {companies: companies, count: total, next_cursor: searchAfter}
-    miss: "companies == []"
   hunter.x.discover-companies:
     accepts: [[q]]
     in:  {q: body.query}
