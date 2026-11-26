@@ -22,7 +22,7 @@ from .config import get_settings
 
 log = logging.getLogger("treg")
 _MISSING_LOG_EVERY_S = 60.0
-_last_missing_log = 0.0
+_last_missing_log = float("-inf")
 _shape_reported = False
 _EDGE_HEADERS = ("cf-connecting-ip", "true-client-ip", "x-real-ip", "forwarded")
 

@@ -18,8 +18,8 @@ from sqlmodel import select
 from . import oauth, oauth_providers
 from .infra import credential_cipher
 from .config import get_settings
-from .infra.upstream import injectors
-from .infra.upstream.ssrf import host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
+from .infra.upstream import injectors, pathsegment
+from .infra.upstream.ssrf import AddressLookupTimedOut as AddressLookupTimedOut, host_is_public as host_is_public, host_is_public_async as host_is_public_async, safe_webhook_url, url_host_is_public
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
 from .timeutil import utcnow_naive
 
@@ -70,19 +70,21 @@ async def _probe(tool: Tool, smap: dict[int, Secret], client: httpx.AsyncClient)
     headers: dict[str, str] = {}
     params: list = []
     url = f"{tool.base_url.rstrip('/')}/{str(hc.get('path', '')).lstrip('/')}"
+    path_values: dict[str, str] = {}
     try:
         for b in tool.bindings:
             s = smap.get(b["secret_id"])  # a dangling binding (secret deleted) → skip, don't KeyError
             if s is None:
                 continue
             raw = credential_cipher.opened(s)
-            injectors.inject(headers, params, b, raw)  # a bad binding must not 500 the run
+            # a bad binding must not 500 the run
+            injectors.inject(headers, params, b, raw, path_values=path_values)
             if proof := oauth_providers.connection_appsecret_proof(s, b, raw, url):
                 params = [(k, v) for (k, v) in params if k != "appsecret_proof"] + [("appsecret_proof", proof)]
         # Merge onto the URL rather than passing params=: httpx REPLACES a URL's existing query
         # string whenever params is given (even an empty list), which would silently strip a probe
         # path's own query — e.g. YouTube's ?part=id&mine=true — and fail a healthy credential.
-        probe_url = httpx.URL(url)
+        probe_url = httpx.URL(pathsegment.fill(url, path_values))
         for k, v in params:
             probe_url = probe_url.copy_add_param(k, v)
         if get_settings().proxy_ssrf_check and not await url_host_is_public(probe_url):
@@ -167,6 +169,9 @@ async def run_all(db: AsyncSession, client: httpx.AsyncClient, org_id: int | Non
                     if s.kind == "oauth":
                         try:
                             await oauth.ensure_fresh(s, db, client)
+                        except AddressLookupTimedOut as exc:
+                            apply(s, sid, "unknown", f"oauth refresh not attempted: token endpoint {exc}")
+                            oauth_bad = True
                         except Exception as exc:  # noqa: BLE001
                             apply(s, sid, "invalid", f"oauth refresh failed: {exc}")
                             oauth_bad = True

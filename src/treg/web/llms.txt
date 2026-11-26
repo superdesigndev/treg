@@ -136,9 +136,13 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   `X-Treg-Review-Pending` names Meta scopes still waiting for app review of treg's app; if the call
   needs one of them, reconnecting will not help.
 - A found email or phone number is the provider's best match, not a confirmed one: verify it before
-  anyone sends to it. On an email find where you sent a domain, also read `_treg.domain_match` —
+  anyone sends to it. For a phone, `X-Treg-Route-Verify` checks only that the line is live; to check
+  the number is this person's, call `millionphones.people.contact.verify` with their LinkedIn
+  profile (`social_url`) and the `phone_number`. On an email find where you sent a domain, also read `_treg.domain_match` —
   a LinkedIn-only provider often returns a former employer. `X-Treg-Route-Domain-Match: strict`
   keeps asking providers past an off-domain hit, each attempt at its own price.
+- For an ad audience upload, `X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find` adds the
+  hit's email as LinkedIn, Meta and Google hashes in `_treg.ad_hashes`, at no extra charge.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.

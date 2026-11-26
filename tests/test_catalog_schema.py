@@ -152,6 +152,23 @@ def test_the_served_cost_rebuilds_todays_hold_and_settle_forms(keys, cost):
                            else "per_success", "value": 1, **cost, **PROVENANCE}
 
 
+@pytest.mark.parametrize(("unit", "settle", "miss", "expected"), [
+    ("call", {"reported": {"header": "x-cost", "unit": "credit"}}, "free", "per_success"),
+    ("call", {"reported": {"path": "response.cost", "unit": "credit"}}, "charged", "per_call"),
+    ("result", {"reported": {"header": "x-cost", "unit": "credit"}}, "free", "per_result"),
+    ("call", {"count": {"path": "response.items"}}, "free", "per_result"),
+    ("call", None, "free", "per_result"),
+])
+def test_a_reserve_plugin_preserves_the_unit_of_a_reported_charge(unit, settle, miss, expected):
+    from treg.domain.catalog.schema.v2 import served
+    row = V2Row.model_validate(_v2(price={"value": "5", "unit": unit, "currency": "credit"}, provenance=PROVENANCE,
+                                   reserve={"plugin": "demo.hold", "max": "25"},
+                                   settle=settle, bill={"miss": miss}))
+    catalog = store.Catalog(credit_rates={"demo": 0.0004})
+    view = catalog.cost_view(served(row, {})["cost"], "demo")
+    assert (view["type"], view["unit"], view["usd"]) == (expected, unit, 0.002)
+
+
 def test_the_merge_rule_replaces_whole_inherits_the_absent_and_opts_out_on_null():
     defaults = {"expect": {"path": "response.code", "op": "equals", "value": 0},
                 "bill": {"miss": "charged", "error": "charged"}}

@@ -1,0 +1,100 @@
+{
+  "data": {
+    "data": [
+      {
+        "linkedin_id": "2135371",
+        "accelerator_statuses": [
+          "active"
+        ],
+        "accelerators": [
+          {
+            "id": "ycombin…",
+            "slug": "stripe",
+            "tags": [
+              "Banking…",
+              "Fintech",
+              "… 5 mor…"
+            ],
+            "year": 2009,
+            "batch": "Summer …",
+            "founders": [
+              {
+                "full_name": "Patrick…",
+                "bio": null,
+                "job_title": "Founder…",
+                "is_active": true,
+                "twitter_handle": "patrick…",
+                "linkedin_slug": "patrick…"
+              },
+              {
+                "full_name": "John Co…",
+                "bio": null,
+                "job_title": "Founder…",
+                "is_active": true,
+                "twitter_handle": "collisi…",
+                "linkedin_slug": "johnbco…"
+              }
+            ],
+            "description": "Launche…",
+            "one_liner": "Economi…",
+            "company_name": "Stripe",
+            "company_domain": "stripe.…",
+            "accelerator_name": "ycombin…",
+            "accelerator_domain": "https:/…"
+          }
+        ],
+        "blog_urls": [],
+        "custom_data": null,
+        "domains": [
+          "stripe.…",
+          "apolloe…"
+        ],
+        "emails": [
+          "connect…",
+          "dpo@str…",
+          "… 4 mor…"
+        ],
+        "phone_numbers": [
+          "1800952…",
+          "1888926…"
+        ],
+        "employee_count_consensus": {
+          "gte": 16875,
+          "lte": 16875
+        },
+        "facebook_urls": [
+          "https:/…",
+          "https:/…",
+          "… 1 mor…"
+        ],
+        "fortune_rankings": null,
+        "founded_on_consensus": "2010-01…",
+        "github_usernames": [
+          "stripe",
+          "stripe-…"
+        ],
+        "instagram_handles": [],
+        "latest_funding_consensus": 6500000000,
+        "linkedin_slugs": [
+          "stripe"
+        ],
+        "…": "67 more field(s) truncated"
+      }
+    ],
+    "nextCursor": "gAAAAAB…",
+    "searchParams": {
+      "exactCompanyV2": {
+        "anyOf": [
+          {
+            "identifier": "linkedi…",
+            "org_id": "2135371"
+          }
+        ]
+      }
+    }
+  },
+  "credits": {
+    "charged": 3,
+    "available": null
+  }
+}

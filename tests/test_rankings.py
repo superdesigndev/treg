@@ -338,3 +338,16 @@ def test_a_decision_model_is_its_own_type_and_counts_in_all():
     board = rankings.build(_rows(jev["id"], {0: 50}), store.load(), LAST)["ai_models"]["7d"]
     (model,) = board["models"]
     assert model["type"] == "Decision" and model["calls"] == 50
+
+
+async def test_the_faq_and_its_structured_data_say_the_same_thing(clients: AsyncClient):
+    import html as html_mod
+    page = (await clients.get("/rankings")).text
+    faq_html = page.split('id="faq"', 1)[1].split("</section>", 1)[0]
+
+    def text(s):
+        return re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", "", s))).strip()
+    visible = [(text(q), text(a)) for q, a in re.findall(r"<summary>(.*?)</summary><p>(.*?)</p>", faq_html, re.S)]
+    ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', faq_html, re.S).group(1))
+    marked = [(q["name"], q["acceptedAnswer"]["text"]) for q in ld["mainEntity"]]
+    assert visible and marked == visible

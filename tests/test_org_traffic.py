@@ -672,7 +672,7 @@ async def test_replay_log_keeps_current_attempt_ref(clients, counter, monkeypatc
     monkeypatch.setattr(service, "prepare_call_intake", AsyncMock(return_value=SimpleNamespace(
         idempotency_key="replayed", fingerprint="same-request", replay=IdempotentReplay(
             body=b"{}", status_code=200, media_type="application/json", charged_micro=0,
-            call_ref=original_ref))))
+            call_ref=original_ref), meta=None)))
     resolve = AsyncMock(side_effect=AssertionError("replay must not resolve a target"))
     monkeypatch.setattr(service, "resolve_call_target", resolve)
     response = await clients.get("/call/example/path", headers={"X-Treg-Replay-Of": "forged"})

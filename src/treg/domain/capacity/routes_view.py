@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from ...infra.db import session_maker
 from ...models import OverflowRoute
+from ..catalog import store as catalog_store
 from .routes import route_for
 
 TTL_S = 60.0
@@ -19,7 +20,7 @@ TTL_S = 60.0
 class RouteView:
     def __init__(self, ttl_s: float = TTL_S) -> None:
         self._ttl = ttl_s
-        self._loaded_at = -1.0
+        self._loaded_at = float("-inf")
         self._routes: list[OverflowRoute] = []
 
     async def load(self, *, force: bool = False) -> list[OverflowRoute]:
@@ -32,11 +33,14 @@ class RouteView:
         return self._routes
 
     def for_endpoint(self, endpoint_id: str) -> list[OverflowRoute]:
-        """Enabled routes, Orthogonal first. Sync."""
+        """Enabled routes, Orthogonal first. Sync. None for an async job, even before the next sync
+        disables its row: the task would live on the aggregator's account (`eligible`)."""
+        if (catalog_store.load().by_id.get(endpoint_id) or {}).get("async"):
+            return []
         return route_for(self._routes, endpoint_id)
 
     def invalidate(self) -> None:
-        self._loaded_at = -1.0
+        self._loaded_at = float("-inf")
 
 
 view = RouteView()

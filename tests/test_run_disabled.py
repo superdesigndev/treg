@@ -33,7 +33,7 @@ async def test_run_is_unavailable_on_every_deployment_role(role, status):
         assert response.json() == {"detail": "Server-side CLI execution is disabled"}
 
 
-@pytest.mark.parametrize("identity", ["owner", "admin", "member", "viewer", "visitor", "sandbox", "anonymous"])
+@pytest.mark.parametrize("identity", ["owner", "admin", "member", "viewer", "visitor", "anonymous"])
 async def test_run_disabled_without_dependencies_for_every_identity(clients, monkeypatch, identity):
     headers = dict(clients.headers)
     if identity == "anonymous":
@@ -42,17 +42,13 @@ async def test_run_disabled_without_dependencies_for_every_identity(clients, mon
         token = crypto.new_token()
         async with session_maker() as db:
             org = (await db.execute(select(Org))).scalars().first()
-            if identity == "sandbox":
-                org.demo = True
-                org.slug = "sbx-0123456789ab"
-                db.add(org)
-            email = ("visitor-test@sandbox.treg.local" if identity in {"visitor", "sandbox"}
+            email = ("visitor-test@sandbox.treg.local" if identity == "visitor"
                      else f"{identity}@example.invalid")
             user = User(email=email)
             db.add(user)
             await db.flush()
             db.add(Membership(user_id=user.id, org_id=org.id,
-                              role="member" if identity in {"visitor", "sandbox"} else identity,
+                              role="member" if identity == "visitor" else identity,
                               token_hash=crypto.hash_token(token)))
             await db.commit()
         headers["x-treg-token"] = token

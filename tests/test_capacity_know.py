@@ -4,6 +4,7 @@ and the latest-state view. Observe-only: nothing here touches the call path."""
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -174,6 +175,28 @@ async def test_view_sees_a_published_state_from_a_fresh_process_within_the_ttl()
     assert view.get("findymail").exhausted_until == state.exhausted_until
 
 
+async def test_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from treg.domain.capacity import view as view_mod
+    await reset_db()
+    monkeypatch.setattr(view_mod, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    state = LatestState("findymail", 0.0, "credits", utcnow_naive(), "exact", health="ok")
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "findymail", state.to_json(), ttl_s=3600)
+        await db.commit()
+    view = LatestStateView(ttl_s=60)
+    await view.load()
+    assert view.get("findymail") is not None, "the first load reads the database"
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "findymail", LatestState(
+            "findymail", 0.0, "credits", utcnow_naive(), "exact", health="exhausted",
+            exhausted_until=utcnow_naive() + timedelta(hours=1)).to_json(), ttl_s=3600)
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert view.is_exhausted("findymail"), "a load after invalidate() reads the database"
+
+
 @pytest.mark.parametrize(("provider", "path", "body"), [
     ("fiber-ai", "/v1/get-org-credits", {"output": [{"available": 0, "max": 100}]}),
     ("mobiusengine-jobs", "/v1/balance", {"mode": "wallet", "balance_usd": 0}),
@@ -219,13 +242,13 @@ def test_capacity_view_getters_are_sync_and_io_free():
 def _apollo_profile(lead_left):
     """api_profile's credit fields as Apollo returns them: the "unified" meter moves with phone
     reveals only, so the lead pool minus it says nothing about lead credits."""
-    return {"num_credits_remaining": lead_left, "effective_num_lead_credits": 5000,
+    return {"num_credits_remaining": lead_left, "effective_num_lead_credits": 50000,
             "num_lead_credits_used": 0, "effective_num_direct_dial_credits": 5000,
             "num_direct_dial_credits_used": 40, "total_unified_credits_used": 40,
             "effective_num_ai_credits": 1000, "num_ai_credits_used": 0}
 
 
-@pytest.mark.parametrize("lead_left,health", [(0, "exhausted"), (1234, "ok")])
+@pytest.mark.parametrize("lead_left,health", [(0, "exhausted"), (1234, "low"), (12345, "ok")])
 async def test_sweep_reads_apollos_lead_credits_not_the_unified_meter(monkeypatch, lead_left, health):
     """Apollo answers every enrich with 422 `credit_type: lead credits, credit_balance: 0` while its
     unified meter still shows almost the whole pool unused. The sweep must read the lead pool, so a

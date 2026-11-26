@@ -17,6 +17,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -36,7 +37,8 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker, verify_db
+from .infra.db import (DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker,
+                       log_connection_budget, verify_db)
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -203,7 +205,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
     ('/plugins/claude', ('GET',), 'claude_plugin_page'),
-    ('/adtrack.js', ('GET',), 'adtrack_js'),
+    ('/click-id.js', ('GET',), 'click_id_js'),
     ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),
     ('/gtag.js', ('GET',), 'gtag_js'),
@@ -294,6 +296,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
+    ('/vendor-console/me', ('GET',), 'vendor_console_me'),
     ('/orgs', ('GET',), 'list_orgs'),
     ('/home', ('GET',), 'home'),
     ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
@@ -303,9 +306,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/onboard/skip', ('POST',), 'onboard_skip'),
     ('/onboard/reset', ('POST',), 'onboard_reset'),
     ('/onboard/team', ('POST',), 'onboard_team'),
-    ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
-    ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
-    ('/demo/sandbox/skill', ('GET',), 'demo_sandbox_skill'),
     ('/onboard/seed-tool', ('POST',), 'onboard_seed_tool'),
     ('/onboard/accept-teammate', ('POST',), 'onboard_accept_teammate'),
     ('/invites/{invite_id}/accept', ('POST',), 'accept_my_invite'),
@@ -818,6 +818,7 @@ def _lifespan(role: AppRole):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             media.validate_configuration()
             await verify_db()
+            log_connection_budget()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
@@ -998,6 +999,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
+    app.add_exception_handler(DBAPIError, api_module._db_id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     for busy in DB_BUSY_ERRORS:
         app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)

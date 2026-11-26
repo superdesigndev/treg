@@ -11,16 +11,16 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, func, text, true, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import CallCharge, Hold, LedgerEntry, Org
+from ...models import CallCharge, Hold, LedgerEntry, Org, TagSpend
 from . import (
     _add_balance,
     _charge_parts,
@@ -182,14 +182,15 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if not claimed:
         return Folded()
     charges = sorted(claimed, key=lambda row: (row.created_at, row.call_id))
-    if charges and not await team_exists(db, org_id):
-        charges = []
+    charged = sum(row.amount_micro for row in charges)
+    blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
+    # Blocks, then the team row: the order a team's deletion deletes them in.
+    if not await _lock_team(db, org_id):
+        charges, charged, blocks = [], 0, []
     orphaned = len(claimed) - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
                   "for has been deleted", org_id, orphaned)
-    charged = sum(row.amount_micro for row in charges)
-    blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
     folded_at = _now()
     consumed = 0
     for row in charges:
@@ -202,6 +203,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
             meta={**(row.meta or {}), "allowance": True, "settled_micro": row.amount_micro,
                   "consumed_micro": drawn, "block_shortfall_micro": shortfall,
                   "charged_at": row.created_at.isoformat()})
+        # A tagged call's tag rows, settled at once with the entry, as `settle` leaves them.
+        for dim, val in ((row.meta or {}).get("tags") or {}).items():
+            db.add(TagSpend(org_id=org_id, dim=dim, val=val, hold_id=row.call_id,
+                            amount_micro=drawn, settled=True, created_at=folded_at))
     # The hold pays for what each of ITS calls set aside and no more. A call's overrun comes out
     # of the balance, as it does at `settle`, and so does all of a call that set its money aside
     # from an earlier hold: this one belongs to the calls it admitted.
@@ -216,6 +221,17 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
     return Folded(len(charges), charged, consumed, orphaned)
+
+
+async def _lock_team(db: AsyncSession, org_id: int) -> bool:
+    """Whether there is still a team to charge, holding it until this transaction ends. A fold
+    may write no balance or block change and still write the team's settle entries and tag rows;
+    the share lock is what makes a deletion of the team wait for those rows (PostgreSQL's DELETE
+    conflicts with it) and then take them, or makes this fold wait for the deletion and find no
+    team. One lock per fold, not per row."""
+    with money_stage(db, "lock_team"):
+        return (await db.execute(select(Org.id).where(Org.id == org_id)
+                                 .with_for_update(read=True, key_share=True))).first() is not None
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:
@@ -306,12 +322,86 @@ class Allowance(NamedTuple):
     retired: bool = False
 
 
+class TeamNow(NamedTuple):
+    """The team's row as a refill reads it, under the lock an update of it takes: its daily cap
+    (0 = none) and its balance."""
+
+    daily_cap_micro: int
+    balance_micro: int
+
+
+def paced_target(spent_micro: int, over_ms: int, *, window_s: int, floor_micro: int,
+                 ceiling_micro: int) -> int:
+    """What a refill sized to the team's spend brings the counter up to: what the counter went
+    down by over the last `over_ms`, scaled to `window_s`, never below `floor_micro` and never
+    above `ceiling_micro` unless the floor already is.
+
+    A reading shorter than half the window counts as half the window, so a refill at most
+    doubles what the counter went down by: a burst raises the target by twice its size at the
+    most, and only spend kept up over half a window or more reaches the window.
+
+    The reading runs from the last refill, so it is always recent: while calls come the counter
+    is refilled at least every half lifetime, and a team that stopped calling has a reading
+    that grows longer while what it spent stays the same, down to the floor."""
+    if window_s <= 0 or spent_micro <= 0 or over_ms <= 0:
+        return floor_micro
+    window_ms = window_s * 1000
+    paced = spent_micro * window_ms // max(over_ms, window_ms // 2)
+    return max(floor_micro, min(paced, ceiling_micro))
+
+
 def _epoch(hold: Hold) -> int:
     return _epoch_of(hold.created_at)
 
 
 def _epoch_of(created_at: datetime) -> int:
     return (created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
+
+
+async def unheld_free(db: AsyncSession, org_id: int) -> int:
+    """`org.balance_micro` less what queued charges owe it (`_queued_unbacked`): what a reserve
+    meets. Below zero when an overrun is owed, which a reserve of anything, nothing included,
+    then cannot pass."""
+    return int((await db.execute(
+        select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+    )).scalar() or 0)
+
+
+async def spendable(db: AsyncSession, org_id: int, *, counter_micro: int = 0,
+                    counter_epoch: int | None = None) -> int:
+    """The balance a team is shown: what it can spend now. `org.balance_micro` less what its
+    queued charges owe the balance (`_queued_unbacked`), plus what its allowance counter offers
+    (`counter_micro`, read from the store for `counter_epoch`). A refill moves up to a chunk from
+    the balance into the hold, which for a small team is all of it; what the counter still
+    offers is the team's to spend, and a call short of money takes it back.
+
+    The rest of the hold is not counted: calls in flight took it, or a counter lost with the
+    store left it behind until the idle sweep returns it. A counter built for another hold, or
+    showing more than this hold has, counts for nothing beyond the hold."""
+    free = await unheld_free(db, org_id)
+    offered = 0
+    if counter_micro > 0 and counter_epoch:
+        hold = (await db.execute(select(Hold.created_at, Hold.amount_micro).where(
+            Hold.id == allowance_id(org_id)))).one_or_none()
+        if hold is not None and _epoch_of(hold.created_at) == counter_epoch:
+            offered = min(int(counter_micro), int(hold.amount_micro))
+    return max(0, free + offered)
+
+
+async def credit_bound(db: AsyncSession, org_id: int) -> int:
+    """The team's money wherever it sits: `org.balance_micro` plus its allowance hold, less what
+    queued charges have spent, in one statement. Above what it can spend now by what calls in
+    flight took and what a lost counter left in the hold; never below it, so money a refill or
+    a give-back is moving between the store and the database is inside it. Not a balance to
+    show or spend against: below a figure, it says the money is not there at all."""
+    from_hold, outright = _charge_parts(org_id)
+    queued = func.coalesce(select(func.sum(from_hold + outright)).where(
+        CallCharge.org_id == org_id).scalar_subquery(), 0)
+    held = func.coalesce(select(Hold.amount_micro).where(
+        Hold.id == allowance_id(org_id)).scalar_subquery(), 0)
+    bound = (await db.execute(
+        select(Org.balance_micro + held - queued).where(Org.id == org_id))).scalar()
+    return max(0, int(bound or 0))
 
 
 async def committed_today(db: AsyncSession, org_id: int) -> int:
@@ -349,7 +439,9 @@ async def refill_allowance_in_transaction(
     fold_limit: int = FOLD_BATCH, fold_all: bool = False,
     counter_epoch: int | None = None, fresh_add_micro: int | None = None,
     counter_micro: int | None = None,
-    current_daily_cap: Callable[[AsyncSession], Awaitable[int]] | None = None,
+    current_team: Callable[[AsyncSession], Awaitable[TeamNow]] | None = None,
+    grow_to_micro: int | None = None, balance_percent: int = 100,
+    ceiling_micro: int | None = None,
 ) -> Allowance:
     """Fold a batch of queued charges, then move `add_micro` from the balance into the team's
     allowance hold, opening the hold if there is none. In the caller's transaction, before any
@@ -376,9 +468,22 @@ async def refill_allowance_in_transaction(
     worst case (`committed_today`) is read AFTER the fold, under the hold's lock, and the amount
     asked for is added to it. `over_cap` reports that it exceeds the cap before adding anything.
     `daily_cap_micro` is the cap its caller saw, which can be some time ago for a refill that
-    waited its turn. `current_daily_cap` reads the team's cap at that same point, in this
+    waited its turn. `current_team` reads the team's cap at that same point, in this
     transaction, and the stricter of the two applies: a cap the team has just lowered holds.
+
+    `grow_to_micro` asks for more: the counter brought up to that figure (`paced_target`), as
+    far as the team's money allows, where `add` is all that is asked for otherwise. Only the
+    part beyond `add` is limited, so a refill never adds less than it would without it. The
+    limits are on the hold after the refill, read under its lock: it carries what the counter
+    shows, what calls in flight took, and what a counter lost with the store left behind, which
+    no call can reach. It holds at most `balance_percent` of the balance `current_team` read,
+    at most `ceiling_micro`, and at most `balance_percent` of what the daily cap has left, so
+    calls on the exact path, whose cap check counts all of the hold as spent, keep the rest. A
+    balance the queue's claims leave short of the growth gives that part back first. It needs
+    `current_team`, whose read of the row is where the balance comes from.
     """
+    if grow_to_micro is not None and current_team is None:
+        raise ValueError("a refill sized to the team's spend reads the balance with current_team")
     mark_money(db, "refill", org_id=org_id)
     add = max(0, int(add_micro))
     hold = await _lock_allowance(db, org_id, keeps=True)
@@ -396,6 +501,10 @@ async def refill_allowance_in_transaction(
     rebuilding = fresh_add_micro is not None and (hold is None or _epoch(hold) != counter_epoch)
     if rebuilding:
         add = max(0, int(fresh_add_micro))
+    # What the counter shows that will still be there after this refill: nothing, when its add
+    # replaces the counter.
+    shown = 0 if rebuilding else max(0, int(counter_micro or 0))
+    grow = 0 if grow_to_micro is None else max(0, int(grow_to_micro) - shown - add)
     opened = False
     if hold is None and add:
         # Two callers can both find no row. The insert decides which one opens it, and the
@@ -410,14 +519,22 @@ async def refill_allowance_in_transaction(
     folded = (await _apply_charges(db, org_id, hold, await _claim_all_charges(db, org_id))
               if fold_all else await _fold(db, org_id, hold, fold_limit))
     over_cap = False
-    if current_daily_cap is not None:
+    held = hold.amount_micro if hold is not None else 0
+    if current_team is not None:
+        team = await current_team(db)
         daily_cap_micro = min(
-            (cap for cap in (daily_cap_micro, await current_daily_cap(db)) if cap > 0), default=0)
+            (cap for cap in (daily_cap_micro, team.daily_cap_micro) if cap > 0), default=0)
+        grow = min(grow, max(0, team.balance_micro * balance_percent // 100 - held - add))
+    if ceiling_micro is not None:
+        grow = min(grow, max(0, ceiling_micro - held - add))
     if daily_cap_micro > 0:
         exposed = await committed_today(db, org_id)
         over_cap = exposed > daily_cap_micro
         if exposed + add > daily_cap_micro:
-            add = 0
+            add = grow = 0
+        grow = min(grow, max(
+            0, (daily_cap_micro - exposed) * balance_percent // 100 - held - add))
+    add += grow
     debited, counted = False, {}
     if hold is not None and add:
         counted = _spent_today_values(add) if hold.created_at >= _day_start() else {}
@@ -433,14 +550,17 @@ async def refill_allowance_in_transaction(
             select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
         )).scalar() or 0)
     if debited and free < 0:
-        # Undo the debit as it was made. The day's counter is taken back from the day the debit
-        # counted it on, whatever the clock says now: a midnight between the two must not open
-        # the new day below zero.
-        uncounted = {"spent_today_micro": Org.spent_today_micro - add} if counted else {}
+        # Undo the debit as it was made: the growth alone when that leaves the rest covered,
+        # all of it otherwise. The day's counter is taken back from the day the debit counted
+        # it on, whatever the clock says now: a midnight between the two must not open the new
+        # day below zero.
+        back = grow if 0 < grow and free + grow >= 0 else add
+        uncounted = {"spent_today_micro": Org.spent_today_micro - back} if counted else {}
         with money_stage(db, "update_balance"):
             await db.execute(update(Org).where(Org.id == org_id).values(
-                balance_micro=Org.balance_micro + add, **uncounted))
-        free, debited = free + add, False
+                balance_micro=Org.balance_micro + back, **uncounted))
+        free, add = free + back, add - back
+        debited = add > 0
     overdrawn = free < 0
     if hold is None:
         return Allowance(None, 0, 0, folded, over_cap, overdrawn)
@@ -515,26 +635,82 @@ async def close_stale_allowance_in_transaction(
     return await _close(db, org_id, hold, reason, None)
 
 
+Shard = tuple[int, int]
+"""`(index, count)`: the teams whose number leaves `index` when divided by `count`."""
+
+
+def _in_shard(column, shard: Shard | None):
+    if shard is None or shard[1] <= 1:
+        return true()
+    return column % shard[1] == shard[0]
+
+
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
-                               after: int = 0, limit: int = 50) -> list[int]:
+                               after: int = 0, limit: int = 50,
+                               shard: Shard | None = None) -> list[int]:
     """Teams whose allowance hold stopped admitting calls before `stale_before`, in the order of
     their numbers, a page at a time: `after` is the last team of the page before. A read; the
     close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
-            Hold.allowance.is_(True), Hold.org_id > after,
+            Hold.allowance.is_(True), Hold.org_id > after, _in_shard(Hold.org_id, shard),
             func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
+_QUEUED_TEAMS = """
+WITH RECURSIVE teams(org_id) AS (
+    SELECT (SELECT min(org_id) FROM callcharge)
+    UNION ALL
+    SELECT (SELECT min(c.org_id) FROM callcharge c WHERE c.org_id > teams.org_id)
+    FROM teams WHERE teams.org_id IS NOT NULL
+)
+SELECT org_id, oldest FROM (
+    SELECT t.org_id,
+           (SELECT min(c.created_at) FROM callcharge c
+            WHERE c.org_id = t.org_id AND c.created_at < :queued_before) AS oldest
+    FROM teams t
+    WHERE t.org_id IS NOT NULL AND t.org_id % :shard_count = :shard_index
+) queued
+WHERE oldest IS NOT NULL{after}
+ORDER BY oldest, org_id
+LIMIT :limit
+"""
+_FIRST_PAGE = text(_QUEUED_TEAMS.format(after=""))
+_NEXT_PAGE = text(_QUEUED_TEAMS.format(
+    after=" AND (oldest > :after_oldest OR (oldest = :after_oldest AND org_id > :after_org))"))
+
+QueuedTeam = tuple[int, Any]
+"""`(org_id, oldest)`: a team and when its oldest queued charge was written, as read."""
+
+
+async def queued_teams(db: AsyncSession, queued_before: datetime, *, limit: int = 500,
+                       shard: Shard | None = None,
+                       after: QueuedTeam | None = None) -> list[QueuedTeam]:
+    """Teams with a charge queued before `queued_before`, the team whose oldest charge has waited
+    longest first, at most `limit` of them, starting after `after` (the last of the page before).
+
+    The queue is walked one team number at a time on `ix_callcharge_org_id_created_at` (each
+    step the next number, one index probe), and a team's oldest charge is one more probe, taken
+    only for the teams of `shard`. So a share costs a probe per team with a queue plus one per
+    team of its own, however many rows those teams have queued; a share with no queue of its own
+    reads no queued row at all. The walk itself grows with the number of teams that have a
+    queue, in every share: with very many of them, more shares make each share's list shorter,
+    not its walk."""
+    index, count = shard if shard is not None and shard[1] > 1 else (0, 1)
+    params = {"queued_before": queued_before, "shard_count": count, "shard_index": index,
+              "limit": limit}
+    if after is not None:
+        params.update(after_org=after[0], after_oldest=after[1])
+    rows = await db.execute(_FIRST_PAGE if after is None else _NEXT_PAGE, params)
+    return [(row[0], row[1]) for row in rows]
+
+
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
-                                   after: int = 0, limit: int = 50) -> list[int]:
-    """Teams with a charge queued before `queued_before`, in the order of their numbers, a page
-    at a time: `after` is the last team of the page before."""
-    return list((await db.execute(
-        select(CallCharge.org_id)
-        .where(CallCharge.created_at < queued_before, CallCharge.org_id > after)
-        .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
+                                   limit: int = 500, shard: Shard | None = None) -> list[int]:
+    """The team numbers of `queued_teams`' first page."""
+    return [org_id for org_id, _ in await queued_teams(
+        db, queued_before, limit=limit, shard=shard)]
 
 
 async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,

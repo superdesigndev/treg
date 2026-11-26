@@ -218,15 +218,16 @@ class OAuthProvider:
     extra_credential_note: str = ""
     extra_credential_label: str = ""  # what to call it in the UI, e.g. "Developer token"
     extra_credential_header: str = ""  # the header it's injected as, e.g. "developer-token"
-    extra_credential_location: str = "header"  # "header" | "query" | "json"
-    extra_credential_param: str = ""  # query/JSON name; header remains the compatibility default
+    extra_credential_location: str = "header"  # "header" | "query" | "json" | "path"
+    # query/JSON name, or the `{placeholder}` a path credential fills; header remains the default
+    extra_credential_param: str = ""
     # Settings attribute holding TREG's own value for it. When set, users supply nothing and the
     # tool is provisioned with a platform binding; the per-user prompt is only the fallback.
     extra_credential_setting: str = ""
     # TIER 4 ONLY: settings attribute holding treg's own second credential for platform-served
     # calls, when the extra credential is PER-USER (extra_credential_setting stays empty so a
     # user's connect never rides treg's half of the pair — Tomba rejects a mismatched key/secret).
-    # `platform_bindings` appends it as a second header binding; user connections are untouched.
+    # `platform_bindings` appends it as a second binding; user connections are untouched.
     platform_extra_setting: str = ""
 
     # Some providers bill the OWNER OF THE APP per use, whoever's token made the call - X bills
@@ -248,6 +249,13 @@ class OAuthProvider:
     @property
     def extra_credential_name(self) -> str:
         return self.extra_credential_param or self.extra_credential_header
+
+    @property
+    def credential_path_params(self) -> frozenset[str]:
+        """Catalog path placeholders the credential fills, never the caller."""
+        if self.needs_extra_credential and self.extra_credential_location == "path":
+            return frozenset({self.extra_credential_name})
+        return frozenset()
 
     @property
     def platform_extra_credential(self) -> str:
@@ -3217,8 +3225,8 @@ CLORO = OAuthProvider(
         "Create a key and copy it — the full key is shown only once.",
     ),
     setup_note=(
-        "Every monitor call spends credits from your cloro balance (Google 5, Google AI Mode / "
-        "Bing AI Mode / Gemini 6, "
+        "Every monitor call spends credits from your cloro balance (Google Search / Bing Search 5, "
+        "Google AI Mode / Bing AI Mode / Gemini 6, "
         "ChatGPT 7, each including the +2 sync surcharge; optional "
         "include flags and US state targeting add more). The free plan grants 500 credits a "
         "month. Connecting spends nothing — the probe is the free credit-balance route."
@@ -3230,7 +3238,7 @@ CLORO = OAuthProvider(
     summary=(
         "Ask ChatGPT, Gemini, Google AI Mode and Bing AI Mode a prompt from supported countries and "
         "read the answer and its cited sources as structured data — plus "
-        "Google Search and Google News SERPs."
+        "Google Search, Google News and Bing Search SERPs."
     ),
     base_url="https://api.cloro.dev",
     docs_url="https://cloro.dev/docs/api-reference/introduction",
@@ -3509,6 +3517,51 @@ HLRLOOKUP = OAuthProvider(
 )
 
 
+FORAGER = OAuthProvider(
+    service="forager",
+    display_name="Forager",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Forager API key",
+    token_header="X-API-KEY",
+    token_format="{secret}",
+    # Every paid route carries the account id the key belongs to: /api/{account_id}/datastorage/...
+    # A wrong id answers 403, so the id is the second half of the credential and fills the path.
+    extra_credential_label="Account ID",
+    extra_credential_location="path",
+    extra_credential_param="account_id",
+    platform_extra_setting="platform_key_forager_account",
+    extra_credential_note=(
+        "Forager puts your account ID in the address of every data call. Add it after the key "
+        "(My Account page, or accounts[0].id from GET /api/users/current/); treg fills it in "
+        "wherever a path says {account_id}."
+    ),
+    setup_url="https://app.forager.ai/keys",
+    setup_action_label="Get your Forager API key and account ID",
+    setup_steps=(
+        "Sign up at app.forager.ai and open API to create and copy a key.",
+        "Copy your Account ID from the My Account page. Paste the key here, then add the ID.",
+    ),
+    setup_note=(
+        "Lookups and searches spend plan credits only when they return data: a person or company "
+        "search page is 1 credit, a job search page 2, a personal or work email 5, a phone number "
+        "15 (9 with most_coverage). Counts, autocomplete and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Find people, companies and job posts, look up a person by LinkedIn, email or phone, and "
+        "get their phone numbers, personal and work emails, and a website's tech stack."
+    ),
+    base_url="https://api-v2.forager.ai",
+    docs_url="https://docs.forager.ai/",
+    # Free, and needs no account id: 200 with the user and its accounts for a good key, 403
+    # {"detail": "Authentication credentials were not provided."} for a bad or missing one.
+    probe_path="/api/users/current/",
+    probe_reject_statuses=(401, 403),
+)
+
+
 PREDICTLEADS = OAuthProvider(
     service="predictleads",
     display_name="PredictLeads",
@@ -3597,6 +3650,60 @@ FINDYMAIL = OAuthProvider(
     probe_reject_statuses=(302, 401, 403),
     token_verify_field="email",
 )
+
+DESCOVO = OAuthProvider(
+    service="descovo", display_name="Descovo", auth_kind="key",
+    token_label="API key", token_placeholder="your Descovo API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://descovo.com/app/keys",
+    setup_action_label="Get your Descovo API key",
+    setup_steps=("Sign in to Descovo (new accounts start with 500 credits) and open API keys.",
+                 "Create a key and copy it."),
+    setup_note=(
+        "Search is 1 credit per person, company or job returned; counts are free. A reveal is "
+        "charged only for the fields it finds: 2 credits for a work email, 3 for a direct phone. "
+        "A match or live profile is 2. Misses and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search people, companies and job posts, reveal a person's work email, personal email or "
+        "phone from LinkedIn, match and live-refresh profiles, and verify emails."
+    ),
+    base_url="https://api.descovo.com/v1",
+    docs_url="https://descovo.com/docs/rest",
+    # Free: 200 {"data": {"available", "used", "limit", "resetsOn"}} for a good key; 403
+    # {"error": {"code": "forbidden"}} for a bad one.
+    probe_path="/credits",
+)
+
+
+MILLIONPHONES = OAuthProvider(
+    service="millionphones", display_name="MillionPhones", auth_kind="key",
+    token_label="API key", token_placeholder="mp_live_...",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://millionphones.com/api-keys",
+    setup_action_label="Get your MillionPhones API key",
+    setup_steps=("Sign in to MillionPhones (a free account needs no card) and open API keys.",
+                 "Create a key and copy it; it starts with mp_live_."),
+    setup_note=(
+        "A found mobile number is 10 credits, a found work email 1 (free once the phone is "
+        "unlocked), a phone check 1, an email check 0.1, and each new person or company in a "
+        "search 0.1. Misses, repeats, counts, filters and the balance check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Find a person's mobile number and work email from LinkedIn or name and company, verify "
+        "phones and emails, and search people and companies."
+    ),
+    base_url="https://millionphones.com/v1",
+    docs_url="https://millionphones.com/docs",
+    # Free: 200 {"remaining", "used", "plan"} for a good key, even one with 0 credits left;
+    # 401 {"error": "Invalid API key."} for a bad one.
+    probe_path="/credits",
+)
+
 
 ANYMAILFINDER = OAuthProvider(
     service="anymailfinder", display_name="Anymail Finder", auth_kind="key",
@@ -3752,6 +3859,36 @@ ICYPEAS = OAuthProvider(
     probe_path="/bulk-single-searchs/read",
     probe_method="POST",
     probe_json={"limit": 1},
+)
+
+
+MAPSDATA = OAuthProvider(
+    service="mapsdata",
+    display_name="MapsData",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="mdk_live_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://mapsdata.ai/settings/api-keys",
+    setup_action_label="Get your MapsData API key",
+    setup_steps=(
+        "Sign in to MapsData and open Settings, then API keys.",
+        "Create a key and copy it. It is shown once.",
+    ),
+    setup_note=(
+        "A scrape spends one Scraping Credit per lead delivered with an email; leads without one "
+        "are free. Category, region, usage and job reads are free, and so is connection "
+        "verification. API access comes with every paid plan, including the trial."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Build lists of local businesses from Google Maps, with each one's email, phone, website and rating.",
+    base_url="https://mapsdata.ai/api/v1",
+    docs_url="https://mapsdata.ai/api",
+    probe_path="/usage",  # free; a bogus Bearer key answers 401 {"error": {"code": "invalid_api_key"}}
 )
 
 
@@ -4488,7 +4625,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

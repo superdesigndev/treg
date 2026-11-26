@@ -25,7 +25,6 @@ sources:
   - tests/test_platform_accounts.py
   - src/treg/client_identity.py
   - src/treg/call_surface.py
-  - src/treg/sandbox_identity.py
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/publicdemo.py
   - src/treg/domain/governance/usage.py
@@ -109,7 +108,8 @@ Inside `relay()`:
 4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
    query.
 5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
-   or top-level JSON field. A JSON binding is the only case that buffers and reserializes the body:
+   or top-level JSON field, or fills only its own `{name}` path segment (a key-bound account id,
+   [auth and secrets](auth-secrets.md)). A JSON binding is the only case that buffers and reserializes the body:
    formatting changes, non-ASCII is emitted as UTF-8, duplicate keys fail closed, and it must never
    be used where the upstream signs or hashes the raw body. On a connection to treg's own Meta app
    the credential also carries `appsecret_proof`, replacing any caller value
@@ -319,7 +319,9 @@ property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
 fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
 with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
-a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
+a dot segment. A placeholder the provider's credential fills (`credential_path_params`) is left
+for the relay, which fills it with `pathsegment.fill` ([auth and secrets](auth-secrets.md)). The
+overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
@@ -388,15 +390,23 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
 dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
 most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
-lands, so each new call resolves again.
+lands, so each new call resolves again. A caller that has waited `ssrf_lookup_timeout_s` is refused
+(`ssrf_lookup_timeout` in the log) with `AddressLookupTimedOut`, kept apart from a confirmed non-public
+answer: the relay's `502` says the lookup timed out, and the health run marks a credential whose token
+endpoint lookup timed out `unknown`, never `invalid`, so no owner is told it died. A lookup still queued when its last caller stops
+waiting is dropped, so it never delays later lookups; one already running cannot be interrupted, finishes on
+its thread, and the next call after it starts a fresh one, so a refusal never outlasts the slow resolver.
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
 registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
 user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
 same switch) just before sending: the health probe (`health._probe`), the owner webhook
-(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
-code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`health._notify`), the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). The MCP OAuth client-id metadata fetch
+(`mcp_oauth.fetch_client_id_metadata`) uses the same lookup but checks always, whatever
+`proxy_ssrf_check` says: its URL comes from any client on the internet. The blocking `host_is_public` is for sync callers only; an
+async path never calls it directly. Registration
 (`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
 `proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
 (`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
@@ -448,11 +458,13 @@ a 400 `catalog_parameter_invalid` naming the field before any child is planned o
 `catalog_parameter_would_refuse` line), then runs each child endpoint through this same use
 case as a child `CallContext` (`call_ref` `{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
 child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
-`deferred_settles` and leaves its hold open; a child that is not billable or settles at a
+`deferred_settles` and leaves its hold open (or, on the allowance, its take: [money](money.md)
+§ Allowance, "Routed children"); a child that is not billable or settles at a
 provider-reported zero releases at once so it never blocks the next child's reserve. The parent
 closes every child hold exactly once with `settle.close_deferred(charge=...)`: settle each billable
 child as its own settle would have, or release all because a failed routed call charges nothing.
-A crash before that leaves holds to the reaper, which releases in the caller's favor.
+A crash before that leaves holds to the reaper, which releases in the caller's favor, and takes
+in the team's allowance hold until it is closed.
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
@@ -493,7 +505,8 @@ name the label, never a credential, so reordering accounts or regenerating a key
    reaching the provider lands where it can be recognized. The idempotency claim cannot remember the
    account: a failed call deletes its claim, and that is exactly the retry that reaches the
    provider.
-3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating.
+3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating;
+   an account the sweep read below its drain mark (`low`) is passed over while another is not.
    Rules 1-2 run during resolution (`pinned`); rule 3 runs right before relay (`assign`) and takes
    the bucket's token with no await between, so a burst that resolved together still spreads.
 
@@ -504,15 +517,17 @@ carries no `account` and uses the provider's own bucket, so a one-account provid
 Capacity is per account: a signature strikes and locks only the account that answered
 (`marks.lock_key(..., slot)`, `<key>#<label>` for non-primary), a 2xx clears only its own strikes,
 and a probe goes to the locked account. A call is refused before reserve only when its pinned
-account, or every account of an open call, is out. The sweep reads only the primary, so another
-account's lock lifts at expiry or through its own probe.
+account, or every account of an open call, is out. The sweep reads every account, so one read
+empty gets no calls while another can serve, and the next sweep that reads it refilled returns it
+to rotation ([capacity](../ops/capacity.md)).
 
 ## Platform capacity: refuse before reserve
 
 Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
-table price row must equal its value; duplicate JSON keys are rejected so validation and upstream
+table price row must equal its value, or be absent when its declared default is that value, as the
+table prices an absent field; duplicate JSON keys are rejected so validation and upstream
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
 run), and outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads. Own keys are unaffected: the provider, not treg,

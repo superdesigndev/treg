@@ -168,3 +168,78 @@ func TestPopOrgKeepsTheSlugAndTheRest(t *testing.T) {
 		t.Error("a trailing --org was accepted")
 	}
 }
+
+// compareRegistry answers every call with a compare invitation and records what the CLI sent.
+func compareRegistry(t *testing.T) (*httptest.Server, *[]http.Header, *[]http.Header) {
+	t.Helper()
+	var calls, reads []http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/call/"):
+			calls = append(calls, r.Header.Clone())
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Treg-Call-Id", "c_1")
+			w.Header().Set("X-Treg-Hint", "compare")
+			w.Header().Set("X-Treg-Hint-Text", "treg compare shows both")
+			fmt.Fprint(w, `{"ok":true}`)
+		case r.URL.Path == "/comparisons/next":
+			reads = append(reads, r.Header.Clone())
+			fmt.Fprint(w, `{"comparison_id":7,"answer_1":"a","answer_2":"b","how_to_vote":"treg compare 7 1|2"}`)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &calls, &reads
+}
+
+func TestAComparisonIsReadAsTheTeamTheCallUsed(t *testing.T) {
+	srv, calls, reads := compareRegistry(t)
+	t.Setenv("TREG_TOKEN", "tok-a")
+	queuedEvent(t, srv.URL, 0, "--org", "team-b", "call", "example.search")
+	if got := (*calls)[0].Get("X-Treg-Hints"); got != "review,mark,feedback,compare" {
+		t.Fatalf("call declared %q", got)
+	}
+	if len(*reads) != 1 || (*reads)[0].Get("X-Treg-Org") != "team-b" || (*reads)[0].Get("X-Treg-Token") != "tok-a" {
+		t.Fatalf("comparison read as %v", *reads)
+	}
+}
+
+func TestACallThatCannotShowAComparisonDoesNotAskForOne(t *testing.T) {
+	for _, c := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"call", "example.search", "--header", "X-Treg-Token: tok-b"}, "review,mark,feedback"},
+		{[]string{"call", "example.search", "--header", "x-treg-org: team-b"}, "review,mark,feedback"},
+		{[]string{"call", "example.search", "--await"}, "review,mark,feedback"},
+		// A caller's own declaration is kept, less compare, whatever its spelling.
+		{[]string{"call", "example.search", "--await", "--header", "x-treg-hints: feedback"}, "feedback"},
+		{[]string{"call", "example.search", "--await", "--header", "X-Treg-Hints: Compare,review"}, "review"},
+	} {
+		argv := c.argv
+		srv, calls, reads := compareRegistry(t)
+		t.Setenv("TREG_TOKEN", "tok-a")
+		queuedEvent(t, srv.URL, 0, argv...)
+		if got := (*calls)[0].Values("X-Treg-Hints"); len(got) != 1 || got[0] != c.want {
+			t.Errorf("%v declared %q, want %q", argv, got, c.want)
+		}
+		if len(*reads) != 0 {
+			t.Errorf("%v read a comparison", argv)
+		}
+	}
+}
+
+func TestRepeatedHintsHeadersBecomeTheLastOneTyped(t *testing.T) {
+	for _, argv := range [][]string{
+		{"call", "example.search", "--await", "-H", "X-Treg-Hints: review", "-H", "x-treg-hints: mark", "-H", "X-Treg-Hints: feedback"},
+		{"call", "example.search", "-H", "X-Treg-Hints: review", "-H", "x-treg-hints: mark", "-H", "X-Treg-Hints: feedback"},
+	} {
+		srv, calls, _ := compareRegistry(t)
+		t.Setenv("TREG_TOKEN", "tok-a")
+		queuedEvent(t, srv.URL, 0, argv...)
+		if got := (*calls)[0].Values("X-Treg-Hints"); len(got) != 1 || got[0] != "feedback" {
+			t.Errorf("%v declared %q", argv, got)
+		}
+	}
+}

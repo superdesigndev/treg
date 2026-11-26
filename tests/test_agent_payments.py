@@ -21,6 +21,7 @@ from sqlmodel import select
 
 from treg.api import app
 from treg.application import agent_payments
+from treg.application.call import reserve as call_reserve
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
@@ -428,6 +429,27 @@ async def test_a_known_wallet_polls_as_its_team_and_never_pays(anon: AsyncClient
     assert r.headers["X-Treg-Payment"] == "credit"
     assert facilitator.settles == 1 and len(calls) == 1
     assert await _balance(payer) == balance
+
+
+async def test_a_keyless_call_reserves_as_a_keyless_payer(anon: AsyncClient, payments_on,
+                                                          facilitator, monkeypatch):
+    """The payment path decided on the team's balance, so every reservation of a keyless call,
+    paid or drawn, is marked to take no allowance (`reserve.keyless_payer`)."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200))
+    reserve, seen = call_service._platform_reserve, []
+
+    async def noting(*args, **kwargs):
+        seen.append(call_reserve.keyless_payer.get())
+        return await reserve(*args, **kwargs)
+
+    monkeypatch.setattr(call_service, "_platform_reserve", noting)
+    account = Account.create()
+    for aweme_id in (7, 8):
+        challenge = await anon.get(f"/call/{EP}?aweme_id={aweme_id}")
+        credential, _ = _x402_credential(challenge, account)
+        assert (await anon.get(f"/call/{EP}?aweme_id={aweme_id}",
+                               headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    assert seen == [True, True] and call_reserve.keyless_payer.get() is False
 
 
 # ---- paying -------------------------------------------------------------------------------------
@@ -909,6 +931,38 @@ async def test_a_keyless_body_is_capped(anon: AsyncClient, payments_on):
     assert r.status_code == 413
     r = await anon.post("/call/not-a-catalog-id/x", content=big)
     assert r.status_code == 401
+
+
+async def test_a_keyless_caller_gone_before_its_body_is_read_is_a_499(payments_on, monkeypatch,
+                                                                       call_error_lines):
+    post_ep = next(ep["id"] for ep in catalog_store.load().by_id.values()
+                   if (ep.get("method") or "GET") == "POST" and ep["provider"] == "tikhub")
+    opened = []
+    monkeypatch.setattr(agent_payments, "open_call", lambda **kw: opened.append(kw))
+    sent = []
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+
+    path = f"/call/{post_ep}"
+    await app({
+        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": path, "raw_path": path.encode(),
+        "query_string": b"", "root_path": "",
+        "headers": [(b"host", b"registry"), (b"content-type", b"application/json"),
+                    (b"content-length", b"32")],
+        "client": ("127.0.0.1", 50000), "server": ("registry", 80),
+    }, receive, send)
+
+    assert sent[0]["type"] == "http.response.start" and sent[0]["status"] == 499
+    assert opened == []
+    assert [(line["error_class"], line["caller_side"], line["kind"]) for line in call_error_lines()] == [
+        ("caller_disconnected", True, "client_disconnected")]
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).first() is None
 
 
 # ---- the reconciler: payments whose settlement went unanswered -----------------------------------

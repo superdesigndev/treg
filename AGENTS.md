@@ -25,11 +25,14 @@ Everything else in this file is guidance; these are the contract, and they win o
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
-   every path: timeout, cancellation and exceptions included. A call of a team listed in
-   `money_allowance_org_ids` may instead take its reservation from the team's allowance (one
-   standing hold, mirrored in a shared counter); that take is charged or given back exactly once
-   on the same paths, and a take that is never finished stays in the allowance hold, never spent
-   and never charged, until the hold is closed.
+   every path: timeout, cancellation and exceptions included. A call of a team the operator put on
+   the allowance (`allowance.listed`: named in `money_allowance_org_ids`, or every team under
+   `money_allowance_all_orgs`, never one in `money_allowance_excluded_org_ids`) may instead take
+   its reservation from the team's allowance (one standing hold, mirrored in a shared counter);
+   that take is charged or given back exactly once on the same paths, and a take that is never
+   finished stays in the allowance hold, never spent and never charged, until the hold is closed.
+   A routed child's take (only under `money_allowance_routed_org_ids` or
+   `money_allowance_routed_all_orgs`) is finished by its routed parent, as its hold would be.
 3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
    pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
@@ -37,7 +40,9 @@ Everything else in this file is guidance; these are the contract, and they win o
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
-   token with the app secret, replacing any caller value), the transport headers listed in
+   token with the app secret, replacing any caller value; a credential half the provider reads
+   from the URL path, such as an account id bound to the key, fills only its own `{name}` path
+   segment), the transport headers listed in
    `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned
    agents, per-pin re-scoping of the caller's `Idempotency-Key`, treg's own `User-Agent` in place
    of the caller's, and, where the provider file names a `client_header`, treg's opaque per-team code
@@ -75,7 +80,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
    call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
-   hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   reservation and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps

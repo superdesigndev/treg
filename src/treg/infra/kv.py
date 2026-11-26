@@ -90,6 +90,19 @@ if redis.call('get', KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+# SET NX PX unless another owner holds the claim `KEYS[2]`: a waiter with priority claims the
+# lease's next turn, and only the claim's owner `ARGV[3]` may then take the lease, under a
+# token of its own (`ARGV[1]`) so a late release of one lease cannot delete the next.
+_ACQUIRE_LEASE_UNLESS_CLAIMED = """
+local claim = redis.call('get', KEYS[2])
+if claim and claim ~= ARGV[3] then
+    return 0
+end
+if redis.call('set', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then
+    return 1
+end
+return 0
+"""
 _RELEASE_LEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
     return redis.call('del', KEYS[1])
@@ -145,6 +158,12 @@ return {1, 0}
 # the low mark to below it asks at once as well, however the counter got back above (an add, or
 # a call giving its money back): the pause is for a counter that stays low. An add that brought
 # money ends the pause too: the refill worked.
+#
+# Each add also notes what the counter held right after it (`filled`) and when, by the store's
+# clock (`filled_at`): what it is down by since, over how long, is how fast the team spends from
+# it. A refill sized to that reads it with the counter, in the one script it runs before its
+# transaction anyway, and nothing on a call's way reads it. A drain and a take-back remove money
+# nobody spent, so they drop the note; so does everything that drops what a counter offers.
 _ALLOWANCE_ASK_AGAIN_MS = 2000
 # Redis and Valkey: `run_id` is new for every start of the server process, a promoted replica
 # has its own, and INFO may be called from a script. A hash names the run that built it.
@@ -153,7 +172,8 @@ local run = string.match(redis.call('INFO', 'server'), 'run_id:(%w+)')
 if not run then return redis.error_reply('allowance: the store reports no run_id') end
 if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('HGET', KEYS[1], 'run') ~= run then
     if redis.call('HEXISTS', KEYS[1], 'frozen') == 1 then
-        redis.call('HDEL', KEYS[1], 'avail', 'epoch', 'until', 'asked', 'asked_for')
+        redis.call('HDEL', KEYS[1], 'avail', 'epoch', 'until', 'asked', 'asked_for', 'filled',
+                   'filled_at')
         redis.call('HSET', KEYS[1], 'run', run)
     else
         redis.call('DEL', KEYS[1])
@@ -223,6 +243,9 @@ if tonumber(ARGV[2]) > 0 then redis.call('HDEL', KEYS[1], 'asked') end
 if tonumber(ARGV[3]) > tonumber(redis.call('HGET', KEYS[1], 'until') or '0') then
     redis.call('HSET', KEYS[1], 'until', ARGV[3])
 end
+local t = redis.call('TIME')
+redis.call('HSET', KEYS[1], 'filled', string.format('%.0f', avail),
+           'filled_at', string.format('%.0f', t[1] * 1000 + math.floor(t[2] / 1000)))
 local seen = tonumber(ARGV[5])
 if seen > tonumber(redis.call('HGET', KEYS[1], 'thawed'))
     and seen <= tonumber(redis.call('HGET', KEYS[1], 'frozen')) then
@@ -237,7 +260,10 @@ _ALLOWANCE_TAKE_UP_TO = _ALLOWANCE_RUN + """
 if redis.call('HGET', KEYS[1], 'epoch') ~= ARGV[1] then return 0 end
 local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
 local taken = math.min(avail, tonumber(ARGV[2]))
-if taken > 0 then redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken)) end
+if taken > 0 then
+    redis.call('HINCRBY', KEYS[1], 'avail', string.format('%.0f', -taken))
+    redis.call('HDEL', KEYS[1], 'filled', 'filled_at')
+end
 return taken
 """
 _ALLOWANCE_STATE = _ALLOWANCE_RUN + """
@@ -256,7 +282,24 @@ local avail = redis.call('HGET', KEYS[1], 'avail')
 if not avail then return 0 end
 redis.call('HSET', KEYS[1], 'avail', '0')
 redis.call('HINCRBY', KEYS[1], 'frozen', 1)
+redis.call('HDEL', KEYS[1], 'filled', 'filled_at')
 return tonumber(avail)
+"""
+# The state, and with it what the counter is down by since the last add and how many ms ago that
+# add was by the store's clock: 0 and 0 when there is no note to read, or no counter on offer.
+_ALLOWANCE_STATE_AND_PACE = _ALLOWANCE_RUN + """
+local avail = tonumber(redis.call('HGET', KEYS[1], 'avail') or '0')
+local filled = redis.call('HGET', KEYS[1], 'filled')
+local at = redis.call('HGET', KEYS[1], 'filled_at')
+local spent, since = 0, 0
+if filled and at and redis.call('HEXISTS', KEYS[1], 'epoch') == 1 then
+    local t = redis.call('TIME')
+    spent = math.max(0, tonumber(filled) - avail)
+    since = math.max(0, t[1] * 1000 + math.floor(t[2] / 1000) - tonumber(at))
+end
+return {avail, tonumber(redis.call('HGET', KEYS[1], 'frozen') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'thawed') or '0'),
+        tonumber(redis.call('HGET', KEYS[1], 'epoch') or '0'), run, spent, since}
 """
 # With no hash yet, the freeze is kept in one that holds only the counts, for ARGV[1]: an add on
 # its way from a transaction that did not see this freeze builds the counter on top of it, and
@@ -407,7 +450,11 @@ class Store(Protocol):
     async def read_route_rules(self) -> FlowControlReadResult:
         """The published route rule set, read like a flow-control snapshot."""
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult: ...
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None,
+                            owner: str | None = None) -> AcquireResult:
+        """`unless` names a claim key: while a token other than `owner` (default `token`) holds
+        it the lease is `busy` even when free, so the claim's holder takes the next turn."""
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
                           deadline: float | None = None) -> RenewResult: ...
@@ -474,6 +521,14 @@ class Store(Protocol):
         `allowance_add`; never admit a call on it.
         None when the store cannot answer."""
 
+    async def allowance_state_and_pace(
+            self, org_id: int) -> tuple[int, int, int, int, str, int, int] | None:
+        """`allowance_state`, read in the same atomic step as what the counter is down by since
+        the last add and how many ms ago that was, by the store's clock: what the team spent from
+        it net of give-backs, and over how long. Both 0 when the counter offers nothing or a
+        drain, a take-back or a restart has dropped the reading. For a refill sized to the
+        team's spend, in place of `allowance_state`. None when the store cannot answer."""
+
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
         """Empty a team's counter of this epoch and return what it held (0 when absent or of
         another epoch), in one atomic step, so no take can succeed on money the returned figure
@@ -505,8 +560,32 @@ class Store(Protocol):
     async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
         """Keep a short text value for `ttl_s`; False when the store cannot answer."""
 
+    async def mark_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        """Mark a call as running for `ttl_ms`; False when the store cannot answer."""
+
+    async def renew_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        """Extend a mark that is still there; never sets one that is gone. False when it is gone
+        or the store cannot answer."""
+
+    async def clear_call_in_flight(self, call_ref: str) -> None:
+        """Remove a call's mark. Best-effort: a fault leaves it to expire."""
+
+    async def call_in_flight(self, call_ref: str) -> bool | None:
+        """Whether a call's mark is there; None when the store cannot answer."""
+
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        """`mark_call_in_flight` of each, in one round trip, setting a mark that is gone too (a
+        store that restarted lost it). Only for marks whose owner knows its call is still
+        running. Best-effort."""
+
+    async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
+        """`clear_call_in_flight` of each, in one round trip. Best-effort."""
+
     async def get_text(self, key: str) -> str | None:
         """The text value, or None when it is missing, expired or the store cannot answer."""
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        """`get_text` of each key, in one round trip; all None when the store cannot answer."""
 
     async def aclose(self) -> None: ...
 
@@ -551,9 +630,35 @@ class LocalStore:
         self._texts[key] = (now + ttl_s, value)
         return True
 
+    async def mark_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        self._put_value(_in_flight_key(call_ref), 1, math.ceil(ttl_ms / 1000))
+        return True
+
+    async def renew_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        if self._live_value(_in_flight_key(call_ref)) is None:
+            return False
+        return await self.mark_call_in_flight(call_ref, ttl_ms)
+
+    async def clear_call_in_flight(self, call_ref: str) -> None:
+        self._values.pop(_in_flight_key(call_ref), None)
+
+    async def call_in_flight(self, call_ref: str) -> bool | None:
+        return self._live_value(_in_flight_key(call_ref)) is not None
+
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        for call_ref in call_refs:
+            await self.mark_call_in_flight(call_ref, ttl_ms)
+
+    async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
+        for call_ref in call_refs:
+            await self.clear_call_in_flight(call_ref)
+
     async def get_text(self, key: str) -> str | None:
         expires, value = self._texts.get(key, (0.0, ""))
         return value if expires > time.monotonic() else None
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        return [await self.get_text(key) for key in keys]
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -582,7 +687,9 @@ class LocalStore:
     async def read_route_rules(self) -> FlowControlReadResult:
         return FlowControlReadFailure.UNAVAILABLE
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None,
+                            owner: str | None = None) -> AcquireResult:
         return "unavailable"  # Local counters cannot promise cross-process exclusion.
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
@@ -662,6 +769,10 @@ class LocalStore:
     async def allowance_state(self, org_id: int) -> tuple[int, int, int, int, str] | None:
         return None
 
+    async def allowance_state_and_pace(
+            self, org_id: int) -> tuple[int, int, int, int, str, int, int] | None:
+        return None
+
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
         return None
 
@@ -723,6 +834,59 @@ class RedisStore:
             _note_fault(exc)
             return False
 
+    async def mark_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.set(_in_flight_key(call_ref), "1", px=ttl_ms)
+            return True
+        except Exception as exc:  # noqa: BLE001 - unmarked, the call keeps a hold of its own
+            _note_fault(exc)
+            return False
+
+    async def renew_call_in_flight(self, call_ref: str, ttl_ms: int) -> bool:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                return bool(await self._client.set(_in_flight_key(call_ref), "1", px=ttl_ms, xx=True))
+        except Exception as exc:  # noqa: BLE001 - the mark expires on its own
+            _note_fault(exc)
+            return False
+
+    async def clear_call_in_flight(self, call_ref: str) -> None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.delete(_in_flight_key(call_ref))
+        except Exception as exc:  # noqa: BLE001 - the mark expires on its own
+            _note_fault(exc)
+
+    async def call_in_flight(self, call_ref: str) -> bool | None:
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                return bool(await self._client.exists(_in_flight_key(call_ref)))
+        except Exception as exc:  # noqa: BLE001 - the caller decides what an unread mark means
+            _note_fault(exc)
+            return None
+
+    async def mark_calls_in_flight(self, call_refs: list[str], ttl_ms: int) -> None:
+        if not call_refs:
+            return
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                async with self._client.pipeline(transaction=False) as pipe:
+                    for call_ref in call_refs:
+                        pipe.set(_in_flight_key(call_ref), "1", px=ttl_ms)
+                    await pipe.execute()
+        except Exception as exc:  # noqa: BLE001 - the marks expire on their own
+            _note_fault(exc)
+
+    async def clear_calls_in_flight(self, call_refs: list[str]) -> None:
+        if not call_refs:
+            return
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                await self._client.delete(*(_in_flight_key(call_ref) for call_ref in call_refs))
+        except Exception as exc:  # noqa: BLE001 - the marks expire on their own
+            _note_fault(exc)
+
     async def get_text(self, key: str) -> str | None:
         try:
             async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
@@ -733,6 +897,17 @@ class RedisStore:
         if value is None:
             return None
         return value.decode() if isinstance(value, bytes) else str(value)
+
+    async def get_texts(self, keys: list[str]) -> list[str | None]:
+        if not keys:
+            return []
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                values = await self._client.mget(keys)
+        except Exception as exc:  # noqa: BLE001 - unread values are missing ones
+            _note_fault(exc)
+            return [None] * len(keys)
+        return [None if v is None else v.decode() if isinstance(v, bytes) else str(v) for v in values]
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:
@@ -866,6 +1041,19 @@ class RedisStore:
             _note_fault(exc)
             return None
 
+    async def allowance_state_and_pace(
+            self, org_id: int) -> tuple[int, int, int, int, str, int, int] | None:
+        try:
+            async with asyncio.timeout(_TIMEOUT_S):
+                avail, frozen, thawed, epoch, run, spent, since_ms = await self._client.eval(
+                    _ALLOWANCE_STATE_AND_PACE, 1, _allowance_key(org_id))
+            return (int(avail), int(frozen), int(thawed), int(epoch),
+                    run.decode() if isinstance(run, bytes) else str(run), int(spent),
+                    int(since_ms))
+        except Exception as exc:  # noqa: BLE001 - the caller falls back to the database path
+            _note_fault(exc)
+            return None
+
     async def allowance_drop(self, org_id: int, epoch: int) -> int | None:
         return await self._allowance_eval(_ALLOWANCE_DROP, org_id, epoch)
 
@@ -920,17 +1108,27 @@ class RedisStore:
             _note_fault(exc)
             return False
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None,
+                            owner: str | None = None) -> AcquireResult:
         """A short-lived admission lease, never the authority for a money write.
 
         Unavailable is deliberately distinct from contention. Lease callers aggregate faults;
         unlike optional invitation budgets, an outage must not discard a pending settlement.
+        With `unless`, the lease is busy while a token other than `owner` (default `token`)
+        holds that claim key (one script, so a claim set between the check and the SET cannot
+        be missed).
         """
         started = _clock()
         outcome = "cancelled"
         try:
             async with asyncio.timeout(_LEASE_ATTEMPT_TIMEOUT_S):
-                acquired = await self._client.set(key, token, nx=True, px=ttl_ms)
+                if unless is None:
+                    acquired = await self._client.set(key, token, nx=True, px=ttl_ms)
+                else:
+                    acquired = await self._client.eval(
+                        _ACQUIRE_LEASE_UNLESS_CLAIMED, 2, key, unless, token, ttl_ms,
+                        owner or token)
             outcome = "acquired" if acquired else "busy"
             return outcome
         except Exception as exc:  # noqa: BLE001 - cancellation still propagates to the owning scope
@@ -1122,6 +1320,10 @@ def _note_fault(exc: BaseException) -> None:
 
     log.warning("kv unavailable: %s: %s", type(exc).__name__, exc)
     analytics.capture_fault(exc, component="kv")
+
+
+def _in_flight_key(call_ref: str) -> str:
+    return f"treg:call-in-flight:v1:{call_ref}"
 
 
 _store: Store | None = None

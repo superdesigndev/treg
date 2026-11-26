@@ -30,9 +30,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import and_, delete, func, select, tuple_, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,122 +98,6 @@ async def _seed_corrections(session_factory, at: datetime) -> None:
         await catalog_stat_dirty.prune(db, stats.window_days(at))
         await catalog_stat_dirty.seed_legacy(db, mutable, stats.window_days(at), at)
         await db.commit()
-
-
-async def requeue_async_stats(session_factory=session_maker, *, apply: bool = False,
-                              now: datetime | None = None) -> dict:
-    """Preview or explicitly requeue existing mutable async buckets in the current window.
-
-    Reset readiness and mark the selected days atomically under the fold cursor lock. A later
-    False-to-True transition then proves a full repair, even when its pass began before this
-    command. Normal append folding preserves False. This command never reads source audit rows.
-    """
-    at = now or utcnow_naive()
-    since, today = stats.window_days(at), _day(at)
-    cat = catalog_store.load()
-    mutable = [eid for eid, ep in cat.by_id.items() if ep.get("async") and eid in cat.adapters]
-    async with session_factory() as db:
-        if apply:
-            state = (await db.execute(select(EndpointStatCursor).where(
-                EndpointStatCursor.id == CURSOR_ID).with_for_update())).scalar_one_or_none()
-            if state is None:
-                raise ValueError("catalog stats cursor missing; run catalog stats before requeueing")
-        keys = list((await db.execute(select(EndpointDayStat.endpoint_id, EndpointDayStat.day)
-            .where(EndpointDayStat.endpoint_id.in_(mutable), EndpointDayStat.day >= since,
-                   EndpointDayStat.day <= today)
-            .order_by(EndpointDayStat.endpoint_id, EndpointDayStat.day))).tuples())
-        if apply and keys:
-            await db.execute(update(EndpointDayStat).where(
-                tuple_(EndpointDayStat.endpoint_id, EndpointDayStat.day).in_(keys)
-            ).values(terminal_reconciled=False))
-            await catalog_stat_dirty.mark_dirty(db, keys, now=at)
-            await db.commit()
-    return {"kind": "catalog-async-repair", "version": 1, "applied": apply,
-            "requested_at": at.isoformat(), "window_start": since, "window_end": today,
-            "target_count": len(keys),
-            "targets": [{"endpoint_id": endpoint, "day": day} for endpoint, day in keys]}
-
-
-def _repair_manifest_keys(manifest: dict) -> list[tuple[str, str]]:
-    """Reject previews or malformed target lists before opening a database session."""
-    if (not isinstance(manifest, dict) or manifest.get("kind") != "catalog-async-repair"
-            or type(manifest.get("version")) is not int or manifest["version"] != 1
-            or manifest.get("applied") is not True
-            or not isinstance(manifest.get("targets"), list)):
-        raise ValueError("repair status requires an applied catalog-async-repair manifest")
-    requested_at = manifest.get("requested_at")
-    start, end = manifest.get("window_start"), manifest.get("window_end")
-    if not all(isinstance(value, str) for value in (requested_at, start, end)):
-        raise ValueError("invalid repair manifest window or timestamp")
-    try:
-        datetime.fromisoformat(requested_at)
-        if date.fromisoformat(start).isoformat() != start or date.fromisoformat(end).isoformat() != end:
-            raise ValueError("repair manifest window must use YYYY-MM-DD")
-    except ValueError as exc:
-        raise ValueError("invalid repair manifest window or timestamp") from exc
-    if start > end:
-        raise ValueError("repair manifest window is reversed")
-    keys = []
-    for target in manifest["targets"]:
-        if not isinstance(target, dict):
-            raise ValueError("invalid repair manifest target")
-        endpoint, day = target.get("endpoint_id"), target.get("day")
-        if not isinstance(endpoint, str) or not endpoint or not isinstance(day, str):
-            raise ValueError("invalid repair manifest target")
-        try:
-            canonical = date.fromisoformat(day).isoformat()
-        except ValueError as exc:
-            raise ValueError("invalid repair manifest day") from exc
-        if canonical != day:
-            raise ValueError("repair manifest days must use YYYY-MM-DD")
-        if not start <= day <= end:
-            raise ValueError("repair manifest target is outside its window")
-        keys.append((endpoint, day))
-    if (type(manifest.get("target_count")) is not int
-            or len(set(keys)) != len(keys) or manifest["target_count"] != len(keys)):
-        raise ValueError("repair manifest target count or uniqueness mismatch")
-    return sorted(keys)
-
-
-async def repair_status(manifest: dict, session_factory=session_maker, *,
-                        now: datetime | None = None) -> dict:
-    """Check this applied manifest's coverage, not the readiness of a deployment or its writers.
-
-    Read each bucket's flag and dirty marker in one statement snapshot. A missing bucket, an
-    unreconciled bucket or another queued correction remains incomplete. Targets that have left
-    the reader's window are reported separately rather than claimed as successfully repaired.
-    """
-    keys = _repair_manifest_keys(manifest)
-    since = stats.window_days(now or utcnow_naive())
-    current = [key for key in keys if key[1] >= since]
-    observed = {}
-    if current:
-        async with session_factory() as db:
-            rows = (await db.execute(select(
-                EndpointDayStat.endpoint_id, EndpointDayStat.day,
-                EndpointDayStat.terminal_reconciled,
-                EndpointStatDirty.endpoint_id.label("dirty_endpoint"),
-            ).outerjoin(EndpointStatDirty, and_(
-                EndpointDayStat.endpoint_id == EndpointStatDirty.endpoint_id,
-                EndpointDayStat.day == EndpointStatDirty.day,
-            )).where(tuple_(EndpointDayStat.endpoint_id, EndpointDayStat.day).in_(current)))).all()
-        observed = {(row.endpoint_id, row.day): row for row in rows}
-    counts = dict(repaired=0, pending=0, missing=0, aged_out=0)
-    targets = []
-    for endpoint, day in keys:
-        row = observed.get((endpoint, day))
-        if day < since:
-            status = "aged_out"
-        elif row is None:
-            status = "missing"
-        elif not row.terminal_reconciled or row.dirty_endpoint is not None:
-            status = "pending"
-        else:
-            status = "repaired"
-        counts[status] += 1
-        targets.append({"endpoint_id": endpoint, "day": day, "status": status})
-    return {"complete": not (counts["pending"] or counts["missing"]), **counts,
-            "targets": targets}
 
 
 async def _repair_bucket(session_factory, endpoint_id: str, day: str, at: datetime) -> bool:

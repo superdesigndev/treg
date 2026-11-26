@@ -55,6 +55,19 @@ endpoints:
     path: /email-search
     resource_ownership:
       produces: [{kind: search, path: item._id}]
+    async: &icypeas_single_async
+      id_from: item._id
+      poll:
+        endpoint: icypeas.search.results.read
+        param: {in: body, name: id}
+      status:
+        path: items.0.status
+        progress: [NONE, SCHEDULED, IN_PROGRESS]
+        success: [FOUND, DEBITED, NOT_FOUND, DEBITED_NOT_FOUND]
+        failure: [BAD_INPUT, INSUFFICIENT_FUNDS, ABORTED]
+      result: {path: items.0.results}
+      interval: 3
+    body_allowlist: true
     name: "Find a work email from a name and domain (async)"
     summary: "Find a single email address from a firstname, a lastname and a company domain name"
     input:
@@ -67,16 +80,18 @@ endpoints:
     test_request:
       body: {firstname: "Patrick", lastname: "Collison", domainOrCompany: "stripe.com"}
     cost:
-      type: per_result
+      type: per_success
       value: 1
       currency: credit
       per: 1
-      unit: result
+      unit: call
+      settle: terminal_presence
+      presence: {field: items.0.results.emails.0}
       source: docs
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
       confidence: documented
-      note: "1 credit per FOUND email; a search that finds nothing is free"
+      note: "1 credit per FOUND email; a search that finds nothing is free, so its hold is released"
     verified: '2026-08-20'
     added: '2026-08-20'
     example_response: examples/icypeas.people.email.find.json
@@ -91,6 +106,7 @@ endpoints:
     path: /email-verification
     resource_ownership:
       produces: [{kind: search, path: item._id}]
+    async: *icypeas_single_async
     name: "Verify email — catch-all and mail provider (async)"
     summary: "Check whether a specific email address exists and is deliverable, including catch-all detection"
     input:
@@ -125,6 +141,8 @@ endpoints:
     path: /domain-search
     resource_ownership:
       produces: [{kind: search, path: item._id}]
+    async: *icypeas_single_async
+    body_allowlist: true
     name: "Find role-based emails at a domain — contact@, support@"
     summary: "Discover a company's role-based addresses — contact@, support@, info@, admin@ and the rest"
     input:
@@ -140,6 +158,8 @@ endpoints:
       currency: credit
       per: 1
       unit: call
+      settle: terminal_presence
+      presence: {field: items.0.results.emails.0}
       source: docs
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
@@ -161,6 +181,8 @@ endpoints:
     summary: "Collect the result of one email find, verification or domain scan by the id it returned"
     # The listing modes (mode=single|bulk without a file) enumerate every search on the account,
     # and on treg's shared key that is every team's searches. Only an id this team produced is read.
+    kind: utility
+    async: false
     body_allowlist: true
     resource_ownership:
       requires: {kind: search, param: id, in: body}
@@ -185,6 +207,7 @@ endpoints:
     path: /bulk-single-searchs/read
     name: "Read a bulk job's rows"
     summary: "Collect the rows of a bulk search by the file id icypeas.bulk.search returned"
+    async: false
     body_allowlist: true
     resource_ownership:
       requires: {kind: bulk_file, param: file, in: body}
@@ -213,28 +236,49 @@ endpoints:
     path: /bulk-search
     resource_ownership:
       produces: [{kind: bulk_file, path: file}]
+    async:
+      id_from: file
+      poll:
+        endpoint: icypeas.search.files.read
+        param: {in: body, name: file}
+      status:
+        path: files.0.finished
+        progress: ["False"]
+        success: ["True"]
+      result: {path: files.0}
+      interval: 15
+      max_age: 86400
     name: "Bulk verify or find emails: a list of up to 5,000 in one job"
     summary: "Bulk email verification of a list of addresses (or email finding from names, or domain scanning): up to 5,000 per call instead of one call per address"
     input:
       body:
         name: {type: string, required: true, note: "your label for the job — how you find it later", example: "Q3 prospect list"}
         task: {type: string, required: true, note: "one of email-search | email-verification | domain-search", example: "email-search"}
-        data: {type: array, items: {type: array, items: {type: string}}, required: true, note: "one array per row. email-search rows are [firstname, lastname, domainOrCompany] (one of the two names may be empty); email-verification and domain-search rows hold a single value. MAX 5,000 rows", example: [["Patrick", "Collison", "stripe.com"]]}
+        data: {type: array, items: {type: array, items: {type: string}}, required: true, minItems: 1, maxItems: 5000, note: "one array per row. email-search rows are [firstname, lastname, domainOrCompany] (one of the two names may be empty); email-verification and domain-search rows hold a single value. MAX 5,000 rows", example: [["Patrick", "Collison", "stripe.com"]]}
         custom: {type: object, required: false, note: "{webhookUrlItem, webhookUrlBulkDone, externalIds, includeResultsInWebhook} — per-row and end-of-job callbacks, your own row ids, and whether results ride in the final webhook"}
       note: "Returns {file, status: 'in_progress'} immediately. Track it with icypeas.search.files.read and collect rows with icypeas.bulk.results.read using that file id. Rate limited to 1 call/sec"
     test_request:
       body: {name: "treg catalog verification", task: "email-search", data: [["Patrick", "Collison", "stripe.com"]]}
     cost:
-      type: per_result
-      value: 1
+      type: per_success
+      table:
+        - {when: {body.task: email-verification}, value: 0.1, times: body.data}
+        - {when: {}, value: 1, times: body.data}
+      fallback: {value: 5000, note: "5,000 rows at the dearest rate, one credit each."}
       currency: credit
-      per: 1
-      unit: result
+      unit: row
+      settle: usage
+      usage:
+        unit: credit
+        terms:
+          - {path: "files[task=email-search].found", rate: 1}
+          - {path: "files[task=domain-search].found", rate: 1}
+          - {path: "files[task=email-verification].done", rate: 0.1}
       source: docs
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
       confidence: documented
-      note: "the job itself is free to start; each ROW bills at its task's own rate — 1 credit per found email (email-search), 1 credit per domain with a hit (domain-search), 0.1 credit per address tested (email-verification). The figure here is the email-search rate, the dearest of the three, so a verification job costs a TENTH of what this implies"
+      note: "each ROW bills at its task's own rate: 1 credit per found email (email-search), 1 credit per domain with a hit (domain-search), 0.1 credit per address tested (email-verification). The hold is every row at its task's rate; the finished file's counts are the bill."
     verified: '2026-08-20'
     added: '2026-08-20'
     example_response: examples/icypeas.bulk.search.json
@@ -247,9 +291,11 @@ endpoints:
     scope: any_account
     method: POST
     path: /search-files/read
+    kind: utility
     name: "Check bulk job progress"
     summary: "Progress and stats for your bulk searches — how many rows are done, found, aborted or short of credits"
     # Without `file` this lists every bulk job on the account (every team's, on treg's shared key).
+    async: false
     body_allowlist: true
     resource_ownership:
       requires: {kind: bulk_file, param: file, in: body}

@@ -744,7 +744,8 @@ async def _release_claimed(
     amount = hold.amount_micro
     # Same rule as settle: a hold counted today leaves today's counter; an older one never was in it.
     spent_delta = -amount if hold.created_at >= _day_start() else 0
-    await _add_balance(db, hold.org_id, amount, spent_delta_micro=spent_delta)
+    if amount or spent_delta:
+        await _add_balance(db, hold.org_id, amount, spent_delta_micro=spent_delta)
     await _entry(db, org_id=hold.org_id, kind="release", amount_micro=amount, call_id=call_id,
                  endpoint_id=hold.endpoint_id, meta={**(meta or {}), "reason": reason})
     # Nothing was billable, so nothing is attributable: the tag rows go with the hold. Leaving them
@@ -954,12 +955,23 @@ async def tag_calls_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
     Counts BILLABLE calls: a team calling on its own key writes no tag row, and a released call has
     its rows deleted. That is the right grain for a reseller's plan limit — say so in the docs.
     """
-    total = (await db.execute(
+    row = (await db.execute(select(
         select(func.count()).select_from(TagSpend).where(
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
-            TagSpend.created_at >= since)
-    )).scalar() or 0
-    return int(total)
+            TagSpend.created_at >= since).scalar_subquery(),
+        select(func.count()).select_from(CallCharge).where(
+            *_queued_tag(org_id, dim, val)).scalar_subquery(),
+    ))).one()
+    return int(row[0] or 0) + int(row[1] or 0)
+
+
+def _queued_tag(org_id: int, dim: str, val: str) -> list:
+    """A tagged allowance call's charge still in the queue: its tag rows are written when it is
+    folded, so until then a cap reads it here. Read in the same statement as the tag rows: a fold
+    committing between two statements moves a charge from the queue into rows the first one
+    already read. Every queued charge counts, whenever it queued: its tag rows are dated by the
+    fold, which is still to come, so they fall in the current day and month."""
+    return [CallCharge.org_id == org_id, CallCharge.meta[("tags", dim)].as_string() == val]
 
 
 async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime) -> dict[str, int]:
@@ -996,12 +1008,14 @@ async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
     One indexed aggregate. That is the whole reason `TagSpend` exists as a table instead of a JSON key:
     this runs on every proxied call.
     """
-    total = (await db.execute(
+    row = (await db.execute(select(
         select(func.coalesce(func.sum(TagSpend.amount_micro), 0)).where(
             TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
-            TagSpend.created_at >= since)
-    )).scalar() or 0
-    return int(total)
+            TagSpend.created_at >= since).scalar_subquery(),
+        select(func.coalesce(func.sum(CallCharge.amount_micro), 0)).where(
+            *_queued_tag(org_id, dim, val)).scalar_subquery(),
+    ))).one()
+    return int(row[0] or 0) + int(row[1] or 0)
 
 
 async def tag_invoice_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:

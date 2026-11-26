@@ -1099,8 +1099,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "adtrack_js",
-    "path": "/adtrack.js"
+    "name": "click_id_js",
+    "path": "/click-id.js"
   },
   {
     "kind": "APIRoute",
@@ -1700,6 +1700,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "vendor_console_me",
+    "path": "/vendor-console/me"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "list_orgs",
     "path": "/orgs"
   },
@@ -1768,32 +1777,6 @@
     ],
     "name": "onboard_team",
     "path": "/onboard/team"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
-    "name": "demo_sandbox_mint",
-    "path": "/demo/sandbox"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_live",
-    "path": "/demo/sandbox/live"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_skill",
-    "path": "/demo/sandbox/skill"
   },
   {
     "kind": "APIRoute",

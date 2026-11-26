@@ -1,5 +1,6 @@
 """The client address per-IP limits key on cannot be chosen by the client."""
 import logging
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +15,7 @@ def ip_config(monkeypatch):
     def configure(header="", hops=1):
         monkeypatch.setattr(get_settings(), "client_ip_header", header)
         monkeypatch.setattr(get_settings(), "trusted_proxy_hops", hops)
-        monkeypatch.setattr(client_ip, "_last_missing_log", 0.0)
+        monkeypatch.setattr(client_ip, "_last_missing_log", float("-inf"))
         monkeypatch.setattr(client_ip, "_shape_reported", False)
     return configure
 
@@ -34,8 +35,10 @@ def test_forwarded_for_is_read_from_the_right(ip_config, headers, hops, expected
     assert client_ip.from_headers(headers, "10.0.0.9") == expected
 
 
-def test_the_edge_header_wins_and_is_validated(ip_config, caplog):
+def test_the_edge_header_wins_and_is_validated(ip_config, caplog, monkeypatch):
     ip_config(header="cf-connecting-ip")
+    # time.monotonic() counts from boot: a VM in its first minute must still log the first miss.
+    monkeypatch.setattr(client_ip, "time", SimpleNamespace(monotonic=lambda: 5.0))
     forged = {"X-Forwarded-For": "6.6.6.6, 203.0.113.5"}
     assert client_ip.from_headers({**forged, "CF-Connecting-IP": "198.51.100.7"}, "10.0.0.9") == "198.51.100.7"
     with caplog.at_level(logging.WARNING, logger="treg"):

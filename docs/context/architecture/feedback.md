@@ -9,6 +9,18 @@ sources:
   - src/treg/domain/feedback/reviews.py
   - src/treg/domain/feedback/marks.py
   - src/treg/domain/feedback/verdicts.py
+  - src/treg/domain/feedback/review_codes.py
+  - src/treg/application/review_judge.py
+  - tests/test_review_judge.py
+  - src/treg/domain/feedback/body_view.py
+  - src/treg/application/review_body_pilot.py
+  - tests/test_review_body_pilot.py
+  - src/treg/application/review_body_audit.py
+  - src/treg/application/review_answers.py
+  - tests/test_review_answers.py
+  - src/treg/alembic/versions/0128_review_answer_basis.py
+  - tests/test_review_answer_basis_migration.py
+  - tests/test_review_body_audit.py
   - src/treg/domain/feedback/comparisons.py
   - src/treg/application/compare.py
   - src/treg/hints.py
@@ -54,8 +66,9 @@ provider and never goes through the best-effort audit writer, so a storage failu
 success acknowledgement.
 
 `call_ids` and `endpoint_id` stay claims. `verified_call_ids` is the subset found in the submitting
-team's `CallRecord.call_ref` or `LedgerEntry.call_id`; no cross-team lookup runs. A pinned caller
-verifies only against rows carrying its own pin (on the ledger only the `reserve` entry carries
+team's `CallRecord.call_ref`, `LedgerEntry.call_id` or a still-queued `CallCharge.call_id`; no
+cross-team lookup runs. A pinned caller verifies only against rows carrying its own pin (on the
+ledger the `reserve` entry, or an allowance call's `settle` entry or queued charge, carries
 `meta.tags`), and its report is stamped with that pin (`Feedback.tags`). Missing audit records never
 reject a report, and verified provenance does not make the problem true. Intake never ranks providers
 or adjusts charges.
@@ -154,9 +167,9 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 shows (`X-Treg-Hints: review,mark,feedback`, parsed by `accepted_kinds`); a client that does not
 send the header gets `LEGACY_KINDS` (review and feedback), since released CLIs drop any other kind
 in silence. A kind outside `accepts` is skipped before its budget is spent, so the call falls
-through to the next. The team `/mcp/` sends all four (`review,mark,feedback,compare`); `/mcp/v2/`
-sends the first three. The router sends
-`X-Treg-Hint: review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`, only
+through to the next. The team `/mcp/` and the binary CLI send all four (`review,mark,feedback,compare`);
+`/mcp/v2/` sends the first three. The router sends
+`X-Treg-Hint: compare|review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`, only
 to a client that sent `X-Treg-Hints`, since the words name flags an older release lacks; plus
 `X-Treg-Review: requested` on a review, read by CLI releases up to 0.18) and emits one
 `hint_attached` event per invitation sent. Surfaces only translate
@@ -170,6 +183,10 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+  A caller that names no runtime (`X-Treg-Client`) and sends no `X-Treg-Hints` is a script or
+  backend with no agent reading the header: it is never asked (`invite.UNNAMED_KINDS`) and spends
+  no budget, which stays for the team's agents' calls; it still gets the feedback hint. `invited`
+  on a review does not recompute this, so such a review, rare, can still read as invited.
   With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
   endpoint a review would be credited to (a direct call's own, or a routed parent's latest
   successful child, which the router records as `route_summary["credited"]`; not `served_by`,
@@ -203,8 +220,20 @@ so for them `hint_attached` counts an invitation the agent never saw.
   (the `compare-ready:<org_id>` flag the worker run sets; see "Pairwise comparisons"), from a client
   that lists `compare` in `X-Treg-Hints` and is not pinned to tags, at most
   `compare_budget_per_hour` a team per hour (`compare-hint-budget:<org_id>`); past that the call falls
-  through to review. It precedes review. Only the team `/mcp/` sends `compare`, since only it has the
-  `compare` tool; `/mcp/v2/` and the CLIs never receive it.
+  through to review. It precedes review. The team `/mcp/` and the binary CLI send `compare`;
+  `/mcp/v2/` and the Python CLI never receive it. Both show the pair itself, since an agent judges
+  answers in front of it and rarely fetches them: the team `/mcp/` puts it in the call result
+  (`compare`, compacted by `compare.compact_pair`) with `hints.compare_inline_hint`, and the binary
+  reads `GET /comparisons/next?compact=true` (the same compaction plus `how_to_vote`,
+  `hints.compare_cli_hint`) within two seconds and prints it on stderr, or under `--json`
+  as `_treg.compare`. A failed read prints `X-Treg-Hint-Text` (`hints.COMPARE_CLI_HINT`) alone.
+  `treg compare` shows the pair and `treg compare ID 1|2|tie|both_bad --reason` records the verdict.
+  The binary does not ask for compare when it could not show the pair or route the vote: under
+  `--await` (it prints only the task's result) and when a `--header` sets `X-Treg-Token`,
+  `X-Treg-Org` or `Authorization` (the pair and the vote would go to the CLI's own team). It then
+  drops only `compare` from what the call declares, a `--header X-Treg-Hints` included. It reads
+  the pair with the call's own client, and a one-off `--org` is kept in the vote's words, the
+  fallback words included.
 - **Feedback**: any other successful, non-replayed, non-cached call that samples in at
   `feedback_hint_rate`, own tools included. It asks for nothing, so it has no budget.
 
@@ -272,10 +301,13 @@ the capability, and logs the rest. Each run:
 2. Stops when off (no pairs, `compare_max_per_day` 0 or `compare_rate` 0) or when the UTC day's
    attempts (`compareattemptday`) have reached `compare_max_per_day`.
 3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
-   at least one review invitation on the team MCP (`CallReview.invited`, client `mcp` or
-   `mcp-prior`) in `compare_answer_days` (only that surface shows the compare invitation; a team
-   whose agents never answer one there, such as a pipeline calling without reading hints, would
-   leave its pairs unjudged and take the day's budget), and holding no
+   at least one review invitation in `compare_answer_days` on a surface that shows a compare
+   invitation (`CallReview.invited`): the team MCP (client `mcp` or `mcp-prior`), or a client that
+   declared `compare` in `X-Treg-Hints` on the review itself (`compare-answering:<org_id>`, the
+   time of the latest such review, read against the current window in one `MGET` for all teams; a CLI reports only the agent it runs under, so an old and a new release
+   look alike in `CallReview.client`). A team whose agents never answer one there, such as a
+   pipeline calling without reading hints, or one on a CLI that does not show compare, would leave
+   its pairs unjudged and take the day's budget. And holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
    capability pin on a paired capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.
@@ -400,8 +432,87 @@ Rules a change must keep:
 - Below `MIN_TEAMS` there is no `share`, only early quotes with `teams: 0`; with nothing quotable there
   is no `reviews` at all.
 - Quotes: at most one per team (its latest), drawn in the proportions the teams voted rather than for
-  tone, with verdict, month (never day) and `client`; no team, user or call is identified. Reasons are
-  quoted unfiltered because the review tool tells agents they may be quoted publicly.
+  tone, with verdict, month (never day) and `client`; no team, user or call is identified. The review
+  tool tells agents reasons may be quoted publicly and to leave private data out, but agents still
+  copy what they found: a reason carrying an email address, a phone number (nine digits or more) or a
+  LinkedIn profile link (public, Sales Navigator or Recruiter) is never quoted (`verdicts.quotable`).
+  Patterns cannot catch a name, so a reason is quoted only after Jev has judged it unlikely to name or
+  identify a person (`person_p` below `verdicts.PERSON_P_MAX`, `verdicts.cleared`); a reason not yet
+  judged is not quoted. Reasons are otherwise quoted as written.
+
+Jev's judgements are written to the review row by `treg-worker reviews judge`, an hourly cron
+(`application.review_judge`), once per review and in two independent passes over the window:
+
+- Privacy: each quotable reason gets `person_p` and `privacy_judged_at`.
+- Attribution: each `partly` or `not_useful` review gets `primary_code`, an optional `secondary_code`
+  and `codebook_version` (`domain.feedback.review_codes`, a fixed codebook the vendor report cards
+  aggregate per endpoint), first from its reason alone. `code_basis` says what the codes were judged
+  from: `reason` for a direct call's review, which may still be upgraded; `reason_final` for a routed
+  call's (its rows cannot prove which answer the caller got) or one without a reason; `answer` once
+  upgraded. A review with no reason is `NOREASON` without asking. A new codebook version re-judges
+  only reviews coded under an older one, from their reasons, and the upgrade follows again.
+- Upgrade with the answer (`judge_answers`): a direct call's review coded from its reason is asked
+  again with the request and the shortened answer beside its reason (`application.review_answers`,
+  `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
+  `review_judge_answer_chars` (JSON that fits is shown as sent, and a shortened one keeps the vendor's
+  own number text; a leading byte order mark does not stop JSON being read as JSON). The request is
+  the one the archive keeps for the question, the first call's: its query is shown sorted
+  (`review_answers.request_url`), its body only when the key proves it is this call's
+  (`request_body`: no JSON body holding a fractional number or any object, which another call can share the key with), and
+  `review_codes.REQUEST_NOTE` tells every judge, the blind audit too, that the order of parameters
+  is not the agent's while every value shown is exact. The judge sees what this call's delivery is known to have had: its own
+  status and the body (`review_answers.as_delivered`), without the provider-reported charge the
+  endpoint declares (whether this delivery kept it is not on file), read from a version of that
+  answer that kept its bytes and still matches its content hash
+  (`archive.resolve_result(prefer_bytes=True, verify=True)`). The reason codes become
+  `reason_final` at once only on facts that will not change: the call row has no archive link, it
+  came through `/table` (`CallRecord.surface`: a reshaped answer; an idempotency key keeps its
+  surface, `IdempotentCall.surface`, and never replays on the other), it predates `review_answer_surface_since` (for a deployment with `/table/` on: when the last
+  instance of a build that did not record the surface stopped serving), or the bytes are not UTF-8
+  text.
+  Anything else that does not read now (the archive not written yet, a hash-only or gone answer, a
+  failed read, object storage not configured here, the database unreachable, a corrupt or
+  mismatched copy) is
+  tried again from `answer_retry_at`, an hour doubling to a week (`answer_attempts`), and after
+  `review_judge_answer_attempts` tries the reason codes stand; a review waiting its turn is not read,
+  so it never holds back the others. Answer codes may replace this version's `reason_final`, so a run
+  that read the answer wins over one that meanwhile gave up. The worker opens the archive's object
+  store, and without its credentials logs that and runs on. `review_judge_answers` off skips the pass
+(its rollback switch: 0128 stays). Each read gets only the time left before
+  reading stops, which leaves a request's worth before the deadline, so what was read is sent; a read
+  cut by that budget waits six hours without spending a try. Back-off writes hold only while the
+  row still has the tries the run read, so concurrent runs never move it back. No request starts after the deadline.
+
+Each answer is validated on its own (a Noul must be a number in [0, 1], a Choice one of the codes);
+a failed request or an unreadable answer leaves that review unjudged for the next run, and one pass
+failing never stops the other. A judgement is written only onto a review still unjudged, or coded
+under an older codebook version (`domain.feedback.reviews`), so overlapping runs never replace or
+downgrade an answer; no database connection is held across a Jev request.
+
+`treg-worker reviews body-pilot` (`application.review_body_pilot`) is a dry run of coding with the
+answer in view: it pages through the negative reviews, newest first, until it has read `--sample`
+answers still on file, and asks Jev the codebook twice, from the reason alone (a fresh control: the
+row is coded with the answer by the hourly judge) and with the request and the answer shortened by `body_view.shrink` (long strings cut, long lists kept to their first items
+and a count, always valid JSON, every mark a cut leaves named in `body_view.MARKERS` and explained
+in the question), and prints how its codes compare with the reason-only ones. Routed reviews are
+counted as `answer_unconfirmed` and never compared (a batch whose second request would start after
+the deadline is not sent and counts as `half_asked`; one cut before its first, `read_not_asked`): the audit rows cannot prove which answer the
+caller got (a confirmed find returns the finder's answer while the review is credited to the
+confirmer, `feedback.answering_child`; an upgrade returns another vendor's; a miss returns none),
+and the route's `served_by` is not stored on them. A blank
+reason is skipped; no Jev request starts after the deadline. It writes nothing and prints only
+counts, code pairs and review ids, never a reason, request or answer.
+
+`treg-worker reviews body-audit --pairs id:REASON[:CODE]=BODY[:CODE],...` (`application.review_body_audit`)
+checks the pilot's changed codes with a stronger judge: for each review, Claude through the AI
+Gateway (`ai_gateway_api_key`) sees the reason, request, shortened answer and codebook and picks
+between the pilot's reason-only and body codings, shown as A and B in an order
+fixed by the review id. It writes nothing, prints winners per code change and review ids only, and
+starts no request once its spend reaches `--max-usd`.
+
+Without `typesafe_api_key`, or with the cron suspended, nothing new is judged: new reasons are not
+quoted, but reasons already judged clean keep being quoted. To stop quoting those too, revert the
+gate in `verdicts.cleared`.
 
 `application.feedback.endpoint_verdicts` caches the fold per process; only the first fold is awaited,
 later refreshes run in the background and a failed refresh keeps the previous fold. With no fold the

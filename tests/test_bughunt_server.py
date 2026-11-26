@@ -268,10 +268,15 @@ async def test_upstream_setcookie_cannot_overwrite_treg_cookies(c):
     assert any("good=1" in x for x in setc)             # other upstream cookies still pass through
 
 
-async def test_oversized_id_is_404_not_500(c):
+@pytest.mark.parametrize("method, path", [
+    ("DELETE", "/secrets/99999999999999999999999999"),  # past SQLite's 64-bit INTEGER
+    ("DELETE", "/secrets/3000000000"),  # past Postgres's 32-bit integer
+    ("GET", "/bundles/3000000000"),
+])
+async def test_oversized_id_is_404_not_500(c, method, path):
     u = await _register(c, "big@t.io")
-    r = await c.delete("/secrets/99999999999999999999999999", headers=_hdr(u["token"]))
-    assert r.status_code == 404  # was an OverflowError 500 (huge id overflows SQLite's 64-bit INTEGER)
+    r = await c.request(method, path, headers=_hdr(u["token"]))
+    assert r.status_code == 404, r.text
 
 
 async def test_malformed_base_url_is_422(c):

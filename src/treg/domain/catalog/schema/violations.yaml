@@ -23,7 +23,6 @@ cost_keys:
   enrichlayer: {provider: enrichlayer}
   octen_rates: {provider: octen}
   quantity: {provider: crawl4ai}
-  sumble: {provider: sumble}
 
 # Rows (or a file header's queryParams) whose parameter specs use JSON Schema words nothing
 # reads, until the provider's batch rewrites them.

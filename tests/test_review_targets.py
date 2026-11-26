@@ -87,6 +87,7 @@ async def test_off_or_before_the_first_read_every_endpoint_gets_the_base_rate(cl
 
 async def test_a_short_endpoint_is_invited_and_a_full_one_falls_back_to_base(clients, targeting,
                                                                               monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     _platform_call(monkeypatch)
     monkeypatch.setattr(targeting, 'review_sample_rate', 0)
     monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
@@ -102,6 +103,7 @@ async def test_a_short_endpoint_is_invited_and_a_full_one_falls_back_to_base(cli
 
 async def test_a_team_that_filled_an_endpoint_gets_no_invitation_there(clients, targeting,
                                                                         monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     _platform_call(monkeypatch)
     monkeypatch.setattr(targeting, 'review_sample_rate', 1.0)
     monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
@@ -166,6 +168,7 @@ async def test_a_routed_review_recomputes_invited_with_the_credited_child(client
 
 async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, enrichment_on,
                                                                       targeting, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import service as call_service
     from test_routing import ROUTED, _relay_by_provider
 
@@ -190,6 +193,7 @@ async def test_a_confirmed_find_targets_and_credits_the_confirmer(clients, verif
                                                                    monkeypatch):
     """Tomba's hit is returned and Hunter confirms it: the review is credited to Hunter, so the
     invitation targets Hunter too, and once Hunter is full the next call is not boosted."""
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import service as call_service
     from test_route_confirm import ON, _hunter
     from test_route_verify import ASK, FIND, TOMBA_HIT, _relay
@@ -240,6 +244,7 @@ async def test_an_async_find_credits_and_targets_the_find_not_its_poll(clients, 
                                                                        targeting, monkeypatch):
     """Dropcontact submits a job (people.email.find) and is polled (jobs.get): the review is about
     the find, so both the review and the invitation go to the find, and a full find stops the boost."""
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from test_dropcontact_routing import _relay as dropcontact_relay
 
     dropcontact_relay(monkeypatch, {'success': True, 'data': [{

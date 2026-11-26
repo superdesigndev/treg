@@ -14,7 +14,7 @@ from ..domain.feedback import marks, reviews, verdicts
 from ..domain.governance.access import pinned_tag_predicates
 from ..feedback_contract import FeedbackCategory, MarkBasis, ReviewUsefulness
 from ..infra.db import session_maker
-from ..models import CallMark, CallRecord, LedgerEntry
+from ..models import CallCharge, CallMark, CallRecord, LedgerEntry
 from ..timeutil import utcnow_naive
 
 RATE_MAX = 30
@@ -46,10 +46,16 @@ async def submit(
                 CallRecord.org_id == org_id, CallRecord.call_ref.in_(call_ids),
                 *pinned_tag_predicates(CallRecord.tags, pinned_tags),
             ))).scalars())
+            # A charge still queued, read before the ledger so a fold in between cannot hide it.
+            verified.update((await db.execute(select(CallCharge.call_id).where(
+                CallCharge.org_id == org_id, CallCharge.call_id.in_(call_ids),
+                *pinned_tag_predicates(CallCharge.meta["tags"], pinned_tags),
+            ))).scalars())
             verified.update((await db.execute(select(LedgerEntry.call_id).where(
                 LedgerEntry.org_id == org_id, LedgerEntry.call_id.in_(call_ids),
-                # Only the reserve entry carries `meta.tags`, so a pinned reporter matches on it.
-                *([LedgerEntry.kind == "reserve",
+                # The reserve entry carries `meta.tags`, or for an allowance call its settle
+                # entry, so a pinned reporter matches on them.
+                *([LedgerEntry.kind.in_(("reserve", "settle")),
                    *pinned_tag_predicates(LedgerEntry.meta["tags"], pinned_tags)] if pinned_tags else []),
             ))).scalars())
         row = feedback.add(
@@ -94,12 +100,32 @@ async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict
     return record
 
 
+async def answering_child(db, *, org_id: int, call_id: str) -> CallRecord | None:
+    """The routed call's last successful attempt in its own team: the vendor a review of the call
+    is attributed to. Not necessarily the one whose answer was returned: with X-Treg-Route-Confirm
+    the confirmer is credited, an upgrade returns another vendor's answer, and a miss returns none.
+    The route's `served_by` is in the answer and the call event, not on the audit rows.
+
+    A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>` on the
+    provider's job endpoint, which is not what was asked, so they are left out."""
+    escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
+    return (await db.execute(select(CallRecord).where(
+        CallRecord.org_id == org_id,
+        CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
+        CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
+        CallRecord.status_code >= 200, CallRecord.status_code < 300,
+    ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+
+
 async def submit_review(
     *, org_id: int, user_email: str, call_id: str, usefulness: ReviewUsefulness,
     reason: str | None = None, client: str = "", pinned_tags: dict | None = None,
-    rows: list[dict] | None = None, basis: MarkBasis = "impression",
+    rows: list[dict] | None = None, basis: MarkBasis = "impression", shows_compare: bool = False,
 ) -> tuple[int, bool, int | None]:
     """Return (review_id, inserted, mark_id); attribution never comes from the caller.
+
+    `shows_compare`: the client that sent it declared it shows a compare invitation; an invited
+    review from one makes its team one a comparison can run for (`compare.note_answering`).
 
     `rows` (the rows the reviewer judged, mark items) become one mark tied to the review in the
     same transaction and spend the team's mark allowance; a repeated review of the same call keeps
@@ -113,15 +139,7 @@ async def submit_review(
         if record.credential_tier == "routed":
             targeted = None
             routed_via = record.endpoint_id
-            # A waterfall attempt is `<call>:r<n>`; an async attempt's polls are `<call>:r<n>:p<k>`
-            # on the provider's job endpoint, which is not what was asked, so they are left out.
-            escaped = call_id.replace("/", "//").replace("%", "/%").replace("_", "/_")
-            child = (await db.execute(select(CallRecord).where(
-                CallRecord.org_id == org_id,
-                CallRecord.call_ref.startswith(f"{call_id}:r", autoescape=True),
-                CallRecord.call_ref.not_like(f"{escaped}:r%:%", escape="/"),
-                CallRecord.status_code >= 200, CallRecord.status_code < 300,
-            ).order_by(CallRecord.id.desc()).limit(1))).scalar_one_or_none()
+            child = await answering_child(db, org_id=org_id, call_id=call_id)
             if child is not None and child.endpoint_id:
                 endpoint_id, provider = child.endpoint_id, child.provider
                 targeted = endpoint_id
@@ -173,7 +191,13 @@ async def submit_review(
             await db.flush()
             mark_id = mark.id
         await db.commit()
-        return review_id, True, mark_id
+    if invited and shows_compare:
+        from . import compare
+        try:
+            await compare.note_answering(org_id)
+        except Exception:  # noqa: BLE001 - a lost note only delays the team's first comparison
+            pass
+    return review_id, True, mark_id
 
 
 

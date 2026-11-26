@@ -22,7 +22,7 @@ from typing import cast
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, defer
 from sqlmodel import select
@@ -48,7 +48,7 @@ from .domain.identity.access import (
 )
 from .domain.identity import api_keys as managed_keys
 from .domain.identity import session as identity_session
-from .models import (CallRecord, CapabilityPin, LedgerEntry, Membership, Org, RunRecord, Secret,
+from .models import (CallCharge, CallRecord, CapabilityPin, LedgerEntry, Membership, Org, RunRecord, Secret,
                      Tool, ToolRequest, User)
 from .routers import activity as activity_routes
 from .routers import admin as admin_routes
@@ -162,6 +162,17 @@ async def _id_out_of_range(request: Request, exc: OverflowError) -> JSONResponse
     return JSONResponse({"detail": "identifier out of range"}, status_code=404)
 
 
+async def _db_id_out_of_range(request: Request, exc: DBAPIError) -> JSONResponse:
+    # asyncpg refuses a parameter past Postgres's 32-bit `integer` while binding it, and SQLAlchemy
+    # wraps that OverflowError in a DBAPIError. Any other database error stays a 500.
+    cause: BaseException | None = exc.orig
+    while cause is not None and not isinstance(cause, OverflowError):
+        cause = cause.__cause__
+    if cause is None:
+        raise exc
+    return await _id_out_of_range(request, cause)
+
+
 _app_version_cache: tuple[float, str] | None = None  # (index.html mtime, content hash)
 
 
@@ -214,7 +225,7 @@ async def meta() -> dict:
             "google": bool(s.google_client_id), "app_version": _app_version(),
             "treg_version": _treg_version(),
             # public ingestion key — only present when this deployment opts in (self-hosters send nothing)
-            "posthog_key": s.posthog_key, "posthog_host": s.posthog_host.rstrip("/") if s.posthog_key else "",
+            "posthog_key": s.posthog_key, "posthog_host": s.posthog_page_host if s.posthog_key else "",
             # public workspace id — only present when this deployment opts in (self-hosters load no widget)
             "intercom_app_id": s.intercom_app_id,
             # Whether the hub routes exist here at all (TREG_HUB_ENABLED), so the dashboard asks
@@ -265,7 +276,7 @@ async def create_tool_request(
     """Open: file a "the catalog doesn't have X" report. No auth on purpose — the filer is most
     often an agent that just got zero search results and holds no token, and a signup wall here
     costs exactly the demand signal the catalog team wants. Per-IP rate limiting (ratestore) is
-    the abuse valve, same shape as POST /demo/sandbox; field caps bound the row.
+    the abuse valve; field caps bound the row.
 
     Identity is attribution, never authorization: when the caller happens to be signed in (token
     or same-origin session), the row records who asked so they can be told when it lands — a
@@ -348,7 +359,6 @@ router.routes.extend(auth_routes.grants_router.routes)
 router.routes.extend(org_routes.org_entry_router.routes)
 router.routes.extend(org_routes.invite_entry_router.routes)
 router.routes.extend(onboard_routes.onboard_entry_router.routes)
-router.routes.extend(onboard_routes.sandbox_router.routes)
 router.routes.extend(onboard_routes.onboard_teammate_router.routes)
 router.routes.extend(org_routes.invite_management_router.routes)
 router.routes.extend(org_routes.member_list_router.routes)
@@ -806,10 +816,16 @@ async def get_call(
                  defer(cast(QueryableAttribute, CallRecord.error_response), raiseload=True))
         .where(CallRecord.org_id == caller.org_id, CallRecord.call_ref == call_ref,
                *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags)))).scalars().first()
-    if row is None and caller.membership.pinned_tags:
+    # Before the ledger: a fold commits the charge's removal with its settle entry, so a fold in
+    # between moves the call into the next read, never out of both.
+    queued = (await db.execute(select(CallCharge.call_id).where(
+        CallCharge.org_id == caller.org_id, CallCharge.call_id == call_ref,
+        *pinned_tag_predicates(CallCharge.meta["tags"], caller.membership.pinned_tags),
+    ))).scalar_one_or_none()
+    if row is None and queued is None and caller.membership.pinned_tags:
         owned = (await db.execute(select(LedgerEntry.id).where(
             LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref,
-            LedgerEntry.kind == "reserve",
+            LedgerEntry.kind.in_(("reserve", "settle")),
             *pinned_tag_predicates(LedgerEntry.meta["tags"], caller.membership.pinned_tags),
         ).limit(1))).scalar_one_or_none()
         if owned is None:
@@ -817,7 +833,7 @@ async def get_call(
     entries = (await db.execute(select(LedgerEntry).where(
         LedgerEntry.org_id == caller.org_id, LedgerEntry.call_id == call_ref)
         .order_by(LedgerEntry.created_at))).scalars().all()
-    if row is None and not entries:
+    if row is None and queued is None and not entries:
         raise HTTPException(status_code=404, detail="no call with that id")
     await db.close()
     task = (await async_task_app.views_for(

@@ -608,7 +608,8 @@ async def test_a_routed_miss_records_the_empty_answer_it_returned(clients: Async
     assert parent["hit"] is False
     assert parent["answer_values"] == {
         "rows": "0", "rows_with_profile_url": "0", "rows_dup": "0", "rows_company_match": "0",
-        "rows_title_match": "0", "rows_country_match": "0", "segments_version": "2"}
+        "rows_company_known": "0", "rows_title_match": "0", "rows_title_known": "0",
+        "rows_country_match": "0", "rows_country_known": "0", "segments_version": "3"}
 
 
 async def test_an_opted_out_team_sends_no_answer(clients: AsyncClient, enrichment_on, events_on,
@@ -801,6 +802,18 @@ def test_page_position_reads_a_declared_path_a_cursor_and_a_routed_caller():
     assert ev.page_position(None, identity={"q": "x"}) is None
     with pytest.raises(ValueError):
         C.parse_adapters({"adapters": {"t": {"position": {"page": "body.p", "offset": "body.o"}}}})
+
+
+@pytest.mark.parametrize(("first", "offset"), [
+    (None, None), (1, None), (2, "1"), (11, "10"), ("11", "10"),
+    (0, None), (-2, None), (2.5, None), (True, None), ("2.5", None),
+])
+def test_one_based_result_position_matches_the_public_offset(first, offset):
+    declaration = {"position": {"offset": "zero_based(body.first)"}}
+    adapter = C.parse_adapters({"adapters": {"test": declaration}})["test"]
+    body = json.dumps({"first": first} if first is not None else {}).encode()
+    actual = ev.page_position(adapter, (), body)
+    assert actual == ev.page_position(None, identity={"offset": offset})
 
 
 def test_an_object_asked_by_url_or_by_id_hashes_the_same(monkeypatch):

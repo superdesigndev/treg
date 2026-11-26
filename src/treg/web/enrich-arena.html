@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Geist+Pixel&amp;family=Google+Sans+Flex:opsz,wght@6..144,400..700&amp;display=swap">
-  <script src="/adtrack.js"></script>
+  <script src="/click-id.js"></script>
   <script src="/vendor/vue-3.5.44.global.prod.js" defer></script>
   <script src="/agent-setup.js" defer></script>
   <script src="/enrich-arena/bench.js" defer></script>
@@ -319,10 +319,8 @@
     <div v-else class="vendor-request-success" role="status"><span aria-hidden="true">✓</span><p>Thanks for the suggestion. The catalog team will review your request.</p></div>
     <section class="vendor-selfserve" aria-labelledby="vendor-selfserve-title">
       <h3 id="vendor-selfserve-title">Are you a vendor?</h3>
-      <p>Add your API by opening a PR. Paste this prompt into your coding agent to get started.</p>
-      <textarea class="vendor-listing-prompt" :value="vendorListingPrompt" readonly rows="3" aria-label="Vendor listing prompt" spellcheck="false"></textarea>
-      <div class="vendor-selfserve-actions"><button type="button" class="vendor-copy-prompt" @click="copyVendorListingPrompt">{{vendorPromptCopied?'✓ Copied':'Copy prompt'}}</button><button v-if="requestDone" type="button" class="text-button" @click="closeVendorRequest">Done</button><span class="sr-only" role="status">{{vendorPromptCopied?'Prompt copied to clipboard.':''}}</span></div>
-      <p v-if="vendorPromptError" class="auth-error" role="alert">{{vendorPromptError}}</p>
+      <p>List your API on the vendor console: your coding agent opens the listing pull request, then you add a test key, a contact and your price.</p>
+      <div class="vendor-selfserve-actions"><a class="vendor-console-link" href="https://vendors.treg.to" target="_blank" rel="noopener">Open the vendor console ↗</a><button v-if="requestDone" type="button" class="text-button" @click="closeVendorRequest">Done</button></div>
     </section>
   </dialog>
 

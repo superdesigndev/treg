@@ -8,6 +8,7 @@ sources:
   - src/treg/domain/catalog/results.py
   - src/treg/domain/catalog/rankings.py
   - src/treg/domain/catalog/routing/__init__.py
+  - src/treg/domain/catalog/routing/ad_hashes.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
@@ -333,9 +334,10 @@ Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`sou
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
 deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
 those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
-worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
-included; a missing entry fails validation. Both blocks must stay
-ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
+worse than an honest credit count. An own-key call to such a row still prices (pricing runs on
+every tier): its per-unit and credit figures are an informational zero, while a platform-eligible
+row with no rate still refuses to price. A v2 price in credits or a meter needs an entry, a null
+one included; a missing entry fails validation. Both blocks must stay ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
 Two treg-set kinds exist for providers with no per-call vendor price; [money](money.md) owns the
@@ -371,8 +373,10 @@ cost:
   `queryParams.mode`) so query/body collisions cannot price the wrong field. Every `when` field must
   be required or have a `default`; narrow rows precede broad ones; the validator rejects shadowed or
   duplicate conditions, unknown keys, non-finite values, values outside the input's enum/min/max, and
-  `value` together with `table`.
-- `times` multiplies by one numeric field with a positive `max`. A value outside the declared range,
+  `value` together with `table`. An empty `when: {}` matches every request, so it can only be the
+  last row: a job priced by its size alone is one such row with `times`.
+- `times` multiplies by one numeric field with a positive `max`, or by the length of one list field
+  with a positive `maxItems` (one price per row a job asks for). A value outside the declared range,
   non-finite or non-positive (whatever minimum the field declares) matches no row and prices at the
   fallback, so a request can neither reserve zero nor bill past the ceiling. A sentinel such as
   `-1` is priced by a flat row that pins it, and that row is left out of the advertised rate span.
@@ -382,10 +386,13 @@ cost:
   `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
   most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
-  `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
-  positive USD rates; a term path may select a list item by key
+  `unit_rates_usd[provider][unit]` entry. `usage.terms` sums several meters times positive rates in
+  `usage.unit` (USD, or the provider's credit or meter, priced by fx.yaml like a single path); a term path may select a list item by key
   (`candidatesTokensDetails[modality=IMAGE].tokenCount`); an absent meter counts as zero (proto3
-  JSON omits zeros) and a response with none settles at the reserve. Settlement itself is in
+  JSON omits zeros) and a response with none settles at the reserve. A single `usage.path` may add
+  `missing: 0` for a provider that leaves a zero meter out of its finished answer (LeadsForge's
+  `consumedCredits`): absent then settles at zero, while an unreadable value still settles at the
+  reserve. Settlement itself is in
   [money](money.md).
 - Display: `_table_floor` computes the cheapest row into `cost.table_min`, served as `usd_min`
   beside `usd` (still the ceiling reserve and eligibility read), so every surface shows `$low-$high`.
@@ -469,6 +476,9 @@ cost:
   is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
   A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
+  outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
+  shared credential, with the field named and its value never echoed.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.
@@ -611,9 +621,12 @@ Validation of the effective descriptor: dotted paths; non-empty `success`; `fail
 only when `billed_failure` supplies terminal failure words, or the descriptor has `max_age`; optional
 `progress` names expected non-terminal words; status lists are disjoint; positive `interval`; poll
 has exactly one of `endpoint` or `url_from`, result exactly one of `path` or `fetch`; unknown keys
-fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `param` is exactly
+fail. Static poll/fetch ids must be same-provider utility endpoints; poll `param` is exactly
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
-the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
+the target. A path or query id needs a GET target. A poll `param` with `in: body` needs a POST
+target and is sent as the whole JSON body `{name: id}` (Icypeas reads a search that way) by the
+worker, the routed bridge, Enrich Arena, `/tasks/` and the CLI awaiter, whose resume line is then
+`treg call <poll> --data '{...}'`; a fetch id is never a body. Dynamic URLs need a non-empty `url_hosts`.
 An optional `pending_response` matches one non-2xx HTTP status and one JSON error value. The CLI
 and worker treat only that exact envelope as progress; other non-2xx responses remain errors and
 never serve as settlement evidence.
@@ -822,6 +835,12 @@ price when the deployment can relay it (`routers.catalog._overflow_disclosure`: 
 `overflow_price_unit`, `overflow_via`; MCP `catalog_get` lifts them) - the price a free endpoint can
 bill when treg's own account is out.
 
+Endpoint detail ranks siblings available on treg's key and approved hub tools together, followed by
+catalog siblings that require another credential. Within each group, the sort uses the Wilson
+reliability band, then lower p50 latency, lower advertised USD price, and ascending endpoint ID.
+Reviews are displayed separately from the ranking. The HTTP detail's `siblings_ranked` flag lets
+the CLI use that order while still sorting responses from older servers.
+
 ### Observations: folded off the request path, cached per process
 
 - `stats.EndpointObservationReader` is the domain port; bootstrap wraps
@@ -849,8 +868,7 @@ bill when treg's own account is out.
   writes; the worker owns transactions. Async endpoints with result adapters publish only when
   every applicable day is `terminal_reconciled` and no correction is older than `STALE_AFTER_S`;
   one untrustworthy day suppresses the endpoint's whole observation, because dropping the day would
-  bias its rate. Async hit rates use terminal evidence only. `catalog_stats.requeue_async_stats` and
-  `repair_status` are the explicit, manifest-driven requeue and its completion check.
+  bias its rate. Async hit rates use terminal evidence only.
 - Merging days weights each day's latency sample by the calls it stands for (`Tally.merge`), or the
   window's p95 would be the quiet days'. `stats.Tally` is the one shape for a day, a window and the
   live aggregate; `tests/test_catalog_stats_refresh.py` holds fold and SQL equal.
@@ -936,12 +954,22 @@ replays labeled agent queries; run it before and after a scoring change.
 ### The evidence decides the ORDER
 
 Token scores tie by the dozen; `catalog_store.rerank()` breaks ties over `rank_band()` on buckets,
-not a blended formula: **relevance, then measured (good / unknown / poor / never worked, from
-`ok_rate` alone), then core before extended, then price.** Evidence outranks curation (a core row
-that never answered is not better); curation outranks price (a tenth of a cent must not promote the
-bulk-ingested tail); unmeasured sits above measured-poor. `rank_band()` takes a tie group whole,
-bounded at `RERANK_BAND` on this open route, and **says when it truncated** (`ranking_note` on MCP,
-an HTTP hint).
+not a blended formula: **relevance, then callable on treg's key, then the operator's quality tier,
+then measured reliability, then core before extended, then price.**
+
+- **Callable.** A row only a team's own key can serve (`platform_eligible` false) stays listed,
+  after every row any caller can run; `/search` folds such vendors into one line.
+- **Quality tier** (`TREG_RANKING_TIERS`, JSON capability -> `{"good": [...], "bad": [...]}`) is
+  an operator's judgement from evidence kept outside this repo, so its values never belong here. It
+  outranks the measured rate because a 2xx is not a useful answer. Unnamed means mid; empty leaves the
+  measured order. Only the order reveals a tier.
+- **Reliability** reads `ok_rate` with its sample size (`reliability_band`): a few early
+  successes rank with the unmeasured, not above a long record.
+
+Evidence outranks curation (a core row that never answered is not better); curation outranks price
+(a tenth of a cent must not promote the bulk-ingested tail); unmeasured sits above measured-poor.
+`rank_band()` takes a tie group whole, bounded at `RERANK_BAND` on this open route, and **says when
+it truncated** (`ranking_note` on MCP, an HTTP hint).
 
 `CapabilityPin` ([data-model](data-model.md)) fixes a capability to one provider, enforced in
 `_resolve_marketplace_call` before reserve. A pin gates the catalog id, the only route to treg's key;
@@ -970,7 +998,9 @@ headers are agent-facing in `src/treg/web/skill.md`; the invariants are AGENTS.m
 
 Per capability: one-of identity variants (structural keys, never provider names), `derive` rules,
 a small output core and `miss` in canonical terms. `raw` (the winning provider's body) is always
-returned and never documented as stable. An output field may say where it lands in a call event
+returned and never documented as stable. The parent's audit row records which child that body came
+from and its hash (`CallRecord.served_call_ref` / `served_content_hash`, set by `route._run_routed` before `_audit_parent`; `_run_upgrade`
+hands back the nested call's own), so the archived answer can be read later by exact id. An output field may say where it lands in a call event
 (`analytics`, [call-events](call-events.md)); the public contract view drops it.
 
 - `advice_unverified` is attached as `_treg.advice` to a hit whose `verified` is not true (a found
@@ -989,6 +1019,11 @@ returned and never documented as stable. An output field may say where it lands 
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
   422 before planning.
+- `ad_hashes` (opt-in via `X-Treg-Route-Ad-Hashes`) names the output field holding an email. After
+  a hit, `route._ad_hashes` adds `_treg.ad_hashes`: `domain/catalog/routing/ad_hashes.hashes` gives
+  the SHA-256 of the address as LinkedIn, Meta and Google each normalize it. No call and no charge;
+  `output` is not altered; a miss or a hit without an address says `hashed: false` with `no_hit` or
+  `no_email`. The header on a contract without `ad_hashes` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
@@ -1186,12 +1221,17 @@ an invalid extra never disables the primary.
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
-  price and unit. A child treg would not call on its key ranks last with a `skipped` reason; a child
+  price and unit. The plan ranks as a call with no `X-Treg-Route-Prefer` does: the contract's
+  `prefer` and `ask_last`, and a fixed v2 table row at that row's price (`route.const_table_price`),
+  so the order people read is the order a call tries. A child treg would not call on its key ranks last with a `skipped` reason; a child
   served keyless (`resolve.anonymous_served`, the team-independent half of `_anonymous_offer`) is
   quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  request at its requested size and `P(hit)` is the published hit rate. A price table is priced at its
+  fallback ceiling, except a v1 table that multiplies the adapter's `limit` field and a v2 table whose
+  every condition reads a parameter the adapter fixes (`const`): the routed request always picks that
+  row, so the child ranks at the hold its call will take (`route._table_price`). Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
   seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child

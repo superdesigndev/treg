@@ -7387,9 +7387,19 @@
     },
     "/comparisons/next": {
       "get": {
-        "description": "The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.",
+        "description": "The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.\n`compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the\nwords that ask for the verdict (`how_to_vote`), so they change without a CLI release.",
         "operationId": "next_comparison_comparisons_next_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "compact",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Compact",
+              "type": "boolean"
+            }
+          },
           {
             "in": "header",
             "name": "x-treg-token",
@@ -7968,153 +7978,6 @@
           }
         },
         "summary": "Connection Resources"
-      }
-    },
-    "/demo/sandbox": {
-      "post": {
-        "description": "The landing sandbox is closed: no new sandbox is minted.",
-        "operationId": "demo_sandbox_mint_demo_sandbox_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Mint Demo Sandbox Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Demo Sandbox Mint"
-      }
-    },
-    "/demo/sandbox/live": {
-      "get": {
-        "description": "Live-wire facts for an EXISTING sandbox (the browser reuses one via localStorage, so it may\npredate the mint response carrying them): is the wire on, and who am I in the feed.",
-        "operationId": "demo_sandbox_live_demo_sandbox_live_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-treg-token",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Token",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-treg-org",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Org",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Live Demo Sandbox Live Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Demo Sandbox Live"
-      }
-    },
-    "/demo/sandbox/skill": {
-      "get": {
-        "description": "Export whatever the visitor built in their sandbox as a shareable **skill** (treg.json manifest\n+ SKILL.md + install commands). Sandbox-only — the payoff that shows what skills are.",
-        "operationId": "demo_sandbox_skill_demo_sandbox_skill_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-treg-token",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Token",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-treg-org",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Org",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Skill Demo Sandbox Skill Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Demo Sandbox Skill"
       }
     },
     "/feedback": {
@@ -9868,7 +9731,7 @@
     },
     "/onboard/demo": {
       "post": {
-        "description": "Seed a sandbox team owned by the caller — fake teammates (one per role) + a working `echo`\ntool + sample activity — so a brand-new user can feel the product immediately. Idempotent\n(reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI.",
+        "description": "Seed a demo team owned by the caller: fake teammates (one per role) + a working `echo`\ntool + sample activity, so a brand-new user can feel the product immediately. Idempotent\n(reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI.",
         "operationId": "onboard_demo_onboard_demo_post",
         "parameters": [
           {

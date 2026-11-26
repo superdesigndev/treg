@@ -156,12 +156,20 @@ def require_request(ep: dict, request_data: dict) -> None:
 
 
 def require_rows(ep: dict, request_data: dict) -> None:
-    """On treg's key, a `reserve.rows` with no default refuses a request without its parameter
-    before anything is held."""
+    """On treg's key, a `reserve.rows` with no default refuses a request without its parameter,
+    and one with `platform_max` refuses a count above it, before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
-    if rule and _rows(rule, request_document(ep, request_data, defaults=False)) is None:
+    if not rule:
+        return
+    top = int(rule.get("platform_max") or rule["max"])
+    rows = _rows(rule, request_document(ep, request_data, defaults=False))
+    if rows is None:
         raise _invalid(ep, rule["param"], "required",
-                       f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
+                       f"{ep['id']} needs {rule['param']}: a whole number from 1 to {top}")
+    if rows > top:
+        raise _invalid(ep, rule["param"], "platform",
+                       f"{ep['id']} takes {rule['param']} from 1 to {top} on treg's key; page for "
+                       "more or connect your own key")
 
 
 def require_rates(ep: dict, cat) -> None:
@@ -210,6 +218,22 @@ def require_entities(ep: dict, request_data: dict) -> None:
             "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": rule["from"],
             "message": f"{ep['id']} takes at most {top} inputs per call on treg's key; split the "
                        "request or connect your own key"})
+
+
+def require_plugin_max(ep: dict, cat, request_data: dict) -> None:
+    """On treg's key, a request a `reserve.plugin` prices above the row's `max` is refused before
+    anything is held: the hold stops at the max, and a reported settle is not capped by it."""
+    reserve = ep.get("reserve") or {}
+    if "plugin" not in reserve:
+        return
+    _hold, _unit, _credit, terms = price(ep, cat, request_data)
+    quantity = plugins.call(reserve["plugin"], ep["provider"], plugin_request(ep, request_data))
+    asked = _priced(terms, quantity)
+    if asked is not None and asked > int(terms["count_max_micro"]):
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail={
+            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"], "parameter": "body",
+            "message": f"{ep['id']} asks for more than one call on treg's key can hold; ask for less "
+                       "or connect your own key"})
 
 
 def plugin_request(ep: dict, request_data: dict) -> plugins.Request:
@@ -334,6 +358,8 @@ def reported(terms: dict, doc: object, headers=None) -> int | None:
     else:
         found = select(rule["path"], {"response": doc})
         raw = found[0] if found else None
+    if raw is None and rule.get("missing") == 0:
+        return 0
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
         return None
     try:
@@ -501,7 +527,7 @@ def evidence_paths(ep: dict) -> tuple[str, ...]:
     paths = [rule[form]["path"] for rule, form in ((settle, "count"), (settle, "reported"))
              if form in rule and "path" in rule[form]]
     for rule in (ep.get("expect"), (ep.get("error") or {}).get("when"), (ep.get("miss") or {}).get("when"),
-                 (ep.get("bill") or {}).get("free_when")):
+                 (ep.get("miss") or {}).get("ok_when"), (ep.get("bill") or {}).get("free_when")):
         if rule is not None:
             paths += [p for p in leaf_paths(rule) if p.startswith("response")]
     return tuple(dict.fromkeys(p for p in roots + [_answer_path(p) for p in paths] if p))

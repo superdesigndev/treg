@@ -1,0 +1,88 @@
+{
+  "search_results": [
+    {
+      "id": 830039967,
+      "source": "linkedin",
+      "date_featured": "2024-08-24",
+      "organization": {
+        "id": 1043439,
+        "name": "Stripe",
+        "domain": "stripe.com",
+        "linkedin_info": {
+          "public_identifier": "stripe",
+          "industry": {
+            "id": 25,
+            "name": "Computer Software"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/stripe/"
+        }
+      },
+      "source_id": "3838954560",
+      "url": "https://www.linkedin.com/jobs/view/3838954560/",
+      "title": "Credit Risk Underwriting Strategist, Commercial Business",
+      "description": "Who we are\n\nAbout Stripe\n\nStripe is a financial infrastructure platform for businesses. Millions of companies - from the world’s largest enterprises to the most ambitious startups - use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Our mission is to increase the GDP of the internet, and we have a staggering amount of work ahead. That means you have an unprecedented opportunity to put the global economy within everyone's reach while doing the most impor… [4834 chars total]",
+      "is_remote": false,
+      "location": {
+        "id": 223289,
+        "name": "toronto, on, canada",
+        "osm_locations": [
+          {
+            "id": 23,
+            "name": "Canada",
+            "place_type": "country"
+          },
+          {
+            "id": 499,
+            "name": "Ontario, Canada",
+            "place_type": "state"
+          },
+          "… 2 more item(s) truncated"
+        ]
+      },
+      "is_active": true
+    },
+    {
+      "id": 830058173,
+      "source": "linkedin",
+      "date_featured": "2024-05-22",
+      "organization": {
+        "id": 1043439,
+        "name": "Stripe",
+        "domain": "stripe.com",
+        "linkedin_info": {
+          "public_identifier": "stripe",
+          "industry": {
+            "id": 25,
+            "name": "Computer Software"
+          },
+          "public_profile_url": "https://www.linkedin.com/company/stripe/"
+        }
+      },
+      "source_id": "3838958002",
+      "url": "https://www.linkedin.com/jobs/view/3838958002/",
+      "title": "Credit Risk Underwriting Strategist, Commercial Business",
+      "description": "Who we are\n\nAbout Stripe\n\nStripe is a financial infrastructure platform for businesses. Millions of companies - from the world’s largest enterprises to the most ambitious startups - use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Our mission is to increase the GDP of the internet, and we have a staggering amount of work ahead. That means you have an unprecedented opportunity to put the global economy within everyone's reach while doing the most impor… [4834 chars total]",
+      "is_remote": true,
+      "location": {
+        "id": 18850,
+        "name": "united states",
+        "osm_locations": [
+          {
+            "id": 10,
+            "name": "United States",
+            "place_type": "country"
+          },
+          {
+            "id": 528,
+            "name": "United States",
+            "place_type": "place"
+          },
+          "… 1 more item(s) truncated"
+        ]
+      },
+      "is_active": true
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "total_search_results": 500
+}

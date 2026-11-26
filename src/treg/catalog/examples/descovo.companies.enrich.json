@@ -1,0 +1,140 @@
+{
+  "data": {
+    "company": {
+      "headline": "Help increase the GDP of the internet.",
+      "description": "Stripe builds programmable financial services. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Headquartered in San Francisco and Dublin, the company aims to increase the GDP of the internet.",
+      "employee_count": 17081,
+      "follower_count": 1838168,
+      "founded_year": 2010,
+      "industries": [
+        {
+          "id": "4",
+          "name": "Software Development"
+        }
+      ],
+      "inferred_location": {
+        "street_address": "354 Oyster Point Blvd",
+        "neighborhood": null,
+        "city": "South San Francisco",
+        "state_name": "California",
+        "state_code": "CA",
+        "county": null,
+        "postal_code": "94080",
+        "country_code": "USA",
+        "country_name": "United States of America",
+        "coordinates": {
+          "lat": 37.655181,
+          "lon": -122.410124
+        },
+        "timezone": null,
+        "full_address": "South San Francisco, California, United States of America",
+        "formatted_address": "South San Francisco, California, United States of America"
+      },
+      "linkedin_url": "https://www.linkedin.com/company/stripe",
+      "locations": [
+        {
+          "address": "South San Francisco, California, United States of America",
+          "is_primary": true,
+          "location": {
+            "street_address": "354 Oyster Point Blvd",
+            "neighborhood": null,
+            "city": "South San Francisco",
+            "state_name": "California",
+            "state_code": "CA",
+            "county": null,
+            "postal_code": "94080",
+            "country_code": "USA",
+            "country_name": "United States of America",
+            "coordinates": {
+              "lat": 37.655181,
+              "lon": -122.410124
+            },
+            "timezone": null,
+            "full_address": "South San Francisco, California, United States of America",
+            "formatted_address": "South San Francisco, California, United States of America"
+          }
+        },
+        {
+          "address": "Dublin, County Dublin, Ireland",
+          "is_primary": false,
+          "location": {
+            "street_address": "1 Wilton Park, Wilton Terrace",
+            "neighborhood": null,
+            "city": "Dublin",
+            "state_name": "County Dublin",
+            "state_code": null,
+            "county": null,
+            "postal_code": "D02 FX04",
+            "country_code": "IRL",
+            "country_name": "Ireland",
+            "coordinates": {
+              "lat": 53.426437,
+              "lon": -6.241269
+            },
+            "timezone": null,
+            "full_address": "Dublin, County Dublin, Ireland",
+            "formatted_address": "Dublin, County Dublin, Ireland"
+          }
+        },
+        "… 12 more item(s) truncated"
+      ],
+      "naics_codes": null,
+      "name": "Stripe",
+      "org_id": "2135371",
+      "slug": "stripe",
+      "specialties": null,
+      "ticker": null,
+      "type": null,
+      "domain": "stripe.com",
+      "website": "https://stripe.com",
+      "est_employee_count_lower_bound": 5001,
+      "est_employee_count_upper_bound": 10000,
+      "standardized_industries": [
+        "Software"
+      ],
+      "locations_stats": {
+        "X-BENELUX": 1,
+        "MEX": 1,
+        "X-OCEANIA": 1,
+        "IRL": 1,
+        "USA": 4,
+        "X-WESTERN_EUROPE": 4,
+        "X-SOUTH_EAST_ASIA": 1,
+        "X-APAC": 4,
+        "NLD": 1,
+        "X-SOUTH_AMERICA": 1,
+        "JPN": 1,
+        "X-OECD": 11,
+        "X-CENTRAL_AMERICA": 1,
+        "X-G20": 11,
+        "X-SOUTH_ASIA": 1,
+        "BRA": 1,
+        "X-EUROPEAN_UNION": 3,
+        "X-PACIFIC": 1,
+        "X-BRICS": 2,
+        "X-ANGLOSPHERE": 8,
+        "FRA": 1,
+        "X-LATAM": 2,
+        "X-EAST_ASIA": 1,
+        "X-EUROPE": 4,
+        "GBR": 1,
+        "X-EMEA": 4,
+        "X-AMERICAS": 6,
+        "SGP": 1,
+        "X-ASIA": 3,
+        "AUS": 1,
+        "IND": 1,
+        "X-NORTH_AMERICA": 4
+      },
+      "logo_url": "https://api.descovo.com/v1/company-logo/ft_efc7b9f305861354adbae39d20f308cb.jpeg",
+      "historical_headcount": null,
+      "revenue_usd_lower_bound": null,
+      "revenue_usd_upper_bound": null
+    },
+    "isCached404": false
+  },
+  "credits": {
+    "charged": 2,
+    "available": null
+  }
+}

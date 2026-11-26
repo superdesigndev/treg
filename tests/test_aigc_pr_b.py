@@ -67,6 +67,20 @@ def test_async_wait_succeeds_after_unknown_status_and_warns_once():
     assert sum("unknown async status" in event for event in clock.events) == 1
 
 
+def test_async_wait_posts_a_body_poll_and_prints_a_data_resume_line():
+    descriptor = static_descriptor()
+    descriptor["poll"] = {"endpoint": "vendor.task.read", "param": {"in": "body", "name": "id"}}
+    calls = []
+
+    def call_fn(target, params, body=None):
+        calls.append((target, params, body))
+        return response(200, {"task": {"status": "succeeded", "content": {"url": "asset"}}})
+
+    outcome = cli.await_async_task(descriptor, response(200, {"task_id": "s-1"}), call_fn, FakeClock(), 30)
+    assert outcome["code"] == 0 and calls == [("vendor.task.read", [], {"id": "s-1"})]
+    assert outcome["recovery"] == """treg call vendor.task.read --data '{"id": "s-1"}'"""
+
+
 def test_async_wait_does_not_warn_for_declared_progress_status():
     descriptor = static_descriptor()
     descriptor["status"]["progress"] = ["queued", "running"]
@@ -228,7 +242,7 @@ def test_call_await_writes_only_terminal_raw_body_to_stdout(monkeypatch, capsys)
     assert captured.out == terminal.text
     assert "async task submitted: task-7" in captured.err
     assert "resume: treg call vendor.task.status -p task_id=task-7" in captured.err
-    assert "generation reservation: $0.1" in captured.err
+    assert "async task reservation: $0.1" in captured.err
     assert "retrieve the result (file bytes, or JSON with a download URL): treg call vendor.result -p file_id=file-7" in captured.err
     assert "result lifetime: 9h" in captured.err
 

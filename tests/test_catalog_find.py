@@ -67,6 +67,9 @@ async def test_streams_candidates_then_the_judged_rows(clients, monkeypatch):
     top = second["rows"][0]
     assert top["p"] == 0.91 and top["platform"] and top["capability"] and top["provider_display"]
     assert top["cost"]["type"]
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    assert all(row["platform_eligible"] is cat.platform_eligible(cat.by_id[row["id"]]) for row in second["rows"])
 
     await audit.drain()
     async with session_maker() as s:

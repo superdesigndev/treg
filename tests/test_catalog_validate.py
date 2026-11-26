@@ -222,7 +222,7 @@ def test_async_descriptor_accepts_both_poll_and_result_modes():
      "requires exactly in, name"),
     (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
                               "param": {"in": "headers", "name": "task_id"}}),
-     "must name an input field in pathParams or queryParams"),
+     "must name an input field in pathParams, queryParams or body"),
     (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
                               "param": {"in": "pathParams", "name": "missing"}}),
      "target does not declare input field"),
@@ -309,6 +309,23 @@ def test_async_descriptor_rejects_non_get_or_non_utility_targets():
     errors = _async_errors(_valid_async(), endpoint_index=target)
     assert any("must have kind utility" in error for error in errors)
     assert any("must use GET" in error for error in errors)
+
+
+def test_async_descriptor_polls_a_body_id_only_through_a_post_target():
+    """A provider that reads a task by POSTing its id (Icypeas) declares `in: body`; a path or
+    query id still needs GET, and a body id needs POST."""
+    index = {"demo.video-gen.status": {
+        "provider": "demo", "kind": "utility", "method": "POST", "path": "/tasks/read",
+        "input": {"body": {"id": {"type": "string", "required": True}}}}}
+    descriptor = _valid_async()
+    descriptor["poll"] = {"endpoint": "demo.video-gen.status", "param": {"in": "body", "name": "id"}}
+    assert _async_errors(descriptor, endpoint_index=index) == []
+    index["demo.video-gen.status"]["method"] = "GET"
+    assert any("must use POST to read a body id" in e for e in _async_errors(descriptor, endpoint_index=index))
+    fetch = _valid_async()
+    fetch["result"] = {"fetch": "demo.video-gen.content",
+                       "fetch_param": {"in": "body", "name": "video_id", "value_from": "id"}}
+    assert any("must name an input field in pathParams or queryParams" in e for e in _async_errors(fetch))
 
 
 def test_async_descriptor_rejects_unknown_keys_and_invalid_json_paths():
@@ -459,7 +476,8 @@ def test_cost_table_accepts_subset_rows_times_bounds_and_usage_settlement():
 @pytest.mark.parametrize(("mutate", "message"), [
     (lambda c: c.update(table=[]), "cost.table must be a non-empty list"),
     (lambda c: c.update(table=["row"]), "table row must be a mapping"),
-    (lambda c: c["table"][0].update(when={}), "when must be a non-empty mapping"),
+    (lambda c: c["table"][0].update(when=[]), "when must be a mapping"),
+    (lambda c: c["table"][0].update(when={}), "when is shadowed by an earlier subset row"),
     (lambda c: c["table"][0].update(when={"body.unknown": "x"}), "is not declared in input"),
     (lambda c: c["table"][0].update(value=-1), "value must be a finite non-negative number"),
     (lambda c: c["table"][1].update(times="body.frames"), "times field 'body.frames' is not declared"),
@@ -494,6 +512,30 @@ def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
     no_max["body"]["duration"].pop("max")
     errors = _table_errors(_valid_table(), no_max)
     assert any("must declare a positive input max" in error for error in errors)
+
+
+def test_a_usage_path_may_declare_that_a_missing_field_means_zero():
+    usage = _valid_table() | {"settle": "usage", "usage": {"path": "usage.cost", "unit": "usd", "missing": 0}}
+    assert _table_errors(usage) == []
+    usage["usage"]["missing"] = 1
+    assert any("usage.missing may only be 0" in e for e in _table_errors(usage))
+
+
+def test_cost_table_takes_a_last_catch_all_row_and_a_bounded_list_length_multiplier():
+    """A job priced per item it asks for: `when: {}` matches every request, and `times` may name a
+    list whose length is the quantity, bounded by its declared maxItems."""
+    schema = {"body": {"rows": {"type": "array", "items": {"type": "string"}, "required": True,
+                                "minItems": 1, "maxItems": 500},
+                       "limit": {"type": "integer", "required": True, "min": 1, "max": 1000}}}
+    by_rows = _valid_table() | {"table": [{"when": {}, "value": 0.02, "times": "body.rows"}],
+                                "fallback": {"value": 10.0, "note": "the largest list"}}
+    assert _table_errors(by_rows, schema) == []
+    by_limit = by_rows | {"table": [{"when": {}, "value": 0.01, "times": "body.limit"}]}
+    assert _table_errors(by_limit, schema) == []
+    unbounded = {"body": {"rows": {"type": "array", "items": {"type": "string"}, "required": True}}}
+    assert any("must be numeric or a list with maxItems" in e for e in _table_errors(by_rows, unbounded))
+    low_fallback = by_rows | {"fallback": {"value": 1.0, "note": "too low"}}
+    assert any("must be at least every table row" in e for e in _table_errors(low_fallback, schema))
 
 
 def test_cost_table_rejects_shadowed_rows_and_ambiguous_or_non_finite_values():
@@ -752,7 +794,8 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'body.mode': 'sync'}, True),
     ({'body.mode': 'async'}, False),        # outside the declared enum
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
-    ({'body.realtime': None}, False),       # absence applies to query parameters only
+    ({'body.realtime': None}, True),        # a declared body field may be absent-only too
+    ({'body.missing': None}, False),        # an absent-only body field is a declared one
     ({'headers.x-key': None}, False),
     ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
     ({'pathParams.model': 'stable'}, True),
@@ -889,7 +932,7 @@ def test_contactout_person_routes_cannot_recapture_pii():
     safe = {"contactout.people.count", "contactout.people.email.verify",
             "contactout.companies.search", "contactout.companies.enrich"}
     structural = {"contactout.people.contact.work", "contactout.people.contact.phone",
-                  "contactout.people.contact.personal"}
+                  "contactout.people.contact.personal", "contactout.people.audience.email-hash"}
     for ep in endpoints:
         if ep["id"] in safe:
             continue
@@ -899,7 +942,7 @@ def test_contactout_person_routes_cannot_recapture_pii():
         if ep["id"] in structural:
             assert ep["example_response"] == "examples/" + example.name
             payload = example.read_text()
-            assert "example.invalid" in payload or "+10000000000" in payload
+            assert any(fake in payload for fake in ("example.invalid", "+10000000000", "routing-fixture"))
         else:
             assert "example_response" not in ep
             assert not example.exists()
@@ -1125,6 +1168,17 @@ def test_usage_terms_are_accepted_for_a_multi_meter_response():
     assert errors == []
 
 
+def test_usage_terms_may_count_in_the_providers_credit():
+    """Icypeas bills a bulk file per counted row in credits: the rates stay in credits and fx.yaml
+    prices them, instead of a dollar rate copied into the row."""
+    cost = _flat_usage_cost()
+    cost["usage"] = {"unit": "credit", "terms": [{"path": "files[task=email-search].found", "rate": 1},
+                                                  {"path": "files[task=email-verification].done", "rate": 0.1}]}
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], provider="icypeas")
+    assert errors == []
+
+
 @pytest.mark.parametrize(("usage", "message"), [
     ({"terms": [], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b"}], "unit": "usd"}, "usage.terms must be"),
@@ -1134,9 +1188,9 @@ def test_usage_terms_are_accepted_for_a_multi_meter_response():
     ({"terms": [{"path": "a[version=v1.2].b", "rate": 1}], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b", "rate": 0}], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b", "rate": float("nan")}], "unit": "usd"}, "usage.terms must be"),
-    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "usage.unit must be 'usd'"),
+    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "needs a numeric fx.yaml credit_rates_usd"),
     ({"terms": [{"path": "a.b", "rate": 1}], "path": "a.b", "unit": "usd"},
-     "or usage.terms and unit 'usd'"),
+     "or usage.terms and usage.unit"),
 ])
 def test_usage_terms_reject_bad_shapes(usage, message):
     cost = _flat_usage_cost()
@@ -1404,6 +1458,9 @@ def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
 @pytest.mark.parametrize("endpoint_id,keys,message", [
     ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
      "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "0", "currency": "USD", "unit": "call"},
+                                 "settle": {"reported": {"path": "response.cost", "unit": "usd"}}},
+     "a free price never settles from a reported charge"),
     ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
      "price.currency unit (unit page) has no fx.yaml rate"),
     ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},

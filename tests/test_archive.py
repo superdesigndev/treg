@@ -53,7 +53,7 @@ def test_serve_implies_recording(monkeypatch):
 # Policy: forbidden on every uncertain branch
 
 def test_policy_defaults():
-    # The founder's 2026-08-29 keep-all decision: an UNJUDGED entry defaults to transient.
+    # An UNJUDGED entry defaults to transient.
     assert policy(None) == "forbidden"                              # no entry: never
     assert policy({}) == "forbidden"                                # empty ≈ no entry: never
     assert policy({"kind": "data"}) == "transient"                  # unjudged license
@@ -707,6 +707,7 @@ async def test_own_key_recording_asks_for_identity_encoding(clients: AsyncClient
 
 @pytest.mark.parametrize("cache_header", [True, False])
 async def test_archive_hit_never_invites_review(clients: AsyncClient, serve, monkeypatch, cache_header):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     monkeypatch.setattr(get_settings(), "review_sample_rate", 1)
     original = call_service._served_response
 
@@ -1582,13 +1583,13 @@ async def test_same_key_recordings_allocate_distinct_versions(clients: AsyncClie
     assert [snap.version for snap in snaps] == list(range(1, 13))
 
 
-# ---- the 2026-09-07 OOM regression test: memory-bounded pending work ---------------------------
+# ---- memory-bounded pending work ----------------------------------------------------------------
 # _MAX_PENDING_BYTES caps total body bytes held by pending tasks. Without it, 512 pending tasks ×
-# 8 MB bodies = 4 GB worst case — the exact OOM that killed production at 2026-09-07T00:43:06Z.
+# 8 MB bodies = 4 GB worst case.
 
 
 async def test_pending_body_bytes_are_bounded_and_excess_is_shed(monkeypatch):
-    """The bytes bound sheds recordings before the count bound would — the 2026-09-07 OOM fix.
+    """The bytes bound sheds recordings before the count bound would.
 
     With _MAX_CONCURRENT_WRITES=2 and heavy traffic, pending tasks holding large bodies can
     accumulate faster than they drain. The bytes cap ensures total memory held by pending work
@@ -2148,6 +2149,19 @@ async def test_a_direct_call_names_the_routed_tool_for_its_job(clients: AsyncCli
     live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
     assert live.status_code == 200
     assert live.headers["X-Treg-Routed-Tool"] == "treg.tiktok.video.comments"
+
+
+async def test_a_direct_call_the_route_cannot_pick_names_no_routed_tool(clients: AsyncClient, serve,
+                                                                        monkeypatch):
+    """An endpoint of the job the route does not pick is only listed beside it; naming the route
+    would send the agent away from the provider it chose."""
+    from treg.domain.catalog import store as catalog_store
+    route = catalog_store.load().by_id["treg.tiktok.video.comments"]
+    monkeypatch.setitem(route, "routed_children",
+                        [c for c in route.get("routed_children") or [] if c != EP])
+    live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert live.status_code == 200
+    assert "X-Treg-Routed-Tool" not in live.headers
 
 
 async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncClient, shadow, monkeypatch):

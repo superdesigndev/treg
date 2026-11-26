@@ -22,7 +22,6 @@ sources:
   - frontend/src/components/FindAnswer.vue
   - frontend/src/pages/SearchPage.vue
   - frontend/src/components/CatalogSearch.vue
-  - frontend/e2e/catalog-find.spec.ts
   - src/treg/application/catalog_search.py
   - src/treg/application/search_experiment.py
   - src/treg/domain/catalog/interleave.py

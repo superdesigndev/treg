@@ -13,7 +13,7 @@ from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app, compare as compare_app
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as call_allowance
-from treg.application.call import authorize, overflow, reserve, route, service, settle
+from treg.application.call import authorize, idempotency, overflow, reserve, route, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
@@ -48,9 +48,6 @@ _DATAPLANE_DERIVED_WRITES = {
     ),
     "public_demo_ratestore_hit": (
         (authorize.authorize_call, "publicdemo_policy.enforce_public_demo_ip_cap"),
-    ),
-    "sandbox_ratestore_hit": (
-        (authorize.enforce_public_demo_limit, "publicdemo_policy.enforce_public_demo_ip_cap"),
     ),
     "first_call_adconversion_outbox": (
         (settle._record_first_call, "adsconv.queue"),
@@ -158,20 +155,39 @@ _DATAPLANE_DERIVED_WRITES = {
         (call_allowance._drain, "store.allowance_drop"),
         (call_allowance.finish, "store.allowance_give_back"),
         (settle._platform_settle, "allowance_runtime.finish"),
+        (settle._finish_takes, "allowance_runtime.finish"),
     ),
     # The counter is refilled from the balance into the team's one allowance hold, under the
-    # same money admission lease as a reserve, by whichever call found the counter short.
+    # same money admission lease as a reserve, by whichever call found the counter short. While
+    # refills are sized to the team's spend, a call on the exact path that the balance alone
+    # cannot pay for gives the counter back to the balance first, under the team's lease.
     "allowance_hold_refill": (
         (call_allowance._refill, "money_admission.admit"),
         (call_allowance._refill, "allowance.refill_allowance_in_transaction"),
         (call_allowance._drain, "allowance.close_allowance_in_transaction"),
         (call_allowance._fold_backlog, "allowance.fold_charges_in_transaction"),
+        (call_allowance.give_back_for_exact_path, "_give_back"),
+        (call_allowance._give_back, "allowance.close_allowance_in_transaction"),
+        (reserve._platform_reserve, "allowance_runtime.give_back_for_exact_path"),
     ),
     # What a call spent from the allowance is queued as a `callcharge` row, a batch per insert,
     # committed before the call answers; a refill applies the queue to the blocks and the ledger.
     "allowance_call_charge": (
         (call_allowance._ChargeWriter._write_team, "allowance.record_charges"),
         (call_allowance._ChargeWriter._write_team, "archive.note_org_uses_in_transaction"),
+    ),
+    # A keyed call on the allowance has no hold, so it marks itself running in the shared store
+    # (one self-expiring key per call), renewed with its claim's lease and cleared once its charge
+    # is written; a stale claim reads it as money in flight.
+    "allowance_in_flight_mark": (
+        (reserve._platform_reserve, "idempotency.mark_in_flight"),
+        (idempotency.mark_in_flight, "mark_call_in_flight"),
+        (idempotency._hold_claim_lease, "renew_call_in_flight"),
+        (idempotency.clear_in_flight, "clear_call_in_flight"),
+        (call_allowance._ChargeWriter._committed, "clear_calls_in_flight"),
+        (call_allowance._ChargeWriter._keep_marks, "mark_calls_in_flight"),
+        (call_allowance.finish, "store.clear_call_in_flight"),
+        (call_allowance._ChargeWriter.release_mark, "clear_calls_in_flight"),
     ),
     # A successful routed answer that samples in for a pairwise comparison leaves a short-lived
     # marker holding the caller's input in the shared store (one bounded write, no database); the
@@ -187,7 +203,6 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "archive_body_object",
     "auto_topup_task",
     "public_demo_ratestore_hit",
-    "sandbox_ratestore_hit",
     "first_call_adconversion_outbox",
     "lazy_stale_hold_reap",
     "capacity_exhausted_mark",
@@ -206,6 +221,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "allowance_hold_refill",
     "allowance_call_charge",
     "comparison_marker",
+    "allowance_in_flight_mark",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -221,6 +237,8 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "call" / "reserve.py": {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
         "ledger.reap_stale_holds", "allowance_runtime.take",
+        "allowance_runtime.give_back_for_exact_path",
+        "idempotency.mark_in_flight", "idempotency.clear_in_flight",
     },
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
@@ -231,6 +249,7 @@ _DERIVED_WRITE_FILES = {
         "store.allowance_freeze",
         "store.allowance_add",
         "store.allowance_drop", "store.acquire_lease", "store.release_lease",
+        "store.clear_call_in_flight", "clear_calls_in_flight", "mark_calls_in_flight",
     },
     _SRC / "application" / "call" / "settle.py": {
         "allowance_runtime.finish",
@@ -251,6 +270,10 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
     _SRC / "application" / "compare.py": {"store.set_flag", "store.set_text"},
+    _SRC / "application" / "call" / "idempotency.py": {
+        "mark_call_in_flight", "renew_call_in_flight",
+        "clear_call_in_flight",
+    },
     _SRC / "application" / "call" / "service.py": {
         "compare_app.mark_eligible",
         "org_endpoint_quota.admit",
@@ -285,8 +308,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # a refill that folded a full batch leaves the rest of the queue to a background fold
     ("application/call/allowance.py", "_fold_backlog", "allowance.fold_charges_in_transaction"),
     ("application/call/allowance.py", "_fold_backlog", "money_admission.admit"),
-    ("application/call/allowance.py", "_fold_backlog", "store.acquire_lease"),
-    ("application/call/allowance.py", "_fold_backlog", "store.release_lease"),
+    ("application/call/allowance.py", "_release_lease_soon", "store.release_lease"),
     ("application/call/allowance.py", "_refill", "allowance.refill_allowance_in_transaction"),
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
     ("application/call/allowance.py", "_refill", "money_admission.admit"),
@@ -299,16 +321,40 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_write", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     # a call near the counter's deadline refills it beside itself, under the same lease
-    ("application/call/allowance.py", "_refresh_once", "store.acquire_lease"),
     ("application/call/allowance.py", "_refresh_once", "store.release_lease"),
-    ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
+    # every taker of the team's lease (a refill, its refresh, the request-path fold, a
+    # give-back) asks for it through one helper, which yields to a starved team's fold claim
+    ("application/call/allowance.py", "acquire_money_lease", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.release_lease"),
+    # an exact-path call the balance alone cannot pay for gets the sized counter back first:
+    # the team's lease asked for once, then admission, the drop and the release in one session
+    ("application/call/allowance.py", "_give_back", "money_admission.admit"),
+    ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
+    ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),
+    # a release that fails after the drop puts the money back on the frozen counter
+    ("application/call/allowance.py", "_give_back", "store.allowance_give_back"),
+    ("application/call/reserve.py", "_platform_reserve",
+     "allowance_runtime.give_back_for_exact_path"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),
     ("application/call/reserve.py", "_schedule_autotopup_after", "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),
     ("application/call/settle.py", "_finish_cancelled_call", "allowance_runtime.finish"),
     ("application/call/settle.py", "_platform_settle", "allowance_runtime.finish"),
+    # a routed parent finishes its children's allowance takes when it closes their holds
+    ("application/call/settle.py", "_finish_takes", "allowance_runtime.finish"),
+    # a keyed call on the allowance: its in-flight mark, set before the take and cleared after
+    # the charge is written, or at once when the take was refused
+    ("application/call/reserve.py", "_platform_reserve", "idempotency.mark_in_flight"),
+    ("application/call/reserve.py", "_platform_reserve", "idempotency.clear_in_flight"),
+    ("application/call/allowance.py", "_committed", "clear_calls_in_flight"),
+    # a keyed routed root's mark, held while its children take, cleared once nothing keeps it
+    ("application/call/allowance.py", "release_mark", "clear_calls_in_flight"),
+    ("application/call/allowance.py", "_keep_marks", "mark_calls_in_flight"),
+    ("application/call/allowance.py", "finish", "store.clear_call_in_flight"),
+    ("application/call/idempotency.py", "mark_in_flight", "mark_call_in_flight"),
+    ("application/call/idempotency.py", "_hold_claim_lease", "renew_call_in_flight"),
+    ("application/call/idempotency.py", "clear_in_flight", "clear_call_in_flight"),
     ("application/call/service.py", "_admit_org_endpoint", "org_endpoint_quota.admit"),
     ("application/call/reserve.py", "_platform_reserve", "reserve_admission"),
     ("application/call/reserve.py", "reserve_admission", "money_admission.admit"),
@@ -325,8 +371,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("archive_bodies.py", "prepare", "_store.put"),
     ("application/billing.py", "maybe_schedule_autotopup", "loop.create_task"),
     ("application/call/authorize.py", "authorize_call",
-     "publicdemo_policy.enforce_public_demo_ip_cap"),
-    ("application/call/authorize.py", "enforce_public_demo_limit",
      "publicdemo_policy.enforce_public_demo_ip_cap"),
     ("application/call/authorize.py", "authorize_call", "usage_policy.enforce_daily_cap"),
     ("domain/governance/usage.py", "enforce_daily_cap", "take_daily_slot"),

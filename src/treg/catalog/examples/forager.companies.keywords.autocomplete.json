@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "id": "899",
+      "text": "Payments",
+      "selected_text": "Payments"
+    },
+    {
+      "id": "900",
+      "text": "Mobile Payments",
+      "selected_text": "Mobile Payments"
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "pagination": {
+    "more": true
+  }
+}

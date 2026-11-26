@@ -69,7 +69,7 @@ async def test_each_page_answers_with_its_own_head(clients: AsyncClient):
         assert '<meta name="robots" content="index, follow' in html
         assert html.count("<h1>") == 1 and f"vs</span> {_html.escape(cp.short(key))}</h1>" in html
         assert cp.checked_label(key) in html
-        assert "/adtrack.js" in html and "/sitetrack.js" in html
+        assert "/click-id.js" in html and "/sitetrack.js" in html
 
 
 async def test_the_x402_row_shows_only_where_a_record_fills_it(clients: AsyncClient):

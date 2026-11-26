@@ -44,27 +44,28 @@ atexit.register(lambda: [os.remove(p) for p in glob.glob(_db_file + "*")])
 _default = f"sqlite+aiosqlite:///{_db_file}"
 
 
-def _per_worker_postgres(url: str) -> str:
-    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
-    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
-    import asyncio
+async def ensure_postgres_database(url: str, name: str) -> str:
+    """Create database `name` on `url`'s server unless it exists -> its URL."""
     import asyncpg
     from sqlalchemy.engine import make_url
 
     base = make_url(url)
-    name = f"{base.database}_{_worker}"
-
-    async def ensure() -> None:
-        dsn = base.set(drivername="postgresql").render_as_string(hide_password=False)
-        conn = await asyncpg.connect(dsn)
-        try:
-            if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
-                await conn.execute(f'CREATE DATABASE "{name}"')
-        finally:
-            await conn.close()
-
-    asyncio.run(ensure())
+    conn = await asyncpg.connect(base.set(drivername="postgresql").render_as_string(hide_password=False))
+    try:
+        if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
+            await conn.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        await conn.close()
     return base.set(database=name).render_as_string(hide_password=False)
+
+
+def _per_worker_postgres(url: str) -> str:
+    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
+    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
+    import asyncio
+    from sqlalchemy.engine import make_url
+
+    return asyncio.run(ensure_postgres_database(url, f"{make_url(url).database}_{_worker}"))
 
 
 _test_db_url = os.environ.get("TREG_TEST_DB_URL")
@@ -75,6 +76,15 @@ if _test_db_url and _worker and _test_db_url.startswith("postgresql"):
 os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
 # Replica tests opt in explicitly; never inherit a real replica from the shell or .env.
 os.environ["TREG_READ_DATABASE_URL"] = ""
+# The background pool goes through a pooler only when TREG_TEST_POOLER_URL names one (CONTRIBUTING.md).
+_test_pooler_url = (os.environ.get("TREG_TEST_POOLER_URL", "")
+                    if (_test_db_url or "").startswith("postgresql") else "")
+if _test_pooler_url:
+    from sqlalchemy.engine import make_url
+
+    _test_pooler_url = make_url(_test_pooler_url).set(
+        database=make_url(_test_db_url).database).render_as_string(hide_password=False)
+os.environ["TREG_BACKGROUND_DATABASE_URL"] = _test_pooler_url
 os.environ["TREG_WORKOS_API_KEY"] = ""
 os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
@@ -100,6 +110,8 @@ os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
 os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
 os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
 os.environ["TREG_HOLDLESS_FREE_ORG_IDS"] = "[]"
+os.environ["TREG_HOLDLESS_FREE_ALL_ORGS"] = "false"
+os.environ["TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
@@ -149,9 +161,35 @@ from treg.domain.identity import api_keys as managed_keys  # noqa: E402
 from treg.application import media as media_app  # noqa: E402
 
 
-# The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
+# The OTP-start and other throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
 # process-global dicts — so `reset_db()` (called by every client fixture) already clears them between
 # tests. No separate rate-limit reset fixture is needed.
+
+
+@pytest.fixture
+async def load_db_module(monkeypatch):
+    """`load(**settings)` imports a fresh `treg.infra.db` built from those settings, without
+    replacing the application's imported engines and makers; each one is disposed afterwards."""
+    import importlib.util
+
+    from treg import config
+    from treg.infra import db as infra_db
+
+    modules = []
+
+    def load(**settings):
+        values = config.Settings(_env_file=None, **settings)
+        spec = importlib.util.spec_from_file_location("treg.infra._loaded_for_test", infra_db.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with monkeypatch.context() as patch:
+            patch.setattr(config, "get_settings", lambda: values)
+            spec.loader.exec_module(module)
+        modules.append(module)
+        return module
+
+    yield load
+    for module in modules:
+        await module.dispose_engine()
 
 
 @pytest.fixture

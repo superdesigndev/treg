@@ -179,6 +179,8 @@ class _Gate:
         self.valid_until: dict[str, float] = {}
         # Record before SET: a cancelled/timed-out response may still have acquired the lease.
         self.attempted: list[tuple[str, str]] = []
+        # Claims of a priority waiter, recorded before SET for the same reason.
+        self.claims: list[tuple[str, str]] = []
         self.store: kv.Store | None = None
         self.renewer: asyncio.Task | None = None
         self.lost = False
@@ -190,30 +192,37 @@ class _Gate:
             self.observation.deadline_expired = 1
         return self.lost
 
-    async def acquire(self, ids: list[int], wait_s: float) -> str | None:
+    async def acquire(self, ids: list[int], wait_s: float, *,
+                      priority: bool = False) -> str | None:
         wait_timeout = asyncio.timeout(wait_s)
         try:
             async with wait_timeout:
-                for org_id in ids:
-                    lock = _local_lock(org_id)
-                    await lock.acquire()
-                    self.local.append(lock)
+                if not priority:
+                    for org_id in ids:
+                        lock = _local_lock(org_id)
+                        await lock.acquire()
+                        self.local.append(lock)
                 if not kv.configured():
                     return "kv_not_configured"
                 if _store_down():
                     return "kv_store_down"
                 self.store = kv.store()
+                claim_ms = max(1, int(wait_s * 1000))
                 for org_id in ids:
                     key, token = f"money-admission:org:{org_id}", uuid.uuid4().hex
+                    claim, claimed = f"{key}:claim", False
                     self.attempted.append((key, token))
                     while True:
                         if self._ownership_lost():
                             return "lease_lost"
                         started = time.monotonic()
-                        result = await self.store.acquire_lease(key, token, self.ttl_ms)
+                        result = await self.store.acquire_lease(
+                            key, token, self.ttl_ms, unless=claim)
                         if result == "acquired":
                             self.leases.append((key, token))
                             self.valid_until[key] = started + self.ttl_ms / 1000
+                            if claimed:
+                                await self._give_back_claim(claim, token)
                             if self._ownership_lost():
                                 return "lease_lost"
                             if self.renewer is None:
@@ -222,6 +231,15 @@ class _Gate:
                         if result != "busy":
                             self.observation.kv_errors += 1
                             return "kv_unavailable"
+                        if priority and not claimed:
+                            # The next turn is this waiter's: every other gets busy until the
+                            # claim is given back, which it is once the lease is taken.
+                            if (claim, token) not in self.claims:
+                                self.claims.append((claim, token))
+                            claimed = await self.store.acquire_lease(
+                                claim, token, claim_ms) == "acquired"
+                            if claimed:
+                                continue
                         # Only the local head waiter polls Redis for an org. Keep handoff delay
                         # short relative to a money transaction without a request-wide poll storm.
                         await asyncio.sleep(random.uniform(0.003, 0.010))
@@ -265,6 +283,15 @@ class _Gate:
             self.observation.lease_lost = 1
             self.lost = True
 
+    async def _give_back_claim(self, claim: str, token: str) -> None:
+        try:
+            if await self.store.release_lease(claim, token) == "unavailable":
+                self.observation.kv_errors += 1
+            else:
+                self.claims.remove((claim, token))
+        except Exception:  # noqa: BLE001 - the claim's TTL bounds one not given back
+            self.observation.kv_errors += 1
+
     def release_local(self) -> None:
         for lock in reversed(self.local):
             lock.release()
@@ -277,6 +304,8 @@ class _Gate:
             self.renewer = None
         try:
             if self.store is not None:
+                for claim, token in tuple(self.claims):
+                    await self._give_back_claim(claim, token)
                 for key, token in reversed(self.attempted):
                     try:
                         result = await self.store.release_lease(key, token)
@@ -289,6 +318,7 @@ class _Gate:
                         self.observation.kv_errors += 1
         finally:
             self.attempted.clear()
+            self.claims.clear()
             self.leases.clear()
             self.valid_until.clear()
             self.release_local()
@@ -351,10 +381,16 @@ def _wait_budget(operation: str, settings, max_wait_s: float | None) -> float:
 @asynccontextmanager
 async def admit(org_ids: Iterable[int | None], *, operation: str,
                 max_wait_s: float | None = None,
-                refuse_on_timeout: bool = False) -> AsyncIterator[None]:
+                refuse_on_timeout: bool = False,
+                priority: bool = False) -> AsyncIterator[None]:
     """`max_wait_s` caps a non-reserve wait for a caller with its own deadline.
     `refuse_on_timeout` is for work that can come back later: a non-reserve wait that runs out
-    raises `AdmissionTimeout` before the database, as a reserve's does, instead of falling back."""
+    raises `AdmissionTimeout` before the database, as a reserve's does, instead of falling back.
+    `priority` is for work that has already waited too long behind the team's own traffic (the
+    allowance fold of a starved queue): once the lease is busy the waiter claims its next turn,
+    so every other waiter, here or in another process, is turned away until the claim's owner
+    has the lease or its wait runs out, and it does not queue behind this process's waiters.
+    Those waiters keep their own budgets; a reserve's can run out meanwhile."""
     raw = list(org_ids)
     if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
         # Do not yield. `async with admit(), session()` must not open the session.
@@ -380,7 +416,7 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
                 gate = _Gate(observation, settings.money_admission_lease_s)
                 try:
                     reason = await gate.acquire(
-                        ids, _wait_budget(operation, settings, max_wait_s))
+                        ids, _wait_budget(operation, settings, max_wait_s), priority=priority)
                 except Exception:  # noqa: BLE001 - the gate cannot turn a charge into a free call
                     observation.kv_errors += 1
                     reason = "gate_error"
