@@ -110,7 +110,7 @@ endpoints:
       per: 1
       unit: call
       note: "Charged once per lookup that returns a number, however many come back: 15 credits for highest_quality, 9 for most_coverage. An empty list is free."
-    miss: {when: {path: response, op: empty}}
+    miss: {status: [404], ok_when: {path: response, op: empty}, means: "A LinkedIn handle with no person behind it answers 404; a known person with nothing on file answers an empty list. Both are free."}
 
   - id: forager.people.email.find.personal
     added: '2026-11-23'
@@ -132,7 +132,7 @@ endpoints:
       note: "Send one of linkedin_public_identifier or person_id."
     untestable: "A real answer is a person's private email address; the example is a fixture with a reserved fake address."
     price: {value: '5', currency: credit, per: 1, unit: call, note: "Five credits for a lookup that returns an address; an empty list is free."}
-    miss: {when: {path: response, op: empty}}
+    miss: {status: [404], ok_when: {path: response, op: empty}, means: "A LinkedIn handle with no person behind it answers 404; a known person with nothing on file answers an empty list. Both are free."}
 
   - id: forager.people.email.find
     added: '2026-11-23'

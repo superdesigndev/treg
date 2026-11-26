@@ -469,7 +469,9 @@ PUBLIC_DEMO_DOMAIN = "public-demo.treg.local"  # unroutable — the public ident
 # skill-directory table in `agents.py` (which answers "where does each coding agent keep its skills").
 # The words collide, the concepts don't; kept apart deliberately.
 AGENT_DOMAIN = "agents.treg.local"  # unroutable — an agent acts only by its token
-SANDBOX_DOMAIN = "sandbox.treg.local"  # landing sandbox visitors; the sandbox is closed
+# The landing sandbox is gone, but its visitor users and their tokens may remain in a deployment:
+# every resolver refuses them (`_refuse_sandbox_visitor`) until those rows are removed.
+SANDBOX_DOMAIN = "sandbox.treg.local"
 PAYER_DOMAIN = "payers.treg.local"  # unroutable — an agent payer acts only by a verified payment
 SANDBOX_CLOSED = "the demo sandbox is closed — sign in at treg.to to use treg"
 

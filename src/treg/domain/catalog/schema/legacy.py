@@ -64,6 +64,7 @@ class Usage(Model):
     unit: str
     path: str | None = None
     terms: list[UsageTerm] | None = None
+    missing: int | None = None  # 0: the provider omits a zero meter (LeadsForge `consumedCredits`)
 
 
 class ReportedCharge(Model):

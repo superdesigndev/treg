@@ -1,0 +1,24 @@
+{
+  "data": {
+    "profile": {
+      "name": "Jane Doe",
+      "status": "completed",
+      "emails": [
+        {
+          "email": "jane.doe@example.com",
+          "type": "work",
+          "status": "valid"
+        }
+      ],
+      "phoneNumbers": [],
+      "success": true,
+      "task_id": "00000000-0000-0000-0000-000000000000",
+      "linkedin_url": "https://www.linkedin.com/in/jane-doe-example"
+    },
+    "done": true
+  },
+  "credits": {
+    "charged": 2,
+    "available": 15000
+  }
+}

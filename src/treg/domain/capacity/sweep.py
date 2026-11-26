@@ -36,15 +36,17 @@ _CREDENTIAL_IN_URL = ("api_key=", "apikey=", "token=")
 
 
 def state_key(provider: str) -> str:
-    """The `capacity:state` key for a provider in either spelling: the account's Settings slot
-    (`fiber-ai` -> `fiber_ai`), the one the sweep publishes under."""
-    return platform_setting_name(provider).removeprefix("platform_key_")
+    """The `capacity:state` key for an account in either spelling: the provider's Settings slot
+    (`fiber-ai` -> `fiber_ai`, `fiber-ai#b` -> `fiber_ai#b`), the one the sweep publishes under."""
+    base, label = collectors.split_account(provider)
+    return collectors.account_key(platform_setting_name(base).removeprefix("platform_key_"), label)
 
 
 def _has_key(provider: str) -> bool:
     if provider.startswith("overflow:"):
         return bool(getattr(get_settings(), f"overflow_key_{provider.split(':', 1)[1]}", ""))
-    return bool(getattr(get_settings(), platform_setting_name(provider), "") or "")
+    base = collectors.split_account(provider)[0]
+    return bool(collectors.account_credential(provider)(platform_setting_name(base)))
 
 
 def snapshot_from(provider: str, row: dict, observed_at=None) -> CapacitySnapshot:
@@ -99,7 +101,8 @@ async def run_sweep(db: AsyncSession, *, client: httpx.AsyncClient | None = None
     unknown = await ensure_policies(db, has_key=_has_key)
     await db.flush()
     policies = {p.provider: p for p in (await db.execute(select(CapacityPolicy))).scalars()}
-    providers = [p for p in sorted(policies) if p in only] if only else sorted(policies)
+    providers = sorted(p for p in policies
+                       if not only or p in only or collectors.split_account(p)[0] in only)
     # DB idle during the outbound calls: nothing above is left un-flushed, nothing below reads
     # while the network is in flight (the same discipline as the call path, on a smaller stage).
     rows = await _collect_all(providers, client)

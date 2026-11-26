@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,200+ tools across 138 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,200+ tools across 140 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 ---
 
 ## First, check which treg you have
@@ -187,7 +187,13 @@ re-send the same find: every hit is billed, repeats included.
 - Send `X-Treg-Route-Verify: true` on `treg.people.email.find`, `treg.people.email.find.personal` or
   `treg.people.phone.find` to check each hit in the same call, as its own small charge. Read
   `_treg.verification.verdict` (it wins over the provider's own `output.verified`) and follow
-  `_treg.advice`. A live phone line does not prove the number is this person's.
+  `_treg.advice`. For a phone, that check is a live-line lookup: it does not show whose number
+  it is. To check a number belongs to the person, call `millionphones.people.contact.verify`
+  (`social_url` = their LinkedIn profile, `phone_number`) or, for a US number,
+  `trestleiq.people.contact.verify` (`phone` and `name`).
+- For an ad audience (LinkedIn Matched Audiences, Meta Custom Audiences, Google Customer Match), send
+  `X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find`: `_treg.ad_hashes` holds the hit's
+  email as each platform's upload hash, at no extra charge.
 - **Verify every address before it is sent to**, including rows from a company or domain search
   (`treg.people.search` and the like): those are directory listings, unconfirmed
   unless the row's `email_status` says the provider verified it. `invalid` is dead, `accept_all` is risky,

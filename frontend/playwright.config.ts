@@ -29,5 +29,6 @@ export default defineConfig({
     url: `${origin}/meta`,
     reuseExistingServer: false,
     timeout: 90000,
+    stdout: 'pipe',
   },
 })

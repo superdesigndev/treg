@@ -48,6 +48,40 @@ async def test_anymailfinder_balance_uses_free_account_route(monkeypatch):
                                b'{"error":"upgrade_needed","message":"You do not have enough credits."}').kind == "balance"
 
 
+async def test_descovo_balance_uses_free_credits_route(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.descovo.com/v1/credits"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"data": {"available": 15469, "used": 31, "limit": 15500,
+                                                  "resetsOn": "2026-12-23T18:20:49.066Z"},
+                                         "credits": {"charged": 0, "available": None}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "descovo", client, "test-key")
+    assert row == {"value": 15469, "unit": "credits", "note": "resets 2026-12-23T18:20:49.066Z"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"data": {}}))) as client:
+        _refused(await _balance(monkeypatch, "descovo", client, "test-key"), "no credit balance")
+
+
+async def test_millionphones_balance_uses_free_credits_route(monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://millionphones.com/v1/credits"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"remaining": 3965, "used": 35, "plan": "pro"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "millionphones", client, "test-key")
+    assert row == {"value": 3965, "unit": "credits", "note": "plan pro"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"used": 35, "plan": "pro"}))) as client:
+        _refused(await _balance(monkeypatch, "millionphones", client, "test-key"), "no credit balance")
+    assert signatures.classify("millionphones", 402, {}, b'{"error":"Insufficient credits",'
+                               b'"billing_url":"https://millionphones.com/billing"}').kind == "balance"
+
+
 def test_leadoceans_fair_use_pace_is_its_period_allowance_used_up():
     body = '{"success":false,"error":{"message":"Fair-use pace reached \u2014 this account has received 50,000 search records"}}'
     sig = signatures.classify("leadocean", 429, {}, body)

@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import delete, func, tuple_, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -992,19 +992,35 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
         return row
     if not client_id.startswith("https://"):
         return row  # a dcr client we do not know is simply unknown
+    await db.commit()  # the metadata fetch below holds no pooled connection
     doc = await mcp_oauth.fetch_client_id_metadata(client_id)
     if doc is None:
         return row  # keep a stale copy over nothing: a transient fetch failure is not a revocation
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if row is None:
-        row = OAuthClient(client_id=client_id, kind="cimd")
-        db.add(row)
-    row.kind, row.refreshed_at = "cimd", now
-    row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
-    row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
-    await db.commit()
-    await db.refresh(row)
-    return row
+    return await _store_cimd_client(client_id, doc, db)
+
+
+async def _store_cimd_client(client_id: str, doc: dict, db: AsyncSession) -> OAuthClient:
+    """Write a fetched document onto its row. Two first sights of one client_id may both insert;
+    the loser of the unique constraint updates the winner's row instead."""
+    for attempt in range(2):
+        row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
+               ).scalar_one_or_none()
+        if row is None:
+            row = OAuthClient(client_id=client_id, kind="cimd")
+            db.add(row)
+        row.kind, row.refreshed_at = "cimd", datetime.now(timezone.utc).replace(tzinfo=None)
+        row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
+        row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if attempt:
+                raise
+            continue
+        await db.refresh(row)
+        return row
+    raise AssertionError("unreachable")
 
 
 def _wrong_resource(resource: str) -> str | None:

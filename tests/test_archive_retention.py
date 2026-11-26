@@ -662,21 +662,21 @@ async def test_the_trim_holds_keys_only_for_its_updates(clients: AsyncClient, pl
                          endpoint_id=EP, method="GET", path="/x", status_code=200,
                          archive_key_hash=_h("k2"), archive_content_hash=archive.content_hash(body)))
         await s.commit()
-    real_hash, real_lock, locked_at = archive.content_hash, archive.lock_keys_for_share, []
+    real_hash, real_lock, steps = archive.content_hash, archive.lock_keys_for_share, []
 
-    def slow_hash(raw):
-        time.sleep(0.3)                    # a page of large bodies
+    def hash_(raw):
+        steps.append("hash")
         return real_hash(raw)
 
     async def lock(db_, hashes):
-        locked_at.append(time.monotonic())
+        steps.append("lock")
         return await real_lock(db_, hashes)
-    monkeypatch.setattr(archive, "content_hash", slow_hash)
+    monkeypatch.setattr(archive, "content_hash", hash_)
     monkeypatch.setattr(archive, "lock_keys_for_share", lock)
     trimmed = await idempotency.trim_archived_answers(pause_s=0)
-    released = time.monotonic()
-    assert trimmed.trimmed == 1 and locked_at
-    assert released - locked_at[0] < 0.1    # what a recorder of that key could wait at most
+    assert trimmed.trimmed == 1
+    first_lock = steps.index("lock")
+    assert "hash" in steps[:first_lock] and "hash" not in steps[first_lock:]
 
 
 async def test_a_held_pending_row_never_stops_the_run(clients: AsyncClient, retention_on, store):

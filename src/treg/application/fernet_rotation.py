@@ -20,7 +20,7 @@ from ..infra import credential_cipher
 from ..infra.db import session_maker
 from ..models import ArenaEvaluation, ArenaRun, Org, Secret, WebArenaRun
 
-# (model, encrypted column, first id, extra filter) — credentials of demo and sandbox teams excluded.
+# (model, encrypted column, first id, extra filter); credentials of demo teams are excluded.
 TARGETS = (
     (ArenaRun, ArenaRun.payload, "", ()),
     (WebArenaRun, WebArenaRun.payload, "", ()),

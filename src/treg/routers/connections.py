@@ -126,6 +126,8 @@ async def oauth_callback(
         return _auth_page("Connect failed", "This authorization link expired. Start the connect again.", ok=False, status=400)
     if outcome.kind == "authorization_failed":
         return _auth_page("Connect failed", "Authorization failed. You can close this tab and try again.", ok=False, status=400)
+    if outcome.kind == "exchange_retry":
+        return _auth_page("Connect paused", "Could not reach the provider just now. Reload this page to try again.", ok=False, status=502)
     if outcome.kind == "exchange_failed":
         return _auth_page("Connect failed", "Token exchange failed. You can close this tab and try again.", ok=False, status=502)
     return _auth_page("Connected", "You can close this tab and return to the terminal.")

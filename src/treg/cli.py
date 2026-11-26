@@ -2549,16 +2549,14 @@ from .domain.asynctasks import ExtractionError as _AsyncExtractionError  # noqa:
 from .domain.asynctasks import artifact as _async_artifact  # noqa: E402
 from .domain.asynctasks import extract_submission as _extract_submission  # noqa: E402
 from .domain.asynctasks import fetch_command as _async_fetch_command  # noqa: E402
+from .domain.asynctasks import poll_command as _async_poll_command  # noqa: E402
+from .domain.asynctasks import poll_inputs as _async_poll_inputs  # noqa: E402
 from .domain.asynctasks import shown as _shown  # noqa: E402
 from .domain.asynctasks import classify_terminal as _classify_terminal  # noqa: E402
 from .domain.asynctasks import finished_on_submission as _finished_on_submission  # noqa: E402
 from .domain.asynctasks import max_age as _async_max_age  # noqa: E402
 from .domain.asynctasks import json_path as _json_path  # noqa: E402
 from .domain.asynctasks import is_pending_response as _is_pending_response  # noqa: E402
-
-
-def _async_param(rule: dict) -> tuple[str, str]:
-    return str(rule["in"]), str(rule["name"])
 
 
 def _clock_report(clock, message: str) -> None:
@@ -2595,11 +2593,12 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
         return {"code": 1, "response": submission, "error": str(exc)}
     task_id = extracted.task_id
     poll = descriptor["poll"]
+    poll_body = None
     if poll.get("endpoint"):
-        _, param_name = _async_param(poll["param"])
         target = poll["endpoint"]
-        params = [(param_name, task_id)]
-        recovery = f"treg call {target} -p {shlex.quote(param_name + '=' + task_id)}"
+        query, poll_body = _async_poll_inputs(poll["param"], task_id)
+        params = list(query)
+        recovery = _async_poll_command(target, poll["param"], task_id)
     else:
         target = extracted.poll_url
         params = []
@@ -2622,7 +2621,7 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
                         "error": "timed out while waiting for the async task"}
             clock.sleep(interval if failures == 0 else min(60.0, interval * (2 ** (failures - 1))))
             try:
-                response = call_fn(target, params)
+                response = call_fn(target, params) if poll_body is None else call_fn(target, params, poll_body)
             except (httpx.RequestError, OSError) as exc:
                 failures += 1
                 _clock_report(clock, f"async poll retry {failures}/5 after a network error: {exc}")
@@ -2911,10 +2910,11 @@ def cmd_call(args, cfg) -> None:
         except (TypeError, ValueError):
             sys.exit("treg: X-Treg-Async is not valid JSON")
 
-        def call_fn(target, poll_params):
+        def call_fn(target, poll_params, poll_body=None):
             # Dynamic poll URLs still travel THROUGH treg. Calling the absolute upstream URL from
             # the CLI would bypass server-side credential injection and the host safety check.
-            polled = c.get(f"/call/{target}", params=poll_params)
+            polled = (c.get(f"/call/{target}", params=poll_params) if poll_body is None
+                      else c.post(f"/call/{target}", params=poll_params, json=poll_body))
             _note(status_class=f"{polled.status_code // 100}xx")
             return polled
 
@@ -2931,8 +2931,7 @@ def cmd_call(args, cfg) -> None:
             task_id = extracted.task_id
             poll = descriptor.get("poll") or {}
             if poll.get("endpoint"):
-                _, resume_name = _async_param(poll["param"])
-                recovery = f"treg call {poll['endpoint']} -p {shlex.quote(resume_name + '=' + task_id)}"
+                recovery = _async_poll_command(poll["endpoint"], poll["param"], task_id)
             elif extracted.poll_url:
                 recovery = f"treg call {shlex.quote(extracted.poll_url)}"
         if task_id not in (None, ""):

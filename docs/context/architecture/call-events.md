@@ -112,7 +112,9 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `next_page_token`, `after`, `page`, `offset`, `start` or `skip` that the endpoint declares with
   a type it can be: a number for a page or an offset (crawl4ai's Facebook `page` is a page name), a
   string or a number for a cursor. A declared page with `default: 0`, or `min: 0` and no default
-  of 1, counts from 0 (aiark, TheirStack). A routed parent's position is the caller's `cursor`,
+  of 1, counts from 0 (aiark, TheirStack). A provider that numbers results from one declares
+  `position: {offset: "zero_based(body.first)"}` so result 11 matches offset 10.
+  A routed parent's position is the caller's `cursor`,
   `page` or `offset`, kept in its route summary. A page number or an offset counts only as a
   whole number. No page, `page` 1, `page0` 0, `offset` 0 and an empty or `0` cursor are the
   first page and leave `input_id` as it was.
@@ -281,8 +283,8 @@ a child. It is a log line, not a column.
 | `endpoint_id`, `provider`, `tier` | a catalog id (null when the name is not one), and the credential tier |
 | `status`, `refused_by` | the status of this attempt, and treg's refusal mechanism as the event's `refused_by` |
 | `by` | `upstream` when the provider answered or failed to (timeout, dropped connection), else `treg` |
-| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `payment_required` (an agent-payments 402 that asks a keyless caller to pay or prove its wallet, `refused_by: payment`), `other` |
-| `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account` and `payment_required` |
+| `error_class` | `caller_input`, `caller_balance_or_cap`, `caller_policy`, `caller_auth`, `caller_provider_account`, `not_found`, `rate_limit`, `timeout`, `upstream_error`, `treg_capacity`, `treg_policy`, `our_provider_account`, `treg_error`, `caller_disconnected` (the caller closed the request before treg read its body; status 499), `payment_required` (an agent-payments 402 that asks a keyless caller to pay or prove its wallet, `refused_by: payment`), `other` |
+| `caller_side` | `true` for `caller_auth`, `caller_balance_or_cap`, `caller_policy`, `caller_provider_account`, `caller_disconnected` and `payment_required` |
 | `kind` | the failure kind treg raised, or its internal `log_kind` when it has one |
 | `signal` | the provider's documented error read from its answer, per `domain/capacity/signatures.py` |
 | `parameter`, `rule` | for treg's own refusal of a request: the field (`queryParams.limit`, `body.urls.0`, or `undeclared`) and the rule it broke (`required`, `type`, `enum`, `range`, `repeat`, `undeclared`, `json`, `fixed`, `platform`, `authorization_method`, `unsupported`, and the parameter check's `length`, `array_length` and `items:<rule>` when it refuses) |

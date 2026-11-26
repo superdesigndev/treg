@@ -314,6 +314,13 @@ with `X-Treg-Route-Waterfall: 0`, or on a routed tool without a confirm field, t
 refused (422, unbilled). Agreement is not delivery: combine it with `X-Treg-Route-Verify` to also
 check the mailbox.
 
+`X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find` adds the hit's email as the hashes ad
+platforms match customer lists on: `_treg.ad_hashes: {hashed: true, linkedin, meta, google}`, each
+the SHA-256 of the address as that platform normalizes it (lowercase, no spaces; for Google, a
+gmail.com or googlemail.com address also loses its dots and `+tag`). treg computes them, so there
+is no extra charge, and `output` is not altered. A miss says `{hashed: false, reason: no_hit}`. On
+another routed tool the header is refused (422, unbilled).
+
 `X-Treg-Route-Domain-Match: strict` on `treg.people.email.find` keeps looking past a hit at another
 mail domain than the `domain` you sent: that hit is `weak`, and the waterfall goes on, each attempt
 at its own price inside `X-Treg-Route-Max-Cost`, for at most two more off-domain hits. The first
@@ -343,7 +350,9 @@ makes the header a no-op).
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
 cache reads. The verdict is `live` / `dead` / `unknown`; a live line is not proof the number is
-this person's (`trestleiq.people.contact.verify` checks a US name). A number not written
+this person's. To check that, call `millionphones.people.contact.verify` with their LinkedIn profile
+(`social_url`) and the `phone_number`, or `trestleiq.people.contact.verify` (`phone`, `name`) for a
+US number. A number not written
 internationally is never sent, because HLR would read its first digits as a country code: reason
 `not_international`, nothing charged.
 

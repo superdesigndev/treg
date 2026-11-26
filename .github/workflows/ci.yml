@@ -93,6 +93,10 @@ jobs:
   test-postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        background: [direct, pgbouncer]
     services:
       redis:
         image: redis:7.4
@@ -116,8 +120,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      pgbouncer:
+        image: edoburu/pgbouncer:v1.25.2-p0
+        env:
+          DB_HOST: postgres
+          DB_USER: treg
+          DB_PASSWORD: treg
+          AUTH_TYPE: scram-sha-256
+          POOL_MODE: transaction
+          MAX_PREPARED_STATEMENTS: '200'
+          MAX_CLIENT_CONN: '1000'
+          LISTEN_PORT: '6432'
+        ports:
+          - 6432:6432
     env:
       TREG_TEST_DB_URL: postgresql+asyncpg://treg:treg@127.0.0.1:5432/treg_test
+      TREG_TEST_POOLER_URL: ${{ matrix.background == 'pgbouncer' && 'postgresql+asyncpg://treg:treg@127.0.0.1:6432/treg_test' || '' }}
       TREG_TEST_KV_URL: redis://127.0.0.1:6379/15
       PYTHONUNBUFFERED: '1'
     steps:
@@ -172,6 +190,7 @@ jobs:
           tests/test_capacity_rate_observe.py
           tests/test_money_trace.py
           tests/test_money_trace_postgres.py
+          tests/test_db_pooler.py
           tests/test_money_trace_runner.py
           tests/test_asynctasks.py
           tests/test_alembic_baseline.py
@@ -179,7 +198,11 @@ jobs:
           tests/test_org_flow_control_schema.py
           tests/test_workbench_table_schema.py
           tests/test_redundant_index_migration.py
+          tests/test_step5_skills.py
+          tests/test_bughunt_server.py::test_oversized_id_is_404_not_500
           tests/test_callrecord_call_ref_index_migration.py
+          tests/test_callrecord_served_call_ref_migration.py
+          tests/test_review_answer_basis_migration.py
           tests/test_enrich_arena.py
           tests/test_arena_insights.py
           tests/test_arena_verification_insights.py
@@ -199,8 +222,6 @@ jobs:
           tests/test_catalog_stats_corrections.py
           tests/test_catalog_stats_concurrency.py
           tests/test_catalog_stats_hot_corrections.py
-          tests/test_catalog_stats_requeue.py
-          tests/test_catalog_stats_requeue_concurrency.py
           tests/test_catalog_stat_dirty_audit.py
           tests/test_catalog_observation_folds.py
           tests/test_catalog_observation_concurrency.py

@@ -62,8 +62,8 @@ behavior.
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
-| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
+| endpoint details | the `/catalog/endpoints/{id}` route, error shape, MCP call arguments, provider auth and overflow notices, and compact siblings in the route's evidence order | client attribution and hints for the available call tool and ceiling options; the directory surface refuses endpoints on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
+| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools and exposes `call.max_cost_usd`; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
 | transport | host checks, compression, cache headers, eager auth, static capabilities | V2 has a separate audience, metadata path, scope marker and Claude browser origin |
@@ -72,6 +72,22 @@ behavior.
 `_SurfacePolicy` holds the values that differ inside shared tool behavior. Public tool registrations
 stay separate because names, descriptions, schemas and safety annotations are public contracts.
 `build_mcp_app` refuses a server and OAuth resource-version pair naming different surfaces.
+
+For catalog endpoints, MCP `catalog_get` returns `call_template` as a JSON string containing tool
+arguments. Its hints name only the tools available on that surface: `call` on the team surface,
+and `catalog_call_read` (GET, HEAD, OPTIONS) or `catalog_call_write` (POST, PUT, PATCH, DELETE) on
+the directory surface. Both say whether the provider needs a key and format any overflow
+disclosure from the quoted price, unit and relay. For a routed endpoint, both surfaces show how to
+set a USD ceiling with `headers["X-Treg-Route-Max-Cost"]` and put other routing controls in
+`headers`, and the team surface also names `max_cost_usd`. Multipart templates put fields in `form`
+and name the files to supply in `uploads`. Hub tools keep the example in `endpoint.call_template`.
+Direct endpoint siblings carry the advertised USD price where known, the compact price quote
+including any trial limit, all available observations and the team count and shares when reviews
+are present. Routed endpoints show `routing.plan` and `routing.also` for comparison.
+
+Use the team surface's `call.max_cost_usd` argument or `headers["X-Treg-Route-Max-Cost"]` on
+either surface to cap any call billed from the team's treg balance. If a team-surface caller
+supplies both, the values must match. The V2 tool schemas stay fixed.
 
 When either surface or shared MCP code changes, review both; tests must compare the shared behavior
 and prove the listed differences. Keep these V2 properties fixed unless a new directory review
@@ -237,6 +253,9 @@ different request is refused. See `architecture/money.md`.
 `served_via` with a one-line `hint` (`cost_usd` is then the relay's real price), identically on both
 surfaces. `catalog_get` carries `overflow_price_usd`, `overflow_price_unit` and `overflow_via` so the
 price told before the call includes the relay's (`architecture/money.md` § Overflow money).
+On both surfaces each of `catalog_get`'s `siblings` carries only its price (`quote_cost`), not how it
+settles: MCP hosts cap a tool result, and a crowded job lists dozens of siblings. The full cost is
+that sibling's own `catalog_get`; the HTTP route, CLI and dashboard keep the full sibling cost.
 
 ## Output schemas: every field optional and nullable
 
@@ -336,9 +355,13 @@ and not the other locks out a family of clients, and the gap hides because the c
 does not need the other path.
 
 The CIMD fetch is fenced because the URL is caller-chosen: https only, no redirects, a public address
-at connect time, bounded time and size, reusing `health.safe_webhook_url` and `health.host_is_public`.
+at connect time, bounded time and size, reusing `health.safe_webhook_url` and the call-time lookup
+`health.host_is_public_async` (off the event loop, refused on timeout; proxy-model.md "Call-time SSRF guard").
 The document must claim its own URL, or a document hosted anywhere could assert someone else's
-`client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
+`client_id` and inherit their consent. `_resolve_oauth_client` reads the cached row, ends that
+transaction, fetches with no pooled connection held, then writes the row in a short transaction of
+its own (a concurrent first sight that loses the unique constraint updates the winner's row). A failed
+refresh keeps the stale copy. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).
 
 ## A confidential client: Microsoft 365 Copilot
@@ -478,9 +501,8 @@ Test the flow end to end: claims validation can pass while tools still forward t
 ## Sign-in mid-authorization
 
 A signed-out visitor to `/oauth/authorize` has the destination parked in a short-lived HttpOnly
-cookie and is sent to `/?signin=oauth`, which opens the sign-in modal without creating a sandbox
-session; the query parameter is only a UI cue and carries no OAuth data. Every sign-in door resumes
-the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
+cookie and is sent to `/?signin=oauth`, which opens the sign-in modal; the query parameter is only
+a UI cue and carries no OAuth data. Every sign-in door resumes the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
 cannot become a general post-login redirect.
 
 Resuming straight after sign-in means a new account reaches consent before the dashboard has made

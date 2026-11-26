@@ -10,14 +10,14 @@
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
-    treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
-    treg-worker catalog repair-status --manifest <path>  # check the saved applied target list
     treg-worker spend rollup [--max-rows 50000]      # fold new ledger settles into per-key daily spend
     treg-worker usage rollup [--max-rows 500000]     # fold new audit rows into per-member daily call counts
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
     treg-worker reviews judge [--max-seconds 600]    # Jev: new review reasons' privacy and codes (hourly)
+    treg-worker reviews body-pilot [--sample 200]    # dry run: code negative reviews with the answer in view
+    treg-worker reviews body-audit --pairs ID:R=B,...  # Claude blind-checks the pilot's changed codes
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
@@ -129,9 +129,9 @@ async def _overflow_sync(args) -> int:
 
 RENEW_MAX_USD = 1.00
 """Per-route price cap for RENEWING a route that is enabled or was stamped before. The 2¢ default
-`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, the weekly cron
-skipped every stamped route priced above 2¢ (46 of them on 2026-09-07, all mapped and verified on
-2026-08-26) and they decayed off with no run ever able to bring them back."""
+`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, a scheduled run
+skips every stamped route priced above 2¢, and those decay off with no run ever able to bring them
+back."""
 VERIFY_BUDGET_USD = 15.00
 """What one verify run may spend in total (relay fee + direct comparison), whatever the caps say."""
 
@@ -389,11 +389,50 @@ async def _shadow_collect(args) -> int:
 
 
 async def _reviews_judge(args) -> int:
+    import logging
+    from contextlib import AsyncExitStack
+
     from .infra.db import verify_db
     from .application import review_judge
+    from .bootstrap import archive_object_store
 
-    await verify_db()
-    print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
+    async with AsyncExitStack() as stack:
+        # Answers in object storage need its credentials. A cron without them still judges, from
+        # the reasons alone: an answer it cannot read counts as one not on file.
+        try:
+            await stack.enter_async_context(archive_object_store())
+        except RuntimeError as exc:
+            logging.getLogger("treg.review_judge").warning("archive object store unavailable: %s", exc)
+        await verify_db()
+        print(review_judge.dumps(await review_judge.run(max_seconds=args.max_seconds)))
+    return 0
+
+
+async def _reviews_body_pilot(args) -> int:
+    from .infra.db import verify_db
+    from .application import review_body_pilot, review_judge
+    from .bootstrap import archive_object_store
+
+    async with archive_object_store():
+        await verify_db()
+        result = await review_body_pilot.run(sample=args.sample, batch=args.batch, budget=args.budget,
+                                             max_seconds=args.max_seconds)
+    print(review_judge.dumps(result))
+    return 0
+
+
+async def _reviews_body_audit(args) -> int:
+    from .infra.db import verify_db
+    from .application import review_body_audit, review_judge
+    from .bootstrap import archive_object_store
+
+    pairs = review_body_audit.parse_pairs(args.pairs)
+    async with archive_object_store():
+        await verify_db()
+        result = await review_body_audit.run(
+            pairs=pairs, model=args.model, max_usd=args.max_usd, usd_per_mtok_in=args.usd_per_mtok_in,
+            usd_per_mtok_out=args.usd_per_mtok_out, budget=args.budget, max_tokens=args.max_tokens)
+    print(review_judge.dumps(result))
     return 0
 
 
@@ -444,36 +483,6 @@ async def _catalog_stats(args) -> int:
                            bucket_timeout_s=args.bucket_timeout_seconds)
     print(json.dumps(result, sort_keys=True))
     return 0
-
-
-async def _catalog_requeue_async_stats(args) -> int:
-    from .infra.db import verify_db
-    from .application.catalog_stats import requeue_async_stats
-
-    await verify_db()
-    try:
-        result = await requeue_async_stats(apply=args.apply)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    print(json.dumps(result, sort_keys=True))
-    return 0
-
-
-async def _catalog_repair_status(args) -> int:
-    from pathlib import Path
-    from .infra.db import verify_db
-    from .application.catalog_stats import repair_status
-
-    try:
-        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
-        await verify_db()
-        result = await repair_status(manifest)
-    except (OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    print(json.dumps(result, sort_keys=True))
-    return 0 if result["complete"] else 1
 
 
 async def _showcase_activity(args) -> int:
@@ -800,6 +809,15 @@ async def _enterprise_purge_audit(args) -> int:
     return 0
 
 
+def _answer_budget(value: str) -> int:
+    from .domain.feedback.body_view import MIN_BUDGET
+
+    n = int(value)
+    if n < MIN_BUDGET:
+        raise argparse.ArgumentTypeError(f"must be >= {MIN_BUDGET}")
+    return n
+
+
 def _positive_int(value: str) -> int:
     n = int(value)
     if n < 1:
@@ -936,6 +954,26 @@ def main(argv: list[str] | None = None) -> int:
                              "negative ones blame (off without typesafe_api_key)")
     revj.add_argument("--max-seconds", type=float, default=600.0)
     revj.set_defaults(fn=_reviews_judge)
+    revp = revsub.add_parser("body-pilot", help="dry run: code recent negative reviews with the call's "
+                             "request and answer in view and compare with the reason-only codes; "
+                             "writes nothing, prints aggregates only")
+    revp.add_argument("--sample", type=_positive_int, default=200)
+    revp.add_argument("--batch", type=_positive_int, default=5)
+    revp.add_argument("--budget", type=_answer_budget, default=4000, help="characters of each answer Jev reads")
+    revp.add_argument("--max-seconds", type=float, default=1200.0)
+    revp.set_defaults(fn=_reviews_body_pilot)
+    reva = revsub.add_parser("body-audit", help="Claude, blind, picks between the reason-only and the body "
+                             "coding of reviews the body pilot changed; writes nothing, prints aggregates "
+                             "and review ids only (off without ai_gateway_api_key)")
+    reva.add_argument("--pairs", required=True,
+                      help="review_id:REASON[:SECONDARY]=BODY[:SECONDARY],... the pilot's two codings")
+    reva.add_argument("--model", default="anthropic/claude-opus-5-5")
+    reva.add_argument("--max-usd", type=float, default=5.0, help="no request starts once spend reaches this")
+    reva.add_argument("--usd-per-mtok-in", type=float, default=4.0)
+    reva.add_argument("--usd-per-mtok-out", type=float, default=20.0)
+    reva.add_argument("--budget", type=_answer_budget, default=4000, help="characters of each answer shown")
+    reva.add_argument("--max-tokens", type=_positive_int, default=4000)
+    reva.set_defaults(fn=_reviews_body_audit)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")
@@ -954,16 +992,6 @@ def main(argv: list[str] | None = None) -> int:
     stats.add_argument("--bucket-timeout-seconds", type=float, default=10.0,
                        help="timeout for one endpoint/day replacement; failures stay queued for retry")
     stats.set_defaults(fn=_catalog_stats)
-    requeue = catalogsub.add_parser("requeue-async-stats",
-        help="preview existing mutable async day buckets; --apply queues one full repair")
-    requeue.add_argument("--apply", action="store_true",
-        help="reset target readiness and enqueue repairs (default: read-only preview)")
-    requeue.set_defaults(fn=_catalog_requeue_async_stats)
-    repair_status = catalogsub.add_parser("repair-status",
-        help="check coverage of the same database's saved applied repair manifest")
-    repair_status.add_argument("--manifest", required=True,
-        help="JSON output saved from requeue-async-stats --apply")
-    repair_status.set_defaults(fn=_catalog_repair_status)
     showcase = sub.add_parser("showcase", help="the /showcase leaderboard's read models")
     showcasesub = showcase.add_subparsers(dest="cmd", required=True)
     activity = showcasesub.add_parser("activity", help="add each approved app's new calls to its weekly activity rows")

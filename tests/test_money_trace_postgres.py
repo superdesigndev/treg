@@ -163,6 +163,22 @@ async def test_active_trace_identifies_the_real_block_holder_before_either_commi
         assert await ledger.spent_today_from_ledger(db, org_id) == 130
 
 
+async def test_a_pooled_engine_reports_no_backend_pid(postgres_trace):
+    engine = create_async_engine(postgres_trace.url, pool_size=1, max_overflow=0)
+    money_trace.install_engine(engine.sync_engine, pool_name="background", pooled=True)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+            money_trace.mark_money(db, "settle", org_id=7, call_id="pooled-call")
+            await db.execute(text("SELECT 1"))
+            money_trace.sample()
+            [row] = [row for row in money_trace.drain_events() if row["event"] == "money_txn_slow"]
+            assert row["backend_pid"] is None
+            assert row["pool"] == "background"
+            await db.rollback()
+    finally:
+        await engine.dispose()
+
+
 async def test_reused_backend_pid_has_a_new_transaction_id_and_no_stale_identity(postgres_trace):
     engine = create_async_engine(postgres_trace.url, pool_size=1, max_overflow=0)
     money_trace.install_engine(engine.sync_engine, pool_name="api")
