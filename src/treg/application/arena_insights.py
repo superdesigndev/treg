@@ -235,7 +235,7 @@ async def collect_batch(session_factory=session_maker):
     cat, endpoints, version = _catalog()
     current = now()
     async with session_factory() as db:
-        stmt = _insert(db, ArenaInsightState).values(id=version, cursor=0,
+        stmt = _insert(db, ArenaInsightState).values(id=version, cursor=0, resume_cursor=0,
             scan_until=current - timedelta(seconds=60), updated_at=None, payload={})
         await db.execute(stmt.on_conflict_do_nothing(index_elements=["id"]))
         state = (await db.execute(select(ArenaInsightState).where(ArenaInsightState.id == version).with_for_update())).scalar_one()
@@ -246,6 +246,7 @@ async def collect_batch(session_factory=session_maker):
             # Freeze a fresh cutoff for this cycle, while keeping the prior public payload.
             state.scan_until = current - timedelta(seconds=60)
             state.updated_at = None
+            state.resume_cursor = state.cursor
         until = state.scan_until
         cursor = state.cursor
         await db.commit()
@@ -305,12 +306,19 @@ async def collect_batch(session_factory=session_maker):
             stmt = _insert(db, ArenaObservation).values(observations)
             await db.execute(stmt.on_conflict_do_update(index_elements=["id"], set_={k: getattr(stmt.excluded, k) for k in observations[0] if k != "id"}))
         state.cursor = next_cursor
+        if records:
+            state.resume_cursor = max(state.resume_cursor or 0, records[-1].id)
         if not backlog:
             state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
             # Revisit recent evidence for delayed archive writes / concurrent audit commits.
             rewind = (await db.execute(rewind_query(endpoints, until))).scalar_one()
-            state.cursor = max(0, rewind - 1) if rewind else state.cursor
+            # Without a recent row the next cycle starts after the last row this one collected,
+            # or where this one started: not at the end of a span it found empty, which can be
+            # past the id of a row still being committed.
+            resume = state.cursor if state.resume_cursor is None else state.resume_cursor
+            state.cursor = max(0, rewind - 1) if rewind else resume
+            state.resume_cursor = state.cursor
             state.scan_until = current - timedelta(seconds=60)
         db.add(state)
         await db.commit()
@@ -409,7 +417,7 @@ async def prune(session_factory=session_maker) -> None:
             await db.execute(delete(O).where(O.version.in_(stale)))
             await db.execute(update(ArenaInsightState).where(ArenaInsightState.id.in_(stale),
                 (ArenaInsightState.cursor != 0) | ArenaInsightState.updated_at.is_not(None))
-                .values(cursor=0, updated_at=None, scan_until=now() - timedelta(seconds=60)))
+                .values(cursor=0, resume_cursor=0, updated_at=None, scan_until=now() - timedelta(seconds=60)))
             if state and state.payload.get("status") == "ready":
                 await db.execute(delete(ArenaInsightState).where(ArenaInsightState.id.in_(stale)))
         await db.commit()

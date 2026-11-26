@@ -437,3 +437,26 @@ async def test_a_cycle_cut_off_long_ago_publishes_without_reading_past_it(client
                 + [(other, until + timedelta(seconds=5 + index)) for index in range(1000)])
     assert not await service.collect_batch(session_maker)
     assert await _observed() == 1
+
+
+async def test_an_arena_row_committed_after_a_later_id_is_read_by_the_next_cycle(clients):
+    """An Arena row takes its id, and a row of another endpoint takes the next id and commits
+    first. The cycle sees only the second, finds its span empty of the window and publishes;
+    the first commits afterwards. The next cycle must still read it."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("needs two concurrent write transactions")
+    async with session_maker() as arena_write:
+        arena_write.add(CallRecord(user_email="synthetic@example.test", tool_name=EP, method="GET",
+            path="/v1/x", status_code=200, endpoint_id=EP, provider="tomba", credential_tier="platform",
+            params_hash="late", created_at=now() - timedelta(seconds=180)))
+        await arena_write.flush()
+        await _bulk([("not.an.arena.endpoint", now() - timedelta(seconds=170))])
+        assert not await service.collect_batch(session_maker)
+        assert await _observed() == 0
+        await arena_write.commit()
+    async with session_maker() as db:
+        state = (await db.execute(select(ArenaInsightState))).scalar_one()
+        state.updated_at = now() - timedelta(seconds=service.REFRESH_SECONDS + 1)
+        await db.commit()
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1

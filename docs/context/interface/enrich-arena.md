@@ -255,7 +255,9 @@ the first row written at or after the cutoff plus `LATE` (`_batch_span`, a binar
 primary key), and then reads those rows by id. Ids follow insertion, not `created_at`, so the
 bound holds only for rows inserted within `LATE` of their `created_at`, the same allowance the
 rewind makes. A span with fewer than `n` rows of the window is read whole and the cursor moves
-to its end.
+to its end. That end can be past the id of a row still being committed, so the cursor is only the
+cycle's progress: `resume_cursor` keeps where the cycle started, moved up to each row it
+collects, and a cycle whose rewind finds no recent row hands that to the next one instead.
 
 - It reads a bounded batch of audit records and archive pointers, closes the session, resolves
   bodies through `archive_bodies.read` (path `arena`), then reacquires the cursor lock and
