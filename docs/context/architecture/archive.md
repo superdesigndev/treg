@@ -224,7 +224,8 @@ passes and deletes nothing. It reports keys, snapshots, marks and distinct bodie
 count is an upper bound, because a shared body stays.
 
 Endpoint running totals subtract what each DELETE returned, so two erasers subtract once, and
-move in endpoint order, the order `archive.flush_stats` locks the same rows in, so the two cannot
+move in endpoint order, the order `archive.flush_stats` visits the same rows in (it holds at most
+one of them at a time, and gives up on a held one after a short lock timeout), so the two cannot
 deadlock. The worker prints the running totals to stderr after every committed batch. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
 upload only after one `head` confirms the object still exists. Accepted race (documented in the
@@ -474,9 +475,15 @@ never waits for archive work. Per-process counters reset on restart and are not 
 kept_bytes, newest_fetch), changed only by atomic column arithmetic, never read-modify-write. The
 row is shared by every team, so a recording adds its counts to an in-process delta after its own
 commit (`_count_stats`; a dropped or retried recording counts nothing), and `flush_stats` lands
-them as one statement per endpoint, in endpoint order so two processes cannot deadlock, under the
-archive's write semaphore. A failed or interrupted flush keeps its deltas; a process that dies
-between flushes loses that window, which is fine because nothing serves or bills from the totals.
+them as one statement per endpoint, each in its own short transaction, in endpoint order, under
+the archive's write semaphore. A flush never holds one endpoint's row while it waits for the
+next, so a busy row costs the others nothing. On PostgreSQL each statement runs under a short
+`lock_timeout`; an endpoint whose row another writer (a flush in another process, the pruner,
+erasure) still holds past it keeps its delta, merged with newer ones, for the next flush, and the
+flush moves on. Any other failure, or an interrupted flush, puts back the deltas that have not
+committed and raises; the ones already committed are not counted again. Across endpoints the
+totals are not one snapshot, which is fine for a staff report; a process that dies between
+flushes loses that window, which is fine because nothing serves or bills from the totals.
 The pruner, erasure and row retention subtract directly. Arithmetic commutes only while the row exists, so the
 first recording of an endpoint creates it zeroed inside its own transaction (`_ensure_stat_row`),
 and a process skips that check only after one of its recordings committed with the row.

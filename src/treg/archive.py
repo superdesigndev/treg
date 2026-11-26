@@ -611,51 +611,100 @@ async def _flush_stats_soon() -> None:
             pass
 
 
-async def flush_stats() -> None:
-    """Land every pending delta: one atomic `col = col + n` per endpoint, in endpoint order so two
-    processes flushing the same endpoints cannot deadlock. A missing row is inserted and the racing
-    loser retries as an update. A failed flush puts its deltas back for the next one."""
+_STAT_COUNTS = ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_bytes")
+# How long one endpoint's UPDATE may wait for its row before the flush moves on and leaves that
+# delta for the next one. Another writer (a flush in another process, the pruner, erasure) is on
+# the row; waiting would hold this background connection for as long as it does.
+_STATS_LOCK_TIMEOUT_MS = 200
+
+
+def _restore_deltas(deltas: dict[str, dict]) -> None:
+    """Put deltas that did not land back, merged with any newer delta for the same endpoint."""
+    for endpoint_id, d in deltas.items():
+        cur = _stat_deltas.get(endpoint_id)
+        if cur is None:
+            _stat_deltas[endpoint_id] = d
+            continue
+        for c in _STAT_COUNTS:
+            cur[c] += d[c]
+        cur["newest_fetch"] = max(cur["newest_fetch"], d["newest_fetch"])
+
+
+def _is_lock_timeout(exc: BaseException) -> bool:
+    """PostgreSQL cancelled the statement because `lock_timeout` elapsed (asyncpg's
+    `LockNotAvailableError`, SQLSTATE 55P03), however SQLAlchemy wrapped it."""
+    from sqlalchemy.exc import DBAPIError
+
+    if not isinstance(exc, DBAPIError):
+        return False
+    origin = exc.orig
+    return getattr(origin, "sqlstate", None) == "55P03" or (
+        origin is not None and "LockNotAvailableError" in type(origin).__name__)
+
+
+async def _land_stat(s, endpoint_id: str, d: dict, *, postgres: bool) -> None:
+    """One endpoint's delta as one atomic `col = col + n`; a missing row is inserted and the racing
+    loser retries as an update. The caller commits."""
+    from sqlalchemy import text
     from sqlalchemy import update as sa_update
     from sqlalchemy.exc import IntegrityError
 
-    from .infra.db import background_session_maker
     from .models import ArchiveEndpointStat
+
+    if postgres:
+        await s.execute(text(f"SET LOCAL lock_timeout = '{_STATS_LOCK_TIMEOUT_MS}ms'"))
+    values = {"provider": d["provider"], "policy": d["policy"],
+              "newest_fetch": d["newest_fetch"],
+              **{c: getattr(ArchiveEndpointStat, c) + d[c] for c in _STAT_COUNTS}}
+    where = ArchiveEndpointStat.endpoint_id == endpoint_id
+    res = await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
+    if res.rowcount == 0:
+        try:
+            async with s.begin_nested():
+                s.add(ArchiveEndpointStat(
+                    endpoint_id=endpoint_id, provider=d["provider"], policy=d["policy"],
+                    newest_fetch=d["newest_fetch"], **{c: d[c] for c in _STAT_COUNTS}))
+        except IntegrityError:  # a concurrent flush inserted the row first
+            await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
+
+
+async def flush_stats() -> None:
+    """Land every pending delta, one short transaction per endpoint, in endpoint order so two
+    processes flushing the same endpoints cannot deadlock. No transaction holds one endpoint's row
+    while it waits for another's. An endpoint whose row stays locked past the lock timeout keeps
+    its delta for the next flush and the flush moves on; any other failure puts back every delta
+    that has not landed and raises."""
+    from .infra.db import background_session_maker
 
     global _stat_deltas
     if not _stat_deltas:
         return
     taken, _stat_deltas = _stat_deltas, {}
+    unlanded = dict(taken)
+    busy = 0
     try:
         # The archive's write semaphore: the flush is one of its budgeted background sessions.
         async with _get_sem(), background_session_maker() as s:
+            postgres = s.get_bind().dialect.name == "postgresql"
             for endpoint_id in sorted(taken):
-                d = taken[endpoint_id]
-                counts = ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_bytes")
-                values = {"provider": d["provider"], "policy": d["policy"],
-                          "newest_fetch": d["newest_fetch"],
-                          **{c: getattr(ArchiveEndpointStat, c) + d[c] for c in counts}}
-                where = ArchiveEndpointStat.endpoint_id == endpoint_id
-                res = await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
-                if res.rowcount == 0:
-                    try:
-                        async with s.begin_nested():
-                            s.add(ArchiveEndpointStat(
-                                endpoint_id=endpoint_id, provider=d["provider"], policy=d["policy"],
-                                newest_fetch=d["newest_fetch"], **{c: d[c] for c in counts}))
-                    except IntegrityError:  # a concurrent flush inserted the row first
-                        await s.execute(sa_update(ArchiveEndpointStat).where(where).values(**values))
-            await s.commit()
+                try:
+                    await _land_stat(s, endpoint_id, taken[endpoint_id], postgres=postgres)
+                    await s.commit()
+                except Exception as exc:
+                    await s.rollback()
+                    if not _is_lock_timeout(exc):
+                        raise
+                    busy += 1
+                    continue
+                del unlanded[endpoint_id]
     except BaseException:
-        for endpoint_id, d in taken.items():
-            cur = _stat_deltas.get(endpoint_id)
-            if cur is None:
-                _stat_deltas[endpoint_id] = d
-                continue
-            for c in ("keys", "stable", "changed", "snapshots", "bodies_kept", "kept_bytes"):
-                cur[c] += d[c]
-            cur["newest_fetch"] = max(cur["newest_fetch"], d["newest_fetch"])
+        _restore_deltas(unlanded)
         _log.warning("archive running totals flush failed; kept for the next one", exc_info=True)
         raise
+    _restore_deltas(unlanded)
+    if busy:
+        _log.warning("archive running totals: %d endpoint row(s) busy past the lock timeout; "
+                     "kept for the next flush", busy)
 
 
 async def _store(
