@@ -1370,6 +1370,34 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+BOOMERANG = OAuthProvider(
+    service="boomerang",
+    display_name="Boomerang",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="bm_...",
+    # Bearer header only; the key never rides in a URL.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.theboomerang.co/api-keys",
+    setup_action_label="Get your Boomerang API key",
+    setup_steps=(
+        "Sign in to Boomerang and open API Keys.",
+        "Create a key and copy it (it starts with bm_).",
+    ),
+    setup_note="Lookups need an active Boomerang plan and spend credits only when they find something; the key check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Enrich LinkedIn profiles and company pages, and find work emails and mobile numbers.",
+    base_url="https://app.theboomerang.co/api/v1",
+    docs_url="https://app.theboomerang.co/docs/api",
+    # Free. A garbage key answers 401 {"error":{"code":"INVALID_API_KEY",...}}; a well-formed unknown
+    # key 401 "API key not found or revoked." (observed 2026-11-16 and 2026-11-20).
+    probe_path="/me",
+)
+
 DANSUGC = OAuthProvider(
     service="dansugc",
     display_name="DansUGC",
@@ -4612,7 +4640,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, BOOMERANG, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
