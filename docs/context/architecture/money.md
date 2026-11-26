@@ -1985,19 +1985,21 @@ generation.
 
 ## Apify dataset-row settlement
 
-An Apify `per_result` row on the platform key requires `maxTotalChargeUsd` (above 0, at most $1), the
-spend cap Apify enforces; `maxItems` does not bind actors whose own input sets the row count. Only
-the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeout` are accepted, each once and in
-plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`) would make the
-returned rows disagree with the events billed. `_marketplace_pricing` holds the cap plus
-`cost.call_fee` (the flat per-run charge), multiplied by the body arrays named in `cost.call_fee_per`
-for actors that bill a start per query. A v2 row says the same with `reserve.money` on
-`query.maxTotalChargeUsd`, `price.base` and `settle.hold_within_units: 2`; the run-options guard
-(`_enforce_apify_run_options`) then reads the cap's ceiling from `reserve.money.max` and its floor
-from `money_floor_micro`. `_observed_cost_micro` settles returned rows times the row
-price plus the fee; within two rows of the hold the cap was reached and the hold is the bill (a run
-stops when its next event would pass the cap and may have billed an event it never pushed). The cap
-must cover `call_fee` plus three rows, or an empty answer would bill in full.
+Every metered Apify row is in the v2 spelling, with the provider's `defaults:`. On the platform key a
+call requires `maxTotalChargeUsd` (above 0, at most $1), the spend cap Apify enforces; `maxItems`
+does not bind actors whose own input sets the row count. Only the run options `maxTotalChargeUsd`,
+`maxItems`, `memory` and `timeout` are accepted, each once and in plain ASCII, because a dataset-view
+option (`limit`, `offset`, `format`, `unwind`) would make the returned rows disagree with the events
+billed (`_enforce_apify_run_options`, which reads the cap's ceiling from `reserve.money.max` and its
+floor from `money_floor_micro`). The hold is the cap plus one `price.base`, the flat per-run charge
+(`reserve.money` on `query.maxTotalChargeUsd`). The bill counts the bare dataset array the run-sync
+call answers (`settle.count` on `response`) at the row price, plus the base; LinkedIn job search
+bills the base once per job title x location (`settle.plugin: apify.job_starts`). An empty answer
+bills the base (`bill.miss: charged`), and an Apify error envelope in a 2xx settles at the hold
+(`bill.error: charged`, no count). Within two rows of the hold the cap was reached and the hold is
+the bill (`settle.hold_within_units: 2`: a run stops when its next event would pass the cap and may
+have billed an event it never pushed). The cap must cover the base plus three rows, or an empty
+answer would bill in full.
 
 `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run that times
 out, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases although Apify may have

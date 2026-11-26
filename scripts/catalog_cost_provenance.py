@@ -53,8 +53,6 @@ PROVIDERS: dict[str, dict] = {
     "diffbot": {"source": "docs", "confidence": "documented",
                 "url": "https://www.diffbot.com/pricing/",
                 "units": {"*": "page", "per_result": "record"}},
-    "apify": {"source": "docs", "confidence": "documented",
-              "url": "https://apify.com/pricing", "units": {"*": "ad"}},
     "akta": {"source": "docs", "confidence": "documented",
              "url": "https://docs.akta.pro/getting-started/pricing", "units": {"*": "call"}},
     "apollo": {"source": "docs", "confidence": "documented",
@@ -192,8 +190,6 @@ PRICES: dict[str, dict] = {
     "coresignal.people.enrich": {"confidence": "inferred"},
     "diffbot.companies.enrich": {"confidence": "inferred"},          # 25, or 100 with refresh=true
     "diffbot.people.enrich": {"confidence": "inferred"},
-    "apify.meta-ads.library.search": {"confidence": "inferred"},     # "~$5.00 … $3.40-$5.80 by tier"
-    "apify.tiktok-ads.library.search": {"confidence": "inferred"},
     # No figure at all: the note itself calls the number unconfirmed, or the provider publishes
     # none. `value: null` + `confidence: unknown` is the honest pair, and
     # it is what refuses the endpoint a platform key.

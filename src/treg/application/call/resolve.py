@@ -963,13 +963,6 @@ def _marketplace_pricing(
             size = max(1, min(size, 100)) if type(size) is int else 100
             return size * credit, credit
         return estimate, credit
-    if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
-        # The platform guard requires maxTotalChargeUsd, which caps every event Apify bills; the
-        # flat call_fee adds the per-run charge (a start event inside the cap, or run compute billed
-        # to the caller outside it).
-        cap = _apify_charge_cap(query)
-        rows = unit * _PLATFORM_PAGE_DEFAULT if cap is None else _usd_to_micro(cap)
-        return _usd_to_micro(float(cost.get("call_fee") or 0)) + rows, unit
     if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
         # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
         # A partial non-empty page still costs the full block; settlement frees empty pages.
@@ -1784,8 +1777,9 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
 # that cap, and may add only the run options below, each once; a dataset-view option (limit, offset,
 # format, unwind) would make the returned rows disagree with the events billed.
 # ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
-# the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
-_APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
+# the cap; the row's `reserve.money.max` bounds that loss per call. Settling from the run itself
+# would lift it.
+#
 # A run must end, and its rows arrive, before anyone stops waiting: past Apify's 300-second synchronous
 # wait it answers 408, past treg's upstream read timeout (call_timeout_s) or the MCP client's 120 s
 # the call fails, and each releases the hold unbilled while the run keeps billing. 90 s leaves room
@@ -1819,29 +1813,13 @@ def _query_value(raw: str, expected: object) -> object:
     return raw
 
 
-def _apify_charge_cap(query) -> float | None:
-    """The single, plainly spelled maxTotalChargeUsd a platform Apify call carries, else None."""
-    values = [value for name, value in query.multi_items() if name == "maxTotalChargeUsd"] \
-        if query is not None else []
-    if len(values) != 1 or not _ASCII_DECIMAL.fullmatch(values[0]):
-        return None
-    cap = float(values[0])
-    return cap if 0 < cap <= _APIFY_PLATFORM_MAX_CHARGE_USD else None
-
-
 def _apify_cap_rule(ep: dict, query) -> tuple[float, int | None, int]:
-    """(the most a cap may be in USD, the cap in RAW micro-USD or None, the least it may be): a v2
-    row reads them from `reserve.money` and its price, a row in today's spelling from `cost`."""
-    if schema.is_v2(ep):
-        top = float(((ep.get("reserve") or {}).get("money") or {}).get("max") or 0)
-        request_data = settlement_basis.request_evidence(query.multi_items(), b"")
-        return (top, call_cost.money_micro(ep, request_data),
-                call_cost.money_floor_micro(ep, catalog_store.load()))
-    cap = _apify_charge_cap(query)
-    cost = ep.get("cost") or {}
-    floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
-        float(cost.get("value") or 0) / float(cost.get("per") or 1))
-    return _APIFY_PLATFORM_MAX_CHARGE_USD, None if cap is None else _usd_to_micro(cap), floor
+    """(the most a cap may be in USD, the cap in RAW micro-USD or None, the least it may be), read
+    from the row's `reserve.money` and its price."""
+    top = float(((ep.get("reserve") or {}).get("money") or {}).get("max") or 0)
+    request_data = settlement_basis.request_evidence(query.multi_items(), b"")
+    return (top, call_cost.money_micro(ep, request_data),
+            call_cost.money_floor_micro(ep, catalog_store.load()))
 
 
 def _enforce_apify_run_options(ep: dict, query) -> None:
@@ -2003,9 +1981,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "apify" and (
-            (ep.get("reserve") or {}).get("money") if schema.is_v2(ep)
-            else (ep.get("cost") or {}).get("type") == "per_result"):
+    if ep.get("provider") == "apify" and (ep.get("reserve") or {}).get("money"):
         _enforce_apify_run_options(ep, query)
 
     input_schema = ep.get("input") or {}
