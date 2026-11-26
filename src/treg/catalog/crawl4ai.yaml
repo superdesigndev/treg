@@ -138,7 +138,8 @@ endpoints:
       source_url: https://api.crawl4ai.com/v1/prices
       checked: '2026-11-12'
       confidence: verified
-      note: "treg's account price: 0.25 credits per page at the archived, plain, PDF and browser efforts, 3.70 at the hard effort; proxy prices (isp, residential) as before. Blocked and failed pages are free. The hold is one page at 0.25; the x-c4-cost header settles the actual charge, a hard page included."
+      display: {unit: success, variable: true}
+      note: "treg's account price: 0.25 credits per page at the archived, plain, PDF and browser efforts, 3.70 at the hard effort; proxy prices (isp, residential) as before. Blocked and failed pages are free. The quoted $0.00025 is the floor. The hold is one page at 0.25; the x-c4-cost header settles the actual charge, a hard page included."
     verified: '2026-10-05'
     added: '2026-10-06'
     docs_url: https://crawl4ai.com/llms.txt
