@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Find the Buyers in Your X Followers | treg</title>
-<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads a random sample of your followers, and Jev judges each one as a buyer. You get a card of your leads to share.">
+<meta name="description" content="Type your X handle. treg works out what you sell from your profile, reads a random sample of your followers, and Jev judges each one as a buyer. You get a card of who your followers are to share.">
 <link rel="canonical" href="{BASE}/follower-signal"/>
 <meta property="og:title" content="Find the buyers in your X followers | treg"/>
 <meta property="og:description" content="100 of your followers, picked at random and judged one by one as buyers of what you sell."/>
@@ -178,6 +178,9 @@
   .stat b { width: fit-content; margin: 0 auto; color: #e64fc4; background: linear-gradient(90deg, #f05bc8, #b277f0 50%, #22a7ff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
   .stat span { display: block; margin-top: 8px; font-size: 13px; color: var(--grey); font-weight: 400; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stats.two { grid-template-columns: repeat(2, 1fr); margin-bottom: 12px; }
+  .stats.two + .stats { margin-top: 0; }
+  .stats.two b { font-size: 72px; }
   .roles { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 18px; }
   .roles span { font: 500 13px var(--sans); padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; }
   .resbar { display: flex; justify-content: center; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
@@ -334,7 +337,7 @@
       </div>
     </div>
     <div class="bar1 row2" style="justify-content:center">
-      <button class="pill dark" id="run">Get your lead analysis card</button>
+      <button class="pill dark" id="run">Get your follower analysis card</button>
     </div>
     <div class="err" id="formErr"></div>
     <p class="fnote">~$0.08 estimated for 100 followers picked at random · billed per call to your treg balance</p>
@@ -373,44 +376,24 @@
   <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; z-index: 1">
     <div style="display: flex; align-items: center; gap: 22px">
       <img id="cOwner" src="" alt="" style="width: 112px; height: 112px; border-radius: 999px; object-fit: cover">
-      <div id="cHandle" style="font-size: 40px; font-weight: 700; letter-spacing: -0.5px"></div>
+      <div>
+        <div id="cHandle" style="font-size: 40px; font-weight: 700; letter-spacing: -0.5px"></div>
+        <div style="margin-top: 6px; font-size: 26px; font-weight: 500; color: #5E5E5E">Who my followers are</div>
+      </div>
     </div>
 
-    <div style="flex: 1; display: flex; align-items: center">
-    <div style="position: relative; top: -56px; width: 100%; height: 240px; display: flex; align-items: baseline; justify-content: space-between; gap: 32px">
-      <div style="display: flex; align-items: center; margin-left: 24px">
-        <div style="position: relative">
-          <div id="rateNum" style="text-align: left; font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 160px; line-height: 0.85; letter-spacing: 0"><span data-f="rate"></span></div>
-          <div style="position: absolute; top: 100%; left: 0; margin-top: 14px; white-space: nowrap">
-          <div style="display: flex; align-items: center; gap: 10px">
-            <div style="width: 36px; height: 36px; border-radius: 999px; background: #F7C6DA; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.5" fill="#111111"></circle></svg></div>
-            <div style="font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: -0.5px; color: #111111">lead rate</div>
-          </div>
-          <div id="cTags" style="margin-top: 16px; white-space: nowrap; display: flex; flex-direction: column; gap: 8px"></div>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; margin-left: 18px; margin-right: -6px" aria-hidden="true"><div style="width: 10px; height: 10px; border-radius: 999px; background: #111111"></div><div style="width: 60px; height: 3px; background: #111111"></div></div>
-        <div style="position: relative; flex-shrink: 0">
-          <svg width="240" height="240" viewBox="0 0 64 64" role="img" id="pie" aria-label="" style="display: block; overflow: visible; filter: drop-shadow(0 18px 32px rgba(40, 20, 80, 0.18)) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.08))">
-            <circle cx="32" cy="32" r="31" fill="#FFFFFF"></circle>
-            <circle cx="32" cy="32" r="15.5" fill="none" stroke="#111111" stroke-width="31" id="pieSlice"></circle>
-          </svg>
-        </div>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 460px; margin-right: 24px">
-        <div id="revNum" style="text-align: left; font-family: 'Geist Pixel', monospace; font-weight: 400; font-size: 120px; line-height: 0.85; letter-spacing: 0"><span data-f="revenue"></span></div>
-        <div style="display: flex; align-items: flex-start; gap: 10px">
-          <div style="width: 36px; height: 36px; border-radius: 999px; background: #A9CCFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 5px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.2-4.5 3.2c0 4.3 9 2.3 9 6.6 0 2-2 3.2-4.5 3.2s-4.5-1.1-4.5-3"></path></svg></div>
-          <div style="font-size: 44px; font-weight: 600; line-height: 1.05; letter-spacing: -0.5px; text-align: left; color: #111111">potential<br>revenue / year</div>
-        </div>
-        <div style="font-size: 15px; font-weight: 500; line-height: 1.4; text-align: left; color: #5E5E5E"><span data-f="math"></span></div>
-      </div>
-    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center">
+      <div id="cBar" style="height: 20px; border-radius: 999px; overflow: hidden; display: flex; gap: 3px"></div>
+      <div id="cRoles" style="margin-top: 40px; display: grid; gap: 24px"></div>
     </div>
   </div>
 </div>
 </div></div>
   <div class="resbar"><button class="pill dark" id="shareX">Share on X</button><button class="pill" id="copyPng">Copy card</button><span class="note" id="cardNote"></span></div>
+  <div class="stats two">
+    <div class="stat"><b id="sRate">0%</b><span>lead rate</span></div>
+    <div class="stat"><b id="sRev">$0</b><span>potential revenue / year</span></div>
+  </div>
   <div class="stats">
     <div class="stat"><b id="sLeads">0</b><span>leads</span></div>
     <div class="stat"><b id="sDm">0</b><span>decision makers</span></div>
@@ -905,10 +888,10 @@
     $('resNote').textContent = all.length + ' followers read in ' + Math.round(ms / 60000) + ' min. Followers with no bio count as misses.';
     var b = BANDS[band.key], scanned = all.length, total = Math.max((ownerInfo || {}).followers || followerTotal || 0, scanned);
     var rate = scanned ? leads.length / scanned : 0, revenue = Math.round(total * rate * 0.02 * b.usd);
-    $('resNote').textContent += ' Revenue on the card: ' + total.toLocaleString('en-US') + ' followers × ' + pct(rate) + ' lead rate × 2% close × USD ' + b.usd.toLocaleString('en-US') + ' a year (' + b.label +
+    $('sRate').textContent = pct(rate); $('sRev').textContent = money(revenue);
+    $('resNote').textContent += ' Potential revenue: ' + total.toLocaleString('en-US') + ' followers × ' + pct(rate) + ' lead rate × 2% close × USD ' + b.usd.toLocaleString('en-US') + ' a year (' + b.label +
       (band.read ? ', as Jev read your profile' : ', the default: Jev could not read your profile') + '). What your followers could bring in, not a forecast.';
-    drawCard({ handle: cleanHandle($('handle').value), image: (ownerInfo || {}).image || '', leads: leads.length, scanned: scanned,
-      total: total, rate: rate, revenue: revenue, usd: b.usd, tags: followerTags(judgedAll) });
+    drawCard({ handle: cleanHandle($('handle').value), image: (ownerInfo || {}).image || '', roles: followerRoles(judgedAll) });
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -928,13 +911,15 @@
     if (n >= 1e4) return '$' + Math.round(n / 1e3) + 'K';
     return '$' + n.toLocaleString('en-US');
   }
-  /* the card's follower tags: the top roles and work topics among the followers Jev judged */
-  function followerTags(rows) {
-    var top = function (key, label) {
-      var n = {}; rows.forEach(function (r) { if (r[key] && r[key] !== 'other') n[r[key]] = (n[r[key]] || 0) + 1; });
-      return Object.keys(n).sort(function (a, b) { return n[b] - n[a]; }).slice(0, 3).map(function (k) { return { text: label[k] || k, share: n[k] / rows.length, kind: key }; });
-    };
-    return top('role', ROLE_LABEL).concat(top('topic', TOPIC_LABEL));
+  /* the card's roles: the four biggest among the followers Jev judged, each with the two work topics that role cares about most */
+  function followerRoles(rows) {
+    var count = function (list, key) { var n = {}; list.forEach(function (r) { n[r[key]] = (n[r[key]] || 0) + 1; }); return n; };
+    var top = function (n, max) { var named = Object.keys(n).filter(function (k) { return k !== 'other'; }); return named.sort(function (a, b) { return n[b] - n[a]; }).slice(0, max); };
+    var n = count(rows, 'role');
+    return top(n, 4).map(function (k) {
+      var mine = rows.filter(function (r) { return r.role === k; });
+      return { text: ROLE_LABEL[k] || k, share: n[k] / rows.length, topics: top(count(mine, 'topic'), 2).map(function (t) { return TOPIC_LABEL[t] || t; }) };
+    });
   }
   function drawCard(c) {
     cardData = c; $('cardNote').textContent = '';
@@ -948,30 +933,17 @@
     $('cOwner').src = c.photo || ''; $('cOwner').alt = c.photo ? '@' + c.handle + "'s X profile photo" : '';
     $('cOwner').style.visibility = c.photo ? '' : 'hidden';
     $('cHandle').textContent = '@' + c.handle;
-    var node = $('cardNode'), set = function (f, v) { node.querySelectorAll('[data-f="' + f + '"]').forEach(function (el) { el.textContent = v; }); };
-    set('rate', pct(c.rate));
-    var chip = function (t) {
-      return '<span style="display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; border-radius: 999px; background: ' + (t.kind === 'role' ? '#FFFFFF' : 'rgba(255,255,255,0.55)') +
-        '; border: 1px solid rgba(0,0,0,0.08); font-size: 17px; font-weight: 600; color: #3F3F3F">' + esc(t.text) + '<span style="font-weight: 500; color: #8A8A8A">' + Math.round(t.share * 100) + '%</span></span>';
-    };
-    $('cTags').innerHTML = ['role', 'topic'].map(function (k) {
-      var row = (c.tags || []).filter(function (t) { return t.kind === k; });
-      return row.length ? '<div style="display: flex; flex-wrap: wrap; gap: 8px">' + row.map(chip).join('') + '</div>' : '';
+    var COLORS = ['#F7A8CB', '#A9CCFF', '#C9B4F5', '#A8E0C4'], rest = 1;
+    $('cBar').innerHTML = c.roles.map(function (r, i) { rest -= r.share; return '<div style="flex: ' + r.share + ' 0 0; background: ' + COLORS[i] + '"></div>'; }).join('') +
+      (rest > 0.001 ? '<div style="flex: ' + rest + ' 0 0; background: rgba(0,0,0,0.1)"></div>' : '');
+    $('cRoles').style.gridTemplateColumns = 'repeat(' + Math.max(c.roles.length, 1) + ', minmax(0, 1fr))';
+    $('cRoles').innerHTML = c.roles.map(function (r, i) {
+      return '<div><div style="font-family: \'Geist Pixel\', monospace; font-size: 112px; line-height: 0.85; text-align: left">' + Math.round(r.share * 100) + '%</div>' +
+        '<div style="margin-top: 20px; display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 600; letter-spacing: -0.3px; white-space: nowrap"><span style="width: 14px; height: 14px; border-radius: 999px; flex-shrink: 0; background: ' + COLORS[i] + '"></span>' + esc(r.text) + '</div>' +
+        '<div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px">' + r.topics.map(function (t) {
+          return '<span style="padding: 6px 13px; border-radius: 999px; background: #FFFFFF; border: 1px solid rgba(0,0,0,0.08); font-size: 19px; font-weight: 600; color: #3F3F3F">' + esc(t) + '</span>';
+        }).join('') + '</div></div>';
     }).join('');
-    set('revenue', money(c.revenue));
-    set('math', c.leads + ' of ' + c.scanned.toLocaleString('en-US') + ' followers scanned are leads · ' + c.total.toLocaleString('en-US') +
-      ' followers × ' + pct(c.rate) + ' × 2% close × $' + c.usd.toLocaleString('en-US') + ' a year');
-    var rl = pct(c.rate).length;
-    $('rateNum').style.fontSize = (rl <= 2 ? 160 : rl === 3 ? 136 : 112) + 'px';
-    /* the tags end where the pie ends: number, pointer (82px), pie (240px) */
-    $('cTags').style.width = ($('rateNum').offsetWidth + 322) + 'px';
-    var r = 15.5, circ = 2 * Math.PI * r, share = Math.min(c.rate * 100, 100), slice = $('pieSlice');
-    slice.setAttribute('stroke-dasharray', (share * circ / 100).toFixed(2) + ' ' + circ.toFixed(2));
-    slice.setAttribute('transform', 'rotate(' + (180 - share * 1.8).toFixed(1) + ' 32 32)');
-    $('pie').setAttribute('aria-label', c.leads + ' of ' + c.scanned + ' followers scanned are leads');
-    var rev = $('revNum'), span = rev.firstElementChild, size = 120;
-    rev.style.fontSize = size + 'px';
-    while (size > 72 && span.offsetLeft + span.offsetWidth > 1096 - 24) { size -= 4; rev.style.fontSize = size + 'px'; }
   }
   /* Google Fonts subset to the card's own characters, inlined so the PNG draws the same type */
   function cardFontCss() {
@@ -1005,9 +977,7 @@
     return navigator.clipboard.write([new ClipboardItem({ 'image/png': cardPng() })]);
   }
   function shareText() {
-    var dm = leads.filter(function (r) { return r.tier === 'decision maker'; }).length;
-    return 'I used treg to check which of my X followers could be customers. This is the card I got: ' +
-      leads.length + ' leads, ' + dm + ' decision makers.\n\ntreg.to/follower-signal';
+    return 'I used treg to see who my X followers are. This is the card I got.\n\ntreg.to/follower-signal';
   }
   $('shareX').onclick = function () {
     var b = this;
