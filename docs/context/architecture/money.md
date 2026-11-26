@@ -693,7 +693,12 @@ past the bound do not make every new team scan them.
   path. Meanwhile the team's calls keep taking from the counter; a call that needs a refill
   waits for the lease as for any other holder, and goes to the exact path once its own wait is
   over. That is the price: a starved team's own traffic yields to its fold for at most one
-  turn a pass, which no other team pays. A pause of new allowance takes was not chosen: the
+  turn a pass. A pass is one loop over its share, so a turn would also hold up every team listed
+  after it: a starved team is tried once in its place, as any other, and one still busy is set
+  aside to take its turn once every other team of the pass is folded, sharing one `_STARVED_TURN_S` a pass, the stalest first (at most
+  `_STARVED_TEAMS_MAX` set aside); once it is used up the rest are tried once, as any team, and
+  the next pass, which follows at once, gives them a new turn. The other teams of the share
+  wait at most that one turn longer for their next pass. A pause of new allowance takes was not chosen: the
   exact path those calls would take writes the same team rows twice per call, and a fold
   inside each refill cannot keep up, as a refill moves a chunk worth many calls. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own

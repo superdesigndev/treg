@@ -2929,7 +2929,7 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
     folded: list[int] = []
     real = allowance_sweep._fold_team
 
-    async def first_only(session_maker, team, oldest=None):
+    async def first_only(session_maker, team, oldest=None, *args, **kwargs):
         folded.append(team)
         return await real(session_maker, team)
 
@@ -3280,7 +3280,9 @@ async def test_a_starved_turn_that_is_over_starts_no_batch_and_no_wait_outlasts_
     waits, batches = [], []
 
     @contextlib.asynccontextmanager
-    async def admit(org_ids, *, max_wait_s, **named):
+    async def admit(org_ids, *, max_wait_s, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
         waits.append(max_wait_s)
         yield
 
@@ -3319,6 +3321,41 @@ async def test_a_late_release_of_one_starved_batchs_lease_cannot_free_the_next(
     await allowance_sweep.fold_queued_once(session_maker)
     assert len(tokens) == 2 and tokens[0] != tokens[1]
     assert kept == [tokens[1]], "the late release deleted nothing"
+
+
+async def test_starved_turns_come_after_the_rest_of_the_shard_from_one_budget_a_pass(
+        org_id, store, monkeypatch, fold_skip_lines):
+    """The pass is one loop, so a starved team's turn would hold up every team listed after it,
+    and each starved team would add a turn of its own. Two starved teams whose leases never free
+    and one fresh team: the fresh one is folded at once, and the two share one turn."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    fresh = org_id + 2
+    async with session_maker() as db:
+        for team in (org_id + 1, fresh):
+            db.add(Org(id=team, name=f"team {team}", slug=uuid4().hex))
+        await db.flush()
+        for team in (org_id + 1, fresh):
+            await ledger.grant(db, team, amount_micro=GRANT)
+        await db.commit()
+    for team, waited_s in ((org_id, 900), (org_id + 1, 600), (fresh, 5)):
+        await _queue_charge(team, f"queued-{team}", waited_s)
+    for team in (org_id, org_id + 1):
+        store.leases[runtime.money_key(team)] = "a session that never ends"
+    fold, folded_at = allowance.fold_charges_in_transaction, {}
+
+    async def timed(db, team, **kwargs):
+        folded_at[team] = time.monotonic()
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", timed)
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    took_s = time.monotonic() - began
+    assert folded_at[fresh] - began < 0.1, "not behind the starved teams' turn"
+    assert 0.2 <= took_s < 0.35, "one turn for both starved teams, not one each"
+    allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    [line] = fold_skip_lines()
+    assert line["reason"] == "lease_held" and line["orgs"] == 2
 
 
 async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(

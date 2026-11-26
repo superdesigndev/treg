@@ -60,6 +60,9 @@ _ADMISSION_WAIT_S = 0.25
 # team's refills and other money sessions wait for it instead (`_fold_claim`).
 _STARVED_AFTER_S = 30
 _STARVED_TURN_S = 10.0
+# The pass is one loop over the shard, so a turn delays every team after it. Starved teams take
+# theirs after every other team, from one budget per pass, then are tried once as any other.
+_STARVED_TEAMS_MAX = 100
 _LEASE_POLL_S = 0.005
 _LEASE_MS = 5000
 _PASS_KEY = "treg:money-allowance-pass:v1"
@@ -383,44 +386,72 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     back for the rest. The teams are read `_TEAMS_LISTED` at a time, and a pass reads on while it
     has places left, so a full list of teams it cannot have does not end it either. Stops between
     teams once `keep_going` says so. Returns how many charges
-    were folded."""
+    were folded.
+
+    A starved team (`_starved`) is tried once in its place, as any other; one that could not be
+    folded then is set aside and given its turn after every other team of the pass, so the
+    turn delays no other team of the shard. The starved teams share one turn of
+    `_STARVED_TURN_S` per pass, the stalest first; once it is used up, the rest are tried once
+    as any other team, and the next pass gives them a new turn."""
     total, worked, after, queued_before = 0, 0, None, utcnow_naive()
-    while True:
-        async with session_maker() as db:
-            page = await allowance.queued_teams(
-                db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
-        for org_id, oldest in page:
-            if worked >= _TEAMS_PER_PASS or not keep_going():
-                _log_due_skips(time.monotonic())
+    starved: list = []
+    try:
+        while True:
+            async with session_maker() as db:
+                page = await allowance.queued_teams(
+                    db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
+            for org_id, oldest in page:
+                if worked >= _TEAMS_PER_PASS:
+                    break
+                if not keep_going():
+                    return total
+                defer = _starved(oldest) and len(starved) < _STARVED_TEAMS_MAX
+                folded = await _fold_team(session_maker, org_id, oldest, note=not defer)
+                if folded is not None:
+                    worked += 1
+                    total += folded
+                elif defer:
+                    starved.append((org_id, oldest))
+            else:
+                if len(page) == _TEAMS_LISTED:
+                    after = page[-1]
+                    continue
+            break
+        loop = asyncio.get_running_loop()
+        turn_ends = loop.time() + _STARVED_TURN_S
+        for org_id, oldest in starved:
+            if not keep_going():
                 return total
-            folded = await _fold_team(session_maker, org_id, oldest)
+            until = turn_ends if loop.time() < turn_ends else None
+            folded = await _fold_team(session_maker, org_id, oldest, until)
             if folded is not None:
-                worked += 1
                 total += folded
-        if len(page) < _TEAMS_LISTED:
-            _log_due_skips(time.monotonic())
-            return total
-        after = page[-1]
+        return total
+    finally:
+        _log_due_skips(time.monotonic())
 
 
-async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
+def _starved(oldest) -> bool:
+    waited_s = _waited_s(oldest)
+    return waited_s is not None and waited_s >= _STARVED_AFTER_S
+
+
+async def _fold_team(session_maker, org_id: int, oldest=None,
+                     until: float | None = None, *, note: bool = True) -> int | None:
     """A few batches of one team's queue; None when not one batch was committed. Stops when
     another process has the team, the team's money sessions are busy (a request in this process
     holding its lock among them), or its rows stay locked past `LOCK_WAIT_MS`, and the next
     pass comes back: the teams behind it are not kept waiting. Every such stop is counted
-    (`_note_skip`) with when the team's `oldest` queued charge was written. One team failing
+    (`_note_skip`, unless `note` is off for a try the pass will follow with a turn) with when
+    the team's `oldest` queued charge was written. One team failing
     does not stop the pass.
 
-    A team whose oldest charge has waited `_STARVED_AFTER_S` gets a turn of `_STARVED_TURN_S`
-    instead: the fold claims the team's lease for the turn (`_fold_claim`), waits for the
+    With `until` (a starved team's turn, on the loop's clock, `fold_queued_once`) the fold claims the team's lease for the turn (`_fold_claim`), waits for the
     lease, the lock and the team's admission (with priority over the team's other money
     sessions, `admit(priority=True)`) until the turn ends, and folds its batches; no batch
     starts once the turn is over, and no wait outlasts it. A busy team's
     own requests can keep it from the fold for one pass, not for every pass."""
     loop = asyncio.get_running_loop()
-    waited_s = _waited_s(oldest)
-    until = (loop.time() + _STARVED_TURN_S
-             if waited_s is not None and waited_s >= _STARVED_AFTER_S else None)
     total, committed, skipped = 0, False, None
     try:
         async with _fold_claim(org_id, until) as (owner, until):
@@ -461,11 +492,11 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
         else:
             skipped = "failed"
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
-    if skipped is not None:
+    if skipped is not None and note:
         _note_skip("fold", org_id, skipped, oldest)
     if until is not None:
         log.info("allowance_fold_starved org_id=%s waited_s=%s folded=%s skipped=%s",
-                 org_id, waited_s, total, skipped)
+                 org_id, _waited_s(oldest), total, skipped)
     return total if committed else None
 
 
