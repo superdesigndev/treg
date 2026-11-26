@@ -2262,7 +2262,7 @@ async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
         **whose,
         "balance_usd": round((body.get("balance_micro") or 0) / 1_000_000, 6),
         "balance_micro": body.get("balance_micro"),
-        "holds_micro": body.get("holds_micro"),
+        "holds_micro": sum(int(h.get("amount_micro") or 0) for h in body.get("holds") or []),
     }
 
 
