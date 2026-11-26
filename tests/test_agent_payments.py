@@ -911,6 +911,35 @@ async def test_a_keyless_body_is_capped(anon: AsyncClient, payments_on):
     assert r.status_code == 401
 
 
+async def test_a_keyless_caller_gone_before_its_body_is_read_is_a_499(payments_on, monkeypatch):
+    post_ep = next(ep["id"] for ep in catalog_store.load().by_id.values()
+                   if (ep.get("method") or "GET") == "POST" and ep["provider"] == "tikhub")
+    opened = []
+    monkeypatch.setattr(agent_payments, "open_call", lambda **kw: opened.append(kw))
+    sent = []
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+
+    path = f"/call/{post_ep}"
+    await app({
+        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": path, "raw_path": path.encode(),
+        "query_string": b"", "root_path": "",
+        "headers": [(b"host", b"registry"), (b"content-type", b"application/json"),
+                    (b"content-length", b"32")],
+        "client": ("127.0.0.1", 50000), "server": ("registry", 80),
+    }, receive, send)
+
+    assert sent[0]["type"] == "http.response.start" and sent[0]["status"] == 499
+    assert opened == []
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).first() is None
+
+
 # ---- the reconciler: payments whose settlement went unanswered -----------------------------------
 class FakeEvm(Chain):
     """A chain the reconciler reads: receipts by hash, AuthorizationUsed logs, the head's time."""
