@@ -1423,7 +1423,6 @@ async def test_a_row_held_by_another_transaction_is_skipped_not_waited_for(
     """On PostgreSQL the flush gives a held row its lock timeout, then moves on: the other
     endpoints land while the holder still has the row, and the held delta lands after it lets go."""
     import asyncio
-    import time
 
     from sqlalchemy import text
 
@@ -1436,16 +1435,20 @@ async def test_a_row_held_by_another_transaction_is_skipped_not_waited_for(
     for ep in ("stats.a", "stats.b", "stats.c"):
         _pending_stat(ep)
 
+    got = None
     async with session_maker() as holder:
         await holder.execute(text(
             "SELECT 1 FROM archiveendpointstat WHERE endpoint_id = 'stats.b' FOR UPDATE"))
-        started = time.monotonic()
-        async with asyncio.timeout(2):                  # without the lock timeout this would hang
-            await archive.flush_stats()
-        took = time.monotonic() - started
-        got = await _stat_snapshots()
-        await holder.rollback()
-    assert took < 2.0
+        flushing = asyncio.create_task(archive.flush_stats())
+        try:
+            # Without the lock timeout the flush waits for the holder, which waits for this.
+            done, _ = await asyncio.wait({flushing}, timeout=2)
+            if done:
+                got = await _stat_snapshots()
+        finally:
+            await holder.rollback()
+            await asyncio.gather(flushing, return_exceptions=True)
+    assert done, "the flush waited for the held row instead of moving on"
     assert (got["stats.a"], got["stats.b"], got["stats.c"]) == ((2, 20), (1, 10), (2, 20))
     assert set(archive._stat_deltas) == {"stats.b"}
     await archive.flush_stats()
