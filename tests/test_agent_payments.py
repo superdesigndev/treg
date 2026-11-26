@@ -434,7 +434,8 @@ async def test_a_payment_drawn_on_credit_its_call_cannot_reserve_settles_and_the
         anon: AsyncClient, payments_on, facilitator, monkeypatch):
     """The wallet's credit looked enough, so the payment drew it, and the call's own reservation
     found it short: another call holds it. The same payment settles then, once, and the call,
-    which reached no provider, runs paid. Nothing settles while the credit covers a call."""
+    which reached no provider, runs paid, its Idempotency-Key claimed afresh. Nothing settles
+    while the credit covers a call."""
     calls: list = []
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
     account = Account.create()
@@ -457,7 +458,8 @@ async def test_a_payment_drawn_on_credit_its_call_cannot_reserve_settles_and_the
     monkeypatch.setattr(agent_payments, "_may_draw", looks_enough)
     challenge = await anon.get(f"/call/{EP}?aweme_id=9")
     credential, _ = _x402_credential(challenge, account)
-    r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential})
+    r = await anon.get(f"/call/{EP}?aweme_id=9", headers={"PAYMENT-SIGNATURE": credential,
+                                                         "Idempotency-Key": "paid-after-refusal"})
     assert r.status_code == 200, r.text
     assert r.headers["X-Treg-Payment"] == "paid"
     assert facilitator.settles == 2 and len(calls) == 3

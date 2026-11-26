@@ -386,6 +386,10 @@ async def _paid_call(rest: str, request: Request) -> Response:
             if settled is None:
                 raise
             paid = settled
+            # The refused attempt's Idempotency-Key claim is released, as its answer would have
+            # released it, so the paid attempt claims the key afresh.
+            await _release_idempotent_claim(request)
+            request.state.call_failure = None
             response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                               finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
