@@ -1795,7 +1795,10 @@ reserve of the team into `money_admission_timeout`. `ix_tagspend_org_dim_val_cre
 carries `amount_micro` and `settled`, so the `TagSpend` sums of both reads can be index-only
 scans. That covers only the `TagSpend` half of the cap read (its queued `CallCharge` sum is a
 separate aggregate), and it skips only heap pages vacuum has marked all-visible, so recently
-written rows may still be fetched. It is the table's only index on that key (0135 dropped the
+written rows may still be fetched. Every tagged call inserts a row and its settle rewrites it, so
+0136 lowers the table's `autovacuum_vacuum_scale_factor` and
+`autovacuum_vacuum_insert_scale_factor` from 0.2 to 0.01 and its `autovacuum_analyze_scale_factor`
+from 0.1 to 0.02; PostgreSQL adds each threshold's base row count to these fractions. It is the table's only index on that key (0135 dropped the
 older `ix_tagspend_org_dim_val_created`, the same key without the included columns): every
 `TagSpend` read filters on a leading part of `(org_id, dim, val, created_at)`, the rest go by
 `hold_id`. The settle update rewrites an included column, so it cannot be a HOT update; it rarely
