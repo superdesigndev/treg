@@ -188,6 +188,29 @@ def log_connection_budget() -> None:
         if pooled else "")
 
 
+def _abort_socket_after_close(dialect) -> None:
+    """Close the socket of every connection the pool closes or terminates, whatever interrupted it.
+
+    asyncpg marks its protocol closing before a graceful close waits on anything, and its abort
+    returns early once that mark is set. A cancellation that lands during the graceful close (a
+    request cancelled again while its checkout pre-ping fails, for example) therefore leaves the
+    socket open with no owner: the server keeps the session, idle in transaction after the
+    pre-ping's `BEGIN; ;`, until the process exits."""
+    for name in ("do_terminate", "do_close"):
+        close = getattr(dialect, name)
+
+        def closed_for_good(dbapi_connection, close=close) -> None:
+            try:
+                close(dbapi_connection)
+            finally:
+                driver = getattr(dbapi_connection, "driver_connection", None)
+                transport = getattr(driver, "_transport", None)
+                if transport is not None and not transport.is_closing():
+                    transport.abort()
+
+        setattr(dialect, name, closed_for_good)
+
+
 def _new_engine(name: str, url: str | None = None, *, pooled: bool = False):
     """One pooled engine per `POOL_SPECS` entry.
 
@@ -210,6 +233,8 @@ def _new_engine(name: str, url: str | None = None, *, pooled: bool = False):
         # Use a replica/read-only database role as the access boundary, not this session default.
         kwargs["connect_args"] = {"server_settings": {"default_transaction_read_only": "on"}}
     engine = create_async_engine(db_url, **kwargs)
+    if engine.dialect.driver == "asyncpg":
+        _abort_socket_after_close(engine.dialect)
     money_trace.install_engine(engine.sync_engine, pool_name=name, pooled=pooled)
     if name == "read" and is_sqlite:
         # Keep this on the dedicated reader even when both URLs name the same SQLite file.
