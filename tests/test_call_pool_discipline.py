@@ -363,6 +363,36 @@ async def test_auth_releases_a_single_slot_pool_before_an_application_session(
         await limited_engine.dispose()
 
 
+async def test_a_reserve_the_money_statement_timeout_cancelled_answers_a_typed_503(
+    clients, platform_on, monkeypatch,
+):
+    """A reserve statement cancelled by the money session's statement_timeout (57014) rolls the
+    reservation back before the provider is called: the caller gets a retryable 503 of its own,
+    not a bare 500, and nothing is held or charged."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
+
+    async def cancelled(db, *args, **kwargs):
+        if db.bind.dialect.name == 'postgresql':
+            await db.execute(text("DO $$ BEGIN RAISE EXCEPTION USING ERRCODE = '57014', "
+                                  "MESSAGE = 'canceling statement due to statement timeout'; END $$"))
+        error = AsyncAdapt_asyncpg_dbapi.Error('canceling statement due to statement timeout')
+        error.sqlstate = '57014'
+        raise DBAPIError(None, None, error)
+
+    monkeypatch.setattr(ledger, 'reserve_in_transaction', cancelled)
+    org_id = (await clients.get('/orgs')).json()[0]['org_id']
+    before = (await clients.get(f'/orgs/{org_id}/balance')).json()['balance_micro']
+    response = await clients.get(f'/call/{EP}?aweme_id=7')
+    assert response.status_code == 503, response.text
+    assert response.json()['detail']['error'] == 'money_statement_timeout'
+    assert int(response.headers['Retry-After']) >= 1
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold).where(Hold.org_id == org_id))).scalars().all() == []
+        assert await ledger.balance_of(db, org_id) == before
+
+
 @pytest.mark.parametrize('sqlstate,failures,attempts', [('40P01', 1, 2), ('40P01', 2, 2),
                                                      ('57014', 1, 2), ('57014', 2, 2),
                                                      ('P0001', 1, 1)])
