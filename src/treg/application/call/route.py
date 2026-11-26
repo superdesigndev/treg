@@ -255,7 +255,8 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_vide
                               "member_spend_cap_reached", "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
-_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable",
+_TEAM_BUSY = frozenset({"money_admission_timeout", "money_statement_timeout",
+                        "platform_cap_unavailable", "tag_budget_unavailable",
                         "member_spend_cap_unavailable"})
 
 
