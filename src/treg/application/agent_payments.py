@@ -35,7 +35,7 @@ from ..domain.governance.teams import make_payer_team
 from ..domain.identity.access import Caller
 from ..infra import stripe as stripe_api
 from ..infra.agent_payments import (
-    Offer, PaymentRail, PaymentRejected, Settlement, Unconfirmed, Verified)
+    Offer, PaymentRail, PaymentRejected, Settlement, Unconfirmed, Verified, micro_to_decimal)
 from ..infra.agent_payments.tempo import CONSUMED_HEADERS as MPP_HEADERS
 from ..infra.agent_payments.x402 import CONSUMED_HEADERS as X402_HEADERS
 from ..infra.db import session_maker
@@ -219,10 +219,13 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     amount = max(with_fee(charged), settings.agent_payments_min_payment_micro)
     if settings.agent_payments_settlement == "stripe":
         amount = -(-amount // CENT_MICRO) * CENT_MICRO  # Stripe records whole cents
+    description = f"{ep['id']} on treg"
+    if charged > 0:
+        description += f", at most ${micro_to_decimal(charged)}"
     offer = Offer(
         amount_micro=amount, method=method.upper(), path=path, query=query,
         resource_url=f"{base}{path}" + (f"?{query}" if query else ""),
-        description=f"{ep['id']} on treg", host=_hostname(host))
+        description=description, host=_hostname(host), quote_micro=max(charged, 0))
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
                      proof_only=proof_only, is_async=bool(ep.get("async")))
 

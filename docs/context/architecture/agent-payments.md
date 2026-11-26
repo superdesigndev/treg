@@ -53,7 +53,7 @@ yet anyone. Then `_paid_call` hands the request to `agent_payments.open_call`, w
 the call relays; the router only maps its three refusals to 401, 402 and 503. The answer is a
 401 (`NotServed`) unless `rest` is a catalog id that treg's own key serves to a caller holding no
 credential: `application.call.resolve.wallet_refusal` (pure, no session, the static part) and
-`platform_quote` (the estimate for this query) refuse routed `treg.*` ids, endpoints with a
+`platform_quote` (the hold for this query) refuse routed `treg.*` ids, endpoints with a
 `status`, endpoints with OAuth authorization methods, paused providers, endpoints whose `settle`
 reads a usage meter (the real cost can exceed the hold, and a wallet has no account to owe the
 rest), anonymous and free
@@ -131,6 +131,7 @@ the estimate, or the row's declared worst case when that is higher (`resolve.hel
 computation `_platform_reserve` holds). Quoting the estimate alone would let credit that covers the
 quote fall short of the hold, and the refused hold would ask the wallet to pay again.
 One payment carries `max(with_fee(quote), agent_payments_min_payment_micro)` (default $0.05).
+
 **At most the quote.** The router marks the call it runs (`application.call.wallet.current`:
 the quote, and whether this request paid or draws credit), and the call carries the quote as
 `MarketplaceCall.charge_cap_micro`. The direct hold is the quote. A settlement that reads a higher
@@ -252,7 +253,7 @@ smallest payment when that is higher), that only the real price is charged and t
 the wallet's credit (not paid back as money), the fee when it is not 0, and, with a proof
 challenge, that a wallet with credit signs it and pays nothing now. A first challenge has
 `reason: payment_required`; a refusal names `reason`: `credit_insufficient` (a proof whose credit
-does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query or amount),
+does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query, amount or quote),
 `payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
 `valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`, `unknown_wallet` and
@@ -279,8 +280,17 @@ headers (`X-Treg-Payment` among them) and no receipt.
   most once.
 - `MppTempoRail` passes the request to pympp (`http_request=`), which requires the
   HMAC-authenticated challenge's route scope (method, route, path, query) to match it; `X402Rail.verify` compares the accepted terms and the required `resource.url` (the full request URL) with the offer.
-- Neither rail binds the request body. Every call priced under the floor asks the same amount, so a
-  copied, unused payment can pay once for another body of the same route and query, as its wallet.
+- A payment is bound to the quote it was signed at (`Offer.quote_micro`), not only to its amount:
+  every quote under the floor asks the same amount, so a price change between the 402 and the
+  payment (a markup change) would otherwise let the old signature pay at the new price. An MPP
+  payment challenge carries the quote in its HMAC-bound opaque data (`meta`), checked at
+  verification and settlement; an x402 offer's `resource.description` names it (`<id> on treg, at
+  most $<quote>`), and `verify` requires the echoed description. Either refusal is
+  `invalid_challenge` with a fresh challenge at the new price; nothing was settled. The zero-amount
+  proofs and SIWX name no price: they draw credit at the call's quote when it runs.
+- Neither rail binds the request body. Every call with the same quote asks the same amount, so a
+  copied, unused payment can pay once for another body of the same route, query and quote, as its
+  wallet.
 
 ## The reconciler (`treg-worker agentpay reconcile`)
 

@@ -98,12 +98,14 @@ class MppTempoRail:
             headers += await self._challenge(offer, "0", f"prove this wallet for {offer.description}")
         if pay:
             headers += await self._challenge(offer, micro_to_decimal(offer.amount_micro),
-                                             offer.description)
+                                             offer.description, meta=_price(offer))
         return headers
 
-    async def _challenge(self, offer: Offer, amount: str, description: str) -> list[tuple[str, str]]:
+    async def _challenge(self, offer: Offer, amount: str, description: str,
+                         meta: dict[str, str] | None = None) -> list[tuple[str, str]]:
         handler = self._mpp["tempo/charge"](
-            amount=amount, description=description, expires_in=self._challenge_ttl)
+            amount=amount, description=description, expires_in=self._challenge_ttl,
+            **({"meta": meta} if meta else {}))
         result = await handler(self._request(offer))
         return [("WWW-Authenticate", value)
                 for value in result.challenge.headers.get_list("www-authenticate")]
@@ -127,7 +129,7 @@ class MppTempoRail:
         try:
             validation = await self._mpp.validate_credential(
                 parsed, intent="charge", http_request=self._request(offer),
-                request={"amount": amount})
+                request={"amount": amount}, meta=None if proof else _price(offer))
         except Exception as exc:
             if gate is not None and gate.refused is not None:
                 raise gate.refused from None
@@ -183,7 +185,7 @@ class MppTempoRail:
         try:
             receipt = await self._mpp.broadcast_credential(
                 verified.credential, intent="charge", http_request=self._request(offer),
-                request={"amount": micro_to_decimal(offer.amount_micro)})
+                request={"amount": micro_to_decimal(offer.amount_micro)}, meta=_price(offer))
         except (InternalPaymentError, PaymentOutcomeUnknownError) as exc:
             # pympp raises these once the transaction may have reached the chain.
             raise PaymentRejected("settlement_unknown", str(exc) or exc.title) from exc
@@ -211,6 +213,12 @@ class MppTempoRail:
         if head_time > payment.expires_at + EXPIRY_GRACE:
             return Lookup("absent", reason="expired_unsettled")
         return Lookup("pending", reason="not_yet_mined")
+
+
+def _price(offer: Offer) -> dict[str, str] | None:
+    """The quote a payment challenge carries in its HMAC-bound opaque data, so a payment signed
+    before a price change cannot pay at the new price."""
+    return {"quote_micro": str(offer.quote_micro)} if offer.quote_micro > 0 else None
 
 
 def _echoed_request(parsed) -> dict:

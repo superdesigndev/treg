@@ -24,6 +24,9 @@ class Offer:
     resource_url: str
     description: str
     host: str = ""               # the hostname the request was sent to, lowercase, no port
+    # The call's quote, margin included, that a payment is signed for; 0 binds none. The amount
+    # alone does not bind it: every quote under the payment floor asks the same amount.
+    quote_micro: int = 0
 
 
 @dataclass(frozen=True)

@@ -144,6 +144,11 @@ class X402Rail:
             raise PaymentRejected("invalid_challenge", "this payment does not match the offer")
         if resource_url != offer.resource_url:
             raise PaymentRejected("invalid_challenge", "this payment was not issued for this request")
+        # The resource is outside the signed authorization, so this binds honest clients, which
+        # echo it: its description names the quote, which the amount alone does not bind.
+        if (payload.get("resource") or {}).get("description") != offer.description:
+            raise PaymentRejected("invalid_challenge",
+                                  "this payment was signed for another price; sign the new challenge")
         sender, nonce = str(authorization.get("from") or ""), str(authorization.get("nonce") or "")
         if not sender or not nonce:
             raise PaymentRejected("malformed_credential", "the authorization names no payer or nonce")

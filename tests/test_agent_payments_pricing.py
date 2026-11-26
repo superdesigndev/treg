@@ -16,7 +16,8 @@ from treg.infra.db import session_maker
 from treg.models import Hold
 
 from test_agent_payments import (  # noqa: F401 - fixtures
-    EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_paid, _mpp_proof, _x402_credential,
+    EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_credential, _mpp_paid, _mpp_proof,
+    _x402_credential,
     anon, chain, facilitator, payments_on, wallet)
 from test_capacity_overflow import VENDOR_BODY, _exhausted, _orthogonal, _route
 
@@ -110,3 +111,32 @@ async def test_a_wallet_on_credit_is_not_asked_to_pay_again_for_an_overflow(
                          headers={"Authorization": await _mpp_proof(challenge, account)})
     assert r.status_code == 503, r.text
     assert r.headers["X-Treg-Payment"] == "credit"
+
+
+# ---- a signed payment binds its price -----------------------------------------------------------
+async def test_an_x402_payment_signed_before_a_price_change_is_refused(
+        anon: AsyncClient, payments_on, facilitator, monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    monkeypatch.setenv("TREG_PLATFORM_MARGIN", "1.0")   # the payment floor still covers it
+    get_settings.cache_clear()
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "invalid_challenge", r.text
+    assert r.json()["detail"]["estimated_cost_micro"] == 2 * EP_MICRO
+    assert facilitator.settles == 0 and calls == []
+    credential, _ = _x402_credential(r)   # the fresh challenge names the new price
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200 and r.headers["X-Treg-Cost-Micro"] == str(2 * EP_MICRO), r.text
+
+
+async def test_an_mpp_payment_signed_before_a_price_change_is_refused(
+        anon: AsyncClient, payments_on, chain, monkeypatch):
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    monkeypatch.setenv("TREG_PLATFORM_MARGIN", "1.0")
+    get_settings.cache_clear()
+    r = await anon.get(f"/call/{EP}?aweme_id=7",
+                       headers={"Authorization": _mpp_credential(challenge)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "invalid_challenge", r.text
+    assert chain.broadcasts == 0
