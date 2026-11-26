@@ -158,9 +158,9 @@ def observed_price(ep: dict, charged: float, day: str) -> None:
     ep["price"] = {"value": format(Decimal(repr(charged)), "f") if charged else "0", "currency": "USD",
                    "per": 1, "unit": "call"}
     ep["provenance"] = {"source": "observed", "checked": day, "confidence": "verified"}
-    if charged:
-        ep.pop("settle", None)
-    else:
+    if charged and "settle" in ep and ep["settle"] is None:
+        del ep["settle"]
+    elif not charged:
         # a free row inherits no settle from the provider's reported charge
         ep["settle"] = None
 
@@ -476,6 +476,11 @@ def merge_results(service: str, paths: list[Path]) -> int:
                         ep.pop(field, None)
                     else:
                         ep[field] = res[field]
+            # `settle: null` is a reviewed opt-out a null result field would delete, so it travels as a flag
+            if res.get("settle_null") is True:
+                ep["settle"] = None
+            elif res.get("settle_null") is False and "settle" in ep and ep["settle"] is None:
+                del ep["settle"]
             if res.get("verified"):
                 ep.pop("untestable", None)
             # exactly one outcome state survives a merge: a batch that reports an endpoint as
@@ -656,7 +661,8 @@ def main(argv: list[str]) -> int:
     if args.out:
         # batch mode: report only what THIS run called, so the merge cannot resurrect a stale
         # verdict for an endpoint another batch owns
-        results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS}}
+        results = [{"id": e["id"], **{f: e.get(f) for f in RESULT_FIELDS},
+                    "settle_null": "settle" in e and e["settle"] is None}
                    for e in eps if e["id"] in touched]
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(
