@@ -79,6 +79,16 @@ async def _cancelled_mid_close(self) -> None:
     await closing
 
 
+_LOCK_KEY = 0x7472_6567_0001
+
+
+async def _session_state(server_pid: int) -> str | None:
+    async with infra_db._engine.connect() as connection:
+        return (await connection.execute(
+            text("SELECT coalesce(wait_event_type, state) FROM pg_stat_activity WHERE pid = :pid"),
+            {"pid": server_pid})).scalar_one_or_none()
+
+
 @pytest.mark.skipif(infra_db._is_sqlite, reason="needs asyncpg against PostgreSQL")
 async def test_a_terminate_cancelled_mid_close_leaves_no_session_on_the_server(
     load_db_module, monkeypatch,
@@ -88,21 +98,36 @@ async def test_a_terminate_cancelled_mid_close_leaves_no_session_on_the_server(
     raw = await engine.raw_connection()
     dbapi_connection, driver = raw.dbapi_connection, raw.driver_connection
     server_pid = driver.get_server_pid()
-    await driver.execute("BEGIN")
-    in_flight = asyncio.ensure_future(driver.fetchval("SELECT pg_sleep(0.3)"))
-    await asyncio.sleep(0.05)
-    monkeypatch.setattr(AsyncAdapt_asyncpg_connection, "_terminate_graceful_close",
-                        _cancelled_mid_close)
 
-    with pytest.raises(asyncio.CancelledError):
-        await greenlet_spawn(engine.dialect.do_terminate, dbapi_connection)
+    # Another session holds the lock, so the statement is still running when the close is
+    # interrupted, however slow the machine.
+    async with infra_db._engine.connect() as holder:
+        await holder.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _LOCK_KEY})
+        try:
+            await driver.execute("BEGIN")
+            in_flight = asyncio.ensure_future(
+                driver.fetchval("SELECT pg_advisory_xact_lock($1)", _LOCK_KEY))
+            async with asyncio.timeout(5):
+                while await _session_state(server_pid) != "Lock":
+                    await asyncio.sleep(0.01)
+            monkeypatch.setattr(AsyncAdapt_asyncpg_connection, "_terminate_graceful_close",
+                                _cancelled_mid_close)
 
-    # The server notices a closed socket once the statement it was running ends.
-    await asyncio.sleep(1)
+            with pytest.raises(asyncio.CancelledError):
+                await greenlet_spawn(engine.dialect.do_terminate, dbapi_connection)
+        finally:
+            await holder.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _LOCK_KEY})
+            await holder.commit()
+
     with contextlib.suppress(BaseException):
         await in_flight
-    async with infra_db._engine.connect() as connection:
-        remaining = (await connection.execute(
-            text("SELECT state FROM pg_stat_activity WHERE pid = :pid"),
-            {"pid": server_pid})).all()
-    assert remaining == []
+    # The server notices a closed socket once the statement it was running ends; an open one
+    # leaves the session idle in transaction for good.
+    state = await _session_state(server_pid)
+    with contextlib.suppress(TimeoutError):
+        async with asyncio.timeout(5):
+            while state is not None:
+                await asyncio.sleep(0.05)
+                state = await _session_state(server_pid)
+    await greenlet_spawn(raw.invalidate)
+    assert state is None
