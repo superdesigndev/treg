@@ -26,7 +26,6 @@ from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord
                          DenyRule, Membership, Org)
 from treg.timeutil import utcnow_naive
 
-PAIR = {"web.search": [["tavily", "exa"]]}
 TAVILY_HIT = {"results": [{"title": "Tavily says", "url": "https://example.com/t"}], "usage": {"credits": 1}}
 EXA_HIT = {"results": [{"title": "Exa says", "url": "https://example.com/e"}], "costDollars": {"total": 0.007}}
 
@@ -41,10 +40,11 @@ def search_on(monkeypatch):
     get_settings.cache_clear()
 
 
-def _compare_on(monkeypatch, *, pairs=PAIR, **values):
+def _compare_on(monkeypatch, *, capabilities=("web.search",), **values):
     settings = get_settings()
-    for field, value in {"compare_rate": 1.0, "compare_pairs": json.dumps(pairs),
+    for field, value in {"compare_rate": 1.0, "compare_capabilities": list(capabilities),
                          "compare_max_per_run": 20, "compare_max_per_day": 50,
+                         "compare_daily_usd": 100.0, "compare_exclude": [],
                          "compare_lookback_hours": 2, "compare_budget_per_hour": 3,
                          "compare_team_cap": 10, **values}.items():
         monkeypatch.setattr(settings, field, value)
@@ -138,9 +138,9 @@ async def _collect() -> dict:
         return await compare.collect(client=client)
 
 
-async def _claim(values: dict, limit: int, team_cap: int = 10) -> str:
+async def _claim(values: dict, limit: int, team_cap: int = 10, spend: int = 10**9) -> str:
     now = utcnow_naive()
-    return await compare._claim(session_maker, values, limit, team_cap=team_cap,
+    return await compare._claim(session_maker, values, limit, spend_limit_micro=spend, team_cap=team_cap,
                                 since=now - timedelta(days=14), ready_since=now - timedelta(days=3))
 
 
@@ -154,29 +154,25 @@ async def _rows() -> list[CallComparison]:
         return list((await db.execute(select(CallComparison).order_by(CallComparison.id))).scalars())
 
 
-def test_pairs_setting_is_validated_and_parsed():
-    assert Settings(compare_pairs="").compare_pair_map == {}
-    parsed = Settings(compare_pairs=json.dumps({"web.search": [["provider-a", "provider-b"]]}))
-    assert parsed.compare_pair_map == {"web.search": [("provider-a", "provider-b")]}
-    for bad in ("[", "[]", '{"web.search": [["a"]]}', '{"web.search": [["a", "a"]]}',
-                '{"web.search": [["A", "b"]]}', '{"web.search": "a,b"}'):
+def test_capabilities_setting_is_validated():
+    for bad in ({"compare_capabilities": ["Web.Search"]}, {"compare_exclude": ["Exa"]}):
         with pytest.raises(ValueError):
-            Settings(compare_pairs=bad)
+            Settings(**bad)
     settings = Settings()
-    assert (settings.compare_rate, settings.compare_max_per_day) == (0, 0)
+    assert (settings.compare_rate, settings.compare_max_per_day, settings.compare_daily_usd) == (0, 0, 0)
     assert not settings.compare_configured
-    assert not Settings(compare_pairs=json.dumps(PAIR)).compare_configured  # no daily limit
-    assert Settings(compare_pairs=json.dumps(PAIR), compare_max_per_day=1).compare_configured
+    listed = {"compare_capabilities": ["web.search"]}
+    assert not Settings(**listed, compare_max_per_day=1).compare_configured  # no spend limit
+    assert not Settings(**listed, compare_daily_usd=5).compare_configured  # no call limit
+    assert Settings(**listed, compare_max_per_day=1, compare_daily_usd=5).compare_configured
 
 
-def test_a_pair_without_an_adapter_is_skipped(monkeypatch, caplog):
-    _compare_on(monkeypatch, pairs={"web.search": [["tavily", "exa"], ["tavily", "no-such-vendor"]],
-                                    "no.such.capability": [["tavily", "exa"]]})
+def test_a_capability_short_of_two_vendors_is_skipped(monkeypatch, caplog):
+    _compare_on(monkeypatch, capabilities=("web.search", "no.such.capability"))
     with caplog.at_level("WARNING"):
-        assert compare.pairs() == {"web.search": [("tavily", "exa")]}
-    assert "no-such-vendor" in caplog.text
-    assert compare.other_side("web.search", "exa") == "tavily"
-    assert compare.other_side("no.such.capability", "exa") is None
+        vendors = compare.comparable()
+    assert set(vendors) == {"web.search"} and {"tavily", "exa"} <= vendors["web.search"]
+    assert "no.such.capability" in caplog.text
 
 
 async def test_off_by_default(clients, search_on, monkeypatch):
@@ -224,11 +220,11 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 
 
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
-                                  "capability_pin", "not_in_pair", "own_key", "not_archived",
+                                  "capability_pin", "b_excluded", "own_key", "not_archived",
                                   "too_old", "no_marker", "store_down", "suspended", "paused",
                                   "flow_unavailable", "flow_raises", "flow_invalid"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
-    _compare_on(monkeypatch, pairs={"web.search": [["tavily", "parallel"]]} if case == "not_in_pair" else PAIR)
+    _compare_on(monkeypatch, compare_exclude=["exa"] if case == "b_excluded" else [])
     sent = _relay_b(monkeypatch)
     org_id = await _org_id(clients)
     async with session_maker() as db:
@@ -249,9 +245,9 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
             db.add(CapabilityPin(org_id=org_id, capability="web.search", provider="tavily"))
         await db.commit()
     if case == "store_down":
-        async def unknown(key):
-            return None  # what `get_text` answers when the store cannot
-        monkeypatch.setattr(kv.store(), "get_text", unknown)
+        async def unknown(keys):
+            return [None] * len(keys)  # what `get_texts` answers when the store cannot
+        monkeypatch.setattr(kv.store(), "get_texts", unknown)
     late = ("suspended", "paused", "flow_unavailable", "flow_raises", "flow_invalid")
     if case in late:
         # Revoked after the run picked the call, before it is sent: checked again right then.
@@ -284,8 +280,8 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
                        marked=case != "no_marker")
     result = await _collect()
     assert sent == [] and await _rows() == [], result
-    # A candidate that reached `_one` is counted under the reason it stopped at.
-    expected = {"not_in_pair": "b_unavailable", "own_key": "a_not_on_treg_key",
+    # A candidate the run read is counted under the reason it stopped at.
+    expected = {"b_excluded": "b_unavailable", "own_key": "a_not_on_treg_key",
                 "not_archived": "a_not_archived", "no_marker": "no_marker",
                 "store_down": "no_marker", "suspended": "team_no_longer_eligible",
                 "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
@@ -474,7 +470,7 @@ READY_PAIRS = [
 @pytest.mark.parametrize("capability,a,b,given", READY_PAIRS)
 async def test_a_vendor_example_answer_is_stored_ready(clients, monkeypatch, capability, a, b, given):
     _platform(monkeypatch, a, b)
-    _compare_on(monkeypatch, pairs={capability: [[a, b]]})
+    _compare_on(monkeypatch, capabilities=(capability,))
     cat = catalog_store.load()
     a_endpoint = next(e["id"] for e in cat.for_capability(capability)
                       if e["provider"] == a and e["id"] in cat.adapters)
@@ -496,7 +492,7 @@ async def test_an_off_question_answer_is_failed_as_the_router_reads_it(clients, 
     """A `site:` question answered with no row on that site is the router's miss (`question_miss`),
     so the pair fails even on a 200: why a DataForSEO answer to such a question was never a hit."""
     _platform(monkeypatch, "anyapi", "dataforseo")
-    _compare_on(monkeypatch, pairs={"google.serp.organic": [["anyapi", "dataforseo"]]})
+    _compare_on(monkeypatch, capabilities=("google.serp.organic",))
     org_id = await _org_id(clients)
     given = {"q": "espresso grinders site:nowhere.example"}
     a_answer = json.loads(_example("anyapi.google.serp.organic"))
@@ -591,7 +587,8 @@ async def test_deleting_a_team_gives_no_quota_back(clients, search_on, monkeypat
     assert (await _collect())["status"] == "at_limit" and len(sent) == 1
 
 
-@pytest.mark.parametrize("off", [{}, {"compare_pairs": ""}, {"compare_max_per_day": 0}])
+@pytest.mark.parametrize("off", [{}, {"compare_capabilities": []}, {"compare_max_per_day": 0},
+                                 {"compare_daily_usd": 0}])
 async def test_rows_of_a_deleted_team_are_removed_by_every_run(clients, search_on, monkeypatch, off):
     _compare_on(monkeypatch, **off)
     _relay_b(monkeypatch)
@@ -1086,7 +1083,7 @@ async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch
     await compare.mark_eligible("m4", "people.email.find", mcp, {"identity": {"q": "d"}})
     await compare.mark_eligible("m5", "web.search", mcp, {"identity": {"q": "e"}}, archive_opted_out=True)
     assert compare._mark_counts == {"marked/mcp": 1, "route_header/mcp": 1, "page_continuation/-": 1,
-                                    "not_paired/mcp": 1, "archive_off/mcp": 1}
+                                    "not_listed/mcp": 1, "archive_off/mcp": 1}
     monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 0)
     with caplog.at_level(logging.INFO, logger=compare.__name__):
         await compare.mark_eligible("m6", "web.search", mcp, {"identity": {"q": "f"}})
@@ -1305,3 +1302,80 @@ async def test_a_verdict_on_a_pair_not_shown_is_refused(clients, monkeypatch, st
     response = await clients.post("/comparisons", json={"comparison_id": cid, "choice": "1"})
     assert response.status_code == 404
     assert (await _rows())[0].status == status
+
+
+async def _seed_decided(org_id: int, n: int, a: str, b: str, capability: str = "web.search") -> None:
+    """`n` decided comparisons of one direction, as earlier runs leave them (on an existing team:
+    a run removes the rows of teams that are gone)."""
+    async with session_maker() as db:
+        for i in range(n):
+            db.add(CallComparison(org_id=org_id, user_email="x@example.com", call_ref=f"seed-{a}-{b}-{i}",
+                                  capability=capability, a_endpoint=f"{a}.{capability}", a_provider=a,
+                                  b_provider=b, status="decided", choice="a"))
+        await db.commit()
+
+
+async def test_b_is_the_least_compared_vendor_next_to_a(clients, search_on, monkeypatch):
+    """No pair is configured: B is chosen per call, among the vendors treg's key can serve."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PARALLEL", "PLATFORM-PARALLEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa,parallel")
+    get_settings.cache_clear()
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 3, "tavily", "exa")
+    await _routed_call(org_id, "who makes the best espresso")
+    result = await _collect()
+    assert [s["tool"].name for s in sent] == ["parallel.web.search"], result
+    assert result["called_by"] == {"web.search/tavily/parallel": 1}
+
+
+async def test_an_excluded_vendor_is_never_b(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch, compare_exclude=["exa"])
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso")
+    result = await _collect()
+    assert sent == [] and result["skip_reasons"] == {"b_unavailable": 1}
+
+
+async def test_the_least_compared_served_vendor_goes_first(clients, search_on, monkeypatch):
+    """A vendor that rarely serves still gets compared as A: the run does not spend its calls on
+    whichever calls it read first."""
+    _compare_on(monkeypatch, compare_max_per_run=1)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 5, "tavily", "exa")
+    await _routed_call(org_id, "served by the busy vendor", a="tavily", minutes_ago=3)
+    rare = await _routed_call(org_id, "served by the rare vendor", a="exa", minutes_ago=10)
+    result = await _collect()
+    assert result["called"] == 1 and result["called_by"] == {"web.search/exa/tavily": 1}, result
+    row, = [r for r in await _rows() if not r.call_ref.startswith("seed-")]
+    assert (row.call_ref, row.a_provider, row.b_provider) == (rare, "exa", "tavily")
+    assert len(sent) == 1
+
+
+async def test_a_dear_b_is_never_asked(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch, compare_max_b_micro=0)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso")
+    result = await _collect()
+    assert sent == [] and result["skip_reasons"] == {"b_too_dear": 1}
+
+
+async def test_the_day_stops_at_its_spend(clients, search_on, monkeypatch):
+    """The spend limit holds B's catalog prices of the day's claims, read inside the claim."""
+    _compare_on(monkeypatch, compare_daily_usd=0.000001)
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "over the day's spend")
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"day_spend_cap": 1}, result
+    # A day already spent stops a run before it reads anything.
+    _compare_on(monkeypatch, compare_daily_usd=0.01)
+    async with session_maker() as db:
+        db.add(CallComparison(org_id=org_id, user_email="x@example.com", call_ref="spent-today",
+                              capability="web.search", a_endpoint="tavily.web.search", a_provider="tavily",
+                              b_provider="exa", status="failed", b_cost_micro=10_000))
+        await db.commit()
+    assert (await _collect())["status"] == "at_limit"

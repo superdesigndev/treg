@@ -92,6 +92,24 @@ async def counted(db: AsyncSession, org_id: int, capability: str, pair: tuple[st
     ))).scalar() or 0)
 
 
+async def tallies(db: AsyncSession, capabilities: list[str], since: datetime) -> dict[tuple[str, str, str], int]:
+    """Every team's comparisons since `since` that are not failed, by (capability, A, B): what a
+    run spreads its calls by. One grouped read through `created_at`."""
+    rows = (await db.execute(select(
+        CallComparison.capability, CallComparison.a_provider, CallComparison.b_provider, func.count(),
+    ).where(CallComparison.created_at >= since, CallComparison.status != FAILED,
+            CallComparison.capability.in_(capabilities))
+        .group_by(CallComparison.capability, CallComparison.a_provider, CallComparison.b_provider))).all()
+    return {(c, a, b): int(n) for c, a, b, n in rows}
+
+
+async def spent(db: AsyncSession, since: datetime) -> int:
+    """B's catalog prices of every comparison claimed since `since` (the UTC day's start), failed
+    and pending ones included: a claim is a call made or about to be."""
+    return int((await db.execute(select(func.coalesce(func.sum(CallComparison.b_cost_micro), 0)).where(
+        CallComparison.created_at >= since))).scalar() or 0)
+
+
 def shown(row: CallComparison) -> tuple[str, str]:
     """(answer 1, answer 2) in the order the agent sees them."""
     return (row.a_body, row.b_body) if row.first == "a" else (row.b_body, row.a_body)

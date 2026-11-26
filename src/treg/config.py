@@ -119,31 +119,6 @@ _PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 _CAPABILITY_NAME = re.compile(r"[a-z0-9][a-z0-9_.-]*")
 
 
-def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
-    if not raw.strip():
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except ValueError:
-        raise ValueError("compare_pairs must be a JSON object") from None
-    message = ("compare_pairs must map capabilities to lists of two different lowercase providers, "
-               'e.g. {"web.search": [["provider-a", "provider-b"]]}')
-    if not isinstance(parsed, dict):
-        raise ValueError(message)
-    out: dict[str, list[tuple[str, str]]] = {}
-    for capability, pairs in parsed.items():
-        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
-                and isinstance(pairs, list)):
-            raise ValueError(message)
-        for pair in pairs:
-            if not (isinstance(pair, list) and len(pair) == 2
-                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in pair)
-                    and pair[0] != pair[1]):
-                raise ValueError(message)
-        out[capability] = [(a, b) for a, b in pairs]
-    return out
-
-
 RANKING_TIERS = ("good", "bad")
 
 
@@ -224,12 +199,18 @@ class Settings(BaseSettings):
     mark_hint_texts: list[str] = Field(default_factory=list)
     ranking_tiers: str = ""
     # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
-    # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
-    # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
-    # the two answers blinded. Off unless pairs are set and `compare_max_per_day` is above 0.
-    # JSON: capability -> list of unordered provider pairs, e.g.
-    # {"web.search": [["provider-a", "provider-b"]]}.
-    compare_pairs: str = ""
+    # hourly `treg-worker compare collect` run asks a second vendor the input of a recent routed
+    # call the call path marked as sampled, on treg's key, and the team's agent is later invited to
+    # judge the two answers blinded. Only the capabilities are configured: A is the vendor that
+    # served, B is chosen per call among the capability's vendors. Off unless capabilities are
+    # listed, `compare_max_per_day` is above 0 and `compare_daily_usd` is above 0.
+    compare_capabilities: list[str] = Field(default_factory=list)
+    # Providers never asked as B (A is whoever served, so this never limits which calls count).
+    compare_exclude: list[str] = Field(default_factory=list)
+    # B's catalog price for one request at most, in micro-USD; a dearer endpoint is never asked.
+    compare_max_b_micro: int = Field(default=100_000, ge=0)
+    # All runs of one UTC day together: B's catalog prices summed (the claims' `b_cost_micro`).
+    compare_daily_usd: float = Field(default=0, ge=0)
     compare_rate: float = Field(default=0, ge=0, le=1)
     # Second-vendor calls one run makes, and all runs of one UTC day together (counted in the table).
     compare_max_per_run: int = Field(default=20, ge=0)
@@ -1488,10 +1469,18 @@ class Settings(BaseSettings):
             raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
         return v
 
-    @field_validator("compare_pairs")
+    @field_validator("compare_capabilities")
     @classmethod
-    def _compare_pairs_shape(cls, v: str) -> str:
-        _parse_compare_pairs(v)  # raises ValueError on a malformed value
+    def _compare_capabilities_shape(cls, v: list[str]) -> list[str]:
+        if not all(_CAPABILITY_NAME.fullmatch(c) for c in v):
+            raise ValueError("compare_capabilities must list lowercase capability names")
+        return v
+
+    @field_validator("compare_exclude")
+    @classmethod
+    def _compare_exclude_shape(cls, v: list[str]) -> list[str]:
+        if not all(_PROVIDER_NAME.fullmatch(p) for p in v):
+            raise ValueError("compare_exclude must list lowercase provider names")
         return v
 
     @field_validator("ranking_tiers")
@@ -1505,14 +1494,10 @@ class Settings(BaseSettings):
         return _parse_ranking_tiers(self.ranking_tiers)
 
     @property
-    def compare_pair_map(self) -> dict[str, list[tuple[str, str]]]:
-        """`compare_pairs` parsed: capability -> unordered provider pairs."""
-        return _parse_compare_pairs(self.compare_pairs)
-
-    @property
     def compare_configured(self) -> bool:
-        """Pairs and a daily limit above 0: what a comparison run needs at all."""
-        return bool(self.compare_pairs.strip() and self.compare_max_per_day > 0)
+        """Capabilities, a daily call limit and a daily spend limit: what a run needs at all."""
+        return bool(self.compare_capabilities and self.compare_max_per_day > 0
+                    and self.compare_daily_usd > 0)
 
     @property
     def route_provider_sample_percentages(self) -> dict[str, int]:

@@ -941,11 +941,11 @@ def main(argv: list[str] | None = None) -> int:
     shr = shsub.add_parser("report", help="print the comparison report as JSON")
     shr.add_argument("--days", type=int, default=1)
     shr.set_defaults(fn=_shadow_report)
-    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_pairs and "
-                         "compare_max_per_day are set)")
+    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_capabilities, "
+                         "compare_max_per_day and compare_daily_usd are set)")
     cmpsub = cmp.add_subparsers(dest="cmd", required=True)
-    cmpc = cmpsub.add_parser("collect", help="ask the other vendor of a pair the input of sampled "
-                             "recent routed calls")
+    cmpc = cmpsub.add_parser("collect", help="ask a second vendor the input of sampled recent "
+                             "routed calls")
     cmpc.add_argument("--max-seconds", type=float, default=600.0)
     cmpc.set_defaults(fn=_compare_collect)
     reviews = sub.add_parser("reviews", help="agent reviews of call results")

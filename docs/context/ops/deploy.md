@@ -367,13 +367,15 @@ secret stable: changing it breaks every join across the change.
 **Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
 `treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
 settings of the web service; every run also removes rows a team deletion missed, so that latency is
-one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
-0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+one run. Sampling is off unless `TREG_COMPARE_CAPABILITIES` lists a capability and
+`TREG_COMPARE_MAX_PER_DAY` and `TREG_COMPARE_DAILY_USD` are above 0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
 job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
 so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
-treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
-vendors' price per call only where that price is the request's maximum cost. The calls bypass the
-shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_DAILY_USD` of B's catalog prices,
+no request above `TREG_COMPARE_MAX_B_MICRO`, only where that price is the request's maximum cost.
+B is chosen per call among the capability's vendors and the calls bypass the shared provider
+limiter: check every vendor of a capability for price and capacity before listing it, and exclude
+any that must not be asked (`TREG_COMPARE_EXCLUDE`).
 Each run prints one JSON line; `skip_reasons` counts, per reason, the candidates that stopped
 before a call (`no_marker`, `a_not_archived`, `b_unavailable`, ...), so a run
 that calls nobody says where its candidates stopped.

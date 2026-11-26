@@ -2037,7 +2037,7 @@ class CallMark(SQLModel, table=True):
 class CallComparison(SQLModel, table=True):
     """Two vendors' answers to one routed call's input, and the team's agent's blinded verdict.
 
-    A is the answer the team was served; B is the other vendor of a configured pair, asked later by
+    A is the answer the team was served; B is another vendor of the capability, chosen per call and asked later by
     `treg-worker compare collect` on treg's key (application/compare.py). `first` is which of the
     two is shown as answer 1. Bodies are stored truncated; `input` is the capability input,
     truncated. Written only by `domain/feedback/comparisons.py`.
