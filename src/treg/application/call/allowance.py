@@ -725,15 +725,18 @@ class Reach(NamedTuple):
 
 
 @contextlib.asynccontextmanager
-async def _team_lease(org_id: int):
+async def _team_lease(org_id: int, *, wait: bool = True):
     """The team's money lease for a reading or a give-back: yields "acquired", "unavailable"
     (the store cannot answer: no call can take from a counter either) or "busy" (another
     request kept it, or the background fold claimed its next turn, for as long as a call waits
-    for a refill). Every request that moves the
-    team's money between the store and the database (a refill, a give-back, a fold, the idle
-    sweep) holds it, so what is read under it is one moment of both."""
+    for a refill, or at once without `wait`). Every request that moves the team's money between
+    the store and the database (a refill, a give-back, a fold, the idle sweep) holds it, so what
+    is read under it is one moment of both. Whatever this token may hold is given back on every
+    way out but "busy", in a task of its own: a store that timed out or a cancel may have come
+    after the lease was granted."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    deadline, pause, answer = time.monotonic() + _REFILL_WAIT_S, 0.01, "busy"
+    deadline = time.monotonic() + (_REFILL_WAIT_S if wait else 0.0)
+    pause, answer = 0.01, "busy"
     while True:
         try:
             # A background fold that claimed the team's next turn is not passed by a reading.
@@ -755,8 +758,10 @@ async def _team_lease(org_id: int):
         yield answer
     finally:
         if answer == "acquired":
-            # Released in a task of its own, so a cancel of the reading cannot stop it.
             await asyncio.shield(_release_lease_soon(store, key, token))
+        elif answer == "unavailable":
+            # A store that timed out may have granted it first; release deletes only this token's.
+            _release_lease_soon(store, key, token)
 
 
 async def reach(org_id: int, amount_micro: int) -> Reach:
@@ -896,26 +901,21 @@ async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
     waiting. Then `_give_back`."""
     if not enabled_for(org_id):
         return False
-    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    leased = False
     # Whatever fails here, the call is refused as it would have been: never an error of its own.
     try:
-        state = await store.allowance_state(org_id)
+        state = await kv.store().allowance_state(org_id)
         if state is None or not state[3] or state[0] < max(1, short_micro):
             return False
-        leased = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS) == "acquired"
-        if not leased:
-            return False
-        returned = await _give_back(org_id, state[3])
+        async with _team_lease(org_id, wait=False) as lease:
+            if lease != "acquired":
+                return False
+            returned = await _give_back(org_id, state[3])
     except money_admission.AdmissionTimeout:
         return False
     except Exception:
         log.error("returning the allowance of org %s for the exact path failed", org_id,
                   exc_info=True)
         return False
-    finally:
-        if leased:
-            await store.release_lease(key, token)
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
     return returned >= max(1, short_micro)

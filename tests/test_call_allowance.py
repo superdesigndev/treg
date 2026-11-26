@@ -3554,6 +3554,65 @@ async def test_a_reading_cancelled_while_the_store_grants_its_lease_gives_the_le
     assert await runtime.onto_balance(org_id, 50_000) is True
 
 
+async def test_a_lease_the_store_granted_but_timed_out_answering_is_given_back(
+        org_id, store, monkeypatch):
+    """The store took the lease and its answer timed out, which the adapter reports as
+    "unavailable": the reading gives back whatever its token holds, so the next short reserve
+    takes the counter back instead of waiting for the lease to expire."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    acquire, dropped = store.acquire_lease, []
+
+    async def granted_but_unanswered(key, token, *args, **kwargs):
+        answer = await acquire(key, token, *args, **kwargs)
+        if key == runtime.money_key(org_id) and not dropped:
+            dropped.append(answer)
+            return "unavailable"
+        return answer
+
+    monkeypatch.setattr(store, "acquire_lease", granted_but_unanswered)
+    await runtime.reach(org_id, 50_000)
+    await asyncio.sleep(0)
+    assert dropped == ["acquired"] and runtime.money_key(org_id) not in store.leases
+    assert await runtime.onto_balance(org_id, 50_000) is True
+
+
+@pytest.mark.parametrize("where", ["granted", "given_back"])
+async def test_a_cap_give_back_cancelled_leaves_no_lease(org_id, store, monkeypatch, where):
+    """A daily-cap refusal's give-back (`give_back_for_exact_path`) cancelled after the store
+    granted its lease, or after the counter went back and before the lease was released: the
+    lease is given back either way, and the team's next reading takes it at once."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.take(org_id, 1_000)
+    acquire, release, reached = store.acquire_lease, store.release_lease, asyncio.Event()
+
+    async def granted_then_slow(key, token, *args, **kwargs):
+        answer = await acquire(key, token, *args, **kwargs)
+        if where == "granted" and key == runtime.money_key(org_id):
+            reached.set()
+            await asyncio.sleep(10)
+        return answer
+
+    async def slow_release(key, token):
+        if where == "given_back" and not reached.is_set():
+            reached.set()
+            await asyncio.sleep(0.05)
+        return await release(key, token)
+
+    monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    giving = asyncio.create_task(runtime.give_back_for_exact_path(org_id, 80_000))
+    await reached.wait()
+    giving.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await giving
+    monkeypatch.setattr(store, "acquire_lease", acquire)
+    await asyncio.sleep(0.1)
+    assert runtime.money_key(org_id) not in store.leases
+    assert (await runtime.reach(org_id, 50_000)).sure
+
+
 async def test_a_reading_or_a_give_back_leaves_a_claimed_fold_its_turn(org_id, store, monkeypatch):
     """The background fold claimed the team's next lease: a wallet's or an arena's reading and
     a give-back for a short reserve do not take it first, so they cannot starve the fold."""
