@@ -343,7 +343,7 @@ When it refuses:
   send this request again with this challenge.
 - **409 `price_changed`**: the price rose and the transfer you sent is kept as credit, but this
   host offers your rail no zero-amount proof. Do not pay again: send the request to `proof_url`
-  and sign its zero-amount proof. `X-Treg-Payment-Reference` names the transfer in either 409.
+  with the header `X-Treg-Recovery` set to its `recovery` value, and sign its zero-amount proof. `X-Treg-Payment-Reference` names the transfer in either 409.
 - **402 with another `reason`** (`payment_expired`, `invalid_challenge`, `payment_replayed`, ...):
   the answer carries a fresh challenge; pay that one.
 - **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.

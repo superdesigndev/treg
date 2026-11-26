@@ -77,7 +77,7 @@ CENT_MICRO = 10_000
 BPS = 10_000
 # The rails give the chain this long past `expires_at` before calling a payment absent.
 CREDIT_PROOF_GRACE = timedelta(seconds=90)
-PAYMENT_HEADERS = frozenset(MPP_HEADERS + X402_HEADERS)
+PAYMENT_HEADERS = frozenset(MPP_HEADERS + X402_HEADERS + ("x-treg-recovery",))
 
 
 def enabled() -> bool:
@@ -203,7 +203,8 @@ def consumes(name: str, value: str) -> bool:
 
 
 async def quote(*, rest: str, method: str, path: str, query: str,
-                query_items: tuple[tuple[str, str], ...], body: bytes, host: str = "") -> PaidOffer:
+                query_items: tuple[tuple[str, str], ...], body: bytes, host: str = "",
+                recovery: str = "") -> PaidOffer:
     """The price of this call for a payer. Raises NotServed when the payment path does not serve
     it (not a catalog id, free, routed, own-account, or not on treg's key here)."""
     if reason := unserved(rest, method):
@@ -230,9 +231,13 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     resource_url = f"{base}{path}" + (f"?{query}" if query else "")
     offer = Offer(
         amount_micro=amount, method=method.upper(), path=path, query=query,
-        resource_url=resource_url, description=description, host=_hostname(host),
-        terms=(_terms_token(resource_url, Terms(max(charged, 0), settings.agent_payments_fee_bps))
-               if settings.agent_payments_terms_binding else ""))
+        resource_url=resource_url, description=description, host=_hostname(host))
+    if settings.agent_payments_terms_binding:
+        # A kept transfer's recovery, sent here from the host where it was paid, gets that
+        # transfer's own recovery terms: one call however many proofs are signed for it.
+        offer = replace(offer, terms=_terms_token(
+            resource_url, Terms(max(charged, 0), settings.agent_payments_fee_bps),
+            recovery=_recovery_from(recovery, offer)))
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
                      proof_only=proof_only, is_async=bool(ep.get("async")))
 
@@ -267,17 +272,57 @@ def _terms_mac(resource_url: str, body: str) -> str:
     return hmac.new(secret, f"{resource_url}|{body}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def _terms_token(resource_url: str, terms: Terms, *, recovery_of: str = "") -> str:
+def _terms_token(resource_url: str, terms: Terms, *, recovery: str = "") -> str:
     """An opaque, letters-and-digits token for `terms` on this request, authenticated with treg's
     secret. It rides where the payer echoes or signs it (MPP's challenge data, x402's `extra`, the
     SIWX nonce), so a payment pays on the terms it was offered, not today's."""
     expires = int(time.time()) + _terms_ttl_s()
     # A kept transfer's recovery terms share one nonce, derived from the transfer, however many
     # times they are offered: only one proof under them runs a call.
-    kind, nonce = (("k", hashlib.sha256(recovery_of.encode()).hexdigest()[:16]) if recovery_of
-                   else ("r", secrets.token_hex(8)))
+    kind, nonce = ("k", recovery) if recovery else ("r", secrets.token_hex(8))
     body = f"q{terms.quote_micro}f{terms.fee_bps}e{expires}{kind}{nonce}"
     return f"{body}m{_terms_mac(resource_url, body)}"
+
+
+def _recovery_nonce(proof_id: str) -> str:
+    """The one nonce every recovery offer for a kept transfer carries."""
+    return hashlib.sha256(proof_id.encode()).hexdigest()[:16]
+
+
+RECOVERY_HEADER = "x-treg-recovery"
+_RECOVERY = re.compile(r"k([0-9a-f]{16})m([0-9a-f]{32})")
+
+
+def _recovery_mac(nonce: str, scope: str) -> str:
+    secret = get_settings().agent_payments_secret.encode()
+    return hmac.new(secret, f"recovery|{nonce}|{scope}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def recovery_ref(nonce: str, offer: Offer) -> str:
+    """What a kept transfer's 409 hands the wallet for the host where its proof is offered: sent
+    there in `X-Treg-Recovery` with the same request, it makes that host offer the transfer's own
+    recovery terms."""
+    return f"k{nonce}m{_recovery_mac(nonce, _scope(offer))}"
+
+
+def _recovery_from(ref: str, offer: Offer) -> str:
+    """The recovery nonce `ref` names for this request, or ""."""
+    found = _RECOVERY.fullmatch((ref or "").strip())
+    if found is None or not hmac.compare_digest(found.group(2),
+                                                _recovery_mac(found.group(1), _scope(offer))):
+        return ""
+    return found.group(1)
+
+
+def _spent_recovery(token: str, resource_url: str) -> str:
+    """The nonce of recovery terms treg issued for this request, expired or not, or ""."""
+    found = _TERMS.fullmatch(token or "")
+    if found is None or found.group(4) != "k":
+        return ""
+    body = token[:token.rindex("m")]
+    if not hmac.compare_digest(found.group(6), _terms_mac(resource_url, body)):
+        return ""
+    return found.group(5)
 
 
 def signed_terms(token: str, resource_url: str, today: Terms, *,
@@ -453,6 +498,12 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         if (resent := await _resent_kept(paid, rail, credential)) is not None:
             raise resent from exc
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    # A kept transfer's recovery that already ran its call answers that first, before the price,
+    # the credit or a replay could ask the wallet to pay.
+    if (verified.kind == "proof"
+            and (nonce := _spent_recovery(verified.terms, paid.offer.resource_url))
+            and await _recovery_spent(nonce)):
+        raise _recovery_used(paid)
     # The terms the payer was offered, which treg's own token names: a price that rose since then
     # is not what the payer agreed to.
     signed = signed_terms(verified.terms, paid.offer.resource_url,
@@ -619,9 +670,13 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: 
     if rail.proves(paid.offer):
         # Recovery terms: every proof offered for this transfer shares one nonce, so however many
         # the wallet signs (an answer lost and the transfer sent again), one call runs.
-        recovery = replace(paid.offer, terms=_terms_token(
+        # Only while tokens are issued: with the switch off this instance answers as one that
+        # issues none, so a rollback leaves no proof an older instance cannot read.
+        recovery = (replace(paid.offer, terms=_terms_token(
             paid.offer.resource_url,
-            Terms(paid.quote_micro, get_settings().agent_payments_fee_bps), recovery_of=proof_id))
+            Terms(paid.quote_micro, get_settings().agent_payments_fee_bps),
+            recovery=_recovery_nonce(proof_id)))
+            if get_settings().agent_payments_terms_binding else paid.offer)
         proof = await _headers([rail], lambda only: only.challenge(recovery, pay=False, prove=True))
         return PaymentChallenge({
             "error": "payment_required", "reason": "price_changed", **kept,
@@ -634,10 +689,14 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: 
     return PriceChanged({
         "error": "price_changed", "reason": "price_changed", **kept,
         "message": ("The price of this call changed after this transfer was signed. "
-                    f"{note}; do not pay again. Send the request to {where} and sign its "
-                    f"zero-amount proof to pay this call (at most ${ledger.usd(paid.quote_micro):g}) "
-                    "from that credit."),
+                    f"{note}; do not pay again. Send the request to {where}"
+                    + (" with the header X-Treg-Recovery set to `recovery`"
+                       if get_settings().agent_payments_terms_binding else "")
+                    + f" and sign its zero-amount proof to pay this call (at most "
+                    f"${ledger.usd(paid.quote_micro):g}) from that credit."),
         "proof_url": where,
+        **({"recovery": recovery_ref(_recovery_nonce(proof_id), paid.offer)}
+           if get_settings().agent_payments_terms_binding else {}),
     }, headers)
 
 
@@ -695,18 +754,32 @@ async def _admit_proof(paid: PaidOffer, verified: Verified,
     if not await _claim_proof(verified):
         raise await challenge(paid, reason="payment_replayed", message="this proof was already used")
     if signed is not None and signed.recovery and not await _claim_recovery(signed.nonce):
-        raise PriceChanged({
-            "error": "challenge_used", "reason": "challenge_used", "endpoint_id": paid.endpoint_id,
-            "message": ("A proof already spent this kept transfer's credit on this call, so this "
-                        "proof ran none. Check that request's answer; do not send it again."),
-        }, [("X-Treg-Payment", "credit")])
+        raise _recovery_used(paid)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None)
 
 
-async def _claim_recovery(nonce: str) -> bool:
-    """A kept transfer's recovery terms run one call, however many proofs were signed for them."""
+def _recovery_used(paid: PaidOffer) -> PriceChanged:
+    return PriceChanged({
+        "error": "challenge_used", "reason": "challenge_used", "endpoint_id": paid.endpoint_id,
+        "message": ("A proof already spent this kept transfer's credit on this call, so this proof "
+                    "ran none. Check that request's answer; do not send it again."),
+    }, [("X-Treg-Payment", "credit")])
+
+
+async def _recovery_spent(nonce: str) -> bool:
     async with session_maker() as db:
-        claimed = await ratestore.kv_claim(db, KEPT_NS, f"spent:{nonce}", REPLAY_KEEP_S)
+        spent = await ratestore.kv_get(db, KEPT_NS, f"spent:{nonce}")
+        await db.commit()
+    return spent is not None
+
+
+async def _claim_recovery(nonce: str) -> bool:
+    """A kept transfer's recovery terms run one call, however many proofs were signed for them.
+    The mark outlives the last proof that can be offered for it: the receipt's week, plus the
+    terms' life."""
+    async with session_maker() as db:
+        claimed = await ratestore.kv_claim(db, KEPT_NS, f"spent:{nonce}",
+                                           REPLAY_KEEP_S + _terms_ttl_s())
         await db.commit()
     return claimed
 
@@ -945,7 +1018,8 @@ async def open_call(*, rest: str, method: str, path: str, query: str,
     NotServed, RateLimited, PaymentChallenge, PaymentPending or PriceChanged; no call has run when it raises.
     `limit_request` has already run for this request."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
-                       query_items=query_items, body=body, host=headers.get("host", ""))
+                       query_items=query_items, body=body, host=headers.get("host", ""),
+                       recovery=headers.get(RECOVERY_HEADER, ""))
     admission = await admit(paid, headers)
     relayed = [(name, value) for name, value in raw_headers
                if not consumes(name.decode("latin-1"), value.decode("latin-1"))]

@@ -317,7 +317,8 @@ headers (`X-Treg-Payment` among them) and no receipt.
   no brackets), since a wallet compares the challenge's realm with the host it called. A realm
   configured otherwise also keeps a pympp server with the realm exactly as configured, which
   verifies and settles a challenge that older code issued with it, still in flight through a
-  rolling deploy; new challenges carry the normalized realm. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
+  rolling deploy. Challenges carry the realm as configured until the switch is on (an older
+  instance verifies only that one), the normalized one after. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
   `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and `X-Treg-Credit-Micro`, and `paid_micro`,
   `payment_reference`, `credit_micro` in the body; it is recorded `refused_by=payment`. A
   payment is credited less the fee it was offered.
@@ -345,7 +346,13 @@ headers (`X-Treg-Payment` among them) and no receipt.
   alone is public. Writing one sweeps the namespace's expired rows. The kept 402's proof
   challenge carries recovery terms whose nonce is derived from the transfer (`k` in the token),
   so every proof offered for one kept transfer shares it, and only the first proof under it runs
-  a call (`spent:<nonce>`, a week); another answers 409 `challenge_used`.
+  a call (`spent:<nonce>`, kept the receipt's week plus the terms' life, so it outlives the last
+  proof that can be offered); another answers 409 `challenge_used`, checked before price, credit
+  or a replay could ask for a payment (the nonce is read from a token treg issued, expired or
+  not). The 409 for another host carries `recovery`, an HMAC'd reference to that nonce and this
+  request; sent to `proof_url` in `X-Treg-Recovery` (consumed, never relayed), it makes that host
+  offer the same recovery terms, so following the receipt twice still runs one call. Recovery
+  terms and the reference exist only while the switch is on.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
   data, no `tregTerms` key in x402's `extra`, or, on a SIWX proof only, a nonce of pympp's own 32
   hex digits) is taken on today's terms,
@@ -354,9 +361,12 @@ headers (`X-Treg-Payment` among them) and no receipt.
   that is present but not a non-empty string is `malformed_credential`). Tokens are issued only
   while `agent_payments_terms_binding` is on (off by default). Switch it on only once every
   instance runs the reading code: an instance that cannot read a token refuses an MPP credential
-  carrying one before anything is recorded, which loses a pushed transfer. Rolling back reverses
-  it: switch issuance off, wait until the last MPP challenge issued with a token has expired
-  (`agent_payments_mpp_challenge_ttl_s`) and requests in flight have drained, then run older code.
+  carrying one before anything is recorded, which loses a pushed transfer. The same switch moves
+  MPP challenges to the normalized realm, and kept transfers to recovery terms, for the same
+  reason. Rolling back reverses it: switch issuance off (from then on this code issues what older
+  code does, kept transfers' proofs included), wait until the last MPP challenge issued with a
+  token has expired (`agent_payments_mpp_challenge_ttl_s`) and requests in flight have drained,
+  then run older code.
 - Neither rail binds the request body. Every call with the same terms asks the same amount, so a
   copied, unused payment can pay once for another body of the same route and query on the same
   terms, as its wallet.

@@ -83,6 +83,17 @@ class MppTempoRail:
         self._legacy = (Mpp(methods=methods, realm=realm, secret_key=secret, store=store)
                         if realm != self.realm else None)
 
+    def _issuer(self):
+        """The pympp server new challenges come from. The normalized realm is issued only once
+        `agent_payments_terms_binding` is on, after every instance verifies both realms: until
+        then an instance that verifies only the configured realm could receive a transfer pushed
+        under a normalized one, and refuse it before recording it."""
+        from ...config import get_settings
+
+        if self._legacy is not None and not get_settings().agent_payments_terms_binding:
+            return self._legacy
+        return self._mpp
+
     def _server_for(self, parsed):
         """The pympp server whose realm issued this credential's challenge."""
         if self._legacy is not None and parsed.challenge.realm != self.realm:
@@ -118,7 +129,7 @@ class MppTempoRail:
 
     async def _challenge(self, offer: Offer, amount: str, description: str,
                          meta: dict[str, str] | None = None) -> list[tuple[str, str]]:
-        handler = self._mpp["tempo/charge"](
+        handler = self._issuer()["tempo/charge"](
             amount=amount, description=description, expires_in=self._challenge_ttl,
             **({"meta": meta} if meta else {}))
         result = await handler(self._request(offer))

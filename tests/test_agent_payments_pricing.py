@@ -28,7 +28,7 @@ from treg.timeutil import utcnow_naive
 from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
-    EP, EP_MICRO, FLOOR, RECIPIENT, _balance, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
+    EP, EP_MICRO, FLOOR, RECIPIENT, _balance, _payer_org, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
     _mpp_paid, _mpp_proof, _siwx_proof, _x402_credential, anon, chain, facilitator, payments_on,
     wallet)
 from test_capacity_overflow import VENDOR_BODY, _exhausted, _orthogonal, _route
@@ -537,12 +537,15 @@ async def test_a_kept_transfer_s_recovery_runs_one_call_however_many_proofs(
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize("switch", [False, True], ids=["switch-off", "switch-on"])
 async def test_a_challenge_issued_with_the_configured_realm_still_pays(
-        wallet: AsyncClient, payments_on, chain, monkeypatch):
-    """Through a rolling deploy, an instance that normalizes the realm still verifies a challenge
-    an older one issued with the realm exactly as configured, so its pushed transfer is kept."""
+        wallet: AsyncClient, payments_on, chain, monkeypatch, switch):
+    """Through a rolling deploy, an instance verifies a challenge an older one issued with the
+    realm exactly as configured, so its pushed transfer is kept. It issues that realm itself until
+    the switch is on (an older instance verifies only it), the normalized one after."""
     from mpp import Challenge, Credential
 
+    _terms_switch(monkeypatch, switch)
     x402 = next(r for r in agent_payments._rails if r.protocol == "x402")
     rail = MppTempoRail(secret="s" * 40, realm="REGISTRY.TEST", recipient=RECIPIENT,
                         chain_id=42431)
@@ -558,7 +561,91 @@ async def test_a_challenge_issued_with_the_configured_realm_still_pays(
     r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
     assert r.status_code == 200, r.text
     fresh = await wallet.get(f"/call/{EP}?aweme_id=7")
-    assert {c.realm for c in _mpp_challenges(fresh)} == {"registry.test"}
+    assert {c.realm for c in _mpp_challenges(fresh)} == {"registry.test" if switch else "REGISTRY.TEST"}
+
+
+async def test_a_spent_recovery_is_never_asked_to_pay(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """Once a kept transfer's recovery ran its call, any proof under its recovery terms, the same
+    one again or another, answers the final 409 before price, credit or replay could ask for a
+    payment, even when the credit left no longer covers the call."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "f7" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    answers = [await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+               for _ in range(2)]
+    proofs = [await _mpp_proof(a, account) for a in answers]
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": proofs[0]})).status_code == 200
+    payer_org = await _payer_org(chain.payer)
+    async with session_maker() as db:
+        # The margin doubles what a reserve holds: this leaves the credit well short of the call.
+        await ledger.reserve(db, payer_org, EP, await ledger.balance_of(db, payer_org) // 2)
+    for proof in (proofs[0], proofs[1]):
+        r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+        assert r.status_code == 409 and r.json()["detail"]["reason"] == "challenge_used", r.text
+        assert "www-authenticate" not in r.headers
+    assert len(calls) == 1
+
+
+async def test_a_recovery_on_another_host_runs_one_call(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The 409 hands a recovery reference for the proof's host: sent there in X-Treg-Recovery,
+    it gets the transfer's own recovery terms, so following the receipt twice runs one call."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    x402 = next(rail for rail in agent_payments._rails if rail.protocol == "x402")
+    agent_payments.configure([
+        MppTempoRail(secret="s" * 40, realm="pay.registry.test", recipient=RECIPIENT,
+                     chain_id=42431), x402])
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "f8" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert kept.status_code == 409, kept.text
+    detail = kept.json()["detail"]
+    follow = {"X-Treg-Recovery": detail["recovery"]}
+    async with AsyncClient(transport=ASGITransport(app=app)) as client:
+        asked = [await client.get(detail["proof_url"], headers=follow) for _ in range(2)]
+        proofs = [await _mpp_proof(a, account) for a in asked]
+        runs = [await client.get(detail["proof_url"], headers={**follow, "Authorization": p})
+                for p in proofs]
+    assert [r.status_code for r in runs] == [200, 409], runs[1].text
+    assert len(calls) == 1
+    assert all("x-treg-recovery" not in str(call).lower() for call in calls)
+
+
+async def test_with_the_switch_off_a_kept_transfer_offers_a_plain_proof(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """Issued while the switch was on, kept after it went off: the proof offered carries no terms
+    an older instance could not read."""
+    from mpp import Credential
+
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "f9" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    _terms_switch(monkeypatch, False)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
+    assert all("terms" not in (c.opaque or {}) for c in _mpp_challenges(r)), "no terms in the proof"
 
 
 async def test_challenge_used_does_not_claim_the_first_call_ran(
