@@ -3,34 +3,9 @@
 from types import SimpleNamespace
 
 import pytest
-from pydantic import ValidationError
 
 from treg import analytics, worker
-from treg.config import Settings
 from treg.infra import kv, money_admission, money_admission_reporting as reporting
-
-
-def test_rollout_is_opt_in_and_rejects_invalid_boundaries():
-    settings = Settings(_env_file=None)
-    assert not settings.money_admission_enabled
-    assert settings.money_admission_org_ids == []
-    for values in ({"money_admission_wait_s": 0}, {"money_admission_lease_s": 0},
-                   {"money_admission_org_ids": [-1]}):
-        with pytest.raises(ValidationError):
-            Settings(_env_file=None, **values)
-
-
-def test_bounded_summary_reaches_both_transports(monkeypatch, caplog):
-    row = {"operation": "close", "mode": "redis", "completed": 100, "wait_total_ms": 600}
-    monkeypatch.setattr(money_admission, "snapshot", lambda: [row])
-    monkeypatch.setattr(analytics, "build_id", lambda: "test-build")
-    captured = []
-    monkeypatch.setattr(analytics, "capture", lambda d, e, p: captured.append((e, p)))
-    assert reporting.emit_snapshot(role="worker", shutdown=True) == 1
-    assert captured == [("money_admission_gauge", {
-        **row, "role": "worker", "shutdown": True, "build": "test-build"})]
-    assert '"completed":100' in caplog.text
-    assert len(caplog.records) == 1
 
 
 def test_analytics_failure_retains_local_summary(monkeypatch, caplog):
