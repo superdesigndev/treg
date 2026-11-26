@@ -15713,9 +15713,9 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-content-parsing.json
-  price: {value: '0', currency: USD, per: 1, unit: call}
+  price: {value: '0', currency: USD, per: 1, unit: call, note: "free; DataForSEO does not charge for parsing a crawled page, though the answer's `cost` is not zero"}
   settle: null
-  provenance: {source: observed, checked: '2026-07-28', confidence: verified}
+  provenance: {source: docs, source_url: 'https://docs.dataforseo.com/v3/on_page/content_parsing/', checked: '2026-11-26', confidence: documented}
   resource_ownership:
     requires:
       kind: on_page_task
