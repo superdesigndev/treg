@@ -202,7 +202,7 @@ that account's access key.
 3. `_draws`: whether the call is paid from the credit the wallet already holds, read with
    `call_allowance.reach` (money.md, "The balance a team is shown"): credit it can spend now draws,
    credit that is not there settles. When neither is confirmed (the team's money would cover the
-   call but a refill or a give-back still holds its lease after the wait), it answers 503
+   call but another request still holds the team's money lease after the wait), it answers 503
    `credit_unconfirmed` with `Retry-After` before the payment is recorded, so the same payment or
    proof may be sent again: settling then could pay twice for credit the wallet has. The proof
    path (`_admit_proof`) asks the same before it claims the proof.

@@ -4388,70 +4388,69 @@ def _proof() -> Verified:
                     expires_at=datetime(2099, 1, 1))
 
 
-@pytest.mark.parametrize("case", ["read_before_a_refill", "store_down", "held_by_calls_in_flight"])
+@pytest.mark.parametrize("case", ["store_down", "held_by_calls_in_flight"])
 async def test_a_wallet_pays_only_for_credit_no_call_can_reach(org_id, store, monkeypatch, case):
-    """A wallet's payment settles only when the call cannot be paid from credit now. Money a
-    refill moved onto the counter after the counter was read is found by giving the counter
-    back, so the wallet does not pay for it twice. Money the store cannot answer for, or that
-    calls in flight hold, no call can reach: the payment settles, and the retry it was asked
-    for is never answered with credit that is not there."""
+    """Money calls in flight hold, or a counter the store cannot answer for, no call can reach:
+    the payment settles, and the retry it was asked for is never answered with credit that is
+    not there."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.1)
     if case == "held_by_calls_in_flight":
         assert await runtime.take(org_id, GRANT)
     else:
         assert await runtime.take(org_id, 1_000)
-    if case == "read_before_a_refill":
-        async def before_the_refill(org_id):
-            return 0, 0
-        monkeypatch.setattr(runtime, "_counter_state", before_the_refill)
-    if case == "store_down":
+
         async def silent(org_id):
             return None
         monkeypatch.setattr(store, "allowance_state", silent)
-    draws = case == "read_before_a_refill"
     for _ in range(2):
-        assert await agent_payments._draws(_offer(), org_id) is draws
-    assert await _given_back(org_id) == ([GRANT - 1_000] if draws else [])
+        assert await agent_payments._draws(_offer(), org_id) is False
+    assert await _given_back(org_id) == []
 
 
-async def test_a_wallet_does_not_pay_for_credit_another_request_is_giving_back(
-        org_id, store, monkeypatch):
-    """Another request has emptied the counter and not yet released its money to the balance:
-    this one finds nothing on either side and nothing to give back. The team's money is still
-    all there (`credit_bound`), so it reads again, and draws once the release has landed."""
+def _moved_by_another(store, org_id: int, move) -> asyncio.Task:
+    """Another request holds the team's money lease and moves its money, then lets go."""
+    key = runtime.money_key(org_id)
+    store.leases[key] = "another request"
+
+    async def run():
+        await asyncio.sleep(0.05)
+        await move()
+        del store.leases[key]
+
+    return asyncio.create_task(run())
+
+
+async def test_credit_another_request_is_giving_back_is_counted_once(org_id, store, monkeypatch):
+    """Calls in flight hold most of the hold, and another request is giving the rest of the
+    counter back to the balance. The reading waits for its lease, so the money is counted once,
+    where it landed, and a wallet asked for more than that settles rather than drawing it."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    epoch = await runtime.take(org_id, 1_000)
-    left = await store.allowance_drop(org_id, epoch)
+    epoch = await runtime.take(org_id, GRANT - 100_000)
 
-    async def release_later():
-        await asyncio.sleep(0.1)
-        async with session_maker() as db:
-            await allowance.close_allowance_in_transaction(
-                db, org_id, reason="exact_path_short", release_micro=left, epoch=epoch)
-            await db.commit()
+    async def give_back():
+        assert await runtime._give_back(org_id, epoch) == 100_000
 
-    releasing = asyncio.create_task(release_later())
-    assert await agent_payments._draws(_offer(), org_id) is True
-    await releasing
+    moving = _moved_by_another(store, org_id, give_back)
+    assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
+    await moving
+    assert await agent_payments._draws(_offer(50_000), org_id) is True
 
 
 async def test_a_wallet_does_not_pay_for_credit_a_refill_is_publishing(org_id, store, monkeypatch):
-    """A refill moved the balance into the hold and holds the team's lease while it publishes the
-    counter: the first reading finds neither, and the give-back cannot have the lease. The next
-    reading finds the counter, and the wallet draws."""
+    """A refill has moved the balance into the hold and holds the lease while it publishes the
+    counter: read under the lease, the money is on the counter, and the wallet draws."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     assert await runtime.take(org_id, 1_000)
-    store.leases[runtime.money_key(org_id)] = "a refill"
-    state, readings = runtime._counter_state, []
+    avail = store.counters[org_id]["avail"]
+    store.counters[org_id]["avail"] = 0
 
-    async def published_after_the_first_reading(org_id):
-        readings.append(1)
-        return (0, 0) if len(readings) == 1 else await state(org_id)
+    async def publish():
+        store.counters[org_id]["avail"] = avail
 
-    monkeypatch.setattr(runtime, "_counter_state", published_after_the_first_reading)
+    moving = _moved_by_another(store, org_id, publish)
     assert await agent_payments._draws(_offer(), org_id) is True
-    assert len(readings) == 3 and await _given_back(org_id) == [], "the counter read again once counted"
+    await moving
+    assert await _given_back(org_id) == []
 
 
 async def test_a_wallet_is_asked_to_send_the_same_payment_again_while_its_credit_moves(
@@ -4468,66 +4467,38 @@ async def test_a_wallet_is_asked_to_send_the_same_payment_again_while_its_credit
         await agent_payments._draws(_offer(), org_id)
 
 
-async def test_a_counter_given_back_after_it_was_read_is_not_counted_twice(
+async def test_a_team_whose_money_is_not_there_is_answered_without_the_store(
         org_id, store, monkeypatch):
-    """Calls in flight hold most of the hold, and another request gives the rest of the counter
-    back after this one read it: the same money is now on the balance. Counted once, the team
-    is short of an amount that the two readings together would have covered."""
+    """Money nowhere near the amount, or a team off the allowance: one reading of the database,
+    no lease, no counter."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    noted = _Asked(store)
+    monkeypatch.setattr(kv, "store", lambda: noted)
+    assert await runtime.reach(org_id, 2 * GRANT) == runtime.Reach(0, True)
+    monkeypatch.setattr(get_settings(), "money_allowance_excluded_org_ids", [org_id])
+    assert await runtime.reach(org_id, 1_000) == runtime.Reach(0, True)
+    assert noted.names == []
+
+
+async def test_a_run_short_of_credit_inside_its_session_runs_again_with_the_confirmed_answer(
+        org_id, store, monkeypatch):
+    """The run's check inside its session never reads the two stores: it asks for the credit to
+    be confirmed, and `reach` does that outside it. The run then takes the answer; money that is
+    not there is refused after one run, and money that could not be confirmed says so."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
-    epoch = await runtime.take(org_id, GRANT - 100_000)
-    state, readings = runtime._counter_state, []
-
-    async def read_before_the_give_back(org_id):
-        readings.append(1)
-        return (100_000, epoch) if len(readings) == 1 else await state(org_id)
-
-    assert await runtime._give_back(org_id, epoch) == 100_000
-    monkeypatch.setattr(runtime, "_counter_state", read_before_the_give_back)
-    assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
-
-
-async def test_a_quote_keeps_the_balance_the_check_confirmed(org_id, store, monkeypatch):
-    """The quote's own reading met a refill and came out short; the check found the money. A
-    store that then stops answering does not turn the quote back to short."""
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    assert await runtime.take(org_id, 1_000)
-    state, readings = runtime._counter_state, []
-
-    async def stops_answering(org_id):
-        readings.append(1)
-        return await state(org_id) if len(readings) == 1 else None
-
-    async def quote_reads_none(org_id):
-        return 0, None
-
-    monkeypatch.setattr(runtime, "_counter_state", stops_answering)
-    monkeypatch.setattr(runtime, "counter_offer", quote_reads_none)
-    assert await runtime.balance_for(org_id, 0, 10_000) == GRANT - 1_000
-
-
-async def test_a_run_short_of_credit_inside_its_session_runs_again_once_the_counter_is_back(
-        org_id, store, monkeypatch):
-    """The run's check inside its session read the counter before a refill published it, and
-    found the team short. Outside it, `reach` finds the money, and the run's second check takes
-    that answer rather than reading the two stores again; a need nothing can make up is refused
-    after one run."""
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     caller = await _caller(org_id)
     assert await runtime.take(org_id, 1_000)
-
-    async def before_the_refill(org_id):
-        return 0, None
-    monkeypatch.setattr(runtime, "counter_offer", before_the_refill)
     runs = []
 
     @runtime.gives_counter_back
     async def start(caller, need):
         async with session_maker() as db:
-            runs.append(await runtime.short_of(
-                db, caller.org_id, await runtime.counter_offer(caller.org_id), need))
+            await ledger.balance_of(db, caller.org_id)
+            runs.append(runtime.short_of(caller.org_id, need))
             if runs[-1]:
-                raise runtime.CreditShort(need, ValueError("not enough"))
+                raise runtime.CreditShort(need, ValueError("not enough"), LookupError("moving"))
         return "started"
 
     assert await start(caller, 50_000) == "started"
@@ -4536,6 +4507,23 @@ async def test_a_run_short_of_credit_inside_its_session_runs_again_once_the_coun
     with pytest.raises(ValueError):
         await start(caller, 2 * GRANT)
     assert runs == [True], "nothing makes it up: refused without a second run"
+    runs.clear()
+    store.leases[runtime.money_key(org_id)] = "a refill"
+    with pytest.raises(LookupError):
+        await start(caller, 50_000)
+    assert runs == [True]
+
+
+async def test_a_quote_shows_what_the_team_can_spend_or_where_its_money_sits(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
+    assert await runtime.take(org_id, 1_000)
+    assert await runtime.balance_for(org_id, 10_000) == GRANT - 1_000
+    store.leases[runtime.money_key(org_id)] = "a refill"
+    assert await runtime.balance_for(org_id, 10_000) == GRANT, (
+        "while another request holds the lease: the team's money wherever it sits, for the "
+        "start to confirm")
 
 
 async def test_the_sheets_teams_end_their_read_before_the_store_is_asked(

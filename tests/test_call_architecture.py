@@ -331,8 +331,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # the team's lease asked for once, then admission, the drop and the release in one session
     ("application/call/allowance.py", "give_back_for_exact_path", "store.acquire_lease"),
     ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
-    ("application/call/allowance.py", "_moving", "store.acquire_lease"),
-    ("application/call/allowance.py", "_moving", "store.release_lease"),
+    ("application/call/allowance.py", "_team_lease", "store.acquire_lease"),
+    ("application/call/allowance.py", "_team_lease", "store.release_lease"),
     ("application/call/allowance.py", "_give_back", "money_admission.admit"),
     ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
     ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),

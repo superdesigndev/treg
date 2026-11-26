@@ -228,7 +228,8 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
                           expires_at=now() + timedelta(days=rules.RETENTION_DAYS))
         db.add(row)
         await db.commit()
-    balance = await call_allowance.balance_for(caller.org_id, balance, required)
+    if required > 0:
+        balance = await call_allowance.balance_for(caller.org_id, required)
     return {"id": row.id, "task": task, "mode": mode, "providers": [
         {k: a[k] for k in ("provider", "endpoint_id", "tier", "estimate_micro", "price_type")} for a in chosen],
         "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,
@@ -240,7 +241,6 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
 @call_allowance.gives_counter_back
 async def start(caller, run_id, client, client_ip):
     _check_enabled()
-    offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
         await db.execute(update(User).where(User.id == caller.user.id).values(token_version=User.token_version))
         row = await _owned(db, run_id, caller)
@@ -257,8 +257,9 @@ async def start(caller, run_id, client, client_ip):
         required = sum(a["estimate_micro"] for a in payload["attempts"]) if row.mode == "battle" else payload["attempts"][0]["estimate_micro"]
         if row.mode == "battle" and required > 10_000_000:
             raise rules.WebArenaError("This Battle exceeds the $10 run limit. Select fewer providers.", 409)
-        if await call_allowance.short_of(db, caller.org_id, offered, required):
-            raise call_allowance.CreditShort(required, rules.WebArenaError("Not enough team credits.", 402))
+        if call_allowance.short_of(caller.org_id, required):
+            raise call_allowance.CreditShort(required, rules.WebArenaError("Not enough team credits.", 402),
+                                             rules.WebArenaError("Credits are being updated. Try again in a moment.", 409))
         active = (await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
             WebArenaRun.state == "running", WebArenaRun.deadline_at > now()).limit(3))).all()
         if len(active) >= 3:

@@ -566,16 +566,15 @@ async def _payer_org(network: str, address: str) -> int:
 
 async def _draws(paid: PaidOffer, org_id: int) -> bool:
     """Whether the call is paid from the credit the wallet already holds: True when it can be
-    spent now, False when it is not there. Raises CreditMoving when neither is confirmed
-    (`call_allowance.reach`): settling then could pay twice for credit the wallet has, and
-    drawing could answer it with credit no call can reach, so the wallet sends the same payment
-    again instead. Before the payment is recorded, so that it can."""
+    spent now, False when it is not there. Raises CreditMoving when another request held the
+    team's money lease too long to read it (`call_allowance.reach`): settling then could pay
+    twice for credit the wallet has, and drawing could answer it with credit no call can reach,
+    so the wallet sends the same payment again instead. Before the payment is recorded, so that
+    it can."""
     found, sure = await call_allowance.reach(org_id, paid.quote_micro)
-    if found >= paid.quote_micro:
-        return True
-    if sure:
-        return False
-    raise CreditMoving(paid.endpoint_id)
+    if not sure:
+        raise CreditMoving(paid.endpoint_id)
+    return found >= paid.quote_micro
 
 
 async def _claim(verified: Verified, org_id: int, draw: bool) -> tuple[int | None, bool | None]:
