@@ -4,18 +4,9 @@ source:
   openapi: null # the Stoplight docs render client-side and expose no fetchable spec
   curated: 2026-07-28
 
-# UNVERIFIED — no credential available at curation time; every method, parameter and price below is
-# transcribed from Serpstat's official v4 docs and its own open-source MCP server 2026-07-28.
-# Nothing here has been called.
-#
-# SOURCING NOTE: Serpstat's api-docs.serpstat.com is a Stoplight app that renders client-side, so
-# the reference pages could not be read directly. The method strings and `params` schemas below were
-# taken from Serpstat's OFFICIAL MCP server (github.com/SerpstatGlobal/serpstat-mcp-server-js —
-# src/services/*.ts for the method strings, src/utils/validation.ts for the zod schemas that
-# constrain each params object), cross-checked against the documented method names. That is
-# first-party source code, but it is not the docs and it is not a live call, so field-level details
-# are the weakest part of this file. The per-method credit costs come from Serpstat's published
-# pricing rather than the MCP source, and are recorded in credits (not dollars) in each cost.note.
+# Method strings and `params` schemas follow Serpstat's v4 docs and its own MCP server
+# (github.com/SerpstatGlobal/serpstat-mcp-server-js). Credit counts were checked live against
+# getStats on every priced method.
 #
 # House rules for this provider (they apply to EVERY endpoint below, so they are stated once):
 #
@@ -26,39 +17,28 @@ source:
 #     `body.method`. The `method` string is the operation; getting it wrong is the only way to
 #     call the wrong report.
 #  2. The token rides as `?token=…` and is INJECTED by treg — never list it as user input.
-#  3. HTTP 200 IS NOT SUCCESS. A bad token, an exhausted limit and a malformed params object all
-#     answer HTTP 200 with an `error` object in the envelope instead of `result`. treg's registry
-#     encodes exactly this via `token_reject_field: error` — any consumer must check for `error`
-#     before reading `result`, and any `expect:` block added later should assert on its absence.
+#  3. HTTP 200 IS NOT SUCCESS. A bad token, an exhausted account, a malformed params object and
+#     "no data" all answer HTTP 200 with an `error` object ({code, message}) instead of `result`.
 #     A successful envelope is {"id": "1", "result": {"data": [...], "summary_info": {…}}}, and
-#     `summary_info.left_lines` reports the credits remaining after the call.
+#     `summary_info.left_lines` is the account's credit balance after the call.
 #  4. `se` IS THE SEARCH DATABASE and is required on every keyword and domain method: `g_us`,
 #     `g_uk`, `g_de` … (Google per country, ~200 values) plus `bing_us`. It selects which index
 #     answers, so the same keyword returns different volumes per `se`.
-#  5. BILLING IS IN API CREDITS ("lines"), metered per RESULT ROW on the list methods — the `size`
-#     parameter is therefore the cost dial on most of this file. Credits come with a plan rather
-#     than at a published per-credit price, so `cost.value` is null throughout and the per-method
-#     credit counts live in `cost.note`. Read `summary_info.left_lines` off any real response to
-#     confirm the rate against the account's own plan.
-#     ⚠️ EMPTY RESULTS ARE STILL BILLED: since 2025-06-15 every metered method charges a minimum of
-#     1 credit even when it matches nothing. A speculative sweep over domains that turn out to have
-#     no data is NOT free, which is the opposite of how most providers in this catalog behave.
-#  6. RESPONSE SHAPES ARE NOT UNIFORM. `result` is sometimes an object keyed by the thing you asked
-#     about and sometimes a `data` array, and getKeywordTop nests its rows one level deeper again
-#     (result.data.top[]). Each entry below records where its rows actually live — do not assume
-#     result.data[] across the file.
+#  5. BILLING IS IN API CREDITS ("lines"), per row returned on the list methods, so `size` is the
+#     cost dial on most of this file. Error 32017 "Data not found" still costs 1 credit; the other
+#     "not found" errors (32015, -32000) and every other error are free.
+#  6. RESPONSE SHAPES ARE NOT UNIFORM. Most methods return a `result.data` array; getSummaryV2
+#     returns one object there, and getKeywordTop nests its rows one level deeper
+#     (result.data.top[]). Each entry below says where its rows live.
 #
-# REGISTRY DISCREPANCY, resolved 2026-08-11 by a live call: `SerpstatLimitsApiProcedure.getStats`
-# (the spelling treg's probe used to send) now answers -32601 "Method not found", while
-# `SerpstatLimitsProcedure.getStats` (no "Api" infix — the spelling Serpstat's own MCP server uses)
-# returns the stats. oauth_providers.SERPSTAT's probe was switched to the working spelling.
+# The account probe is `SerpstatLimitsProcedure.getStats` (no "Api" infix): the "Api" spelling
+# answers -32601 "Method not found".
 
 
 pricing_url: https://serpstat.com/pay/
 
-# Every answer is HTTP 200 JSON-RPC: `result` on success, `error` instead on failure. Error 32017
-# "Data not found" is billed 1 credit; 32015 and -32000 "... not found" answers are free misses;
-# every other error is free.
+# A `result` is a hit. Error 32017 "Data not found" is a miss billed 1 credit; 32015 and a -32000
+# "not found" are free misses; every other error envelope is a free error.
 defaults:
   provenance: {source: docs, source_url: 'https://api-docs.serpstat.com/docs/serpstat-public-api/', checked: '2026-11-26', confidence: verified}
   expect:
@@ -83,18 +63,18 @@ endpoints:
     scope: any_account
     method: POST
     path: /
-    name: "Google overview for up to 10 domains — visibility, traffic"
-    summary: "Google summary for up to 10 domains at once — visibility, keywords, traffic, ad keywords"
+    name: "Google overview for a batch of domains — visibility, traffic"
+    summary: "Google summary for a batch of domains — visibility, keywords, traffic, ad keywords"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, note: "the JSON-RPC operation — this literal string selects the report", example: "SerpstatDomainProcedure.getDomainsInfo"}
         params: {type: object, required: true, note: "see the fields below; they go INSIDE params, not at the top level"}
         id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
-        "params.domains": {type: array, items: {type: string}, required: true, note: "1 to 10 bare domains", example: ["serpstat.com"]}
+        "params.domains": {type: array, items: {type: string}, required: true, note: "bare domains, no scheme", example: ["serpstat.com"]}
         "params.se": {type: string, required: true, note: "search database, e.g. g_us, g_uk, g_de, bing_us", example: "g_us"}
         "params.filters": {type: object, required: false, note: "optional narrowing: traff / traff_from / traff_to (estimated traffic) and visible / visible_from / visible_to (visibility score)"}
-      note: "the ONE method here that takes a batch of domains — up to 10 per call — but note the price is PER DOMAIN, so batching saves round trips, not credits. Body shape: {\"id\": \"1\", \"method\": \"SerpstatDomainProcedure.getDomainsInfo\", \"params\": {\"domains\": [\"serpstat.com\"], \"se\": \"g_us\"}}. Rows arrive in result.data[]."
+      note: "the ONE method here that takes a batch of domains, and the price is PER DOMAIN, so batching saves round trips, not credits. Body shape: {\"id\": \"1\", \"method\": \"SerpstatDomainProcedure.getDomainsInfo\", \"params\": {\"domains\": [\"serpstat.com\"], \"se\": \"g_us\"}}. Rows arrive in result.data[]."
     price: {value: '5', currency: credit, unit: domain, note: "5 credits per domain returned; Serpstat answers an unknown domain with a row of zeros, which is billed"}
     reserve: {entities: {from: body.params.domains}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
@@ -147,7 +127,7 @@ endpoints:
         id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domain": {type: string, required: true, note: "bare domain, no scheme", example: "serpstat.com"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
-        "params.size": {type: integer, required: false, note: "COST DIAL — competitors to return, 1 to 100, default 20", example: 10}
+        "params.size": {type: integer, required: false, note: "COST DIAL — competitors to return, 10 to 500, default 100", example: 10}
         "params.filters": {type: object, required: false, note: "visible (minimum visibility score), traff (minimum estimated traffic), minus_domains (array of domains to exclude)"}
       note: "the competitor set is derived from keyword overlap in the chosen `se` database, so results differ per country. `SerpstatDomainProcedure.getCompetitors` is the deprecated predecessor of this method and should not be used in new work."
     price: {value: '1', currency: credit, unit: result, note: "1 credit per returned competitor; a domain with no competitors is free"}
@@ -163,19 +143,19 @@ endpoints:
     method: POST
     path: /
     name: "Bulk Google search volume, CPC and difficulty by keyword"
-    summary: "Google volume, CPC, competition and difficulty for up to 1,000 keywords per call"
+    summary: "Google volume, CPC, competition and difficulty for a batch of keywords in one call"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordsInfo"}
         params: {type: object, required: true}
         id: {type: [integer, string], required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
-        "params.keywords": {type: array, items: {type: string}, required: true, note: "1 to 1,000 keywords", example: ["seo"]}
+        "params.keywords": {type: array, items: {type: string}, required: true, note: "keywords to look up", example: ["seo"]}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "attach the search intent of each keyword"}
         "params.sort": {type: object, required: false, note: "map of field to direction; fields: region_queries_count, region_queries_count_wide, cost, concurrency, found_results, difficulty"}
         "params.filters": {type: object, required: false, note: "cost / concurrency / found_results ranges, each with _from and _to variants"}
-      note: "the batch keyword-overview method — up to 1,000 keywords per call, which is the efficient way to price a keyword list."
+      note: "the batch keyword-overview method, which is the efficient way to price a keyword list."
     price: {value: '1', currency: credit, unit: keyword, note: "1 credit per keyword found; keywords in `not_found` are free, and a list with none found costs 1 credit"}
     reserve: {entities: {from: body.params.keywords}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/2brcbdgmr6rcx-get-keywords-info
@@ -383,7 +363,7 @@ endpoints:
         "params.sort": {type: string, required: false}
         "params.order": {type: string, required: false, note: "asc | desc"}
         "params.complexFilter": {type: array, items: {type: array, items: {type: object}}, required: false}
-      note: "the link-equity map of a site — which pages actually earned the backlinks."
+      note: "the link-equity map of a site — which pages earned the backlinks."
     price: {value: '1', currency: credit, unit: page, note: "1 credit per returned page; a target with no pages is free"}
     reserve: {rows: {param: body.params.size, default: {value: 100, source: docs}, max: 1000}}
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
@@ -408,8 +388,6 @@ endpoints:
       note: |
         Takes no parameters but `params` must still be present as `{}`. This is the right call to
         make BEFORE any large `size` sweep, since every list method in this file is metered per row.
-        See the registry-discrepancy note in the file header: this spelling (no "Api" infix) is the
-        one that works live; treg's probe sends it too.
         Any captured example must have the account's real balances masked before commit.
     price: {value: '0', currency: USD, unit: call, note: "reading the credit meter costs no credits"}
     provenance: null
