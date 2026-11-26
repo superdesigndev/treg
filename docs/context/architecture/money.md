@@ -663,8 +663,9 @@ past the bound do not make every new team scan them.
   another process is working on (its lease is taken) is skipped, not waited for; so is a team
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
   short wait instead of falling back), and the next pass comes back to it. Every team a fold
-  or an idle close gives up is counted by reason (`lease_held`, `busy_lock`,
-  `admission_timeout`, `lock_timeout`, `failed`), and each process logs one
+  or an idle close gives up is counted by reason (`busy_lock`: a money session of the team is
+  open in this process, checked first since that session holds the lease too; `lease_held`:
+  another process has it; `admission_timeout`, `lock_timeout`, `failed`), and each process logs one
   `allowance_fold_skips` line per kind of work and reason a minute (logger
   `treg.allowance_fold_skips`, one physical line of JSON like `allowance_skips`): the skips, the teams, the
   longest any of their oldest charges had waited, and the teams waiting longest (`_note_skip`).

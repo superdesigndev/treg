@@ -72,8 +72,9 @@ def _row_locks() -> bool:
 
 def _note_skip(kind: str, org_id: int, reason: str, oldest=None) -> None:
     """Count one team given up for the pass: `kind` is the work (`fold` or `close`), `reason`
-    why (`lease_held`: another process has the team's lease; `busy_lock`: a money session of
-    the team is open in this process; `admission_timeout`; `lock_timeout`; `failed`), `oldest`
+    why (`busy_lock`: a money session of the team is open in this process, whoever holds the
+    lease; `lease_held`: the lease is taken and no session of the team is open here, so another
+    process has it; `admission_timeout`; `lock_timeout`; `failed`), `oldest`
     when the team's oldest queued charge was written. One `allowance_fold_skips` line per kind
     and reason per minute in this process: the skips, the teams, the longest wait, and the teams
     whose charges have waited longest. Diagnostics never stop a pass."""
@@ -277,8 +278,8 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
     try:
         async with _team_lease(org_id) as free:
             lock = money_lock(org_id)
-            if not free or lock.locked():
-                _note_skip("close", org_id, "busy_lock" if free else "lease_held")
+            if lock.locked() or not free:
+                _note_skip("close", org_id, "busy_lock" if lock.locked() else "lease_held")
                 return False
             async with (
                 lock,
@@ -354,8 +355,8 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
         for _ in range(_FOLD_BATCHES_PER_PASS):
             async with _team_lease(org_id) as free:
                 lock = money_lock(org_id)
-                if not free or lock.locked():
-                    skipped = "busy_lock" if free else "lease_held"
+                if lock.locked() or not free:
+                    skipped = "busy_lock" if lock.locked() else "lease_held"
                     break
                 async with (
                     lock,

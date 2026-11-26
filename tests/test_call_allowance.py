@@ -2860,6 +2860,23 @@ async def test_every_team_a_fold_gives_up_is_logged_with_how_long_its_queue_wait
     assert line["top"][0][:2] == [org_id, 1] and line["top"][0][2] >= 89
 
 
+async def test_a_team_this_process_is_working_on_is_logged_as_its_own_lock_not_another_process(
+        org_id, store, fold_skip_lines):
+    """A request of this process holds the team's lease and its money lock together; calling
+    that `lease_held` would send whoever reads the line looking for another process."""
+    store.leases[runtime.money_key(org_id)] = "a request of this process"
+    lock = runtime.money_lock(org_id)
+    await lock.acquire()
+    try:
+        assert await allowance_sweep._fold_team(session_maker, org_id) is None
+        assert not await allowance_sweep._close_idle(session_maker, org_id, utcnow_naive())
+    finally:
+        lock.release()
+    allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    assert sorted((line["kind"], line["reason"]) for line in fold_skip_lines()) == [
+        ("close", "busy_lock"), ("fold", "busy_lock")]
+
+
 async def test_a_minute_of_skips_is_one_line_per_reason_with_the_stalest_teams_first(
         fold_skip_lines):
     now = utcnow_naive()
