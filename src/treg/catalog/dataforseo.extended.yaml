@@ -17419,7 +17419,7 @@ endpoints:
     value: '0'
     currency: USD
     unit: call
-    note: free; the route is missing from DataForSEO's public docs, OpenAPI spec and rate card, so the response `cost` settles the call if that ever changes
+    note: free; the route is missing from DataForSEO's public docs, OpenAPI spec and rate card
   settle: null
   expect: null
   name: "Resolve Google goto redirect URLs"
