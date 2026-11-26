@@ -224,7 +224,7 @@ endpoints:
         model: {type: string, required: true, enum: [gpt-image-2.5-flare, gpt-image-2.5-sunburst], example: gpt-image-2.5-flare}
         prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
         size: {type: string, required: false, default: 1024x1024, enum: [1024x1024, 1024x1536, 1536x1024], example: 1024x1024}
-        quality: {type: string, required: false, default: low, enum: [auto, low, medium, high], example: low}
+        quality: {type: string, required: false, default: low, enum: [low, medium, high], example: low}
         n: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
       bodyType: json
     test_request:
@@ -234,7 +234,6 @@ endpoints:
       table:
         - {when: {body.quality: low}, value: 0.0051, times: body.n}
         - {when: {body.quality: medium}, value: 0.0106, times: body.n}
-        - {when: {body.quality: auto}, value: 0.0106, times: body.n}
         - {when: {body.quality: high}, value: 0.0402, times: body.n}
       fallback: {value: 0.161, note: "Four high-quality 1024x1024 images ($0.1608), rounded up to clear float comparison. The table is the hold only; the points PiAPI reports settle."}
       currency: USD
@@ -244,7 +243,7 @@ endpoints:
       source_url: https://piapi.ai/docs/gpt-image/gpt-image-api
       checked: 2026-11-26
       confidence: verified
-      note: "Every task settles at the points PiAPI reports consumed on the completed task (data.meta.usage.consume), priced in fx.yaml; the rate converts points to millions of points. The table is the hold: the points one 1024x1024 image consumes per quality (auto bills as medium). Upstream is token-metered at OpenAI's $3.75 / $22.50 per 1M input / output tokens, passed through at cost; Flare and Sunburst meter identically."
+      note: "Every task settles at the points PiAPI reports consumed on the completed task (data.meta.usage.consume), priced in fx.yaml; the rate converts points to millions of points. The table is the hold: the points one 1024x1024 image consumes per quality. Upstream is token-metered at OpenAI's $3.75 / $22.50 per 1M input / output tokens, passed through at cost; Flare and Sunburst meter identically."
     verified: 2026-09-14
     added: '2026-09-14'
     example_response: examples/piapi.image-gen.gpt-image-2-5.json
