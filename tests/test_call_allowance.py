@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -18,6 +19,7 @@ from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
 from treg.application import agent_payments, billing, home, table
+from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
@@ -3012,14 +3014,21 @@ async def test_an_allowance_already_past_a_lowered_cap_is_drained(org_id, store)
 @pytest.mark.parametrize("switched_off", [False, True])
 async def test_the_exact_path_leaves_room_for_an_allowance_carried_over_midnight(
         org_id, store, monkeypatch, switched_off):
-    """The hold and its money outlive the switch, so the cap check may not depend on it."""
+    """The hold and its money outlive the switch, so the cap check may not depend on it. With
+    the allowance on, what the counter still offers goes back to the balance and the call is
+    served against what the hold keeps; with it off, nothing goes back."""
     caller = await _caller(org_id)
     caller.org.daily_cap_micro = CHUNK + 500
     await runtime.take(org_id, 600, daily_cap_micro=CHUNK + 500)
     await _move_hold_to_yesterday(org_id)
-    if switched_off:
-        monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
-        monkeypatch.setattr(kv, "configured", lambda: False)
+    if not switched_off:
+        await call_reserve._platform_reserve(
+            _call(org_id), caller, CallMeta(tags={"user": "u1"}), "tagged-1", allow_allowance=True)
+        assert await _per_call_holds(org_id) == ["tagged-1"]
+        assert await _given_back(org_id) == [CHUNK - 600]
+        return
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    monkeypatch.setattr(kv, "configured", lambda: False)
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(
             _call(org_id), caller, CallMeta(tags={"user": "u1"}), "tagged-1", allow_allowance=True)
@@ -3767,6 +3776,35 @@ async def test_what_calls_in_flight_took_and_a_lost_counter_left_behind_are_not_
     del store.counters[org_id]
     assert await _state(org_id) == (0, GRANT)
     assert await _shown(org_id, caller) == {0}
+
+
+async def test_a_daily_cap_counting_the_allowance_hold_gives_the_counter_back(
+        org_id, store, monkeypatch):
+    """The day's committed spend counts all of the allowance hold opened today. A call that
+    keeps its own hold would pass the cap but for the money its counter still offers: the
+    counter goes back, every check runs again, and the call is served."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=GRANT))
+        await db.commit()
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"]
+    assert await _given_back(org_id) == [GRANT - 4_000]
+
+
+async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    parent = SimpleNamespace(input=SimpleNamespace(caller=caller), meta=None)
+    tool = SimpleNamespace(org_id=org_id + 1, tool_id="maker/tool", version=1)
+    assert await hub_runner._reserve_price(parent, tool, "run-1", 80_000) == 80_000
+    assert await _per_call_holds(org_id) == ["run-1:price"]
+    assert await _given_back(org_id) == [GRANT - 4_000]
 
 
 async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_paying_again(

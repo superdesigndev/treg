@@ -538,6 +538,12 @@ past the bound do not make every new team scan them.
   minutes after its last refill (that refill's deadline, `money_allowance_fresh_s` on, plus
   `hold_ttl_s()` and the clocks' margin, at the next pass of the sweep). A team that stops
   calling leaves what its counter held there for the same time.
+
+  The same give-back serves two more refusals. The platform daily cap
+  (`_enforce_platform_daily_cap`) counts all of an allowance hold opened today as committed, so
+  a call it refuses asks for the counter back by what the day is over, and on a give-back runs
+  every check again. The hub's price hold (`hub.runner._reserve_price`) is a reserve of its own
+  and asks the same way when the balance is short.
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing

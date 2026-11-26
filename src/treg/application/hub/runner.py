@@ -38,6 +38,7 @@ from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...models import HubRun, HubTool, Org
 from ..call.types import CallContext, CallFailure, CallInput, ResolutionFailed, UpstreamResponse
+from ..call import allowance as call_allowance
 from ..call.reserve import reserve_admission
 from ..call.settle import hold_admission_wait_s
 
@@ -409,24 +410,34 @@ async def _reserve_price(parent: CallContext, tool: HubTool, run_id: str, reserv
     caller = parent.input.caller
     if reserve_micro <= 0 or caller.org_id == tool.org_id:
         return 0  # no session and no balance row
-    async with (
-        reserve_admission(caller.org_id),
-        money_session(session_maker()) as s,
-    ):
-        try:
-            await ledger.reserve_in_transaction(
-                s, caller.org_id, tool.tool_id, reserve_micro, call_id=f"{run_id}:price",
-                meta={"tier": "hub_price", "tool_id": tool.tool_id, "version": tool.version,
-                      "maker_org_id": tool.org_id}, tags=dict(getattr(parent.meta, "tags", {}) or {}))
-        except ledger.InsufficientBalance as exc:
-            await s.rollback()
-            raise ResolutionFailed("hub_price_unaffordable", status_code=402, detail={
-                "error": "insufficient_balance", "tool_id": tool.tool_id,
-                "balance_micro": exc.balance_micro, "price_micro": reserve_micro,
-                "message": f"this tool can cost up to ${reserve_micro / 1e6:.6g} per run from its "
-                           f"maker, before its steps; your balance is ${exc.balance_micro / 1e6:.4f}"}) from None
-        await s.commit()
-    return reserve_micro
+    for retry in (True, False):
+        short = None
+        async with (
+            reserve_admission(caller.org_id),
+            money_session(session_maker()) as s,
+        ):
+            try:
+                await ledger.reserve_in_transaction(
+                    s, caller.org_id, tool.tool_id, reserve_micro, call_id=f"{run_id}:price",
+                    meta={"tier": "hub_price", "tool_id": tool.tool_id, "version": tool.version,
+                          "maker_org_id": tool.org_id}, tags=dict(getattr(parent.meta, "tags", {}) or {}))
+            except ledger.InsufficientBalance as exc:
+                await s.rollback()
+                short = exc
+            else:
+                await s.commit()
+                return reserve_micro
+        # The team's allowance counter holds money the balance does not show; outside the
+        # session, since giving it back takes the team's money admission itself.
+        if retry and await call_allowance.give_back_for_exact_path(
+                caller.org_id, short.required_micro - short.balance_micro):
+            continue
+        raise ResolutionFailed("hub_price_unaffordable", status_code=402, detail={
+            "error": "insufficient_balance", "tool_id": tool.tool_id,
+            "balance_micro": short.balance_micro, "price_micro": reserve_micro,
+            "message": f"this tool can cost up to ${reserve_micro / 1e6:.6g} per run from its "
+                       f"maker, before its steps; your balance is ${short.balance_micro / 1e6:.4f}"})
+    raise AssertionError("unreachable")
 
 
 async def _close_price(tool: HubTool, run_id: str, held: int, *, success: bool, reason: str = "",

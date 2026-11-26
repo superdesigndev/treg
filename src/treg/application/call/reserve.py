@@ -697,6 +697,19 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             "provider": mk.provider,
             "endpoint_id": mk.endpoint_id,
         }) from exc
+    except ReservationFailed as exc:
+        # The day's committed spend counts all of the allowance hold, what its counter still
+        # offers included: give that back and run every check again.
+        cap = exc.detail if exc.kind == "platform_daily_cap_reached" else None
+        if retry_short and isinstance(cap, dict) and await allowance_runtime.give_back_for_exact_path(
+                caller.org_id,
+                cap["spent_today_micro"] + cap["estimated_cost_micro"] - cap["daily_cap_micro"]):
+            noted = True
+            return await _platform_reserve(
+                mk, caller, meta, call_ref, allow_holdless=allow_holdless,
+                mark_in_flight=mark_in_flight, retry_short=False,
+                skip_reason=note, skip_as_direct=as_direct)
+        raise
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
