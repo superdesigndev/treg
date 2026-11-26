@@ -1587,7 +1587,6 @@ adapters:
             body.maxCrawledPlacesPerSearch: 10, body.maxCrawledPlaces: 10, body.scrapeContacts: false,
             body.scrapePlaceDetailPage: false, body.maxReviews: 0}
     out: {places: ".", count: "len(.)"}
-    miss: ". == []"
 
   # ---- tiktok.user.videos (batch 5) ------------------------------------------------------------
   justoneapi.tiktok.user.videos:
@@ -2467,7 +2466,6 @@ adapters:
     const: {body.mode: post, queryParams.maxTotalChargeUsd: "0.05", queryParams.timeout: "90",
             queryParams.memory: "1024"}
     out: {post: "[0]"}
-    miss: "[0] == null"
 
   predictleads.companies.job_openings:
     # One flat price for up to 1,000 rows; at most 500 keeps a large board inside the 8 MiB buffer.
@@ -4152,7 +4150,6 @@ adapters:
     in: {q: body.jobTitles, location: body.locations}
     in_expr: {body.jobTitles: "list(q)", body.locations: "list(location)"}
     out: {jobs: "."}
-    miss: ". == []"
   crawl4ai.linkedin.search.jobs:
     route: false
     accepts: [[q]]
