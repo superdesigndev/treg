@@ -1079,6 +1079,9 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
                 outcome = await _fold_backlog(org_id, budget, call_id, found)
                 if found:
                     return found[0]
+                if outcome is _Fold.MORE:
+                    # The batch's own transaction has just looked for the entry: fold on.
+                    continue
                 if outcome is _Fold.HERE:
                     await _team_session_ended(org_id)
                 # The timeout's cancel can be absorbed on the way out: a money session that

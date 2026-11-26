@@ -2216,6 +2216,28 @@ async def test_a_call_past_its_deadline_inside_the_fold_does_not_wait_for_the_re
     assert runtime.money_key(org_id) not in store.leases
 
 
+async def test_a_call_reads_its_entry_once_per_batch_and_once_at_the_end(org_id, store, monkeypatch):
+    """Each batch looks for the call's entry in its own transaction. A miss there needs no
+    second session for the same question; only the last look, once the call stops folding,
+    takes one."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    monkeypatch.setattr(runtime, "_BACKLOG_BATCHES", 3)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(8)])
+        await db.commit()
+    settled_micro, reads = allowance.settled_micro, []
+
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return await settled_micro(db, org, call_id)
+
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    assert await runtime._settled(org_id, "not-queued", 99) == 99
+    assert len(reads) == 3 + 1
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
