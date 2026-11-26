@@ -143,7 +143,10 @@ admitted. The balance gate of `reserve` and the daily figure count such a charge
 before it is applied (`_charge_parts`). A charge can also land after its team was deleted.
 It is then nobody's (`allowance.team_exists`): the charge writer neither queues it nor
 writes its paid-question mark, and a fold drops one already queued (`Folded.orphaned`, logged)
-instead of writing a ledger entry for a team that is not there. A team's deletion also
+instead of writing a ledger entry for a team that is not there. The fold's check share-locks the
+team row (after the blocks, the order a deletion takes them), so a deletion in progress either
+waits for the fold's rows and deletes them or makes the fold find no team: `ledgerentry` and
+`tagspend` have no foreign key to stop such rows ([data-model](data-model.md)). A team's deletion also
 retires its counter in the shared store, which admits calls by the team's number alone. If
 the deletion then does not commit, the hold is still there and the store will take nothing
 more for it. A refill that sees a counter of a later epoch than the hold adds nothing to it
