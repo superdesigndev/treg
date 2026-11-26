@@ -3582,7 +3582,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/rea-marketing", "rea-marketing.html", "0.8"),
     ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
-    ("/follower-signal", "follower-signal.html", "0.8"),
+    ("/follower-analysis", "follower-analysis.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
     # The outcome pages. Listed WITHOUT a trailing slash on purpose: `/use-cases/<slug>/` 307s to
@@ -3911,12 +3911,12 @@ async def recruit_skill_md():
     return _serve_md("skills/recruit/SKILL.md")
 
 
-@app.get("/skills/follower-signal/SKILL.md", include_in_schema=False)
-async def follower_signal_skill_md():
-    """The follower-signal skill: a handle on X, Instagram or TikTok in; the followers who could buy,
-    judged by Jev, and who they are and what they care about, out. The skill behind /follower-signal.
+@app.get("/skills/follower-analysis/SKILL.md", include_in_schema=False)
+async def follower_analysis_skill_md():
+    """The follower-analysis skill: a handle on X, Instagram or TikTok in; the followers who could buy,
+    judged by Jev, and who they are and what they care about, out. The skill behind /follower-analysis.
     Bundled like recruit."""
-    return _serve_md("skills/follower-signal/SKILL.md")
+    return _serve_md("skills/follower-analysis/SKILL.md")
 
 
 @app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
@@ -4320,13 +4320,13 @@ async def gtm_engineering_md():
     return resp
 
 
-@app.get("/follower-signal", include_in_schema=False)
-async def follower_signal_page(request: Request):
+@app.get("/follower-analysis", include_in_schema=False)
+async def follower_analysis_page(request: Request):
     """Follower leads: a signed-in visitor types an X handle and what they sell; the page reads the
     newest followers and has Jev judge each one, every step an ordinary `/call/` billed to the
     visitor's team. Signed out, the form shows the estimate and Scan opens sign-in. Served like
     /jev: canonical, in the sitemap, no-cache."""
-    return _static_page("follower-signal.html", request)
+    return _static_page("follower-analysis.html", request)
 
 
 @app.get("/jev", include_in_schema=False)
@@ -4818,7 +4818,7 @@ async def well_known_skills_index():
                        ("lead-signals", "skills/lead-signals/SKILL.md"),
                        ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
                        ("doomscroll", "skills/doomscroll/SKILL.md"),
-                       ("follower-signal", "skills/follower-signal/SKILL.md")):
+                       ("follower-analysis", "skills/follower-analysis/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
         if summary := (fm.get("metadata") or {}).get("summary"):
@@ -4866,10 +4866,10 @@ async def well_known_doomscroll_md():
     return _serve_md("skills/doomscroll/SKILL.md")
 
 
-@app.get("/.well-known/skills/follower-signal/SKILL.md", include_in_schema=False)
-async def well_known_follower_signal_md():
-    """The seventh entry `index.json` promises; the same file as /skills/follower-signal/SKILL.md."""
-    return _serve_md("skills/follower-signal/SKILL.md")
+@app.get("/.well-known/skills/follower-analysis/SKILL.md", include_in_schema=False)
+async def well_known_follower_analysis_md():
+    """The seventh entry `index.json` promises; the same file as /skills/follower-analysis/SKILL.md."""
+    return _serve_md("skills/follower-analysis/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)

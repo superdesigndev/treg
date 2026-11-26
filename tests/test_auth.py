@@ -415,12 +415,12 @@ async def test_oauth_callback_carries_arena_acquisition_and_counts_signup_once(g
     assert signups[0][2] == {"signup_method": "github", "entry_surface": "arena", "client": "browser"}
 
 
-async def test_oauth_from_follower_signal_returns_to_the_scan(gc):
+async def test_oauth_from_follower_analysis_returns_to_the_scan(gc):
     """The scanner saves its form before sign-in; landing on /app instead would strand that draft."""
-    await gc.get("/auth/github", params={"return_to": "/follower-signal"})
+    await gc.get("/auth/github", params={"return_to": "/follower-analysis"})
     state = gc.cookies.get("treg_oauth_state")
     r = await gc.get("/auth/github/callback", params={"code": "test", "state": state})
-    assert r.status_code == 302 and r.headers["location"] == "/follower-signal"
+    assert r.status_code == 302 and r.headers["location"] == "/follower-analysis"
 
 
 async def test_oauth_arena_return_cookie_encrypts_and_restores_query(gc):

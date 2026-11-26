@@ -955,8 +955,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "follower_signal_skill_md",
-    "path": "/skills/follower-signal/SKILL.md"
+    "name": "follower_analysis_skill_md",
+    "path": "/skills/follower-analysis/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1333,8 +1333,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "follower_signal_page",
-    "path": "/follower-signal"
+    "name": "follower_analysis_page",
+    "path": "/follower-analysis"
   },
   {
     "kind": "APIRoute",
@@ -1598,8 +1598,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "well_known_follower_signal_md",
-    "path": "/.well-known/skills/follower-signal/SKILL.md"
+    "name": "well_known_follower_analysis_md",
+    "path": "/.well-known/skills/follower-analysis/SKILL.md"
   },
   {
     "kind": "APIRoute",

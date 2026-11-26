@@ -1,11 +1,11 @@
 ---
-name: follower-signal
+name: follower-analysis
 description: Use when someone wants to know who their followers on X, Instagram or TikTok are, with their roles, seniority, where they are, the topics they care about and their pain points, how many are potential customers, plus a shareable card and a tagged network map they can search.
 metadata:
   summary: Reads a handle's followers on X, Instagram or TikTok and returns who they are (role, seniority, place, topics, pain points) and which of them are potential customers, with a shareable card.
 ---
 
-# Follower signal
+# Follower analysis
 
 A handle in, three answers out. **Who follows them**: every judged follower's role, seniority,
 topic and place, counted. **Who would buy**: how many followers are potential customers and what
@@ -496,7 +496,7 @@ say the PNG is missing).
 redesign, restyle, reorder or reword. Instrument Serif for numbers, Inter for the rest, light and
 dark via `prefers-color-scheme`.
 
-- Top line: treg mark left, "Follower signal" right.
+- Top line: treg mark left, "Follower analysis" right.
 - Identity row: avatar, @handle, platform icon(s), "58.7K followers · product name".
 - Two numbers, the first largest: **leads** ("potential customers follow me, checked by treg") ·
   **revenue** ("if they became customers").
@@ -519,7 +519,7 @@ dark via `prefers-color-scheme`.
   "Signals read from each lead's own bio and posts" ·
   the revenue formula with its conversion assumption
   · average per lead and total spend · "Observed results, not a controlled benchmark."
-- Bottom chip: `treg.to/follower-signal`.
+- Bottom chip: `treg.to/follower-analysis`.
 - No lead names or company names on the card.
 - Also write a ready post for the user's platform: 3-4 short lines in their numbers, ending with
   the link, card attached.

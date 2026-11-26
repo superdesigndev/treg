@@ -75,7 +75,7 @@ value) and vendors before signing in; running is authenticated and metered again
   Signed-in visitors without a team create one there; authenticated users never fall back to guest
   instructions. The CLI token is fetched for the active team, masked, copied only on click, never
   persisted, and cleared on close; stale responses cannot restore a closed or wrong-team token.
-- **OAuth return paths** are allowlisted (Arena, Leaderboard, Benchmark and Web Arena paths, and the bare `/follower-signal` scanner, with
+- **OAuth return paths** are allowlisted (Arena, Leaderboard, Benchmark and Web Arena paths, and the bare `/follower-analysis` scanner, with
   task/run/team query parameters), checked before redirect and again at callback after decrypting
   the Fernet-encrypted return cookie; missing or tampered cookies fall back to the dashboard.
   Company SSO carries the same validated path in its encrypted state cookie.
