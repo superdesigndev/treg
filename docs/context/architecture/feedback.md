@@ -326,11 +326,14 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
 5. Reads every candidate's marker in one `MGET`: it must exist (none, or a store that cannot say,
    skips it; the marker holds the sample, so the run does not sample again). For each marked call,
    before any archive body is read: the credited child, on treg's key, with its archive identities
-   and a retention-allowed endpoint; its provider A one of the capability's verified vendors. The
-   child is the row the parent's `served_call_ref` names, read for all marked calls in one query;
-   a parent without one falls back to its latest successful `<call>:r<n>`, as reviews attribute
-   it, read alone. This scan takes at most `SCAN_SHARE` of what is left of the run's time; calls
-   it did not reach are skipped as `scan_time`, so a slow read still leaves the calls their turn.
+   and a retention-allowed endpoint; its provider A one of the capability's verified vendors. A
+   parent that names the child its caller got (`served_call_ref`) is compared on that row alone,
+   read for all such parents in one query: a missing or cached row skips the call
+   (`served_child_missing`), never another attempt, and a parent without `served_content_hash` is
+   skipped (`a_delivery_unknown`). A parent naming none falls back to its latest successful
+   `<call>:r<n>`, as reviews attribute it, read alone. Those one-at-a-time lookups stop at
+   `SCAN_SHARE` of what is left of the run's time (`scan_time`); a child already read goes on
+   whatever the time, so a slow read still leaves the calls their turn.
 6. **Spreading the calls.** The run reads every team's comparisons of the comparable capabilities
    in `compare_window_days` that are not failed, counted per (capability, A, B)
    (`comparisons.tallies`), and takes the marked calls one at a time, until `compare_max_per_run`
@@ -351,7 +354,10 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    question the caller asked, so nothing is read back from A's provider request. A marker without
    an input (an older one) is skipped. A's answer comes from the archive record of that child
    (`arena_insights._evidence`), read through A's adapter (`route.child_outcome`); only a hit goes
-   on.
+   on. For a parent naming its child, only the bytes its caller got count: the child's archived
+   answer when its content hash is the parent's `served_content_hash`, otherwise, for an async
+   provider, the terminal answer filed under the child's ref (`archive.load_terminal_snapshots`)
+   when its hash is; anything else is skipped as `a_answer_not_delivered`.
 8. B's target: an endpoint the router itself would ask for this input (`plan.candidates_for`, so
    a routing adapter: a judge-only `route: false` adapter builds no request; then `build_plan`'s
    filter cap, declaration and scope checks), on a provider with a pasted-key credential shape that
@@ -359,8 +365,11 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    would ask for this team's question, not paused, platform-eligible with every platform
    credential its bindings name, not exhausted on treg's primary account, retention allowed,
    priced within the limit step 6 sets, with no second host or path parameter. The provider's
-   endpoints are tried in the router's order, so one dear endpoint does not hide a cheaper one
-   that answers the same input. B's adapter builds the request (`to_upstream`) with the router's
+   endpoints are tried in the order `build_plan` ranks a treg-key child (`plan.rank` over the
+   caller's keys, the filters each endpoint can express, its price and observed stats), so B
+   answers the question the router would have asked it (one that ignores a sent filter is not
+   asked ahead of one that sends it), and one dear endpoint does not hide a cheaper one that
+   answers the same input. B's adapter builds the request (`to_upstream`) with the router's
    variant.
 9. Right before sending, the team is read again: it still exists, is not suspended, has no active
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an

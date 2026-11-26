@@ -270,19 +270,24 @@ class Target:
 
 
 def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = None,
-              max_price_micro: int | None = None) -> Target | None:
+              max_price_micro: int | None = None, given: dict | None = None,
+              stats: dict | None = None) -> Target | None:
     """B's endpoint for this input when treg's own key can serve it: one the router would ask for
     this input (`plan.candidates_for` and `build_plan`'s cap, declaration, scope and per-provider
     sampling checks; a judge-only `route: false` adapter builds no request), not paused,
     platform-eligible with a key, not exhausted on treg's primary account, retention allowed, a
     computable price within `max_price_micro` and no second host or path parameter to resolve.
-    The provider's endpoints are tried in the router's order, so one dear endpoint does not hide a
-    cheaper one that answers the same input."""
+    The provider's endpoints are tried in the order the router ranks them (`plan.rank` over the
+    caller's keys `given`, the filters each can express, its price and the endpoints' observed
+    `stats`), so B answers the question the router would have asked it, and one dear endpoint does
+    not hide a cheaper one that answers the same input."""
     from httpx import QueryParams
 
     from ..domain.capacity.marks import spends_balance
     from ..domain.catalog.routing.contracts import flags_off
-    from ..domain.catalog.routing.plan import candidates_for, sampled_provider_allowed, unscoped
+    from ..domain.catalog.routing.plan import (Candidate, candidates_for, cost_at, ignored_filters,
+                                               miss_charge_micro, rank, sampled_provider_allowed,
+                                               unscoped)
     from .call import keyslots, route
     from .call.resolve import _marketplace_pricing, param_check_refuses
 
@@ -300,6 +305,7 @@ def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = N
                                     capability=contract.capability, identity=flags_off(contract, identity)):
         return None
     mine = [ep for ep in cat.for_capability(contract.capability) if ep["provider"] == provider]
+    fitting = []
     for ep, adapter, variant in candidates_for(contract, mine, cat.adapters, identity)[0]:
         if (ep.get("async") or ep.get("host") or ep.get("platform_auth") == "anonymous"
                 or "{" in str(ep.get("path") or "")):
@@ -315,6 +321,25 @@ def _b_target(contract, identity: dict, provider: str, *, org_id: int | None = N
         if keyslots.exhausted(provider, ep["id"], None,
                               metered=spends_balance((ep.get("cost") or {}).get("type"))):
             continue
+        fitting.append((ep, adapter, variant))
+    # As `build_plan` ranks a treg-key child: a `false` flag asks for nothing, so it is not given.
+    sent = {k for k, v in (identity if given is None else given).items() if v not in (None, "") and v is not False}
+    ranked = []
+    for ep, adapter, variant in fitting:
+        st = (stats or {}).get(ep["id"]) or {}
+        cv = cat.cost_view(ep.get("cost"), provider)
+        price = route._table_price(cat, ep, adapter, identity, variant) or cost_at(cv, identity, adapter)
+        ignored = ignored_filters(adapter, contract, identity, sent)
+        hard = ignored_filters(adapter, contract, identity, sent, soft=False)
+        ranked.append(Candidate(
+            endpoint=ep, adapter=adapter, variant=variant, tier="platform", price_micro=price,
+            hit_rate=st.get("hit_rate"), ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"),
+            last_ok_days=st.get("last_ok_days"), p95_ms=st.get("p95_ms"), ignored=ignored,
+            hinted=tuple(k for k in ignored if k not in hard),
+            miss_micro=miss_charge_micro(cv, identity, adapter, price)))
+    for c in rank(ranked, given=sent, derive=contract.derive, one_subject=contract.one_subject,
+                  last=contract.ask_last):
+        ep, adapter, variant = c.endpoint, c.adapter, c.variant
         query, body = adapter.to_upstream(identity, variant)
         payload = route._child_body(ep, body)
         cost = cat.cost_view(ep.get("cost"), provider)
@@ -471,29 +496,32 @@ async def _eligible_teams(session_factory, org_ids: set[int], capabilities: set[
     return teams - policy
 
 
-def _usable_child(child: CallRecord | None) -> CallRecord | None:
-    """An archive-served (cached) answer is stale next to a live B, so such a parent is not compared."""
-    if child is None or child.cached or not 200 <= (child.status_code or 0) < 300:
+def _usable_child(child: CallRecord | None, *, named: bool = False) -> CallRecord | None:
+    """An archive-served (cached) answer is stale next to a live B, so such a parent is not
+    compared. A child the parent names (`named`) is the one whose answer was delivered, whatever
+    status its own row carries (an async submission's row holds the ticket's)."""
+    if child is None or child.cached or (not named and not 200 <= (child.status_code or 0) < 300):
         return None
     return child
 
 
-async def _served_children(session_factory, parents: list[CallRecord]) -> dict[str, CallRecord]:
-    """The children that served these parents, by parent `call_ref`, in one read: the parent's
-    `served_call_ref` names the answer its caller got (`ix_callrecord_call_ref`). A parent without
-    one is looked up alone (`_served_child`)."""
+async def _served_children(session_factory, parents: list[CallRecord]) -> dict[str, CallRecord | None]:
+    """For each parent that names the child its caller got (`served_call_ref`), by parent
+    `call_ref`: that child, in one read through `ix_callrecord_call_ref`, or None when the row is
+    gone or cached. Such a parent is compared on that child alone, never on another attempt. A
+    parent naming none is absent and is looked up alone (`_served_child`)."""
     refs = {p.served_call_ref: p for p in parents if p.served_call_ref}
+    out: dict[str, CallRecord | None] = {p.call_ref: None for p in refs.values()}
     if not refs:
-        return {}
+        return out
     async with session_factory() as db:
         rows = (await db.execute(select(CallRecord).where(
             CallRecord.call_ref.in_(list(refs)),
             CallRecord.org_id.in_({p.org_id for p in refs.values()})))).scalars().all()
-    out = {}
     for row in rows:
         parent = refs.get(row.call_ref)
-        if parent is not None and row.org_id == parent.org_id and (child := _usable_child(row)) is not None:
-            out[parent.call_ref] = child
+        if parent is not None and row.org_id == parent.org_id:
+            out[parent.call_ref] = _usable_child(row, named=True)
     return out
 
 
@@ -669,16 +697,21 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
             skip(cand, "no_marker")
         else:
             marked.append((cand, marker))
-    # The scan takes at most its share of what is left, so the calls keep theirs.
+    # Lookups one parent at a time take at most their share of what is left, so the calls keep
+    # theirs; a child already read goes on whatever the time.
     scan_deadline = time.monotonic() + (deadline - time.monotonic()) * SCAN_SHARE
     children = await _served_children(session_factory, [c.record for c, _ in marked])
     served: list[Served] = []
     for cand, marker in marked:
-        if time.monotonic() >= scan_deadline:
+        ref = cand.record.call_ref
+        if ref in children and children[ref] is None:
+            skip(cand, "served_child_missing")
+            continue
+        if ref not in children and time.monotonic() >= scan_deadline:
             skip(cand, "scan_time")
             continue
         try:
-            got = await _served(cand, marker, session_factory, children.get(cand.record.call_ref))
+            got = await _served(cand, marker, session_factory, children.get(ref))
         except Exception:
             log.warning("comparison for %s failed", cand.record.call_ref, exc_info=True)
             got = "error"
@@ -742,11 +775,38 @@ async def _served(cand: Candidate, marker: str | None, session_factory,
         return "a_not_comparable"
     if child.credential_tier != "platform":
         return "a_not_on_treg_key"
-    if not child.archive_key_hash:
+    if cand.record.served_call_ref:
+        if not cand.record.served_content_hash:
+            return "a_delivery_unknown"
+    elif not child.archive_key_hash:
         return "a_not_archived"
     if _retention_forbidden(child.endpoint_id):
         return "a_retention_forbidden"
     return Served(cand=cand, child=child, a_ep=a_ep, given=given)
+
+
+async def _a_answer(served: Served, session_factory, _evidence):
+    """A's answer as JSON, or the reason there is none. A parent that names its served child is
+    compared only on the bytes its caller got: the child's own archived answer or, for an async
+    provider, the terminal answer filed under the child's ref, whichever has the parent's
+    `served_content_hash`. Anything else is skipped as `a_answer_not_delivered`."""
+    from .. import archive
+
+    child, parent = served.child, served.cand.record
+    delivered = parent.served_content_hash if parent.served_call_ref else None
+    if delivered is None or child.archive_content_hash == delivered:
+        got = (await _evidence([child], session_factory)).get(child.id) if child.archive_key_hash else None
+        if got is None:
+            return "a_archive_unreadable" if delivered is None else "a_answer_not_delivered"
+        return "a_answer_missing" if got[2] is None else got[2]
+    terminal = (await archive.load_terminal_snapshots([(child.call_ref, child.endpoint_id)],
+                                                      session_factory=session_factory)).get(child.call_ref)
+    if terminal is None or archive.content_hash(terminal[1]) != delivered:
+        return "a_answer_not_delivered"
+    try:
+        return json.loads(terminal[1])
+    except ValueError:
+        return "a_answer_not_delivered"
 
 
 async def _choose_b(served: Served, contract, identity: dict, tally: dict, failing: dict,
@@ -769,13 +829,18 @@ async def _choose_b(served: Served, contract, identity: dict, tally: dict, faili
         # Read again at the claim; here it only keeps a B the day cannot pay for from blocking a
         # cheaper one.
         remaining = _spend_limit_micro() - await comparisons.spent(db, _day())
+    from .call import route
+
+    cat = catalog_store.load()
+    stats = await route._observed_stats([e["id"] for e in cat.for_capability(capability)
+                                         if e["provider"] in others])
     reason = "b_unavailable"
     for provider in others:
-        target = _b_target(contract, identity, provider, org_id=org_id,
+        target = _b_target(contract, identity, provider, org_id=org_id, given=served.given, stats=stats,
                            max_price_micro=min(settings.compare_max_b_micro, remaining))
         if target is None:
             # Only to say why: the provider's first servable endpoint at any price.
-            dear = _b_target(contract, identity, provider, org_id=org_id)
+            dear = _b_target(contract, identity, provider, org_id=org_id, given=served.given, stats=stats)
             if dear is not None:
                 reason = "b_too_dear" if dear.price_micro > settings.compare_max_b_micro else "day_spend_cap"
             continue
@@ -809,12 +874,9 @@ async def _one(served: Served, cat, now, session_factory, client, store, totals,
     if isinstance(chosen, str):
         return f"skipped:{chosen}"
     b_provider, target = chosen
-    got = (await _evidence([child], session_factory)).get(child.id)
-    if got is None:
-        return "skipped:a_archive_unreadable"
-    if got[2] is None:
-        return "skipped:a_answer_missing"
-    _query, _body, answer = got
+    answer = await _a_answer(served, session_factory, _evidence)
+    if isinstance(answer, str):
+        return f"skipped:{answer}"
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     if a_output is None:
         return "skipped:a_output_unreadable"

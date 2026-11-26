@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import delete
 from sqlmodel import select
 
-from treg import hints
+from treg import archive, hints
 from treg.application import compare
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
@@ -93,7 +93,7 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
                        marked: bool = True, cached: bool = False, reviewing: bool = True,
-                       served_ref: bool = False) -> str:
+                       served_ref: bool | str = False, served_hash: str | None = None) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
     and the call path's eligibility marker, as a real sampled routed call leaves them. `reviewing`
     gives the team one recent review, which a team needs to be compared at all."""
@@ -117,7 +117,9 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
         db.add(CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=f"treg.{capability}",
                           method="POST", path="/x", status_code=200, endpoint_id=f"treg.{capability}",
                           provider="treg", credential_tier="routed", call_ref=ref, created_at=at,
-                          served_call_ref=f"{ref}:r1" if served_ref else None))
+                          served_call_ref=f"{ref}:{served_ref if isinstance(served_ref, str) else 'r1'}"
+                          if served_ref else None,
+                          served_content_hash=(served_hash or f"body-{ref}") if served_ref else None))
         child = CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=eid, method="POST",
                            path="/x", status_code=200, endpoint_id=eid, provider=a,
                            credential_tier=tier, call_ref=f"{ref}:r1", created_at=at, cached=cached)
@@ -1436,18 +1438,30 @@ async def test_a_vendor_the_router_samples_out_is_never_b(clients, search_on, mo
     assert sent == [] and result["skip_reasons"] == {"b_unavailable": 1}, result
 
 
+async def test_b_asks_the_endpoint_the_router_would_rank_first(clients, monkeypatch):
+    """A people search with a location: QuickEnrich's catalog-first endpoint ignores the location,
+    its free one sends it, and the router ranks that one first. B asks it too, so both vendors
+    answer the same question."""
+    _platform(monkeypatch, "quickenrich")
+    contract = catalog_store.load().contracts["people.search"]
+    given = {"company_domain": "acme.com", "title": "engineer", "location": "Berlin"}
+    identity, _ = canonical_identity(contract, given)
+    target = compare._b_target(contract, identity, "quickenrich", given=given)
+    assert target is not None and target.ep["id"] == "quickenrich.people.search"
+
+
 async def test_a_dear_endpoint_gives_way_to_a_cheaper_one_of_the_same_vendor(clients, monkeypatch):
-    """A company-only people search: LeadMagic's first endpoint costs more than one B may, its
-    employee finder answers the same input for a fraction of it."""
+    """The endpoint the router ranks first costs more than one B may: the next one that answers
+    the same input within the limit is asked."""
     _platform(monkeypatch, "leadmagic")
-    cat = catalog_store.load()
-    contract = cat.contracts["people.search"]
+    contract = catalog_store.load().contracts["people.search"]
     identity, _ = canonical_identity(contract, {"company_domain": "acme.com"})
     first = compare._b_target(contract, identity, "leadmagic")
-    assert first is not None and first.price_micro > 100_000
-    cheap = compare._b_target(contract, identity, "leadmagic", max_price_micro=100_000)
-    assert cheap is not None and cheap.ep["id"] == "leadmagic.x.employee-finder"
-    assert cheap.price_micro <= 100_000
+    assert first is not None
+    cheaper = compare._b_target(contract, identity, "leadmagic", max_price_micro=first.price_micro - 1)
+    assert cheaper is None or (cheaper.ep["id"] != first.ep["id"]
+                               and cheaper.price_micro < first.price_micro)
+    assert compare._b_target(contract, identity, "leadmagic", max_price_micro=0) is None
 
 
 async def test_a_b_that_keeps_failing_stops_taking_calls(clients, search_on, monkeypatch):
@@ -1506,3 +1520,69 @@ async def test_served_children_are_read_together(clients, search_on, monkeypatch
 def test_the_daily_spend_is_read_as_a_decimal(monkeypatch):
     monkeypatch.setattr(get_settings(), "compare_daily_usd", 2.01)
     assert compare._spend_limit_micro() == 2_010_000
+
+
+async def test_a_parent_is_compared_only_on_the_child_it_names(clients, search_on, monkeypatch):
+    """The parent names `:r2`, the audit kept only `:r1`: `:r1` is not what the caller got."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref="r2")
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"served_child_missing": 1}, result
+
+
+async def test_an_archived_answer_that_was_not_delivered_is_not_compared(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=True,
+                       served_hash="another-body")
+    monkeypatch.setattr(archive, "load_terminal_snapshots", _no_terminal)
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"a_answer_not_delivered": 1}, result
+
+
+async def _no_terminal(tasks, *, session_factory=None):
+    return {}
+
+
+async def test_an_async_answer_is_read_from_its_terminal_archive(clients, search_on, monkeypatch):
+    """An async provider's delivered answer is the terminal one filed under the child's ref; its
+    hash, not the submission's, matches what the caller got."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    terminal = json.dumps(TAVILY_HIT).encode()
+    ref = await _routed_call(await _org_id(clients), "who makes the best espresso", served_ref=True,
+                             served_hash=archive.content_hash(terminal))
+    asked = []
+
+    async def snapshots(tasks, *, session_factory=None):
+        asked.extend(tasks)
+        return {f"{ref}:r1": (200, terminal)}
+    monkeypatch.setattr(archive, "load_terminal_snapshots", snapshots)
+    result = await _collect()
+    assert result["ready"] == 1 and len(sent) == 1, result
+    assert asked == [(f"{ref}:r1", "tavily.web.search")]
+
+
+async def test_a_slow_batch_read_still_leaves_its_children_the_rest_of_the_run(clients, search_on, monkeypatch):
+    """The served children are read together in more than half the run's time: they are already
+    read, so the calls are made; only lookups one parent at a time stop at the scan's share."""
+    import asyncio
+
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    real = compare._served_children
+
+    async def slow(session_factory, parents):
+        await asyncio.sleep(1.1)
+        return await real(session_factory, parents)
+    monkeypatch.setattr(compare, "_served_children", slow)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "first question", served_ref=True, minutes_ago=3)
+    await _routed_call(org_id, "second question", served_ref=True, minutes_ago=4)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        result = await compare.collect(client=client, max_seconds=2)
+    assert result["called"] == 2 and len(sent) == 2, result
+    assert "scan_time" not in result["skip_reasons"], result
