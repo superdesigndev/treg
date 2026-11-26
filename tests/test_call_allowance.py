@@ -2365,6 +2365,30 @@ async def test_a_fold_still_waiting_for_a_connection_gives_up_at_the_deadline(
     assert connected == [] and runtime.money_key(org_id) not in store.leases
 
 
+async def test_a_call_waiting_on_its_teams_fold_reads_what_that_fold_committed(
+        org_id, store, monkeypatch):
+    """Two calls of a team. The first folds both charges and commits after the folding time; the
+    second only waited for it. The second still answers with what the ledger took for it."""
+    # The fold below commits at about 0.55 s: after the second call's folding time (it starts at
+    # 0.02 s and folds until 0.50 s), before its deadline (0.62 s).
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.6)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(name, org_id, "e", 10, reserved_micro=10) for name in ("a", "b")])
+        await db.commit()
+    fold = allowance.fold_charges_in_transaction
+
+    async def commits_after_the_folding_time(db, org, **kwargs):
+        await asyncio.sleep(0.5)
+        return await fold(db, org, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", commits_after_the_folding_time)
+    first = asyncio.create_task(runtime._settled(org_id, "a", 99))
+    await asyncio.sleep(0.02)
+    assert await runtime._settled(org_id, "b", 99) == 10
+    assert await first == 10
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):

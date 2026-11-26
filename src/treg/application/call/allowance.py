@@ -524,6 +524,8 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
 
 _lease_releases: set[asyncio.Task] = set()
 _background_folds: set[asyncio.Task] = set()
+# The request-path folds of each team running in this process, for a call that waits on one.
+_team_folds: dict[int, set[asyncio.Task]] = {}
 
 
 async def _fold_beside(org_id: int, budget: list[int], call_id: str, found: list[int],
@@ -536,30 +538,58 @@ async def _fold_beside(org_id: int, budget: list[int], call_id: str, found: list
     task = asyncio.ensure_future(_fold_backlog(org_id, budget, call_id, found, deadline))
     _background_folds.add(task)
     task.add_done_callback(_background_folds.discard)
+    team = _team_folds.setdefault(org_id, set())
+    team.add(task)
+
+    def _forget(done: asyncio.Task) -> None:
+        team.discard(done)
+        if not team and _team_folds.get(org_id) is team:
+            del _team_folds[org_id]
+
+    task.add_done_callback(_forget)
     started.append(task)
     return await asyncio.shield(task)
 
 
 async def _last_look(org_id: int, call_id: str, found: list[int],
                      fold: asyncio.Task | None) -> int | None:
-    """Read the call's entry once, while a fold the call left running may still commit it:
-    whichever brings an answer first. The caller bounds it with its deadline."""
+    """Read the call's entry while a fold of the team may still commit it: the call's own, or
+    the one this process is running for the team that the call waited on. Whichever answers
+    first. A fold that ends without answering this call (another call's batch, which may still
+    have applied this charge) is followed by one more read. The caller bounds it with its
+    deadline."""
     read = asyncio.ensure_future(_read_settled(org_id, call_id))
-    waiting = {read} if fold is None or fold.done() else {read, fold}
+    reads = [read]
+    tasks = {read} if fold is None or fold.done() else {read, fold}
     try:
-        while waiting:
-            done, waiting = await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+        while tasks:
+            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             if found:
                 return found[0]
             if read in done:
                 settled = read.result()
                 if settled is not None:
                     return settled
-                if fold not in waiting:
-                    return None
+            if fold in done:
+                # A read begun before that batch committed may not see it: ask again.
+                read.cancel()
+                read = asyncio.ensure_future(_read_settled(org_id, call_id))
+                reads.append(read)
+                tasks.discard(fold)
+                tasks.add(read)
+                fold = None
         return found[0] if found else None
     finally:
-        read.cancel()
+        for pending in reads:
+            pending.cancel()
+
+
+def _team_fold(org_id: int, started: list[asyncio.Task]) -> asyncio.Task | None:
+    """The request-path fold of the team still running in this process, the call's own first."""
+    for task in (*reversed(started), *_team_folds.get(org_id, ())):
+        if not task.done():
+            return task
+    return None
 
 
 async def _read_settled(org_id: int, call_id: str) -> int | None:
@@ -1164,7 +1194,7 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
     if loop.time() < end:
         try:
             async with asyncio.timeout_at(end):
-                settled = await _last_look(org_id, call_id, found, started[-1] if started else None)
+                settled = await _last_look(org_id, call_id, found, _team_fold(org_id, started))
             if settled is not None:
                 return settled
         except TimeoutError:
