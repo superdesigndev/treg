@@ -131,9 +131,9 @@ async def _overflow_sync(args) -> int:
 
 RENEW_MAX_USD = 1.00
 """Per-route price cap for RENEWING a route that is enabled or was stamped before. The 2¢ default
-`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, the weekly cron
-skipped every stamped route priced above 2¢ (46 of them on 2026-09-07, all mapped and verified on
-2026-08-26) and they decayed off with no run ever able to bring them back."""
+`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, a scheduled run
+skips every stamped route priced above 2¢, and those decay off with no run ever able to bring them
+back."""
 VERIFY_BUDGET_USD = 15.00
 """What one verify run may spend in total (relay fee + direct comparison), whatever the caps say."""
 

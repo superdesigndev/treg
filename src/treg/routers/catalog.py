@@ -576,8 +576,8 @@ def _related_capabilities(ep: dict, cat) -> list[dict]:
     `siblings` answers "who else does THIS job"; nothing answered "this is the wrong job, the one
     you want is next door". A caller that lands on `people.enrich` wanting an email gets a 200 with
     a job title and no way to learn `people.email.find` exists — the contract has no `email` field
-    at all, because every provider sells profile data and email lookup as separate products
-    (measured 2026-08-29: 0 of 403 enriched rows carried one). Discovery vocabulary fixes the
+    at all, because every provider sells profile data and email lookup as separate products.
+    Discovery vocabulary fixes the
     caller who SEARCHES; this fixes the caller who arrived by id."""
     cap = ep.get("capability") or ""
     subject = cap.split(".")[0]
