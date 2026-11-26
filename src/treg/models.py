@@ -1237,7 +1237,7 @@ class Hold(SQLModel, table=True):
     """
 
     id: str = Field(primary_key=True)  # == call_id
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
