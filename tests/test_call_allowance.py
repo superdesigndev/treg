@@ -267,6 +267,11 @@ async def _finish(org_id, call_id, epoch, reserved, **kwargs) -> int:
     return await runtime.finish(org_id, call_id, epoch, reserved, endpoint_id="e.metered", **kwargs)
 
 
+async def _lease_releases_done() -> None:
+    loop = asyncio.get_running_loop()
+    await asyncio.gather(*(task for task in runtime._lease_releases if task.get_loop() is loop))
+
+
 async def _fold(org_id: int) -> allowance.Folded:
     async with session_maker() as db:
         folded = await allowance.fold_charges_in_transaction(db, org_id)
@@ -2077,7 +2082,7 @@ async def test_a_call_told_the_lease_is_busy_by_its_own_process_waits_without_re
 async def test_a_call_cancelled_while_the_store_grants_its_lease_leaves_no_lease_behind(
         org_id, store, monkeypatch):
     """The store sets the lease, and the call's deadline passes before its answer arrives. The
-    lease is the call's token, and it is given back: the next refill gets it at once."""
+    lease is the call's token, and it is given back, without the call waiting for the store."""
     acquire, granted = store.acquire_lease, asyncio.Event()
 
     async def granted_then_slow(*args, **kwargs):
@@ -2086,10 +2091,20 @@ async def test_a_call_cancelled_while_the_store_grants_its_lease_leaves_no_lease
         await asyncio.sleep(5)
         return answer
 
+    release = store.release_lease
+
+    async def slow_release(*args, **kwargs):
+        await asyncio.sleep(0.65)
+        return await release(*args, **kwargs)
+
     monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    monkeypatch.setattr(store, "release_lease", slow_release)
     monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    started = time.monotonic()
     assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 0.4, "the call does not wait for the release"
     assert granted.is_set()
+    await _lease_releases_done()
     assert runtime.money_key(org_id) not in store.leases
 
 
@@ -2173,7 +2188,7 @@ async def test_a_slow_lease_release_neither_holds_the_call_nor_loses_its_answer(
     assert await runtime._settled(org_id, "queued", 99) == 10
     assert time.monotonic() - started < 0.4
     assert runtime.money_key(org_id) in store.leases, "still being given back"
-    await asyncio.gather(*runtime._lease_releases)
+    await _lease_releases_done()
     assert runtime.money_key(org_id) not in store.leases
 
 

@@ -313,7 +313,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_fold_backlog", "allowance.fold_charges_in_transaction"),
     ("application/call/allowance.py", "_fold_backlog", "money_admission.admit"),
     ("application/call/allowance.py", "_fold_backlog", "store.acquire_lease"),
-    ("application/call/allowance.py", "_fold_backlog", "store.release_lease"),
     ("application/call/allowance.py", "_release_lease_soon", "store.release_lease"),
     ("application/call/allowance.py", "_refill", "allowance.refill_allowance_in_transaction"),
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),

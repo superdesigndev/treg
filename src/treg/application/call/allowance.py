@@ -461,8 +461,9 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
         except BaseException:
             # The store may have granted the lease before the call stopped waiting for its
             # answer: give back whatever this token holds, or the team's refills and the
-            # background fold wait for it to expire. Release deletes only this token's.
-            await asyncio.shield(store.release_lease(key, token))
+            # background fold wait for it to expire. Release deletes only this token's, and
+            # runs on its own: the call is past its deadline and does not wait for it.
+            _release_lease_soon(store, key, token)
             raise
         if acquired != "acquired":
             # The lease may be held by this process's own fold, which took it while this
