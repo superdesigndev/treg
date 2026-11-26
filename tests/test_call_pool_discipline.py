@@ -364,11 +364,13 @@ async def test_auth_releases_a_single_slot_pool_before_an_application_session(
 
 
 @pytest.mark.parametrize('sqlstate,failures,attempts', [('40P01', 1, 2), ('40P01', 2, 2),
+                                                     ('57014', 1, 2), ('57014', 2, 2),
                                                      ('P0001', 1, 1)])
 async def test_wrapped_deadlock_retry_preserves_response_and_transaction(
     clients, platform_on, monkeypatch, caplog, sqlstate, failures, attempts,
 ):
-    """Inject after staged money writes to verify rollback and a fresh transaction on retry.
+    """Inject after staged money writes to verify rollback and a fresh transaction on retry:
+    for a deadlock victim (40P01) and a statement the money session's timeout cancelled (57014).
 
     PostgreSQL raises the real driver exception with RAISE SQLSTATE; SQLite uses its observed
     SQLAlchemy/asyncpg wrapper shape. Neither injection claims to reproduce a lock cycle.
@@ -398,7 +400,7 @@ async def test_wrapped_deadlock_retry_preserves_response_and_transaction(
     response = await clients.get(f'/call/{EP}?aweme_id=7')
     assert response.status_code == 200
     assert len(sessions) == attempts and len({id(s) for s in sessions}) == attempts
-    succeeded = sqlstate == '40P01' and failures == 1
+    succeeded = sqlstate in ('40P01', '57014') and failures == 1
     assert response.headers['X-Treg-Cost-Micro'] == str(EP_MICRO if succeeded else 0)
     async with session_maker() as db:
         holds = (await db.execute(select(Hold).where(Hold.org_id == org_id))).scalars().all()
