@@ -24,6 +24,7 @@ import logging
 import re
 import secrets
 import time
+from urllib.parse import urlsplit, urlunsplit
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
@@ -478,7 +479,10 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
     used = False
-    if agreed and signed.nonce and not await _claim_terms(signed, verified):
+    # A pushed transfer claims its challenge's terms whatever they buy now: a challenge another
+    # payment already used runs no second call, even after the price changed.
+    if (agreed or verified.moved) and signed is not None and signed.nonce \
+            and not await _claim_terms(signed, verified):
         # A challenge's terms buy one call: the first payment made under them, before they expire
         # (on x402 they ride outside what the wallet signs). A second transfer already sent is
         # kept as credit below, and runs no call.
@@ -553,8 +557,9 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
     if used:
         return PriceChanged({
             "error": "challenge_used", "reason": "challenge_used", **kept,
-            "message": ("This challenge already ran its call, so this transfer ran none. "
-                        f"{note}. Do not send this request again for that call."),
+            "message": ("Another payment already used this challenge, so this transfer ran no "
+                        f"call. {note}. Check the answer to the request that sent the first "
+                        "payment; do not send this request again with this challenge."),
         }, headers)
     if rail.proves(paid.offer):
         proof = await _headers([rail], lambda only: only.challenge(paid.offer, pay=False, prove=True))
@@ -565,15 +570,24 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
                         f"request again to pay the new price (at most "
                         f"${ledger.usd(paid.quote_micro):g}) from that credit."),
         }, proof + headers)
-    where = f"https://{rail.proof_host}" if rail.proof_host else get_settings().public_url.rstrip("/")
+    where = _proof_url(rail, paid.offer)
     return PriceChanged({
         "error": "price_changed", "reason": "price_changed", **kept,
         "message": ("The price of this call changed after this transfer was signed. "
                     f"{note}; do not pay again. Send the request to {where} and sign its "
                     f"zero-amount proof to pay this call (at most ${ledger.usd(paid.quote_micro):g}) "
                     "from that credit."),
-        "proof_host": rail.proof_host,
+        "proof_url": where,
     }, headers)
+
+
+def _proof_url(rail: PaymentRail, offer: Offer) -> str:
+    """This request's URL on the host where `rail` offers its proof: `public_url`'s scheme and
+    port, the rail's host."""
+    public = urlsplit(get_settings().public_url)
+    host = rail.proof_host or public.hostname or ""
+    netloc = f"{host}:{public.port}" if public.port else host
+    return urlunsplit((public.scheme or "https", netloc, offer.path, offer.query, ""))
 
 
 async def _claim_terms(terms: Terms, verified: Verified) -> bool:

@@ -338,11 +338,12 @@ When it refuses:
 - **402 `price_changed`**: the price rose after you signed. If nothing was sent, nothing was
   charged: sign the fresh challenge. If your transfer was already sent, it is kept as your credit
   and the 402 offers only a zero-amount proof: sign it, do not pay again.
-- **409 `challenge_used`**: this challenge already ran its call; the transfer you also sent is kept
-  as credit. Stop: do not send the request again for that call.
+- **409 `challenge_used`**: another payment already used this challenge, so this transfer ran no
+  call; it is kept as credit. Check the answer to the request that sent the first payment; do not
+  send this request again with this challenge.
 - **409 `price_changed`**: the price rose and the transfer you sent is kept as credit, but this
-  host offers your rail no zero-amount proof. Do not pay again: call the `proof_host` it names and
-  sign its zero-amount proof. `X-Treg-Payment-Reference` names the transfer in either 409.
+  host offers your rail no zero-amount proof. Do not pay again: send the request to `proof_url`
+  and sign its zero-amount proof. `X-Treg-Payment-Reference` names the transfer in either 409.
 - **402 with another `reason`** (`payment_expired`, `invalid_challenge`, `payment_replayed`, ...):
   the answer carries a fresh challenge; pay that one.
 - **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.

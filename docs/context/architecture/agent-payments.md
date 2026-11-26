@@ -310,8 +310,8 @@ headers (`X-Treg-Payment` among them) and no receipt.
   credit), and a payment challenge there would be answered by paying again; a wallet whose credit
   still falls short is then asked to pay through `credit_insufficient`. Where the paying rail
   offers this host no proof (`Offer.host` is not its `proof_host`), the kept transfer answers 409
-  `price_changed` with no challenge, naming that rail's host (`proof_host`), where its proof spends
-  the credit. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
+  `price_changed` with no challenge and `proof_url`: this request on that rail's host, with
+  `public_url`'s scheme and port, where its proof spends the credit. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
   `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and `X-Treg-Credit-Micro`, and `paid_micro`,
   `payment_reference`, `credit_micro` in the body; it is recorded `refused_by=payment`. A
   payment is credited less the fee it was offered.
@@ -321,9 +321,12 @@ headers (`X-Treg-Payment` among them) and no receipt.
   until the token expires; the same authorization presented again is refused as a replay), and a
   second one signed from the same challenge answers `challenge_used` with a fresh challenge. MPP's
   terms sit in the challenge the wallet echoes under pympp's HMAC, and SIWX's in the nonce it
-  signs. The claim holds for MPP too, so one challenge runs one call: a second transfer pushed
-  under it is credited and answered a final 409 `challenge_used` (no challenge, the top-up named as
-  above), since its call already ran and retrying it would run it again.
+  signs. The claim holds for MPP too, so one challenge runs one call: a pushed transfer claims its
+  challenge's terms whatever they buy now, and a second one under the same challenge (even after
+  a price change) is credited and answered a final 409 `challenge_used` with no challenge and the
+  top-up named as above. It says only that another payment used the challenge and this transfer
+  ran no call (that payment's own call may not have run either, if it failed to settle): the
+  wallet reads the first request's answer rather than retrying.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
   data, no `tregTerms` key in x402's `extra`, or, on a SIWX proof only, a nonce of pympp's own 32
   hex digits) is taken on today's terms,

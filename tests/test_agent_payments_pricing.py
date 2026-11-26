@@ -19,11 +19,12 @@ from treg.application.call import service as call_service
 from treg.application.call import wallet as call_wallet
 from treg.config import get_settings
 from treg.domain import money as ledger
+from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.db import session_maker
 from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
-    EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
+    EP, EP_MICRO, FLOOR, RECIPIENT, _balance, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
     _mpp_paid, _mpp_proof, _siwx_proof, _x402_credential, anon, chain, facilitator, payments_on,
     wallet)
 from test_capacity_overflow import VENDOR_BODY, _exhausted, _orthogonal, _route
@@ -245,15 +246,19 @@ async def test_a_kept_transfer_on_a_host_without_proofs_is_not_asked_to_pay_agai
     assert await _balance(chain.payer) == FLOOR
 
 
-async def test_a_kept_tempo_transfer_names_the_host_where_its_proof_is_offered(
+async def test_a_kept_tempo_transfer_names_the_url_where_its_proof_is_offered(
         wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
     """An x402 proof cannot spend Tempo credit. Where the MPP realm is another host, the kept
-    transfer is answered 409, naming that host; there the Tempo proof spends the credit."""
+    transfer is answered 409 with the full URL (scheme and port kept) where the Tempo proof is
+    offered, and following it spends the credit."""
     from mpp import Credential
 
-    (mpp_rail,) = [rail for rail in agent_payments._rails if rail.protocol == "mpp"]
-    monkeypatch.setattr(mpp_rail, "realm", "pay.registry.test")
-    monkeypatch.setattr(mpp_rail, "proof_host", "pay.registry.test")
+    monkeypatch.setenv("TREG_PUBLIC_URL", "https://registry.test:8443")
+    get_settings.cache_clear()
+    x402 = next(rail for rail in agent_payments._rails if rail.protocol == "x402")
+    agent_payments.configure([
+        MppTempoRail(secret="s" * 40, realm="pay.registry.test", recipient=RECIPIENT,
+                     chain_id=42431), x402])
     account = Account.create()
     chain.payer = account.address.lower()
     challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
@@ -262,14 +267,56 @@ async def test_a_kept_tempo_transfer_names_the_host_where_its_proof_is_offered(
     _raise_margin(monkeypatch)
     r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
     assert r.status_code == 409 and r.json()["detail"]["reason"] == "price_changed", r.text
-    assert r.json()["detail"]["proof_host"] == "pay.registry.test"
-    async with AsyncClient(transport=ASGITransport(app=app),
-                           base_url="http://pay.registry.test") as there:
-        asked = await there.get(f"/call/{EP}?aweme_id=7")
-        assert any(c.request["amount"] == "0" for c in _mpp_challenges(asked))
-        paid = await there.get(f"/call/{EP}?aweme_id=7",
-                               headers={"Authorization": await _mpp_proof(asked, account)})
+    there = r.json()["detail"]["proof_url"]
+    assert there == f"https://pay.registry.test:8443/call/{EP}?aweme_id=7"
+    async with AsyncClient(transport=ASGITransport(app=app)) as client:
+        asked = await client.get(there)
+        proofs = [c for c in _mpp_challenges(asked) if c.request["amount"] == "0"]
+        assert proofs and {c.realm for c in proofs} == {"pay.registry.test"}
+        paid = await client.get(there, headers={"Authorization": await _mpp_proof(asked, account)})
     assert paid.status_code == 200 and paid.headers["X-Treg-Payment"] == "credit", paid.text
+
+
+async def test_a_challenge_used_before_a_price_rise_runs_one_call(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The second transfer pushed under one challenge runs no call even after the price rose."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    first = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d4" * 32})
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": first.to_authorization()})).status_code == 200
+    _raise_margin(monkeypatch)
+    second = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d5" * 32})
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": second.to_authorization()})
+    assert r.status_code == 409 and r.json()["detail"]["reason"] == "challenge_used", r.text
+    assert len(calls) == 1 and await _balance(chain.payer) == 2 * FLOOR - EP_MICRO
+
+
+async def test_challenge_used_does_not_claim_the_first_call_ran(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The first payment's settlement failed, so no call ran: the 409 says only that another
+    payment used the challenge and that this transfer ran none."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    chain.fail = True
+    refused = await wallet.get(f"/call/{EP}?aweme_id=7",
+                               headers={"Authorization": _mpp_credential(challenge)})
+    assert refused.json()["detail"]["reason"] == "settlement_failed", refused.text
+    chain.fail = False
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d6" * 32})
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 409 and r.json()["detail"]["reason"] == "challenge_used", r.text
+    message = r.json()["detail"]["message"]
+    assert "ran no call" in message and "already ran" not in message
+    assert calls == [] and await _balance(chain.payer) == FLOOR
 
 
 async def test_a_challenge_s_terms_run_one_call_for_two_pushed_transfers(
