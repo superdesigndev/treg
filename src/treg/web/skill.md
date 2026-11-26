@@ -337,8 +337,9 @@ When it refuses:
   cannot price). Sign in and use a treg key for it.
 - **402 `price_changed`**: the price rose after you signed; nothing was charged. A transfer you had
   already sent is kept as your credit. Sign the fresh challenge (with credit, its zero-amount proof).
-- **409 `price_changed`**: the same, on a host that offers no zero-amount proof. Do not pay again:
-  call the host the message names and sign its zero-amount proof to spend the credit.
+- **409 `price_changed` or `challenge_used`**: a transfer you sent is kept as credit, but this host
+  offers your rail no zero-amount proof. Do not pay again: call the host the message names and sign
+  its zero-amount proof to spend the credit. `X-Treg-Payment-Reference` names the transfer.
 - **402 with another `reason`** (`payment_expired`, `invalid_challenge`, `payment_replayed`, ...):
   the answer carries a fresh challenge; pay that one.
 - **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.

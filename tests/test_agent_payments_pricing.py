@@ -18,6 +18,7 @@ from treg.application.call import service as call_service
 from treg.application.call import wallet as call_wallet
 from treg.config import get_settings
 from treg.domain import money as ledger
+from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.db import session_maker
 from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry
 
@@ -214,6 +215,10 @@ async def test_a_pushed_transfer_signed_before_a_price_change_is_kept_as_credit(
     r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
     assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
     assert await _balance(chain.payer) == FLOOR, "the transfer that landed is the wallet's credit"
+    # The answer names the top-up, so the wallet can match it.
+    assert (r.headers["X-Treg-Payment"], r.headers["X-Treg-Paid-Micro"]) == ("paid", str(FLOOR))
+    assert r.headers["X-Treg-Payment-Reference"] == r.json()["detail"]["payment_reference"] != ""
+    assert r.json()["detail"]["paid_micro"] == FLOOR
     r = await wallet.get(f"/call/{EP}?aweme_id=7",
                          headers={"Authorization": await _mpp_proof(r, account)})
     assert r.status_code == 200 and r.headers["X-Treg-Cost-Micro"] == str(2 * EP_MICRO), r.text
@@ -232,8 +237,61 @@ async def test_a_kept_transfer_on_a_host_without_proofs_is_not_asked_to_pay_agai
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
     assert r.status_code == 409 and r.json()["detail"]["error"] == "price_changed", r.text
     assert r.json()["detail"]["credit_micro"] == FLOOR
+    assert r.headers["X-Treg-Paid-Micro"] == str(FLOOR) and r.headers["X-Treg-Payment-Reference"]
     assert "www-authenticate" not in r.headers and "payment-required" not in r.headers
     assert await _balance(chain.payer) == FLOOR
+
+
+async def test_a_kept_tempo_transfer_is_not_asked_to_pay_again_where_only_x402_proves(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """An x402 proof cannot spend Tempo credit: where only x402 proves (the MPP realm is another
+    host), the kept transfer is answered 409, not a 402 whose Tempo challenge is a payment."""
+    from mpp import Credential
+
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d1" * 32})
+    monkeypatch.setattr(MppTempoRail, "proves", lambda self, offer: False)
+    _raise_margin(monkeypatch)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 409 and r.json()["detail"]["reason"] == "price_changed", r.text
+
+
+async def test_a_challenge_s_terms_run_one_call_for_two_pushed_transfers(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """Both transfers landed, so both are credited, but one challenge buys one call."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    answers = []
+    for tx in ("d2", "d3"):
+        pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + tx * 32})
+        answers.append(await wallet.get(f"/call/{EP}?aweme_id=7",
+                                        headers={"Authorization": pushed.to_authorization()}))
+    assert answers[0].status_code == 200, answers[0].text
+    assert answers[1].status_code == 402, answers[1].text
+    assert answers[1].json()["detail"]["reason"] == "challenge_used"
+    assert len(calls) == 1
+    assert await _balance(chain.payer) == 2 * FLOOR - EP_MICRO
+
+
+async def test_a_malformed_terms_token_is_repriced(anon: AsyncClient, payments_on, terms_on,
+                                                   facilitator):
+    """Only a credential carrying no terms is taken on today's; anything else treg did not
+    issue asks for a fresh challenge."""
+    from mpp.x402 import decode_payment_signature, encode_payment_signature
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    payload = decode_payment_signature(credential)
+    payload["accepted"]["extra"]["tregTerms"] = "garbage"
+    r = await anon.get(f"/call/{EP}?aweme_id=7",
+                       headers={"PAYMENT-SIGNATURE": encode_payment_signature(payload)})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
+    assert facilitator.settles == 0
 
 
 async def test_a_payment_is_credited_at_the_fee_it_was_offered(anon: AsyncClient, payments_on,

@@ -376,7 +376,7 @@ async def _paid_call(rest: str, request: Request) -> Response:
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
     except agent_payments.PriceChanged as exc:
-        return await _payment_refusal(request, 409, exc.detail, [], refused_by="payment")
+        return await _payment_refusal(request, 409, exc.detail, exc.headers, refused_by="payment")
     # The call runs as the wallet: its quote bounds what it charges, and no reservation of it
     # moves the team's balance (its credit) into the allowance.
     paid_by = call_wallet.WalletCall(quote_micro=paid.paid.quote_micro,

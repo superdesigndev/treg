@@ -247,7 +247,8 @@ class Terms:
 
 
 _TERMS = re.compile(r"q(\d{1,15})f(\d{1,5})e(\d{1,12})r([0-9a-f]{16})m([0-9a-f]{32})")
-_TERMS_SHAPE = re.compile(r"q\d+f\d+e\d+r[0-9a-f]+m[0-9a-f]+")
+# A SIWX challenge issued without a token carries pympp's own random nonce in its place.
+_LEGACY_NONCE = re.compile(r"[0-9a-f]{32}")
 TERMS_NS = "agentpay-terms"
 # Past the longest a challenge lives (MPP's TTL, x402's timeout, SIWX's five minutes) by a grace.
 TERMS_GRACE_S = 60
@@ -275,10 +276,11 @@ def _terms_token(resource_url: str, terms: Terms) -> str:
 
 def signed_terms(token: str, resource_url: str, today: Terms) -> Terms | None:
     """The terms a payment or proof was offered for this request: `today`'s when it carries no
-    token (a challenge issued before tokens were, or with the switch off; dropping one only gets
-    what a fresh challenge offers), or None when it carries one treg did not issue for this
-    request or one that expired."""
-    if not _TERMS_SHAPE.fullmatch(token or ""):
+    token (a challenge issued before tokens were, or with the switch off: no MPP or x402 terms,
+    or a SIWX nonce of pympp's own; dropping one only gets what a fresh challenge offers), or
+    None when it carries anything else treg did not issue for this request, or a token that
+    expired."""
+    if not token or _LEGACY_NONCE.fullmatch(token):
         return today
     found = _TERMS.fullmatch(token)
     if found is None:
@@ -473,11 +475,15 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
-    if agreed and signed.nonce and not verified.moved and not await _claim_terms(signed, verified):
-        # The token rides outside what an x402 wallet signs, so it buys one authorization: the
-        # first one made under it, before it expires.
-        raise await challenge(paid, reason="challenge_used",
-                              message="another payment already used this challenge's terms")
+    used = False
+    if agreed and signed.nonce and not await _claim_terms(signed, verified):
+        # A challenge's terms buy one call: the first payment made under them, before they expire
+        # (on x402 they ride outside what the wallet signs). A second transfer already sent is
+        # kept as credit below, and runs no call.
+        if not verified.moved:
+            raise await challenge(paid, reason="challenge_used",
+                                  message="another payment already used this challenge's terms")
+        agreed, used = False, True
     # A transfer the payer already sent is kept on the terms it was sent under, whatever the call
     # costs now; it never draws credit, so it settles below.
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro,
@@ -504,35 +510,57 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                 }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     if not agreed:
-        if not any(rail.proves(paid.offer) for rail in _rails):
-            # No proof is offered on this host, so a 402 could only be answered by paying again.
-            raise await _kept_on_changed_terms(paid, org_id)
-        raise await _price_changed(paid, kept=True)
+        raise await _kept(paid, rail, verified, settlement, org_id, used=used)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
 
 
 class PriceChanged(Exception):
     """A transfer the payer already sent was signed on terms that no longer buy the call. It is
-    kept as credit; the answer is not a 402, because none of this host's challenges spends credit
-    without paying again."""
+    kept as credit; the answer is not a 402, because the paying rail offers this host no challenge
+    that spends credit without paying again."""
 
-    def __init__(self, detail: dict) -> None:
+    def __init__(self, detail: dict, headers: list[tuple[str, str]]) -> None:
         super().__init__(detail["message"])
         self.detail = detail
+        self.headers = headers
 
 
-async def _kept_on_changed_terms(paid: PaidOffer, org_id: int) -> PriceChanged:
+async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
+                settlement: Settlement | None, org_id: int, *,
+                used: bool) -> PaymentChallenge | PriceChanged:
+    """The answer for a transfer already sent on terms that no longer buy the call: it is the
+    wallet's credit now, and the answer says how much it paid, its transaction and the credit, so
+    the wallet can match the top-up. Where the paying rail offers this host its zero-amount proof
+    (an x402 proof cannot spend Tempo credit), the 402 asks for that proof; elsewhere a 402 could
+    only be answered by paying again, so it is a 409."""
     async with session_maker() as db:
         credit = max(await ledger.balance_of(db, org_id), 0)
+    reference = settlement.reference if settlement is not None else ""
+    headers = [("X-Treg-Payment", "paid"), ("X-Treg-Paid-Micro", str(verified.amount_micro)),
+               ("X-Treg-Credit-Micro", str(credit))]
+    if reference:
+        headers.append(("X-Treg-Payment-Reference", reference))
+    reason = "challenge_used" if used else "price_changed"
+    why = ("another payment already used this challenge's terms" if used else
+           "the price of this call changed after this transfer was signed")
+    kept = {"paid_micro": verified.amount_micro, "payment_reference": reference,
+            "credit_micro": credit}
+    if rail.proves(paid.offer):
+        asked = await challenge(paid, reason=reason, message=(
+            f"{why}; the transfer is kept as this wallet's credit, which pays this call with the "
+            "zero-amount proof"))
+        asked.detail.update(kept)
+        asked.headers += headers
+        return asked
     realm = get_settings().public_url.rstrip("/")
     return PriceChanged({
-        "error": "price_changed", "reason": "price_changed", "endpoint_id": paid.endpoint_id,
-        "estimated_cost_micro": paid.quote_micro, "credit_micro": credit,
-        "message": (f"the price of this call changed after this transfer was signed. The transfer "
-                    f"is kept as this wallet's credit (${ledger.usd(credit):g}); do not pay again. "
-                    f"Send the request to {realm} and sign its zero-amount proof to pay the new "
-                    f"price (at most ${ledger.usd(paid.quote_micro):g}) from that credit."),
-    })
+        "error": reason, "reason": reason, "endpoint_id": paid.endpoint_id,
+        "estimated_cost_micro": paid.quote_micro, **kept,
+        "message": (f"{why}. The transfer is kept as this wallet's credit "
+                    f"(${ledger.usd(credit):g}); do not pay again. Send the request to {realm} and "
+                    f"sign its zero-amount proof to pay this call (at most "
+                    f"${ledger.usd(paid.quote_micro):g}) from that credit."),
+    }, headers)
 
 
 async def _claim_terms(terms: Terms, verified: Verified) -> bool:
@@ -549,15 +577,12 @@ async def _claim_terms(terms: Terms, verified: Verified) -> bool:
     return claimed or (held or {}).get("proof") == verified.proof_id
 
 
-async def _price_changed(paid: PaidOffer, *, kept: bool = False) -> PaymentChallenge:
+async def _price_changed(paid: PaidOffer) -> PaymentChallenge:
     """The 402 for a payment or proof signed on terms that no longer buy this call: the price rose
     (or the payment no longer covers it) since its challenge. A fresh challenge names the new
     terms; nothing was charged."""
-    message = "the price of this call changed after this was signed"
-    if kept:
-        message += ("; the transfer is kept as this wallet's credit, which pays the new price "
-                    "with the zero-amount proof")
-    return await challenge(paid, reason="price_changed", message=message)
+    return await challenge(paid, reason="price_changed",
+                           message="the price of this call changed after this was signed")
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:

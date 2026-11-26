@@ -262,8 +262,8 @@ the wallet's credit (not paid back as money), the fee when it is not 0, and, wit
 challenge, that a wallet with credit signs it and pays nothing now. A first challenge has
 `reason: payment_required`; a refusal names `reason`: `credit_insufficient` (a proof whose credit
 does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query or amount),
-`price_changed` (signed on terms that no longer buy the call), `challenge_used` (x402: another
-payment already used this challenge's terms),
+`price_changed` (signed on terms that no longer buy the call), `challenge_used` (another payment
+already used this challenge's terms),
 `payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
 `valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`, `unknown_wallet` and
@@ -305,23 +305,30 @@ headers (`X-Treg-Payment` among them) and no receipt.
   is charged. An MPP payment is checked against its own challenge's amount and terms, not today's:
   a push transfer (`Verified.moved`) is already on chain, so on changed terms it is claimed and
   credited first and then answered `price_changed`, and the wallet pays the new price from that
-  credit with the zero-amount proof. On a host offered no proof (`Offer.host` is not the realm or
-  `public_url`'s host) a 402 could only be answered by paying again, so the kept transfer answers
-  409 `price_changed` (`PriceChanged`: `credit_micro`, and the host whose proof spends it) with no
-  challenge, recorded `refused_by=payment`. A payment is credited less the fee it was offered.
+  credit with the zero-amount proof. Only the paying rail's proof spends its network's credit (an
+  x402 proof cannot spend Tempo credit), so where that rail offers this host no proof (`Offer.host`
+  is not its realm) a 402 could only be answered by paying again, and the kept transfer answers
+  409 `price_changed` (`PriceChanged`, naming the host whose proof spends it) with no challenge,
+  recorded `refused_by=payment`. Either answer names the top-up the wallet can match:
+  `X-Treg-Payment: paid`, `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and
+  `X-Treg-Credit-Micro`, and `paid_micro`, `payment_reference`, `credit_micro` in the body. A payment is credited less the fee it was offered.
 - On x402 the token rides outside what the wallet signs (EIP-3009 covers the transfer, not
   `extra`), so the HMAC proves only that treg offered those terms. They therefore buy one
   authorization per rail, the first presented while the token is live (`agentpay-terms`, kept
   until the token expires; the same authorization presented again is refused as a replay), and a
   second one signed from the same challenge answers `challenge_used` with a fresh challenge. MPP's
   terms sit in the challenge the wallet echoes under pympp's HMAC, and SIWX's in the nonce it
-  signs.
-- **Rollout.** Every instance reads both formats: a credential without a token (`signed_terms`
-  finds none) is taken on today's terms, which is what a fresh challenge would offer, while a
-  token that is malformed, not this request's, or expired buys nothing. Tokens are issued only
+  signs. The claim holds for MPP too, so one challenge runs one call: a second transfer pushed
+  under it is credited and answered `challenge_used` the way a kept transfer is above.
+- **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
+  data or x402's `extra`, or a SIWX nonce of pympp's own 32 hex digits) is taken on today's terms,
+  which is what a fresh challenge would offer, while anything else that is not a live token treg
+  issued for this request buys nothing and is answered with a fresh challenge. Tokens are issued only
   while `agent_payments_terms_binding` is on (off by default). Switch it on only once every
   instance runs the reading code: an instance that cannot read a token refuses an MPP credential
-  carrying one before anything is recorded, which loses a pushed transfer.
+  carrying one before anything is recorded, which loses a pushed transfer. Rolling back reverses
+  it: switch issuance off, wait until the last MPP challenge issued with a token has expired
+  (`agent_payments_mpp_challenge_ttl_s`) and requests in flight have drained, then run older code.
 - Neither rail binds the request body. Every call with the same terms asks the same amount, so a
   copied, unused payment can pay once for another body of the same route and query on the same
   terms, as its wallet.
