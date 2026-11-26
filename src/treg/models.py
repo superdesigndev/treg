@@ -2637,6 +2637,9 @@ class ArenaInsightState(SQLModel, table=True):
     """Persistent collection cursor and public aggregate, never raw request/response content."""
     id: str = Field(primary_key=True)
     cursor: int = 0
+    # Where the next cycle starts when the rewind finds no recent row: the cycle's starting
+    # cursor, moved up only to rows it collected. None (rows from before it existed): `cursor`.
+    resume_cursor: int | None = None
     scan_until: NaiveUTC
     updated_at: NaiveUTC | None = None
     payload: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
