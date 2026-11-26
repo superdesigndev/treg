@@ -18,8 +18,12 @@ each settled one there.
 from __future__ import annotations
 
 import asyncio
-import time
+import hashlib
+import hmac
 import logging
+import re
+import secrets
+import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
@@ -222,12 +226,47 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     description = f"{ep['id']} on treg"
     if charged > 0:
         description += f", at most ${micro_to_decimal(charged)}"
+    resource_url = f"{base}{path}" + (f"?{query}" if query else "")
     offer = Offer(
         amount_micro=amount, method=method.upper(), path=path, query=query,
-        resource_url=f"{base}{path}" + (f"?{query}" if query else ""),
-        description=description, host=_hostname(host), quote_micro=max(charged, 0))
+        resource_url=resource_url, description=description, host=_hostname(host),
+        terms=_terms_token(resource_url, Terms(max(charged, 0), settings.agent_payments_fee_bps)))
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
                      proof_only=proof_only, is_async=bool(ep.get("async")))
+
+
+@dataclass(frozen=True)
+class Terms:
+    """What a payer was offered for one call: its quote (margin included) and treg's fee."""
+    quote_micro: int
+    fee_bps: int
+
+
+_TERMS = re.compile(r"q(\d{1,15})f(\d{1,5})r([0-9a-f]{16})m([0-9a-f]{32})")
+
+
+def _terms_mac(resource_url: str, body: str) -> str:
+    secret = get_settings().agent_payments_secret.encode()
+    return hmac.new(secret, f"{resource_url}|{body}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _terms_token(resource_url: str, terms: Terms) -> str:
+    """An opaque, letters-and-digits token for `terms` on this request, authenticated with treg's
+    secret. It rides where the payer echoes or signs it (MPP's challenge data, x402's `extra`, the
+    SIWX nonce), so a payment pays on the terms it was offered, not today's."""
+    body = f"q{terms.quote_micro}f{terms.fee_bps}r{secrets.token_hex(8)}"
+    return f"{body}m{_terms_mac(resource_url, body)}"
+
+
+def signed_terms(token: str, resource_url: str) -> Terms | None:
+    """The terms `token` names for this request, or None when treg did not issue it for it."""
+    found = _TERMS.fullmatch(token or "")
+    if found is None:
+        return None
+    body = token[:token.rindex("m")]
+    if not hmac.compare_digest(found.group(4), _terms_mac(resource_url, body)):
+        return None
+    return Terms(int(found.group(1)), int(found.group(2)))
 
 
 def _hostname(host: str) -> str:
@@ -244,8 +283,9 @@ def with_fee(amount_micro: int) -> int:
     return -(-amount_micro * BPS // (BPS - bps))
 
 
-def fee_of(amount_micro: int) -> int:
-    return amount_micro * get_settings().agent_payments_fee_bps // BPS
+def fee_of(amount_micro: int, fee_bps: int | None = None) -> int:
+    bps = get_settings().agent_payments_fee_bps if fee_bps is None else fee_bps
+    return amount_micro * bps // BPS
 
 
 def _fee_note() -> str:
@@ -376,7 +416,13 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         verified = await rail.verify(credential, paid.offer, before_remote=check)
     except PaymentRejected as exc:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    # The terms the payer was offered, which treg's own token names: a price that rose since then
+    # is not what the payer agreed to.
+    signed = signed_terms(verified.terms, paid.offer.resource_url)
+    agreed = signed is not None and signed.quote_micro >= paid.quote_micro
     if verified.kind == "proof":
+        if not agreed:
+            raise await _price_changed(paid)
         return await _admit_proof(paid, verified)
     # A verified payment is settled or looked up on chain next, even one its rail checked
     # locally (an MPP pull transfer is first broadcast at settlement).
@@ -384,6 +430,9 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     max_life = get_settings().agent_payments_credit_proof_max_s
     if verified.deferrable and verified.expires_at > _now() + timedelta(seconds=max_life):
         verified = replace(verified, deferrable=False)
+    agreed = agreed and verified.amount_micro >= paid.offer.amount_micro
+    if not agreed and not verified.moved:
+        raise await _price_changed(paid)   # nothing has moved: the payer signs the new terms
 
     if paid.proof_only:
         org_id = await _known_payer_org(verified.network, verified.payer)
@@ -400,7 +449,10 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
-    payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
+    # A transfer the payer already sent is kept on the terms it was sent under, whatever the call
+    # costs now; it never draws credit, so it settles below.
+    payment_id, draw = await _claim(verified, org_id, paid.quote_micro,
+                                    fee_bps=signed.fee_bps if signed is not None else None)
     if draw is None:
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
@@ -422,7 +474,20 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                                 "wallet's credit; do not send this payment again."),
                 }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    if not agreed:
+        raise await _price_changed(paid, kept=True)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+async def _price_changed(paid: PaidOffer, *, kept: bool = False) -> PaymentChallenge:
+    """The 402 for a payment or proof signed on terms that no longer buy this call: the price rose
+    (or the payment no longer covers it) since its challenge. A fresh challenge names the new
+    terms; nothing was charged."""
+    message = "the price of this call changed after this was signed"
+    if kept:
+        message += ("; the transfer is kept as this wallet's credit, which pays the new price "
+                    "with the zero-amount proof")
+    return await challenge(paid, reason="price_changed", message=message)
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
@@ -554,7 +619,8 @@ async def _payer_org(network: str, address: str) -> int:
     raise RuntimeError("payer team could not be created")
 
 
-async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int | None, bool | None]:
+async def _claim(verified: Verified, org_id: int, quote_micro: int, *,
+                 fee_bps: int | None = None) -> tuple[int | None, bool | None]:
     """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
     before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
     async with session_maker() as db:
@@ -563,7 +629,7 @@ async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int
         row = AgentPayment(
             proof_id=verified.proof_id, protocol=verified.protocol, network=verified.network,
             payer_address=verified.payer, org_id=org_id, amount_micro=verified.amount_micro,
-            fee_micro=0 if draw else fee_of(verified.amount_micro),
+            fee_micro=0 if draw else fee_of(verified.amount_micro, fee_bps),
             asset=verified.asset, pay_to=verified.pay_to, expires_at=verified.expires_at,
             status="credit" if draw else "settling")
         db.add(row)

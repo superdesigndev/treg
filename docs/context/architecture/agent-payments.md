@@ -258,7 +258,8 @@ smallest payment when that is higher), that only the real price is charged and t
 the wallet's credit (not paid back as money), the fee when it is not 0, and, with a proof
 challenge, that a wallet with credit signs it and pays nothing now. A first challenge has
 `reason: payment_required`; a refusal names `reason`: `credit_insufficient` (a proof whose credit
-does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query, amount or quote),
+does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query or amount),
+`price_changed` (signed on terms that no longer buy the call),
 `payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
 `valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`, `unknown_wallet` and
@@ -285,17 +286,24 @@ headers (`X-Treg-Payment` among them) and no receipt.
   most once.
 - `MppTempoRail` passes the request to pympp (`http_request=`), which requires the
   HMAC-authenticated challenge's route scope (method, route, path, query) to match it; `X402Rail.verify` compares the accepted terms and the required `resource.url` (the full request URL) with the offer.
-- A payment is bound to the quote it was signed at (`Offer.quote_micro`), not only to its amount:
-  every quote under the floor asks the same amount, so a price change between the 402 and the
-  payment (a markup change) would otherwise let the old signature pay at the new price. An MPP
-  payment challenge carries the quote in its HMAC-bound opaque data (`meta`), checked at
-  verification and settlement; an x402 offer's `resource.description` names it (`<id> on treg, at
-  most $<quote>`), and `verify` requires the echoed description. Either refusal is
-  `invalid_challenge` with a fresh challenge at the new price; nothing was settled. The zero-amount
-  proofs and SIWX name no price: they draw credit at the call's quote when it runs.
-- Neither rail binds the request body. Every call with the same quote asks the same amount, so a
-  copied, unused payment can pay once for another body of the same route, query and quote, as its
-  wallet.
+- A payment or proof is bound to the terms it was offered, not only to its amount: every quote
+  under the floor asks the same amount, so a price change between the 402 and the payment (a
+  markup or fee change) would otherwise let it pay at the new price. `quote` mints a terms token
+  (`agent_payments.signed_terms`: the quote and `fee_bps`, a random part, and an HMAC with
+  `agent_payments_secret` over the resource URL), letters and digits only. Each rail carries it
+  where the payer echoes or signs it: MPP's challenge opaque data (`meta`, HMAC-bound by pympp)
+  on the proof and the payment challenges; x402's `accepted.extra.tregTerms` (the payment echoes
+  `accepted` whole, and the facilitator is asked with the requirements the payment was signed
+  under); and the SIWX nonce, which the wallet's signature covers. `admit` reads the terms back
+  (`Verified.terms`): a proof, or a payment that has not moved, whose quote is below today's (or a
+  payment below today's amount) is refused with `price_changed` and a fresh challenge, and nothing
+  is charged. An MPP payment is checked against its own challenge's amount and terms, not today's:
+  a push transfer (`Verified.moved`) is already on chain, so on changed terms it is claimed and
+  credited first and then answered `price_changed`, and the wallet pays the new price from that
+  credit with the zero-amount proof. A payment is credited less the fee it was offered.
+- Neither rail binds the request body. Every call with the same terms asks the same amount, so a
+  copied, unused payment can pay once for another body of the same route and query on the same
+  terms, as its wallet.
 
 ## The reconciler (`treg-worker agentpay reconcile`)
 

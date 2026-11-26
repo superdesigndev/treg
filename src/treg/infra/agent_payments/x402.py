@@ -19,6 +19,8 @@ SIGNATURE_HEADER = "payment-signature"
 LEGACY_HEADER = "x-payment"  # x402 v1; refused, but still consumed so it never reaches upstream
 SIWX_HEADER = "sign-in-with-x"
 CONSUMED_HEADERS = (SIGNATURE_HEADER, LEGACY_HEADER, SIWX_HEADER)
+# Where an offer's terms ride in its requirements' `extra`.
+TERMS_KEY = "tregTerms"
 # `presented` marks a SIWX proof so `verify` can tell it from a payment.
 SIWX_MARK = "siwx "
 
@@ -70,10 +72,13 @@ class X402Rail:
         # Clients sign SIWX only for the host they called (pympp's and mppx's SiwxTransport).
         return bool(self._domain) and offer.host == self._domain
 
-    def _requirements(self, offer: Offer) -> dict:
+    def _requirements(self, offer: Offer, terms: str | None = None) -> dict:
+        # `accepted` is echoed whole, so the terms ride in `extra` beside the EIP-712 domain.
+        terms = offer.terms if terms is None else terms
         return {"scheme": "exact", "network": self.network, "asset": self._asset,
                 "amount": str(offer.amount_micro), "payTo": self._pay_to,
-                "maxTimeoutSeconds": self._max_timeout_s, "extra": dict(self._extra)}
+                "maxTimeoutSeconds": self._max_timeout_s,
+                "extra": {**self._extra, **({TERMS_KEY: terms} if terms else {})}}
 
     async def challenge(self, offer: Offer, *, pay: bool = True,
                         prove: bool = False) -> list[tuple[str, str]]:
@@ -89,8 +94,12 @@ class X402Rail:
                     "resource": {"url": offer.resource_url, "description": offer.description},
                     "accepts": [self._requirements(offer)]}
         if prove:
-            required["extensions"] = {EXTENSION_KEY: create_extension(
-                chain_id=self._chain_id, origin=self._origin, url=offer.resource_url)}
+            extension = create_extension(
+                chain_id=self._chain_id, origin=self._origin, url=offer.resource_url)
+            if offer.terms:
+                # The signed message carries its nonce, so the terms are the wallet's signature's.
+                extension["info"]["nonce"] = offer.terms
+            required["extensions"] = {EXTENSION_KEY: extension}
         return [("PAYMENT-REQUIRED", encode_payment_required(required))]
 
     async def _verify_proof(self, value: str, offer: Offer) -> Verified:
@@ -116,7 +125,8 @@ class X402Rail:
         return Verified(protocol=self.protocol, network=self.network,
                         proof_id=f"x402:{self.network}:siwx:{payer}:{payload['nonce']}",
                         payer=payer, amount_micro=0, asset="", pay_to="",
-                        expires_at=expires.replace(tzinfo=None), deferrable=False, kind="proof")
+                        expires_at=expires.replace(tzinfo=None), deferrable=False, kind="proof",
+                        terms=payload["nonce"])
 
     async def verify(self, credential: str, offer: Offer, *,
                      before_remote: Callable[[], Awaitable[None]] | None = None) -> Verified:
@@ -130,25 +140,23 @@ class X402Rail:
             payload = decode_payment_signature(credential)
         except X402FormatError as exc:  # also the parent of InvalidHeaderError
             raise PaymentRejected("malformed_credential", "PAYMENT-SIGNATURE cannot be decoded") from exc
-        requirements = self._requirements(offer)
         try:
             accepted = payload["accepted"]
             offered = (accepted["scheme"], accepted["network"], str(accepted["asset"]).lower(),
                        accepted["amount"], str(accepted["payTo"]).lower())
+            extra = accepted.get("extra") or {}
+            terms = extra.get(TERMS_KEY, "") if isinstance(extra, dict) else ""
             resource_url = (payload.get("resource") or {}).get("url")
             authorization = payload["payload"].get("authorization") or {}
         except (KeyError, TypeError, AttributeError) as exc:
             raise PaymentRejected("malformed_credential", "PAYMENT-SIGNATURE is not an x402 v2 payment") from exc
+        # The facilitator checks the payment against the terms it was signed under.
+        requirements = self._requirements(offer, terms if isinstance(terms, str) else "")
         if offered != (requirements["scheme"], requirements["network"], requirements["asset"].lower(),
                        requirements["amount"], requirements["payTo"].lower()):
             raise PaymentRejected("invalid_challenge", "this payment does not match the offer")
         if resource_url != offer.resource_url:
             raise PaymentRejected("invalid_challenge", "this payment was not issued for this request")
-        # The resource is outside the signed authorization, so this binds honest clients, which
-        # echo it: its description names the quote, which the amount alone does not bind.
-        if (payload.get("resource") or {}).get("description") != offer.description:
-            raise PaymentRejected("invalid_challenge",
-                                  "this payment was signed for another price; sign the new challenge")
         sender, nonce = str(authorization.get("from") or ""), str(authorization.get("nonce") or "")
         if not sender or not nonce:
             raise PaymentRejected("malformed_credential", "the authorization names no payer or nonce")
@@ -171,7 +179,7 @@ class X402Rail:
         return Verified(protocol=self.protocol, network=self.network, proof_id=proof, payer=payer,
                         amount_micro=offer.amount_micro, asset=self._asset.lower(),
                         pay_to=self._pay_to.lower(), expires_at=valid_before.replace(tzinfo=None),
-                        credential=(payload, requirements))
+                        credential=(payload, requirements), terms=requirements["extra"].get(TERMS_KEY, ""))
 
     async def settle(self, verified: Verified, offer: Offer) -> Settlement:
         from mpp.x402 import encode_payment_response

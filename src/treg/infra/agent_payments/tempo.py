@@ -95,10 +95,11 @@ class MppTempoRail:
         # The zero-amount proof comes first: clients answer the first challenge they can pay.
         headers = []
         if prove and self.proves(offer):
-            headers += await self._challenge(offer, "0", f"prove this wallet for {offer.description}")
+            headers += await self._challenge(offer, "0", f"prove this wallet for {offer.description}",
+                                             meta=_terms(offer))
         if pay:
             headers += await self._challenge(offer, micro_to_decimal(offer.amount_micro),
-                                             offer.description, meta=_price(offer))
+                                             offer.description, meta=_terms(offer))
         return headers
 
     async def _challenge(self, offer: Offer, amount: str, description: str,
@@ -120,16 +121,20 @@ class MppTempoRail:
         except Exception as exc:
             raise PaymentRejected("malformed_credential", "the Payment credential cannot be parsed") from exc
         echoed = _echoed_request(parsed)
+        meta = _echoed_meta(parsed)
         proof = (parsed.payload or {}).get("type") == "proof"
         if not proof and offer.amount_micro <= 0:
             raise PaymentRejected("proof_required", "this request takes a zero-amount proof, not a payment")
-        amount = "0" if proof else micro_to_decimal(offer.amount_micro)
+        # The amount and terms are the challenge's own, HMAC-checked by pympp: a transfer is checked
+        # against what its payer was asked for, and the application decides what those terms buy
+        # now. A push transfer is already on chain, so refusing it here would lose the money.
+        amount = "0" if proof else _echoed_amount(echoed)
         gate = _Gate(before_remote) if before_remote else None
         token = _gate.set(gate)
         try:
             validation = await self._mpp.validate_credential(
                 parsed, intent="charge", http_request=self._request(offer),
-                request={"amount": amount}, meta=None if proof else _price(offer))
+                request={"amount": amount}, meta=meta)
         except Exception as exc:
             if gate is not None and gate.refused is not None:
                 raise gate.refused from None
@@ -150,7 +155,8 @@ class MppTempoRail:
             return Verified(protocol=self.protocol, network=self.network,
                             proof_id=f"mpp:{self.network}:proof:{parsed.challenge.id}",
                             payer=validation.payer.lower(), amount_micro=0, asset="", pay_to="",
-                            expires_at=expires, deferrable=False, credential=parsed, kind="proof")
+                            expires_at=expires, deferrable=False, credential=parsed, kind="proof",
+                            terms=(meta or {}).get("terms", ""))
         tx_hash = str(details.get("transaction_hash") or "")
         if details.get("mode") not in ("push", "pull") or not tx_hash:
             raise PaymentRejected("malformed_credential", "send a signed or broadcast Tempo transfer")
@@ -172,10 +178,11 @@ class MppTempoRail:
         # whichever mode presents it and under whichever challenge it is wrapped.
         return Verified(protocol=self.protocol, network=self.network,
                         proof_id=f"mpp:{self.network}:tx:{tx_hash.lower()}",
-                        payer=validation.payer.lower(), amount_micro=offer.amount_micro,
+                        payer=validation.payer.lower(), amount_micro=int(echoed["amount"]),
                         asset=str(echoed.get("currency") or "").lower(),
                         pay_to=str(echoed.get("recipient") or "").lower(),
-                        expires_at=expires_at, deferrable=deferrable, credential=parsed)
+                        expires_at=expires_at, deferrable=deferrable, credential=parsed,
+                        terms=(meta or {}).get("terms", ""), moved=details["mode"] == "push")
 
     async def settle(self, verified: Verified, offer: Offer) -> Settlement:
         from mpp.errors import PaymentError
@@ -185,7 +192,8 @@ class MppTempoRail:
         try:
             receipt = await self._mpp.broadcast_credential(
                 verified.credential, intent="charge", http_request=self._request(offer),
-                request={"amount": micro_to_decimal(offer.amount_micro)}, meta=_price(offer))
+                request={"amount": micro_to_decimal(verified.amount_micro)},
+                meta=_echoed_meta(verified.credential))
         except (InternalPaymentError, PaymentOutcomeUnknownError) as exc:
             # pympp raises these once the transaction may have reached the chain.
             raise PaymentRejected("settlement_unknown", str(exc) or exc.title) from exc
@@ -215,10 +223,33 @@ class MppTempoRail:
         return Lookup("pending", reason="not_yet_mined")
 
 
-def _price(offer: Offer) -> dict[str, str] | None:
-    """The quote a payment challenge carries in its HMAC-bound opaque data, so a payment signed
-    before a price change cannot pay at the new price."""
-    return {"quote_micro": str(offer.quote_micro)} if offer.quote_micro > 0 else None
+def _terms(offer: Offer) -> dict[str, str] | None:
+    """The terms a challenge carries in its HMAC-bound opaque data."""
+    return {"terms": offer.terms} if offer.terms else None
+
+
+def _echoed_meta(parsed) -> dict[str, str] | None:
+    """The opaque data the credential echoes, less pympp's own nonce: what `validate_credential`
+    must be told to expect, and the terms the payer was offered. pympp checks it against the
+    challenge's HMAC."""
+    raw = parsed.challenge.opaque or ""
+    if not raw:
+        return None
+    try:
+        opaque = json.loads(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
+    except (ValueError, TypeError) as exc:
+        raise PaymentRejected("malformed_credential", "the challenge data cannot be read") from exc
+    if not isinstance(opaque, dict):
+        raise PaymentRejected("malformed_credential", "the challenge data cannot be read")
+    return {key: value for key, value in opaque.items() if key != "_mpp_nonce"} or None
+
+
+def _echoed_amount(echoed: dict) -> str:
+    """The challenge's amount, base units (micro-USD), as the decimal pympp compares."""
+    try:
+        return micro_to_decimal(int(echoed.get("amount")))
+    except (TypeError, ValueError) as exc:
+        raise PaymentRejected("malformed_credential", "the challenge names no amount") from exc
 
 
 def _echoed_request(parsed) -> dict:

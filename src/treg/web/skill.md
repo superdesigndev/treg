@@ -335,6 +335,8 @@ When it refuses:
 - **401 `not_authenticated`**: this tool cannot be paid with a wallet; `reason` says why (for
   example `routed`, `free`, `needs_connection`, `usage_priced`, `invalid_request` for parameters it
   cannot price). Sign in and use a treg key for it.
+- **402 `price_changed`**: the price rose after you signed; nothing was charged. A transfer you had
+  already sent is kept as your credit. Sign the fresh challenge (with credit, its zero-amount proof).
 - **402 with another `reason`** (`payment_expired`, `invalid_challenge`, `payment_replayed`, ...):
   the answer carries a fresh challenge; pay that one.
 - **503 `payment_outcome_unknown`**: the payment may have moved. Do not pay again for this call.

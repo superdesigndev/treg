@@ -20,8 +20,9 @@ from treg.infra.db import session_maker
 from treg.models import CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
-    EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_credential, _mpp_paid, _mpp_proof,
-    _x402_credential, anon, chain, facilitator, payments_on, wallet)
+    EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
+    _mpp_paid, _mpp_proof, _siwx_proof, _x402_credential, anon, chain, facilitator, payments_on,
+    wallet)
 from test_capacity_overflow import VENDOR_BODY, _exhausted, _orthogonal, _route
 
 VERIFY = "millionphones.people.email.verify"   # 0.1 credit per verdict, worst case 1 credit
@@ -136,7 +137,7 @@ async def test_an_x402_payment_signed_before_a_price_change_is_refused(
     monkeypatch.setenv("TREG_PLATFORM_MARGIN", "1.0")   # the payment floor still covers it
     get_settings.cache_clear()
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
-    assert r.status_code == 402 and r.json()["detail"]["reason"] == "invalid_challenge", r.text
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
     assert r.json()["detail"]["estimated_cost_micro"] == 2 * EP_MICRO
     assert facilitator.settles == 0 and calls == []
     credential, _ = _x402_credential(r)   # the fresh challenge names the new price
@@ -151,8 +152,81 @@ async def test_an_mpp_payment_signed_before_a_price_change_is_refused(
     get_settings.cache_clear()
     r = await anon.get(f"/call/{EP}?aweme_id=7",
                        headers={"Authorization": _mpp_credential(challenge)})
-    assert r.status_code == 402 and r.json()["detail"]["reason"] == "invalid_challenge", r.text
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
     assert chain.broadcasts == 0
+
+
+def _raise_margin(monkeypatch) -> None:
+    monkeypatch.setenv("TREG_PLATFORM_MARGIN", "1.0")   # the quote doubles, the floor covers it
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("proof", ["mpp", "siwx"])
+async def test_credit_does_not_pay_a_price_raised_after_the_proof(
+        wallet: AsyncClient, payments_on, chain, monkeypatch, proof):
+    account = Account.create()
+    if proof == "mpp":
+        assert (await _mpp_paid(wallet, chain, account)).status_code == 200
+    else:   # credit is per network: fund the x402 one
+        assert (await _x402_paid(wallet, account=account))[0].status_code == 200
+    payer = account.address.lower()
+    credit = await _balance(payer)
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    signed = ({"Authorization": await _mpp_proof(challenge, account)} if proof == "mpp" else
+              {"SIGN-IN-WITH-X": _siwx_proof(challenge, account)})
+    _raise_margin(monkeypatch)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers=signed)
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
+    assert await _balance(payer) == credit
+    fresh = ({"Authorization": await _mpp_proof(r, account)} if proof == "mpp" else
+             {"SIGN-IN-WITH-X": _siwx_proof(r, account)})
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers=fresh)
+    assert r.status_code == 200 and r.headers["X-Treg-Cost-Micro"] == str(2 * EP_MICRO), r.text
+
+
+async def test_a_pushed_transfer_signed_before_a_price_change_is_kept_as_credit(
+        wallet: AsyncClient, payments_on, chain, monkeypatch):
+    """A push transfer is on chain before treg sees it: it is credited on the terms it was sent
+    under, and the wallet confirms the new price with its credit."""
+    from mpp import Credential
+
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "cd" * 32})
+    _raise_margin(monkeypatch)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "price_changed", r.text
+    assert await _balance(chain.payer) == FLOOR, "the transfer that landed is the wallet's credit"
+    r = await wallet.get(f"/call/{EP}?aweme_id=7",
+                         headers={"Authorization": await _mpp_proof(r, account)})
+    assert r.status_code == 200 and r.headers["X-Treg-Cost-Micro"] == str(2 * EP_MICRO), r.text
+
+
+async def test_a_payment_is_credited_at_the_fee_it_was_offered(anon: AsyncClient, payments_on,
+                                                               monkeypatch):
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge)
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_FEE_BPS", "500")   # the payment floor is unchanged
+    get_settings.cache_clear()
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+    assert await _balance(payer) == FLOOR - EP_MICRO
+
+
+async def test_an_x402_payment_without_a_resource_description_still_pays(anon: AsyncClient,
+                                                                         payments_on):
+    """x402 v2's resource description is optional: a client that echoes only the URL pays."""
+    from mpp.x402 import decode_payment_signature, encode_payment_signature
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    payload = decode_payment_signature(credential)
+    payload["resource"] = {"url": payload["resource"]["url"]}
+    r = await anon.get(f"/call/{EP}?aweme_id=7",
+                       headers={"PAYMENT-SIGNATURE": encode_payment_signature(payload)})
+    assert r.status_code == 200, r.text
 
 
 # ---- the record is the answer -------------------------------------------------------------------

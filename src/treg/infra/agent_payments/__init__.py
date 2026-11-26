@@ -24,9 +24,10 @@ class Offer:
     resource_url: str
     description: str
     host: str = ""               # the hostname the request was sent to, lowercase, no port
-    # The call's quote, margin included, that a payment is signed for; 0 binds none. The amount
-    # alone does not bind it: every quote under the payment floor asks the same amount.
-    quote_micro: int = 0
+    # The terms a payment or proof is signed for (the quote and the fee), as an opaque token the
+    # application makes and checks; each rail carries it where the payer echoes or signs it. ""
+    # carries none.
+    terms: str = ""
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,8 @@ class Verified:
     deferrable: bool = True
     credential: Any = field(default=None, repr=False, compare=False)
     kind: Literal["payment", "proof"] = "payment"
+    terms: str = ""              # the terms token the payer signed for or echoed, "" for none
+    moved: bool = False          # the payer already sent the transfer (MPP push mode)
 
 
 @dataclass(frozen=True)
