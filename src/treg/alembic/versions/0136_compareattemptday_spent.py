@@ -16,8 +16,10 @@ revision lands keeps what it spent; what a team deleted earlier that day cost is
 collector of an earlier build that runs after this revision still adds nothing to the column, so
 the old cron must not run between this revision and the new build's cron.
 
-Rollback: an earlier build's `python -m treg upgrade` refuses a schema newer than itself, so the
-code is withdrawn by a forward release that keeps this revision; `downgrade` drops the column.
+Rollback floor: the column and the backfill are additive (the expand-safety linter counts the
+backfill's `execute` and `get_context` as non-additive, so the floor is declared). An earlier
+build's `python -m treg upgrade` refuses a schema newer than itself, so the code is withdrawn by a
+forward release that keeps this revision; `downgrade` drops the column.
 """
 from collections.abc import Sequence
 
@@ -28,6 +30,7 @@ revision: str = "0136"
 down_revision: str | Sequence[str] | None = "0135"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+contract = True  # an additive column plus its backfill; see the rollback floor note
 
 
 def _present() -> set[str] | None:
