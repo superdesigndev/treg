@@ -433,16 +433,22 @@ async def test_a_call_pinned_to_an_empty_account_probes_its_reading_and_lifts_on
     assert (await state("tikhub")).exhausted_until is not None, "and left the primary's alone"
 
 
-async def test_an_account_with_a_paired_credential_is_swept_with_its_own_pair(monkeypatch):
-    from treg.domain.capacity.sweep import run_sweep
-    from treg.infra.db import reset_db, session_maker
-    await reset_db()
+@pytest.fixture
+def two_tomba_accounts(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_TOMBA", "TOMBA-KEY-A")
     monkeypatch.setenv("TREG_PLATFORM_KEY_TOMBA_SECRET", "TOMBA-SECRET-A")
     monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps(
         {"tomba": {"b": {"platform_key_tomba": "TOMBA-KEY-B", "platform_key_tomba_secret": "TOMBA-SECRET-B"}}}))
     get_settings.cache_clear()
-    left = {("TOMBA-KEY-A", "TOMBA-SECRET-A"): 0, ("TOMBA-KEY-B", "TOMBA-SECRET-B"): 70}
+    yield
+    get_settings.cache_clear()
+
+
+async def test_an_account_with_a_paired_credential_is_swept_with_its_own_pair(two_tomba_accounts):
+    from treg.domain.capacity.sweep import run_sweep
+    from treg.infra.db import reset_db, session_maker
+    await reset_db()
+    left ={("TOMBA-KEY-A", "TOMBA-SECRET-A"): 0, ("TOMBA-KEY-B", "TOMBA-SECRET-B"): 70}
 
     def serve(request):
         pair = (request.headers["x-tomba-key"], request.headers["x-tomba-secret"])
