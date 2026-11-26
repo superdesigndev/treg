@@ -494,8 +494,13 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
                     found.append(settled)
         finally:
             # Given back by a task of its own: a deadline that passes while the store answers
-            # stops this wait, not the release, which deletes only this token's lease.
-            await asyncio.shield(_release_lease_soon(store, key, token))
+            # stops this wait, not the release, which deletes only this token's lease. A call
+            # already past its deadline (cancelled while it waited for a connection, say) does
+            # not wait for the release at all.
+            release = _release_lease_soon(store, key, token)
+            current = asyncio.current_task()
+            if current is None or not current.cancelling():
+                await asyncio.shield(release)
         return _Fold.SHORT if folded.claimed < _BACKLOG_FOLD else _Fold.MORE
     except money_admission.AdmissionTimeout:
         return _Fold.GAVE_UP

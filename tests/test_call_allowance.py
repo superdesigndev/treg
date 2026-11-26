@@ -2192,6 +2192,30 @@ async def test_a_slow_lease_release_neither_holds_the_call_nor_loses_its_answer(
     assert runtime.money_key(org_id) not in store.leases
 
 
+async def test_a_call_past_its_deadline_inside_the_fold_does_not_wait_for_the_release(
+        org_id, store, monkeypatch):
+    """The deadline passes while the fold waits for the database, holding the lease. The call
+    returns then, not once the store has also taken the lease back."""
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+
+    async def waits_for_a_connection(*args, **kwargs):
+        await asyncio.sleep(5)
+
+    release = store.release_lease
+
+    async def slow_release(*args, **kwargs):
+        await asyncio.sleep(0.65)
+        return await release(*args, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", waits_for_a_connection)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 0.4
+    await _lease_releases_done()
+    assert runtime.money_key(org_id) not in store.leases
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
