@@ -665,7 +665,8 @@ past the bound do not make every new team scan them.
   short wait instead of falling back), and the next pass comes back to it. Every team a fold
   or an idle close gives up is counted by reason (`lease_held`, `busy_lock`,
   `admission_timeout`, `lock_timeout`, `failed`), and each process logs one
-  `allowance_fold_skips` line per kind of work and reason a minute: the skips, the teams, the
+  `allowance_fold_skips` line per kind of work and reason a minute (logger
+  `treg.allowance_fold_skips`, one physical line of JSON like `allowance_skips`): the skips, the teams, the
   longest any of their oldest charges had waited, and the teams waiting longest (`_note_skip`).
   A team skipped on every pass is visible there, not only in the queue's age. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own

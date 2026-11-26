@@ -34,6 +34,7 @@ from ..infra import db as infra_db
 from ..infra import kv, money_admission
 from ..infra.db import background_session_maker
 from ..infra.money_session import bound_lock_wait, lock_timed_out, money_session
+from ..infra.structured_logging import get_logger
 from .call.allowance import money_key, money_lock
 from ..timeutil import utcnow_naive
 
@@ -62,6 +63,7 @@ _SKIP_LOG_EVERY_S = 60.0
 _SKIP_TEAMS_MAX = 1000
 _SKIP_TOP = 5
 _skips: dict[tuple[str, str], dict] = {}
+_skip_log = get_logger("treg.allowance_fold_skips")
 
 
 def _row_locks() -> bool:
@@ -116,7 +118,7 @@ def _log_skips(now: float, kind: str, reason: str, window: dict) -> None:
     teams = sorted(window["orgs"].items(), key=lambda item: (-(item[1][1] or 0), -item[1][0],
                                                              item[0]))
     ages = [age for _, (_, age) in teams if age is not None]
-    log.info("allowance_fold_skips %s", json.dumps({
+    _skip_log.info("allowance_fold_skips %s", json.dumps({
         "kind": kind, "reason": reason, "skips": window["skips"], "orgs": len(teams),
         "window_s": round(now - window["since"], 1), "oldest_s": max(ages) if ages else None,
         "top": [[org_id, skips, age] for org_id, (skips, age) in teams[:_SKIP_TOP]],

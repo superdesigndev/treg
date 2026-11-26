@@ -2801,18 +2801,31 @@ async def test_a_team_whose_rows_stay_locked_does_not_hold_up_the_others(
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
-async def _skip_lines(caplog) -> list[dict]:
-    return [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
-            if r.getMessage().startswith("allowance_fold_skips ")]
+@pytest.fixture
+def fold_skip_lines(monkeypatch, caplog):
+    """`fold_skip_lines()` is every `allowance_fold_skips` line the default sink wrote, each
+    one physical line of JSON."""
+    monkeypatch.setattr(allowance_sweep, "_skips", {})
+    caplog.set_level(logging.INFO, logger=allowance_sweep._skip_log.name)
+    out = io.StringIO()
+    sinks = [h for h in allowance_sweep._skip_log.handlers if type(h) is logging.StreamHandler]
+    assert sinks and not allowance_sweep._skip_log.propagate
+    for handler in sinks:
+        monkeypatch.setattr(handler, "stream", out)
+
+    def lines():
+        raw = [line for line in out.getvalue().splitlines() if line]
+        assert all(line.startswith("allowance_fold_skips {") for line in raw), raw
+        return [json.loads(line.split(" ", 1)[1]) for line in raw]
+    return lines
 
 
 @pytest.mark.parametrize("reason", [
     "lease_held", "busy_lock", "admission_timeout", "lock_timeout", "failed"])
 async def test_every_team_a_fold_gives_up_is_logged_with_how_long_its_queue_waited(
-        org_id, store, monkeypatch, caplog, reason):
+        org_id, store, monkeypatch, fold_skip_lines, reason):
     """A busy team skipped on every pass grows its queue silently otherwise: each skip is
     counted by reason and the minute's line names the teams whose charges waited longest."""
-    monkeypatch.setattr(allowance_sweep, "_skips", {})
     monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
     async with session_maker() as db:
         await allowance.record_charges(db, [
@@ -2836,31 +2849,28 @@ async def test_every_team_a_fold_gives_up_is_logged_with_how_long_its_queue_wait
             raise DBAPIError("SELECT", None, Exception(message))
         monkeypatch.setattr(allowance, "fold_charges_in_transaction", stuck)
     try:
-        with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
-            assert await allowance_sweep.fold_queued_once(session_maker) == 0
+        assert await allowance_sweep.fold_queued_once(session_maker) == 0
     finally:
         if lock.locked():
             lock.release()
     assert await _queued(org_id) == 1
-    [line] = await _skip_lines(caplog)
+    [line] = fold_skip_lines()
     assert line["kind"] == "fold" and line["reason"] == reason
     assert line["skips"] == 1 and line["orgs"] == 1 and line["oldest_s"] >= 89
     assert line["top"][0][:2] == [org_id, 1] and line["top"][0][2] >= 89
 
 
 async def test_a_minute_of_skips_is_one_line_per_reason_with_the_stalest_teams_first(
-        monkeypatch, caplog):
-    monkeypatch.setattr(allowance_sweep, "_skips", {})
+        fold_skip_lines):
     now = utcnow_naive()
-    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
-        for team in range(1, 8):
-            for _ in range(team):
-                allowance_sweep._note_skip("fold", team, "lease_held",
-                                           now - timedelta(seconds=10 * team))
-        allowance_sweep._note_skip("close", 3, "admission_timeout")
-        assert await _skip_lines(caplog) == [], "nothing before the minute is up"
-        allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
-    lines = {(line["kind"], line["reason"]): line for line in await _skip_lines(caplog)}
+    for team in range(1, 8):
+        for _ in range(team):
+            allowance_sweep._note_skip("fold", team, "lease_held",
+                                       now - timedelta(seconds=10 * team))
+    allowance_sweep._note_skip("close", 3, "admission_timeout")
+    assert fold_skip_lines() == [], "nothing before the minute is up"
+    allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    lines = {(line["kind"], line["reason"]): line for line in fold_skip_lines()}
     folds = lines[("fold", "lease_held")]
     assert folds["skips"] == 28 and folds["orgs"] == 7 and folds["oldest_s"] >= 70
     assert [team for team, _, _ in folds["top"]] == [7, 6, 5, 4, 3]
