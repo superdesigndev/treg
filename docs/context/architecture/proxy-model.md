@@ -622,7 +622,10 @@ runs a child cycle after the primary's settle released its hold:
 
 When the resolver already knows the account is out and a route is on, the ladder skips the direct
 attempt (`MarketplaceCall.skip_direct`): no parent hold, straight to the child. Cancellation checks
-the authenticated caller's org before releasing the child hold.
+the authenticated caller's org before releasing the child hold. On that ladder and after a rate
+refusal the attempt's record is written once the child's outcome is known: `refused_by=capacity`
+with the original status, or, when the child's own reservation is refused and the caller gets that
+refusal (402 `insufficient_balance`, a cap's 429), that status and its refusal kind.
 
 Routes are normally admitted by the aggregator-to-direct price ratio; routes in
 `routes.request_priced` (a flat aggregator fee against a per-row direct price) are admitted by an

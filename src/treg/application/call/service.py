@@ -1411,8 +1411,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         `refusal()` is the failure raised when it does not; with `keep_refusal` it also replaces
         the child cycle's own failure."""
         caller_org = _required_caller_org(caller)
-        pending = _audit(status, charged_micro=0, refused_by="capacity", error_response=note,
-                         defer_analytics=True)
+
+        def _attempt(code: int = status, *, refused: str | None = "capacity",
+                     failure: CallFailure | None = None) -> dict | None:
+            # Recorded once the outcome is known, so the row is the answer the caller got.
+            return _audit(code, charged_micro=0, refused_by=refused, error_response=note,
+                          defer_analytics=True, failure=failure)
         try:
             outcome = await overflow_cycle.maybe_overflow(
                 mk=mk, caller=caller, meta=meta, call_ref=call_ref, status=status,
@@ -1421,11 +1425,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 client=upstream_client, audit_client=_client_name(request), force_trigger=force_trigger,
                 before_outbound=lambda: _admit_org_endpoint(request, mk.endpoint_id))
         except asyncio.CancelledError:
-            _capture(pending)
+            _capture(_attempt())
             await _finish_cancelled_call(request, mk, call_ref, trusted_org_id=caller_org)
             raise
         except CallFailure as exc:
-            _capture(pending)
+            # The child's own reservation refusal: the caller gets it, unless `keep_refusal`.
+            _capture(_attempt() if keep_refusal else
+                     _attempt(exc.status_code, refused=_refusal_kind(exc.status_code), failure=exc))
             request.state.call_cost_micro = 0
             if exc.kind in _MEMBER_SPEND_REFUSALS:
                 await return_daily_slot(caller, slot_day)
@@ -1433,10 +1439,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 raise refusal() from None
             raise
         if outcome is None or not outcome.served or outcome.response is None:
-            _capture(pending)  # a refusal after all
+            _capture(_attempt())  # a refusal after all
             request.state.call_cost_micro = 0
             raise (outcome.failure if not keep_refusal and outcome is not None
                    and outcome.failure is not None else refusal())
+        pending = _attempt()
         response, body, charged = outcome.response, outcome.body, outcome.charged_micro
         _capture(_overflow_event(pending, outcome, charged))
         if idem_key:

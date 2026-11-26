@@ -16,7 +16,7 @@ from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
-from treg.models import CallRecord, Hold
+from treg.models import CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
     EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_credential, _mpp_paid, _mpp_proof,
@@ -196,3 +196,21 @@ async def test_a_credit_draw_refused_for_balance_is_recorded_as_a_payment_step(
                          headers={"Authorization": await _mpp_proof(challenge, account)})
     assert r.status_code == 402 and r.json()["detail"]["reason"] == "credit_insufficient", r.text
     assert (await _records())[-1][:2] == (402, "payment")
+
+
+async def test_an_overflow_s_own_refusal_is_recorded_as_the_answer(clients: AsyncClient, overflow_on,
+                                                                   monkeypatch):
+    """Skip-direct: no direct attempt; the child's reservation is refused for the team's balance.
+    The caller gets that 402, and so does its record, not the 503 the attempt began as."""
+    await _route(price_micro=3 * EP_MICRO)
+    await _exhausted()
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, EP, await ledger.balance_of(db, org_id) - EP_MICRO)
+    monkeypatch.setattr(O, "_send", _orthogonal([], []))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402 and r.json()["detail"]["error"] == "insufficient_balance", r.text
+    assert [rec[:2] for rec in await _records() if rec[2] != "OVERFLOW"][-1] == (402, "balance")
+    async with session_maker() as db:
+        assert {e.kind for e in (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.org_id == org_id))).scalars()} == {"grant", "reserve"}
