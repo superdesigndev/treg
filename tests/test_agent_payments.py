@@ -21,7 +21,7 @@ from sqlmodel import select
 
 from treg.api import app
 from treg.application import agent_payments
-from treg.application.call import reserve as call_reserve
+from treg.application.call import wallet as call_wallet
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
@@ -434,12 +434,12 @@ async def test_a_known_wallet_polls_as_its_team_and_never_pays(anon: AsyncClient
 async def test_a_keyless_call_reserves_as_a_keyless_payer(anon: AsyncClient, payments_on,
                                                           facilitator, monkeypatch):
     """The payment path decided on the team's balance, so every reservation of a keyless call,
-    paid or drawn, is marked to take no allowance (`reserve.keyless_payer`)."""
+    paid or drawn, is marked to take no allowance (`call.wallet.current`)."""
     monkeypatch.setattr(call_service, "relay", _fake_relay(200))
     reserve, seen = call_service._platform_reserve, []
 
     async def noting(*args, **kwargs):
-        seen.append(call_reserve.keyless_payer.get())
+        seen.append(call_wallet.current.get() is not None)
         return await reserve(*args, **kwargs)
 
     monkeypatch.setattr(call_service, "_platform_reserve", noting)
@@ -449,7 +449,7 @@ async def test_a_keyless_call_reserves_as_a_keyless_payer(anon: AsyncClient, pay
         credential, _ = _x402_credential(challenge, account)
         assert (await anon.get(f"/call/{EP}?aweme_id={aweme_id}",
                                headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
-    assert seen == [True, True] and call_reserve.keyless_payer.get() is False
+    assert seen == [True, True] and call_wallet.current.get() is None
 
 
 # ---- paying -------------------------------------------------------------------------------------

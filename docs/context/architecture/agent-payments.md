@@ -226,7 +226,7 @@ that account's access key.
    (`_credit`).
 5. The request headers minus every payment credential header, whichever rails are on
    (`agent_payments.consumes`), go to the call as
-   the payer team. The call takes no allowance (`reserve.keyless_payer`, set by the router for
+   the payer team. The call takes no allowance (`call.wallet.current`, set by the router for
    the whole call, routed and overflow children included): the draw-or-settle decision read the
    team's balance, so no reservation moves that balance into an allowance counter, where it
    would read as missing and settle a payment the credit covered. Every answer after this point, a refusal included, carries

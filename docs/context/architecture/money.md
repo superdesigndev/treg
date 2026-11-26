@@ -558,7 +558,7 @@ past the bound do not make every new team scan them.
   leaves room (another request gave the counter back first). A reserve the balance refuses, the
   hub's price hold (`hub.runner._reserve_price`) included, asks `onto_balance`, which gives the
   counter back, or finds it already given back, and runs again when the balance then covers the
-  call. A keyless wallet's call takes no allowance (`reserve.keyless_payer`), so its team's
+  call. A keyless wallet's call takes no allowance (`call.wallet.current`), so its team's
   balance is all its credit (agent-payments.md).
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
@@ -1935,7 +1935,7 @@ A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-p
 payer team per wallet address and network. A payment confirmed on chain is an ordinary `topup` on that team,
 `payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
 transaction; then the call reserves, settles or releases as any team's call, except that it
-takes no allowance (`reserve.keyless_payer`): the payment path decides between drawing credit and
+takes no allowance (`call.wallet.current`): the payment path decides between drawing credit and
 settling on the team's balance, so no reservation moves that balance into a counter. The topup is booked
 only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
 has not received. A wallet whose existing credit covers the call proves itself instead of paying

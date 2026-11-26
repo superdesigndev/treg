@@ -1,6 +1,5 @@
 """Reservation and spend-cap helpers for metered calls."""
 
-import contextvars
 import functools
 import json
 import logging
@@ -34,16 +33,10 @@ from ...infra.structured_logging import get_logger
 from ...models import CallRecord, Org, TagBudget
 from . import allowance as allowance_runtime
 from . import idempotency
+from . import wallet as wallet_call
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall, held_micro
 from .types import ReservationFailed
-
-
-# A keyless wallet's request (docs/context/architecture/agent-payments.md): its reservations
-# take no allowance, so the wallet's credit is its team's balance alone, which the payment path
-# reads to decide whether a payment draws credit or settles.
-keyless_payer: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "treg_keyless_payer", default=False)
 
 
 @asynccontextmanager
@@ -618,7 +611,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
     mk.allowance_epoch, mk.allowance_marked = None, False
-    listed = (retry_short and not keyless_payer.get()
+    # A wallet's credit is its team's balance alone, which the payment path read to decide
+    # whether a payment draws credit or settles: none of its reservations takes the allowance.
+    listed = (retry_short and wallet_call.current.get() is None
               and allowance_runtime.listed(caller.org_id))
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
     # Marked before the take: from the take on, the mark is all a stale claim can see of the call.

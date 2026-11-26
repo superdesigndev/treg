@@ -22,6 +22,7 @@ from treg.application import billing, home, table
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
+from treg.application.call import wallet as call_wallet
 from treg.application.call import settle as call_settle
 from treg.application.call.intake import CallMeta, prepare_call_intake
 from treg.application.call.resolve import MarketplaceCall
@@ -4906,12 +4907,12 @@ async def test_a_keyless_wallet_s_reservation_takes_no_allowance(org_id, store, 
 
     monkeypatch.setattr(runtime, "take", take)
     monkeypatch.setattr(runtime, "listed", lambda org_id: True)
-    token = call_reserve.keyless_payer.set(True)
+    token = call_wallet.current.set(call_wallet.WalletCall(quote_micro=1_000, paid=True))
     try:
         await call_reserve._platform_reserve(_call(org_id, estimate=1_000), caller,
                                              allow_allowance=True, call_ref="keyless")
     finally:
-        call_reserve.keyless_payer.reset(token)
+        call_wallet.current.reset(token)
     assert taken == [] and await _per_call_holds(org_id) == ["keyless"]
 
 
