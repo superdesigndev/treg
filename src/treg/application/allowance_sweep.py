@@ -35,7 +35,7 @@ from ..infra import kv, money_admission
 from ..infra.db import background_session_maker
 from ..infra.money_session import bound_lock_wait, lock_timed_out, money_session
 from ..infra.structured_logging import get_logger
-from .call.allowance import money_key, money_lock
+from .call.allowance import acquire_money_lease, fold_claim_key, money_key, money_lock
 from ..timeutil import utcnow_naive
 
 log = logging.getLogger("treg.money_allowance")
@@ -54,6 +54,13 @@ _TEAMS_PER_PAGE = 50
 _TEAMS_PER_PASS = 500
 _TEAMS_LISTED = 5000
 _ADMISSION_WAIT_S = 0.25
+# A team whose oldest queued charge has waited this long is starved: its own requests have kept
+# its lease, its lock or its admission busy through every pass. Its next fold gets a turn of up
+# to `_STARVED_TURN_S`: it claims the team's lease and admission and waits for them, and the
+# team's refills and other money sessions wait for it instead (`_fold_claim`).
+_STARVED_AFTER_S = 30
+_STARVED_TURN_S = 10.0
+_LEASE_POLL_S = 0.005
 _LEASE_MS = 5000
 _PASS_KEY = "treg:money-allowance-pass:v1"
 _PASS_LEASE_MS = 30_000
@@ -135,19 +142,71 @@ def _log_skips(now: float, kind: str, reason: str, window: dict) -> None:
 
 
 @asynccontextmanager
-async def _team_lease(org_id: int):
+async def _team_lease(org_id: int, token: str | None = None, until: float | None = None):
     """Hold the team's allowance money lease; yield whether this pass may write the team's money.
 
-    Not while another process has the lease. When the store cannot answer there is no lease to
-    have: PostgreSQL still makes two writers wait on the hold's row lock, so the sweep goes on
-    there; SQLite has no row locks, and the write waits for a pass that can take the lease."""
-    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    acquired = await store.acquire_lease(key, token, _LEASE_MS)
+    Not while another process has the lease, or the fold has claimed the team's next turn with
+    another token (`acquire_money_lease`). With `until` (a starved team's turn, on the loop's
+    clock) a held lease is waited for until then. When the store cannot answer there is no
+    lease to have: PostgreSQL still makes two writers wait on the hold's row lock, so the sweep
+    goes on there; SQLite has no row locks, and the write waits for a pass that can take the
+    lease."""
+    store, key = kv.store(), money_key(org_id)
+    token = token or uuid.uuid4().hex
+    loop = asyncio.get_running_loop()
+    try:
+        acquired = await acquire_money_lease(store, org_id, token, _LEASE_MS)
+        while acquired == "busy" and until is not None and loop.time() < until:
+            await asyncio.sleep(_LEASE_POLL_S)
+            acquired = await acquire_money_lease(store, org_id, token, _LEASE_MS)
+    except BaseException:
+        # A lease the store granted before this stopped waiting for its answer is given back
+        # rather than left to expire; release deletes only this token's.
+        await asyncio.shield(store.release_lease(key, token))
+        raise
     try:
         yield acquired == "acquired" or (acquired == "unavailable" and _row_locks())
     finally:
         if acquired == "acquired":
             await store.release_lease(key, token)
+
+
+@asynccontextmanager
+async def _fold_claim(org_id: int, until: float | None):
+    """Yield `(token, until)` for one team's turn at the fold. With `until`, the turn of a
+    starved team: the token claims the team's next lease (`fold_claim_key`) until then, so the
+    team's refills, drains and request-path folds, which take the lease `unless` it is claimed,
+    wait for this fold rather than win the lease every time it is free. The claim is given back
+    when the turn ends, and expires by itself shortly after `until` should that fail. A claim
+    this fold cannot have (another fold of the team holds it, or the store cannot answer) yields
+    `until` None: the team is tried once, as any other, rather than waited for in vain."""
+    token = uuid.uuid4().hex
+    if until is None:
+        yield token, None
+        return
+    store, claim = kv.store(), fold_claim_key(org_id)
+    ttl_ms = max(1, int((until - asyncio.get_running_loop().time()) * 1000) + _LEASE_MS)
+    try:
+        claimed = await store.acquire_lease(claim, token, ttl_ms) == "acquired"
+        yield token, until if claimed else None
+    finally:
+        await asyncio.shield(store.release_lease(claim, token))
+
+
+async def _take_lock(lock: asyncio.Lock, until: float | None) -> bool:
+    """Take this process's money lock of the team: at once or not at all, or within a starved
+    team's turn. Nothing is awaited before a free lock is taken."""
+    if not lock.locked():
+        await lock.acquire()
+        return True
+    if until is None:
+        return False
+    try:
+        async with asyncio.timeout_at(until):
+            await lock.acquire()
+        return True
+    except TimeoutError:
+        return False
 
 
 def fold_shards() -> int:
@@ -350,30 +409,46 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
     holding its lock among them), or its rows stay locked past `LOCK_WAIT_MS`, and the next
     pass comes back: the teams behind it are not kept waiting. Every such stop is counted
     (`_note_skip`) with when the team's `oldest` queued charge was written. One team failing
-    does not stop the pass."""
+    does not stop the pass.
+
+    A team whose oldest charge has waited `_STARVED_AFTER_S` gets a turn of `_STARVED_TURN_S`
+    instead: the fold claims the team's lease for the turn (`_fold_claim`), waits for the
+    lease, the lock and the team's admission (with priority over the team's other money
+    sessions, `admit(priority=True)`) until the turn ends, and folds its batches. A busy team's
+    own requests can keep it from the fold for one pass, not for every pass."""
+    loop = asyncio.get_running_loop()
+    waited_s = _waited_s(oldest)
+    until = (loop.time() + _STARVED_TURN_S
+             if waited_s is not None and waited_s >= _STARVED_AFTER_S else None)
     total, committed, skipped = 0, False, None
     try:
-        for _ in range(_FOLD_BATCHES_PER_PASS):
-            async with _team_lease(org_id) as free:
-                lock = money_lock(org_id)
-                if lock.locked() or not free:
-                    skipped = "busy_lock" if lock.locked() else "lease_held"
+        async with _fold_claim(org_id, until) as (token, until):
+            for _ in range(_FOLD_BATCHES_PER_PASS):
+                async with _team_lease(org_id, token, until) as free:
+                    lock = money_lock(org_id)
+                    if not free or not await _take_lock(lock, until):
+                        skipped = "busy_lock" if free or lock.locked() else "lease_held"
+                        break
+                    try:
+                        async with (
+                            money_admission.admit(
+                                money_admission.require_balance_orgs([org_id]),
+                                operation="close",
+                                max_wait_s=(_ADMISSION_WAIT_S if until is None
+                                            else max(_ADMISSION_WAIT_S, until - loop.time())),
+                                refuse_on_timeout=True, priority=until is not None),
+                            money_session(session_maker()) as db,
+                        ):
+                            await bound_lock_wait(db)
+                            folded = await allowance.fold_charges_in_transaction(
+                                db, org_id, limit=_FOLD_BATCH)
+                            await db.commit()
+                            committed = True
+                    finally:
+                        lock.release()
+                total += folded.calls
+                if folded.claimed < _FOLD_BATCH:
                     break
-                async with (
-                    lock,
-                    money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="close",
-                        max_wait_s=_ADMISSION_WAIT_S, refuse_on_timeout=True),
-                    money_session(session_maker()) as db,
-                ):
-                    await bound_lock_wait(db)
-                    folded = await allowance.fold_charges_in_transaction(
-                        db, org_id, limit=_FOLD_BATCH)
-                    await db.commit()
-                    committed = True
-            total += folded.calls
-            if folded.claimed < _FOLD_BATCH:
-                break
     except money_admission.AdmissionTimeout:
         skipped = "admission_timeout"
     except Exception as exc:
@@ -384,6 +459,9 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
     if skipped is not None:
         _note_skip("fold", org_id, skipped, oldest)
+    if until is not None:
+        log.info("allowance_fold_starved org_id=%s waited_s=%s folded=%s skipped=%s",
+                 org_id, waited_s, total, skipped)
     return total if committed else None
 
 

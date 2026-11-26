@@ -164,6 +164,19 @@ def money_key(org_id: int) -> str:
     return f"treg:money-allowance-money:v1:{org_id}"
 
 
+def fold_claim_key(org_id: int) -> str:
+    """The claim the background fold sets on a team whose queue has waited too long
+    (`allowance_sweep`): while another token holds it, nobody else gets the team's lease."""
+    return f"treg:money-allowance-fold-claim:v1:{org_id}"
+
+
+async def acquire_money_lease(store, org_id: int, token: str, ttl_ms: int) -> str:
+    """Take the team's lease (`money_key`), unless the background fold has claimed its next turn
+    (`fold_claim_key`) with another token: then `busy`, as if held."""
+    return await store.acquire_lease(money_key(org_id), token, ttl_ms,
+                                     unless=fold_claim_key(org_id))
+
+
 async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
                after_refill: Callable[[], Awaitable[None]] | None = None) -> int | None:
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
@@ -217,7 +230,7 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int, after_refi
     key, token = money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFILL_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "unavailable":
             return None
         if acquired == "acquired":
@@ -292,7 +305,7 @@ async def _refresh_once(org_id: int, daily_cap_micro: int, after_refill) -> None
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFRESH_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "acquired":
             before = refills(org_id)
             try:
@@ -465,7 +478,7 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
             if money_lock(org_id).locked():
                 return _Fold.HERE
             try:
-                acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+                acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
             except BaseException:
                 # The store may have granted the lease before the call stopped waiting for its
                 # answer: give back whatever this token holds, or the team's refills and the
@@ -657,7 +670,7 @@ async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
         state = await store.allowance_state(org_id)
         if state is None or not state[3] or state[0] < max(1, short_micro):
             return False
-        leased = await store.acquire_lease(key, token, _REFILL_LEASE_MS) == "acquired"
+        leased = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS) == "acquired"
         if not leased:
             return False
         returned = await _give_back(org_id, state[3])

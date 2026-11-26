@@ -182,10 +182,13 @@ class FakeStore:
                                  "thawed": (counter or {}).get("thawed", 0)}
         return left
 
-    async def acquire_lease(self, key, token, ttl_ms):
+    async def acquire_lease(self, key, token, ttl_ms, *, unless=None):
         if self.lease_answer is not None:
             return self.lease_answer
         if key in self.leases and self.lease_until.get(key, float("inf")) > time.monotonic():
+            return "busy"
+        if (self.leases.get(unless, token) != token
+                and self.lease_until.get(unless, float("inf")) > time.monotonic()):
             return "busy"
         self.leases[key] = token
         self.lease_until[key] = time.monotonic() + ttl_ms / 1000
@@ -3187,6 +3190,105 @@ async def test_a_process_that_no_longer_gets_a_share_still_logs_the_skips_it_cou
             await task
     [line] = fold_skip_lines()
     assert line["top"][0][:2] == [7, 1] and line["top"][0][2] >= 40
+
+
+async def _busy_team(store, org_id: int, stop: asyncio.Event, turns: list) -> None:
+    """The team's own refills in other processes: whenever the team's lease is free one of them
+    takes it at once, as the refill path asks for it (`acquire_money_lease`), with no moment in
+    between for anyone else."""
+    key = runtime.money_key(org_id)
+    while not stop.is_set():
+        token = uuid4().hex
+        if await runtime.acquire_money_lease(store, org_id, token, 1000) == "acquired":
+            turns.append(time.monotonic())
+            await asyncio.sleep(0.02)
+            await store.release_lease(key, token)
+        else:
+            await asyncio.sleep(0.001)
+
+
+async def _queue_charge(org_id: int, call_id: str, waited_s: int) -> None:
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(call_id, org_id, "e.metered", 400, reserved_micro=400)])
+        await db.execute(update(CallCharge).where(CallCharge.call_id == call_id).values(
+            created_at=utcnow_naive() - timedelta(seconds=waited_s)))
+        await db.commit()
+
+
+@pytest.mark.parametrize("waited_s, starved", [(5, False), (60, True)])
+async def test_a_team_kept_busy_by_its_own_requests_is_still_folded_once_its_queue_is_stale(
+        org_id, store, monkeypatch, caplog, fold_skip_lines, waited_s, starved):
+    """A team whose own refills take its lease the moment it is free was skipped on every pass,
+    and its queue grew for as long as its traffic lasted. A queue younger than
+    `_STARVED_AFTER_S` is still skipped at once, so busy teams do not slow the pass; a staler
+    one gets a turn: the fold claims the team's lease, gets it after the current holder, folds,
+    and gives the team its lease back."""
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    await _queue_charge(org_id, "queued", waited_s)
+    stop, turns = asyncio.Event(), []
+    busy = asyncio.create_task(_busy_team(store, org_id, stop, turns))
+    try:
+        while not turns:
+            await asyncio.sleep(0.001)
+        began = time.monotonic()
+        with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+            folded = await allowance_sweep.fold_queued_once(session_maker)
+        took_s = time.monotonic() - began
+        before = len(turns)
+        await asyncio.sleep(0.1)
+        assert len(turns) > before, "the team's requests have the lease again"
+    finally:
+        stop.set()
+        await busy
+    if not starved:
+        assert folded == 0 and await _queued(org_id) == 1 and took_s < 0.1
+        [line] = fold_skip_lines()
+        assert line["reason"] == "lease_held"
+    else:
+        assert folded == 1 and await _queued(org_id) == 0
+        assert took_s < 1.0, "within one holder's turn, far inside the fold's own turn"
+        assert fold_skip_lines() == []
+        assert any(r.getMessage().startswith(f"allowance_fold_starved org_id={org_id} ")
+                   for r in caplog.records)
+    assert runtime.fold_claim_key(org_id) not in store.leases
+
+
+async def test_a_starved_team_whose_lease_never_frees_is_given_up_when_its_turn_ends(
+        org_id, store, monkeypatch, fold_skip_lines):
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.1)
+    await _queue_charge(org_id, "queued", 600)
+    store.leases[runtime.money_key(org_id)] = "a session that never ends"
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    assert 0.1 <= time.monotonic() - began < 0.5
+    [line] = fold_skip_lines()
+    assert line["reason"] == "lease_held" and line["oldest_s"] >= 599
+    assert runtime.fold_claim_key(org_id) not in store.leases, "the claim is given back"
+
+
+async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(
+        org_id, store, monkeypatch):
+    """Two folds of one team (a deploy that changes the number of shares): the one without the
+    claim could never get the lease, so it does not spend a turn waiting for it."""
+    await _queue_charge(org_id, "queued", 600)
+    store.leases[runtime.fold_claim_key(org_id)] = "another fold"
+    store.leases[runtime.money_key(org_id)] = "another fold"
+    began = time.monotonic()
+    assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    assert time.monotonic() - began < 0.1
+    assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
+
+
+async def test_a_starved_team_waits_for_this_processs_money_session_within_its_turn(
+        org_id, store, monkeypatch):
+    await _queue_charge(org_id, "queued", 60)
+    lock = runtime.money_lock(org_id)
+    await lock.acquire()
+    asyncio.get_running_loop().call_later(0.05, lock.release)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    assert not lock.locked() and await _queued(org_id) == 0
 
 
 async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_lease(

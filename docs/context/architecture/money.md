@@ -677,7 +677,22 @@ past the bound do not make every new team scan them.
   emptied is still listed with that age. Reading the queue again for each skip would cost a
   query per skip for a diagnostic line.
   A team skipped on every pass is visible there, not only in the queue's age. The loop writes
-  due lines on every turn, so a process that lost its share still writes what it counted. The idle sweep
+  due lines on every turn, so a process that lost its share still writes what it counted.
+  Skipping a busy team cannot go on for good: a team whose oldest charge has waited `_STARVED_AFTER_S` gets a
+  turn of up to `_STARVED_TURN_S` instead. The fold claims the team's lease for the turn
+  (`allowance.fold_claim_key`, a token-owned key that expires shortly after the turn), and every
+  other taker of the lease, the refill, the drain, the give-back and the request-path fold, asks
+  for it `unless` that claim is held (`allowance.acquire_money_lease`), so the fold gets the
+  lease after its current holder rather than losing it each time to whichever refill polls
+  first. Within the turn it waits for this process's money lock and asks `admit` for priority
+  (below) over the team's other money sessions, then folds its batches; it logs one
+  `allowance_fold_starved` line per turn. The claim is given back when the turn ends, on every
+  path. Meanwhile the team's calls keep taking from the counter; a call that needs a refill
+  waits for the lease as for any other holder, and goes to the exact path once its own wait is
+  over. That is the price: a starved team's own traffic yields to its fold for at most one
+  turn a pass, which no other team pays. A pause of new allowance takes was not chosen: the
+  exact path those calls would take writes the same team rows twice per call, and a fold
+  inside each refill cannot keep up, as a refill moves a chunk worth many calls. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own
   clock, which every process shares (a lease in the store taken for the sweep period and never
   given back, so a share handed to another process is not swept again within it), and it too goes through every idle hold of the share a page of teams at a time. A pass
@@ -714,7 +729,8 @@ past the bound do not make every new team scan them.
 
 - **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
   hold and then write it. All of them hold one lease in the store for the team
-  (`allowance.money_key`), and a per-team lock inside the process. PostgreSQL would make them
+  (`allowance.money_key`, taken through `acquire_money_lease`, which yields to a starved
+  team's fold claim), and a per-team lock inside the process. PostgreSQL would make them
   wait on the hold's row lock anyway; on SQLite, which has no row locks, the lease is what keeps
   two processes from both reading before either writes. A session that outlives the lease is
   still safe on PostgreSQL and is not on SQLite. When the store cannot answer nobody can take
@@ -887,7 +903,7 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
   before the database, counted as `rejected`.
 - **Priority.** A waiter passing `priority` (only the allowance fold of a queue that has waited
-  too long, below) does not queue behind its process's local waiters, and once it finds the
+  too long, § Allowance) does not queue behind its process's local waiters, and once it finds the
   lease busy it claims the next turn: a second key beside the lease (`…:claim`, token-owned,
   expiring with the waiter's budget). Every acquisition asks for the lease `unless` another
   token holds that claim (`kv.acquire_lease(unless=…)`, one script), so every other waiter of
