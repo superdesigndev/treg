@@ -3344,6 +3344,30 @@ async def test_a_starved_turn_waiting_for_a_connection_begins_no_transaction_pas
     assert [line["reason"] for line in fold_skip_lines()] == ["admission_timeout"]
 
 
+async def test_a_starved_turns_row_lock_wait_is_capped_at_what_is_left_of_its_share(
+        org_id, store, monkeypatch):
+    """Every other wait of a starved turn ends with its share, but a statement waiting for the
+    team's row locks waited the full `LOCK_WAIT_MS`: rows held by another session could spend
+    the shares of the starved teams after it."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    await _queue_charge(org_id, "queued", 600)
+    real_admit, caps = allowance_sweep.money_admission.admit, []
+
+    def admit(org_ids, *, priority=False, **named):
+        if not priority:  # the team's own sessions keep its admission from a plain try
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        return real_admit(org_ids, priority=priority, **named)
+
+    async def record(db, wait_ms=1000):
+        caps.append(wait_ms)
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    monkeypatch.setattr(allowance_sweep, "bound_lock_wait", record)
+    assert await allowance_sweep.fold_queued_once(session_maker) == 1
+    [cap] = caps
+    assert 0 < cap <= 200
+
+
 async def test_a_late_release_of_one_starved_batchs_lease_cannot_free_the_next(
         org_id, store, monkeypatch):
     """Every batch of a starved turn takes the team's lease as the claim's owner, but each under

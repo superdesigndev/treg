@@ -460,7 +460,8 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
 
     With `until` (a starved team's turn, on the loop's clock, `fold_queued_once`) the fold claims the team's lease for the turn (`_fold_claim`), waits for the
     lease, the lock, the team's admission (with priority over the team's other money
-    sessions, `admit(priority=True)`) and a connection until the turn ends, and folds its
+    sessions, `admit(priority=True)`), a connection and, per statement, its rows' locks until
+    the turn ends, and folds its
     batches; no batch or transaction starts once the turn is over, and no wait outlasts it. A busy team's
     own requests can keep it from the fold for one pass, not for every pass."""
     loop = asyncio.get_running_loop()
@@ -486,9 +487,11 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
                                 refuse_on_timeout=True, priority=until is not None),
                             money_session(session_maker()) as db,
                         ):
-                            if until is not None:
+                            if until is None:
+                                await bound_lock_wait(db)
+                            else:
                                 await _connect_within(db, until)
-                            await bound_lock_wait(db)
+                                await bound_lock_wait(db, (until - loop.time()) * 1000)
                             folded = await allowance.fold_charges_in_transaction(
                                 db, org_id, limit=_FOLD_BATCH)
                             await db.commit()
