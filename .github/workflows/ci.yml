@@ -204,6 +204,8 @@ jobs:
           tests/test_callrecord_call_ref_index_migration.py
           tests/test_callrecord_served_call_ref_migration.py
           tests/test_review_answer_basis_migration.py
+          tests/test_tagspend_index_migration.py
+          tests/test_tagspend_drop_prefix_index_migration.py
           tests/test_enrich_arena.py
           tests/test_arena_insights.py
           tests/test_arena_verification_insights.py
