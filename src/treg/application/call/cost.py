@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
+from urllib.parse import parse_qsl
 
 from ...domain import plugins
 from ...domain.catalog import outcome as outcomes
@@ -155,12 +156,34 @@ def require_request(ep: dict, request_data: dict) -> None:
                            f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
-def require_rows(ep: dict, request_data: dict) -> None:
+def _body_names(request_data: dict, raw_body: bytes) -> set[str]:
+    """The top-level names a request body carries: a JSON object's keys, else the names of a
+    form-encoded body. Any other body names nothing."""
+    body = request_data.get("body")
+    if isinstance(body, dict) and body:
+        return set(body)
+    if not raw_body:
+        return set()
+    try:
+        pairs = parse_qsl(raw_body.decode("ascii"), keep_blank_values=True, strict_parsing=True)
+    except (UnicodeDecodeError, ValueError):
+        return set()
+    return {name.removesuffix("[]") for name, _ in pairs}
+
+
+def require_rows(ep: dict, request_data: dict, raw_body: bytes = b"") -> None:
     """On treg's key, a `reserve.rows` with no default refuses a request without its parameter,
-    and one with `platform_max` refuses a count above it, before anything is held."""
+    one with `platform_max` refuses a count above it, and one whose parameter is a query path
+    refuses a body that carries the same name, before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if not rule:
         return
+    param = rule.get("param") or ""
+    if param.startswith("query.") and param.removeprefix("query.") in _body_names(request_data, raw_body):
+        name = param.removeprefix("query.")
+        raise _invalid(ep, f"body.{name}", "platform",
+                       f"{ep['id']} reads {name} from the query on treg's key; send it as the query "
+                       f"parameter {name}, not in the body")
     top = int(rule.get("platform_max") or rule["max"])
     rows = _rows(rule, request_document(ep, request_data, defaults=False))
     if rows is None:
