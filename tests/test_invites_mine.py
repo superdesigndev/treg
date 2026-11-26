@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from treg.api import app
 from treg.infra.db import reset_db
+from conftest import email_code
 
 
 @pytest.fixture
@@ -23,7 +24,7 @@ async def client():
 
 
 async def _otp(c: AsyncClient, email: str) -> str:
-    code = (await c.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(c, email)
     return (await c.post("/auth/email/verify", json={"email": email, "code": code})).json()["token"]
 
 

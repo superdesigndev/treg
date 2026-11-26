@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db
+from conftest import email_code
 
 
 @pytest.fixture
@@ -25,7 +26,7 @@ async def client():
 
 
 async def _otp_login(c: AsyncClient, email: str) -> str:
-    code = (await c.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(c, email)
     r = await c.post("/auth/email/verify", json={"email": email, "code": code})
     assert r.status_code == 200, r.text
     return r.json()["token"]
@@ -51,7 +52,7 @@ async def test_verify_rejects_wrong_and_unknown_code(client):
 
 async def test_code_is_one_time(client):
     email = "morpheus@matrix.io"
-    code = (await client.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(client, email)
     ok = await client.post("/auth/email/verify", json={"email": email, "code": code})
     assert ok.status_code == 200
     replay = await client.post("/auth/email/verify", json={"email": email, "code": code})
@@ -93,7 +94,7 @@ async def test_signup_tracking_only_after_new_identity_not_login_or_bad_code(cli
     monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append((a, k)))
     client.cookies.set("treg_entry_surface", "arena")
     email = "tracking@example.test"
-    code = (await client.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(client, email)
     assert (await client.post("/auth/email/verify", json={"email": email, "code": "wrong"})).status_code == 401
     assert events == []
     assert (await client.post("/auth/email/verify", json={"email": email, "code": code})).status_code == 200
@@ -114,7 +115,7 @@ async def test_signup_records_which_client_signed_up(client, monkeypatch, header
     events = []
     monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append(a))
     email = f"client-{expected}@example.test"
-    code = (await client.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(client, email)
     verify = await client.post("/auth/email/verify", json={"email": email, "code": code, **body}, headers=headers)
     assert verify.status_code == 200
     (signup,) = [a for a in events if a[1] == "signup_completed"]

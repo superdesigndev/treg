@@ -1210,6 +1210,7 @@ async def test_a_grant_dies_with_the_membership_it_was_consented_under(clients):
     springing back to life, with no new consent, the day membership was restored."""
     from sqlmodel import select
 
+    from treg.domain.governance import teams
     from treg.infra.db import session_maker
     from treg.models import Membership, User
 
@@ -1219,7 +1220,7 @@ async def test_a_grant_dies_with_the_membership_it_was_consented_under(clients):
             User.email == "departing@superdesign.dev"))).scalar_one()
         m = (await db.execute(select(Membership).where(
             Membership.user_id == user.id, Membership.org_id == org_id))).scalar_one()
-        await db.delete(m)
+        await teams.delete_membership(db, m)
         await db.commit()
 
     r = await clients.post("/oauth/token", data={

@@ -74,6 +74,10 @@ if _test_db_url and _worker and _test_db_url.startswith("postgresql"):
     _test_db_url = os.environ.get("TREG_TEST_DB_URL_WORKER") or _per_worker_postgres(_test_db_url)
     os.environ["TREG_TEST_DB_URL_WORKER"] = _test_db_url
 os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
+# A server on Postgres refuses to start without a Fernet key (`verify_db`), as production always has
+# one; only a local SQLite server may fall back to an ephemeral key.
+if (_test_db_url or "").startswith("postgresql"):
+    os.environ.setdefault("TREG_SECRET_KEY", "dHJlZy10ZXN0LWtleS1mb3ItcG9zdGdyZXMtcnVucyE=")
 # Replica tests opt in explicitly; never inherit a real replica from the shell or .env.
 os.environ["TREG_READ_DATABASE_URL"] = ""
 # The background pool goes through a pooler only when TREG_TEST_POOLER_URL names one (CONTRIBUTING.md).
@@ -497,10 +501,29 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
     return up
 
 
-async def verified_identity(client, email):
-    """Real OTP proof, capturing mail delivery even when Postgres hides dev codes."""
+async def seed_teams(*ids):
+    """Create the teams these ids name, for rows a test seeds with a literal `org_id`: Postgres
+    enforces the foreign key that SQLite ignores. The id sequence moves past them, so a team the
+    test creates afterwards gets a fresh id."""
+    from sqlalchemy import text
+    from treg.infra import db as infra_db
+    from treg.models import Org
+
+    async with infra_db.session_maker() as db:
+        for org_id in ids:
+            if await db.get(Org, org_id) is None:
+                db.add(Org(id=org_id, name=f"Team {org_id}", slug=f"seeded-team-{org_id}"))
+        await db.flush()
+        if not infra_db._is_sqlite:
+            await db.execute(text(
+                "SELECT setval(pg_get_serial_sequence('org', 'id'), (SELECT max(id) FROM org))"))
+        await db.commit()
+
+
+async def email_code(client, email):
+    """Start the email sign-in and return the code the inbox gets: the dev code a local SQLite
+    server shows, or else the one handed to the mail sender (Postgres never shows one)."""
     from unittest.mock import patch
-    import httpx
     from treg import email as email_sender
 
     delivered = {}
@@ -508,12 +531,19 @@ async def verified_identity(client, email):
     async def receive(email, code, **kwargs):
         delivered[email] = code
 
+    with patch.object(email_sender, "send_otp", receive):
+        started = await client.post("/auth/email/start", json={"email": email})
+    assert started.status_code == 200, started.text
+    return started.json().get("dev_code") or delivered[started.json()["email"]]
+
+
+async def verified_identity(client, email):
+    """Real OTP proof, on any database."""
+    import httpx
+
     previous_cookies = httpx.Cookies(client.cookies)
     try:
-        with patch.object(email_sender, "send_otp", receive):
-            started = await client.post("/auth/email/start", json={"email": email})
-        assert started.status_code == 200, started.text
-        code = started.json().get("dev_code") or delivered[started.json()["email"]]
+        code = await email_code(client, email)
         proof = await client.post("/auth/email/verify", json={"email": email, "code": code})
         assert proof.status_code == 200, proof.text
         return proof.json()["token"]
@@ -824,3 +854,4 @@ def pytest_runtest_teardown(item, nextitem):
         raise AssertionError(f"{item.nodeid} left the working directory at {leaked}; "
                              "use monkeypatch.chdir so it is restored")
     return result
+
