@@ -672,6 +672,9 @@ class CallRecord(SQLModel, table=True):
     # this row by id and both targets carry their own index. Last columns (alembic appends).
     archive_key_hash: str | None = Field(default=None)
     archive_content_hash: str | None = Field(default=None)
+    # The call surface when it is not `/call/`: "table" for `/table/`, whose caller receives a
+    # reshaped answer rather than the archived bytes. NULL on `/call/` and on rows before 0128.
+    surface: str | None = Field(default=None)
     # The provider's share of `duration_ms` (set by the call path; see `upstream_ms` there): the
     # request until its answer is read. NULL when no request reached the provider, and on rows
     # written before the column existed.
@@ -688,6 +691,27 @@ class CallRecord(SQLModel, table=True):
     # NULL = a row in today's spelling, an async submission, a non-2xx the declaration does not
     # decide, or a row written before the column existed; those keep the status rule.
     outcome: str | None = Field(default=None)
+    # A routed parent's link to the answer its caller received: the `call_ref` of the child attempt
+    # whose body is the `raw` returned (the winner; an upgrade's own served child; under a merge the
+    # winner, not `served_by`). Read the child row by this exact ref (`ix_callrecord_call_ref`); its
+    # own archived answer, or for an async provider the terminal answer filed under the ref
+    # (`archive.load_terminal_responses`), is the delivered one only when its content hash is
+    # `served_content_hash` below. Anything else is archive unavailable.
+    # NULL on every other row, on a routed miss or failure, when the router wrote `raw` itself (a
+    # declared miss status, a failed async task, a non-JSON body), when re-serializing `raw` changes
+    # its value (a float past 15 significant digits, a repeated key) or that cannot be told, on an
+    # answer over `route.SERVED_CHECK_MAX` (64 KiB, not checked on the call path), on a pending 202 (the caller got
+    # the submission ticket, not the answer later filed under its ref), on an answer an overflow
+    # aggregator served (its row and the direct attempt's share one ref), and on rows written before
+    # the column (0127). NULL means no usable link was recorded, never that no answer was served.
+    # A logical reference only, never a foreign key: either row may be shed.
+    served_call_ref: str | None = Field(default=None)
+    # sha256 of the exact bytes returned as `raw` (`archive.content_hash`'s digest), set with
+    # `served_call_ref`. The ref says where to look; this says whether what is found there is what
+    # the caller got. A reader takes an archived answer only when its `content_hash` equals this:
+    # another poller's terminal answer, a body the call path changed before delivery (the provider's
+    # reported charge removed) or a ticket never match, and count as archive unavailable.
+    served_content_hash: str | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):
@@ -1760,6 +1784,9 @@ class IdempotentCall(SQLModel, table=True):
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
     endpoint_id: str = Field(default="")
+    # The surface the label was taken on, `call` or `table`: a label never replays on the other
+    # one. NULL on labels taken before it was kept (Alembic 0128), which replay as before.
+    surface: str | None = Field(default=None)
     # The X-Treg-Call-Id the FIRST call returned. A replay hands this back rather than a fresh
     # reference, so a retry resolves to the row that actually holds the money.
     call_ref: str = Field(default="")
@@ -1962,6 +1989,12 @@ class CallReview(SQLModel, table=True):
     secondary_code: str | None = Field(default=None)
     codebook_version: str | None = Field(default=None)
     code_judged_at: NaiveUTC | None = Field(default=None)
+    # What the codes were judged from (`application.review_judge`): NULL or "reason" (an upgrade with
+    # the call's answer may follow), "answer", or "reason_final" (no answer can be shown). An answer
+    # not readable yet is tried again from `answer_retry_at`, backing off with `answer_attempts`.
+    code_basis: str | None = Field(default=None)
+    answer_retry_at: NaiveUTC | None = Field(default=None)
+    answer_attempts: int | None = Field(default=None)
 
 
 class CallMark(SQLModel, table=True):

@@ -3869,3 +3869,59 @@ async def test_a_nested_routed_close_keeps_the_root_s_mark_and_leaves_its_releas
     assert store.marks == {"root"} and runtime._charges._marked == {"root": 1}
     await runtime.release_mark("root")
     assert store.marks == set()
+
+
+@pytest.mark.parametrize("root_allows", [False, True])
+async def test_a_free_routed_child_is_holdless_only_when_its_root_lets_children_take(
+        org_id, store, monkeypatch, root_allows):
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    caller = await _caller(org_id)
+    pending: list = []
+    mk = _call(org_id, estimate=0, deferred=pending, routed_allowance=root_allows)
+    mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    if not root_allows:
+        assert not mk.holdless_eligible, "an unmarked keyed root has only its children's holds"
+        return
+    await call_reserve._platform_reserve(
+        mk, caller, CallMeta(tags={}), "root-1:r0", allow_holdless=True, allow_allowance=True)
+    assert mk.holdless and mk.allowance_epoch is None
+    assert await call_settle._platform_settle(mk, 200, b"{}") == (0, None)
+    assert pending == []
+    async with session_maker() as db:
+        assert (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == "root-1:r0"))).first() is None
+        assert await db.get(Hold, "root-1:r0") is None
+
+
+async def test_a_mark_is_set_only_where_a_stale_claim_reads_it(monkeypatch):
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = FakeStore()
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: False)
+    assert await idempotency.mark_in_flight("root-local") is False
+    assert store.marks == set()
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    assert await idempotency.mark_in_flight("root-shared") is True
+
+
+async def test_a_keyed_free_call_retried_after_a_give_back_still_keeps_a_hold(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(balance_micro=-1))
+        await db.commit()
+
+    async def gave_back(_org_id, _micro):
+        return True
+
+    monkeypatch.setattr(runtime, "give_back_for_exact_path", gave_back)
+    caller = await _caller(org_id)
+    mk = _call(org_id, estimate=0)
+    mk.cost_type, mk.settlement_basis = "free", {"amount": {"kind": "estimate"}, "fallback_micro": 0}
+    with pytest.raises(ReservationFailed):
+        await call_reserve._platform_reserve(
+            mk, caller, CallMeta(tags={}), "keyed-free-1", allow_holdless=True,
+            allow_allowance=True, mark_in_flight=True)
+    assert not mk.holdless, "the retry kept the claim's mark_in_flight, so it never went holdless"

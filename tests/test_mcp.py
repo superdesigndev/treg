@@ -1789,6 +1789,8 @@ async def test_catalog_get_stays_within_an_mcp_client_output_limit(clients):
     crowded = results["aiark.people.search"]["structuredContent"]
     assert routed["routing"]["plan"] and routed["related_capabilities"] and not routed["siblings"]
     assert len(crowded["siblings"]) > 20
+    assert not any({"reserve", "reported_charge", "settle", "table"} & set(s["cost"] or {})
+                   for s in crowded["siblings"])           # a sibling shows its price, not its settle
     for result in results.values():
         assert len(json.dumps(result)) < 100_000
 

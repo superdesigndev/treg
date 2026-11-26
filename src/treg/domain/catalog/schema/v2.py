@@ -99,9 +99,12 @@ class RowsDefault(Model):
 
 
 class Rows(Model):
+    """`max` binds every tier; `platform_max`, when set, is the smaller bound treg's key serves."""
+
     param: RequestPath | None = None
     default: RowsDefault | None = None
     max: int = Field(ge=1)
+    platform_max: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _shape(self) -> Rows:
@@ -109,6 +112,13 @@ class Rows(Model):
             raise ValueError("rows without param is only a frozen legacy hold (default.source: legacy)")
         if self.default is not None and self.default.value > self.max:
             raise ValueError("rows.default.value exceeds rows.max")
+        if self.platform_max is not None:
+            if self.param is None:
+                raise ValueError("rows.platform_max needs a param to bound")
+            if self.platform_max >= self.max:
+                raise ValueError("rows.platform_max must be below rows.max; otherwise write max alone")
+            if self.default is not None and self.default.value > self.platform_max:
+                raise ValueError("rows.default.value exceeds rows.platform_max")
         return self
 
 
@@ -138,10 +148,14 @@ class Count(Model):
 
 
 class Reported(Model):
+    """`missing: 0` settles an answer whose figure is absent at 0; without it, an absent figure
+    falls to the outcome rules and the hold."""
+
     path: ResponsePath | None = None
     header: str | None = Field(default=None, min_length=1)
     unit: str = Field(min_length=1)
     scale: int | float = 1
+    missing: Literal[0] | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Reported:
@@ -345,7 +359,9 @@ def cost_type(price: dict | None, reserve: dict | None, settle: dict | None, bil
         return None
     if price.get("value") is not None and Decimal(price["value"]) == 0:
         return "free"
-    if reserve is not None or (settle or {}).keys() & {"count", "plugin"}:
+    reported_call = (price.get("unit") == "call" and "plugin" in (reserve or {})
+                     and "reported" in (settle or {}))
+    if not reported_call and (reserve is not None or (settle or {}).keys() & {"count", "plugin"}):
         return "per_result"
     if bill.get("miss") == "charged":
         return "per_call"
@@ -356,7 +372,7 @@ def _reserve_view(reserve: dict, input_schema: dict) -> dict:
     if "rows" in reserve:
         rows = reserve["rows"]
         view = {"param": _legacy_location(rows["param"], input_schema)} if rows.get("param") else {}
-        return {"rows": {**view, **{k: rows[k] for k in ("default", "max") if k in rows}}}
+        return {"rows": {**view, **{k: rows[k] for k in ("default", "max", "platform_max") if k in rows}}}
     return {"entities": {}} if "entities" in reserve else {}
 
 

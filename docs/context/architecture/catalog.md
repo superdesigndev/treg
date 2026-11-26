@@ -8,6 +8,7 @@ sources:
   - src/treg/domain/catalog/results.py
   - src/treg/domain/catalog/rankings.py
   - src/treg/domain/catalog/routing/__init__.py
+  - src/treg/domain/catalog/routing/ad_hashes.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
@@ -333,9 +334,10 @@ Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`sou
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
 deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
 those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
-worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
-included; a missing entry fails validation. Both blocks must stay
-ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
+worse than an honest credit count. An own-key call to such a row still prices (pricing runs on
+every tier): its per-unit and credit figures are an informational zero, while a platform-eligible
+row with no rate still refuses to price. A v2 price in credits or a meter needs an entry, a null
+one included; a missing entry fails validation. Both blocks must stay ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
 Two treg-set kinds exist for providers with no per-call vendor price; [money](money.md) owns the
@@ -474,6 +476,9 @@ cost:
   is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
   A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
+  outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
+  shared credential, with the field named and its value never echoed.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.
@@ -988,7 +993,9 @@ headers are agent-facing in `src/treg/web/skill.md`; the invariants are AGENTS.m
 
 Per capability: one-of identity variants (structural keys, never provider names), `derive` rules,
 a small output core and `miss` in canonical terms. `raw` (the winning provider's body) is always
-returned and never documented as stable. An output field may say where it lands in a call event
+returned and never documented as stable. The parent's audit row records which child that body came
+from and its hash (`CallRecord.served_call_ref` / `served_content_hash`, set by `route._run_routed` before `_audit_parent`; `_run_upgrade`
+hands back the nested call's own), so the archived answer can be read later by exact id. An output field may say where it lands in a call event
 (`analytics`, [call-events](call-events.md)); the public contract view drops it.
 
 - `advice_unverified` is attached as `_treg.advice` to a hit whose `verified` is not true (a found
@@ -1007,6 +1014,11 @@ returned and never documented as stable. An output field may say where it lands 
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
   422 before planning.
+- `ad_hashes` (opt-in via `X-Treg-Route-Ad-Hashes`) names the output field holding an email. After
+  a hit, `route._ad_hashes` adds `_treg.ad_hashes`: `domain/catalog/routing/ad_hashes.hashes` gives
+  the SHA-256 of the address as LinkedIn, Meta and Google each normalize it. No call and no charge;
+  `output` is not altered; a miss or a hit without an address says `hashed: false` with `no_hit` or
+  `no_email`. The header on a contract without `ad_hashes` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked

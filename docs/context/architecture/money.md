@@ -986,13 +986,19 @@ estimate on a paid endpoint. An overflow child carries its own `observed` basis 
 price.
 
 Any other direct platform call with an explicit `free` price and zero estimate is
-`MarketplaceCall.holdless_eligible` unless it is billed OAuth, a routed child, an owned poll, an
-async submission, a resource producer or usage-settled. For an org listed in
-`holdless_free_org_ids` (default `[]`: none; the money queue also brakes free bursts, so this rolls
-out per org until an explicit free-call rate limit exists) and with no caller tags (`X-Treg-Meta`
+`MarketplaceCall.holdless_eligible` unless it is billed OAuth, an owned poll, an async
+submission, a resource producer or usage-settled. A routed child qualifies only when its root lets
+its children take from the allowance (`routed_allowance`): a free child is never charged, so its
+parent has nothing to decide for it, and a keyed root is then marked in flight, which is what a
+stale idempotency claim reads while no child holds anything. For an org listed in
+`holdless_free_org_ids` (default `[]`: none), or every org with `holdless_free_all_orgs` except
+`holdless_free_excluded_org_ids` (the excluded list wins), with no `Idempotency-Key` (its $0
+hold is what a stale claim reads while the call runs) and with no caller tags (`X-Treg-Meta`
 or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
-LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap read
-runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed
+LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap and
+member-limit reads run, so a team past its cap, or a member past their limit, is still refused.
+The member read never reaps stale holds (that writes, and only money admission may): an expired
+hold can keep a member refused until their next paid reserve reaps it. `_platform_settle` then writes nothing; a computed
 charge is logged and absorbed. A tagged call keeps its $0 hold because its settled tag rows count
 toward `calls_per_day`. Overflow children always reserve, since their aggregator spend is recorded
 in the settle transaction; `_child` never inherits the parent's flags. Cancellation of a holdless
@@ -1463,10 +1469,13 @@ row.
   applied, values coerced by their declared type), times a bounded `times` field, else the
   `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
   it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer from 1 to `max`, else
-  its default; with no default treg's key refuses a request without it), `entities` (list items,
+  its default; with no default treg's key refuses a request without it, and with `platform_max`
+  treg's key refuses a count above it while a team's own key keeps `max`), `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`; treg's key refuses a
   request naming more than `max` before any hold, `catalog_parameter_invalid` 400), or a `plugin` quantity
-  priced at the frozen rates and capped at `max`; absent, one unit. A reserve plugin that raises
+  priced at the frozen rates and capped at `max` (treg's key refuses a request the plugin prices
+  above `max` before any hold, `catalog_parameter_invalid` 400, so an uncapped `settle.reported`
+  cannot pass the hold's ceiling); absent, one unit. A reserve plugin that raises
   or returns no quantity refuses the call before any hold (`catalog_price_invalid`, 503), and so
   does treg's key on a row whose price, reported charge or usage meter is in a credit or meter
   fx.yaml has no rate for (`require_rates`), whatever eligibility decided. `round:
@@ -1479,7 +1488,8 @@ row.
 - **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
-  zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
+  zero included) is the charge, uncapped, and with `missing: 0` an absent figure (header or path
+  missing, or null) is a charge of 0; otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
   spelling records a free miss, so the call record and the stats fallback read it alike. A charged

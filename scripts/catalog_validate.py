@@ -450,8 +450,12 @@ def check_platform_request(rule: object, input_schema: object, where: str,
     fields = _input_fields(input_schema)
     for path, value in rule.items():
         if value is None:
-            if not isinstance(path, str) or not path.startswith("queryParams.") or path == "queryParams.":
-                fail(errors, where, "platform_request null (must be absent) applies to a query parameter only")
+            if (not isinstance(path, str) or not path.startswith(("queryParams.", "body."))
+                    or path in ("queryParams.", "body.")):
+                fail(errors, where, "platform_request null (must be absent) applies to a query parameter "
+                                    "or a body field only")
+            elif path.startswith("body.") and fields.get(path) is None:
+                fail(errors, where, "platform_request null on a body field names a declared body field")
             continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
@@ -1257,29 +1261,6 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                 fail(errors, where, "cost.display.grouped requires positive integer cost.per")
         if cost.get("type") == "free" or ("table" in cost and not display.get("maximum")):
             fail(errors, where, "cost.display requires a scalar paid price unless it labels a table maximum")
-    if "sumble" in cost:
-        rule = cost["sumble"]
-        modes = {"single": set(), "results": {"reserve_results"},
-                 "lookup": {"records", "block_size", "max_records"},
-                 "compose": {"records", "base", "attribute", "metric", "free_attributes",
-                             "safe_attributes", "max_records", "default_limit", "max_limit"}}
-        mode = rule.get("mode") if isinstance(rule, dict) else None
-        if mode not in modes or set(rule) != {"mode"} | modes.get(mode, set()):
-            fail(errors, where, "cost.sumble must declare exactly the fields for a supported mode")
-        else:
-            for key in modes[mode] - {"records", "free_attributes", "safe_attributes"}:
-                if type(rule[key]) is not int or rule[key] <= 0:
-                    fail(errors, where, f"cost.sumble.{key} must be a positive integer")
-            for key in {"free_attributes", "safe_attributes"} & modes[mode]:
-                if not isinstance(rule[key], list) or any(not isinstance(v, str) for v in rule[key]):
-                    fail(errors, where, f"cost.sumble.{key} must be a string list")
-            if "records" in rule and (not isinstance(rule["records"], str)
-                                      or not re.fullmatch(r"[a-z_]+", rule["records"])):
-                fail(errors, where, "cost.sumble.records must name a body array")
-        if mode == "lookup" and isinstance(rule, dict) and rule.get("block_size") != cost.get("per"):
-            fail(errors, where, "cost.sumble.block_size must equal cost.per")
-        if cost.get("currency") != "credit" or cost.get("value") != 1:
-            fail(errors, where, "cost.sumble requires a one-credit base price")
     if "contactout" in cost:
         rule = cost["contactout"]
         jobs = {"contact", "person", "email", "linkedin", "search", "decision",

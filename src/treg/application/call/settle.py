@@ -357,9 +357,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - Dropleads: REPORTED in provider credits through `credits_charged` for finder/verifier,
         `credits_consumed` for people enrichment, or `credits.creditsDeducted` for company calls.
         Each field uses the same Dropleads credit rate from fx.yaml.
-      - lusha: `billing.creditsCharged`, one level down — the same reported-credits contract,
-        including 0 on a 2xx miss (the captured people.enrich example IS one) and the 2-credit
-        company enrich. Converted through the lusha rate like the others.
       - apollo: DERIVED, not reported. Apollo answers a miss with 2xx (`organization: null` or a
         bare `{}` on enrich, an empty `organizations` page on search) and charges nothing for it, so
         status-based billing alone would bill the caller for a response Apollo gave away. The body
@@ -544,13 +541,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if isinstance(counted, dict) and mk.unit_micro > 0:
         rows = _dig(doc, counted["count"]["path"])
         return _rows_billed_micro(mk, ep, len(rows) if isinstance(rows, list) else None)
-    if provider == "sumble":
-        credits = doc.get("credits_used")
-        # The request-time credit freezes the rate, including legitimate zero usage. Not
-        # `unit_micro`: on a per_success row that is the whole call (50 credits for a brief).
-        if type(credits) is int and credits >= 0:
-            return credits * mk.reported_charge_unit_micro
-        return None
     if provider == "scrubby":
         credits = doc.get("credits_used")
         # Scrubby reports the exact per-call charge, including zero for a cached retry.
@@ -640,13 +630,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if provider in ("akta", "leadmagic"):
         credits = doc.get("credits_consumed")
         rate = catalog_store.load().credit_rates.get(provider)
-        if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
-            return int(credits * rate * 1_000_000 + 0.5)
-        return None
-    if provider == "lusha":
-        billing = doc.get("billing")
-        credits = billing.get("creditsCharged") if isinstance(billing, dict) else None
-        rate = catalog_store.load().credit_rates.get("lusha")
         if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
             return int(credits * rate * 1_000_000 + 0.5)
         return None

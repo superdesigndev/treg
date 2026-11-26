@@ -465,7 +465,8 @@ class MarketplaceCall:
         ownership = self.resource_ownership or {}
         return (self.tier == "platform" and self.cost_type == "free"
                 and self.estimate_micro == 0 and not self.billed_oauth
-                and self.deferred is None and self.async_owner_call_id is None
+                and (self.deferred is None or self.routed_allowance)
+                and self.async_owner_call_id is None
                 and not self.async_descriptor and not ownership.get("produces")
                 and (self.settlement_basis.get("amount") or {}).get("kind") != "usage")
 
@@ -761,6 +762,17 @@ def _usd_to_micro(usd: float) -> int:
     return whole + 1 if raw > whole else whole
 
 
+def _rate_micro(usd: float | None, *, own_key_only: bool) -> int:
+    """A catalog rate in RAW micro-USD. A row treg's key never serves prices a rate fx.yaml leaves
+    `usd: null` (or lacks) at 0, the informational price of an own-key call; on a platform-eligible
+    row a missing rate still raises."""
+    if usd is None:
+        if own_key_only:
+            return 0
+        raise ValueError("a platform-eligible catalog row has no USD rate")
+    return _usd_to_micro(usd)
+
+
 def _truthy(value) -> bool:
     """Provider query/body booleans arrive as strings or JSON booleans; interpret both."""
     return value is True or (isinstance(value, str) and value.strip().lower() in ("1", "true", "yes"))
@@ -912,10 +924,6 @@ def _marketplace_pricing(
                                  _OPENMART_PLATFORM_MAX_RECORDS))
             credit_micro = _usd_to_micro(rate)
             return _openmart_credits(bounded) * credit_micro, credit_micro
-    if provider == "sumble" and cost.get("sumble"):
-        from . import sumble
-        credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
-        return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
     if provider == "contactout" and cost.get("contactout"):
         from . import contactout
         request = _json_object(body) if body else dict(query.multi_items())
@@ -1895,6 +1903,18 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
+    if ep.get("provider") == "predictleads" and (ep.get("cost") or {}).get("type") == "per_result":
+        limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
+        if len(limits) > 1 or (limits and re.fullmatch(r"(?:[1-9][0-9]?|100)", limits[0]) is None):
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": "queryParams.limit", "expected": "one integer from 1 to 100",
+                    "message": "PredictLeads shared-key lists bill per record and take a limit from 1 to 100; "
+                               "page for more, or connect your own key",
+                },
+            )
+
     if ep.get("provider") == "theirstack":
         endpoint_id = ep["id"]
         if endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
@@ -1921,35 +1941,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                         "message": "TheirStack shared-key lookup requires exactly one singular company identifier.",
                     },
                 )
-
-    if ep.get("provider") == "oceanio":
-        endpoint_id = ep["id"]
-        if endpoint_id in {
-            "oceanio.companies.lookalike", "oceanio.companies.search", "oceanio.people.search",
-        }:
-            document = _request_body_document(ep, body, headers)
-            size = document.get("size")
-            if type(size) is not int or not 1 <= size <= 100:
-                raise ResolutionFailed(
-                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
-                        "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
-                        "parameter": "body.size",
-                        "message": "Ocean.io shared-key search requires an explicit size from 1 to 100; "
-                                   "connect your own key for larger searches",
-                    },
-                )
-        elif endpoint_id == "oceanio.people.enrich":
-            document = _request_body_document(ep, body, headers)
-            for name in ("revealEmails", "revealPhones"):
-                if name in document:
-                    raise ResolutionFailed(
-                        "catalog_parameter_invalid", status_code=400, rule="platform", detail={
-                            "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
-                            "parameter": f"body.{name}",
-                            "message": "Ocean.io contact reveals are not available on the shared key; "
-                                       "connect your own key for reveals",
-                        },
-                    )
 
     if ep.get("id") in {"apollo.people.enrich", "apollo.people.bulk_enrich"} and query is not None:
         # These answer later at the caller's webhook, outside the response settlement reads, and
@@ -2074,9 +2065,23 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     "message": f"{ep['id']} requires query parameter {name}={expected}",
                 },
             )
+    absent = sorted(str(path).removeprefix("body.") for path, value in rules.items()
+                    if str(path).startswith("body.") and value is None)
+    if absent:
+        document = _request_body_document(ep, body, headers)
+        for path in absent:
+            if _document_has(document, path):
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"body.{path}",
+                        "message": f"{ep['id']} does not take body field {path} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
     selectors: dict[str, object] = {
         path.removeprefix("body."): value
-        for path, value in rules.items() if str(path).startswith("body.")
+        for path, value in rules.items() if str(path).startswith("body.") and value is not None
     }
     pinned = set(selectors)
     defaulted: set[str] = set()
@@ -2482,7 +2487,8 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     request_data = settlement_basis.request_evidence(
         query.multi_items(), body, path_names=consumed)
     unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
-    unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
+    own_key_only = not cat.platform_eligible(ep)
+    unit_micro = _rate_micro(unit_view.get("usd") if unit_view else None, own_key_only=own_key_only)
     usage_unit_micro = None
     usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
     if usage_unit == "credit":
@@ -2497,9 +2503,9 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
             (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
         # Freeze one provider credit's replacement cost so a later fx edit cannot re-price a call
         # already in flight. USD reported charges use their fixed micro-USD conversion directly.
-        # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
+        # Body-reported credit counts (datagma, scrubby) settle against this, never against
         # `unit_micro`, which is a whole call on a per_success row.
-        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+        reported_charge_unit_micro = _rate_micro(cat.credit_rates.get(service), own_key_only=own_key_only)
     basis = settlement_basis.derive_basis(
         raw_cost, request=request_data, input_schema=ep.get("input") or {},
         unit_micro=unit_micro, terminal=bool(ep.get("async")),
@@ -2712,13 +2718,14 @@ async def _resolve_catalog_tier(
         _enforce_team_label(ep, caller.org_id, body, request_headers, query)
         _enforce_caller_email(ep, caller.email, body, request_headers, query)
         _enforce_request_quantity(ep, cost, body, query)
+        if service == "sumble":
+            from . import sumble
+            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data)
             call_cost.require_entities(ep, pricing.request_data)
-        if service == "sumble":
-            from . import sumble
-            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
+            call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
         if service == "contactout":
             # Fixed catalog splits must not silently fall into ContactOut's personal+work default.
             inputs = ep.get("input") or {}

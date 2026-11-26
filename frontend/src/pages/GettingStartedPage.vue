@@ -106,23 +106,19 @@ export default {
                things to do. Tabs, because nobody needs both. -->
           <div class="rd-build">
             <h2 style="margin:0 0 4px;font-size:17px">Build on treg</h2>
-            <p class="sub" style="margin:0 0 12px">Optional, for two other kinds of user. Each is a skill file — paste the line into your coding agent, in your own repo, and it implements the rest.</p>
+            <p class="sub" style="margin:0 0 12px">Optional, for two other kinds of user.</p>
             <div class="seg">
               <button :class="{on:buildTab==='vendor'}" @click="buildTab='vendor'">List as vendor</button>
               <button :class="{on:buildTab==='platform'}" @click="buildTab='platform'">Integrate into your platform</button>
             </div>
 
             <div v-show="buildTab==='vendor'" class="rd-build-panel">
-              <p class="sub">Put your API in front of every treg agent. Your agent reads the guide, writes the catalog entry for your endpoints and prices, and opens the PR.</p>
-              <div class="lc-codewrap" style="margin-top:8px">
-                <button class="lc-cp" @click="copyStart('Read '+proxy+'/vendor-listing.md and add our API to the treg catalog, then open a PR.','vend')">{{startCopied==='vend'?'✓ copied':'copy'}}</button>
-                <pre>Read <span class="hl-str">{{proxy}}/vendor-listing.md</span> and add our API to the
-treg catalog, then open a PR.</pre>
-              </div>
+              <p class="sub">Put your API in front of every treg agent. The vendor console walks you through it: your coding agent opens the listing pull request, then you add a test key, a contact and your price.</p>
+              <a class="btn primary" style="margin:4px 16px 12px" href="https://vendors.treg.to" target="_blank" rel="noopener">Open the vendor console ↗</a>
             </div>
 
             <div v-show="buildTab==='platform'" class="rd-build-panel">
-              <p class="sub">Give <i>your</i> users {{toolCountText||'thousands of'}} tools without owning the keys — and bill each of your customers for what they used. Covers the call methods (HTTP, MCP, CLI), per-customer tagging, spend limits and invoicing.</p>
+              <p class="sub">Give <i>your</i> users {{toolCountText||'thousands of'}} tools without owning the keys — and bill each of your customers for what they used. Covers the call methods (HTTP, MCP, CLI), per-customer tagging, spend limits and invoicing. Paste the line into your coding agent, in your own repo.</p>
               <div class="lc-codewrap" style="margin-top:8px">
                 <button class="lc-cp" @click="copyStart('Read '+proxy+'/integrate.md and integrate treg into our product, including per-customer usage tracking and billing.','intg')">{{startCopied==='intg'?'✓ copied':'copy'}}</button>
                 <pre>Read <span class="hl-str">{{proxy}}/integrate.md</span> and integrate treg into our

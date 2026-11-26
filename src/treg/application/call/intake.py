@@ -13,9 +13,8 @@ from ...domain.identity.access import Caller
 from ...caller_metadata import _META_KEY_RE
 from .idempotency import (
     _claim_idempotent,
-    _claim_owner,
     _idempotency_key,
-    _in_progress,
+    _lost_claim,
     _raw_request_fingerprint,
     _replay_idempotent,
     _request_fingerprint,
@@ -146,6 +145,7 @@ async def prepare_call_intake(
     caller: Caller,
     enforce_tag_budgets: Callable[[Caller, CallMeta, AsyncSession], Awaitable[bool]],
     call_ref: str,
+    surface: str | None = None,
 ) -> IntakeResult:
     """Run the pre-resolve gates in their frozen order using bounded transactions."""
     # Blocked status and the per-tag call count, BEFORE the replay below: a blocked user must neither
@@ -170,16 +170,18 @@ async def prepare_call_intake(
     body = await read_body()
     fingerprint = _request_fingerprint(method, rest, body, raw_query)
     async with session_maker() as db:
+        raw_fingerprint = _raw_request_fingerprint(method, rest, body, raw_query)
         replay = await _replay_idempotent(
-            key, fingerprint, caller, db,
-            raw_fingerprint=_raw_request_fingerprint(method, rest, body, raw_query))
+            key, fingerprint, caller, db, raw_fingerprint=raw_fingerprint, surface=surface)
         if replay is None:
             # Claim it now, before anything reaches a provider. Two retries can arrive together and both
             # miss the lookup above; the unique constraint is what makes the loser wait instead of making
             # a second upstream call. A check-then-act in Python would leave exactly the window this
             # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
-            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
-                raise _in_progress(key, await _claim_owner(key, caller, db))
+            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref,
+                                           surface=surface):
+                raise await _lost_claim(key, fingerprint, caller, db, raw_fingerprint=raw_fingerprint,
+                                        surface=surface)
     if replay is not None:
         # Outside the session on purpose: a trimmed row's bytes may come from object storage.
         return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None, meta)

@@ -191,6 +191,9 @@ re-send the same find: every hit is billed, repeats included.
   it is. To check a number belongs to the person, call `millionphones.people.contact.verify`
   (`social_url` = their LinkedIn profile, `phone_number`) or, for a US number,
   `trestleiq.people.contact.verify` (`phone` and `name`).
+- For an ad audience (LinkedIn Matched Audiences, Meta Custom Audiences, Google Customer Match), send
+  `X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find`: `_treg.ad_hashes` holds the hit's
+  email as each platform's upload hash, at no extra charge.
 - **Verify every address before it is sent to**, including rows from a company or domain search
   (`treg.people.search` and the like): those are directory listings, unconfirmed
   unless the row's `email_status` says the provider verified it. `invalid` is dead, `accept_all` is risky,
