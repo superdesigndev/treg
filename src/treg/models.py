@@ -2077,11 +2077,14 @@ class CallComparison(SQLModel, table=True):
 
 
 class CompareAttemptDay(SQLModel, table=True):
-    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`): the daily
-    limit's count. Not a team's row, so deleting a team gives no quota back."""
+    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`) and B's catalog
+    prices of those claims: the daily limits' counts. Not a team's row, so deleting a team gives no
+    quota and no spend back."""
 
     day: str = Field(primary_key=True)
     attempts: int = Field(default=0)
+    spent_micro: int = Field(default=0, sa_column=Column("spent_micro", BigInteger, nullable=False,
+                                                        server_default="0"))
 
 
 class Media(SQLModel, table=True):

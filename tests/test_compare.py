@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 import httpx
 import pytest
+from sqlalchemy import delete
 from sqlmodel import select
 
 from treg import hints
@@ -20,9 +21,11 @@ from treg.application.call.types import UpstreamResponse
 from treg.config import Settings, get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import adapter_accepts, canonical_identity
+from treg.domain.feedback import comparisons
 from treg.infra import kv
 from treg.infra.db import session_maker
 from treg.models import (ArchiveKey, ArchiveSnapshot, CallComparison, CallRecord, CallReview, CapabilityPin,
+                         CompareAttemptDay,
                          DenyRule, Membership, Org)
 from treg.timeutil import utcnow_naive
 
@@ -1374,8 +1377,48 @@ async def test_the_day_stops_at_its_spend(clients, search_on, monkeypatch):
     # A day already spent stops a run before it reads anything.
     _compare_on(monkeypatch, compare_daily_usd=0.01)
     async with session_maker() as db:
-        db.add(CallComparison(org_id=org_id, user_email="x@example.com", call_ref="spent-today",
-                              capability="web.search", a_endpoint="tavily.web.search", a_provider="tavily",
-                              b_provider="exa", status="failed", b_cost_micro=10_000))
+        db.add(CompareAttemptDay(day=compare._day(), attempts=1, spent_micro=10_000))
         await db.commit()
     assert (await _collect())["status"] == "at_limit"
+
+
+async def test_a_deleted_teams_spend_still_counts(clients, search_on, monkeypatch):
+    """The day's spend is on the day's row, not summed from comparisons a team deletion removes."""
+    _compare_on(monkeypatch)
+    _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "who makes the best espresso")
+    assert (await _collect())["ready"] == 1
+    async with session_maker() as db:
+        before = await comparisons.spent(db, compare._day())
+        await db.execute(delete(CallComparison))
+        await db.commit()
+        assert before > 0 and await comparisons.spent(db, compare._day()) == before
+
+
+async def test_a_b_the_day_cannot_pay_for_gives_way_to_a_cheaper_one(clients, search_on, monkeypatch):
+    """The least compared B costs more than what is left of the day: the next one that fits is asked."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PARALLEL", "PLATFORM-PARALLEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa,parallel")
+    get_settings.cache_clear()
+    exa = catalog_store.load().cost_view(catalog_store.load().by_id["exa.web.search"].get("cost"), "exa")
+    _compare_on(monkeypatch, compare_daily_usd=exa["usd"] / 2)  # parallel fits, exa does not
+    sent = _relay_b(monkeypatch)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 3, "tavily", "parallel")  # exa is the least compared
+    await _routed_call(org_id, "who makes the best espresso")
+    result = await _collect()
+    assert [s["tool"].name for s in sent] == ["parallel.web.search"], result
+
+
+async def test_the_day_counter_refuses_what_it_cannot_hold(clients):
+    async with session_maker() as db:
+        day = "20261126"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=60, spend_limit_micro=100) == "taken"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=60, spend_limit_micro=100) == "over_spend"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=40, spend_limit_micro=100) == "taken"
+        assert await comparisons.take_attempt(db, day, 2, price_micro=0, spend_limit_micro=100) == "at_limit"
+        assert await comparisons.take_attempt(db, "20261127", 2, price_micro=101,
+                                              spend_limit_micro=100) == "over_spend"
+        await db.commit()
+        assert (await comparisons.attempts(db, day), await comparisons.spent(db, day)) == (2, 100)

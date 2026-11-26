@@ -483,21 +483,20 @@ async def _still_eligible(session_factory, org_id: int) -> bool:
 
 async def _claim(session_factory, values: dict, limit: int, *, spend_limit_micro: int, team_cap: int,
                  since, ready_since) -> str:
-    """In one short transaction, one attempt on the current UTC day's count (taken first: on
-    Postgres its row lock orders concurrent claims), the day's spend and the team and pair cap read
-    again under it, and the comparison row as `pending` (its unique call id stops a second run).
+    """In one short transaction, one attempt and B's price on the current UTC day's counts (taken
+    first, in one conditional update: on Postgres its row lock orders concurrent claims), the team
+    and pair cap read again under it, and the comparison row as `pending` (its unique call id stops a second run).
     `claimed`, `taken`, `gone`, `capped`, `over_spend` or `at_limit`."""
     async with session_factory() as db:
         if await db.get(Org, values["org_id"]) is None:
             return "gone"
         if await comparisons.by_call_ref(db, values["call_ref"]) is not None:
             return "taken"
-        if not await comparisons.take_attempt(db, _day(), limit):
+        taken = await comparisons.take_attempt(db, _day(), limit, price_micro=values.get("b_cost_micro", 0),
+                                               spend_limit_micro=spend_limit_micro)
+        if taken != "taken":
             await db.rollback()
-            return "at_limit"
-        if await comparisons.spent(db, _day_start()) + values.get("b_cost_micro", 0) > spend_limit_micro:
-            await db.rollback()
-            return "over_spend"
+            return taken
         if await comparisons.counted(db, values["org_id"], values["capability"],
                                      (values["a_provider"], values["b_provider"]),
                                      since=since, ready_since=ready_since) >= team_cap:
@@ -530,10 +529,6 @@ async def _finish(session_factory, org_id: int, call_ref: str, values: dict) -> 
 
 def _day() -> str:
     return f"{utcnow_naive():%Y%m%d}"
-
-
-def _day_start() -> datetime:
-    return utcnow_naive().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _spend_limit_micro() -> int:
@@ -591,7 +586,7 @@ async def collect(*, max_seconds: float = 110.0, session_factory=session_maker,
         return {"status": "off", **totals}
     async with session_factory() as db:
         if (await comparisons.attempts(db, _day()) >= settings.compare_max_per_day
-                or await comparisons.spent(db, _day_start()) >= _spend_limit_micro()):
+                or await comparisons.spent(db, _day()) >= _spend_limit_micro()):
             return {"status": "at_limit", **totals}
     now = utcnow_naive()
     lookback = timedelta(hours=min(settings.compare_lookback_hours, MARKER_TTL_S // 3600))
@@ -699,12 +694,17 @@ async def _choose_b(served: Served, contract, identity: dict, tally: dict, sessi
                     ) -> tuple[str, Target] | str:
     """B for this call: of the capability's other vendors not excluded (`compare_exclude`), the
     least compared next to A across every team (ties at random) whose endpoint treg's key can serve
-    for this input (`_b_target`) within `compare_max_b_micro`, and whose pair this team has not
+    for this input (`_b_target`) within `compare_max_b_micro` and what is left of the day's spend,
+    and whose pair this team has not
     filled (`compare_team_cap`). Or the reason there is none."""
     settings = get_settings()
     capability, a = served.cand.capability, served.a_ep["provider"]
     others = [p for p in comparable().get(capability, ()) if p != a and p not in settings.compare_exclude]
     others.sort(key=lambda p: (_pair_count(tally, capability, a, p), secrets.randbelow(1 << 30)))
+    async with session_factory() as db:
+        # Read again at the claim; here it only keeps a B the day cannot pay for from blocking a
+        # cheaper one.
+        remaining = _spend_limit_micro() - await comparisons.spent(db, _day())
     reason = "b_unavailable"
     for provider in others:
         target = _b_target(contract, identity, provider)
@@ -712,6 +712,9 @@ async def _choose_b(served: Served, contract, identity: dict, tally: dict, sessi
             continue
         if target.price_micro > settings.compare_max_b_micro:
             reason = "b_too_dear"
+            continue
+        if target.price_micro > remaining:
+            reason = "day_spend_cap"
             continue
         async with session_factory() as db:
             counted = await comparisons.counted(

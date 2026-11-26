@@ -22,31 +22,46 @@ def add(db: AsyncSession, **values) -> CallComparison:
     return row
 
 
-async def take_attempt(db: AsyncSession, day: str, limit: int) -> bool:
-    """Count one second-vendor call against the UTC day's `limit` with one conditional update
-    (the day's first with an insert that yields to a concurrent one); False, nothing counted, at
-    the limit. Correct without a prior row lock, on SQLite too."""
-    if limit < 1:
-        return False
+async def take_attempt(db: AsyncSession, day: str, limit: int, *, price_micro: int = 0,
+                       spend_limit_micro: int | None = None) -> str:
+    """Count one second-vendor call and its price against the UTC day's call `limit` and spend
+    limit with one conditional update (the day's first with an insert that yields to a concurrent
+    one): `taken`, or `at_limit` / `over_spend` with nothing counted. Correct without a prior row
+    lock, on SQLite too. The day's row is no team's, so deleting a team gives nothing back."""
+    if limit < 1 or (spend_limit_micro is not None and price_micro > spend_limit_micro):
+        return "at_limit" if limit < 1 else "over_spend"
 
     async def bump() -> bool:
-        done = await db.execute(update(CompareAttemptDay).where(
-            CompareAttemptDay.day == day, CompareAttemptDay.attempts < limit,
-        ).values(attempts=CompareAttemptDay.attempts + 1).execution_options(synchronize_session=False))
+        fits = [CompareAttemptDay.day == day, CompareAttemptDay.attempts < limit]
+        if spend_limit_micro is not None:
+            fits.append(CompareAttemptDay.spent_micro + price_micro <= spend_limit_micro)
+        done = await db.execute(update(CompareAttemptDay).where(*fits).values(
+            attempts=CompareAttemptDay.attempts + 1,
+            spent_micro=CompareAttemptDay.spent_micro + price_micro,
+        ).execution_options(synchronize_session=False))
         return done.rowcount == 1
 
     if await bump():
-        return True
+        return "taken"
     dialect = (await db.connection()).dialect.name
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
-    created = await db.execute(insert(CompareAttemptDay).values(day=day, attempts=1)
+    created = await db.execute(insert(CompareAttemptDay).values(day=day, attempts=1, spent_micro=price_micro)
                                .on_conflict_do_nothing(index_elements=["day"]))
-    return created.rowcount == 1 or await bump()
+    if created.rowcount == 1 or await bump():
+        return "taken"
+    row = (await db.execute(select(CompareAttemptDay.attempts).where(CompareAttemptDay.day == day))).scalar()
+    return "at_limit" if (row or 0) >= limit else "over_spend"
 
 
 async def attempts(db: AsyncSession, day: str) -> int:
     row = await db.get(CompareAttemptDay, day)
     return row.attempts if row is not None else 0
+
+
+async def spent(db: AsyncSession, day: str) -> int:
+    """B's catalog prices of the UTC day's claims, failed and pending ones included."""
+    row = await db.get(CompareAttemptDay, day)
+    return row.spent_micro if row is not None else 0
 
 
 async def finish(db: AsyncSession, call_ref: str, **values) -> bool:
@@ -101,13 +116,6 @@ async def tallies(db: AsyncSession, capabilities: list[str], since: datetime) ->
             CallComparison.capability.in_(capabilities))
         .group_by(CallComparison.capability, CallComparison.a_provider, CallComparison.b_provider))).all()
     return {(c, a, b): int(n) for c, a, b, n in rows}
-
-
-async def spent(db: AsyncSession, since: datetime) -> int:
-    """B's catalog prices of every comparison claimed since `since` (the UTC day's start), failed
-    and pending ones included: a claim is a call made or about to be."""
-    return int((await db.execute(select(func.coalesce(func.sum(CallComparison.b_cost_micro), 0)).where(
-        CallComparison.created_at >= since))).scalar() or 0)
 
 
 def shown(row: CallComparison) -> tuple[str, str]:

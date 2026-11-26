@@ -33,6 +33,7 @@ sources:
   - src/treg/alembic/versions/0025_feedback.py
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
+  - src/treg/alembic/versions/0134_compareattemptday_spent.py
   - src/treg/alembic/versions/0105_callmark.py
   - src/treg/alembic/versions/0115_callcomparison.py
   - tests/test_feedback_handling_schema.py
@@ -301,8 +302,8 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    deletion removes a team's comparisons itself (`ORG_SCOPED_MODELS`); this catches a row written
    while the team was being deleted, within one run.
 2. Stops when off (no capability, `compare_max_per_day` or `compare_daily_usd` 0, or
-   `compare_rate` 0), or when the UTC day's attempts (`compareattemptday`) have reached
-   `compare_max_per_day` or the day's claims' `b_cost_micro` have reached `compare_daily_usd`.
+   `compare_rate` 0), or when the UTC day's `compareattemptday` row has reached
+   `compare_max_per_day` attempts or `compare_daily_usd` of spend (`spent_micro`).
 3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
    at least one review invitation in `compare_answer_days` on a surface that shows a compare
    invitation (`CallReview.invited`): the team MCP (client `mcp` or `mcp-prior`), or a client that
@@ -334,7 +335,9 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    compared as A, which the familiarity check needs, and no capability takes a run's calls only
    because its calls were read first. B (`_choose_b`): of the capability's other vendors not in
    `compare_exclude`, the least compared with A in either order across every team (ties at
-   random) for which step 8 finds a target at most `compare_max_b_micro`, and whose pair this team
+   random) for which step 8 finds a target at most `compare_max_b_micro` and within what is left
+   of the day's spend (read here so an unaffordable B gives way to a cheaper one; the claim checks
+   again), and whose pair this team
    holds under `compare_team_cap` comparisons (either order) in `compare_window_days`, counting
    decided ones and pending or ready ones younger than three days. Each claim adds to the counts,
    so one run moves on to the next least compared pair.
@@ -353,17 +356,16 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
    invalid publication or a pause in force all skip, unlike admission, which allows on failure),
    and still has no access policy and no archive opt-out.
-10. The claim, in one short transaction: one attempt on the current UTC day's `compareattemptday`
-   row, read at the claim, so a run crossing midnight counts on the new day (one conditional
-   `UPDATE ... SET attempts = attempts + 1 WHERE attempts < limit`, the day's first row inserted
-   on conflict do nothing; at the limit nothing is written and the run stops), then the day's
-   spend (the `b_cost_micro` of every row created since the UTC day began, failed and pending
-   ones included) plus this price against `compare_daily_usd` (over it, nothing is written and the
-   call is skipped as `day_spend_cap`, since a cheaper B may still fit), then the team and pair cap
+10. The claim, in one short transaction: one attempt and B's price on the current UTC day's
+   `compareattemptday` row, read at the claim, so a run crossing midnight counts on the new day
+   (one conditional `UPDATE ... SET attempts = attempts + 1, spent_micro = spent_micro + price
+   WHERE attempts < limit AND spent_micro + price <= spend limit`, the day's first row inserted on
+   conflict do nothing; at the call limit nothing is written and the run stops, over the spend
+   nothing is written and the call is skipped as `day_spend_cap`), then the team and pair cap
    read again (on Postgres the day row's lock, taken by that update, orders concurrent
    claims), then the comparison row as `pending` (its unique `call_ref` stops a second run,
    concurrent or later). A crash after the claim leaves `pending`: it still counts and is never
-   resent. The day's count is no team's row, so deleting a team gives no quota back.
+   resent. The day's counts are no team's row, so deleting a team gives no quota and no spend back.
 11. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
     (`platform_bindings`): the request the router's first child call on treg's key sends for the
     team's question. The adapter's values go to the relay unformatted (a `false` reaches the vendor
