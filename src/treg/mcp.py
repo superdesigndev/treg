@@ -659,6 +659,7 @@ class BalanceOut(TypedDict, total=False):
     balance_usd: float | None
     balance_micro: int | None
     holds_micro: int | None
+    holds_count: int | None
     error: str | None
     detail: str | None
     teams: list[str] | None         # when a person is in several and none is active
@@ -2243,6 +2244,23 @@ async def balance(ctx: Context) -> BalanceOut:
     return await _balance_impl(ctx, surface=_TEAM_SURFACE)
 
 
+def _sum_holds(holds: list | None) -> tuple[int | None, int | None]:
+    """Sum holds from the REST balance response.
+
+    Returns (holds_micro, holds_count): the integer sum of amount_micro values and the count.
+    An empty list gives (0, 0). Missing or malformed holds gives (None, None).
+    """
+    if holds is None:
+        return None, None
+    if not isinstance(holds, list):
+        return None, None
+    try:
+        total = sum(h.get("amount_micro", 0) for h in holds if isinstance(h, dict))
+        return total, len(holds)
+    except (TypeError, AttributeError):
+        return None, None
+
+
 async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
     token = _bearer(ctx)
     if not token:
@@ -2258,11 +2276,13 @@ async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
     body = _body(r)
     if r.status_code != 200:
         return {"error": "could not read the balance", "detail": body}
+    holds_micro, holds_count = _sum_holds(body.get("holds"))
     return {
         **whose,
         "balance_usd": round((body.get("balance_micro") or 0) / 1_000_000, 6),
         "balance_micro": body.get("balance_micro"),
-        "holds_micro": body.get("holds_micro"),
+        "holds_micro": holds_micro,
+        "holds_count": holds_count,
     }
 
 
