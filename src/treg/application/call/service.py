@@ -23,7 +23,6 @@ from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import reported_charge
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import schema, store as catalog_store
-from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import credential_cipher, money_admission, org_endpoint_quota
 from ...infra.db import answers_db_busy, session_maker
@@ -105,7 +104,7 @@ from .types import (
     UpstreamRequest,
     UpstreamResponse,
 )
-from ...domain import money as ledger  # noqa: F401 - tests patch the money module through service.ledger
+from ...domain import money as ledger
 
 
 class _ApplicationRequest:
@@ -274,23 +273,6 @@ def _set_caller_max_cost(request, mk: MarketplaceCall) -> None:
                                detail=f"{routed.MAX_COST_HEADER} must be a USD number, got {raw!r}") from exc
 
 
-def _provider_ceiling_micro(caller_micro: int) -> int:
-    """Largest provider charge that still settles within the caller's ceiling.
-
-    `with_margin` rounds up. At margin 0 the ceiling is already that charge.
-    """
-    if caller_micro <= 0 or get_settings().platform_margin <= 0:
-        return caller_micro
-    lo, hi = 0, caller_micro
-    while lo < hi:
-        mid = (lo + hi + 1) // 2
-        if with_margin(mid) <= caller_micro:
-            lo = mid
-        else:
-            hi = mid - 1
-    return lo
-
-
 def _format_ceiling_usd(micro: int) -> str:
     """USD text for an upstream ceiling parameter: no exponent, no trailing zeros."""
     micro = int(micro)
@@ -329,7 +311,7 @@ def ceiling_query(endpoint_id: str, provider: str | None, max_cost_micro: int | 
         return ()
     if any(key == name for key, _ in query_items):
         return ()
-    return ((name, _format_ceiling_usd(_provider_ceiling_micro(max_cost_micro))),)
+    return ((name, _format_ceiling_usd(ledger.cost_within(max_cost_micro))),)
 
 
 def _client_name(request: _ApplicationRequest) -> str:

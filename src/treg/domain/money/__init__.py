@@ -127,6 +127,21 @@ def with_margin(cost_micro: int) -> int:
     return whole + 1 if scaled > whole else whole
 
 
+def cost_within(charge_micro: int) -> int:
+    """The largest provider cost whose charge (`with_margin`) is at most `charge_micro`: the inverse
+    of `with_margin`, rounding down. At margin 0 it is the charge itself."""
+    if charge_micro <= 0 or get_settings().platform_margin <= 0:
+        return charge_micro
+    lo, hi = 0, charge_micro
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if with_margin(mid) <= charge_micro:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
 def usd(amount_micro: int) -> float:
     """micro-USD → USD, for DISPLAY only. Never feed this back into a balance computation."""
     return round(amount_micro / 1_000_000, 6)
