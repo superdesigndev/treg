@@ -19,7 +19,7 @@ from treg.application.call import wallet as call_wallet
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.infra.db import session_maker
-from treg.models import CallRecord, Hold, LedgerEntry
+from treg.models import AgentPayer, CallRecord, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
     EP, EP_MICRO, FLOOR, _balance, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
@@ -351,9 +351,10 @@ async def test_an_overflow_s_own_refusal_is_recorded_as_the_answer(clients: Asyn
             LedgerEntry.org_id == org_id))).scalars()} == {"grant", "reserve"}
 
 
-async def test_a_wallet_s_task_settles_within_its_quote(clients: AsyncClient, monkeypatch):
+@pytest.mark.parametrize("stored", [True, False], ids=["quote-stored", "submitted-before"])
+async def test_a_wallet_s_task_settles_within_its_quote(clients: AsyncClient, monkeypatch, stored):
     """The quote outlives the submission: the terminal settle, on a later poll, charges within
-    it."""
+    it. A wallet's task submitted before the basis stored the quote settles within its hold."""
     from test_asynctasks import _response
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "firecrawl")
@@ -373,7 +374,12 @@ async def test_a_wallet_s_task_settles_within_its_quote(clients: AsyncClient, mo
     before = (await clients.get(balance)).json()["balance_micro"]
     monkeypatch.setattr(call_service, "relay", submit)
     quote = 15_000   # the crawl's hold
-    marked = call_wallet.current.set(call_wallet.WalletCall(quote_micro=quote, paid=True))
+    if not stored:
+        async with session_maker() as db:
+            db.add(AgentPayer(network="eip155:84532", address="0x" + "aa" * 20, org_id=org_id))
+            await db.commit()
+    marked = call_wallet.current.set(
+        call_wallet.WalletCall(quote_micro=quote, paid=True) if stored else None)
     try:
         submitted = await clients.post("/call/firecrawl.web.crawl", json={
             "url": "https://example.com", "limit": 3, "scrapeOptions": {"parsers": []}})

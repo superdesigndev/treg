@@ -138,7 +138,8 @@ the quote, and whether this request paid or draws credit), and the call carries 
 provider figure charges the quote and treg absorbs the rest (`settle.decide_settle`, through
 `money.cost_within`). A task the call starts keeps the quote in its stored settlement basis
 (`charge_cap_micro`), so its terminal settle, on the wallet's poll or the worker, is capped the same
-way. Overflow (`ops/capacity.md`) tries only a route whose price fits what is
+way; a payer team's task stored without one (submitted before the basis carried it) is capped at
+its hold, which was at least its quote. Overflow (`ops/capacity.md`) tries only a route whose price fits what is
 left of the quote and caps its settlement the same way; an overflow priced above it does not
 serve, and the wallet gets the vendor's answer or the typed `provider_capacity_unavailable` 503,
 never a 402: a payment client answers a 402 by paying again, and the next admission would draw the

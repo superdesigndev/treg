@@ -25,7 +25,8 @@ from ..infra.db import session_maker
 from ..infra import money_admission
 from ..infra.money_session import money_session
 from ..infra.upstream.relay import relay
-from ..models import AsyncResourceRecord, AsyncTaskRecord, CallTask, Hold, Org, Tool
+from ..models import (AgentPayer, AsyncResourceRecord, AsyncTaskRecord, CallTask, Hold, Org,
+                      Tool)
 from ..timeutil import utcnow_naive
 from . import call_events as call_event_app
 from .call import cost as call_cost, keyslots
@@ -49,6 +50,12 @@ MAX_POLL_BODY_BYTES = 2 * 1024 * 1024
 def _json_value(value: object) -> object:
     """Detach catalog objects from YAML scalar types before storing them in a JSON column."""
     return json.loads(json.dumps(value, default=lambda item: item.isoformat()))
+
+
+async def _wallet_team(db, org_id: int) -> bool:
+    """Whether `org_id` is a keyless wallet's payer team (agent-payments.md)."""
+    return (await db.execute(
+        select(AgentPayer.org_id).where(AgentPayer.org_id == org_id))).first() is not None
 
 
 async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = None,
@@ -428,6 +435,10 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
                 return "awaiting_usage"
             raw = call_cost.settle_terminal(row.settlement_basis, outcome, document)
             provider, cap = None, row.settlement_basis.get("charge_cap_micro")
+            if cap is None and await _wallet_team(db, row.org_id):
+                # A wallet's task submitted before the basis stored its quote: its hold was
+                # at least that quote, and is the most it may charge.
+                cap = row.reserved_micro
             if raw is not None and ledger.capped_cost(raw, cap) < raw:
                 log.warning("wallet task %s on %s cost %s micro, above its quote; charged the quote",
                             row.call_id, row.endpoint_id, raw)
