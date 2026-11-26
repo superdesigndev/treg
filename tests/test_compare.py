@@ -92,7 +92,8 @@ async def _org_id(clients) -> int:
 async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict | None = None,
                        tier: str = "platform", minutes_ago: float = 5, archived: bool = True,
                        capability: str = "web.search", given: dict | None = None,
-                       marked: bool = True, cached: bool = False, reviewing: bool = True) -> str:
+                       marked: bool = True, cached: bool = False, reviewing: bool = True,
+                       served_ref: bool = False) -> str:
     """A routed parent and its served child, with the child's request and answer in the archive,
     and the call path's eligibility marker, as a real sampled routed call leaves them. `reviewing`
     gives the team one recent review, which a team needs to be compared at all."""
@@ -115,7 +116,8 @@ async def _routed_call(org_id: int, q: str, *, a: str = "tavily", answer: dict |
     async with session_maker() as db:
         db.add(CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=f"treg.{capability}",
                           method="POST", path="/x", status_code=200, endpoint_id=f"treg.{capability}",
-                          provider="treg", credential_tier="routed", call_ref=ref, created_at=at))
+                          provider="treg", credential_tier="routed", call_ref=ref, created_at=at,
+                          served_call_ref=f"{ref}:r1" if served_ref else None))
         child = CallRecord(org_id=org_id, user_email="tim@superdesign.dev", tool_name=eid, method="POST",
                            path="/x", status_code=200, endpoint_id=eid, provider=a,
                            credential_tier=tier, call_ref=f"{ref}:r1", created_at=at, cached=cached)
@@ -1422,3 +1424,85 @@ async def test_the_day_counter_refuses_what_it_cannot_hold(clients):
                                               spend_limit_micro=100) == "over_spend"
         await db.commit()
         assert (await comparisons.attempts(db, day), await comparisons.spent(db, day)) == (2, 100)
+
+
+async def test_a_vendor_the_router_samples_out_is_never_b(clients, search_on, monkeypatch):
+    """`route_provider_sample_pct` at 0 keeps a provider out of routed requests, and out of B."""
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(get_settings(), "route_provider_sample_pct", '{"exa": 0}')
+    sent = _relay_b(monkeypatch)
+    await _routed_call(await _org_id(clients), "who makes the best espresso")
+    result = await _collect()
+    assert sent == [] and result["skip_reasons"] == {"b_unavailable": 1}, result
+
+
+async def test_a_dear_endpoint_gives_way_to_a_cheaper_one_of_the_same_vendor(clients, monkeypatch):
+    """A company-only people search: LeadMagic's first endpoint costs more than one B may, its
+    employee finder answers the same input for a fraction of it."""
+    _platform(monkeypatch, "leadmagic")
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    identity, _ = canonical_identity(contract, {"company_domain": "acme.com"})
+    first = compare._b_target(contract, identity, "leadmagic")
+    assert first is not None and first.price_micro > 100_000
+    cheap = compare._b_target(contract, identity, "leadmagic", max_price_micro=100_000)
+    assert cheap is not None and cheap.ep["id"] == "leadmagic.x.employee-finder"
+    assert cheap.price_micro <= 100_000
+
+
+async def test_a_b_that_keeps_failing_stops_taking_calls(clients, search_on, monkeypatch):
+    """Parallel fails `FAIL_STREAK` times in a row: the next run asks another vendor."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PARALLEL", "PLATFORM-PARALLEL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily,exa,parallel")
+    get_settings.cache_clear()
+    _compare_on(monkeypatch, compare_max_per_run=1)
+    sent = _relay_b(monkeypatch, status=503)
+    org_id = await _org_id(clients)
+    await _seed_decided(org_id, 1, "tavily", "exa")  # parallel is the least compared
+    for i in range(compare.FAIL_STREAK + 1):
+        await _routed_call(org_id, f"question {i}")
+        assert (await _collect())["failed"] == 1
+    names = [s["tool"].name for s in sent]
+    assert names == ["parallel.web.search"] * compare.FAIL_STREAK + ["exa.web.search"], names
+
+
+async def test_a_slow_scan_still_leaves_the_calls_their_turn(clients, search_on, monkeypatch):
+    """Each served-child lookup takes a second, the run two: the scan stops at its share and the
+    call it found is made."""
+    import asyncio
+
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    real = compare._served_child
+
+    async def slow(db, parent):
+        await asyncio.sleep(1)
+        return await real(db, parent)
+    monkeypatch.setattr(compare, "_served_child", slow)
+    org_id = await _org_id(clients)
+    await _routed_call(org_id, "first question", minutes_ago=3)
+    await _routed_call(org_id, "second question", minutes_ago=4)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        result = await compare.collect(client=client, max_seconds=2)
+    assert result["called"] == 1 and len(sent) == 1, result
+    assert result["skip_reasons"] == {"scan_time": 1}, result
+
+
+async def test_served_children_are_read_together(clients, search_on, monkeypatch):
+    """Parents that name their served child are resolved in one read, never one by one."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+
+    async def never(db, parent):
+        raise AssertionError("looked up alone")
+    monkeypatch.setattr(compare, "_served_child", never)
+    org_id = await _org_id(clients)
+    for i in range(3):
+        await _routed_call(org_id, f"question {i}", served_ref=True)
+    result = await _collect()
+    assert result["ready"] == 3 and len(sent) == 3, result
+
+
+def test_the_daily_spend_is_read_as_a_decimal(monkeypatch):
+    monkeypatch.setattr(get_settings(), "compare_daily_usd", 2.01)
+    assert compare._spend_limit_micro() == 2_010_000

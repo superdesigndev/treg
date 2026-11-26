@@ -118,6 +118,28 @@ async def tallies(db: AsyncSession, capabilities: list[str], since: datetime) ->
     return {(c, a, b): int(n) for c, a, b, n in rows}
 
 
+async def failure_streaks(db: AsyncSession, capabilities: list[str], since: datetime,
+                          ) -> dict[tuple[str, str], int]:
+    """How many of each B's latest answers since `since` failed in a row, by (capability, B):
+    a settled comparison (ready or decided) ends the streak. One read through `created_at`."""
+    rows = (await db.execute(select(
+        CallComparison.capability, CallComparison.b_provider, CallComparison.status,
+    ).where(CallComparison.created_at >= since, CallComparison.capability.in_(capabilities),
+            CallComparison.status != PENDING)
+        .order_by(CallComparison.created_at.desc(), CallComparison.id.desc()))).all()
+    streaks: dict[tuple[str, str], int] = {}
+    ended: set[tuple[str, str]] = set()
+    for capability, b, status in rows:
+        key = (capability, b)
+        if key in ended:
+            continue
+        if status == FAILED:
+            streaks[key] = streaks.get(key, 0) + 1
+        else:
+            ended.add(key)
+    return streaks
+
+
 def shown(row: CallComparison) -> tuple[str, str]:
     """(answer 1, answer 2) in the order the agent sees them."""
     return (row.a_body, row.b_body) if row.first == "a" else (row.b_body, row.a_body)

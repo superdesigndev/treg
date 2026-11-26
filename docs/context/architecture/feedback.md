@@ -45,6 +45,7 @@ sources:
   - tests/test_hints.py
   - tests/test_kv.py
   - tests/test_compare.py
+  - tests/test_compare_spend_migration.py
 related:
   - architecture/data-model.md
   - architecture/mcp-oauth.md
@@ -324,9 +325,12 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    calls unread until their markers expire.
 5. Reads every candidate's marker in one `MGET`: it must exist (none, or a store that cannot say,
    skips it; the marker holds the sample, so the run does not sample again). For each marked call,
-   before any archive body is read: the credited child (the latest successful `<call>:r<n>`, as
-   reviews attribute it), on treg's key, with its archive identities and a retention-allowed
-   endpoint; its provider A one of the capability's verified vendors.
+   before any archive body is read: the credited child, on treg's key, with its archive identities
+   and a retention-allowed endpoint; its provider A one of the capability's verified vendors. The
+   child is the row the parent's `served_call_ref` names, read for all marked calls in one query;
+   a parent without one falls back to its latest successful `<call>:r<n>`, as reviews attribute
+   it, read alone. This scan takes at most `SCAN_SHARE` of what is left of the run's time; calls
+   it did not reach are skipped as `scan_time`, so a slow read still leaves the calls their turn.
 6. **Spreading the calls.** The run reads every team's comparisons of the comparable capabilities
    in `compare_window_days` that are not failed, counted per (capability, A, B)
    (`comparisons.tallies`), and takes the marked calls one at a time, until `compare_max_per_run`
@@ -334,7 +338,9 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    been A least often on its capability (ties at random). A vendor that rarely serves is still
    compared as A, which the familiarity check needs, and no capability takes a run's calls only
    because its calls were read first. B (`_choose_b`): of the capability's other vendors not in
-   `compare_exclude`, the least compared with A in either order across every team (ties at
+   `compare_exclude` and not failing (its last `FAIL_STREAK` answers as B in `FAIL_WINDOW_H` hours
+   all failed, `comparisons.failure_streaks`, updated as the run goes; skipped as `b_failing` when
+   no other is left), the least compared with A in either order across every team (ties at
    random) for which step 8 finds a target at most `compare_max_b_micro` and within what is left
    of the day's spend (read here so an unaffordable B gives way to a cheaper one; the claim checks
    again), and whose pair this team
@@ -348,10 +354,14 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    on.
 8. B's target: an endpoint the router itself would ask for this input (`plan.candidates_for`, so
    a routing adapter: a judge-only `route: false` adapter builds no request; then `build_plan`'s
-   filter cap, declaration and scope checks), on a provider with a pasted-key credential shape, not
-   paused, platform-eligible with every platform credential its bindings name, not exhausted on
-   treg's primary account, retention allowed, priced, with no second host or path parameter. B's
-   adapter builds the request (`to_upstream`) with the router's variant.
+   filter cap, declaration and scope checks), on a provider with a pasted-key credential shape that
+   the router's per-provider sampling (`route_provider_sample_pct`, `plan.sampled_provider_allowed`)
+   would ask for this team's question, not paused, platform-eligible with every platform
+   credential its bindings name, not exhausted on treg's primary account, retention allowed,
+   priced within the limit step 6 sets, with no second host or path parameter. The provider's
+   endpoints are tried in the router's order, so one dear endpoint does not hide a cheaper one
+   that answers the same input. B's adapter builds the request (`to_upstream`) with the router's
+   variant.
 9. Right before sending, the team is read again: it still exists, is not suspended, has no active
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
    invalid publication or a pause in force all skip, unlike admission, which allows on failure),
