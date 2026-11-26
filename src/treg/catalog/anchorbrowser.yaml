@@ -1,0 +1,51 @@
+provider: anchorbrowser
+source:
+  docs: https://docs.anchorbrowser.io
+  openapi: https://docs.anchorbrowser.io/openapi.yaml
+  curated: 2026-11-26
+limits: "Web Unlocker: 2,000 requests a minute per key"
+pricing_url: https://docs.anchorbrowser.io/pricing
+defaults:
+  provenance: {source: docs, source_url: 'https://docs.anchorbrowser.io/pricing', checked: '2026-11-26', confidence: documented}
+endpoints:
+  - id: anchorbrowser.web.extract
+    added: '2026-11-26'
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/tools/fetch/webpage
+    name: "Web Unlocker"
+    summary: "Fetch the fully rendered HTML of a URL through a stealth browser and residential proxy, with CAPTCHA and bot-detection challenges solved"
+    note: "The answer is the page body itself, not a JSON envelope: HTML as text/html, PDFs and downloads as binary. A challenge can take two minutes to solve: set a client timeout of at least 120 seconds."
+    input:
+      body:
+        url: {type: string, required: true, note: "fully qualified, with the scheme", example: "https://example.com"}
+        options:
+          type: object
+          required: false
+          note: "return_partial_on_timeout (boolean, default true): false answers 504 instead of the content rendered so far"
+          example: {return_partial_on_timeout: true}
+    test_request:
+      body: {url: "https://example.com"}
+    price: {value: '0.005', currency: credit, per: 1, unit: call, note: "charged per 200 answer; 4xx and 5xx answers are free"}
+    provenance: {source: observed, source_url: 'https://docs.anchorbrowser.io/api-reference/tools/web-unlocker', checked: '2026-11-26', confidence: verified}
+    miss: {status: [422], means: "the URL could not be reached, its hostname did not resolve, or the challenge could not be solved"}
+    docs_url: https://docs.anchorbrowser.io/api-reference/tools/web-unlocker
+
+  - id: anchorbrowser.account.usage
+    added: '2026-11-26'
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing
+    name: "Check credit balance"
+    summary: "Return the project's credit balance, credits used this billing period, plan tier and concurrent-browser limit"
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://docs.anchorbrowser.io/api-reference/billing/get-billing-info

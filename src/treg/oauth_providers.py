@@ -4605,6 +4605,34 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+ANCHORBROWSER = OAuthProvider(
+    service="anchorbrowser",
+    display_name="Anchor Browser",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Anchor Browser API key",
+    token_header="anchor-api-key",
+    token_format="{secret}",
+    setup_url="https://app.anchorbrowser.io/api-keys",
+    setup_action_label="Get your Anchor Browser API key",
+    setup_steps=(
+        "Sign in to Anchor Browser and open API Keys.",
+        "Create or copy an API key.",
+    ),
+    setup_note=(
+        "Web Unlocker is billed per 200 response; 4xx and 5xx responses are free. "
+        "Connecting checks the free billing endpoint."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Fetch rendered pages behind CAPTCHA and bot protection through a stealth cloud browser.",
+    base_url="https://api.anchorbrowser.io",
+    docs_url="https://docs.anchorbrowser.io",
+    probe_path="/v1/billing",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4621,7 +4649,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, ANCHORBROWSER, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
