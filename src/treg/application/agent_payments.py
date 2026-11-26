@@ -104,6 +104,20 @@ class PaymentPending(Exception):
         self.detail = detail
 
 
+class CreditMoving(Exception):
+    """The wallet's credit would cover the call but treg could not confirm it can be spent now:
+    calls in flight hold it, or it is moving between treg's stores. Nothing was charged and the
+    payment or proof was not used: the same one may be sent again."""
+
+    def __init__(self, endpoint_id: str) -> None:
+        message = ("this wallet's credit could not be confirmed for this call just now; nothing "
+                   "was charged and this payment was not used. Send the same payment again "
+                   "in a moment.")
+        super().__init__(message)
+        self.detail = {"error": "credit_unconfirmed", "reason": "credit_unconfirmed",
+                       "endpoint_id": endpoint_id, "message": message}
+
+
 class RateLimited(Exception):
     """Too many keyless requests from one client address, or too many payment checks across all
     of them; nothing was checked or charged."""
@@ -399,7 +413,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
-    payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
+    draw = verified.deferrable and await _draws(paid, org_id)
+    payment_id, draw = await _claim(verified, org_id, draw)
     if draw is None:
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
@@ -433,7 +448,7 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
             raise await challenge(paid, reason="unknown_wallet",
                                   message="this wallet has started no task on treg")
     else:
-        if org_id is None or not await call_allowance.covers(org_id, paid.quote_micro):
+        if org_id is None or not await _draws(paid, org_id):
             raise await credit_short(paid, org_id)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
@@ -549,12 +564,23 @@ async def _payer_org(network: str, address: str) -> int:
     raise RuntimeError("payer team could not be created")
 
 
-async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int | None, bool | None]:
-    """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
-    before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
-    # Whether the call can be paid from credit now: money a refill or a give-back is moving
-    # between the store and the database is found, and money calls in flight hold is not.
-    draw = verified.deferrable and await call_allowance.covers(org_id, quote_micro)
+async def _draws(paid: PaidOffer, org_id: int) -> bool:
+    """Whether the call is paid from the credit the wallet already holds: True when it can be
+    spent now, False when it is not there. Raises CreditMoving when neither is confirmed
+    (`call_allowance.reach`): settling then could pay twice for credit the wallet has, and
+    drawing could answer it with credit no call can reach, so the wallet sends the same payment
+    again instead. Before the payment is recorded, so that it can."""
+    found, sure = await call_allowance.reach(org_id, paid.quote_micro)
+    if found >= paid.quote_micro:
+        return True
+    if sure:
+        return False
+    raise CreditMoving(paid.endpoint_id)
+
+
+async def _claim(verified: Verified, org_id: int, draw: bool) -> tuple[int | None, bool | None]:
+    """Record the proof as used, with whether it draws credit (`_draws`) or must settle. A proof
+    seen before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
     async with session_maker() as db:
         row = AgentPayment(
             proof_id=verified.proof_id, protocol=verified.protocol, network=verified.network,
@@ -659,7 +685,8 @@ async def open_call(*, rest: str, method: str, path: str, query: str,
                     headers: Mapping[str, str],
                     raw_headers: Sequence[tuple[bytes, bytes]]) -> PaidCall:
     """Price the call, take its payment or draw credit, and return the call to run. Raises
-    NotServed, RateLimited, PaymentChallenge or PaymentPending; no call has run when it raises.
+    NotServed, RateLimited, PaymentChallenge, PaymentPending or CreditMoving; no call has run
+    when it raises.
     `limit_request` has already run for this request."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
                        query_items=query_items, body=body, host=headers.get("host", ""))

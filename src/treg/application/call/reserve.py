@@ -144,6 +144,12 @@ async def _trial_calls_today(caller: Caller, provider: str, paid_endpoint_ids: l
             "your own key: treg connections connect")) from exc
 
 
+async def _committed_today(org_id: int) -> int:
+    """The day's committed spend (`allowance.committed_today`), read on its own session."""
+    async with session_maker() as db:
+        return await money_allowance.committed_today(db, org_id)
+
+
 async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncSession) -> None:
     """Per-org, per-UTC-day ceiling on tier-4 spend. FAIL-CLOSED, unlike `_enforce_daily_cap`: that one
     meters calls and may let a few extra through under load, this one meters OUR money, so a query that
@@ -573,9 +579,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
     `mark_in_flight` (a call holding an Idempotency-Key claim) first marks the call as running in
     the shared store, the one sign of it a stale claim can read; unmarked, it keeps its hold.
-    A hold the balance cannot cover is tried once more (`retry_short`) when the team's
-    allowance counter held money and gave it back to the balance
-    (`allowance_runtime.give_back_for_exact_path`).
+    A hold the balance cannot cover is tried once more (`retry_short`) when the balance covers
+    it after all, the team's allowance counter given back to it as needed
+    (`allowance_runtime.onto_balance`).
 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
@@ -701,10 +707,15 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ReservationFailed as exc:
         # The day's committed spend counts all of the allowance hold, what its counter still
         # offers included: give that back and run every check again.
+        # A counter another request has just given back leaves nothing to give, and the day's
+        # figure is then lower than the refusal read: read it again before refusing.
         cap = exc.detail if exc.kind == "platform_daily_cap_reached" else None
-        if retry_short and isinstance(cap, dict) and await allowance_runtime.give_back_for_exact_path(
-                caller.org_id,
-                cap["spent_today_micro"] + cap["estimated_cost_micro"] - cap["daily_cap_micro"]):
+        if retry_short and isinstance(cap, dict) and allowance_runtime.listed(caller.org_id) and (
+                await allowance_runtime.give_back_for_exact_path(
+                    caller.org_id,
+                    cap["spent_today_micro"] + cap["estimated_cost_micro"] - cap["daily_cap_micro"])
+                or await _committed_today(caller.org_id) + cap["estimated_cost_micro"]
+                <= cap["daily_cap_micro"]):
             noted = True
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless,
@@ -714,8 +725,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
-        if retry_short and await allowance_runtime.give_back_for_exact_path(
-                caller.org_id, exc.required_micro - exc.balance_micro):
+        # The team's counter may hold what the balance is short of, or another request may just
+        # have given it back: `onto_balance` puts it on the balance, or says it is not there.
+        if retry_short and await allowance_runtime.onto_balance(caller.org_id, exc.required_micro):
             noted = True
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless,

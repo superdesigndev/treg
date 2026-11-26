@@ -199,9 +199,16 @@ that account's access key.
    refuses a suspended team or member with 403 `payer_suspended`, as `require_member` does on the
    account path, before the proof is claimed or anything settles. `agentpayer` and `agentpayment`
    carry `org_id` with no foreign key (AGENTS.md); team deletion removes both.
-3. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
+3. `_draws`: whether the call is paid from the credit the wallet already holds, read with
+   `call_allowance.reach` (money.md, "The balance a team is shown"): credit it can spend now draws,
+   credit that is not there settles. When neither is confirmed (the team's money would cover the
+   call but a refill or a give-back still holds its lease after the wait), it answers 503
+   `credit_unconfirmed` with `Retry-After` before the payment is recorded, so the same payment or
+   proof may be sent again: settling then could pay twice for credit the wallet has. The proof
+   path (`_admit_proof`) asks the same before it claims the proof.
+4. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
    `settling` and commits. A unique violation is a replay: 402 with a fresh challenge.
-4. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that
+5. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that
    disconnects mid-settlement is still credited when the transfer lands. No session is open during
    `rail.settle`. A definite refusal marks the row `failed` and answers 402; no call runs and no
    money moves. An unknown outcome (`settlement_unknown`: the node or facilitator did not answer
@@ -209,7 +216,7 @@ that account's access key.
    and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again; the
    reconciler resolves it later. Success tops up and marks the row `settled` in one transaction
    (`_credit`).
-5. The request headers minus every payment credential header, whichever rails are on
+6. The request headers minus every payment credential header, whichever rails are on
    (`agent_payments.consumes`), go to the call as
    the payer team. Every answer after this point, a refusal included, carries
    `X-Treg-Payment: paid|credit`, `X-Treg-Credit-Micro` (the payer's credit once the call has

@@ -10,6 +10,7 @@ spends money the hold does not have.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import enum
 import functools
 import logging
@@ -640,6 +641,31 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
 Offer = tuple[int, int | None]
 
 
+async def _counter_state(org_id: int) -> Offer | None:
+    """`counter_offer`, with None when the store cannot answer."""
+    try:
+        state = await kv.store().allowance_state(org_id)
+    except Exception:
+        log.warning("reading the allowance counter of org %s failed", org_id, exc_info=True)
+        return None
+    return (state[0], state[3]) if state else None
+
+
+async def _moving(org_id: int) -> bool:
+    """Whether a refill, a give-back or a fold holds the team's money lease now: money may be
+    on its way between the store and the database. Asked by taking the lease for a moment."""
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
+    try:
+        answer = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        if answer == "acquired":
+            await store.release_lease(key, token)
+            return False
+        return answer != "unavailable"
+    except Exception:
+        log.warning("asking for the allowance lease of org %s failed", org_id, exc_info=True)
+        return False
+
+
 async def counter_offer(org_id: int) -> Offer:
     """What a team's allowance counter offers now, and the epoch of the hold it was built for;
     `(0, None)` for a team off the allowance (no call of its takes from a counter, so what one
@@ -647,12 +673,7 @@ async def counter_offer(org_id: int) -> Offer:
     store read: take it before a session holds a connection or a lock."""
     if not enabled_for(org_id):
         return 0, None
-    state = None
-    try:
-        state = await kv.store().allowance_state(org_id)
-    except Exception:
-        log.warning("reading the allowance counter of org %s failed", org_id, exc_info=True)
-    return (state[0], state[3]) if state else (0, None)
+    return await _counter_state(org_id) or (0, None)
 
 
 async def counter_offers(org_ids) -> dict[int, Offer]:
@@ -670,44 +691,93 @@ async def spendable(db, org_id: int, offer: Offer | None = None) -> int:
     return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
 
 
-async def reach(org_id: int, amount_micro: int) -> int:
-    """What the team was found able to pay, deciding on `amount_micro`: at least that much when
-    it can pay it now, and the last reading when it cannot. For a decision a short reading
-    would cost: a wallet settling a transfer or drawing credit, an arena run starting.
+async def spendable_ending_read(db, org_id: int) -> int:
+    """`spendable` for a read-only request whose session has already read (its caller, its
+    team): the read is ended first, so the store read holds no connection. Only where the
+    session has written nothing: ending it commits."""
+    await db.commit()
+    return await spendable(db, org_id, await counter_offer(org_id))
 
-    The balance shown is read across the store and the database, and a refill or a give-back
-    can be moving money between them while it is read. A short reading asks for the counter
-    back (`give_back_for_exact_path`) and reads the database alone again: money on the counter
-    is then on the balance. A counter that gives nothing back is no answer by itself: another
-    request may have emptied it and not yet released its money, or a refill may hold the team's
-    lease. So while the team's money anywhere (`allowance.credit_bound`) would still cover the
-    amount, it is read again, for as long as a call waits for a refill. Money that stays out of
-    reach that long (calls in flight hold it, the store lost the counter, the team is off the
-    allowance) leaves the answer short. Opens its own sessions: call it with none held."""
+
+class Reach(NamedTuple):
+    """What `reach` found. `found` is at least the amount asked about when the team can pay it
+    now. Below it, `sure` says the money is not the team's to spend at all; not `sure`, the
+    team's money would cover it but stayed out of reach while it was read again (calls in
+    flight hold it, a refill or a give-back is still moving it, the store lost the counter)."""
+
+    found: int
+    sure: bool
+
+
+async def reach(org_id: int, amount_micro: int) -> Reach:
+    """Whether the team can pay `amount_micro` now, for a decision a short reading would cost: a
+    wallet settling a transfer or drawing credit, an arena run starting, a reserve refused.
+
+    First the team's money wherever it sits (`allowance.credit_bound`, the database alone): below
+    the amount, it is not there, and nothing else is read. A team off the allowance is answered
+    from the database too: no call of its takes from a counter. Otherwise the balance shown, read
+    across the store and the database, which can miss money a refill or a give-back is moving
+    between them: a short reading asks for the counter back (`give_back_for_exact_path`) and
+    reads the database alone again. A counter that gives nothing back is no answer by itself
+    (another request may have emptied it and not yet released its money, or a refill may hold
+    the team's lease while it publishes), so it is read again, backing off, for as long as a
+    call waits for a refill. Then it is answered not `sure` only while the team's money lease is
+    held (`_moving`): money nobody is moving (calls in flight hold it, the store lost the
+    counter) is out of every call's reach, and so is any counter while the store cannot answer.
+    Opens its own sessions: call it with none held."""
     if amount_micro <= 0:
-        return 0
-    deadline = time.monotonic() + _REFILL_WAIT_S
+        return Reach(0, True)
+    deadline, pause = time.monotonic() + _REFILL_WAIT_S, 0.02
     while True:
-        offer = await counter_offer(org_id)
+        async with session_maker() as db:
+            anywhere = await allowance.credit_bound(db, org_id)
+            if anywhere < amount_micro or not enabled_for(org_id):
+                return Reach(await allowance.spendable(db, org_id), True)
+        offer = await _counter_state(org_id)
         async with session_maker() as db:
             free = await allowance.spendable(db, org_id)
-            have = await spendable(db, org_id, offer)
-            anywhere = await allowance.credit_bound(db, org_id)
-        if have >= amount_micro:
-            return have
+            have = await spendable(db, org_id, offer or (0, None))
+        if have >= amount_micro or offer is None:
+            return Reach(have, True)
         if await give_back_for_exact_path(org_id, amount_micro - free):
             async with session_maker() as db:
                 have = await allowance.spendable(db, org_id)
             if have >= amount_micro:
-                return have
-        if anywhere < amount_micro or time.monotonic() >= deadline:
-            return have
-        await asyncio.sleep(0.02 + random.random() * 0.03)
+                return Reach(have, True)
+        if time.monotonic() >= deadline:
+            return Reach(have, not await _moving(org_id))
+        await asyncio.sleep(pause + random.random() * pause)
+        pause *= 2
+
+
+async def onto_balance(org_id: int, amount_micro: int) -> bool:
+    """Whether the balance, free of the queue's claims, covers `amount_micro`, with the team's
+    counter given back to it when it does not: for a reserve the balance refused, which runs
+    again on True. A counter that gives nothing back is read again as in `reach` (another
+    request may be releasing what it emptied, or a refill holds the lease), while the team's
+    money wherever it sits would cover the amount and for as long as a call waits for a refill;
+    a team whose money is not there costs one statement. Opens its own sessions: call it with
+    none held."""
+    deadline, pause = time.monotonic() + _REFILL_WAIT_S, 0.02
+    while True:
+        async with session_maker() as db:
+            free = await allowance.spendable(db, org_id)
+            anywhere = await allowance.credit_bound(db, org_id) if free < amount_micro else 0
+        if free >= amount_micro:
+            return True
+        if anywhere < amount_micro or not enabled_for(org_id):
+            return False
+        if await give_back_for_exact_path(org_id, amount_micro - free):
+            continue
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(pause + random.random() * pause)
+        pause *= 2
 
 
 async def covers(org_id: int, amount_micro: int) -> bool:
     """Whether the team can pay `amount_micro` now (`reach`)."""
-    return amount_micro <= 0 or await reach(org_id, amount_micro) >= amount_micro
+    return amount_micro <= 0 or (await reach(org_id, amount_micro)).found >= amount_micro
 
 
 async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
@@ -715,35 +785,56 @@ async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
     what `reach` confirmed, when that does. Opens its own sessions."""
     if shown_micro >= need_micro:
         return shown_micro
-    found = await reach(org_id, need_micro)
+    found = (await reach(org_id, need_micro)).found
     return found if found >= need_micro else shown_micro
 
 
 class CreditShort(Exception):
-    """Raised from inside a session by a check that found the team short of `need_micro`, so
-    `gives_counter_back` can ask `covers` with no session held. `refusal` is what the caller
-    raises when the money is not there."""
+    """Raised from inside a session by a check that found the team short of `need_micro`
+    (`short_of`), so `gives_counter_back` can ask `reach` with no session held. `refusal` is what
+    the caller raises when the money is not there."""
 
     def __init__(self, need_micro: int, refusal: Exception) -> None:
         super().__init__(need_micro)
         self.need_micro, self.refusal = need_micro, refusal
 
 
+# What `gives_counter_back` confirmed for the run it is running again: (org id, amount).
+_confirmed: contextvars.ContextVar[tuple[int, int] | None] = contextvars.ContextVar(
+    "treg_allowance_confirmed", default=None)
+
+
+async def short_of(db, org_id: int, offer: Offer, need_micro: int) -> bool:
+    """Whether a check inside a session finds the team short of `need_micro`. A run that
+    `gives_counter_back` is running again after `reach` confirmed that much is not asked again:
+    a second reading across the two stores could miss it as the first did. The calls the run
+    makes still reserve their own money."""
+    confirmed = _confirmed.get()
+    if confirmed is not None and confirmed[0] == org_id and confirmed[1] >= need_micro:
+        return False
+    return await spendable(db, org_id, offer) < need_micro
+
+
 def gives_counter_back(run):
-    """`run(caller, ...)` runs once more when it raised `CreditShort` and `covers` then finds the
-    money; a second short, or a counter that cannot make up the difference, raises the refusal.
-    `run` must change nothing before it raises, as a check inside a transaction it rolls back."""
+    """`run(caller, ...)` runs once more when it raised `CreditShort` and `reach` then finds the
+    money, its check (`short_of`) taking that answer; a counter that cannot make up the
+    difference raises the refusal. `run` must change nothing before it raises, as a check
+    inside a transaction it rolls back."""
     @functools.wraps(run)
     async def again(caller, *args, **kwargs):
         try:
             return await run(caller, *args, **kwargs)
         except CreditShort as short:
-            if not await covers(caller.org_id, short.need_micro):
+            found = (await reach(caller.org_id, short.need_micro)).found
+            if found < short.need_micro:
                 raise short.refusal from None
+        token = _confirmed.set((caller.org_id, found))
         try:
             return await run(caller, *args, **kwargs)
         except CreditShort as short:
             raise short.refusal from None
+        finally:
+            _confirmed.reset(token)
     return again
 
 

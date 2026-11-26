@@ -244,6 +244,9 @@ async def test_batch_waterfall_admits_first_step_for_every_entry(clients, enrich
     async def one_entry_balance(*args):
         return single["required_micro"]
     monkeypatch.setattr(arena.call_allowance, "spendable", one_entry_balance)
+    async def one_entry_reach(*args):
+        return arena.call_allowance.Reach(single["required_micro"], True)
+    monkeypatch.setattr(arena.call_allowance, "reach", one_entry_reach)
     q = await batch_plan(clients, "waterfall")
     assert not q["affordable"]
     assert (await clients.post(f"/arena/runs/{q['id']}/start")).status_code == 402
@@ -674,7 +677,9 @@ async def test_manual_plan_rechecks_own_key_and_credit_admission(clients, enrich
     money = arena.call_allowance
     original = money.spendable
     async def empty(*args, **kwargs): return 0
+    async def none_found(*args, **kwargs): return money.Reach(0, True)
     monkeypatch.setattr(money, 'spendable', empty)
+    monkeypatch.setattr(money, 'reach', none_found)
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 402
     assert len(seen) == 1
     monkeypatch.setattr(money, 'spendable', original)
@@ -1292,6 +1297,8 @@ async def test_verification_credit_admission_and_ownership(clients, enrichment_o
     q = (await clients.post(path+'/plan')).json()
     async def empty(*args,**kwargs): return 0
     monkeypatch.setattr(arena.call_allowance,'spendable',empty)
+    async def none_found(*args,**kwargs): return arena.call_allowance.Reach(0, True)
+    monkeypatch.setattr(arena.call_allowance,'reach',none_found)
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 402
     assert (await clients.post(path+'/plan')).json()['affordable'] is False
     assert len(seen) == 1

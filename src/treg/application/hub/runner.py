@@ -429,8 +429,7 @@ async def _reserve_price(parent: CallContext, tool: HubTool, run_id: str, reserv
                 return reserve_micro
         # The team's allowance counter holds money the balance does not show; outside the
         # session, since giving it back takes the team's money admission itself.
-        if retry and await call_allowance.give_back_for_exact_path(
-                caller.org_id, short.required_micro - short.balance_micro):
+        if retry and await call_allowance.onto_balance(caller.org_id, short.required_micro):
             continue
         raise ResolutionFailed("hub_price_unaffordable", status_code=402, detail={
             "error": "insufficient_balance", "tool_id": tool.tool_id,

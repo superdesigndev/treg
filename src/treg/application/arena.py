@@ -197,7 +197,7 @@ async def start_manual(caller, run_id, attempt_id, quote_id, client, client_ip):
         if not ep or not ad or _hash(ep) != quote["endpoint_hash"] or _hash(ad.__dict__) != quote["adapter_hash"]:
             raise rules.ArenaError("The catalog changed. Refresh this service's price.", 409)
         required = quote.get("required_micro", quote["estimate_micro"])
-        if required > 0 and await call_allowance.spendable(db, caller.org_id, offered) < required:
+        if required > 0 and await call_allowance.short_of(db, caller.org_id, offered, required):
             raise call_allowance.CreditShort(required, rules.ArenaError("Not enough team credits.", 402))
         active = (await db.execute(select(ArenaRun.id).where(ArenaRun.user_id == caller.user.id,
             ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
@@ -301,7 +301,7 @@ async def start_verification(caller, run_id, attempt_id, quote_id, client, clien
         v, cat = q["attempt"], catalog_store.load()
         if not _verification_catalog_matches(cat, v):
             raise rules.ArenaError("The catalog changed. Refresh verification pricing.", 409)
-        if v["estimate_micro"] > 0 and await call_allowance.spendable(db, caller.org_id, offered) < v["estimate_micro"]:
+        if v["estimate_micro"] > 0 and await call_allowance.short_of(db, caller.org_id, offered, v["estimate_micro"]):
             raise call_allowance.CreditShort(
                 v["estimate_micro"], rules.ArenaError("Not enough team credits.", 402))
         active = (await db.execute(select(ArenaRun.id).where(ArenaRun.user_id == caller.user.id, ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
@@ -521,7 +521,7 @@ async def start(caller, run_id: str, client, client_ip: str) -> dict:
             if not ep or not ad or _hash(ep) != a["endpoint_hash"] or _hash(ad.__dict__) != a["adapter_hash"]:
                 raise rules.ArenaError("The catalog changed. Refresh your quote before running.", 409)
         required = rules.required_credit(payload["attempts"], row.mode) + payload.get("verification_required_micro", 0)
-        if required > 0 and await call_allowance.spendable(db, caller.org_id, offered) < required:
+        if required > 0 and await call_allowance.short_of(db, caller.org_id, offered, required):
             raise call_allowance.CreditShort(required, rules.ArenaError(
                 "Not enough team credits. Add credits or choose fewer services.", 402))
         active = (await db.execute(select(ArenaRun.id).where(
