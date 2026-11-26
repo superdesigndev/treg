@@ -685,7 +685,9 @@ past the bound do not make every new team scan them.
   for it `unless` that claim is held (`allowance.acquire_money_lease`), so the fold gets the
   lease after its current holder rather than losing it each time to whichever refill polls
   first. Within the turn it waits for this process's money lock and asks `admit` for priority
-  (below) over the team's other money sessions, then folds its batches; it logs one
+  (below) over the team's other money sessions, then folds its batches. No wait outlasts the
+  turn (admission is asked for what is left of it, with no floor), and no batch starts once
+  the turn is over, so the turn bounds the fold's work on the team, not only its waits. It logs one
   `allowance_fold_starved` line per turn. The claim is given back when the turn ends, on every
   path. Meanwhile the team's calls keep taking from the counter; a call that needs a refill
   waits for the lease as for any other holder, and goes to the exact path once its own wait is

@@ -414,7 +414,8 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
     A team whose oldest charge has waited `_STARVED_AFTER_S` gets a turn of `_STARVED_TURN_S`
     instead: the fold claims the team's lease for the turn (`_fold_claim`), waits for the
     lease, the lock and the team's admission (with priority over the team's other money
-    sessions, `admit(priority=True)`) until the turn ends, and folds its batches. A busy team's
+    sessions, `admit(priority=True)`) until the turn ends, and folds its batches; no batch
+    starts once the turn is over, and no wait outlasts it. A busy team's
     own requests can keep it from the fold for one pass, not for every pass."""
     loop = asyncio.get_running_loop()
     waited_s = _waited_s(oldest)
@@ -424,18 +425,21 @@ async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
     try:
         async with _fold_claim(org_id, until) as (token, until):
             for _ in range(_FOLD_BATCHES_PER_PASS):
+                if until is not None and committed and loop.time() >= until:
+                    break
                 async with _team_lease(org_id, token, until) as free:
                     lock = money_lock(org_id)
                     if not free or not await _take_lock(lock, until):
                         skipped = "busy_lock" if free or lock.locked() else "lease_held"
                         break
                     try:
+                        wait_s = _ADMISSION_WAIT_S if until is None else until - loop.time()
+                        if wait_s <= 0:
+                            raise money_admission.AdmissionTimeout("turn_over")
                         async with (
                             money_admission.admit(
                                 money_admission.require_balance_orgs([org_id]),
-                                operation="close",
-                                max_wait_s=(_ADMISSION_WAIT_S if until is None
-                                            else max(_ADMISSION_WAIT_S, until - loop.time())),
+                                operation="close", max_wait_s=wait_s,
                                 refuse_on_timeout=True, priority=until is not None),
                             money_session(session_maker()) as db,
                         ):

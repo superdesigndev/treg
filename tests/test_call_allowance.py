@@ -3268,6 +3268,34 @@ async def test_a_starved_team_whose_lease_never_frees_is_given_up_when_its_turn_
     assert runtime.fold_claim_key(org_id) not in store.leases, "the claim is given back"
 
 
+async def test_a_starved_turn_that_is_over_starts_no_batch_and_no_wait_outlasts_it(
+        org_id, store, monkeypatch):
+    """Once a starved team's turn is over its fold goes back to the other teams: a batch that
+    ends past the turn is the last, and no admission wait runs past the turn's end."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.2)
+    await _queue_charge(org_id, "queued", 600)
+    waits, batches = [], []
+
+    @contextlib.asynccontextmanager
+    async def admit(org_ids, *, max_wait_s, **named):
+        waits.append(max_wait_s)
+        yield
+
+    async def a_full_batch_each_time(db, team, **kwargs):
+        batches.append(time.monotonic())
+        await asyncio.sleep(0.15)
+        return SimpleNamespace(calls=0, claimed=allowance_sweep._FOLD_BATCH)
+
+    monkeypatch.setattr(allowance_sweep.money_admission, "admit", admit)
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", a_full_batch_each_time)
+    began = time.monotonic()
+    await allowance_sweep.fold_queued_once(session_maker)
+    assert len(batches) == 2, "the batch begun inside the turn is the last"
+    assert waits[0] <= 0.2 and waits[1] <= 0.2 - (batches[1] - began) + 0.01
+
+
 async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(
         org_id, store, monkeypatch):
     """Two folds of one team (a deploy that changes the number of shares): the one without the
