@@ -1633,7 +1633,12 @@ row.
   a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped, and with `missing: 0` an absent figure (header or path
-  missing, or null) is a charge of 0; otherwise the outcome picks `bill.error` or `bill.miss`
+  missing, or null) is a charge of 0. An archive hit carries no provider header: it reads the
+  header value the archive stored with its answer (`ArchiveSnapshot.reported_headers`), so it
+  settles as that live answer did, a stored absence included. A snapshot that stored nothing for
+  the row's header (one older than the column, or recorded while the row read no header) leaves
+  the figure unknown, and `missing` does not apply. A path figure reads the stored body;
+  otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
   is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
   spelling records a free miss, so the call record and the stats fallback read it alike. A charged

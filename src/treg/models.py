@@ -2439,6 +2439,11 @@ class ArchiveSnapshot(SQLModel, table=True):
     # Provenance for the admin views - what confines the answer is the KEY's scope, not this
     # column. Declared LAST (migration 0039).
     origin_org_id: int | None = Field(default=None)
+    # The response headers this answer's settlement reads (a v2 row's `settle.reported.header`),
+    # as {name: raw value}; {} when the provider sent none. NULL when nothing was recorded: the
+    # row reads no header, or the snapshot predates the column. A hit settles from it. Declared
+    # LAST (migration 0138).
+    reported_headers: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class ArchiveKeyOrg(SQLModel, table=True):
