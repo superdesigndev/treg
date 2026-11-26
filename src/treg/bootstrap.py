@@ -840,6 +840,11 @@ def _lifespan(role: AppRole):
                                       pool=_s.upstream_pool_timeout_s),
                 # what a provider sees when no caller header says otherwise, never python-httpx/x
                 headers={"User-Agent": TREG_USER_AGENT},
+                # never inherit proxy settings from env (HTTP_PROXY, HTTPS_PROXY, etc.): a stray
+                # variable on Render or in a container can route outbound calls through a proxy
+                # that is itself behind Cloudflare, triggering CF error 1000 on every CF-protected
+                # provider — 757 calls across 29 providers failed this way on 2026-10-13
+                trust_env=False,
             )
             ads_task = (
                 asyncio.create_task(adsconv.worker(background_session_maker, app.state.http))
