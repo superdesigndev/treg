@@ -7,19 +7,41 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import event
+from sqlalchemy import event, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Postgres ends a session whose transaction sits idle this long, rolling it back and freeing its
 # row locks. A money transaction is a handful of statements with no I/O between them, so idling
 # means its process stalled while holding a team's balance or credit-block rows.
 IDLE_IN_TRANSACTION_TIMEOUT = "5s"
+# How long a money transaction that can come back later waits for another session's row locks.
+LOCK_WAIT_MS = 1000
 
 
 def _bound_idle(_session, _transaction, connection) -> None:
     if connection.dialect.name == "postgresql":
         connection.exec_driver_sql(
             f"SET LOCAL idle_in_transaction_session_timeout = '{IDLE_IN_TRANSACTION_TIMEOUT}'")
+
+
+async def bound_lock_wait(db: AsyncSession) -> None:
+    """Cap how long this transaction waits for another session's row locks (`LOCK_WAIT_MS`).
+    PostgreSQL only: SQLite has no row locks to wait for."""
+    from . import db as infra_db
+
+    if not infra_db._is_sqlite:
+        await db.execute(text(f"SET LOCAL lock_timeout = '{LOCK_WAIT_MS}ms'"))
+
+
+def lock_timed_out(exc: BaseException) -> bool:
+    """PostgreSQL cancelled a statement because `lock_timeout` elapsed (asyncpg's
+    `LockNotAvailableError`), wrapped however SQLAlchemy chose to wrap it."""
+    if not isinstance(exc, DBAPIError):
+        return False
+    origin = exc.orig
+    return "lock timeout" in str(origin or exc) or (
+        origin is not None and "LockNotAvailableError" in type(origin).__name__)
 
 
 @asynccontextmanager

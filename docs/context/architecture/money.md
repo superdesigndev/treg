@@ -644,7 +644,7 @@ past the bound do not make every new team scan them.
   the store could not answer is asked again sooner, within what is left of the lease, and a pass
   whose lease is known to be gone stops at the next team. Since one process folds for a whole
   share, a fold or idle close skips a team whose lock a request in the same process holds, and
-  waits at most `_LOCK_WAIT_MS` for a team's row locks (`lock_timeout`) before giving that team
+  waits at most `LOCK_WAIT_MS` (`infra/money_session.py`) for a team's row locks (`lock_timeout`) before giving that team
   up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass lists the teams of its share with queued charges, listed or
   not, the team whose oldest charge has waited longest first (a walk of the queue's team numbers
   on `ix_callcharge_org_id_created_at`, one probe per queued team and one more per team of the
@@ -678,7 +678,24 @@ past the bound do not make every new team scan them.
   queue before it returns the counter's money to the balance (a refill found no room, by
   balance or daily cap, and the team goes back to the exact path). A long queue makes that one
   request slow; the order, fold then return, is what keeps the returned money from being spent
-  twice.
+  twice. The first of them is optional, so it is bounded like the loop's: `_fold_backlog`
+  folds a batch at a time and reads the call's entry after each, at most `_BACKLOG_BATCHES`
+  for the call in all (a call that comes back after another fold keeps what it has left), asks `admit` to refuse after a short wait, waits at most
+  `LOCK_WAIT_MS` for the team's row locks, and never starts while this process has a money
+  session of the team open (the team's lock is looked up again after the lease wait, since an
+  idle one can be pruned meanwhile). A call that finds one open waits for it holding no
+  connection, a call that finds another process folding reads its entry again shortly, and
+  every step, waits for a pool connection included, shares one deadline: after
+  `_SETTLED_WAIT_S` it answers with what the ledger took, or else with its charge. The end of
+  that wait (`_LAST_READ_S`) is kept for one last read of the entry, so folding that runs out
+  the time still leaves the call a look at an entry another process wrote meanwhile. Each
+  batch runs in a task of its own (`_fold_beside`) that the call waits for only until its
+  deadline: past it, a batch that holds a connection finishes in order without the call
+  (commit or rollback, closing the session, giving back the team's admission and lease, its
+  lock in this process), and one still waiting for a connection gives up, so it never takes one
+  ahead of calls waiting now. The call's last look waits for that batch as well as its read. A
+  busy team's calls therefore cannot each hold a request connection queued on the team's hold
+  row; the queue they leave is the loop's.
 
 - **One money session per team.** A refill, a drain, a fold and the sweep's close each read the
   hold and then write it. All of them hold one lease in the store for the team
