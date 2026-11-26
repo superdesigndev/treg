@@ -249,8 +249,8 @@ async def collect_batch(session_factory=session_maker):
         window = (CallRecord.created_at >= until - timedelta(days=WINDOW_DAYS), CallRecord.created_at < until)
         if db.bind.dialect.name == "postgresql":
             end = (await db.execute(cycle_end_query(endpoints, until))).scalar()
-            ids = (await db.execute(batch_ids_query(endpoints, cursor, end))).scalars().all()
-            records = (await db.execute(select(CallRecord).where(CallRecord.id.in_(ids), *window)
+            ids = (await db.execute(batch_ids_query(endpoints, cursor, end, window))).scalars().all()
+            records = (await db.execute(select(CallRecord).where(CallRecord.id.in_(ids))
                 .order_by(CallRecord.id))).scalars().all() if ids else []
         else:
             # SQLite has no LATERAL; its test tables are small enough for the plain question.
@@ -309,15 +309,17 @@ def _arena_endpoints(endpoints):
     return values(column("endpoint_id", String), name="arena_endpoint").data([(e,) for e in endpoints])
 
 
-def batch_ids_query(endpoints, cursor: int, end: int | None):
-    """The next `BATCH_SIZE` audit ids of the Arena's endpoints after `cursor`, up to `end`.
+def batch_ids_query(endpoints, cursor: int, end: int | None, window):
+    """The next `BATCH_SIZE` audit ids of the Arena's endpoints after `cursor`, up to `end`,
+    whose rows are in `window`.
 
-    Asked one endpoint at a time on `ix_callrecord_endpoint_id_id`, so it reads index entries of
-    the Arena's own rows only. The one-query form (`endpoint_id IN (...) AND id > cursor ORDER BY
-    id LIMIT n`) is planned as a walk of the primary key from the cursor that filters every row,
-    the other endpoints' included, and finding fewer than `n` walks to the end of the table."""
+    Asked one endpoint at a time on `ix_callrecord_endpoint_id_id`, so it reads the Arena's own
+    rows only. The one-query form (`endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n`) is
+    planned as a walk of the primary key from the cursor that filters every row, the other
+    endpoints' included, and finding fewer than `n` walks to the end of the table. The window
+    is applied before each endpoint's limit, so rows outside it never take a batch's places."""
     arena = _arena_endpoints(endpoints)
-    after = [CallRecord.endpoint_id == arena.c.endpoint_id, CallRecord.id > cursor]
+    after = [CallRecord.endpoint_id == arena.c.endpoint_id, CallRecord.id > cursor, *window]
     if end is not None:
         after.append(CallRecord.id <= end)
     each = (select(CallRecord.id).where(*after).order_by(CallRecord.id).limit(BATCH_SIZE)

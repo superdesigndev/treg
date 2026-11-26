@@ -384,10 +384,35 @@ def test_the_batch_read_asks_each_arena_endpoint_on_its_own_index():
     from sqlalchemy.dialects import postgresql
 
     dialect = postgresql.dialect()
-    ids = str(service.batch_ids_query(["a.b", "c.d"], 7, 99).compile(dialect=dialect))
+    window = (CallRecord.created_at >= now(), CallRecord.created_at < now())
+    ids = str(service.batch_ids_query(["a.b", "c.d"], 7, 99, window).compile(dialect=dialect))
     assert "JOIN LATERAL" in ids and "VALUES" in ids and " IN " not in ids
     assert "callrecord.endpoint_id = arena_endpoint.endpoint_id" in ids
     assert "callrecord.id <=" in ids
-    assert "callrecord.id <=" not in str(service.batch_ids_query(["a.b"], 7, None).compile(dialect=dialect))
+    assert "callrecord.id <=" not in str(service.batch_ids_query(["a.b"], 7, None, window).compile(dialect=dialect))
     end = str(service.cycle_end_query(["a.b"], now()).compile(dialect=dialect))
     assert "JOIN LATERAL" in end and "ORDER BY callrecord.created_at" in end
+
+
+async def _bulk(rows):
+    """(endpoint_id, created_at) pairs, inserted in order, so ids follow the list."""
+    async with session_maker() as db:
+        for endpoint_id, created_at in rows:
+            db.add(CallRecord(user_email="synthetic@example.test", tool_name=endpoint_id, method="GET",
+                path="/v1/x", status_code=200, endpoint_id=endpoint_id, provider="tomba",
+                credential_tier="platform", params_hash="h", created_at=created_at))
+        await db.commit()
+
+
+async def _observed() -> int:
+    async with session_maker() as db:
+        return len((await db.execute(select(ArenaObservation.id))).all())
+
+
+async def test_rows_older_than_the_window_do_not_take_a_batchs_places(clients):
+    """A cold start over a long history: only rows inside the window count toward a batch, so
+    one row in it after a thousand older ones is published in the first batch."""
+    old = now() - timedelta(days=service.WINDOW_DAYS + 1)
+    await _bulk([(EP, old)] * 1000 + [(EP, now() - timedelta(seconds=180))])
+    assert not await service.collect_batch(session_maker), "published in one batch"
+    assert await _observed() == 1
