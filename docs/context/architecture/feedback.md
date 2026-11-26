@@ -285,13 +285,14 @@ when the feature is configured (`compare_capabilities` listed, `compare_max_per_
 `compare_daily_usd` above 0), the capability is comparable (`compare.comparable()`: listed, with a
 contract and at least two providers with a verified adapter), the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
 routing is left alone), the team keeps an archive and `hints.sampled_at("compare", call_ref,
-compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared store for two hours
+compare_rate)` samples it in, it writes `compare-ok:v2:<call_ref>` in the shared store for two hours
 (`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
 (`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
 `MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
 the summary) is never marked: B would be asked page one against A's later page. Nor is a merged
 answer (`merged_from` in the summary, several vendors' rows delivered as one): no single vendor's
-answer is A. A team opted out of the archive gets no
+answer is A. The key carries the marker's version (`MARKER_VERSION`), so a run never reads a
+marker an earlier build wrote under rules it no longer applies. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 Every decision is counted by reason and `X-Treg-Client` (`marked`, `not_sampled`, `route_header`,

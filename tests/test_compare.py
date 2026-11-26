@@ -1660,3 +1660,15 @@ async def test_a_lagging_fold_keeps_the_other_endpoints_stats(monkeypatch):
     monkeypatch.setattr(route, "_endpoint_observation_reader", None)
     monkeypatch.setattr(catalog_observations, "PostgresEndpointObservationReader", Reader)
     assert await compare._observed_stats(["a.b", "c.d"]) == {"a.b": {"hit_rate": 0.9}}
+
+
+async def test_a_marker_an_earlier_build_wrote_is_ignored(clients, search_on, monkeypatch):
+    """An earlier build marked merged answers under the unversioned key: the run never reads it."""
+    _compare_on(monkeypatch)
+    sent = _relay_b(monkeypatch)
+    ref = await _routed_call(await _org_id(clients), "who makes the best espresso", marked=False)
+    await kv.store().set_text(f"compare-ok:{ref}", json.dumps({"q": "who makes the best espresso"}),
+                              compare.MARKER_TTL_S)
+    result = await _collect()
+    assert sent == [] and await _rows() == []
+    assert result["skip_reasons"] == {"no_marker": 1}, result

@@ -108,8 +108,14 @@ def _answered_since(value: str | None, since: datetime) -> bool:
         return False
 
 
+# The marker's format version, in its key: a run reads only markers written by a call path that
+# applies its own rules (v2 never marks a merged answer), so one an earlier build wrote is ignored
+# rather than compared under rules it never checked.
+MARKER_VERSION = "v2"
+
+
 def marker_key(call_ref: str) -> str:
-    return f"compare-ok:{call_ref}"
+    return f"compare-ok:{MARKER_VERSION}:{call_ref}"
 
 
 def configured() -> bool:
