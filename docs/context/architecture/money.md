@@ -757,26 +757,27 @@ still reserves its own money and is refused when it is not there. A decision a s
 cost reads `reach`. It first reads the team's money wherever it sits (`allowance.credit_bound`, the
 balance plus the whole hold less what queued charges spent, from the database alone): below the
 amount, the money is not there and nothing else is read; a team off the allowance is answered from
-the database too. Otherwise it reads the figure, and when that falls short gives the counter back
-(`give_back_for_exact_path`) and reads the database again, where the money now is. A counter that
-gives nothing back is no answer by itself (another request may have emptied it and not yet released
-its money, or a refill may hold the lease while it publishes), so it reads again, backing off, for
-as long as a call waits for a refill. Then the answer is short and sure unless the team's money
-lease is still held (`_moving`): money nobody is moving (calls in flight hold it, the store lost the
-counter) is out of every call's reach, and so is any counter while the store cannot answer. A paying
-wallet draws credit `reach` confirms, settles when the money is not there, and is answered 503
-`credit_unconfirmed` before its payment is recorded when neither is confirmed, so the same payment
-may be sent again; it never pays twice for credit it has, nor is answered again and again with
-credit no call can reach. The arenas' start checks ask from outside their sessions (`CreditShort`,
-`gives_counter_back`), and the run they start again takes the confirmed answer (`short_of`) instead
-of reading the two stores once more; their quotes keep the figure it confirmed (`balance_for`). A
-reserve the balance refused, a hub price hold included, runs again when `onto_balance` puts the
-money on the balance (the counter given back, or found already given back by another request); a
-daily-cap refusal runs again when a give-back frees the day's excess or the day's committed figure,
-read again, now leaves room. The Sheets panel's teams, the consent page and the CLI's home end their
-read before asking the store, and the billing state's callers read the counter before opening their
-session, so no connection waits on it. The column itself is unchanged and the invariant below still
-holds for it.
+the database too. Otherwise it reads the figure, counting the counter only for what it still offers
+when read again after the database (a give-back in between would put the same money on the balance
+and count it twice), and when that falls short gives the counter back (`give_back_for_exact_path`)
+and reads the database again, where the money now is. A counter that gives nothing back is no answer
+by itself (another request may have emptied it and not yet released its money, or a refill may hold
+the lease while it publishes), so it reads again, backing off, for as long as a call waits for a
+refill. Then the answer is short and sure unless the team's money lease is still held (`_moving`):
+money nobody is moving (calls in flight hold it, the store lost the counter) is out of every call's
+reach, and so is any counter while the store cannot answer. A paying wallet draws credit `reach`
+confirms, settles when the money is not there, and is answered 503 `credit_unconfirmed` before its
+payment is recorded when neither is confirmed, so the same payment may be sent again; it never pays
+twice for credit it has, nor is answered again and again with credit no call can reach. The arenas'
+start checks ask from outside their sessions (`CreditShort`, `gives_counter_back`), and the run they
+start again takes the confirmed answer (`short_of`) instead of reading the two stores once more;
+their quotes keep the figure it confirmed (`balance_for`). A reserve the balance refused, a hub
+price hold included, runs again when `onto_balance` puts the money on the balance (the counter given
+back, or found already given back by another request); a daily-cap refusal runs again when a
+give-back frees the day's excess or the day's committed figure, read again, now leaves room. The
+Sheets panel's teams, the consent page and the CLI's home end their read before asking the store,
+and the billing state's callers read the counter before opening their session, so no connection
+waits on it. The column itself is unchanged and the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 

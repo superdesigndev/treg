@@ -4451,7 +4451,7 @@ async def test_a_wallet_does_not_pay_for_credit_a_refill_is_publishing(org_id, s
 
     monkeypatch.setattr(runtime, "_counter_state", published_after_the_first_reading)
     assert await agent_payments._draws(_offer(), org_id) is True
-    assert len(readings) == 2 and await _given_back(org_id) == []
+    assert len(readings) == 3 and await _given_back(org_id) == [], "the counter read again once counted"
 
 
 async def test_a_wallet_is_asked_to_send_the_same_payment_again_while_its_credit_moves(
@@ -4466,6 +4466,25 @@ async def test_a_wallet_is_asked_to_send_the_same_payment_again_while_its_credit
     store.leases[runtime.money_key(org_id)] = "a give-back"
     with pytest.raises(agent_payments.CreditMoving):
         await agent_payments._draws(_offer(), org_id)
+
+
+async def test_a_counter_given_back_after_it_was_read_is_not_counted_twice(
+        org_id, store, monkeypatch):
+    """Calls in flight hold most of the hold, and another request gives the rest of the counter
+    back after this one read it: the same money is now on the balance. Counted once, the team
+    is short of an amount that the two readings together would have covered."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
+    epoch = await runtime.take(org_id, GRANT - 100_000)
+    state, readings = runtime._counter_state, []
+
+    async def read_before_the_give_back(org_id):
+        readings.append(1)
+        return (100_000, epoch) if len(readings) == 1 else await state(org_id)
+
+    assert await runtime._give_back(org_id, epoch) == 100_000
+    monkeypatch.setattr(runtime, "_counter_state", read_before_the_give_back)
+    assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
 
 
 async def test_a_quote_keeps_the_balance_the_check_confirmed(org_id, store, monkeypatch):

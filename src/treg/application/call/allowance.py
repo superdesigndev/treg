@@ -737,7 +737,17 @@ async def reach(org_id: int, amount_micro: int) -> Reach:
         async with session_maker() as db:
             free = await allowance.spendable(db, org_id)
             have = await spendable(db, org_id, offer or (0, None))
-        if have >= amount_micro or offer is None:
+        if offer is None:
+            return Reach(have, True)
+        if have > free:
+            # Counted only what the counter still offers after the database was read: a
+            # give-back in between empties it and puts the same money on the balance, which
+            # would otherwise count twice. Money a refill adds meanwhile is found on the next
+            # reading.
+            after = await _counter_state(org_id)
+            still = after[0] if after is not None and after[1] == offer[1] else 0
+            have = free + min(have - free, still)
+        if have >= amount_micro:
             return Reach(have, True)
         if await give_back_for_exact_path(org_id, amount_micro - free):
             async with session_maker() as db:
