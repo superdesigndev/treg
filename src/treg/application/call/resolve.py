@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import oauth, oauth_providers
-from ... import sandbox as demo_sandbox
 from ...config import get_settings
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity.routes_view import view as overflow_routes_view
@@ -1151,8 +1150,8 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
     Every clause is a refusal we WANT to be boring: an unpriced/unknown-confidence price
     (`platform_eligible`), a provider nobody enabled (`platform_key_for` — key AND allow-list), an
     OAuth provider (a platform key is meaningless for one: the credential is a user's own account),
-    or a demo org (the sandbox and the public demo must never be able to spend real money — the
-    landing page is reachable by anyone with the URL)."""
+    or the public demo org (it must never be able to spend real money: anyone with the URL can
+    reach it)."""
     if ep.get("platform_auth") == "anonymous" or not provider.uses_pasted_secret:
         return None
     cat = catalog_store.load()
@@ -1160,7 +1159,7 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
         return None
     if not get_settings().platform_key_for(ep["provider"]):
         return None
-    if demo_sandbox.is_sandbox(org) or org.public_demo:
+    if org.public_demo:
         return None
     return cat.cost_view(ep.get("cost"), ep["provider"]) or None
 
@@ -1187,7 +1186,7 @@ def _anonymous_offer(ep: dict, org: Org) -> dict | None:
     Catalog validation confines this mode to verified, free, read-only endpoints.
     """
     cost = anonymous_served(ep)
-    if cost is None or demo_sandbox.is_sandbox(org) or org.public_demo:
+    if cost is None or org.public_demo:
         return None
     return cost
 
@@ -1197,8 +1196,8 @@ def _anonymous_refusal(ep: dict | None, org: Org | None) -> str:
     as `_anonymous_offer`: only an un-allow-listed provider is "not enabled"."""
     if ep is None or not get_settings().platform_provider_enabled(ep["provider"]):
         return "is a keyless public API that this server has not enabled"
-    if org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo):
-        return "is a keyless public API, but demo and sandbox teams do not call it: use a signed-up team"
+    if org is not None and org.public_demo:
+        return "is a keyless public API, but the public demo team does not call it: use a signed-up team"
     return ("is a keyless public API, but this tool is not served keyless here: only a verified, "
             "free, read-only catalog tool is")
 
@@ -1263,7 +1262,7 @@ def _marketplace_no_credential(
         lines.extend(_capability_alternatives(ep, org=org) if ep is not None else [])
         # attributed in `_anonymous_refusal`'s order, so the log names the reason the caller reads
         ours = ep is not None and _platform_key_missing(ep, provider)  # not allow-listed: treg's side
-        demo = not ours and org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo)
+        demo = not ours and org is not None and org.public_demo
         return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
                                 log_kind="platform_key_missing" if ours
                                 else "admission_denied" if demo else None)  # treg's demo policy

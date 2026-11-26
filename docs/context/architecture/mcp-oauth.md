@@ -469,9 +469,8 @@ Test the flow end to end: claims validation can pass while tools still forward t
 ## Sign-in mid-authorization
 
 A signed-out visitor to `/oauth/authorize` has the destination parked in a short-lived HttpOnly
-cookie and is sent to `/?signin=oauth`, which opens the sign-in modal without creating a sandbox
-session; the query parameter is only a UI cue and carries no OAuth data. Every sign-in door resumes
-the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
+cookie and is sent to `/?signin=oauth`, which opens the sign-in modal; the query parameter is only
+a UI cue and carries no OAuth data. Every sign-in door resumes the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
 cannot become a general post-login redirect.
 
 Resuming straight after sign-in means a new account reaches consent before the dashboard has made

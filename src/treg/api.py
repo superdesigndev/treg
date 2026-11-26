@@ -276,7 +276,7 @@ async def create_tool_request(
     """Open: file a "the catalog doesn't have X" report. No auth on purpose — the filer is most
     often an agent that just got zero search results and holds no token, and a signup wall here
     costs exactly the demand signal the catalog team wants. Per-IP rate limiting (ratestore) is
-    the abuse valve, same shape as POST /demo/sandbox; field caps bound the row.
+    the abuse valve; field caps bound the row.
 
     Identity is attribution, never authorization: when the caller happens to be signed in (token
     or same-origin session), the row records who asked so they can be told when it lands — a
@@ -359,7 +359,6 @@ router.routes.extend(auth_routes.grants_router.routes)
 router.routes.extend(org_routes.org_entry_router.routes)
 router.routes.extend(org_routes.invite_entry_router.routes)
 router.routes.extend(onboard_routes.onboard_entry_router.routes)
-router.routes.extend(onboard_routes.sandbox_router.routes)
 router.routes.extend(onboard_routes.onboard_teammate_router.routes)
 router.routes.extend(org_routes.invite_management_router.routes)
 router.routes.extend(org_routes.member_list_router.routes)

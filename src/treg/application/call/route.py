@@ -117,7 +117,6 @@ from ...domain.catalog.routing.plan import (
     sampled_provider_allowed, unscoped,
 )
 from ... import oauth_providers
-from ... import sandbox as demo_sandbox
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import allowance as allowance_runtime
@@ -886,7 +885,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
             # demo policy only where it is the reason given: a provider not enabled here is capacity
             demo = (get_settings().platform_provider_enabled(e["provider"]) and caller.org is not None
-                    and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo))
+                    and caller.org.public_demo)
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}",
                             **({"policy": True} if demo else {})})  # treg's demo policy, not capacity
             continue

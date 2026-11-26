@@ -4,7 +4,6 @@ import logging
 from datetime import date
 
 from ... import oauth_providers
-from ... import sandbox as demo_sandbox
 from ...infra.db import session_maker
 from ...domain.governance import access as access_policy
 from ...domain.governance import publicdemo as publicdemo_policy
@@ -37,9 +36,8 @@ async def authorize_call(
         except access_policy.AccessPolicyError as exc:
             raise AuthorizationFailed(
                 "policy_denied", status_code=403, detail=exc.detail) from exc
-        try:  # per-user daily cap (skips sandbox + unmetered members)
-            slot_day = await usage_policy.enforce_daily_cap(
-                caller, db, sandbox=demo_sandbox.is_sandbox(caller.org))
+        try:  # per-user daily cap (skips unmetered members)
+            slot_day = await usage_policy.enforce_daily_cap(caller, db)
         except usage_policy.UsagePolicyError as exc:
             raise AuthorizationFailed(
                 "daily_cap_reached", status_code=429, detail=exc.detail) from exc
@@ -67,15 +65,3 @@ async def return_daily_slot(caller: Caller, slot_day: date | None) -> None:
             await db.commit()
     except Exception as exc:  # noqa: BLE001 - the refusal stands either way
         log.warning("daily-cap slot return failed for membership %s: %s", caller.membership.id, exc)
-
-
-async def enforce_public_demo_limit(client_ip: str) -> None:
-    """Persist one sandbox live-wire rate hit and translate its policy refusal."""
-    async with session_maker() as db:
-        try:
-            await publicdemo_policy.enforce_public_demo_ip_cap(client_ip, db)
-        except publicdemo_policy.PublicDemoLimitError as exc:
-            await db.commit()
-            raise AuthorizationFailed(
-                "public_demo_rate_limited", status_code=429, detail=exc.detail) from exc
-        await db.commit()

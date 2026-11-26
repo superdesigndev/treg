@@ -115,7 +115,7 @@ export default function data(){
       copyRecipe:null, recipeTab:'CLI', viewRecipe:null, recipeSaved:false,
       // detail pages (shareable /app/skills/<name> + /app/tools/<name> deep links)
       detail:null, detailData:null, detailErr:'', detailLoading:false, detailFile:'SKILL.md', detailCopied:'', detailNote:'',
-      shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no sandbox/tour)
+      shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no tour)
       share:{on:false, email:'', role:'viewer', full:true, busy:false, err:'', sent:null, member:null},  // detail-page "Share…" (invite + land on this page)
       me:'', icHash:'', myOrgs:[], isAdmin:false,
       meAvatar:null, uploadsOn:false, avatarDialog:false,  // /auth/me: your avatar, whether this registry takes uploads; the Your avatar dialog
