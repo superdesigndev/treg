@@ -51,6 +51,9 @@ _BACKLOG_FOLD = 100
 _BACKLOG_BATCHES = 5
 # How long a call waits in all for its settle entry before answering with its charge.
 _SETTLED_WAIT_S = 1.0
+# The end of that wait kept for one last read of the entry, whatever the folding did with the
+# rest (a fifth of it at most).
+_LAST_READ_S = 0.2
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
@@ -1068,13 +1071,17 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
     One fold of the team at a time in this process: a call that finds one open waits for it,
     holding no connection, instead of starting its own. A call that finds another process
     folding reads the entry again shortly. Everything, waits for a pool connection included,
-    shares one deadline, `_SETTLED_WAIT_S`, and a fold that gives up ends it. `amount`, the
-    charge, when the entry is not there by then or cannot be read: the charge is written, and
-    "nothing" would be the one answer known to be wrong."""
+    shares one deadline, `_SETTLED_WAIT_S`, of which the last `_LAST_READ_S` is kept for one
+    more read of the entry: a fold that runs out the time, or another process that settled the
+    call meanwhile, still leaves the call that look. `amount`, the charge, when the entry is not
+    there by then or cannot be read: the charge is written, and "nothing" would be the one
+    answer known to be wrong."""
     budget, found = [_BACKLOG_BATCHES], []
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _SETTLED_WAIT_S
+    folding_until = end - min(_LAST_READ_S, _SETTLED_WAIT_S / 5)
     try:
-        async with asyncio.timeout(_SETTLED_WAIT_S) as deadline:
-            loop = asyncio.get_running_loop()
+        async with asyncio.timeout_at(folding_until):
             while True:
                 outcome = await _fold_backlog(org_id, budget, call_id, found)
                 if found:
@@ -1082,26 +1089,40 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
                 if outcome is _Fold.MORE:
                     # The batch's own transaction has just looked for the entry: fold on.
                     continue
+                if outcome in (_Fold.GAVE_UP, _Fold.SHORT):
+                    break
                 if outcome is _Fold.HERE:
                     await _team_session_ended(org_id)
                 # The timeout's cancel can be absorbed on the way out: a money session that
                 # fails and is cancelled while it closes re-raises its own failure, which the
                 # fold reports as giving up. So the deadline is looked at, not only awaited.
-                if loop.time() >= deadline.when():
+                if loop.time() >= folding_until:
                     break
                 async with session_maker() as db:
                     settled = await allowance.settled_micro(db, org_id, call_id)
                 if settled is not None:
                     return settled
-                if outcome in (_Fold.GAVE_UP, _Fold.SHORT):
-                    break
                 if outcome is _Fold.ELSEWHERE:
                     await asyncio.sleep(0.05)
     except TimeoutError:
-        if found:  # committed before the deadline cut the fold's cleanup short
-            return found[0]
+        pass
     except Exception:
         log.error("reading the settle entry of allowance call %s failed", call_id, exc_info=True)
         return amount
+    if found:  # committed before the deadline cut the fold's cleanup short
+        return found[0]
+    if loop.time() < end:
+        try:
+            async with asyncio.timeout_at(end):
+                async with session_maker() as db:
+                    settled = await allowance.settled_micro(db, org_id, call_id)
+            if settled is not None:
+                return settled
+        except TimeoutError:
+            pass
+        except Exception:
+            log.error("reading the settle entry of allowance call %s failed", call_id,
+                      exc_info=True)
+            return amount
     log.warning("allowance call %s was answered before its charge was applied", call_id)
     return amount

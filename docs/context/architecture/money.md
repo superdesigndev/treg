@@ -686,7 +686,9 @@ past the bound do not make every new team scan them.
   idle one can be pruned meanwhile). A call that finds one open waits for it holding no
   connection, a call that finds another process folding reads its entry again shortly, and
   every step, waits for a pool connection included, shares one deadline: after
-  `_SETTLED_WAIT_S` it answers with what the ledger took, or else with its charge. A
+  `_SETTLED_WAIT_S` it answers with what the ledger took, or else with its charge. The end of
+  that wait (`_LAST_READ_S`) is kept for one last read of the entry, so folding that runs out
+  the time still leaves the call a look at an entry another process wrote meanwhile. A
   busy team's calls therefore cannot each hold a request connection queued on the team's hold
   row; the queue they leave is the loop's.
 

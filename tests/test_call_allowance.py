@@ -2238,6 +2238,34 @@ async def test_a_call_reads_its_entry_once_per_batch_and_once_at_the_end(org_id,
     assert len(reads) == 3 + 1
 
 
+async def test_a_call_keeps_time_to_read_an_entry_another_process_wrote(org_id, store, monkeypatch):
+    """The first batch misses the call's charge. Another process then settles it, and the next
+    lease takes nearly the whole deadline to come. The call still reads its entry in the time
+    it kept for that, and answers with what the ledger took."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(4)])
+        await db.commit()
+    acquire, asked = store.acquire_lease, []
+
+    async def settled_elsewhere_then_slow(*args, **kwargs):
+        asked.append(True)
+        if len(asked) == 2:
+            async with session_maker() as db:
+                db.add(LedgerEntry(id=uuid4().hex, org_id=org_id, kind="settle", amount_micro=0,
+                                   call_id="elsewhere", endpoint_id="e"))
+                await db.commit()
+            await asyncio.sleep(5)
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(store, "acquire_lease", settled_elsewhere_then_slow)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "elsewhere", 2_000_000) == 0
+    assert time.monotonic() - started < runtime._SETTLED_WAIT_S + 0.2
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
