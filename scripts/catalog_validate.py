@@ -537,8 +537,6 @@ UNDECLARED_RESERVE = frozenset({
     "seranking.google.keywords.volume",
     "seranking.web.backlinks.summary",
     "seranking.web.url.metrics",
-    "serpstat.google.domain.overview",
-    "serpstat.google.keywords.volume",
 })
 
 

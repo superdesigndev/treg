@@ -3821,9 +3821,8 @@ adapters:
     route: false
     accepts: [[q]]
     in: {q: body.params.keyword}
-    const: {body.id: "1", body.method: SerpstatKeywordProcedure.getKeywordTop, body.params.se: g_us, body.params.size: 3}
+    const: {body.id: "1", body.method: SerpstatKeywordProcedure.getKeywordTop, body.params.se: g_us, body.params.filters.top_size: 3}
     out: {results: result.data.top, count: "len(result.data.top)"}
-    miss: "coalesce(result.data.top, []) == []"
   octen.web.extract:
     route: false
     accepts: [[url]]
