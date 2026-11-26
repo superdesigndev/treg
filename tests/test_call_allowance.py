@@ -24,6 +24,7 @@ from treg.application.call.intake import CallMeta, prepare_call_intake
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
+from treg.timeutil import utcnow_naive
 from treg.domain import money as ledger
 from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
@@ -2924,7 +2925,7 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
     folded: list[int] = []
     real = allowance_sweep._fold_team
 
-    async def first_only(session_maker, team):
+    async def first_only(session_maker, team, oldest=None):
         folded.append(team)
         return await real(session_maker, team)
 
@@ -3066,6 +3067,126 @@ async def test_a_team_whose_rows_stay_locked_does_not_hold_up_the_others(
         assert await allowance_sweep.fold_queued_once(session_maker) == 1
     assert await _queued(org_id) == 1 and await _queued(org_id + 1) == 0
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+@pytest.fixture
+def fold_skip_lines(monkeypatch, caplog):
+    """`fold_skip_lines()` is every `allowance_fold_skips` line the default sink wrote, each
+    one physical line of JSON."""
+    monkeypatch.setattr(allowance_sweep, "_skips", {})
+    caplog.set_level(logging.INFO, logger=allowance_sweep._skip_log.name)
+    out = io.StringIO()
+    sinks = [h for h in allowance_sweep._skip_log.handlers if type(h) is logging.StreamHandler]
+    assert sinks and not allowance_sweep._skip_log.propagate
+    for handler in sinks:
+        monkeypatch.setattr(handler, "stream", out)
+
+    def lines():
+        raw = [line for line in out.getvalue().splitlines() if line]
+        assert all(line.startswith("allowance_fold_skips {") for line in raw), raw
+        return [json.loads(line.split(" ", 1)[1]) for line in raw]
+    return lines
+
+
+@pytest.mark.parametrize("reason", [
+    "lease_held", "busy_lock", "admission_timeout", "lock_timeout", "failed"])
+async def test_every_team_a_fold_gives_up_is_logged_with_how_long_its_queue_waited(
+        org_id, store, monkeypatch, fold_skip_lines, reason):
+    """A busy team skipped on every pass grows its queue silently otherwise: each skip is
+    counted by reason and the minute's line names the teams whose charges waited longest."""
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e.metered", 400, reserved_micro=400)])
+        await db.execute(update(CallCharge).where(CallCharge.call_id == "queued").values(
+            created_at=utcnow_naive() - timedelta(seconds=90)))
+        await db.commit()
+    lock = runtime.money_lock(org_id)
+    if reason == "lease_held":
+        store.leases[runtime.money_key(org_id)] = "another process"
+    elif reason == "busy_lock":
+        await lock.acquire()
+    elif reason == "admission_timeout":
+        async def waited_out():
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        monkeypatch.setattr(allowance_sweep.money_admission, "admit", _admission(waited_out))
+    else:
+        message = "canceling statement due to lock timeout" if reason == "lock_timeout" else "boom"
+
+        async def stuck(db, team, **kwargs):
+            raise DBAPIError("SELECT", None, Exception(message))
+        monkeypatch.setattr(allowance, "fold_charges_in_transaction", stuck)
+    try:
+        assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    finally:
+        if lock.locked():
+            lock.release()
+    assert await _queued(org_id) == 1
+    [line] = fold_skip_lines()
+    assert line["kind"] == "fold" and line["reason"] == reason
+    assert line["skips"] == 1 and line["orgs"] == 1 and line["oldest_s"] >= 89
+    assert line["top"][0][:2] == [org_id, 1] and line["top"][0][2] >= 89
+
+
+async def test_a_team_this_process_is_working_on_is_logged_as_its_own_lock_not_another_process(
+        org_id, store, fold_skip_lines):
+    """A request of this process holds the team's lease and its money lock together; calling
+    that `lease_held` would send whoever reads the line looking for another process."""
+    store.leases[runtime.money_key(org_id)] = "a request of this process"
+    lock = runtime.money_lock(org_id)
+    await lock.acquire()
+    try:
+        assert await allowance_sweep._fold_team(session_maker, org_id) is None
+        assert not await allowance_sweep._close_idle(session_maker, org_id, utcnow_naive())
+    finally:
+        lock.release()
+    allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    assert sorted((line["kind"], line["reason"]) for line in fold_skip_lines()) == [
+        ("close", "busy_lock"), ("fold", "busy_lock")]
+
+
+async def test_a_minute_of_skips_is_one_line_per_reason_with_the_stalest_teams_first(
+        fold_skip_lines):
+    now = utcnow_naive()
+    for team in range(1, 8):
+        for _ in range(team):
+            allowance_sweep._note_skip("fold", team, "lease_held",
+                                       now - timedelta(seconds=10 * team))
+    allowance_sweep._note_skip("close", 3, "admission_timeout")
+    assert fold_skip_lines() == [], "nothing before the minute is up"
+    allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    lines = {(line["kind"], line["reason"]): line for line in fold_skip_lines()}
+    folds = lines[("fold", "lease_held")]
+    assert folds["skips"] == 28 and folds["orgs"] == 7 and folds["oldest_s"] >= 70
+    assert [team for team, _, _ in folds["top"]] == [7, 6, 5, 4, 3]
+    assert lines[("close", "admission_timeout")]["top"] == [[3, 1, None]]
+    assert allowance_sweep._skips == {}
+
+
+async def test_a_process_that_no_longer_gets_a_share_still_logs_the_skips_it_counted(
+        store, monkeypatch, fold_skip_lines):
+    """Skips are otherwise logged at the end of a pass: a process whose share went to another
+    process would keep them unwritten for as long as every share stays taken."""
+    monkeypatch.setattr(allowance_sweep, "fold_shards", lambda: 1)
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.05)
+    store.leases[allowance_sweep.pass_key((0, 1))] = "another process"
+
+    async def no_pass(*args, **kwargs):
+        raise AssertionError("every share is taken, so this process runs no pass")
+    monkeypatch.setattr(allowance_sweep, "run_once", no_pass)
+    allowance_sweep._note_skip("fold", 7, "lease_held", utcnow_naive() - timedelta(seconds=40))
+    task = asyncio.create_task(allowance_sweep.worker(fold_every_s=0.01))
+    try:
+        for _ in range(100):
+            if fold_skip_lines():
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    [line] = fold_skip_lines()
+    assert line["top"][0][:2] == [7, 1] and line["top"][0][2] >= 40
 
 
 async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_lease(

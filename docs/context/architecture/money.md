@@ -665,7 +665,19 @@ past the bound do not make every new team scan them.
   whatever the traffic and however many teams are busy, and none of them comes from the pool requests use. A team
   another process is working on (its lease is taken) is skipped, not waited for; so is a team
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
-  short wait instead of falling back), and the next pass comes back to it. The idle sweep
+  short wait instead of falling back), and the next pass comes back to it. Every team a fold
+  or an idle close gives up is counted by reason (`busy_lock`: a money session of the team is
+  open in this process, checked first since that session holds the lease too; `lease_held`:
+  another process has it; `admission_timeout`, `lock_timeout`, `failed`), and each process logs one
+  `allowance_fold_skips` line per kind of work and reason a minute (logger
+  `treg.allowance_fold_skips`, one physical line of JSON like `allowance_skips`): the skips, the teams, the
+  longest any of their oldest charges had waited, and the teams waiting longest (`_note_skip`).
+  A team's wait is how old its oldest charge was when the pass read the teams with queued
+  charges, not when it was skipped: a team whose queue an earlier batch of the same pass
+  emptied is still listed with that age. Reading the queue again for each skip would cost a
+  query per skip for a diagnostic line.
+  A team skipped on every pass is visible there, not only in the queue's age. The loop writes
+  due lines on every turn, so a process that lost its share still writes what it counted. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own
   clock, which every process shares (a lease in the store taken for the sweep period and never
   given back, so a share handed to another process is not swept again within it), and it too goes through every idle hold of the share a page of teams at a time. A pass
