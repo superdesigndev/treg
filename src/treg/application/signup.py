@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, analytics, crypto, policy, ratestore, sandbox as demo_sandbox
+from .. import adsconv, analytics, crypto, policy, ratestore
 from . import affiliates
 from ..config import get_settings
 from ..domain import money as ledger
@@ -403,8 +403,6 @@ async def create_org(
     """`ref_code` is a Dub partner's code typed at a CLI or agent signup; a Dub link click
     (`affiliate_cookie`) wins over it. The friend referral comes only from `referral_cookie`."""
     async with session_maker() as db:
-        if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
-            raise SignupError("sandbox_user")
         # Previously registered identities may still hold tokens, so check this door too.
         if blocked_email(user.email, "create_org"):
             raise SignupError("blocked_domain")

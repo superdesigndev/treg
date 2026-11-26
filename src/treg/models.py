@@ -51,7 +51,7 @@ class Org(SQLModel, table=True):
     # ponytail: one alias only; a second rename overwrites it. An alias table if that ever bites.
     previous_slug: str | None = Field(default=None, index=True)
     suspended: bool = Field(default=False)  # a suspended org's members are locked out (403)
-    demo: bool = Field(default=False)  # a sandbox team seeded by onboarding — labeled + one-click removable
+    demo: bool = Field(default=False)  # a demo team seeded by onboarding: labeled and one-click removable
     # A team whose token is published (e.g. on the landing page): non-admin members are locked to
     # /call + reads, and may never act as a user (see identity.access.require_member /
     # require_identity).
@@ -1215,7 +1215,7 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
@@ -1237,7 +1237,7 @@ class Hold(SQLModel, table=True):
     """
 
     id: str = Field(primary_key=True)  # == call_id
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
@@ -1434,7 +1434,7 @@ class TagSpend(SQLModel, table=True):
     __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     dim: str  # the tag key, e.g. "customer"
     val: str  # the tag value, e.g. "cust_8123"
     # The hold this belongs to (== call_id). Kept after settle so a row can be traced back to its call.
@@ -1779,7 +1779,7 @@ class IdempotentCall(SQLModel, table=True):
     # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit.
     # The response cache cannot outlive its caller: once a membership is revoked nobody can replay
     # its key, so the membership foreign key cascades instead of blocking token revocation.
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     membership_id: int = Field(foreign_key="membership.id", ondelete="CASCADE", index=True)
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
@@ -2637,6 +2637,9 @@ class ArenaInsightState(SQLModel, table=True):
     """Persistent collection cursor and public aggregate, never raw request/response content."""
     id: str = Field(primary_key=True)
     cursor: int = 0
+    # Where the next cycle starts when the rewind finds no recent row: the cycle's starting
+    # cursor, moved up only to rows it collected. None (rows from before it existed): `cursor`.
+    resume_cursor: int | None = None
     scan_until: NaiveUTC
     updated_at: NaiveUTC | None = None
     payload: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))

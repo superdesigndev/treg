@@ -55,6 +55,8 @@ is self-teaching. This fragment holds only what the code and help cannot say. Th
   subcommands, so `treg catalog <platform>` keeps working and a multi-word query needs no quoting.
   The catalog commands are unauthenticated: the catalog is public and worth reading before signing
   up. The CLI never parses catalog YAML (pyyaml is a server extra).
+  The detail comparison uses the server's evidence order when the endpoint response includes
+  `siblings_ranked`. It puts any routed option just after the requested endpoint.
 - **`serve start`** detaches a child via `sys.executable`, never the `treg` on `PATH`, which may be an
   older build.
 

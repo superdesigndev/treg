@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from . import schema
 from .schema import CONFIDENCES, COST_SOURCES, COST_UNITS  # noqa: F401 - re-exported vocabulary
@@ -853,7 +854,8 @@ def cost_row(ep: dict, cat: Catalog) -> dict | None:
 
 
 _QUOTE_COST = frozenset({"type", "value", "currency", "per", "unit", "usd", "usd_min", "varies", "display_usd",
-                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit"})
+                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit",
+                         "trial_calls_per_team_day"})
 
 
 def quote_cost(cost: dict | None) -> dict | None:
@@ -1811,6 +1813,57 @@ def unflatten_dotted(flat: dict) -> dict:
     return nested
 
 
+@dataclass(frozen=True)
+class CallTemplateParts:
+    method: str
+    authorization_method: str
+    path_params: dict
+    query_params: dict
+    body: Any
+    body_type: str | None
+    files: dict
+
+
+def call_template_parts(
+    ep: dict, your_values: dict | None = None, *, merge_path_params: bool = False,
+) -> CallTemplateParts:
+    inp = ep.get("input") or {}
+    test = ep.get("test_request") or {}
+    methods = tuple(ep.get("authorization_methods") or ())
+    auth = str(ep.get("authorization_method") or (methods[0] if methods else ""))
+    path_params = _required_examples(inp.get("pathParams"), auth) | (test.get("pathParams") or {})
+    query_params = _required_examples(inp.get("queryParams"), auth) | (test.get("queryParams") or {})
+    if merge_path_params:
+        path_params, query_params = {}, path_params | query_params
+
+    body = test.get("body")
+    if body is None:
+        body = _required_examples(inp.get("body"), auth) or None
+    if your_values:
+        body_values = {}
+        slots = {
+            "pathParams": query_params if merge_path_params else path_params,
+            "queryParams": query_params,
+            "body": body_values,
+        }
+        for dotted, value in your_values.items():
+            slot, _, name = dotted.partition(".")
+            if slot in slots:
+                slots[slot][name] = value
+        if body_values:
+            body = {**(body or {}), **body_values}
+
+    return CallTemplateParts(
+        method=ep["method"],
+        authorization_method=auth if len(methods) <= 1 else "",
+        path_params=path_params,
+        query_params=query_params,
+        body=body,
+        body_type=test.get("bodyType") or inp.get("bodyType"),
+        files=test.get("files") or {},
+    )
+
+
 def call_template(ep: dict) -> str:
     """A paste-ready `treg call …` line for this endpoint.
 
@@ -1821,25 +1874,16 @@ def call_template(ep: dict) -> str:
     tool (the server walks the marketplace credential ladder), and path `{placeholders}` ride as
     `--query` params the server substitutes — so the line is copy-paste-true for everyone.
     """
-    inp = ep.get("input") or {}
-    test = ep.get("test_request") or {}
-    authorization_methods = tuple(ep.get("authorization_methods") or ())
-    authorization_method = str(ep.get("authorization_method") or "")
-    if not authorization_method and authorization_methods:
-        authorization_method = authorization_methods[0]
-
+    template = call_template_parts(ep)
     parts = ["treg call", ep["id"]]
-    if ep["method"] != "GET":
-        parts += ["--method", ep["method"]]
-    # A static catalog template cannot know which grants this team already connected. Let the
-    # resolver choose the sole existing grant, or the ordered default when both/none exist. A
-    # single-method endpoint stays explicit because there is no alternate route to suppress.
-    if authorization_method and len(authorization_methods) <= 1:
-        parts += ["--authorization-method", authorization_method]
+    if template.method != "GET":
+        parts += ["--method", template.method]
+    if template.authorization_method:
+        parts += ["--authorization-method", template.authorization_method]
     # Path params first (the server folds them into the path), then query params proper.
-    for name, value in {**_required_examples(inp.get("pathParams"), authorization_method), **(test.get("pathParams") or {})}.items():
+    for name, value in template.path_params.items():
         parts += ["--query", shlex.quote(f"{name}={wire_value(value)}")]
-    for name, value in {**_required_examples(inp.get("queryParams"), authorization_method), **(test.get("queryParams") or {})}.items():
+    for name, value in template.query_params.items():
         for encoded in query_values(ep, name, value):
             # Quote the COMPLETE argv token, not just its value. `name=['US']` lost its inner
             # quotes after shell parsing and became either an unmatched glob (zsh) or `[US]`;
@@ -1847,8 +1891,7 @@ def call_template(ep: dict) -> str:
             # same request the structured MCP path sends.
             parts += ["--query", shlex.quote(f"{name}={encoded}")]
 
-    body = test.get("body") if test.get("body") is not None else (
-        _required_examples(inp.get("body"), authorization_method) or None)
+    body = template.body
     # `is not None`, not truthiness: `body: {}` is a real stored test request — a POST that takes no
     # arguments but still requires a JSON body — and dropping `--data '{}'` from the line hands the
     # reader a command that differs from the one that was tested, on handlers that reject an empty
@@ -1856,7 +1899,7 @@ def call_template(ep: dict) -> str:
     # treg can faithfully relay a caller-supplied GET body, but generated shell commands never add
     # one: too many clients/proxies silently discard it. The stored test request can still preserve
     # the provider's unusual verification contract without printing a misleading paste-ready line.
-    if body is not None and ep["method"] != "GET":
+    if body is not None and template.method != "GET":
         # Catalog schemas flatten nested JSON as dotted keys (`params.domain`). MCP callers
         # nest the object themselves; the paste-ready command must do the same expansion so
         # `--data` is a valid wire body rather than a flat object Serpstat (and JSON-RPC)
@@ -1866,6 +1909,25 @@ def call_template(ep: dict) -> str:
         parts += ["--data", shlex.quote(json.dumps(
             body, separators=(",", ":"), ensure_ascii=False))]
     return " ".join(parts)
+
+
+def provider_auth_hint(ep: dict) -> str:
+    if ep.get("platform_auth") == "anonymous":
+        return "no provider key required"
+    return "key injected server-side"
+
+
+def overflow_billing_hint(provider: str, fields: dict) -> str | None:
+    via = fields.get("overflow_via")
+    price = fields.get("overflow_price_usd")
+    unit = fields.get("overflow_price_unit")
+    if not via or price is None or not unit:
+        return None
+    return (
+        f"when treg's own {provider} account is out this may be served through the "
+        f"overflow relay ({via}) and bill ${price:g} per {unit} instead "
+        "of the direct price; the answer says so (X-Treg-Served-Via / served_via)"
+    )
 
 
 def _input_hint(ep: dict) -> str:

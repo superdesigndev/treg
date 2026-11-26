@@ -375,3 +375,88 @@ def test_the_rewind_asks_for_an_expression_postgresql_cannot_answer_by_walking_t
     sql = str(service.rewind_query(["a.b"], now()).compile(dialect=postgresql.dialect()))
     assert "min(callrecord.id + 0)" in sql
     assert "callrecord.endpoint_id IN" in sql and "callrecord.created_at >=" in sql
+
+
+def test_the_batch_read_asks_each_arena_endpoint_on_its_own_index():
+    """`endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n` is planned as a primary-key
+    walk from the cursor that reads every endpoint's rows; one ordered probe per endpoint reads
+    `ix_callrecord_endpoint_id_id` entries of the Arena's rows only."""
+    from sqlalchemy.dialects import postgresql
+
+    dialect = postgresql.dialect()
+    window = (CallRecord.created_at >= now(), CallRecord.created_at < now())
+    ids = str(service.batch_ids_query(["a.b", "c.d"], 7, 99, window).compile(dialect=dialect))
+    assert "JOIN LATERAL" in ids and "VALUES" in ids and " IN " not in ids
+    assert "callrecord.endpoint_id = arena_endpoint.endpoint_id" in ids
+    assert "callrecord.id <=" in ids and "callrecord.created_at >=" in ids
+
+
+async def _bulk(rows):
+    """(endpoint_id, created_at) pairs, inserted in order, so ids follow the list."""
+    async with session_maker() as db:
+        for endpoint_id, created_at in rows:
+            db.add(CallRecord(user_email="synthetic@example.test", tool_name=endpoint_id, method="GET",
+                path="/v1/x", status_code=200, endpoint_id=endpoint_id, provider="tomba",
+                credential_tier="platform", params_hash="h", created_at=created_at))
+        await db.commit()
+
+
+async def _observed() -> int:
+    async with session_maker() as db:
+        return len((await db.execute(select(ArenaObservation.id))).all())
+
+
+async def test_rows_older_than_the_window_do_not_take_a_batchs_places(clients):
+    """A cold start over a long history: only rows inside the window count toward a batch, so
+    one row in it after a thousand older ones is published in the first batch."""
+    old = now() - timedelta(days=service.WINDOW_DAYS + 1)
+    await _bulk([(EP, old)] * 1000 + [(EP, now() - timedelta(seconds=180))])
+    assert not await service.collect_batch(session_maker), "published in one batch"
+    assert await _observed() == 1
+
+
+async def test_a_row_written_before_the_cutoff_is_read_whatever_its_id(clients):
+    """Ids follow insertion, not `created_at`: a row of the cycle can have a larger id than one
+    written after the cutoff. Both are committed before the batch, so the cycle counts it."""
+    # collect_batch cuts the cycle off 60 s before now.
+    await _bulk([(EP, now() - timedelta(seconds=58)), (EP, now() - timedelta(seconds=62))])
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1
+
+
+async def test_a_cycle_cut_off_long_ago_publishes_without_reading_past_it(clients):
+    """The cycle's cutoff fell behind while a busy endpoint kept writing. The one row of the
+    cycle is published in one batch, not after the rows written since."""
+    _, _, version = service._catalog()
+    until = now() - timedelta(hours=1)
+    async with session_maker() as db:
+        db.add(ArenaInsightState(id=version, cursor=0, scan_until=until, updated_at=None, payload={}))
+        await db.commit()
+    other = "hunter.people.email.find"
+    await _bulk([(EP, until - timedelta(seconds=30))]
+                + [(other, until + timedelta(seconds=5 + index)) for index in range(1000)])
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1
+
+
+async def test_an_arena_row_committed_after_a_later_id_is_read_by_the_next_cycle(clients):
+    """An Arena row takes its id, and a row of another endpoint takes the next id and commits
+    first. The cycle sees only the second, finds its span empty of the window and publishes;
+    the first commits afterwards. The next cycle must still read it."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("needs two concurrent write transactions")
+    async with session_maker() as arena_write:
+        arena_write.add(CallRecord(user_email="synthetic@example.test", tool_name=EP, method="GET",
+            path="/v1/x", status_code=200, endpoint_id=EP, provider="tomba", credential_tier="platform",
+            params_hash="late", created_at=now() - timedelta(seconds=180)))
+        await arena_write.flush()
+        await _bulk([("not.an.arena.endpoint", now() - timedelta(seconds=170))])
+        assert not await service.collect_batch(session_maker)
+        assert await _observed() == 0
+        await arena_write.commit()
+    async with session_maker() as db:
+        state = (await db.execute(select(ArenaInsightState))).scalar_one()
+        state.updated_at = now() - timedelta(seconds=service.REFRESH_SECONDS + 1)
+        await db.commit()
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1

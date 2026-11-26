@@ -451,12 +451,6 @@ class Settings(BaseSettings):
 
     api_token: str = "dev-token"
 
-    # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
-    # live wire: a sandbox call to the exact seeded stripe tool relays for real with THIS key
-    # injected — the key never exists in any sandbox org (see sandbox.is_live_tool / api.call_tool).
-    # Empty = every sandbox call synthesizes.
-    demo_stripe_key: str = ""
-
     # Cross-tenant super-admin bearer (env TREG_ADMIN_TOKEN). Presenting it authorizes every
     # /admin/* endpoint regardless of org. Empty = the env key is disabled (only is_superadmin
     # users can reach /admin). Keep it long + secret; it sees ALL orgs.
@@ -869,10 +863,9 @@ class Settings(BaseSettings):
     # already theirs.
     oauth_billed_providers: str = ""
 
-    # OUR billing account's keys. Deliberately NOT the `demo_stripe_*` pair above: that one belongs to
-    # the landing page's sandbox feed and its webhook secret signs a different endpoint. Empty secret
-    # key = top-ups are off (the /billing/* endpoints 503); empty webhook secret = the webhook 404s,
-    # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
+    # OUR billing account's keys. Empty secret key = top-ups are off (the /billing/* endpoints 503);
+    # empty webhook secret = the webhook 404s, so an unconfigured deploy exposes no unauthenticated
+    # POST surface.
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     ops_slack_webhook_url: str = ""

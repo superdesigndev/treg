@@ -572,6 +572,7 @@ endpoints:
       note: "no parameters; GET with HTTP Basic auth only. Unlike every other endpoint here it is GET, takes no task array, and costs nothing (`cost: 0`)"
     test_request: {queryParams: {}}   # no params; the empty mapping keeps the validator happy
     price: {value: '0', currency: USD, unit: call, note: free — the response's own `cost` field is 0}
+    settle: null
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/dataforseo.account.usage.json

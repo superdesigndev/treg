@@ -1,4 +1,5 @@
-"""A money transaction whose process stops running gives its row locks back after a bounded idle."""
+"""A money transaction gives its row locks back after a bounded idle, and none of its statements
+waits on another session's locks longer than a bounded time."""
 
 from __future__ import annotations
 
@@ -37,6 +38,33 @@ async def test_only_money_transactions_carry_the_idle_bound(postgres):
         assert await _timeout(db) == money_session_module.IDLE_IN_TRANSACTION_TIMEOUT
     async with session_maker() as db:
         assert await _timeout(db) == "0"
+
+
+async def test_only_money_transactions_carry_the_statement_bound(postgres):
+    async with money_session(session_maker()) as db:
+        assert (await db.execute(text("SHOW statement_timeout"))).scalar_one() == \
+            money_session_module.STATEMENT_TIMEOUT
+    async with session_maker() as db:
+        assert (await db.execute(text("SHOW statement_timeout"))).scalar_one() != \
+            money_session_module.STATEMENT_TIMEOUT
+
+
+async def test_a_writer_queued_behind_a_held_balance_row_gives_up_at_the_bound(
+        postgres, monkeypatch):
+    """The holder is still running, so the idle bound does not end it. The money writer behind it
+    is cancelled at the statement bound and returns its connection, instead of waiting for as
+    long as the holder keeps the row."""
+    org_id = postgres
+    monkeypatch.setattr(money_session_module, "STATEMENT_TIMEOUT", "200ms")
+    async with session_maker() as holder:
+        await holder.execute(update(Org).where(Org.id == org_id).values(balance_micro=Org.balance_micro - 100))
+        async with asyncio.timeout(2), money_session(session_maker()) as queued:
+            with pytest.raises(DBAPIError, match="statement timeout"):
+                await queued.execute(
+                    update(Org).where(Org.id == org_id).values(balance_micro=Org.balance_micro - 1))
+        await holder.commit()
+    async with session_maker() as db:
+        assert (await db.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar_one() == 900
 
 
 async def test_a_stalled_holder_frees_the_balance_row_for_the_next_writer(postgres, monkeypatch):

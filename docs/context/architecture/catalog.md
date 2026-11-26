@@ -835,6 +835,12 @@ price when the deployment can relay it (`routers.catalog._overflow_disclosure`: 
 `overflow_price_unit`, `overflow_via`; MCP `catalog_get` lifts them) - the price a free endpoint can
 bill when treg's own account is out.
 
+Endpoint detail ranks siblings available on treg's key and approved hub tools together, followed by
+catalog siblings that require another credential. Within each group, the sort uses the Wilson
+reliability band, then lower p50 latency, lower advertised USD price, and ascending endpoint ID.
+Reviews are displayed separately from the ranking. The HTTP detail's `siblings_ranked` flag lets
+the CLI use that order while still sorting responses from older servers.
+
 ### Observations: folded off the request path, cached per process
 
 - `stats.EndpointObservationReader` is the domain port; bootstrap wraps
@@ -862,8 +868,7 @@ bill when treg's own account is out.
   writes; the worker owns transactions. Async endpoints with result adapters publish only when
   every applicable day is `terminal_reconciled` and no correction is older than `STALE_AFTER_S`;
   one untrustworthy day suppresses the endpoint's whole observation, because dropping the day would
-  bias its rate. Async hit rates use terminal evidence only. `catalog_stats.requeue_async_stats` and
-  `repair_status` are the explicit, manifest-driven requeue and its completion check.
+  bias its rate. Async hit rates use terminal evidence only.
 - Merging days weights each day's latency sample by the calls it stands for (`Tally.merge`), or the
   window's p95 would be the quiet days'. `stats.Tally` is the one shape for a day, a window and the
   live aggregate; `tests/test_catalog_stats_refresh.py` holds fold and SQL equal.

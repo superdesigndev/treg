@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import enum
 import functools
 import logging
 import random
@@ -30,7 +31,7 @@ from ...domain.money import allowance
 from ...infra import db as infra_db
 from ...infra import kv, money_admission
 from ...infra.db import session_maker
-from ...infra.money_session import money_session
+from ...infra.money_session import bound_lock_wait, lock_timed_out, money_session
 from ...models import Org
 from .idempotency import IN_FLIGHT_MARK_MS
 
@@ -47,7 +48,13 @@ _REFRESH_WAIT_S = 10.0
 # One batch of the fold a frozen call asks for (`_settled`). A transaction that keeps the
 # team's lease: kept short, so a refill never waits long behind it.
 _BACKLOG_FOLD = 100
-_SETTLED_TRIES = 20
+# The most batches that fold takes before leaving the rest of the queue to the background fold.
+_BACKLOG_BATCHES = 5
+# How long a call waits in all for its settle entry before answering with its charge.
+_SETTLED_WAIT_S = 1.0
+# The end of that wait kept for one last read of the entry, whatever the folding did with the
+# rest (a fifth of it at most).
+_LAST_READ_S = 0.2
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
@@ -435,35 +442,195 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     return True
 
 
-async def _fold_backlog(org_id: int) -> None:
-    """Fold a team's queued charges now, a batch per transaction, until the queue is short. For
-    a call that must know what the ledger took for it (`_settled`); everything else is left to
-    the background loop. One process at a time per team; calls keep taking from the counter
-    meanwhile, since a fold moves only money their takes already removed from it."""
+class _Fold(enum.Enum):
+    SHORT = "short"  # the queue is short now
+    MORE = "more"  # one batch folded, and more may be queued
+    HERE = "here"  # this process has a money session of the team open
+    ELSEWHERE = "elsewhere"  # another process has the team's lease
+    GAVE_UP = "gave_up"  # admission or row locks not free in time, too long a queue, or a fault
+
+
+async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = None,
+                        found: list[int] | None = None, deadline: float | None = None) -> _Fold:
+    """Fold one batch of a team's queued charges now, in its own transaction. For a call that
+    must know what the ledger took for it (`_settled`), which reads its entry after each batch
+    and comes back while the queue is long; everything else is left to the background loop.
+    Calls keep taking from the counter meanwhile, since a fold moves only money their takes
+    already removed from it.
+
+    It never waits on another fold, here or elsewhere, and never waits long for the team's
+    admission or row locks while it holds a connection: the call is answering, and the
+    background fold applies the queue anyway. `budget` holds the batches the call has left and
+    is spent here, so a call folds no more than `_BACKLOG_BATCHES` in all. With `call_id`, the
+    call's settle entry is read in the fold's own transaction and appended to `found` once that
+    transaction has committed, so what the ledger took is known even if the call's deadline
+    passes while the session closes or the lease is given back. `deadline` (the event loop's
+    clock) bounds it until it holds a database connection."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     try:
-        while True:
+        # Until it holds a connection the batch is optional, and bound by the call's deadline:
+        # past it, it does not take a connection a call waiting now could have. Once it holds
+        # one it finishes, commit or rollback, close and give back, whatever the time.
+        async with asyncio.timeout_at(deadline) as optional:
+            if budget[0] <= 0:
+                return _Fold.GAVE_UP
             # The lease is given up between batches, and a moment left for a refill to take it:
             # calls are waiting on a refill, nobody is waiting on this.
             await asyncio.sleep(0.05)
-            if await store.acquire_lease(key, token, _REFILL_LEASE_MS) != "acquired":
-                return
+            if money_lock(org_id).locked():
+                return _Fold.HERE
             try:
+                acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+            except BaseException:
+                # The store may have granted the lease before the call stopped waiting for its
+                # answer: give back whatever this token holds, or the team's refills and the
+                # background fold wait for it to expire. Release deletes only this token's, and
+                # runs on its own: the call is past its deadline and does not wait for it.
+                _release_lease_soon(store, key, token)
+                raise
+            if acquired != "acquired":
+                # The lease may be held by this process's own fold, which took it while this
+                # call waited for the store: its lock says so.
+                return _Fold.HERE if money_lock(org_id).locked() else _Fold.ELSEWHERE
+            try:
+                # Asked for again after the wait: an idle lock can be pruned meanwhile, and the
+                # one this process's other calls test is the one now in the map. Nothing is
+                # awaited between this test and taking it, so a free lock is taken at once.
+                lock = money_lock(org_id)
+                if lock.locked():
+                    return _Fold.HERE
                 async with (
-                    money_lock(org_id),
+                    lock,
                     money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="close"),
+                        money_admission.require_balance_orgs([org_id]), operation="close",
+                        max_wait_s=_REFILL_WAIT_S, refuse_on_timeout=True),
                     money_session(session_maker()) as db,
                 ):
+                    await db.connection()
+                    optional.reschedule(None)
+                    budget[0] -= 1
+                    await bound_lock_wait(db)
                     folded = await allowance.fold_charges_in_transaction(
                         db, org_id, limit=_BACKLOG_FOLD)
+                    settled = (await allowance.settled_micro(db, org_id, call_id)
+                               if call_id is not None else None)
                     await db.commit()
+                    if settled is not None and found is not None:
+                        found.append(settled)
             finally:
-                await store.release_lease(key, token)
-            if folded.claimed < _BACKLOG_FOLD:
-                return
-    except Exception:
-        log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+                # Given back by a task of its own: a deadline that passes while the store answers
+                # stops this wait, not the release, which deletes only this token's lease. A call
+                # already past its deadline (cancelled while it waited for a connection, say) does
+                # not wait for the release at all.
+                release = _release_lease_soon(store, key, token)
+                current = asyncio.current_task()
+                if current is None or not current.cancelling():
+                    await asyncio.shield(release)
+            return _Fold.SHORT if folded.claimed < _BACKLOG_FOLD else _Fold.MORE
+    except (money_admission.AdmissionTimeout, TimeoutError):
+        return _Fold.GAVE_UP
+    except Exception as exc:
+        if lock_timed_out(exc):
+            log.info("folding the queued charges of org %s waited too long on its rows", org_id)
+        else:
+            log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+        return _Fold.GAVE_UP
+
+
+_lease_releases: set[asyncio.Task] = set()
+_background_folds: set[asyncio.Task] = set()
+# The request-path folds of each team running in this process, for a call that waits on one.
+_team_folds: dict[int, set[asyncio.Task]] = {}
+
+
+async def _fold_beside(org_id: int, budget: list[int], call_id: str, found: list[int],
+                       started: list[asyncio.Task], deadline: float) -> _Fold:
+    """`_fold_backlog` in a task of its own, which the call waits for only until its deadline.
+    The batch, and what follows its commit (closing the session, giving back the team's
+    admission and lease, its lock in this process), then finishes in order without the call,
+    if by `deadline` it holds a connection; one still waiting for one then gives up. The task
+    is appended to `started`, so the call can still take its answer later."""
+    task = asyncio.ensure_future(_fold_backlog(org_id, budget, call_id, found, deadline))
+    _background_folds.add(task)
+    task.add_done_callback(_background_folds.discard)
+    team = _team_folds.setdefault(org_id, set())
+    team.add(task)
+
+    def _forget(done: asyncio.Task) -> None:
+        team.discard(done)
+        if not team and _team_folds.get(org_id) is team:
+            del _team_folds[org_id]
+
+    task.add_done_callback(_forget)
+    started.append(task)
+    return await asyncio.shield(task)
+
+
+async def _last_look(org_id: int, call_id: str, found: list[int],
+                     fold: asyncio.Task | None) -> int | None:
+    """Read the call's entry while a fold of the team may still commit it: the call's own, or
+    the one this process is running for the team that the call waited on. Whichever answers
+    first. A fold that ends without answering this call (another call's batch, which may still
+    have applied this charge) is followed by one more read. The caller bounds it with its
+    deadline."""
+    read = asyncio.ensure_future(_read_settled(org_id, call_id))
+    reads = [read]
+    tasks = {read} if fold is None or fold.done() else {read, fold}
+    try:
+        while tasks:
+            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            if found:
+                return found[0]
+            if read in done:
+                try:
+                    settled = read.result()
+                except Exception:
+                    # The fold has a connection of its own and may still answer.
+                    log.error("reading the settle entry of allowance call %s failed", call_id,
+                              exc_info=True)
+                    settled = None
+                if settled is not None:
+                    return settled
+            if fold in done:
+                # A read begun before that batch committed may not see it: ask again.
+                read.cancel()
+                read = asyncio.ensure_future(_read_settled(org_id, call_id))
+                reads.append(read)
+                tasks.discard(fold)
+                tasks.add(read)
+                fold = None
+        return found[0] if found else None
+    finally:
+        for pending in reads:
+            pending.cancel()
+
+
+def _team_fold(org_id: int, started: list[asyncio.Task]) -> asyncio.Task | None:
+    """The request-path fold of the team still running in this process, the call's own first."""
+    for task in (*reversed(started), *_team_folds.get(org_id, ())):
+        if not task.done():
+            return task
+    return None
+
+
+async def _read_settled(org_id: int, call_id: str) -> int | None:
+    async with session_maker() as db:
+        return await allowance.settled_micro(db, org_id, call_id)
+
+
+def _release_lease_soon(store, key: str, token: str) -> asyncio.Task:
+    """Release `token`'s lease in a task that outlives a cancelled caller."""
+    task = asyncio.ensure_future(store.release_lease(key, token))
+    _lease_releases.add(task)
+    task.add_done_callback(_lease_releases.discard)
+    return task
+
+
+async def _team_session_ended(org_id: int) -> None:
+    """Wait, holding no connection, until this process has no money session of the team open."""
+    lock = money_lock(org_id)
+    async with lock:
+        pass
 
 
 async def _drain(org_id: int, epoch: int, reason: str) -> None:
@@ -999,21 +1166,64 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
 
 
 async def _settled(org_id: int, call_id: str, amount: int) -> int:
-    """What the call's settle entry took, folding the team's queue to get it written. Another
-    process may hold the team's lease; it is folding too, so wait for the entry a bounded time.
-    `amount`, the charge, when the entry is not there by then or cannot be read: the charge is
-    written, and "nothing" would be the one answer known to be wrong."""
-    for _ in range(_SETTLED_TRIES):
-        await _fold_backlog(org_id)
+    """What the call's settle entry took, folding the team's queue to get it written.
+
+    One fold of the team at a time in this process: a call that finds one open waits for it,
+    holding no connection, instead of starting its own. A call that finds another process
+    folding reads the entry again shortly. Everything, waits for a pool connection included,
+    shares one deadline, `_SETTLED_WAIT_S`, of which the last `_LAST_READ_S` is kept for one
+    more read of the entry: a fold that runs out the time, or another process that settled the
+    call meanwhile, still leaves the call that look. `amount`, the charge, when the entry is not
+    there by then or cannot be read: the charge is written, and "nothing" would be the one
+    answer known to be wrong."""
+    budget, found, started = [_BACKLOG_BATCHES], [], []
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _SETTLED_WAIT_S
+    folding_until = end - min(_LAST_READ_S, _SETTLED_WAIT_S / 5)
+    try:
+        async with asyncio.timeout_at(folding_until):
+            while True:
+                outcome = await _fold_beside(org_id, budget, call_id, found, started,
+                                             folding_until)
+                if found:
+                    return found[0]
+                if outcome is _Fold.MORE:
+                    # The batch's own transaction has just looked for the entry: fold on.
+                    continue
+                if outcome in (_Fold.GAVE_UP, _Fold.SHORT):
+                    break
+                if outcome is _Fold.HERE:
+                    await _team_session_ended(org_id)
+                # The timeout's cancel can be absorbed on the way out: a money session that
+                # fails and is cancelled while it closes re-raises its own failure, which the
+                # fold reports as giving up. So the deadline is looked at, not only awaited.
+                if loop.time() >= folding_until:
+                    break
+                async with session_maker() as db:
+                    settled = await allowance.settled_micro(db, org_id, call_id)
+                if settled is not None:
+                    return settled
+                if outcome is _Fold.ELSEWHERE:
+                    await asyncio.sleep(0.05)
+    except TimeoutError:
+        pass
+    except Exception:
+        log.error("reading the settle entry of allowance call %s failed", call_id, exc_info=True)
+        return found[0] if found else amount
+    if found:  # committed before the deadline cut the fold's cleanup short
+        return found[0]
+    if loop.time() < end:
         try:
-            async with session_maker() as db:
-                settled = await allowance.settled_micro(db, org_id, call_id)
+            async with asyncio.timeout_at(end):
+                settled = await _last_look(org_id, call_id, found, _team_fold(org_id, started))
+            if settled is not None:
+                return settled
+        except TimeoutError:
+            pass
         except Exception:
             log.error("reading the settle entry of allowance call %s failed", call_id,
                       exc_info=True)
-            return amount
-        if settled is not None:
-            return settled
-        await asyncio.sleep(0.05)
+    if found:  # a fold the call left running committed it while the call last looked
+        return found[0]
     log.warning("allowance call %s was answered before its charge was applied", call_id)
     return amount

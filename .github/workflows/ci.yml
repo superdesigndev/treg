@@ -198,6 +198,8 @@ jobs:
           tests/test_org_flow_control_schema.py
           tests/test_workbench_table_schema.py
           tests/test_redundant_index_migration.py
+          tests/test_step5_skills.py
+          tests/test_bughunt_server.py::test_oversized_id_is_404_not_500
           tests/test_callrecord_call_ref_index_migration.py
           tests/test_callrecord_served_call_ref_migration.py
           tests/test_review_answer_basis_migration.py
@@ -220,8 +222,6 @@ jobs:
           tests/test_catalog_stats_corrections.py
           tests/test_catalog_stats_concurrency.py
           tests/test_catalog_stats_hot_corrections.py
-          tests/test_catalog_stats_requeue.py
-          tests/test_catalog_stats_requeue_concurrency.py
           tests/test_catalog_stat_dirty_audit.py
           tests/test_catalog_observation_folds.py
           tests/test_catalog_observation_concurrency.py

@@ -1783,32 +1783,6 @@
     "methods": [
       "POST"
     ],
-    "name": "demo_sandbox_mint",
-    "path": "/demo/sandbox"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_live",
-    "path": "/demo/sandbox/live"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_skill",
-    "path": "/demo/sandbox/skill"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
     "name": "onboard_seed_tool",
     "path": "/onboard/seed-tool"
   },

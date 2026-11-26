@@ -51,6 +51,9 @@ from .types import GatewayFailed, UpstreamResponse
 # is not to charge. Absorbing a rare few micro-USD is recoverable; over-billing out of an append-only
 # ledger is not.
 _NOT_THE_CALLERS_FAULT = frozenset({401, 402, 403, 405, 407, 408, 429})
+# A close that failed with one of these rolled back whole, so one fresh attempt is safe:
+# a deadlock victim, and a statement cancelled (by the money session's statement_timeout).
+_RETRIED_SQLSTATES = frozenset({"40P01", "57014"})
 
 
 def _consumes_blocks(*, billable: bool, actual_micro: int | None, reserved_micro: int | None) -> bool:
@@ -1258,9 +1261,11 @@ async def _platform_settle(
             charged = await _close()
         except (*DB_BUSY_ERRORS, DBAPIError) as exc:
             # asyncpg deadlocks arrive as SQLAlchemy DBAPIError with SQLSTATE on its orig wrapper.
-            # Retry only 40P01 and a refused connection (raised before any statement ran), never
-            # an error-message match or an arbitrary database failure.
-            if (isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01"
+            # Retry only 40P01, 57014 (a statement the money session's statement_timeout
+            # cancelled, which aborts the transaction) and a refused connection (raised before
+            # any statement ran), never an error-message match or an arbitrary database failure.
+            if (isinstance(exc, DBAPIError)
+                    and getattr(exc.orig, "sqlstate", None) not in _RETRIED_SQLSTATES
                     and not is_db_busy(exc)):
                 raise
             # _close has exited its session, rolling back all staged money/overflow writes.
@@ -1556,11 +1561,13 @@ async def _note_capacity_recovery(mk: MarketplaceCall) -> None:
                         endpoint_id=mk.endpoint_id, key=lock.key, lock_id=lock.lock_id, via="probe",
                         locked_s=int((_utcnow_naive() - (lock.opened_at or lock.first_signal_at))
                                      .total_seconds()))
+        account = keyslots.capacity_key(mk.provider, mk.key_slot)
         if ((mk.probe_lock_id or "").startswith(capacity_marks.SWEEP_PROBE)
-                and await capacity_marks.clear_sweep_state(mk.provider, probe_id=mk.probe_lock_id)):
+                and await capacity_marks.clear_sweep_state(account, probe_id=mk.probe_lock_id)):
             cleared = True
-            capacity_events.emit("lock_cleared", provider=mk.provider, slot=None,
-                                 endpoint_id=mk.endpoint_id, key=mk.provider, via="sweep_probe")
+            capacity_events.emit("lock_cleared", provider=mk.provider,
+                                 slot=keyslots.capacity_slot(mk.key_slot),
+                                 endpoint_id=mk.endpoint_id, key=account, via="sweep_probe")
         if cleared:
             capacity_view.invalidate()
     except asyncio.CancelledError:

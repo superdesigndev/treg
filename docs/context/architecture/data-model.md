@@ -248,6 +248,31 @@ publication state on a version that is not approved. Allocating versions, valida
 and keeping snapshots immutable are the private admin's job; the call path never reads the table
 ([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
 
+## Call-path tables have no foreign key to `org`
+
+The tables in `ORG_ROWS_WITHOUT_FOREIGN_KEY` (`domain/governance/teams.py`) keep `org_id` (indexed)
+but no foreign key, one revision per table from 0130. A foreign key makes every insert take
+`FOR KEY SHARE` on the team's `org` row, the row every balance write updates. Locks of different
+transactions on one row are recorded as a MultiXact, a new one each time another transaction
+joins, so a busy team's concurrent inserts and balance writes keep writing MultiXacts that grow
+with the number of lockers. On PostgreSQL 16 the MultiXact SLRUs are a few fixed pages behind one
+lock each, shared by the whole server: once they thrash, inserts of every team wait on
+`MultiXactOffsetSLRU`.
+
+Team deletion deletes these tables in its walk and once more after the team row: that DELETE waits
+for every transaction that updated the row and lets none update it after, so a row a call
+committed while the walk ran is taken too (`tests/test_org_delete_race_postgres.py`). A table joins
+the list only when no write to it can commit after the team row is gone: each of its writers
+updates the team row first, share-locks it (the allowance fold, once per fold, since a fold of
+unpaid or late-queued charges may touch no balance, block or hold of the team's), claims a row the
+deletion also deletes, or writes through a foreign key that still stands. `CallRecord` keeps its foreign key for that reason: the audit queue writes it
+from memory after the call, holding no lock on anything of the team's, so without the constraint a
+row with the caller's email, tags and error evidence could land after the team is gone.
+
+Each drop takes ACCESS EXCLUSIVE on the child table and on `org`, bounded by the revision's own
+`SET LOCAL lock_timeout`; a timeout leaves the earlier drops applied (rolling back from there:
+[deploy](../ops/deploy.md), "Rolling back past a revision").
+
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
 `CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables and both
@@ -432,7 +457,9 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
 - `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
-  rebuilding the schema only when its column-and-index fingerprint changed.
+  rebuilding the schema only when its column-and-index fingerprint changed. It works a few tables
+  per transaction: Postgres's lock table is shared by every database on the server, and parallel
+  test workers each locking every table at once exhaust it.
 - `TREG_READ_DATABASE_URL` adds `read_session_maker`, read-only by default (PostgreSQL read-only
   transactions, SQLite `PRAGMA query_only`); these guard accidents, not deliberate SQL. Failures
   never fall back to the primary. Authorization always stays on the primary. Replication and lag

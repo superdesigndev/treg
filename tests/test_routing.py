@@ -5061,7 +5061,7 @@ async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
 async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(monkeypatch):
     """Demo policy speaks for the refusal only when it took every candidate."""
     plan = SimpleNamespace(candidates=[], variant=("symbol",), route_rule=None, health=None, dropped=[
-        {"endpoint_id": "a.keyless", "why": "a is a keyless public API, but demo and sandbox teams do not call it",
+        {"endpoint_id": "a.keyless", "why": "a is a keyless public API, but the public demo team does not call it",
          "policy": True},
         {"endpoint_id": "b.paid", "why": "ignores country", "strict": True}])
 
