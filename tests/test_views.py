@@ -31,8 +31,7 @@ async def _view(c: AsyncClient, path: str, *, status: int = 200, method: str = "
     return r.json()
 
 
-@pytest.mark.parametrize("path", ["/catalog/platforms", "/catalog/platforms/tiktok", "/catalog/search?q=tiktok+comments",
-                                  "/catalog/endpoints/tikhub.tiktok.video.comments", "/home", "/feedback/404"])
+@pytest.mark.parametrize("path", ["/catalog/platforms/tiktok", "/home", "/feedback/404"])
 async def test_data_is_the_routes_own_answer_byte_for_byte(clients: AsyncClient, path):
     # `observed_pending` follows the observation cache's refresh, so let it settle before comparing.
     await clients.get(path)

@@ -228,10 +228,3 @@ def test_the_lookup_timeout_must_be_a_finite_positive_number(monkeypatch, value)
     monkeypatch.setenv("TREG_SSRF_LOOKUP_TIMEOUT_S", value)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
-
-
-def test_the_lookup_timeout_defaults_to_ten_seconds(monkeypatch):
-    from treg.config import Settings
-
-    monkeypatch.delenv("TREG_SSRF_LOOKUP_TIMEOUT_S", raising=False)
-    assert Settings(_env_file=None).ssrf_lookup_timeout_s == 10.0

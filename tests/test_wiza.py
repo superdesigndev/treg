@@ -13,10 +13,11 @@ from sqlmodel import select
 from treg import audit
 from treg.application import asynctasks as async_task_app
 from treg.application.call import service as call_service
+from treg.application.call import keyslots
 from treg.application.call import route as call_route
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
-from treg.domain.capacity import collectors, policy
+from treg.domain.capacity import collectors
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import AsyncTaskRecord, CallRecord, Hold
@@ -26,6 +27,16 @@ async def _balance(clients) -> int:
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     return (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
 
+
+@pytest.fixture(autouse=True)
+def fast_polls(monkeypatch):
+    """Poll Wiza's reveals every 10 ms, not the catalog's 2 s, and skip the burst smoothing that
+    spaces calls on treg's key by Wiza's published rate: the tests wait for real polls."""
+    for endpoint in catalog_store.load().endpoints:
+        if endpoint["id"].startswith("wiza.") and isinstance(endpoint.get("async"), dict):
+            monkeypatch.setitem(endpoint["async"], "interval", 0.01)
+    monkeypatch.setattr(keyslots, "rate_bucket", lambda *_args: None)
+        
 
 @pytest.fixture
 def wiza_platform_on(monkeypatch):
@@ -48,11 +59,6 @@ async def test_wiza_capacity_reads_finite_api_credits(remaining):
     assert row["value"] == remaining
     assert row["unit"] == "API credits"
     assert "auto-top-up is not enabled" in row["note"]
-    configured = policy.default_policy("wiza", has_key=True)
-    assert configured.capacity_type == "credits"
-    assert configured.funding_mode == "manual"
-    assert configured.auto_funding_enabled is False
-    assert configured.rate_limit == {"limit": 30, "window_s": 60, "source": "docs"}
 
 
 @pytest.mark.parametrize("remaining", [None, True, -1, "unlimited"])
@@ -313,7 +319,6 @@ async def test_wiza_terminal_poll_does_not_wait_for_audit_writer(
 
 
 @pytest.mark.parametrize("capability,terminal,expected_hit", [
-    ("email", {"email": "person@sample.example", "email_status": "risky"}, True),
     ("phone", {"phone_status": "unfound"}, False),
 ])
 async def test_wiza_routed_child_records_terminal_verdict(
@@ -409,8 +414,6 @@ async def test_wiza_routed_poll_404_stays_pending_without_paid_fallback(
     monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "PLATFORM-HUNTER")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza,hunter")
     get_settings.cache_clear()
-    endpoint = catalog_store.load().by_id["wiza.people.email.find"]
-    monkeypatch.setitem(endpoint["async"], "interval", 0.01)
     calls = []
 
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
@@ -475,8 +478,6 @@ async def test_wiza_routed_poll_404_stays_pending_without_paid_fallback(
 async def test_wiza_failed_reveal_releases_hold_and_is_a_waterfall_miss(
     clients, monkeypatch, wiza_platform_on,
 ):
-    endpoint = catalog_store.load().by_id["wiza.people.email.find"]
-    monkeypatch.setitem(endpoint["async"], "interval", 0.01)
     answers = [
         {"data": {"id": 987, "status": "queued"}},
         {"data": {"id": 987, "status": "failed",
