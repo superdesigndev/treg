@@ -714,6 +714,12 @@ class CallRecord(SQLModel, table=True):
     served_content_hash: str | None = Field(default=None)
 
 
+def call_rows_own_first() -> tuple:
+    """The order that reads a call ref's own row before an overflow child's, which shares the ref
+    and may be written first."""
+    return (CallRecord.method == "OVERFLOW", CallRecord.id)
+
+
 class RunRecord(SQLModel, table=True):
     """Audit for server-side CLI runs (`treg run`): who ran which tool's CLI, with what args, in
     which org, and the result. Written off the request path (fire-and-forget) like CallRecord.

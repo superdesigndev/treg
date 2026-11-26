@@ -209,3 +209,19 @@ async def test_mcp_refuses_an_item_it_cannot_place(clients, item):
     result = response.json().get('result') or {}
     assert result.get('isError') is True or 'error' in response.json(), response.text
     assert await rows() == []
+
+
+async def test_a_mark_names_the_call_s_own_row_before_its_overflow_child(clients):
+    """An overflow child shares its call's ref and is written first on the skip-direct ladder;
+    the mark is attributed as the same call is on the direct ladder."""
+    org = (await clients.post('/orgs', json={'name': 'Mark source'})).json()
+    async with session_maker() as db:
+        for method, tier in (('OVERFLOW', 'platform-overflow'), ('GET', 'platform')):
+            db.add(CallRecord(org_id=org['org_id'], user_email='tim@superdesign.dev',
+                              tool_name='example', method=method, path='/', call_ref='mark-call',
+                              status_code=200, endpoint_id='example.search', provider='example',
+                              credential_tier=tier))
+        await db.commit()
+    assert (await submit(clients, org)).status_code == 201
+    (mark,) = await rows()
+    assert mark.credential_tier == 'platform'

@@ -353,7 +353,7 @@ invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` de
 with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
 `async_task_app.views_for`. `GET /calls/{id}/result` is described in
 [archive](../architecture/archive.md). An overflow child shares its call's ref and can be written
-first, so both routes read the call's own row before an `OVERFLOW` one (`api._call_first`).
+first, so both routes read the call's own row before an `OVERFLOW` one (`models.call_rows_own_first`, also how a mark names its call).
 
 ### Async tasks
 

@@ -14,7 +14,7 @@ from ..domain.feedback import marks, reviews, verdicts
 from ..domain.governance.access import pinned_tag_predicates
 from ..feedback_contract import FeedbackCategory, MarkBasis, ReviewUsefulness
 from ..infra.db import session_maker
-from ..models import CallCharge, CallMark, CallRecord, LedgerEntry
+from ..models import CallCharge, CallMark, CallRecord, LedgerEntry, call_rows_own_first
 from ..timeutil import utcnow_naive
 
 RATE_MAX = 30
@@ -85,7 +85,7 @@ async def _attributable_call(db, *, org_id: int, call_id: str, pinned_tags: dict
     record = (await db.execute(select(CallRecord).where(
         CallRecord.org_id == org_id, CallRecord.call_ref == call_id,
         *pinned_tag_predicates(CallRecord.tags, pinned_tags),
-    ).order_by(CallRecord.id.asc()).limit(1))).scalar_one_or_none()
+    ).order_by(*call_rows_own_first()).limit(1))).scalar_one_or_none()
     if record is None:
         # The ledger can verify provenance while audit is delayed, but cannot establish
         # status/provider/cache state. Wait for that evidence rather than inventing it.
