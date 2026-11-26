@@ -132,6 +132,36 @@ async def test_real_redis_window():
         await store.aclose()
 
 
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_reads_many_texts_in_one_round_trip():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    base = f'treg-test:texts:{time.time_ns()}'
+    sent = []
+    mget = store._client.mget
+
+    async def counted(keys):
+        sent.append(list(keys))
+        return await mget(keys)
+
+    store._client.mget = counted
+    try:
+        assert await store.set_text(f'{base}:a', 'one', 30)
+        assert await store.set_text(f'{base}:b', 'two', 30)
+        keys = [f'{base}:b', f'{base}:missing', f'{base}:a', f'{base}:b']
+        assert await store.get_texts(keys) == ['two', None, 'one', 'two']
+        assert await store.get_texts([]) == []
+        assert len(sent) == 1
+    finally:
+        await store._client.delete(f'{base}:a', f'{base}:b')
+        await store.aclose()
+
+
+async def test_local_texts_read_in_order():
+    store = kv.LocalStore()
+    await store.set_text('a', 'one', 30)
+    assert await store.get_texts(['missing', 'a']) == [None, 'one']
+
+
 async def test_local_counters_do_not_claim_distributed_lease_support():
     store = kv.LocalStore()
     assert await store.acquire_lease('lease', 'owner', 1000) == 'unavailable'
@@ -175,3 +205,71 @@ async def test_real_redis_expired_owner_cannot_renew_or_delete_replacement():
     finally:
         await first._client.delete(key)
         await asyncio.gather(first.aclose(), second.aclose())
+
+
+async def _exercise_in_flight_mark(store, call_ref: str) -> None:
+    assert await store.call_in_flight(call_ref) is False
+    assert await store.renew_call_in_flight(call_ref, 60_000) is False, "a gone mark is not set again"
+    assert await store.call_in_flight(call_ref) is False
+    assert await store.mark_call_in_flight(call_ref, 60_000)
+    assert await store.renew_call_in_flight(call_ref, 60_000)
+    assert await store.call_in_flight(call_ref) is True
+    await store.clear_call_in_flight(call_ref)
+    assert await store.call_in_flight(call_ref) is False
+
+
+async def test_local_in_flight_mark_is_set_renewed_only_while_there_and_cleared():
+    await _exercise_in_flight_mark(kv.LocalStore(), 'local-owner')
+
+
+async def test_an_unreachable_store_cannot_say_whether_a_call_is_in_flight():
+    store = kv.RedisStore('redis://127.0.0.1:1')
+    assert await store.mark_call_in_flight('owner', 1000) is False
+    assert await store.renew_call_in_flight('owner', 1000) is False
+    assert await store.call_in_flight('owner') is None
+    await store.clear_call_in_flight('owner')
+    await store.aclose()
+
+
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_in_flight_mark_is_set_renewed_only_while_there_and_cleared():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    try:
+        await _exercise_in_flight_mark(store, f'treg-test-{time.time_ns()}')
+    finally:
+        await store.aclose()
+
+
+async def test_an_unreachable_store_clears_and_sets_a_batch_of_marks_within_one_timeout():
+    store = kv.RedisStore('redis://127.0.0.1:1')
+    refs = [f'owner-{i}' for i in range(500)]
+    started = time.monotonic()
+    await store.mark_calls_in_flight(refs, 1000)
+    await store.clear_calls_in_flight(refs)
+    assert time.monotonic() - started < 1
+    await store.aclose()
+
+
+async def test_local_marks_are_set_and_cleared_in_batches_a_lost_one_included():
+    store = kv.LocalStore()
+    await store.mark_call_in_flight('a', 60_000)
+    await store.mark_calls_in_flight(['a', 'lost'], 60_000)
+    assert await store.call_in_flight('a') is True and await store.call_in_flight('lost') is True
+    await store.clear_calls_in_flight(['a', 'lost'])
+    assert await store.call_in_flight('a') is False and await store.call_in_flight('lost') is False
+
+
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_marks_are_set_and_cleared_in_one_batch_a_lost_one_included():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    base = f'treg-test-{time.time_ns()}'
+    try:
+        await store.mark_call_in_flight(f'{base}-a', 60_000)
+        await store.mark_calls_in_flight([f'{base}-a', f'{base}-lost'], 60_000)
+        assert await store.call_in_flight(f'{base}-a') is True
+        assert await store.call_in_flight(f'{base}-lost') is True
+        await store.clear_calls_in_flight([f'{base}-a', f'{base}-lost'])
+        assert await store.call_in_flight(f'{base}-a') is False
+        assert await store.call_in_flight(f'{base}-lost') is False
+    finally:
+        await store.aclose()

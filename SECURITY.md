@@ -13,8 +13,9 @@ reporters who wish to be named.
 ## The security model (what protects your keys)
 
 tools-registry is built so that **reading the source does not help an attacker** — nothing load-bearing
-is hidden in the code. Secrets live in the database (encrypted with a Fernet key held only in the server
-environment) and enforcement happens server-side and in the operating system.
+is hidden in the code. Secrets live in the database (encrypted with AWS KMS envelope encryption where
+the operator configures it, otherwise with a Fernet key held only in the server environment) and
+enforcement happens server-side and in the operating system.
 
 Durable objects created with a shared provider credential are assigned to one organization before
 their upstream id is exposed. Every shared-key read, use, update, or delete checks that assignment
@@ -25,8 +26,10 @@ provider account and bypass this platform ownership table.
 
 - **The proxy never hands the key to the caller.** For an HTTP tool, the registry injects the credential
   server-side and makes the upstream call; the consumer's token only authorizes it.
-- **Encryption at rest.** Stored secrets are Fernet-encrypted; the key is an environment variable, never
-  in the repo or the database.
+- **Encryption at rest.** With `TREG_KMS_KEY_ID`, every stored credential is sealed under its own data
+  key, which KMS wraps and binds to the owning team; the master key never leaves KMS, and each open
+  is a KMS call in the operator's audit log. Without it, stored secrets are Fernet-encrypted with a
+  key held in the environment, never in the repo or the database.
 - **CLI pairing is shared and single-use.** `treg login` keeps its pairing and social-login return
   state in the database with ten-minute validity windows. Pairing codes and completed credentials
   are encrypted, approval attempts are serialized, and polling atomically consumes a result.
@@ -41,8 +44,9 @@ provider account and bypass this platform ownership table.
   archived results and shared-provider async ownership; foreign and untagged records return 404.
   These scopes do not partition a team's BYOK account or authenticate public media URLs.
 - **SSRF guard.** A tool's upstream host is re-resolved at call time and internal/metadata addresses are
-  refused (defeats DNS-rebinding). Health probes, owner webhooks and OAuth token requests are checked
-  the same way before they are sent.
+  refused (defeats DNS-rebinding). Health probes, owner webhooks, OAuth token requests and MCP client
+  metadata fetches are checked the same way before they are sent. A lookup that does not answer in time is
+  refused, never allowed.
 - **Local runs are sandboxed.** `treg run` on a member's machine executes the CLI as a locked-down
   `treg-run` user, with an egress allow-list and an optional filesystem jail, so a shared key can't be
   read, exfiltrated over the network, or written to a member-readable file.
@@ -59,6 +63,16 @@ provider account and bypass this platform ownership table.
   (`TREG_BLOCKED_EMAIL_DOMAINS`, unset means no blocks) remains a configurable speed bump at every
   sign-in/sign-up door and both team-creating endpoints; it fails open on classifier errors.
   Suspend abusive users and teams separately, retaining their records for investigation.
+- **Agent payments are off unless a deployment turns them on.** With
+  `TREG_AGENT_PAYMENTS_ENABLED`, a caller with no treg credential may pay one catalog call with MPP
+  or x402. Its payment is checked (and settled) before any upstream request, and becomes credit on
+  a payer team of its own, one per wallet and network, which can only call catalog tools on
+  treg's key. A later call draws that credit only with a fresh signature from the same wallet,
+  bound to that request and accepted once. Payment credentials and proofs are removed before the
+  relay, and a request carrying any treg credential is never read for a payment. Challenges are
+  signed with `TREG_AGENT_PAYMENTS_SECRET`; keep it secret and long. Per-address and global limits
+  bound unpaid requests and payment checks. Smart-contract wallet signatures are not accepted for
+  the x402 sign-in-with-x proof.
 - **Designated sign-in codes are a password, stored only as a hash.** `TREG_FIXED_LOGIN_CODES`
   (unset by default) maps an email with no inbox, such as an app directory reviewer's demo account,
   to the SHA-256 of a fixed code. The email-code door then sends nothing and accepts only that code,
@@ -118,9 +132,9 @@ row names any more are deleted by `treg-worker media sweep`.
 
 ## Known limitations (by design, documented on purpose)
 
-**The server CLI runner lacks filesystem/process isolation.** A scrubbed child environment and
-resource limits do not isolate it from the server's credentials. Server-side CLI execution remains
-disabled until an independently reviewed isolation boundary is in place.
+**There is no server-side CLI execution.** A scrubbed child environment and resource limits would
+not isolate a vendor CLI from the server's credentials, so the server runner was removed; `POST /run`
+answers 503 for every caller. It returns only with an independently reviewed isolation boundary.
 
 ## Supported versions
 

@@ -28,7 +28,6 @@ sources:
   - src/treg/infra/upstream/relay.py
   - src/treg/application/connect.py
   - src/treg/application/onboard/__init__.py
-  - src/treg/application/onboard/sandbox.py
   - src/treg/application/referrals.py
   - src/treg/application/signup.py
   - src/treg/routers/__init__.py
@@ -56,16 +55,12 @@ sources:
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
   - src/treg/domain/governance/publicdemo.py
-  - src/treg/domain/governance/sandbox.py
   - src/treg/domain/governance/usage.py
   - src/treg/domain/identity/mcp_oauth.py
   - src/treg/domain/identity/session.py
-  - src/treg/sandbox.py
-  - src/treg/sandbox_identity.py
   - src/treg/timeutil.py
   - src/treg/domain/catalog/store.py
   - src/treg/email.py
-  - src/treg/runner.py
   - src/treg/ratestore.py
   - tests/test_cli_pairing.py
 related:
@@ -104,9 +99,9 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 - Each identity dependency commits its read-only transaction before the handler runs, so a use
   case can open its own session without waiting behind the request's pool slot. This relies on
   every session maker setting `expire_on_commit=False`.
-- Sandbox identities (the closed landing sandbox) are refused centrally in
-  `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403); never re-add per-route exceptions.
-  `POST /demo/sandbox` answers 410.
+- The landing sandbox is removed, but its visitor users and tokens may remain in a deployment. They
+  are refused centrally in `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403) until those
+  rows are deleted; never re-add per-route exceptions.
 - **Public demo tokens** (`POST /orgs/{id}/public-token`, owner-only; re-POST rotates) are
   viewer-role tokens on a can't-log-in identity. Lockdown is centralized in the auth deps: below
   admin on a `public_demo` org, `require_member` allows only `/call/*` and GET/HEAD/OPTIONS, so
@@ -248,13 +243,13 @@ says `byok` or `platform`. The raw `/call/fishaudio.voices.list` remains a faith
 
 `* /call/{rest}` captures a framework-neutral `CallInput` for `application.call.service.execute_call`
 ([proxy-model](../architecture/proxy-model.md)). `_execute_call` tries an own tool, a catalog
-endpoint, then only when both miss a hub tool (`<team-slug>.<name>`, 429 `hub_busy` over the
+endpoint (by id, or by vendor path `<provider>/<path>`), then only when both miss a hub tool (`<team-slug>.<name>`, 429 `hub_busy` over the
 per-team slot; [hub](../architecture/hub.md)). `* /catalog/call/{rest}` (hidden from public
 OpenAPI) requires an exact catalog id and skips own-tool resolution, so a same-named team tool
 cannot shadow the catalog endpoint; from the credential ladder on it is the same call.
 
-A pool with no slot within 5 s answers `503 {"treg_saturated": true}` with `Retry-After: 2`
-(`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
+A pool with no slot within 5 s, or a database that refuses a new connection (`DB_BUSY_ERRORS`),
+answers `503 {"treg_saturated": true}` with `Retry-After: 2` (`_pool_saturated`), still captured as a `db_pool` fault and a `tool_called` event, and releases an
 acquired idempotency label so a retry is not a false 409. A `platform_auth: anonymous` endpoint
 relays through a virtual tool with no bindings when no team credential exists (a public provider has
 none: a same-named team secret is ignored): no platform key, no
@@ -271,7 +266,7 @@ the provider.
 | `X-Treg-Async` | The effective async descriptor as compact JSON, attached before streaming; the router reads no provider bytes. |
 | `X-Treg-Served-Via` | `overflow:<aggregator>` when served through an overflow relay ([proxy-model](../architecture/proxy-model.md), Overflow); MCP results carry `served_via`. |
 | `X-Treg-Upstream-Failed` | `<json_path>=<value>` on a metered 2xx failing the endpoint's `expect` rule. Body untouched, settlement unchanged, never archived or counted found. |
-| `X-Treg-Capacity: exhausted` | A platform-tier answer the capacity table reads as treg's own account out, set from the same signal that strikes the breaker. Absent on own keys, treg's refusals, overflow, replays. |
+| `X-Treg-Review-Pending`, `X-Treg-Review-Pending-Text` | On a relayed 4xx whose body carries the provider's declared "app lacks this permission" code (`review_refusal`) while the connection holds scopes still in app review (`review_scopes` under `TREG_OAUTH_REVIEW_PENDING`): the scopes (only the endpoint's own `required_scopes` when declared), and one sentence saying the pending review may be the reason. Body untouched; MCP puts the sentence in `hint`, both CLIs on stderr. |
 | `X-Treg-Smoothed` | `wait=`, `retry=1` or `share_wait=` when treg spaced or re-sent a platform call ([capacity](../ops/capacity.md)). Informational. |
 | `X-Treg-Cache`, `X-Treg-Fetched-At`, `X-Treg-Age` | An archive hit ([archive](../architecture/archive.md)). |
 
@@ -279,19 +274,20 @@ the provider.
 
 | Status, `detail.error` | Contract |
 |---|---|
-| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
+| 503 `provider_capacity_unavailable` | treg's own account cannot serve now; refused before any hold, names `alternatives` and `resets_at`, never calls one for the caller. Also replaces, uncharged, a platform answer the capacity table reads as treg's account out (any status, a 2xx included) that overflow did not serve. Both carry `Retry-After`: the seconds until `resets_at` when known, else 60. A team's own key is unaffected. `platform_overflow: false` in team settings opts into this instead of an overflow relay. |
 | 503 `provider_paused` | `TREG_PAUSED_PROVIDERS` lists the provider; refused before any hold, token refresh or upstream request, on catalog ids, connection tools and URL passthrough alike. Discovery leaves its endpoints out, connect routes refuse, existing connections are never changed (listed with `paused: true`), and `GET /meta` carries `paused_providers`. |
-| 429 `org_*` | Published org flow-control refusals ([org-flow-control](../architecture/org-flow-control.md)). |
-| 429 `share_busy` | Waited too long for a fair-share place; not charged. |
+| 429 `org_traffic_paused`, `org_concurrency_limit`, `org_rate_limit` | Org flow-control refusals, from a published snapshot or the default limits (`config_version` 0) ([org-flow-control](../architecture/org-flow-control.md)); nothing sent, not charged, `Retry-After` and `retry_after_s` set. |
+| 429 `share_busy` | Waited too long for a fair-share place, or the team holds its ceiling of the account's places (its own message); not charged. |
 | 503 `upstream_busy` | No upstream connection was free within the pool wait, or the provider is at its in-flight cap on `TREG_UPSTREAM_INFLIGHT_MODE=enforce` ([capacity](../ops/capacity.md)); nothing sent, not charged, `Retry-After` set. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
+| 503 `money_statement_timeout` | A reserve statement ran past the money session's `statement_timeout` and its transaction rolled back; no hold, no upstream request, `Retry-After` jittered like `money_admission_timeout`. Logged as `money_statement_timeout operation=reserve`, apart from `db_pool` and money admission. Not stored under `Idempotency-Key`. |
 | 429 `member_spend_cap_reached` | The caller's own daily spend limit on treg's keys is reached ([money](../architecture/money.md)); refused before it is sent, not charged. `detail` carries `spent_today_micro`, `daily_spend_cap_micro`, `resets_at` (the next 00:00 UTC) and `retry_after_s`, with `Retry-After` the same. `member_spend_cap_unavailable` when the limit cannot be checked. |
 | 402 `free_credit_excludes_video` | The endpoint's platform is `purchased_credit_only` (no platform sets it today) and the team's purchased credit, less its open purchased-only holds, cannot cover the reserve; free credit (promotional, referral, bonus, earned) never pays for it. Refused before any upstream request, nothing held; `detail` carries `purchased_balance_micro`, `balance_micro`, `estimated_cost_micro`, `topup_url`. A routed job stops on it. |
 | 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |
 | 402 `route_max_cost` | `X-Treg-Route-Max-Cost: <usd>` would be exceeded by the reserve with margin; no charge. No default on a direct call (unlike routed calls); non-numeric is 400. Where the catalog declares `ceiling_param`, treg forwards the remaining ceiling net of margin unless the caller sent that parameter (AGENTS.md non-negotiable 4). |
 | 502 `response_buffer_limit` | Response evidence passed the 8 MiB settlement buffer, or for `spooled_response` the per-body or per-process spool budget (the latter is temporary and worth retrying). Not charged; hold and idempotency claim released. Spooled answers are never stored for replay. |
-| 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch. |
+| 404/409 resolution | A named miss resembling a usable own tool returns `hint` and `did_you_mean`; a URL-passthrough tie is 409 naming the tools and the `/call/<name>/<path>` escape hatch; a vendor path matching several catalog rows is 409 `target_ambiguous` with `candidates`. |
 
 The MCP `call` result mirrors these as fields (`upstream_failed`, `whose_error`, `hint`,
 `retry_after`); only treg's own `insufficient_balance` is ever described as the team's balance.
@@ -305,9 +301,13 @@ X-Treg-Cost-Micro: 0                     a replay charges nothing
 X-Treg-Original-Cost-Micro: <charge>     what the first call cost (or reserved)
 ```
 
-422 when a key is reused for a different request, 409 while the first call is in flight. Over MCP
-it is the `idempotency_key` argument and a replay carries `replayed: true`. Storage rules:
-[money](../architecture/money.md).
+422 when a key is reused for a different request, 409 while the first call is in flight. The
+request is compared by method, path, query and body; a JSON body by its parsed value, so the same
+object with its keys in another order or other whitespace is the same request
+(`_canonical_json`, bodies up to `_CANONICAL_MAX_BYTES`). The 409 (`idempotency_in_progress`) carries `Retry-After` and names the first
+call in `detail.call_id`. Over MCP it is the `idempotency_key` argument and a replay carries
+`replayed: true`; `call_result` lists the team's recent calls and reads one's stored answer
+(`GET /calls`, `GET /calls/{id}/result`). Storage rules: [money](../architecture/money.md).
 
 ### `X-Treg-Keep-Reported-Charge` on `/call/`
 
@@ -369,19 +369,27 @@ With `TREG_AGENT_PAYMENTS_ENABLED`, a `/call/<catalog id>` request carrying no t
 all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "payment_required",
 "reason", "endpoint_id", "amount_micro", "estimated_cost_micro", "minimum_payment_micro",
 "protocols", "message"}}` with
-`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP) and
-`PAYMENT-REQUIRED` (x402). The request sent again with a payment credential is answered as a
-normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
+`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP; on the MPP
+realm's host the zero-amount proof challenges come first) and `PAYMENT-REQUIRED` (x402; on the
+public host it carries the `sign-in-with-x` extension). A wallet with credit answers the
+zero-amount challenge, or the SIWX one in a `SIGN-IN-WITH-X` header, with a proof and pays nothing; a proof whose credit
+does not cover the call answers 402 `reason: credit_insufficient` with the payment challenges only.
+The request sent again with a payment credential is answered as a normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
 `X-Treg-Credit-Micro` (the credit left) and, when it paid, `X-Treg-Paid-Micro` and
 `X-Treg-Payment-Reference`, plus `Cache-Control: private` when the answer set none; a 2xx also
 carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
-`route_max_cost`) answer 503 there. A settlement treg cannot confirm answers 503
-`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many payments from one address answer 429
+`route_max_cost`) answer 503 there, except that credit spent by another call between the check and
+the hold answers the `credit_insufficient` 402. A settlement treg cannot confirm answers 503
+`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many requests from one
+address (with or without a payment), or too many payment checks across all clients, answer 429
 `rate_limited` with `Retry-After`. A wallet whose payer team or its member is suspended answers 403
 `payer_suspended` (`reason: org_suspended|account_suspended`) before any payment is taken. Every other keyless call
 is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
-of an async tool is served to a wallet that already paid for a call: its 402 has `reason:
-proof_required`, and the payment it asks for is checked and never settled. While the feature is
+of an async tool is served to a wallet that already paid for a call on that network: its 402 has
+`reason: proof_required` and offers the MPP zero-amount proof, x402 SIWX, or an x402 payment that
+is checked and never settled. `GET /agentpay/credit` (404 while the feature is off) answers 402
+`proof_required` with the proof challenges, then, with a valid proof, `{"network", "address",
+"credit_micro", "recent": [{"at", "protocol", "amount_micro", "status", "reference"}]}`. While the feature is
 on, `/catalog/search` rows and `/catalog/endpoints/<id>` carry `wallet` (`payable`, and `reason`
 when it is not). See [agent payments](../architecture/agent-payments.md).
 
@@ -460,7 +468,7 @@ runs (a rejected token) or by an exception handler is rendered too. Routes with 
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.
 - `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read at team creation;
-  `/adtrack.js` is empty when conversion tracking is off, so unconfigured deployments set no
+  `/click-id.js` is empty when conversion tracking is off, so unconfigured deployments set no
   advertising cookies ([ads-conversions](../architecture/ads-conversions.md)).
 - Feedback, media hosting, pictures and the showcase are owned by their fragments:
   [feedback](../architecture/feedback.md), [media](../architecture/media.md),
@@ -498,10 +506,18 @@ which individual approved an operation; the reason is context, not authenticated
 (`referrer_user_id == caller.id`), never filtered afterwards, and pinned by a test. `privacy.html`
 discloses this.
 
-**`/?ref=CODE` is the one query string the landing route serves.** `GET /` otherwise treats any
-query string as the SPA's. A `ref` alone or with only `utm_*` tags counts as parameterless, and the
-code is parked in `treg_ref` (httponly, lax, 30 days), revalidated on read because a cookie is
-attacker-supplied and reaches a query.
+**`/?ref=CODE` and `/?dub_id=CLICK` are the query strings the landing route serves.** `GET /`
+otherwise treats any query string as the SPA's. A `ref` and/or `dub_id`, alone or with only `utm_*`
+tags and the tracking-only parameters in `web._SHARE_LINK_PARAMS` (Dub's `via`, ad-click ids),
+counts as parameterless. The code is parked in `treg_ref` (httponly, lax, 30 days), revalidated
+on read because a cookie is attacker-supplied and reaches a query; an affiliate's Dub click id is
+parked in `treg_dub` the same way ([affiliates](../architecture/affiliates.md)).
+A terminal signup can name an affiliate partner instead: `POST /orgs` and `POST /onboard/team` take an
+optional `ref` body field, a Dub partner's link key only (allowlisted; ignored when it is a treg
+friend-referral code or Dub is off), and `/login?cli=…&ref=CODE` parks it in its own `treg_partner`
+cookie, which those doors read when the body has none. Both doors clear `treg_dub` and
+`treg_partner` in their answer, and a user a partner already brought stages no second lead. The
+friend referral comes only from `treg_ref`.
 
 Redemption happens at team creation, right after the signup credit grant and with the same
 swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant

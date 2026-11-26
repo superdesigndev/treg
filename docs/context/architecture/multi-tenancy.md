@@ -3,6 +3,7 @@ title: Multi-tenancy - orgs, memberships, invites, per-org scoping
 status: shipped
 sources:
   - src/treg/domain/governance/access.py
+  - src/treg/domain/tools/names.py
   - src/treg/alembic/versions/0042_pinned_read_scope.py
   - tests/test_pinned_read_scope.py
   - src/treg/models.py
@@ -126,7 +127,9 @@ dependency commits; it never extends the auth transaction.
   may call and list only (`_require_can_register`). A tool name containing a dot is the shape of a
   catalog or hub id, and an own tool of that name answers every call to the id in the team, so
   choosing one needs admin or owner (`_require_admin_for_dotted_names`, on `POST /tools` and skill
-  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`.
+  registration); an OAuth connection name, like a rename, must pass `_valid_tool_name`. Any other
+  name a team chooses for a tool, secret or skill is 1-128 characters with no control or invisible
+  characters (`domain/tools/names.py`); names stored before the rule are not rechecked.
 - **The roster is admin-only** (`list_members`); any member may read the team's human owners and
   admins (`list_admins`, email and role only) so a member out of credit knows whom to ask.
 - **Two ACL axes, ANDed** (`_tool_usable` = `_tool_allowed` and `_project_allowed`). Both are
@@ -225,6 +228,10 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   or a private copy. One named exception: it first deletes every `HubRun` whose `caller_org_id` is the
   team, because a run belongs to its caller, and a maker's deletion leaves callers' history intact.
   Workbench `TableDoc` rows go before their `TeamDatabase` ([workbench-storage](workbench-storage.md)).
+  After the team row's delete, it deletes `ORG_ROWS_WITHOUT_FOREIGN_KEY` (tables naming the team
+  with no foreign key, [data-model](data-model.md)) once more: that delete waits for every
+  transaction that updated the team row, so the rows those calls committed while the walk ran
+  are taken too.
 - **Invites** are one-time and expire after `INVITE_TTL_DAYS` (410). Inviting an existing member is
   409; a new invite supersedes the prior pending one for that email. Suspended users and orgs can
   neither view nor accept.
@@ -240,11 +247,12 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
 
 ## Agent payer teams
 
-`governance.teams.make_payer_team` creates the team of one agent-payments wallet address: a
-machine user `<address>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
+`governance.teams.make_payer_team` creates the team of one agent-payments wallet address on one
+network: a machine user `<address>.<network slug>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
 `_is_machine_email` and `api_keys.is_machine_email`, so no sign-in door and no signup credit), one
 `member` membership with an empty `token_hash`, and the `AgentPayer` row. No token or session can
-reach it; `routers.call._paid_call` acts for it only after a verified payment from that address
+reach it; `routers.call._paid_call` acts for it only after a verified payment or proof from that
+address on that network
 ([agent payments](agent-payments.md)). `AgentPayer` and `AgentPayment` are in
 `ORG_SCOPED_MODELS`, so a deleted payer team takes them with it.
 
@@ -287,7 +295,9 @@ rows are readable by unpinned members only; attribution is never inferred from c
 
 Every audit writer stores the pin; async task and resource records snapshot submission tags in their
 own transaction, and resources found later inherit the task's tags. The reserve ledger entry freezes
-tags in `meta.tags`, so `/calls/{call_ref}` can serve ledger-only history when audit was shed. treg's
+tags in `meta.tags` (an allowance call's `settle` entry, which has no reserve, or before its fold
+its queued `CallCharge`), so `/calls/{call_ref}` and feedback verification can serve ledger-only
+history when audit was shed. An allowance call that was never billed leaves neither. treg's
 replay key includes the full pin; on the shared key the forwarded idempotency label is partitioned by
 it too (unpinned and BYOK forwarding unchanged). Public media URLs stay bearer-by-possession. A
 `TagBudget` is a ceiling on the shared balance, never a sub-account.
@@ -313,4 +323,4 @@ stopped with 426 by `routers.auth_helpers.require_managed_cli` before email cred
 team is created or an invite consumed. Current CLIs send `X-Treg-Key-Protocol: 1`. The legacy hint
 (`python-httpx/` User-Agent plus `ngrok-skip-browser-warning: 1` without the marker) is a
 compatibility check, not an authorization boundary: forging or omitting it never relaxes token
-restrictions. `test_released_cli_compat` checks the refusal preserves config bytes.
+restrictions. `test_cli_key_compatibility` checks the refusal leaves credentials and the team unchanged.

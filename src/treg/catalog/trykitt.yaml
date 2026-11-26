@@ -41,8 +41,6 @@ endpoints:
       realtime:
         type: boolean
         required: true
-        enum:
-        - true
         example: true
         note: Platform calls require true; asynchronous submissions and polling are
           outside this listing.
@@ -111,8 +109,6 @@ endpoints:
       realtime:
         type: boolean
         required: true
-        enum:
-        - true
         example: true
         note: Platform calls require true; asynchronous submissions and polling are
           outside this listing.

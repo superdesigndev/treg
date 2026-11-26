@@ -19,8 +19,8 @@ def test_catalog_body_optional_arrays_are_optional_and_validate_each_item():
         "input": {"body": {
             "name": {"type": "string", "required": True},
             "formats": {
-                "type": "array[string]", "required": False,
-                "minItems": 1, "maxItems": 2, "enum": ["html", "markdown"],
+                "type": "array", "items": {"type": "string", "enum": ["html", "markdown"]},
+                "required": False, "minItems": 1, "maxItems": 2,
             },
         }},
     }
@@ -43,7 +43,7 @@ def test_catalog_body_required_arrays_remain_required():
         "method": "POST",
         "strict_body": True,
         "input": {"body": {
-            "items": {"type": "array[object]", "required": True, "min": 1, "max": 2},
+            "items": {"type": "array", "items": {"type": "object"}, "required": True, "minItems": 1, "maxItems": 2},
         }},
     }
 
@@ -51,6 +51,27 @@ def test_catalog_body_required_arrays_remain_required():
         resolve._enforce_catalog_body(endpoint, b"{}")
     assert exc.value.status_code == 400
     assert exc.value.detail["parameter"] == "body.items"
+
+
+@pytest.mark.parametrize(("bounds", "value", "message"), [
+    ({}, "a=b", "example.items requires an array in body.cookies"),
+    ({"minItems": 1}, [], "example.items requires at least 1 item in body.cookies"),
+    ({"maxItems": 1}, ["a", "b"], "example.items requires at most 1 item in body.cookies"),
+    ({"minItems": 1, "maxItems": 2}, [], "example.items requires between 1 and 2 item in body.cookies"),
+    ({"minItems": 1, "maxItems": 1}, [], "example.items requires exactly 1 item in body.cookies"),
+])
+def test_a_strict_array_refusal_names_only_the_bounds_it_declares(bounds, value, message):
+    endpoint = {
+        "id": "example.items",
+        "method": "POST",
+        "body_allowlist": True,
+        "input": {"body": {"cookies": {"type": "array", **bounds}}},
+    }
+
+    with pytest.raises(ResolutionFailed) as exc:
+        resolve._enforce_catalog_body(endpoint, json.dumps({"cookies": value}).encode())
+    assert exc.value.status_code == 400
+    assert exc.value.detail["message"] == message
 
 
 def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
@@ -201,7 +222,7 @@ def test_async_descriptor_accepts_both_poll_and_result_modes():
      "requires exactly in, name"),
     (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
                               "param": {"in": "headers", "name": "task_id"}}),
-     "must name an input field in pathParams or queryParams"),
+     "must name an input field in pathParams, queryParams or body"),
     (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
                               "param": {"in": "pathParams", "name": "missing"}}),
      "target does not declare input field"),
@@ -290,6 +311,23 @@ def test_async_descriptor_rejects_non_get_or_non_utility_targets():
     assert any("must use GET" in error for error in errors)
 
 
+def test_async_descriptor_polls_a_body_id_only_through_a_post_target():
+    """A provider that reads a task by POSTing its id (Icypeas) declares `in: body`; a path or
+    query id still needs GET, and a body id needs POST."""
+    index = {"demo.video-gen.status": {
+        "provider": "demo", "kind": "utility", "method": "POST", "path": "/tasks/read",
+        "input": {"body": {"id": {"type": "string", "required": True}}}}}
+    descriptor = _valid_async()
+    descriptor["poll"] = {"endpoint": "demo.video-gen.status", "param": {"in": "body", "name": "id"}}
+    assert _async_errors(descriptor, endpoint_index=index) == []
+    index["demo.video-gen.status"]["method"] = "GET"
+    assert any("must use POST to read a body id" in e for e in _async_errors(descriptor, endpoint_index=index))
+    fetch = _valid_async()
+    fetch["result"] = {"fetch": "demo.video-gen.content",
+                       "fetch_param": {"in": "body", "name": "video_id", "value_from": "id"}}
+    assert any("must name an input field in pathParams or queryParams" in e for e in _async_errors(fetch))
+
+
 def test_async_descriptor_rejects_unknown_keys_and_invalid_json_paths():
     descriptor = _valid_async()
     descriptor["webhook"] = "https://example.com"
@@ -300,6 +338,14 @@ def test_async_descriptor_rejects_unknown_keys_and_invalid_json_paths():
     errors = _async_errors(descriptor)
     assert any("async has unknown keys" in error for error in errors)
     assert any("value_from must be a dotted" in error for error in errors)
+
+
+def test_async_descriptor_validates_pending_response_shape():
+    descriptor = _valid_async()
+    descriptor["pending_response"] = {"status": 404, "path": "error_code", "equals": "result_pending"}
+    assert _async_errors(descriptor) == []
+    descriptor["pending_response"] = {"status": 200, "path": "error_code", "equals": "result_pending"}
+    assert any("pending_response needs" in error for error in _async_errors(descriptor))
 
 
 def test_resource_ownership_contract_validates_ids_and_declared_parameters():
@@ -430,7 +476,8 @@ def test_cost_table_accepts_subset_rows_times_bounds_and_usage_settlement():
 @pytest.mark.parametrize(("mutate", "message"), [
     (lambda c: c.update(table=[]), "cost.table must be a non-empty list"),
     (lambda c: c.update(table=["row"]), "table row must be a mapping"),
-    (lambda c: c["table"][0].update(when={}), "when must be a non-empty mapping"),
+    (lambda c: c["table"][0].update(when=[]), "when must be a mapping"),
+    (lambda c: c["table"][0].update(when={}), "when is shadowed by an earlier subset row"),
     (lambda c: c["table"][0].update(when={"body.unknown": "x"}), "is not declared in input"),
     (lambda c: c["table"][0].update(value=-1), "value must be a finite non-negative number"),
     (lambda c: c["table"][1].update(times="body.frames"), "times field 'body.frames' is not declared"),
@@ -465,6 +512,30 @@ def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
     no_max["body"]["duration"].pop("max")
     errors = _table_errors(_valid_table(), no_max)
     assert any("must declare a positive input max" in error for error in errors)
+
+
+def test_a_usage_path_may_declare_that_a_missing_field_means_zero():
+    usage = _valid_table() | {"settle": "usage", "usage": {"path": "usage.cost", "unit": "usd", "missing": 0}}
+    assert _table_errors(usage) == []
+    usage["usage"]["missing"] = 1
+    assert any("usage.missing may only be 0" in e for e in _table_errors(usage))
+
+
+def test_cost_table_takes_a_last_catch_all_row_and_a_bounded_list_length_multiplier():
+    """A job priced per item it asks for: `when: {}` matches every request, and `times` may name a
+    list whose length is the quantity, bounded by its declared maxItems."""
+    schema = {"body": {"rows": {"type": "array", "items": {"type": "string"}, "required": True,
+                                "minItems": 1, "maxItems": 500},
+                       "limit": {"type": "integer", "required": True, "min": 1, "max": 1000}}}
+    by_rows = _valid_table() | {"table": [{"when": {}, "value": 0.02, "times": "body.rows"}],
+                                "fallback": {"value": 10.0, "note": "the largest list"}}
+    assert _table_errors(by_rows, schema) == []
+    by_limit = by_rows | {"table": [{"when": {}, "value": 0.01, "times": "body.limit"}]}
+    assert _table_errors(by_limit, schema) == []
+    unbounded = {"body": {"rows": {"type": "array", "items": {"type": "string"}, "required": True}}}
+    assert any("must be numeric or a list with maxItems" in e for e in _table_errors(by_rows, unbounded))
+    low_fallback = by_rows | {"fallback": {"value": 1.0, "note": "too low"}}
+    assert any("must be at least every table row" in e for e in _table_errors(low_fallback, schema))
 
 
 def test_cost_table_rejects_shadowed_rows_and_ambiguous_or_non_finite_values():
@@ -713,22 +784,49 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
 
 @pytest.mark.parametrize('rule,valid', [
     ({'body.realtime': True}, True),
+    ({'body.realtime': False}, True),       # the field takes any boolean; the pin is treg's key's own
     ({'body.realtime': 1}, False),
-    ({'body.realtime': False}, False),
     ({'body.missing': True}, False),
     ({'queryParams.realtime': True}, False),
     ({'queryParams.memory': 1024}, True),
     ({'queryParams.memory': '1024'}, False),
+    ({'queryParams.memory': 64}, False),     # below the declared range
+    ({'body.mode': 'sync'}, True),
+    ({'body.mode': 'async'}, False),        # outside the declared enum
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
-    ({'body.realtime': None}, False),       # absence applies to query parameters only
+    ({'body.realtime': None}, True),        # a declared body field may be absent-only too
+    ({'body.missing': None}, False),        # an absent-only body field is a declared one
     ({'headers.x-key': None}, False),
+    ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
+    ({'pathParams.model': 'stable'}, True),
+    ({'queryParams.memory': [1024, 2048]}, True),
+    ({'pathParams.model': []}, False),
+    ({'queryParams.memory': [1024, '2048']}, False),
+    ({'body.mode': ['sync']}, False),       # a body pin is one value
     ({}, False),
 ])
-def test_platform_request_requires_declared_fixed_body_value(rule, valid):
+def test_platform_request_pins_a_value_its_field_declares(rule, valid):
     errors = []
     validator.check_platform_request(rule, {'body': {
-        'realtime': {'type': 'boolean', 'enum': [True]},
-    }, 'queryParams': {'memory': {'type': 'integer', 'enum': [1024]}}}, 'test', errors)
+        'realtime': {'type': 'boolean'}, 'mode': {'type': 'string', 'enum': ['sync']},
+    }, 'queryParams': {'memory': {'type': 'integer', 'min': 128}},
+        'pathParams': {'model': {'type': 'string', 'required': True}}}, 'test', errors)
+    assert (not errors) is valid
+
+
+_PATH_ENUM_INPUT = {'pathParams': {'model': {'type': 'string', 'required': True, 'enum': ['stable']}}}
+
+
+@pytest.mark.parametrize('extra,valid', [
+    ({}, False),                                                   # treg's key would run any model
+    ({'platform_request': {'pathParams.model': ['stable']}}, True),
+    ({'platform_request': {'body.mode': 'sync'}}, False),          # a pin on another field
+    ({'scope': 'own_account'}, True),                              # treg's key never serves it
+    ({'platform_blocked': True}, True),
+])
+def test_a_path_enum_on_a_row_treg_serves_is_a_platform_pin(extra, valid):
+    errors = []
+    validator.check_path_enum_pins({'input': _PATH_ENUM_INPUT, **extra}, 'test', errors)
     assert (not errors) is valid
 
 
@@ -834,7 +932,7 @@ def test_contactout_person_routes_cannot_recapture_pii():
     safe = {"contactout.people.count", "contactout.people.email.verify",
             "contactout.companies.search", "contactout.companies.enrich"}
     structural = {"contactout.people.contact.work", "contactout.people.contact.phone",
-                  "contactout.people.contact.personal"}
+                  "contactout.people.contact.personal", "contactout.people.audience.email-hash"}
     for ep in endpoints:
         if ep["id"] in safe:
             continue
@@ -844,7 +942,7 @@ def test_contactout_person_routes_cannot_recapture_pii():
         if ep["id"] in structural:
             assert ep["example_response"] == "examples/" + example.name
             payload = example.read_text()
-            assert "example.invalid" in payload or "+10000000000" in payload
+            assert any(fake in payload for fake in ("example.invalid", "+10000000000", "routing-fixture"))
         else:
             assert "example_response" not in ep
             assert not example.exists()
@@ -886,9 +984,11 @@ def test_price_table_may_disclose_its_validated_maximum_only():
 
 
 @pytest.mark.parametrize('patch,valid', [
-    ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, False),
+    ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, True),
+    ({'method': 'POST', 'input': {'queryParams': {'mode': {'type': 'string'}},
+                                 'body': {'extra': {'type': 'string'}}}}, False),
     ({'path': '/{id}'}, False),
-    ({'input': {'queryParams': {'mode': {'enum': [True]}}}}, False),
+    ({'input': {'queryParams': {'mode': 'string'}}}, False),
 ])
 def test_strict_query_contract_validation(patch, valid):
     ep = {'strict_query': True, 'method': 'GET', 'path': '/lookup',
@@ -908,7 +1008,7 @@ def test_strict_query_accepts_a_declared_path_parameter():
 
 def test_body_allowlist_object_item_presence_rules():
     ep = {'body_allowlist': True, 'method': 'POST',
-          'input': {'body': {'data': {'type': 'array[object]',
+          'input': {'body': {'data': {'type': 'array', 'items': {'type': 'object'},
                                       'item_required_any': ['email', 'linkedin']}}}}
     errors = []
     validator.check_body_allowlist(ep, 'example', errors)
@@ -922,11 +1022,12 @@ def test_body_allowlist_object_item_presence_rules():
     ({}, True),
     ({'strict_body': 'yes'}, False),
     ({'method': 'GET'}, False),
-    ({'input': {'body': {'items': {'type': 'array[object]', 'min': 2, 'max': 1}}}}, False),
+    ({'input': {'body': {'items': {'type': 'array', 'items': {'type': 'object'}, 'minItems': 2, 'maxItems': 1}}}},
+     False),
 ])
 def test_strict_body_contract_validation(patch, valid):
     ep = {'strict_body': True, 'method': 'POST', 'path': '/lookup',
-          'input': {'body': {'items': {'type': 'array[object]', 'min': 1, 'max': 1}}}}
+          'input': {'body': {'items': {'type': 'array', 'items': {'type': 'object'}, 'minItems': 1, 'maxItems': 1}}}}
     errors = []
     validator.check_strict_body(ep | patch, 'example', errors)
     assert bool(errors) is not valid
@@ -1067,6 +1168,17 @@ def test_usage_terms_are_accepted_for_a_multi_meter_response():
     assert errors == []
 
 
+def test_usage_terms_may_count_in_the_providers_credit():
+    """Icypeas bills a bulk file per counted row in credits: the rates stay in credits and fx.yaml
+    prices them, instead of a dollar rate copied into the row."""
+    cost = _flat_usage_cost()
+    cost["usage"] = {"unit": "credit", "terms": [{"path": "files[task=email-search].found", "rate": 1},
+                                                  {"path": "files[task=email-verification].done", "rate": 0.1}]}
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], provider="icypeas")
+    assert errors == []
+
+
 @pytest.mark.parametrize(("usage", "message"), [
     ({"terms": [], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b"}], "unit": "usd"}, "usage.terms must be"),
@@ -1076,9 +1188,9 @@ def test_usage_terms_are_accepted_for_a_multi_meter_response():
     ({"terms": [{"path": "a[version=v1.2].b", "rate": 1}], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b", "rate": 0}], "unit": "usd"}, "usage.terms must be"),
     ({"terms": [{"path": "a.b", "rate": float("nan")}], "unit": "usd"}, "usage.terms must be"),
-    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "usage.unit must be 'usd'"),
+    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "needs a numeric fx.yaml credit_rates_usd"),
     ({"terms": [{"path": "a.b", "rate": 1}], "path": "a.b", "unit": "usd"},
-     "or usage.terms and unit 'usd'"),
+     "or usage.terms and usage.unit"),
 ])
 def test_usage_terms_reject_bad_shapes(usage, message):
     cost = _flat_usage_cost()
@@ -1346,6 +1458,9 @@ def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
 @pytest.mark.parametrize("endpoint_id,keys,message", [
     ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
      "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "0", "currency": "USD", "unit": "call"},
+                                 "settle": {"reported": {"path": "response.cost", "unit": "usd"}}},
+     "a free price never settles from a reported charge"),
     ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
      "price.currency unit (unit page) has no fx.yaml rate"),
     ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},
@@ -1531,3 +1646,33 @@ def test_a_public_providers_every_row_is_anonymous():
     assert errors == []
     validator.check_public_provider_row({}, public, "bad", errors)
     assert errors == ["bad: a public provider's every row must be platform_auth: anonymous"]
+
+
+def test_an_adapters_soft_list_must_name_its_contracts_keys(tmp_path, monkeypatch):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "contracts.yaml").write_text(
+        "contracts:\n  x.search:\n    identity: [{q: string}]\n    filters: {country: {type: string}}\n"
+        "    output: {results: {type: array, items: {type: object}, required: true}}\n    miss: 'results == []'\n")
+    adapter = "adapters:\n  p.x.search: {accepts: [[q]], in: {q: body.q}, out: {results: r}, miss: 'r == []', soft: %s}\n"
+    for soft, problem in (("[country]", None), ("[countyr]", "soft names countyr"), ("country", "soft is a list")):
+        (tmp_path / "adapters.yaml").write_text(adapter % soft)
+        errors: list[str] = []
+        validator.check_routing(errors, {"p.x.search": {"capability": "x.search"}})
+        assert (problem is None and errors == []) or any(problem in e for e in errors), (soft, errors)
+
+
+def test_a_soft_parameter_no_contract_filter_reaches_is_a_warning(tmp_path, monkeypatch):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "contracts.yaml").write_text(
+        "contracts:\n  x.search:\n    identity: [{q: string}]\n    filters: {country: {type: string}}\n"
+        "    output: {results: {type: array, items: {type: object}, required: true}}\n    miss: 'results == []'\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  p.x.search: {accepts: [[q]], in: {q: queryParams.q, country: queryParams.gl}, "
+        "out: {results: r}, miss: 'r == []'}\n")
+    soft = {"type": "string", "applied": "soft"}
+    row = {"capability": "x.search", "input": {"queryParams": {"q": {"type": "string"}, "gl": soft, "sites": soft}}}
+    errors: list[str] = []
+    warnings: list[str] = []
+    validator.check_routing(errors, {"p.x.search": row}, warnings)
+    assert errors == [] and warnings == [
+        "p.x.search: queryParams.sites is applied: soft but no contract filter maps into it; only catalog get shows it"]

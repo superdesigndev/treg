@@ -64,6 +64,11 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
     "application/feedback.py": {API},
+    # Comparisons: request-path reads and one verdict write; `treg-worker compare collect` runs only in
+    # the worker process (same reasoning as `worker.py`), and holds no session across a vendor call.
+    "application/compare.py": {API},
+    # One small aggregate of callreview per worker every ten minutes (targeted review invitations).
+    "application/review_targets.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
     "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
     "application/catalog_search.py": {API},  # the hub read and the per-caller judge cap, each closed before the judge
@@ -78,14 +83,27 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/call/reserve.py": {API}, "application/call/resolve.py": {API},
     "application/call/route.py": {API}, "application/call/service.py": {API},
     "application/call/settle.py": {API},
+    "application/call/allowance.py": {API},  # refills and charge inserts are part of the call that needs them
     "application/hub/runner.py": {API},   # a run lives inside the caller's /call/; its record write is part of that request
     "domain/capacity/marks.py": {API}, "domain/capacity/routes_view.py": {API},
     "domain/capacity/view.py": {API},
     "domain/identity/api_keys.py": {BACKGROUND},
     # `treg-worker` is its own process; it shares the API pool because nothing else is running in it.
-    "worker.py": {API},
+    # `archive retain --dry-run` only reads, so it reads the replica when one is configured.
+    "worker.py": {API, "read_session_maker"},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
     "application/catalog_stats.py": {API},
+    # Runs only inside `treg-worker reviews judge`; same reasoning as `worker.py`. No session is held
+    # across a Jev request.
+    "application/review_judge.py": {API},
+    # Runs only inside `treg-worker reviews body-pilot`; same reasoning as `worker.py`. Reads only,
+    # and no session is held across an archive read or a Jev request.
+    "application/review_body_pilot.py": {API},
+    # Read only by the review judge, pilot and audit, which run only inside `treg-worker reviews`;
+    # same reasoning as `worker.py`. One short read per review, closed before the archive read.
+    "application/review_answers.py": {API},
+    # Runs only inside `treg-worker reviews body-audit`; same reasoning as `worker.py`.
+    "application/review_body_audit.py": {API},
     # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.
     "application/key_spend_rollup.py": {API},
     # Runs only inside `treg-worker usage rollup`; same reasoning as `worker.py`.
@@ -98,11 +116,18 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/images.py": {API},
     # Runs only inside `treg-worker admin purge-evidence`; same reasoning as `worker.py`.
     "application/evidence_retention.py": {API},
+    # Runs only inside `treg-worker admin reencrypt-credentials`; same reasoning as `worker.py`.
+    "application/credential_reencrypt.py": {API},
+    # Runs only inside `treg-worker admin rotate-fernet`; same reasoning as `worker.py`.
+    "application/fernet_rotation.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
+    "application/allowance_sweep.py": {BACKGROUND},
+    "application/affiliates.py": {BACKGROUND},
     # Request-shaped: the owner delete route and `treg-worker admin erase-archive`, in short
     # transactions with the connection released around object I/O (archive.md, "Opting out").
     "application/archive_erasure.py": {API},
+    "application/archive_retention.py": {API},
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
@@ -215,6 +240,8 @@ BACKGROUND_SITES = {
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",
+    "application/allowance_sweep.py:worker": "allowance_sweep.worker",
+    "application/affiliates.py:worker": "affiliates.worker",
 }
 
 

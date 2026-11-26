@@ -23,7 +23,7 @@ from ..infra.db import session_maker
 from ..models import CallTask
 from ..timeutil import utcnow_naive
 from .call.evidence import _decompress_for_scan
-from .call.types import CallerSnapshot, CallInput, EmptyBody, UpstreamResponse
+from .call.types import BytesBody, CallerSnapshot, CallInput, EmptyBody, UpstreamResponse
 
 MAX_POLL_ANSWER_BYTES = 8 * 1024 * 1024
 DEFAULT_INTERVAL_S = 10.0
@@ -76,8 +76,7 @@ def _resume(task: CallTask) -> str | None:
         return None
     poll = (task.descriptor or {}).get("poll") or {}
     if poll.get("endpoint"):
-        name = str((poll.get("param") or {}).get("name"))
-        return f"treg call {poll['endpoint']} -p {shlex.quote(name + '=' + str(task.task_id))}"
+        return asynctasks.poll_command(str(poll["endpoint"]), poll.get("param") or {}, task.task_id)
     if task.poll_url:
         return f"treg call {shlex.quote(task.poll_url)}"
     return None
@@ -193,16 +192,23 @@ def poll_input(task: CallTask, headers: tuple[tuple[bytes, bytes], ...], caller:
     """The poll a look makes, as `treg call` would send it: the catalog poll endpoint with the task
     id (a path parameter is filled from the query), or the provider's own poll URL."""
     poll = (task.descriptor or {}).get("poll") or {}
+    document = None
     if poll.get("endpoint"):
         target = str(poll["endpoint"])
-        query = ((str((poll.get("param") or {}).get("name")), str(task.task_id)),)
+        query, document = asynctasks.poll_inputs(poll.get("param") or {}, task.task_id)
     else:
         target, query = str(task.poll_url), ()
-    kept = tuple((k, v) for k, v in headers if k.lower() not in _DROPPED_LOOK_HEADERS)
-    return CallInput(method="GET", raw_rest=target,
-                     raw_headers=kept + ((b"accept-encoding", b"identity"),),
-                     query_items=query, raw_query=urlencode(query), body=EmptyBody(),
-                     caller=caller, client_ip=client_ip)
+    kept = tuple((k, v) for k, v in headers
+                 if k.lower() not in _DROPPED_LOOK_HEADERS | {b"content-type", b"content-length"})
+    extra: tuple[tuple[bytes, bytes], ...] = ((b"accept-encoding", b"identity"),)
+    body: object = EmptyBody()
+    if document is not None:
+        payload = json.dumps(document).encode()
+        extra += ((b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode()))
+        body = BytesBody(payload)
+    return CallInput(method="GET" if document is None else "POST", raw_rest=target,
+                     raw_headers=kept + extra, query_items=query, raw_query=urlencode(query),
+                     body=body, caller=caller, client_ip=client_ip)
 
 
 async def read_poll_answer(upstream: UpstreamResponse) -> tuple[bytes, bool]:
@@ -241,6 +247,15 @@ def poll_view(task: CallTask, upstream: UpstreamResponse, raw: bytes, too_large:
                 "call_id": poll_call_id, "cost_micro": int(cost) if cost.isdigit() else None}
     view["response"] = response
     if status >= 400:
+        try:
+            document = json.loads(decoded if decoded is not None else raw)
+        except ValueError:
+            document = None
+        if asynctasks.is_pending_response(task.descriptor or {}, status, document):
+            pending = str(task.descriptor["pending_response"]["equals"])
+            view["status"] = pending
+            view["status_shown"] = asynctasks.shown(pending)
+            return view
         return _error(view, "poll_failed", f"polling returned HTTP {status}", http_status=status,
                       retryable=status >= 500, by="provider")
     try:

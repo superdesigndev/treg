@@ -361,6 +361,40 @@
     "methods": [
       "POST"
     ],
+    "name": "submit_mark",
+    "path": "/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_marks",
+    "path": "/admin/marks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "next_comparison",
+    "path": "/comparisons/next"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_comparison",
+    "path": "/comparisons"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "cli_events",
     "path": "/cli/events"
   },
@@ -921,6 +955,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "doomscroll_skill_md",
+    "path": "/skills/doomscroll/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
   },
@@ -932,6 +975,15 @@
     ],
     "name": "rea_growth_skill_md",
     "path": "/skills/rea-growth/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_marketing_skill_md",
+    "path": "/skills/rea-marketing/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1047,8 +1099,8 @@
       "GET",
       "HEAD"
     ],
-    "name": "adtrack_js",
-    "path": "/adtrack.js"
+    "name": "click_id_js",
+    "path": "/click-id.js"
   },
   {
     "kind": "APIRoute",
@@ -1155,6 +1207,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "rea_marketing_page",
+    "path": "/rea-marketing"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "social_search_page",
     "path": "/social"
   },
@@ -1236,6 +1297,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "doomscroll_page",
+    "path": "/doomscroll"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "gtm_engineering_page",
     "path": "/gtm-engineering"
   },
@@ -1300,6 +1370,15 @@
     ],
     "name": "blog_security_incident_2026_10_23",
     "path": "/blog/security-incident-2026-10-23"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_jobspipe_and_treg",
+    "path": "/blog/jobspipe-and-treg"
   },
   {
     "kind": "APIRoute",
@@ -1492,6 +1571,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "well_known_doomscroll_md",
+    "path": "/.well-known/skills/doomscroll/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "connect_demo_page",
     "path": "/connect-demo"
   },
@@ -1612,6 +1700,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "vendor_console_me",
+    "path": "/vendor-console/me"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "list_orgs",
     "path": "/orgs"
   },
@@ -1680,32 +1777,6 @@
     ],
     "name": "onboard_team",
     "path": "/onboard/team"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
-    "name": "demo_sandbox_mint",
-    "path": "/demo/sandbox"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_live",
-    "path": "/demo/sandbox/live"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_skill",
-    "path": "/demo/sandbox/skill"
   },
   {
     "kind": "APIRoute",
@@ -2960,6 +3031,15 @@
     ],
     "name": "call_tool",
     "path": "/call/{rest:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_payment_credit",
+    "path": "/agentpay/credit"
   },
   {
     "kind": "APIRoute",

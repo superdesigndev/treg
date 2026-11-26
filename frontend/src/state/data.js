@@ -44,7 +44,7 @@ export default function data(){
   // usage-metering: rollups + the member's own used/cap
       // Billing (Stripe top-ups). `billing` null = not loaded / not an admin; billing.configured
       // false = this deployment sells no balance, so the whole block stays hidden.
-      billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoMonthlyCap:2000, autoConsent:false, autoOpen:false,
+      billing:null, billingNote:'', billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoMonthlyCap:'', autoConsent:false, autoOpen:false,
       topupOpen:false, topupPick:10, topupOther:null, topupAuto:true, topupErr:'',
       capCfg:null, capUsd:0, capBusy:false, capErr:'',
       memberCapUsd:'', memberCapBusy:false, memberCapErr:'', memberCapOpen:false,
@@ -115,7 +115,7 @@ export default function data(){
       copyRecipe:null, recipeTab:'CLI', viewRecipe:null, recipeSaved:false,
       // detail pages (shareable /app/skills/<name> + /app/tools/<name> deep links)
       detail:null, detailData:null, detailErr:'', detailLoading:false, detailFile:'SKILL.md', detailCopied:'', detailNote:'',
-      shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no sandbox/tour)
+      shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no tour)
       share:{on:false, email:'', role:'viewer', full:true, busy:false, err:'', sent:null, member:null},  // detail-page "Share…" (invite + land on this page)
       me:'', icHash:'', myOrgs:[], isAdmin:false,
       meAvatar:null, uploadsOn:false, avatarDialog:false,  // /auth/me: your avatar, whether this registry takes uploads; the Your avatar dialog
@@ -132,7 +132,6 @@ export default function data(){
       useMode:'call',
       startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, startProgress:null, startWatching:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
-      vendorAsk:false, vendorCopied:false,
       reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},
       demo:{signin:false},
     teamResources:[],

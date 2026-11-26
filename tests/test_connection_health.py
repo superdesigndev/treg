@@ -50,6 +50,7 @@ async def _make_non_refreshable(secret_id: int, expires_in_days: float) -> None:
         blob = json.loads(crypto.decrypt(s.value))
         blob.pop("refresh_token", None)
         s.value = crypto.encrypt(json.dumps(blob))
+        s.refreshable = False
         s.expires_at = datetime.now() + timedelta(days=expires_in_days)
         await db.commit()
 
@@ -154,3 +155,42 @@ def test_expiry_state_boundaries(expires_at, refreshable, state):
 def test_needs_reconnect_ignores_non_oauth_secrets():
     s = Secret(name="k", kind="env", value=crypto.encrypt("plain"))
     assert health.needs_reconnect(s) is False
+
+
+@pytest.mark.parametrize(("lookup", "status"), [("timeout", "unknown"), ("private", "invalid")])
+async def test_a_token_endpoint_lookup_timeout_is_not_a_dead_credential(
+        clients: AsyncClient, treg_google_app, monkeypatch, lookup, status):
+    """A timed-out address check says nothing about the credential: the refresh is still refused,
+    but the verdict is unknown and no owner is told the credential died. A confirmed non-public
+    token endpoint stays invalid."""
+    from treg.infra import oauth_refresh
+    from treg.infra.upstream.ssrf import AddressLookupTimedOut
+
+    sid = await _connect(clients, provider="google-search-console", name="google-search-console")
+    async with session_maker() as db:
+        s = (await db.execute(select(Secret).where(Secret.id == sid))).scalars().one()
+        blob = json.loads(crypto.decrypt(s.value))
+        blob["client_id"] = "retired-cid"
+        blob["expires_at"] = 0
+        s.value = crypto.encrypt(json.dumps(blob))
+        await db.commit()
+
+    async def check(url):
+        if lookup == "timeout":
+            raise AddressLookupTimedOut("address lookup timed out")
+        return False
+
+    notified = []
+
+    async def notify(invalid, db, client):
+        notified.extend(x.id for x in invalid)
+
+    monkeypatch.setattr(get_settings(), "proxy_ssrf_check", True)
+    monkeypatch.setattr(oauth_refresh, "url_host_is_public", check)
+    monkeypatch.setattr(health, "_notify", notify)
+    out = (await clients.post("/health/run")).json()
+
+    rows = {r["secret_id"]: r for r in (await clients.get("/health")).json()}
+    assert rows[sid]["status"] == status
+    assert (sid in {r["secret_id"] for r in out["invalid"]}) is (status == "invalid")
+    assert (sid in notified) is (status == "invalid")

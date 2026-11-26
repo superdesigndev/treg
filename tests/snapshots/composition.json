@@ -17,8 +17,28 @@
       "handler": "treg.api._id_out_of_range"
     },
     {
+      "exception": "sqlalchemy.exc.DBAPIError",
+      "handler": "treg.api._db_id_out_of_range"
+    },
+    {
       "exception": "sqlalchemy.exc.TimeoutError",
       "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "asyncpg.exceptions.TooManyConnectionsError",
+      "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "asyncpg.exceptions.CannotConnectNowError",
+      "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "sqlalchemy.exc.OperationalError",
+      "handler": "treg.api._db_error"
+    },
+    {
+      "exception": "sqlalchemy.exc.InterfaceError",
+      "handler": "treg.api._db_error"
     },
     {
       "exception": "treg.infra.db.ReportBusy",
@@ -28,7 +48,7 @@
   "middleware": [
     {
       "args": [],
-      "class": "treg.mcp.NormalizeDirectoryMCPPath",
+      "class": "treg.mcp.NormalizeMCPPath",
       "kwargs": {}
     },
     {

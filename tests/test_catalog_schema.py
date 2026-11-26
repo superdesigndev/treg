@@ -152,6 +152,23 @@ def test_the_served_cost_rebuilds_todays_hold_and_settle_forms(keys, cost):
                            else "per_success", "value": 1, **cost, **PROVENANCE}
 
 
+@pytest.mark.parametrize(("unit", "settle", "miss", "expected"), [
+    ("call", {"reported": {"header": "x-cost", "unit": "credit"}}, "free", "per_success"),
+    ("call", {"reported": {"path": "response.cost", "unit": "credit"}}, "charged", "per_call"),
+    ("result", {"reported": {"header": "x-cost", "unit": "credit"}}, "free", "per_result"),
+    ("call", {"count": {"path": "response.items"}}, "free", "per_result"),
+    ("call", None, "free", "per_result"),
+])
+def test_a_reserve_plugin_preserves_the_unit_of_a_reported_charge(unit, settle, miss, expected):
+    from treg.domain.catalog.schema.v2 import served
+    row = V2Row.model_validate(_v2(price={"value": "5", "unit": unit, "currency": "credit"}, provenance=PROVENANCE,
+                                   reserve={"plugin": "demo.hold", "max": "25"},
+                                   settle=settle, bill={"miss": miss}))
+    catalog = store.Catalog(credit_rates={"demo": 0.0004})
+    view = catalog.cost_view(served(row, {})["cost"], "demo")
+    assert (view["type"], view["unit"], view["usd"]) == (expected, unit, 0.002)
+
+
 def test_the_merge_rule_replaces_whole_inherits_the_absent_and_opts_out_on_null():
     defaults = {"expect": {"path": "response.code", "op": "equals", "value": 0},
                 "bill": {"miss": "charged", "error": "charged"}}
@@ -278,16 +295,16 @@ def test_a_listed_rejection_loads_and_an_unlisted_one_fails(tmp_path, monkeypatc
 def test_the_violation_audit_refuses_growth_and_stale_entries():
     listed = violations.parse({
         "endpoint_keys": {"team_label": {"provider": "crawl4ai"}},
-        "unread_input_words": {"demo.web.a": ["maxLength"]},
+        "unread_input_words": {"demo.web.a": ["examples"]},
         "rejected": [{"at": "demo.web.z", "path": "input", "reason": "r"}],
     })
     uses = [violations.Use("crawl4ai.x", "crawl4ai", {"team_label": ["body.x"]}),
             violations.Use("demo.web.b", "demo", {"team_label": ["body.x"],
-                                                  "input": {"queryParams": {"q": {"format": "uri"}}}})]
+                                                  "input": {"queryParams": {"q": {"anyOf": []}}}})]
     errors = violations.audit(uses, [], set(), listed)
     assert any("also used by demo" in e for e in errors)
-    assert any("demo.web.b: input uses format" in e for e in errors)
-    assert any("unread_input_words.demo.web.a no longer uses maxLength" in e for e in errors)
+    assert any("demo.web.b: input uses anyOf" in e for e in errors)
+    assert any("unread_input_words.demo.web.a no longer uses examples" in e for e in errors)
     assert any("rejected demo.web.z input parses now" in e for e in errors)
     assert violations.audit([uses[0]], [], set(), violations.parse(
         {"endpoint_keys": {"team_label": {"provider": "crawl4ai"}}})) == []

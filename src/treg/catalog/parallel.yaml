@@ -20,7 +20,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        search_queries: {type: "array[string]", required: true, minItems: 1, example: ["python requests library"], note: "Concise keyword queries, 3-6 words each; two or three give the best results."}
+        search_queries: {type: array, items: {type: string}, required: true, minItems: 1, example: ["python requests library"], note: "Concise keyword queries, 3-6 words each; two or three give the best results."}
         mode: {type: string, required: true, enum: [turbo, fast], example: fast, note: "Turbo answers in about 200 ms for English and Japanese queries; fast in about 700 ms. basic and advanced are the separate advanced search tool."}
         objective: {type: string, required: false, example: "What is the Python requests library?", note: "The question behind the search, in plain words; focuses the excerpts."}
         max_chars_total: {type: integer, required: false, note: "Upper bound on excerpt characters across all results."}
@@ -64,7 +64,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        search_queries: {type: "array[string]", required: true, minItems: 1, example: ["python requests library"], note: "Concise keyword queries, 3-6 words each; two or three give the best results."}
+        search_queries: {type: array, items: {type: string}, required: true, minItems: 1, example: ["python requests library"], note: "Concise keyword queries, 3-6 words each; two or three give the best results."}
         mode: {type: string, required: false, default: advanced, enum: [basic, advanced], example: basic, note: "Basic answers in about 1 s; advanced in about 3 s with the highest quality."}
         objective: {type: string, required: false, example: "What is the Python requests library?", note: "The question behind the search, in plain words; focuses the excerpts."}
         max_chars_total: {type: integer, required: false, note: "Upper bound on excerpt characters across all results."}
@@ -108,9 +108,9 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
+        urls: {type: array, items: {type: string}, required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
         objective: {type: string, required: false, note: "What you want from the pages; focuses the excerpts. Up to 5,000 characters."}
-        search_queries: {type: "array[string]", required: false, note: "Keyword queries that focus the excerpts."}
+        search_queries: {type: array, items: {type: string}, required: false, note: "Keyword queries that focus the excerpts."}
         max_chars_total: {type: integer, required: false, note: "Upper bound on excerpt characters across all results."}
         session_id: {type: string, required: false}
         client_model: {type: string, required: false}

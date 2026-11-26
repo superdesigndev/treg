@@ -1,0 +1,20 @@
+{
+  "output": {
+    "profile": {
+      "emails": [],
+      "phoneNumbers": [
+        {
+          "number": "+15555550100",
+          "type": "mobile"
+        }
+      ],
+      "success": true,
+      "linkedin_url": "https://www.linkedin.com/in/routing-fixture"
+    },
+    "done": true
+  },
+  "chargeInfo": {
+    "method": "charged-now",
+    "creditsCharged": 3
+  }
+}

@@ -30,6 +30,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 import weakref
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -125,8 +126,8 @@ def policy(entry: dict[str, Any] | None) -> str:
     branches are non-negotiable whatever the default says: a missing entry or anything but a
     DATA read (an action, a utility poll, an account query — `_CACHEABLE_KINDS`) is never
     stored, and a JUDGED forbidden (a licence that was read and says no) is always respected.
-    An UNJUDGED entry takes `archive_default_policy` — "transient" since the founder's 2026-08-29
-    keep-all decision, flippable back to "forbidden" by env without a deploy."""
+    An UNJUDGED entry takes `archive_default_policy`, "transient" by default and flippable back to
+    "forbidden" by env without a deploy."""
     if not entry:
         return CACHE_FORBIDDEN
     if not cacheable_kind(entry):  # gate 1 — only a data read's answer is ever stored
@@ -685,7 +686,7 @@ async def _store(
     deduplicate: the new version row points at the row carrying the bytes (`body_of`) — and when
     an identical answer arrives at a key whose bytes were never kept (policy or cap changed), the
     bytes are stored now, so a policy upgrade heals the store forward without a backfill."""
-    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.exc import IntegrityError, NoResultFound
 
     observation = observation or archive_bodies.StorageReport()
     stored, reason = None, "record_failed"
@@ -728,7 +729,8 @@ async def _store(
                 # Wall time includes pool checkout, packing, SQL/commit and integrity retries.
                 with observation.measure("record_db"):
                     # Postgres row locking handles other processes. A retry also covers the narrow
-                    # first-key race and multi-process SQLite, where SELECT FOR UPDATE is ignored.
+                    # first-key race, multi-process SQLite, where SELECT FOR UPDATE is ignored, and
+                    # a key row retention deleted between the unlocked read and the lock.
                     for attempt in range(4):
                         try:
                             change = await _store_locked(
@@ -739,7 +741,7 @@ async def _store(
                                 initial_results=initial_results, origin_org_id=origin_org_id, scope=scope)
                             stored, reason = plan.storage, plan.reason
                             break
-                        except IntegrityError:
+                        except (IntegrityError, NoResultFound):
                             if attempt == 3:
                                 raise
                             await asyncio.sleep(0.01 * (attempt + 1))
@@ -1085,6 +1087,8 @@ async def _store_locked(
         new_key = newest is None            # first version ⇒ this recording created the key
         seen_before = (key.stable_seen, key.change_seen)
 
+        if plan.storage in ("r2", "both") and await _object_may_be_gone(s, ch):
+            plan = archive_bodies.WritePlan("db", reason="object_delete_pending")
         stored, enc = _pack(body) if plan.keep_db else (None, None)
         snap = ArchiveSnapshot(
             key_id=key.id, version=1 if newest is None else newest.version + 1,
@@ -1301,15 +1305,22 @@ def _decode(body: bytes | None) -> str | None:
         return None
 
 
-async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | None:
+async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool = False,
+                         verify: bool = False, diagnostics: dict | None = None) -> dict[str, Any] | None:
     """The request shape and the stored answer a call row points at, or None when the key or
     that exact answer is no longer on file.
 
     `content_hash` names the exact bytes of the provider's answer (dedup means several versions can
     share them — the newest matching version is the one reported). Follows a `body_of` reference
     to the row carrying the bytes; a hash-only version returns `stored=False` with the bytes
-    honestly absent. Never raises on decode: a non-UTF-8 body reports `body_text=None`."""
-    from sqlalchemy import select
+    honestly absent. Never raises on decode: a non-UTF-8 body reports `body_text=None`.
+
+    `prefer_bytes` reads, among the versions with that hash (the same bytes, so never another
+    answer), one that kept a database copy, else one in object storage, before a newer hash-only
+    one. `verify` checks the bytes read against `content_hash` before they are decoded: a copy that
+    no longer matches (damaged in place) reports `stored=False`, as an unreadable one does.
+    `diagnostics` receives the body read's report (`archive_bodies.read`)."""
+    from sqlalchemy import case, select
 
     from .models import ArchiveKey, ArchiveSnapshot
 
@@ -1320,14 +1331,23 @@ async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | N
             select(ArchiveKey).where(ArchiveKey.key_hash == key_hash))).scalars().one_or_none()
         if key is None:
             return None
+        order = ArchiveSnapshot.version.desc(),
+        if prefer_bytes:
+            order = (case((ArchiveSnapshot.body.is_not(None), 0), (ArchiveSnapshot.body_of.is_not(None), 1),
+                          (ArchiveSnapshot.body_storage.in_(("r2", "both")), 2), else_=3),) + order
         snap = (await session.execute(
             select(ArchiveSnapshot).options(*archive_bodies.read_options("result"))
             .where(ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.content_hash == content_hash)
-            .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
+            .order_by(*order).limit(1))).scalars().first()
         if snap is None:
             return None
         pointer = await archive_bodies.pointer(session, snap, "result")
-    body = await archive_bodies.read(pointer, "result")
+    body = await archive_bodies.read(pointer, "result", diagnostics=diagnostics)
+    if verify and body is not None and hashlib.sha256(body).hexdigest() != content_hash:
+        _log.warning("archived answer does not match its hash: snapshot %s", snap.id)
+        if diagnostics is not None:
+            diagnostics["cache_body_fallback_reason"] = "hash_mismatch"
+        body = None
     return {
         "stored": body is not None,
         "request": {"method": key.req_method or "", "url": key.req_url or "",
@@ -1357,6 +1377,36 @@ async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, 
                or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
                    ArchiveSnapshot.body_of.is_not(None))))).all()
     return {(k, c) for k, c in rows} & pairs
+
+
+def answer_on_file(key_hash: str, body_hash: str):
+    """A SQL condition: the answer `(key_hash, body_hash)` still carries its bytes (as in
+    `bytes_on_file`), for a statement that must re-check it as it writes."""
+    from sqlalchemy import exists, or_
+
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    return exists().where(
+        ArchiveSnapshot.key_id == ArchiveKey.id, ArchiveKey.key_hash == key_hash,
+        ArchiveSnapshot.content_hash == body_hash,
+        or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
+            ArchiveSnapshot.body_of.is_not(None)))
+
+
+async def lock_keys_for_share(session, key_hashes: set[str]) -> set[str]:
+    """Lock the given keys `FOR SHARE SKIP LOCKED` in the caller's transaction -> the hashes
+    locked. Row retention deletes a key only under `FOR UPDATE SKIP LOCKED`, so a key held here
+    stays until the caller commits; a key retention holds (or has deleted) is not returned."""
+    from sqlalchemy import select
+
+    from .models import ArchiveKey
+
+    if not key_hashes:
+        return set()
+    return set((await session.execute(
+        select(ArchiveKey.key_hash).where(ArchiveKey.key_hash.in_(key_hashes))
+        .order_by(ArchiveKey.id)
+        .with_for_update(read=True, skip_locked=True))).scalars().all())
 
 
 async def answer_bytes(key_hash: str, body_hash: str) -> bytes | None:
@@ -1584,8 +1634,8 @@ async def _lookup_key(kh: str, *, entry, endpoint_id: str, result_aware: bool,
         repeat = False
         if price_repeat and org_id is not None:
             repeat = (await s.execute(
-                select(ArchiveKeyOrg.id).where(ArchiveKeyOrg.org_id == org_id,
-                                               ArchiveKeyOrg.key_hash == kh)
+                select(ArchiveKeyOrg.key_hash).where(ArchiveKeyOrg.org_id == org_id,
+                                                     ArchiveKeyOrg.key_hash == kh)
                 .limit(1))).first() is not None
     body = await archive_bodies.read(pointer, "lookup", diagnostics=diagnostics)
     if body is None:
@@ -1615,8 +1665,6 @@ async def note_org_uses_in_transaction(db, uses: Iterable[tuple[int, str]]) -> N
     statement. All chunks lock in the same Org/key order and commit together with the money;
     errors other than the expected unique-key race must still fail the caller's transaction.
     """
-    from sqlalchemy import func, select
-
     from .models import ArchiveKeyOrg
 
     counts = Counter(uses)
@@ -1630,21 +1678,9 @@ async def note_org_uses_in_transaction(db, uses: Iterable[tuple[int, str]]) -> N
     else:
         raise RuntimeError(f"unsupported database dialect: {dialect}")
     now = _utcnow()
-    rows = []
-    for (org_id, key_hash), count in sorted(counts.items()):
-        row = dict(org_id=org_id, key_hash=key_hash, first_call_at=now, last_call_at=now,
-                   calls=count)
-        if dialect == "postgresql":
-            # A normal UPSERT consumes the serial sequence even for an existing key. Reuse its
-            # immutable id inside this statement; COALESCE allocates only when the snapshot has
-            # no row. Concurrent first inserts can still consume an id before ON CONFLICT wins.
-            row["id"] = func.coalesce(
-                select(ArchiveKeyOrg.id).where(
-                    ArchiveKeyOrg.org_id == org_id, ArchiveKeyOrg.key_hash == key_hash,
-                ).scalar_subquery(),
-                func.nextval(func.pg_get_serial_sequence("archivekeyorg", "id")),
-            )
-        rows.append(row)
+    rows = [dict(org_id=org_id, key_hash=key_hash, first_call_at=now, last_call_at=now,
+                 calls=count)
+            for (org_id, key_hash), count in sorted(counts.items())]
     for start in range(0, len(rows), _ORG_USE_CHUNK_SIZE):
         statement = insert(ArchiveKeyOrg).values(rows[start:start + _ORG_USE_CHUNK_SIZE])
         result = await db.execute(statement.on_conflict_do_update(
@@ -1661,12 +1697,44 @@ async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
     await note_org_uses_in_transaction(db, [(org_id, key_hash)])
 
 
+async def _object_may_be_gone(s, content_hash: str) -> bool:
+    """In the recording transaction: whether row retention has started deleting this body's
+    object (application/archive_retention.py). The pending row is read `FOR SHARE`, so a delete
+    that has not marked it yet waits for this transaction and then finds the new snapshot; one
+    that marked it already may have taken the object, so the snapshot keeps the bytes itself."""
+    from sqlalchemy import select
+
+    from .models import ArchiveObjectPending
+
+    deleting = (await s.execute(
+        select(ArchiveObjectPending.deleting)
+        .where(ArchiveObjectPending.content_hash == content_hash)
+        .with_for_update(read=True))).scalar()
+    return bool(deleting)
+
+
+_TOUCH_EVERY_S = 60.0
+_MAX_TOUCHED = 4096
+_touched: dict[str, float] = {}
+_clock = time.monotonic
+
+
 def _touch(key_hash: str) -> None:
     """Note that a stored answer was actually wanted (last_requested_at) — fire-and-forget, the
     demand signal the refresh worker (PR 5) will read. A served hit is NOT a recording: it adds
     no snapshot and no change statistics, because nothing new was observed."""
+    now = _clock()
+    if now - _touched.get(key_hash, float("-inf")) < _TOUCH_EVERY_S:
+        return
     if len(_pending) >= _MAX_PENDING:
         return
+    _touched.pop(key_hash, None)
+    if len(_touched) >= _MAX_TOUCHED:
+        for stale in [key for key, at in _touched.items() if now - at >= _TOUCH_EVERY_S]:
+            del _touched[stale]
+        if len(_touched) >= _MAX_TOUCHED:
+            del _touched[next(iter(_touched))]
+    _touched[key_hash] = now
     task = asyncio.create_task(asyncio.wait_for(_touch_write(key_hash), timeout=_STORE_TIMEOUT_S))
     _pending.add(task)
     task.add_done_callback(_pending.discard)
@@ -1688,7 +1756,11 @@ async def _touch_write(key_hash: str) -> None:
             await s.execute(update(ArchiveKey).where(ArchiveKey.key_hash == key_hash)
                             .values(last_requested_at=_utcnow()))
             await s.commit()
+    except asyncio.CancelledError:
+        _touched.pop(key_hash, None)
+        raise
     except Exception:  # noqa: BLE001
+        _touched.pop(key_hash, None)
         _log.error("archive touch dropped", exc_info=True)
 
 
@@ -1820,6 +1892,7 @@ async def _refresh_call(client, key) -> bool:
     settings exactly as the relay does it."""
     try:
         from . import oauth_providers
+        from .infra.upstream import pathsegment
 
         provider = oauth_providers.get(key.provider)
         secret_value = get_settings().platform_key_for(key.provider)
@@ -1827,6 +1900,7 @@ async def _refresh_call(client, key) -> bool:
             return False  # key withdrawn or provider de-listed — quietly not refreshable
         headers: dict[str, str] = dict(key.req_headers or {})  # replay what keyed the question
         params: list = []
+        path_values: dict[str, str] = {}
         for binding in oauth_providers.platform_bindings(provider):
             value = get_settings().platform_credential(
                 binding.get("platform_setting", ""), binding.get("account"))
@@ -1834,9 +1908,12 @@ async def _refresh_call(client, key) -> bool:
             rendered = fmt.replace("{secret}", value) if value else fmt
             if binding.get("location") == "query":
                 params.append((binding.get("name"), rendered))
+            elif binding.get("location") == "path":
+                path_values[binding.get("name", "")] = rendered
             else:
                 headers[binding.get("name", "")] = rendered
-        resp = await client.request(key.req_method or "GET", key.req_url, params=params or None,
+        url = pathsegment.fill(key.req_url, path_values)
+        resp = await client.request(key.req_method or "GET", url, params=params or None,
                                     headers=headers, content=key.req_body or None)
         body = resp.content
         if not (200 <= resp.status_code < 300):

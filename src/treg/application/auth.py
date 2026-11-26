@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import delete, func, tuple_, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -944,8 +944,22 @@ def _m365_client() -> OAuthClient | None:
                        logo_uri="", redirect_uris=[mcp_oauth.M365_REDIRECT_URI], scope="")
 
 
+def _vendor_console_client() -> OAuthClient | None:
+    """The vendor console, a first-party confidential client that only reads who signed in. Not a
+    table row: it exists only while both its secret and its one redirect URI are set."""
+    s = get_settings()
+    uri = s.vendor_console_redirect_uri.strip()
+    if not s.vendor_console_client_secret or not mcp_oauth.valid_redirect_uri(uri):
+        return None
+    return OAuthClient(client_id=mcp_oauth.VENDOR_CONSOLE_CLIENT_ID, kind="first_party",
+                       client_name=_FIRST_PARTY_NAMES[mcp_oauth.VENDOR_CONSOLE_CLIENT_ID],
+                       client_uri="", logo_uri="", redirect_uris=[uri],
+                       scope=mcp_oauth.VENDOR_CONSOLE_SCOPE)
+
+
 _FIRST_PARTY_NAMES = {mcp_oauth.SHEETS_CLIENT_ID: "treg for Sheets",
-                      mcp_oauth.M365_CLIENT_ID: "Microsoft 365 Copilot"}
+                      mcp_oauth.M365_CLIENT_ID: "Microsoft 365 Copilot",
+                      mcp_oauth.VENDOR_CONSOLE_CLIENT_ID: "treg vendor console"}
 
 
 def _authenticate_client(issued_to: str, client_secret: str) -> None:
@@ -966,6 +980,8 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
         return _sheets_client()
     if client_id == mcp_oauth.M365_CLIENT_ID:
         return _m365_client()
+    if client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        return _vendor_console_client()
     row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
            ).scalar_one_or_none()
     fresh_enough = row is not None and (
@@ -976,19 +992,35 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
         return row
     if not client_id.startswith("https://"):
         return row  # a dcr client we do not know is simply unknown
+    await db.commit()  # the metadata fetch below holds no pooled connection
     doc = await mcp_oauth.fetch_client_id_metadata(client_id)
     if doc is None:
         return row  # keep a stale copy over nothing: a transient fetch failure is not a revocation
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if row is None:
-        row = OAuthClient(client_id=client_id, kind="cimd")
-        db.add(row)
-    row.kind, row.refreshed_at = "cimd", now
-    row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
-    row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
-    await db.commit()
-    await db.refresh(row)
-    return row
+    return await _store_cimd_client(client_id, doc, db)
+
+
+async def _store_cimd_client(client_id: str, doc: dict, db: AsyncSession) -> OAuthClient:
+    """Write a fetched document onto its row. Two first sights of one client_id may both insert;
+    the loser of the unique constraint updates the winner's row instead."""
+    for attempt in range(2):
+        row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
+               ).scalar_one_or_none()
+        if row is None:
+            row = OAuthClient(client_id=client_id, kind="cimd")
+            db.add(row)
+        row.kind, row.refreshed_at = "cimd", datetime.now(timezone.utc).replace(tzinfo=None)
+        row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
+        row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if attempt:
+                raise
+            continue
+        await db.refresh(row)
+        return row
+    raise AssertionError("unreachable")
 
 
 def _wrong_resource(resource: str) -> str | None:
@@ -1038,6 +1070,14 @@ def _client_resource(client: OAuthClient, resource: str, scope: str) -> str:
         return mcp_oauth.sheets_resource_url()
     if mcp_oauth.is_sheets_resource(resource):
         raise _redirect_refusal("invalid_target", "this resource is only for treg for Sheets")
+    if client.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        if resource and not mcp_oauth.is_vendor_console_resource(resource):
+            raise _redirect_refusal(
+                "invalid_target",
+                f"the vendor console issues tokens for {mcp_oauth.vendor_console_resource_url()} only")
+        return mcp_oauth.vendor_console_resource_url()
+    if mcp_oauth.is_vendor_console_resource(resource):
+        raise _redirect_refusal("invalid_target", "this resource is only for the vendor console")
     effective = _effective_mcp_resource(resource, scope)
     if (bad_target := _wrong_resource(effective)) is not None:
         raise _redirect_refusal("invalid_target", bad_target)
@@ -1047,6 +1087,8 @@ def _client_resource(client: OAuthClient, resource: str, scope: str) -> str:
 def _granted_scope(client: OAuthClient, resource: str, requested: str) -> str:
     if client.client_id == mcp_oauth.SHEETS_CLIENT_ID:
         return requested
+    if client.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+        return mcp_oauth.VENDOR_CONSOLE_SCOPE
     return mcp_oauth.granted_mcp_scope(requested, mcp_oauth.mcp_resource_version(resource) or "v1")
 
 
@@ -1154,6 +1196,7 @@ async def approve_oauth_authorization(
     *, decision: str, client_id: str, redirect_uri: str, response_type: str, scope: str,
     code_challenge: str, code_challenge_method: str, resource: str, org_id: int,
     session_cookie: str, ad_cookie: str = "", utm_cookie: str = "", referral_cookie: str = "",
+    affiliate_cookie: str = "", ref_code: str = "", client_country: str = "",
 ) -> str:
     async with database.session_maker() as db:
         client = await _authorize_request(
@@ -1179,14 +1222,17 @@ async def approve_oauth_authorization(
         # Outside the session above: the first run opens and commits its own.
         try:
             made = await first_run.first_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie,
-                                              referral_cookie=referral_cookie)
+                                              referral_cookie=referral_cookie,
+                                              affiliate_cookie=affiliate_cookie,
+                                              ref_code=ref_code, client_country=client_country)
         except signup.SignupError as exc:
             raise _redirect_refusal("access_denied", f"could not create your team ({exc.kind})") from exc
         org_id = made.get("org_id") or 0
     async with database.session_maker() as db:
-        if client.client_id == mcp_oauth.SHEETS_CLIENT_ID and not org_id:
+        if client.client_id in (mcp_oauth.SHEETS_CLIENT_ID, mcp_oauth.VENDOR_CONSOLE_CLIENT_ID) and not org_id:
             # A Sheets grant names no team at consent: each request picks one with X-Treg-Org. The
             # token still carries a DEFAULT team, the person's first, for a request that names none.
+            # The vendor console's token is the person's too: it lists every team they may use.
             candidates = (await db.execute(select(Membership).where(Membership.user_id == user.id)
                                            .order_by(Membership.id))).scalars().all()
             org_id = 0
@@ -1375,6 +1421,10 @@ async def exchange_oauth_token(
             user_id=row.user_id, org_id=row.org_id, scope=row.scope,
             audience=mcp_oauth.normalize_resource(row.resource),  # heal pre-normalization spellings
             token_version=user.token_version, sso_org_id=row.sso_org_id)
+        if row.client_id == mcp_oauth.VENDOR_CONSOLE_CLIENT_ID:
+            # It reads the identity once and keeps its own session: no grant is left behind.
+            return {"access_token": token, "token_type": "Bearer",
+                    "expires_in": mcp_oauth.ACCESS_TTL_SECONDS, "scope": row.scope}
         refresh = await _issue_refresh(family_id=_secrets.token_urlsafe(16), client_id=row.client_id,
                                        user_id=row.user_id, org_id=row.org_id, resource=row.resource,
                                        scope=row.scope, db=db, sso_org_id=row.sso_org_id)
@@ -1382,6 +1432,28 @@ async def exchange_oauth_token(
         return {"access_token": token, "token_type": "Bearer",
                 "expires_in": mcp_oauth.ACCESS_TTL_SECONDS, "scope": row.scope,
                 "refresh_token": refresh}
+
+
+async def vendor_console_identity(bearer: str) -> dict | None:
+    """Who a vendor console token names: the address, whether it is verified, and every team the
+    person may act for there (role included, so the console can require an owner or admin). None
+    for any token that is not a live vendor console token."""
+    claims = mcp_oauth.read_access_token(
+        bearer, expected_audience=mcp_oauth.vendor_console_resource_url()) if bearer else None
+    if claims is None:
+        return None
+    async with database.session_maker() as db:
+        user = await db.get(User, claims["sub"])
+        if user is None or user.suspended or user.demo or user.token_version != claims["tv"]:
+            return None
+        rows = (await db.execute(
+            select(Membership, Org).join(Org, Org.id == Membership.org_id)
+            .where(Membership.user_id == user.id).order_by(Membership.id))).all()
+        teams = [{"id": org.id, "slug": org.slug, "name": org.name, "role": m.role}
+                 for m, org in rows
+                 if not org.suspended and not org.demo
+                 and await sso_team_allowed(db, m, claims.get("sso_org_id"))]
+        return {"email": user.email, "email_verified": bool(user.email_verified_at), "teams": teams}
 
 
 async def revoke_oauth_token(token: str) -> None:

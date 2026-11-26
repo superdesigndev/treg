@@ -26,6 +26,7 @@ from httpx import AsyncClient
 from treg import api as A, audit, oauth_providers
 from treg.infra import org_traffic
 from treg.domain import money as ledger
+from treg.domain.money import allowance as money_allowance
 from treg.domain.money import settlement as settlement_basis
 from treg.domain.catalog import store as catalog_store
 from treg.application.call import contactout, octen
@@ -197,10 +198,11 @@ async def test_hlrlookup_platform_pair_rides_the_body_and_settles_reported_credi
     await A.app.state.http.aclose()
     A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
     charges = []
-    for body in (_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE):
+    for n, body in enumerate((_HLR_LIVE, {**_HLR_LIVE, "usa_status": "YES"}, _HLR_LIVE, _HLR_LIVE)):
         before = await _balance(clients)
         response = await clients.post("/call/hlrlookup.people.phone.verify", json=body)
-        assert response.status_code == 200, response.text
+        # The last answer is treg's own account out of credit: treg's refusal, uncharged.
+        assert response.status_code == (503 if n == 3 else 200), response.text
         charges.append(before - await _balance(clients))
     # One credit is $0.006608; a US mobile with usa_status costs two; free answers cost nothing.
     assert charges == [6_608, 13_216, 0, 0]
@@ -288,6 +290,44 @@ async def test_litescrape_platform_and_own_key_ladder(clients, monkeypatch):
         get_settings.cache_clear()
 
 
+async def test_forager_platform_key_fills_the_account_id_and_prices_the_phone_tier(clients, monkeypatch):
+    """Every Forager data path carries the account id bound to the key. On treg's key the relay
+    fills it from the account slot, whatever the caller sent; the phone hold follows quality_tier
+    and an empty answer is free."""
+    cat = catalog_store.load()
+    rows = [ep for ep in cat.endpoints if ep["provider"] == "forager"]
+    assert rows and all(cat.platform_eligible(ep) for ep in rows)
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER", "PLATFORM-FORAGER")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER_ACCOUNT", "1234")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "forager")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        body = json.loads(request.content)
+        seen.append((request.url.path, request.headers["x-api-key"], body.get("quality_tier")))
+        numbers = [] if body.get("person_id") == 0 else [{"phone_number": "+15555550100"}]
+        return _dropleads_response(200, numbers)
+
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            charged = []
+            for body in ({"person_id": 7, "quality_tier": "most_coverage"}, {"person_id": 7},
+                         {"person_id": 0}):
+                before = await _balance(clients)
+                ok = await clients.post("/call/forager.people.phone.find", json=body,
+                                        params={"account_id": "9999"})
+                assert ok.status_code == 200, ok.text
+                charged.append(before - await _balance(clients))
+            assert charged == [119_970, 199_950, 0]
+            path = "/api/1234/datastorage/person_contacts_lookup/phone_numbers/"
+            assert seen == [(path, "PLATFORM-FORAGER", "most_coverage"), (path, "PLATFORM-FORAGER", None),
+                            (path, "PLATFORM-FORAGER", None)]
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_localfalcon_scan_is_priced_by_grid_size_and_cannot_be_reshaped(clients, monkeypatch):
     """The scan's price reads query.grid_size, so treg's key must refuse every request whose
     upstream grid could differ from the priced one: a POST (a form body overrides the query), a
@@ -309,7 +349,7 @@ async def test_localfalcon_scan_is_priced_by_grid_size_and_cannot_be_reshaped(cl
     try:
         async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
             monkeypatch.setattr(A.app.state, "http", vendor)
-            for size, micro in (("3", 28_800), ("5", 80_000)):
+            for size, micro in (("3", 57_600), ("5", 160_000)):
                 before = await _balance(clients)
                 ok = await clients.get("/call/localfalcon.google.maps.rank_grid", params={**scan, "grid_size": size})
                 assert ok.status_code == 200, ok.text
@@ -340,7 +380,8 @@ async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
         assert request.url.path == "/v2/scrape"
         assert json.loads(request.content)["parsers"] == []
         return _dropleads_response(200, {"success": True, "data": {
-            "markdown": "# Missing", "metadata": {"statusCode": 404},
+            "markdown": "# Page not found\n\nThe page you asked for has moved or no longer exists. Try the search box.",
+            "metadata": {"statusCode": 404},
         }})
 
     async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
@@ -364,6 +405,51 @@ async def test_firecrawl_platform_scrape_bills_a_returned_404_and_byok_wins(
         assert "X-Treg-Cost-Micro" not in own.headers
         assert await _balance(clients) == own_before
         assert seen[-1] == "Bearer OWN-FIRECRAWL"
+
+
+async def test_a_retry_with_the_same_json_in_another_key_order_is_the_same_call(
+    clients: AsyncClient, monkeypatch, firecrawl_platform_on,
+):
+    """A client that times out and retries may serialize the same body with its keys in another
+    order; refusing that as a different request would leave the paid answer out of reach."""
+    from treg.application.call import idempotency
+
+    seen = []
+
+    def upstream(request):
+        seen.append(request.content)
+        return _dropleads_response(200, {"success": True, "data": {"markdown": "# Paid"}})
+
+    async def post(key: str, body: bytes):
+        return await clients.post("/call/firecrawl.web.scrape", content=body, headers={
+            "Idempotency-Key": key, "Content-Type": "application/json"})
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        first = await post("order-retry", b'{"url": "https://example.com", "formats": ["markdown"], "parsers": []}')
+        retry = await post("order-retry", b'{"parsers":[],"formats":["markdown"],"url":"https://example.com"}')
+        changed = await post("order-retry", b'{"parsers":[],"formats":["html"],"url":"https://example.com"}')
+    assert first.status_code == 200, first.text
+    assert retry.status_code == 200, retry.text
+    assert retry.headers["X-Treg-Idempotent-Replay"] == "true"
+    assert retry.headers["X-Treg-Call-Id"] == first.headers["X-Treg-Call-Id"]
+    assert retry.content == first.content
+    assert changed.status_code == 422, changed.text
+    assert len(seen) == 1
+    assert await _balance(clients) == before - int(first.headers["X-Treg-Cost-Micro"])
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        surrogate = await post("surrogate", b'{"parsers":[],"formats":["markdown"],"q":"\\ud800",'
+                                            b'"url":"https://example.com"}')
+    assert surrogate.status_code < 500, surrogate.text
+
+    # A label stored with the fingerprint of its exact bytes is still answered for those bytes.
+    raw = idempotency._raw_request_fingerprint("POST", "firecrawl.web.scrape", b'{"b": 1, "a": 2}')
+    await _seed_answer(clients, "stored-before-canonical", fingerprint=raw)
+    kept = await post("stored-before-canonical", b'{"b": 1, "a": 2}')
+    assert kept.status_code == 200 and kept.json() == {"seeded": True}, kept.text
 
 
 async def test_firecrawl_search_settles_reported_credits(
@@ -523,7 +609,7 @@ async def test_provider_name_404_points_at_the_marketplace(clients: AsyncClient)
     """`treg call tikhub /path` (no such tool) keeps failing, but no longer dead-ends."""
     r = await clients.get("/call/tikhub/api/v1/foo")
     assert r.status_code == 404
-    assert "marketplace provider" in r.json()["detail"]
+    assert "'tikhub' is a catalog provider" in r.json()["detail"]["hint"]
 
 
 async def test_unknown_dotted_name_stays_a_plain_404(clients: AsyncClient):
@@ -1026,6 +1112,44 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+@pytest.mark.parametrize(("items", "valid"), [
+    ((), True),
+    ((("limit", "1"),), True),
+    ((("limit", "100"),), True),
+    ((("limit", "101"),), False),
+    ((("limit", "1000"),), False),
+    ((("limit", "0"),), False),
+    ((("limit", "ten"),), False),
+    ((("limit", "5"), ("limit", "5")), False),
+])
+def test_predictleads_shared_key_lists_take_at_most_100_records(items, valid):
+    ep = {"id": "predictleads.jobs.discover", "provider": "predictleads", "cost": {"type": "per_result"}}
+    query = call_resolution.QueryValues(items)
+    if valid:
+        call_resolution._enforce_platform_request(ep, b"", query=query)
+    else:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, b"", query=query)
+        assert exc.value.detail["parameter"] == "queryParams.limit"
+
+
+def test_predictleads_per_response_rows_keep_the_vendor_limit():
+    ep = {"id": "predictleads.companies.job_openings", "provider": "predictleads", "cost": {"type": "per_call"}}
+    call_resolution._enforce_platform_request(
+        ep, b"", query=call_resolution.QueryValues((("limit", "1000"),)))
+
+
+def test_a_null_platform_request_body_field_must_be_absent_on_treg_key():
+    ep = {"id": "demo.enrich", "provider": "demo",
+          "input": {"bodyType": "json", "body": {"person": {"type": "object"}, "revealPhones": {"type": "object"}}},
+          "platform_request": {"body.revealPhones": None}}
+    call_resolution._enforce_platform_request(ep, b'{"person": {"name": "a"}}')
+    with pytest.raises(ResolutionFailed) as exc:
+        call_resolution._enforce_platform_request(ep, b'{"person": {}, "revealPhones": {"includePhones": true}}')
+    assert exc.value.detail["parameter"] == "body.revealPhones"
+    assert "includePhones" not in json.dumps(exc.value.detail)
+
+
 def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
     ep = {"id": "demo.scrape", "provider": "demo", "input": {},
           "platform_request": {"queryParams.type": None}}
@@ -1036,6 +1160,27 @@ def test_a_null_platform_request_query_value_must_be_absent_on_treg_key():
             ep, b"[]", query=call_resolution.QueryValues((("type", "discover_new"),)))
     assert exc.value.detail["parameter"] == "queryParams.type"
     assert "discover_new" not in json.dumps(exc.value.detail)
+
+
+@pytest.mark.parametrize(("body", "declared_default", "valid"), [
+    ({}, True, True),
+    ({"dry_run": False}, True, True),
+    ({"dry_run": True}, True, False),
+    ({"dry_run": None}, True, False),
+    ({}, False, False),
+])
+def test_a_table_pin_may_be_absent_on_treg_key_only_when_its_default_is_the_pin(
+        body, declared_default, valid):
+    ep = catalog_store.load().by_id["mapsdata.web.scrape.job.start"]
+    if not declared_default:
+        dry_run = {k: v for k, v in ep["input"]["body"]["dry_run"].items() if k != "default"}
+        ep = {**ep, "input": {**ep["input"], "body": {**ep["input"]["body"], "dry_run": dry_run}}}
+    if valid:
+        call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+    else:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+        assert exc.value.detail["parameter"] == "body.dry_run"
 
 
 async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
@@ -1104,6 +1249,16 @@ def test_theirstack_platform_holds_match_the_credit_prices():
         assert estimate == hold and unit > 0
     assert not catalog.platform_eligible(catalog.by_id["theirstack.account.balance"])
     assert not catalog.platform_eligible(catalog.by_id["theirstack.account.credits_consumption"])
+
+
+def test_fundable_catalog_endpoints_are_platform_eligible() -> None:
+    from treg.domain.catalog import store as catalog_store
+
+    catalog = catalog_store.load()
+    endpoints = [ep for ep in catalog.endpoints if ep["provider"] == "fundable"]
+    assert endpoints
+    ineligible = [ep["id"] for ep in endpoints if not catalog.platform_eligible(ep)]
+    assert not ineligible, ineligible
 
 
 def test_litescrape_ai_overview_unserved_is_free():
@@ -1434,12 +1589,6 @@ def test_observed_cost_counts_resources_for_billed_oauth_reads():
     assert call_settle._observed_cost_micro(_mk("leadmagic"), b'{"credits_consumed": 1}') == 25_000
     assert call_settle._observed_cost_micro(_mk("leadmagic"), b'{"credits_consumed": 0}') == 0, "a 2xx miss is free"
     assert call_settle._observed_cost_micro(_mk("leadmagic"), b'{"credits_consumed": 0.25}') == 6_250
-    # lusha nests the same contract one level down: billing.creditsCharged — 0 on a 2xx miss
-    # (the captured people.enrich example is one), 2 credits on a company enrich. $0.1248/credit.
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"billing": {"creditsCharged": 1, "resultsReturned": 10}}') == 124_800
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"billing": {"creditsCharged": 0, "resultsReturned": 0}}') == 0, "a 2xx miss is free"
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"billing": {"creditsCharged": 2}}') == 249_600
-    assert call_settle._observed_cost_micro(_mk("lusha"), b'{"requestId": "x"}') is None, "no billing block means we never learned it"
 
 
 def test_apollo_settles_a_2xx_miss_at_zero():
@@ -1582,7 +1731,7 @@ async def test_daily_cap_refuses_when_it_cannot_be_verified(clients: AsyncClient
     async def _boom(db, org_id):
         raise RuntimeError("ledger unavailable")
 
-    monkeypatch.setattr(ledger, "spent_today", _boom)
+    monkeypatch.setattr(money_allowance, "committed_today", _boom)
     monkeypatch.setenv("TREG_PLATFORM_DAILY_CAP_USD", "1")
     get_settings.cache_clear()
     try:
@@ -2193,6 +2342,8 @@ async def test_an_abandoned_claim_is_closed_with_a_stored_410_never_run_again(
     await _ledger(org_id, "gone-owner", "release", reason="not_billable_502", amount=100)
     live = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "stuck-label"})
     assert live.status_code == 409, live.text
+    assert live.json()["detail"]["call_id"] == "gone-owner"
+    assert live.headers["Retry-After"].isdigit()
 
     balance = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
@@ -2311,6 +2462,203 @@ async def test_an_abandoned_CHARGED_claim_answers_410_and_never_charges_twice(
         assert r.headers["X-Treg-Call-Id"] == owner
         assert r.headers["X-Treg-Original-Cost-Micro"] == str(detail["charged_micro"])
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == balance
+
+
+async def test_an_abandoned_allowance_call_folded_after_its_lifetime_is_still_a_charge(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """A fold delayed by a backlog writes the owner's settle after its lease's lifetime: read by
+    exact id, it is still the charge."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "late-fold-label", status="pending")
+    await _set_claim("late-fold-label", call_ref="late-fold-owner", created_at=_ago(hours=2))
+    async with session_maker() as db:  # stamped now: an hour past the lease's lifetime
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-900,
+                           call_id="late-fold-owner", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 60)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "late-fold-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 900
+
+
+@pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
+async def test_an_abandoned_allowance_call_waits_for_its_fold_and_answers_what_it_paid(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """An owner on the team's allowance has no hold: its charge waits in the queue until a fold
+    writes its settle. Queued, the amount is only what the team owes, so the claim waits (409);
+    folded, the receipt is what the ledger took, here less than the queued figure (the row read
+    before the fold deleted it)."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import CallCharge, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "allowance-label", status="pending")
+    await _set_claim("allowance-label", call_ref="allowance-owner")
+    async with session_maker() as db:
+        db.add(CallCharge(call_id="allowance-owner", org_id=org_id, endpoint_id=EP, amount_micro=700))
+        if trail == "queued_and_folded":
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-600,
+                               call_id="allowance-owner", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "allowance-label"})
+    if trail == "queued":
+        assert r.status_code == 409, r.text
+        assert (await _claim_row("allowance-label")).status == "pending"
+        return
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["error"] == "idempotency_response_lost"
+    assert r.json()["detail"]["charged_micro"] == 600
+
+
+@pytest.mark.parametrize("trail", ["queued", "queued_and_folded"])
+async def test_a_routed_child_s_queued_charge_keeps_its_parent_s_stale_claim(
+        clients: AsyncClient, platform_on, monkeypatch, trail):
+    """A routed child on the allowance has no hold: its queued charge, under the parent's
+    prefix, is money in flight until a fold writes its settle."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.infra.db import session_maker
+    from treg.models import CallCharge, LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "routed-label", status="pending")
+    await _set_claim("routed-label", call_ref="routed-owner")
+    async with session_maker() as db:
+        db.add(CallCharge(call_id="routed-owner:r1", org_id=org_id, endpoint_id=EP, amount_micro=700))
+        if trail == "queued_and_folded":
+            db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                               call_id="routed-owner:r1", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "routed-label"})
+    if trail == "queued":
+        assert r.status_code == 409, r.text
+        return
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
+async def test_a_routed_child_s_charge_folded_after_its_owner_s_lifetime_is_still_found(
+        clients: AsyncClient, platform_on, monkeypatch):
+    """The fold deletes the queued row and writes the settle when it runs, which a backlog can
+    push past the owner's lifetime: the child's settle is read by its id."""
+    import uuid
+
+    from treg.application.call import idempotency
+    from treg.models import LedgerEntry
+
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "late-label", status="pending")
+    await _set_claim("late-label", call_ref="late-owner", created_at=_ago(hours=1))
+    async with session_maker() as db:
+        db.add(LedgerEntry(id=uuid.uuid4().hex, org_id=org_id, kind="settle", amount_micro=-700,
+                           call_id="late-owner:r3", endpoint_id=EP, meta={}))
+        await db.commit()
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "late-label"})
+    assert r.status_code == 410, r.text
+    assert r.json()["detail"]["charged_micro"] == 700
+
+
+@pytest.mark.parametrize("key", [None, "keyed-label"])
+async def test_a_direct_call_may_use_the_allowance_and_a_keyed_one_is_marked_in_flight(
+        clients: AsyncClient, platform_on, monkeypatch, key):
+    from treg.application.call import service
+
+    seen = []
+    real = service._platform_reserve
+
+    async def spy(*args, **kwargs):
+        seen.append((kwargs.get("allow_allowance"), kwargs.get("mark_in_flight")))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(service, "_platform_reserve", spy)
+    headers = {"Idempotency-Key": key} if key else {}
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)
+    assert r.status_code == 200, r.text
+    assert seen == [(True, bool(key))]
+
+
+@pytest.mark.parametrize("mark", ["set", "unreadable", "absent"])
+async def test_an_allowance_call_marked_in_flight_keeps_its_stale_claim(
+        clients: AsyncClient, platform_on, monkeypatch, mark):
+    """An owner on the allowance has no hold; its mark in the shared store stands in for one. A
+    mark there, or one the store cannot read, answers 409; none lets the claim close."""
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = kv.LocalStore()
+    if mark == "set":
+        await store.mark_call_in_flight("marked-owner", idempotency.IN_FLIGHT_MARK_MS)
+    if mark == "unreadable":
+        async def unread(call_ref):
+            return None
+        monkeypatch.setattr(store, "call_in_flight", unread)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    await _seed_answer(clients, "marked-label", status="pending")
+    await _set_claim("marked-label", call_ref="marked-owner")
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "marked-label"})
+    if mark == "absent":
+        assert r.status_code == 410, r.text
+        assert r.json()["detail"]["error"] == "idempotency_outcome_unknown"
+    else:
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["call_id"] == "marked-owner"
+
+
+@pytest.mark.parametrize(("trail", "expect"), [
+    ("own_hold", (410, 400)),          # its own reserve and settle: it took a hold
+    ("folded_allowance", (410, 400)),  # only its own settle: its allowance charge is folded
+    ("hub_run", (410, 400)),           # only its steps' entries: a hub step never takes the allowance
+    ("routed_parent", (409, None)),    # a routed child's entries say nothing of another child's charge
+    ("overflow_only", (409, None)),    # an overflow child's entries say nothing of the parent's charge
+])
+async def test_an_owner_the_ledger_speaks_for_is_closed_from_it_when_the_store_cannot_answer(
+        clients: AsyncClient, platform_on, monkeypatch, trail, expect):
+    """With its money all in the ledger, a store fault does not keep the claim waiting: the
+    receipt comes from the ledger. Only an owner whose own charge could still be unwritten (an
+    allowance parent with nothing but an overflow child in the ledger, a routed parent whose
+    other children may have taken from the allowance) waits for the store."""
+    from treg.application.call import idempotency
+    from treg.infra import kv
+
+    store = kv.LocalStore()
+
+    async def unread(call_ref):
+        return None
+    monkeypatch.setattr(store, "call_in_flight", unread)
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _seed_answer(clients, "held-label", status="pending")
+    await _set_claim("held-label", call_ref="held-owner")
+    entry = {"own_hold": "held-owner", "folded_allowance": "held-owner",
+             "hub_run": "held-owner:s1", "routed_parent": "held-owner:r0",
+             "overflow_only": "held-owner:overflow"}[trail]
+    if trail != "folded_allowance":
+        await _ledger(org_id, entry, "reserve", amount=-500)
+    await _ledger(org_id, entry, "settle", amount=-400)
+    monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "held-label"})
+    status, charged = expect
+    assert r.status_code == status, r.text
+    if status == 410:
+        assert r.json()["detail"]["error"] == "idempotency_response_lost"
+        assert r.json()["detail"]["charged_micro"] == charged
 
 
 async def test_an_expired_lease_with_money_in_flight_still_answers_409(
@@ -2864,114 +3212,49 @@ def test_reported_charge_uses_catalog_path_for_any_provider(monkeypatch, amount,
         _mk('example', endpoint_id=endpoint['id']), body) == expected
 
 
-@pytest.mark.parametrize('endpoint', [
-    'oceanio.companies.lookalike', 'oceanio.companies.search', 'oceanio.people.search',
+@pytest.mark.parametrize('name,value', [
+    *[(n, v) for n in ('reveal_phone_number', 'poll_only', 'run_waterfall_email', 'run_waterfall_phone')
+      for v in ('true', '1', 'False', '')],
+    ('webhook_url', 'https://hooks.example/apollo'), ('webhook_url', 'false'),
 ])
-@pytest.mark.parametrize('size,valid', [(1, True), (100, True), (0, False),
-                                       (101, False), (True, False), ('10', False),
-                                       (None, False)])
-def test_oceanio_platform_search_reserve_matches_bounded_size(endpoint, size, valid):
-    cat = catalog_store.load()
-    ep = cat.by_id[endpoint]
-    body = json.dumps({'size': size}).encode()
-    if not valid:
-        with pytest.raises(ResolutionFailed) as exc:
-            call_resolution._enforce_platform_request(ep, body)
-        assert exc.value.detail['parameter'] == 'body.size'
-        return
-    call_resolution._enforce_platform_request(ep, body)
-    cost = cat.cost_view(ep['cost'], 'oceanio')
-    estimate, _ = call_resolution._marketplace_pricing('oceanio', endpoint, cost, {}, body)
-    assert estimate == size * 16_200
-
-
-@pytest.mark.parametrize('field', ['revealEmails', 'revealPhones'])
-def test_oceanio_platform_person_enrich_refuses_separately_billed_reveals(field):
-    ep = catalog_store.load().by_id['oceanio.people.enrich']
-    call_resolution._enforce_platform_request(ep, b'{"person":{"linkedin":"example"}}')
-    with pytest.raises(ResolutionFailed) as exc:
-        call_resolution._enforce_platform_request(
-            ep, json.dumps({'person': {'linkedin': 'example'}, field: {}}).encode())
-    assert exc.value.detail['parameter'] == f'body.{field}'
-
-
-@pytest.mark.parametrize('name', ['reveal_phone_number', 'webhook_url', 'poll_only',
-                                  'run_waterfall_email', 'run_waterfall_phone'])
-def test_apollo_platform_person_enrich_refuses_webhook_channels(name):
-    ep = catalog_store.load().by_id['apollo.people.enrich']
+@pytest.mark.parametrize('endpoint', ['apollo.people.enrich', 'apollo.people.bulk_enrich'])
+def test_apollo_platform_person_enrich_refuses_webhook_channels(endpoint, name, value):
+    ep = catalog_store.load().by_id[endpoint]
     call_resolution._enforce_platform_request(
         ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), ('reveal_personal_emails', 'true'))))
     with pytest.raises(ResolutionFailed) as exc:
         call_resolution._enforce_platform_request(
-            ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, 'false'))))
+            ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, value))))
     assert exc.value.detail['parameter'] == f'queryParams.{name}'
 
 
-@pytest.mark.parametrize('endpoint,credits,expected', [
-    ('oceanio.companies.lookalike', 0.2, 16_200),
-    ('oceanio.companies.search', 0, 0),
-    ('oceanio.people.search', 0.4, 32_400),
-    ('oceanio.people.enrich', 0.1, 8_100),
-])
-def test_oceanio_platform_settles_reported_credits(endpoint, credits, expected):
-    mk = _mk('oceanio', endpoint_id=endpoint, reported_charge_unit_micro=81_000)
-    assert call_settle._observed_cost_micro(
-        mk, json.dumps({'creditsUsed': credits}).encode()) == expected
+def test_apollo_phone_tool_accepts_only_the_priced_poll_only_request():
+    ep = catalog_store.load().by_id['apollo.people.phone.find']
+    assert catalog_store.load().platform_eligible(ep)
+    valid = (('name', 'Example Person'), ('domain', 'example.com'),
+             ('reveal_phone_number', 'true'), ('poll_only', 'true'))
+    call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(valid), False)
+    for additions in ((('run_waterfall_phone', 'true'),), (('webhook_url', 'https://example.com'),),
+                      (('poll_only', 'false'),), (('reveal_phone_number', 'false'),)):
+        pairs = valid + additions if additions[0][0] not in {'poll_only', 'reveal_phone_number'} else (
+            tuple((k, v) for k, v in valid if k != additions[0][0]) + additions)
+        with pytest.raises(ResolutionFailed):
+            call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(pairs), False)
+    with pytest.raises(ResolutionFailed):
+        call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(valid), True)
 
 
-@pytest.mark.parametrize('endpoint,body,expected', [
-    ('oceanio.companies.lookalike',
-     {'size': 1, 'companiesFilters': {'lookalikeDomains': ['example.com']}}, 16_200),
-    ('oceanio.companies.search', {'size': 1}, 16_200),
-    ('oceanio.people.search', {'size': 1}, 16_200),
-    ('oceanio.people.enrich', {'person': {'linkedin': 'example'}}, 8_100),
-])
-async def test_oceanio_shared_key_calls_settle_reported_credits(
-    clients, monkeypatch, endpoint, body, expected,
-):
-    monkeypatch.setenv('TREG_PLATFORM_KEY_OCEANIO', 'PLATFORM-OCEANIO')
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'oceanio')
-    get_settings.cache_clear()
-
-    def upstream(request):
-        assert request.headers['x-api-token'] == 'PLATFORM-OCEANIO'
-        assert json.loads(request.content) == body
-        return _dropleads_response(200, {'creditsUsed': expected / 81_000})
-
-    try:
-        before = await _balance(clients)
-        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
-            monkeypatch.setattr(A.app.state, 'http', vendor)
-            response = await clients.post(f'/call/{endpoint}', json=body)
-        assert response.status_code == 200, response.text
-        assert response.headers['x-treg-cost-micro'] == str(expected)
-        assert before - await _balance(clients) == expected
-    finally:
-        get_settings.cache_clear()
-
-
-async def test_oceanio_own_key_keeps_upstream_search_limit_and_is_unmetered(clients, monkeypatch):
-    monkeypatch.setenv('TREG_PLATFORM_KEY_OCEANIO', 'PLATFORM-OCEANIO')
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'oceanio')
-    get_settings.cache_clear()
-    saved = await clients.post('/secrets', json={'name': 'oceanio', 'value': 'OWN-OCEANIO'})
-    assert saved.status_code == 200, saved.text
-
-    def upstream(request):
-        assert request.headers['x-api-token'] == 'OWN-OCEANIO'
-        assert json.loads(request.content)['size'] == 101
-        return _dropleads_response(200, {'creditsUsed': 20.2})
-
-    try:
-        before = await _balance(clients)
-        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
-            monkeypatch.setattr(A.app.state, 'http', vendor)
-            response = await clients.post('/call/oceanio.companies.search', json={'size': 101})
-        assert response.status_code == 200, response.text
-        assert 'x-treg-cost-micro' not in response.headers
-        assert await _balance(clients) == before
-    finally:
-        get_settings.cache_clear()
+@pytest.mark.parametrize('name', ['reveal_phone_number', 'poll_only',
+                                  'run_waterfall_email', 'run_waterfall_phone'])
+def test_apollo_platform_person_enrich_accepts_documented_false_default(name):
+    ep = catalog_store.load().by_id['apollo.people.enrich']
+    call_resolution._enforce_platform_request(
+        ep, b'', query=call_resolution.QueryValues((('email', 'a@stripe.com'), (name, 'false'))))
+    # A repeated name is judged per value, so a later `true` is still refused.
+    with pytest.raises(ResolutionFailed):
+        call_resolution._enforce_platform_request(
+            ep, b'', query=call_resolution.QueryValues(
+                (('email', 'a@stripe.com'), (name, 'false'), (name, 'true'))))
 
 
 @pytest.mark.parametrize('body,valid', [
@@ -3047,6 +3330,23 @@ def test_contactout_contact_hits_are_per_type_per_profile(work, personal, phone,
     }
     assert contactout.observed(c, {"queryParams": {}}, doc) == expected
     assert contactout.estimate(c, {}) == 650000
+
+
+@pytest.mark.parametrize("status,billed", [
+    ("valid", True), ("invalid", True), ("accept_all", True),
+    ("unknown", False), ("disposable", False), (None, False),
+])
+def test_contactout_verify_bills_only_the_verdicts_contactout_bills(status, billed):
+    eid = "contactout.people.email.verify"
+    cost = catalog_store.load().cost_view(catalog_store.load().by_id[eid]["cost"], "contactout")
+    query = call_resolution.QueryValues((("email", "a@example.test"),))
+    hold, _unit = call_resolution._marketplace_pricing("contactout", eid, cost, query, b"")
+    assert hold == 10_000
+    mk = _mk("contactout", endpoint_id=eid, cost_type="per_success", unit_micro=hold,
+             estimate_micro=hold, request_data={"queryParams": {"email": "a@example.test"}})
+    body = json.dumps({"status_code": 200, "data": {"status": status}}).encode()
+    observed = call_settle._observed_cost_micro(mk, body)
+    assert (hold if observed is None else observed) == (hold if billed else 0)
 
 
 def test_contactout_search_counts_returned_profiles_and_contacts_not_availability_or_total():
@@ -3459,15 +3759,38 @@ def test_icypeas_profile_url_miss_settles_at_zero():
             mk, b'{"success":true,"result":"https://www.linkedin.com/in/x","status":"FOUND"}') is None
 
 
+def test_every_catalog_row_prices_an_empty_request():
+    """Pricing runs on every tier before the credential is chosen, so a row whose fx rate is
+    `usd: null` (own-key only) must price at an informational zero, never raise. A
+    platform-eligible row with a missing rate still raises, which fails this test."""
+    cat = catalog_store.load()
+    for ep in cat.endpoints:
+        call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
+
+
+def test_platform_eligible_row_with_a_null_rate_still_raises(monkeypatch):
+    cat = catalog_store.load()
+    ep = cat.by_id["semrush.google.keywords.volume"]
+    monkeypatch.setattr(type(cat), "platform_eligible", lambda self, endpoint: True)
+    with pytest.raises(ValueError):
+        call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
+
+
 @pytest.mark.parametrize("task,rows,credits", [
     ("email-verification", 3, 0.3), ("email-search", 3, 3), ("domain-search", 1, 1)])
-def test_icypeas_bulk_search_bills_its_rows_at_the_task_rate(task, rows, credits):
-    """The start answer has no rows, so the reserve is the bill: never the 20-row default."""
+def test_icypeas_bulk_search_holds_its_rows_and_bills_the_finished_files_counts(task, rows, credits):
+    """The start answer has no rows, so the hold is every row at its task's rate, and the finished
+    file's counts settle it: found rows for a search, tested rows for a verification."""
+    from treg.domain.money import settlement
     body = {"name": "x", "task": task, "data": [["a@example.com"]] * rows}
-    mk, estimate, credit = _priced("icypeas.bulk.search", None, body, request_data={"body": body})
-    assert estimate == round(credits * credit)
-    assert call_settle._observed_cost_micro(
-        mk, b'{"success":true,"status":"in_progress","file":"f"}') in (None, estimate)
+    ep = catalog_store.load().by_id["icypeas.bulk.search"]
+    pricing = call_resolution.price_call(ep, call_resolution.QueryValues(()), json.dumps(body).encode(), set())
+    credit = _usd_to_micro_for_test(catalog_store.load().credit_rates["icypeas"])
+    assert pricing.estimate_micro == round(credits * credit)
+    assert pricing.settlement_basis["when"] == "terminal"
+    finished = {"files": [{"task": task, "total": rows, "found": 1, "done": rows, "finished": True}]}
+    billed = 0.1 * rows if task == "email-verification" else 1
+    assert settlement.settle(pricing.settlement_basis, {"terminal": finished}) == round(billed * credit)
 
 
 def test_icypeas_single_email_search_bills_one_credit_not_a_page():
@@ -3900,7 +4223,7 @@ def test_strict_query_accepts_only_declared_path_parameters():
 
 def test_body_allowlist_requires_declared_fields_within_each_object():
     ep = {"id": "sample.people.find", "body_allowlist": True,
-          "input": {"body": {"data": {"type": "array[object]", "required": True,
+          "input": {"body": {"data": {"type": "array", "items": {"type": "object"}, "required": True,
                                       "minItems": 1, "maxItems": 1,
                                       "item_required_any": ["full_name", "linkedin"],
                                       "item_required_all": ["company"]}}}}

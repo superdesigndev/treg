@@ -17,7 +17,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -37,7 +37,8 @@ from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
 from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
-from .infra.db import ReportBusy, background_session_maker, verify_db
+from .infra.db import (DB_BUSY_ERRORS, DB_BUSY_WRAPPERS, ReportBusy, background_session_maker,
+                       log_connection_budget, verify_db)
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -116,6 +117,10 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/feedback', ('POST',), 'submit_feedback'),
     ('/reviews', ('POST',), 'submit_review'),
     ('/admin/reviews', ('GET',), 'admin_reviews'),
+    ('/marks', ('POST',), 'submit_mark'),
+    ('/admin/marks', ('GET',), 'admin_marks'),
+    ('/comparisons/next', ('GET',), 'next_comparison'),
+    ('/comparisons', ('POST',), 'submit_comparison'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/media', ('POST',), 'host_media'),
     ('/m/{token}', ('GET',), 'serve_media'),
@@ -185,8 +190,10 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/lead-signals/SKILL.md', ('GET',), 'lead_signals_skill_md'),
     ('/skills/web-access/SKILL.md', ('GET',), 'web_access_skill_md'),
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
+    ('/skills/doomscroll/SKILL.md', ('GET',), 'doomscroll_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
+    ('/skills/rea-marketing/SKILL.md', ('GET',), 'rea_marketing_skill_md'),
     ('/skills/ai-ugc-video/SKILL.md', ('GET',), 'ai_ugc_video_skill_md'),
     ('/feedback.md', ('GET',), 'feedback_md'),
     ('/favicon.ico', ('GET',), 'favicon'),
@@ -198,12 +205,13 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/sheets', ('GET',), 'sheets_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
     ('/plugins/claude', ('GET',), 'claude_plugin_page'),
-    ('/adtrack.js', ('GET',), 'adtrack_js'),
+    ('/click-id.js', ('GET',), 'click_id_js'),
     ('/captcha.js', ('GET',), 'captcha_js'),
     ('/agent-setup.js', ('GET',), 'agent_setup_js'),
     ('/gtag.js', ('GET',), 'gtag_js'),
     ('/resources', ('GET',), 'resources_page'),
     ('/blog', ('GET',), 'blog_index'),
+    ('/blog/jobspipe-and-treg', ('GET',), 'blog_jobspipe_and_treg'),
     ('/blog/people-search-bench', ('GET',), 'blog_people_search_bench'),
     ('/blog/security-incident-2026-10-23', ('GET',), 'blog_security_incident_2026_10_23'),
     ('/blog/work-email-finding-bench', ('GET',), 'blog_work_email_finding_bench'),
@@ -216,6 +224,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/aeo', ('GET',), 'aeo_page'),
     ('/rea-growth', ('GET',), 'rea_growth_page'),
     ('/rea-growth.md', ('GET',), 'rea_growth_md'),
+    ('/rea-marketing', ('GET',), 'rea_marketing_page'),
     ('/social', ('GET',), 'social_search_page'),
     ('/showcase', ('GET',), 'showcase_page'),
     ('/showcase/leaderboard', ('GET',), 'showcase_leaderboard'),
@@ -254,6 +263,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/jobs-api', ('GET',), 'jobs_api_page'),
     ('/recruit', ('GET',), 'recruit_page'),
     ('/web-access', ('GET',), 'web_access_page'),
+    ('/doomscroll', ('GET',), 'doomscroll_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
     ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
     ('/jev', ('GET',), 'jev_page'),
@@ -274,6 +284,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/.well-known/skills/lead-signals/SKILL.md', ('GET',), 'well_known_lead_signals_md'),
     ('/.well-known/skills/web-access/SKILL.md', ('GET',), 'well_known_web_access_md'),
     ('/.well-known/skills/recruit/SKILL.md', ('GET',), 'well_known_recruit_md'),
+    ('/.well-known/skills/doomscroll/SKILL.md', ('GET',), 'well_known_doomscroll_md'),
     ('/connect-demo', ('GET',), 'connect_demo_page'),
     ('/connect-demo/callback', ('GET',), 'connect_demo_callback'),
     ('/help', ('GET',), 'support_page'),
@@ -285,6 +296,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
+    ('/vendor-console/me', ('GET',), 'vendor_console_me'),
     ('/orgs', ('GET',), 'list_orgs'),
     ('/home', ('GET',), 'home'),
     ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
@@ -294,9 +306,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/onboard/skip', ('POST',), 'onboard_skip'),
     ('/onboard/reset', ('POST',), 'onboard_reset'),
     ('/onboard/team', ('POST',), 'onboard_team'),
-    ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
-    ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
-    ('/demo/sandbox/skill', ('GET',), 'demo_sandbox_skill'),
     ('/onboard/seed-tool', ('POST',), 'onboard_seed_tool'),
     ('/onboard/accept-teammate', ('POST',), 'onboard_accept_teammate'),
     ('/invites/{invite_id}/accept', ('POST',), 'accept_my_invite'),
@@ -447,6 +456,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 })
 _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ("/call/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "call_tool"),
+    ("/agentpay/credit", ("GET",), "agent_payment_credit"),
     ("/catalog/call/{rest:path}",
      ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
      "call_catalog_endpoint"),
@@ -464,9 +474,11 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
     # Arena statistics are built by `treg-worker arena insights` (a cron) walking `callrecord`, so
     # web processes never compete for its cursor row. Only `/arena/insights` (a snapshot read) is here.
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+           "treg.application.allowance_sweep.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.affiliates.worker",
+               "treg.application.allowance_sweep.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -745,6 +757,7 @@ def configure_agent_payments() -> None:
     from .application import agent_payments
 
     s = get_settings()
+    s.check_agent_payments()
     rails = []
     if s.agent_payments_enabled:
         if s.agent_payments_mpp_enabled:
@@ -758,7 +771,8 @@ def configure_agent_payments() -> None:
                 rpc_url=s.agent_payments_tempo_rpc_url,
                 rpc_api_key=s.agent_payments_tempo_rpc_api_key,
                 currency=s.agent_payments_tempo_currency,
-                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s))
+                challenge_ttl_s=s.agent_payments_mpp_challenge_ttl_s,
+                store=agent_payments.ReplayStore()))
         if s.agent_payments_x402_enabled:
             from .infra.agent_payments.x402 import X402Rail
 
@@ -770,7 +784,8 @@ def configure_agent_payments() -> None:
                 max_timeout_s=s.agent_payments_x402_max_timeout_s,
                 rpc_url=s.agent_payments_x402_rpc_url,
                 cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
-                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret))
+                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret,
+                block_tag=s.agent_payments_x402_block_tag, origin=s.public_url))
     agent_payments.configure(rails)
 
 
@@ -803,6 +818,7 @@ def _lifespan(role: AppRole):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             media.validate_configuration()
             await verify_db()
+            log_connection_budget()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
                 # answers no team receives a review invitation. /admin/kv shows the live state.
@@ -811,6 +827,9 @@ def _lifespan(role: AppRole):
             # serving, so a new worker's first calls do not fall back to the YAML order.
             from .application.call import route_rules as route_rules_app
             await route_rules_app.warm()
+            # Targeted review invitations read their per-endpoint counts once before serving.
+            from .application import review_targets
+            await review_targets.warm()
 
             _s = get_settings()
             limits = httpx.Limits(max_keepalive_connections=_s.upstream_max_keepalive_connections,
@@ -827,7 +846,20 @@ def _lifespan(role: AppRole):
                 if ROLE_BACKGROUND_TASKS[role] and adsconv.enabled()
                 else None
             )
+            from .application import affiliates
+            affiliate_task = (
+                asyncio.create_task(affiliates.worker(app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and affiliates.enabled()
+                else None
+            )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Idle allowance holds go back to the balance (money.md "Allowance"). Runs wherever
+            # background work runs, listed teams or not: a hold outlives its team's listing.
+            from .application import allowance_sweep
+            allowance_task = (
+                asyncio.create_task(allowance_sweep.worker())
+                if ROLE_BACKGROUND_TASKS[role] else None
+            )
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
             stall_watch = start_loop_stall_watch()
@@ -886,7 +918,8 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
+                        gauge_task, ads_task, affiliate_task, archive_task, prune_task, find_task, rate_task,
+                        allowance_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -966,8 +999,12 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
+    app.add_exception_handler(DBAPIError, api_module._db_id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
-    app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    for busy in DB_BUSY_ERRORS:
+        app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)
+    for wrapper in DB_BUSY_WRAPPERS:
+        app.add_exception_handler(wrapper, bootstrap_handlers._db_error)
     app.add_exception_handler(ReportBusy, bootstrap_handlers._report_busy)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
@@ -975,9 +1012,9 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     _install_head_and_openapi(app)
 
     if role != "control" and _mcp is not None:
+        # Claude removes the final slash and does not follow redirects. Normalize before any mount.
+        app.add_middleware(_mcp.NormalizeMCPPath)
         if get_settings().claude_connector_enabled:
-            # Claude can remove the final slash. Normalize before the parent V1 mount can match.
-            app.add_middleware(_mcp.NormalizeDirectoryMCPPath)
             # Register the nested mount first so the /mcp parent does not consume it.
             app.mount("/mcp/v2", _mcp.directory_mcp_app)
         app.mount("/mcp", _mcp.mcp_app)

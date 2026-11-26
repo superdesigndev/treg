@@ -69,14 +69,21 @@ def test_a_coalesce_miss_reads_as_today_on_every_list_or_missing_value(names):
 @pytest.mark.parametrize("expr", ["coalesce(" + " ," * 50_000 + ") == []", "coalesce(a," + " " * 50_000 + "x) == []",
                                   "coalesce(" + ", [" * 30_000 + ") == []", "coalesce(" + "a," * 50_000 + "[]) == []"])
 def test_a_long_adversarial_coalesce_is_judged_in_linear_time(expr):
+    import gc
     import time
 
-    started = time.perf_counter()
+    # CPU time with no collection: a loaded runner once took 1.08 s of wall time for ~20 ms of work.
+    gc.collect()
+    gc.disable()
     try:
-        codemod.predicate(expr, [])
-    except codemod.Refused:
-        pass
-    assert time.perf_counter() - started < 1
+        started = time.process_time()
+        try:
+            codemod.predicate(expr, [])
+        except codemod.Refused:
+            pass
+        assert time.process_time() - started < 1
+    finally:
+        gc.enable()
 
 
 @pytest.mark.parametrize("expr", ["coalesce(a, [], []) == []", "coalesce(, []) == []", "coalesce([]) == []",
@@ -143,7 +150,7 @@ def test_a_per_success_row_with_an_expect_keeps_its_error_envelope_out_of_the_er
     assert any("stats and archive admission stop calling a truthy `error`" in w for w in change.warnings)
 
 
-@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
+@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array", "items": {"type": "string"}}])
 def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
     change = codemod.rewrite({"id": "demo.x", "input": {"body": {"domain": spec, "roles": {"type": "string"}}},
                               "cost": {"type": "per_result", "value": 1, "reserve": {"entities": {}},
@@ -227,7 +234,13 @@ def test_a_settle_default_is_inherited_and_a_row_without_its_own_expect_opts_out
     assert posted.keys["expect"] == {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
     ruleless = codemod.rewrite({"id": "demo.x", "cost": {"type": "free"}}, provider="demo",
                                check_branches=False, defaults=BRANCH)
-    assert ruleless.keys == {"price": {"value": "0"}, "expect": None}
+    assert ruleless.keys == {"price": {"value": "0"}, "settle": None, "expect": None}
+    zero = codemod.rewrite({"id": "demo.x", "cost": {"type": "per_call", "value": 0.0, **PROVENANCE}},
+                           provider="demo", check_branches=False, defaults=BRANCH)
+    assert zero.keys["settle"] is None
+    default_free = codemod.rewrite({"id": "demo.x", "cost": {"type": "free"}}, provider="demo",
+                                   check_branches=False, defaults={**BRANCH, "price": {"value": "0"}})
+    assert "price" not in default_free.keys and default_free.keys["settle"] is None
     unpriced = codemod.rewrite({"id": "demo.x", "tier": "extended"}, provider="demo",
                                check_branches=False, defaults=BRANCH)
     assert unpriced.keys == {"price": None, "expect": None} and _v2(unpriced)

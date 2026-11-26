@@ -17,6 +17,7 @@ sources:
   - tests/test_mcp.py
   - tests/test_mcp_oauth.py
   - tests/test_m365_oauth.py
+  - tests/test_vendor_console_oauth.py
   - tests/test_mcp_directory.py
   - tests/test_marketplace_call.py
 related:
@@ -44,9 +45,11 @@ catalog ids and splits calls by the catalog's HTTP method, so Claude can treat G
 as reads and ask approval for POST, PUT, PATCH and DELETE. `/mcp/v2/` is the second transport
 surface; **connector release V1** is the first product release submitted to Claude's directory.
 
-`NormalizeDirectoryMCPPath` makes `/mcp/v2` and `/mcp/v2/` the same V2 resource: a real Claude
-custom-connector flow strips the trailing slash, and without normalization the request falls through
-to the team `/mcp` mount and receives the wrong OAuth resource identity.
+`NormalizeMCPPath` makes `/mcp` and `/mcp/` the same V1 resource, and `/mcp/v2` and `/mcp/v2/` the
+same V2 resource: a real Claude custom-connector flow strips the trailing slash and does not follow
+redirects. Without normalization `/mcp` answers the mount's 307, which the connector check reports as
+"not found", and `/mcp/v2` falls through to the team `/mcp` mount and receives the wrong OAuth
+resource identity.
 
 `TREG_CLAUDE_CONNECTOR_ENABLED` (default false) controls the V2 mount, lifespan, resource metadata,
 new V2 grants and the catalog-only call route (404 when off). `/mcp/` does not depend on it.
@@ -59,8 +62,8 @@ behavior.
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
-| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
+| endpoint details | the `/catalog/endpoints/{id}` route, error shape, MCP call arguments, provider auth and overflow notices, and compact siblings in the route's evidence order | client attribution and hints for the available call tool and ceiling options; the directory surface refuses endpoints on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
+| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit; neither carries a purchase link on a 402 | team MCP accepts team tools and exposes `call.max_cost_usd`; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation; a balance refusal's hint names where an admin adds funds on team MCP only (`_SurfacePolicy.balance_hint`) |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
 | transport | host checks, compression, cache headers, eager auth, static capabilities | V2 has a separate audience, metadata path, scope marker and Claude browser origin |
@@ -69,6 +72,22 @@ behavior.
 `_SurfacePolicy` holds the values that differ inside shared tool behavior. Public tool registrations
 stay separate because names, descriptions, schemas and safety annotations are public contracts.
 `build_mcp_app` refuses a server and OAuth resource-version pair naming different surfaces.
+
+For catalog endpoints, MCP `catalog_get` returns `call_template` as a JSON string containing tool
+arguments. Its hints name only the tools available on that surface: `call` on the team surface,
+and `catalog_call_read` (GET, HEAD, OPTIONS) or `catalog_call_write` (POST, PUT, PATCH, DELETE) on
+the directory surface. Both say whether the provider needs a key and format any overflow
+disclosure from the quoted price, unit and relay. For a routed endpoint, both surfaces show how to
+set a USD ceiling with `headers["X-Treg-Route-Max-Cost"]` and put other routing controls in
+`headers`, and the team surface also names `max_cost_usd`. Multipart templates put fields in `form`
+and name the files to supply in `uploads`. Hub tools keep the example in `endpoint.call_template`.
+Direct endpoint siblings carry the advertised USD price where known, the compact price quote
+including any trial limit, all available observations and the team count and shares when reviews
+are present. Routed endpoints show `routing.plan` and `routing.also` for comparison.
+
+Use the team surface's `call.max_cost_usd` argument or `headers["X-Treg-Route-Max-Cost"]` on
+either surface to cap any call billed from the team's treg balance. If a team-surface caller
+supplies both, the values must match. The V2 tool schemas stay fixed.
 
 When either surface or shared MCP code changes, review both; tests must compare the shared behavior
 and prove the listed differences. Keep these V2 properties fixed unless a new directory review
@@ -104,11 +123,16 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - The `hub_*` tools exist only on `/mcp/`; `_HubToolsGate` hides them unless the hub is enabled for
   the caller. `catalog_search` merges visible listed hub tools (`kind: "hub"`) and `call` accepts a hub
   tool id. `/mcp/v2/` never registers them. See [hub](hub.md).
-- `call_media` and `resources_list` exist only on `/mcp/`.
-- `feedback` and `review` exist only on `/mcp/`, so V2 never renders the invitation `/call/` decided
-  on (`_SurfacePolicy.invites`); `/call/` still decides and records it ([feedback](feedback.md)).
+- `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
+  `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
+  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
+- `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`, so V2 never renders the invitation
+  `/call/` decided on (`_SurfacePolicy.invites`); `/call/` still decides and records it
+  ([feedback](feedback.md)). Only the team surface lists `compare` in `X-Treg-Hints`, so `/call/`
+  never decides a comparison invitation for V2. `compare` needs `treg:read`: it shows the team's
+  past inputs and answers, as `call_result` does.
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,
-  by User-Agent) are not offered `review`: `_OpenAIClientGate` drops it from `tools/list` and the
+  by User-Agent) are not offered `review`, `mark` or `compare`: `_OpenAIClientGate` drops them from `tools/list` and the
   instructions, and their call results carry no invitation, because that review reads
   agent-initiated rating as analytics collection.
 
@@ -213,6 +237,9 @@ different request is refused. See `architecture/money.md`.
 `served_via` with a one-line `hint` (`cost_usd` is then the relay's real price), identically on both
 surfaces. `catalog_get` carries `overflow_price_usd`, `overflow_price_unit` and `overflow_via` so the
 price told before the call includes the relay's (`architecture/money.md` § Overflow money).
+On both surfaces each of `catalog_get`'s `siblings` carries only its price (`quote_cost`), not how it
+settles: MCP hosts cap a tool result, and a crowded job lists dozens of siblings. The full cost is
+that sibling's own `catalog_get`; the HTTP route, CLI and dashboard keep the full sibling cost.
 
 ## Output schemas: every field optional and nullable
 
@@ -233,7 +260,9 @@ A managed edge may Brotli-compress large responses, and at least one real client
 brotlicffi) dies mid-decode and hangs to its timeout. Managed edges can ignore `Cache-Control:
 no-transform`; the header stays (`NoTransformResponses`, outermost so 401 challenges carry it), but
 the working fix is `GZipMiddleware` inside `build_mcp_app`: an edge does not recompress a response
-already carrying `Content-Encoding: gzip`. Post-deploy check whenever this path changes: a large
+already carrying `Content-Encoding: gzip`. It compresses at level 1 (`MCP_GZIP_LEVEL`): Starlette
+compresses the whole body synchronously on the event loop, so every request in the worker waits for
+it, and the default level 9 is several times slower on JSON. Post-deploy check whenever this path changes: a large
 authenticated `catalog_get` over `/mcp/` with `Accept-Encoding: br, gzip` must return
 `content-encoding: gzip`.
 
@@ -310,9 +339,13 @@ and not the other locks out a family of clients, and the gap hides because the c
 does not need the other path.
 
 The CIMD fetch is fenced because the URL is caller-chosen: https only, no redirects, a public address
-at connect time, bounded time and size, reusing `health.safe_webhook_url` and `health.host_is_public`.
+at connect time, bounded time and size, reusing `health.safe_webhook_url` and the call-time lookup
+`health.host_is_public_async` (off the event loop, refused on timeout; proxy-model.md "Call-time SSRF guard").
 The document must claim its own URL, or a document hosted anywhere could assert someone else's
-`client_id` and inherit their consent. `redirect_uris` match exactly, never by prefix
+`client_id` and inherit their consent. `_resolve_oauth_client` reads the cached row, ends that
+transaction, fetches with no pooled connection held, then writes the row in a short transaction of
+its own (a concurrent first sight that loses the unique constraint updates the winner's row). A failed
+refresh keeps the stale copy. `redirect_uris` match exactly, never by prefix
 (`https://good.test/cb.evil` starts with the registered value).
 
 ## A confidential client: Microsoft 365 Copilot
@@ -337,6 +370,26 @@ takes the V1 default. Public clients are unchanged: PKCE binds their code, and a
 ignored. Because only treg's registration holds the secret, the consent screen names the client
 without the self-registration warning. `token_endpoint_auth_methods_supported` still advertises
 `none` alone: DCR issues only public clients, and the confidential one is configured out of band.
+
+## An identity-only client: the vendor console
+
+API vendors apply to be listed in a separate service, the vendor console, and sign in there with
+their treg account. Its client, `treg-vendor-console`, is first-party and confidential like the
+Microsoft one, and exists only while both `vendor_console_client_secret` and
+`vendor_console_redirect_uri` are set (`_vendor_console_client`). It asks for nothing but who
+signed in:
+
+- Its resource is `<public_url>/vendor-console` and its scope `treg:identity`. It gets that resource
+  and nothing else, and no other client may ask for it (`_client_resource`).
+- Consent has no team picker, like Sheets: the token names the person, with their first team as
+  the default, and the vendor picks the team inside the console. A brand-new account gets its
+  first team at consent, as with any other non-Sheets client.
+- The code exchange authenticates the secret and returns an access token **without a refresh
+  token**: the console reads the identity once and keeps its own session, so no grant stays in the
+  person's list of connections.
+- The token is accepted only by `GET /vendor-console/me`, which answers the address, whether it is
+  verified, and every team the person may use there (not suspended, not a demo, allowed by the
+  sign-in's SSO) with the person's role. Every other route, MCP included, refuses it by audience.
 
 ## The consent screen is the security boundary
 
@@ -432,9 +485,8 @@ Test the flow end to end: claims validation can pass while tools still forward t
 ## Sign-in mid-authorization
 
 A signed-out visitor to `/oauth/authorize` has the destination parked in a short-lived HttpOnly
-cookie and is sent to `/?signin=oauth`, which opens the sign-in modal without creating a sandbox
-session; the query parameter is only a UI cue and carries no OAuth data. Every sign-in door resumes
-the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
+cookie and is sent to `/?signin=oauth`, which opens the sign-in modal; the query parameter is only
+a UI cue and carries no OAuth data. Every sign-in door resumes the parked request. The cookie stores a relative path and honours only `/oauth/authorize`, so it
 cannot become a general post-login redirect.
 
 Resuming straight after sign-in means a new account reaches consent before the dashboard has made

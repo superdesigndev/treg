@@ -22,7 +22,7 @@ def _used_keys(adapter: Adapter) -> set[str]:
 
 
 def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, Any],
-                    given: set[str] | frozenset[str] | None = None) -> tuple[str, ...]:
+                    given: set[str] | frozenset[str] | None = None, *, soft: bool = True) -> tuple[str, ...]:
     """Filters the caller supplied that this adapter has no place for — the provider will answer a
     LOOSER question than the one asked. Pure, and knowable before the call, so ranking can use it.
 
@@ -38,14 +38,20 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
     `limit` is a page size, not a filter: an adapter without one answers the same question, and its
     price already reflects the rows it bills. The contract defaults it, so counting it ranked every
     limit-less child last, so a free-on-miss role finder fell behind a search that bills its empty
-    answers."""
+    answers.
+
+    A key the adapter declares soft (`Adapter.soft`) reaches the provider only as a hint, so its rows
+    need not match it: it counts as not applied, a scoping key the caller sent included. `soft=False`
+    leaves those keys out: what ranking reads, so a declaration discloses without reordering."""
     used = _used_keys(adapter)
     # A filter written into a stand-in's text (`q` "… in Germany") reaches the provider there.
     for k in _stand_in_sent(adapter, identity):
         used |= _carried(contract, k, identity)
-    return tuple(k for k in (contract.filters or ()) if k != "limit"
+    soft = set(getattr(adapter, "soft", None) or ()) if soft else set()
+    keys = (*(contract.filters or ()), *(k for k in contract.scoping if k in soft))
+    return tuple(k for k in dict.fromkeys(keys) if k != "limit"
                  and identity.get(k) not in (None, "") and (given is None or k in given)
-                 and (k not in used or _unmappable(adapter, k, identity)))
+                 and (k not in used or k in soft or _unmappable(adapter, k, identity)))
 
 
 def _unmappable(adapter: Adapter, key: str, identity: dict[str, Any]) -> bool:
@@ -231,6 +237,7 @@ class Candidate:
     exhausted: bool = False
     note: str = ""
     ignored: tuple[str, ...] = ()     # caller filters this adapter cannot express (ranks it down)
+    hinted: tuple[str, ...] = ()      # of `ignored`, those it sends only as a hint: named, never ranked down
     # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
     # price when the child's cost bills a miss, else 0.
     miss_micro: int | None = None
@@ -279,6 +286,8 @@ class Plan:
     route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
     orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
     health: dict[str, str] = field(default_factory=dict)  # endpoint id -> short-window verdict, when not ok
+    # {endpoint_id, parameter, rule, tier}: children kept that the parameter check would drop (log mode)
+    would_drop: list[dict] = field(default_factory=list)
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
@@ -301,7 +310,8 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
-         one_subject: bool = False, caller_prefer: bool = False) -> list[Candidate]:
+         one_subject: bool = False, caller_prefer: bool = False,
+         last: tuple[str, ...] | list[str] = ()) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
     `one_subject` (the contract's flag): every variant names the same person, so expected cost per
     hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
@@ -311,8 +321,12 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
     variant names, or one it was derived from (`first_name`/`last_name` cover a supplied
     `full_name`; `domain` covers a supplied `email`). So `{first_name, last_name, domain}` and
     `{full_name, domain}` are equally specific for a caller who sent a full name and a domain, and
-    price decides between hunter and apollo — while a domain-only variant still ranks below both."""
+    price decides between hunter and apollo — while a domain-only variant still ranks below both.
+    `last` (the contract's `ask_last`) ranks those providers, on treg's key only, after the other
+    healthy treg-key candidates unless they are named in `prefer`; a caller's own prefer ignores it,
+    and a team's own key is never reordered by it."""
     prefer = [p.lower() for p in prefer or []]
+    last = set() if caller_prefer else {p.lower() for p in last} - set(prefer)
     given = set(given or ())
     derive = derive or {}
 
@@ -340,7 +354,8 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # non-empty answer to the looser question still counts as a hit — so it must never win on
         # price alone. It stays reachable, just last among equals.
         cost = c.expected_cost_per_hit
-        lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
+        missed = len(c.ignored) - len(c.hinted)
+        lead = (missed, cost, specificity) if one_subject else (specificity, missed, cost)
         # A child failing or slow right now is asked after the healthy ones of its tier, whatever
         # order a contract default or a published rule gives it. Only the caller's own prefer
         # (`caller_prefer`) outranks health, and a team's own key is never asked later for it.
@@ -348,8 +363,10 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # A contract default or a published rule orders only children that ask the whole question:
         # one that ignores a sent filter loses its place in it, so it never answers a looser question
         # ahead of one that asks the real one. The caller's own prefer still places it.
-        if c.ignored and not caller_prefer:
+        if missed and not caller_prefer:
             pref = len(prefer)
+        if tier == 2 and c.endpoint["provider"].lower() in last:
+            pref = len(prefer) + 1
         order = (pref, unwell) if caller_prefer else (unwell, pref)
         return (tier, *order, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,

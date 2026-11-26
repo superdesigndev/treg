@@ -1,14 +1,17 @@
 """Team creation and deletion rules, and membership read models."""
 
+import logging
 import re
-
 import sys
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 
-from sqlalchemy import delete, exists, func, update
+from sqlalchemy import delete, exists, func, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlmodel import select
 
+from ...infra import kv
 from ...models import (
     AgentPayer,
     AgentPayment,
@@ -19,6 +22,7 @@ from ...models import (
     ShowcaseVote,
     ShowcaseWeek,
     AdConversion,
+    AffiliateBonus, AffiliateLead,
     ApiKey,
     ApiKeyEvent,
     ApiKeySpendDay,
@@ -43,6 +47,9 @@ from ...models import (
     EnterpriseSSOBlock,
     EnterpriseSSOIdentity,
     Feedback,
+    CallCharge,
+    CallComparison,
+    CallMark,
     CallReview,
     Media,
     Hold,
@@ -176,7 +183,7 @@ async def rename_org(db: AsyncSession, org: Org, *, name: str | None = None, slu
         if slug != _slugify(slug) or not SLUG_LEN[0] <= len(slug) <= SLUG_LEN[1]:
             raise ValueError(
                 f"slug must be {SLUG_LEN[0]}-{SLUG_LEN[1]} lowercase letters, digits or hyphens")
-        if slug.startswith("sbx-"):  # the sandbox-team shape (onboard/sandbox.py) is privilege-shaped
+        if slug.startswith("sbx-"):  # the removed landing sandbox's team shape; its rows may remain
             raise ValueError("slug prefix 'sbx-' is reserved")
         if slug != org.previous_slug and await _slug_taken(slug, db):
             raise ValueError("slug is taken")
@@ -212,12 +219,13 @@ async def _make_org_membership(
     return org, token
 
 
-async def make_payer_team(db: AsyncSession, address: str) -> Org:
-    """Stage the team of one agent payer wallet (docs/context/architecture/agent-payments.md): a
-    machine user on the unroutable payer domain, a `member` membership with no token, and the
-    address binding. No signup credit. A wallet whose team was deleted keeps its machine user and
-    gets a new team. Caller commits; a concurrent create loses on the `AgentPayer` primary key."""
-    email = f"{address}@{PAYER_DOMAIN}"
+async def make_payer_team(db: AsyncSession, network: str, address: str) -> Org:
+    """Stage the team of one agent payer wallet on one network
+    (docs/context/architecture/agent-payments.md): a machine user on the unroutable payer domain, a
+    `member` membership with no token, and the (network, address) binding. No signup credit. A
+    wallet whose team was deleted keeps its machine user and gets a new team. Caller commits; a
+    concurrent create loses on the `AgentPayer` primary key."""
+    email = f"{address}.{re.sub(r'[^a-z0-9]+', '-', network.lower())}@{PAYER_DOMAIN}"
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
         user = User(email=email, onboarded=True)
@@ -227,7 +235,7 @@ async def make_payer_team(db: AsyncSession, address: str) -> Org:
     db.add(org)
     await db.flush()
     db.add(Membership(user_id=user.id, org_id=org.id, role="member", token_hash=""))
-    db.add(AgentPayer(address=address, org_id=org.id))
+    db.add(AgentPayer(network=network, address=address, org_id=org.id))
     await db.flush()
     return org
 
@@ -295,6 +303,7 @@ ORG_SCOPED_MODELS = (
     TagBudget,
     MemberSpend,  # likewise: its rows reference a Hold
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
+    CallCharge,  # calls not yet applied to the blocks that are about to go
     CallTask, AsyncResourceRecord, ProviderResource, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
     IdempotentCall,            # a remembered answer belongs to the team that paid for it
@@ -303,12 +312,22 @@ ORG_SCOPED_MODELS = (
     HubListing,   # a tool's search listing goes with the team that asked for it
     HubTool,      # a maker's published tools go with the team that owned them
     CallReview,
+    CallComparison,  # pairwise comparisons: deleted with the team, not by the next worker run
+    CallMark,
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
+    AffiliateLead,  # the team's affiliate attribution goes with it
+    AffiliateBonus,  # and the partner offer's decisions on its payments
     EnterpriseSSOIdentity, EnterpriseSSOBlock, EnterpriseDirectoryUser, EnterpriseSSOAudit, EnterpriseSSO,
     AgentPayment, AgentPayer,  # an agent payer's proofs and its address binding
     Membership,   # last: it is what makes the caller a member of the org being deleted
 )
+
+
+# Tables that name their team with no foreign key (data-model.md, "Call-path tables have no
+# foreign key to `org`"). `cascade_delete_org` deletes them through ORG_SCOPED_MODELS and once
+# more after the team row is gone, for the rows a call committed while the deletion waited.
+ORG_ROWS_WITHOUT_FOREIGN_KEY = (Hold, IdempotentCall, TagSpend, LedgerEntry)
 
 
 ARCHIVE_PRIVATE_SCOPES = ("org", "conn")
@@ -334,7 +353,8 @@ async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int |
 async def archive_mark_hashes(db: AsyncSession, org_id: int, *, limit: int,
                               after: str = "") -> list[str]:
     """The question hashes the team's `ArchiveKeyOrg` marks name, ascending from `after`: one
-    page of `uq_archive_key_org`, so a large team's marks are read in bounded statements."""
+    page of the table's (org, key_hash) primary key, so a large team's marks are read in bounded
+    statements."""
     rows = await db.execute(
         select(ArchiveKeyOrg.key_hash)
         .where(ArchiveKeyOrg.org_id == org_id, ArchiveKeyOrg.key_hash > after)
@@ -425,6 +445,40 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
     return await erase_archive_keys(db, key_ids)
 
 
+# Marks per locking read and delete in `erase_archive_marks`.
+MARK_CHUNK = 500
+
+
+async def erase_archive_marks(db: AsyncSession, key_hashes: list[str], *,
+                              unpaid_since: datetime) -> int:
+    """Delete every team's `ArchiveKeyOrg` mark on the given questions not paid for since
+    `unpaid_since`, in `db` (no commit) -> marks deleted. Only for keys deleted in the same
+    transaction (archive row retention): a mark outliving its key would price a re-recorded
+    question as a repeat, except a mark a team paid for meanwhile, which that team did pay for.
+
+    Marks are locked `FOR UPDATE SKIP LOCKED` in (org_id, key_hash) order, the order settles lock
+    them in, `MARK_CHUNK` at a time, and only those are deleted: a mark a settle holds is left to
+    that settle instead of waited for."""
+    deleted = 0
+    for start in range(0, len(key_hashes), MARK_CHUNK):
+        chunk = key_hashes[start:start + MARK_CHUNK]
+        while True:
+            pairs = (await db.execute(
+                select(ArchiveKeyOrg.org_id, ArchiveKeyOrg.key_hash)
+                .where(ArchiveKeyOrg.key_hash.in_(chunk), ArchiveKeyOrg.last_call_at < unpaid_since)
+                .order_by(ArchiveKeyOrg.org_id, ArchiveKeyOrg.key_hash)
+                .limit(MARK_CHUNK)
+                .with_for_update(skip_locked=True))).all()
+            if not pairs:
+                break
+            result = await db.execute(delete(ArchiveKeyOrg).where(
+                tuple_(ArchiveKeyOrg.org_id, ArchiveKeyOrg.key_hash).in_([tuple(p) for p in pairs])))
+            deleted += int(result.rowcount or 0)
+            if len(pairs) < MARK_CHUNK:
+                break
+    return deleted
+
+
 async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
     """Delete the given keys with their snapshots in `db` (no commit), moving the endpoint
     running totals by what the statements returned -> keys deleted. Marks are untouched."""
@@ -463,11 +517,43 @@ async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
     return len(keys_gone)
 
 
+async def lock_allowance_holds(db: AsyncSession, org_ids: Sequence[int]) -> dict:
+    """Lock the allowance holds of teams about to be deleted, before any of their queued call
+    charges is deleted: the order the charge writer uses. Deleting a charge first, a writer that
+    holds the hold and is writing that charge again would wait on the delete while the deletion
+    waits on the hold.
+
+    One statement, in the order of the holds' ids, which is the writer's order too. A caller
+    that deletes several teams in one transaction calls this once for all of them, first:
+    locking team by team could take two holds in the opposite order to a writer's batch.
+    Returns each locked hold's `created_at` by team."""
+    ids = sorted({f"allowance:{org_id}" for org_id in org_ids})
+    if not ids:
+        return {}
+    return {org_id: created_at for org_id, created_at in (await db.execute(
+        select(Hold.org_id, Hold.created_at).where(Hold.id.in_(ids)).order_by(Hold.id)
+        .with_for_update())).all()}
+
+
+async def _retire_allowance_counter(org_id: int, hold_created_at) -> None:
+    """End the shared store's counter of a deleted team's allowance hold. The counter is keyed
+    by the team's number and admits calls by itself; left behind, it would go on admitting them
+    with no hold, for a database that gives the number to a new team as well. Before the
+    delete commits: a deletion rolled back afterwards finds its counter emptied, and the next
+    refill rebuilds it."""
+    if not kv.configured():
+        return
+    epoch = (hold_created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
+    if await kv.store().allowance_retire(org_id, epoch, 24 * 3600 * 1000) is None:
+        logging.getLogger("treg.ledger").error(
+            "allowance counter of deleted org %s was not retired: the store did not answer", org_id)
+
+
 async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     """Delete every org-scoped row, then the org. Does not commit.
 
-    THE one way a team leaves the database - owner delete, admin force-delete, the landing-sandbox
-    reaper and the onboarding demo reset all come through here. Do not grow a private copy of this
+    THE one way a team leaves the database - owner delete, admin force-delete and the onboarding
+    demo reset all come through here. Do not grow a private copy of this
     list."""
     # OAuthGrant names its mutable team `current_org_id` to distinguish family authority from the
     # immutable `OAuthRefresh.org_id` provenance. A family can name this team on EITHER side: after
@@ -512,6 +598,9 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
         await db.flush()
         await db.delete(app)
     await db.flush()
+    held = await lock_allowance_holds(db, [org.id])
+    if org.id in held:
+        await _retire_allowance_counter(org.id, held[org.id])
     for model in ORG_SCOPED_MODELS:
         for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
             await db.delete(r)
@@ -521,6 +610,14 @@ async def cascade_delete_org(org: Org, db: AsyncSession) -> None:
     # deletion that should also clear the object store runs `archive_erasure.erase_org` first.
     await erase_archive_rows(db, org.id)
     await db.delete(org)
+    await db.flush()
+    # PostgreSQL's DELETE of the team row waits for every transaction that updated it (a reserve,
+    # a refill) and lets nothing update it after; the walk's deletes of holds and queued charges
+    # waited likewise for every settle or fold that had claimed one. A row such a transaction
+    # wrote after the walk read its table committed before this point, and none can come after
+    # it, so one more pass leaves nothing of the team behind.
+    for model in ORG_ROWS_WITHOUT_FOREIGN_KEY:
+        await db.execute(delete(model).where(model.org_id == org.id))
 
 
 async def drop_member_deny_rules(db: AsyncSession, user_id: int, org_id: int | None = None) -> int:

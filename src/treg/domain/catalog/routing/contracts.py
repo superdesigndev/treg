@@ -13,6 +13,7 @@ from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from ... import plugins
 from .. import outcome
+from ..params import takes_list
 from ..schema.v2 import is_v2
 from . import paths as P
 from .segments import SEGMENTERS
@@ -42,7 +43,7 @@ class Contract:
     capability: str
     summary: str
     identity: tuple[tuple[str, ...], ...]      # variants, each a sorted tuple of key names
-    identity_types: dict[str, str]
+    identity_specs: dict[str, dict]            # identity key → its parameter spec
     derive: dict[str, str]                     # field → expression over the identity
     filters: dict[str, Any]
     output: dict[str, dict]                    # core field → {type, required?, note?}
@@ -53,6 +54,10 @@ class Contract:
     # (`question_miss`), so the route moves on. Empty = none. Used where only the question can say
     # an answer is off target (a `site:` search whose rows are all on other sites).
     question_miss: str = ""
+    # True = an answer `question_miss` rules out is kept like a weak hit and the walk asks at most
+    # MAX_WEAK_FALLBACKS more providers (every provider returns the same wall page). False = the
+    # walk goes on to the end, as a `site:` search needs (the next provider may hold the site).
+    question_miss_bound: bool = False
     default_max_cost_usd: float | None = None  # the per-call ceiling when the caller sends none
     # One sentence the router attaches as `_treg.advice` to a HIT whose `output.verified` is not
     # true — a found contact the provider did not confirm deliverable, which an agent should verify
@@ -63,7 +68,8 @@ class Contract:
     # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
     # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
     # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
-    # employer when the caller also sent a domain.
+    # employer when the caller also sent a domain. Set = the contract also takes
+    # `X-Treg-Route-Domain-Match: strict`, which looks past such a hit (route.py).
     advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no
@@ -87,6 +93,10 @@ class Contract:
     # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
     # differs by country.
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Providers asked, on treg's key, after the other treg-key candidates of the same health when
+    # the caller sends no `X-Treg-Route-Prefer`: a free provider that is often refused would
+    # otherwise lead on price. A team's own key is never reordered by it.
+    ask_last: tuple[str, ...] = ()
     # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
     # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:
     # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
@@ -111,6 +121,9 @@ class Contract:
     # The output field two providers must agree on under `X-Treg-Route-Confirm`: a hit counts only
     # once another provider returns the same value. Empty = the header is refused.
     confirm: str = ""
+    # The output field `X-Treg-Route-Ad-Hashes` hashes for ad platforms (`_treg.ad_hashes`): an
+    # email field. Empty = the header is refused.
+    ad_hashes: str = ""
     # True where a 2xx with nothing in it is the provider failing the job, not "no result": an
     # empty scraped page, an empty results list. Measured success then counts such an answer
     # against the endpoint (`stats.Tally.fold`), so a provider that answers 200 to everything
@@ -164,7 +177,7 @@ class Contract:
             return None
         limit = given.get("limit")
         if self.fill_limit_when and not isinstance(limit, bool) and isinstance(limit, int) and limit >= 2:
-            sent = {k for k, v in given.items() if k in self.identity_types and _sent(v)}
+            sent = {k for k, v in given.items() if k in self.identity_specs and _sent(v)}
             if any(sent == set(keys) for keys in self.fill_limit_when):
                 return limit
         return self.fill_rows or None
@@ -216,10 +229,19 @@ class Adapter:
     filter_max: dict[str, int] = field(default_factory=dict)  # `max:` a filter this provider caps (`limit: 8`); a request above it skips the provider
     additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
     route: bool = True                        # False: hit/miss evidence only, never a router candidate
+    # Caller keys the provider takes only as a hint (a place folded into a semantic query, a domain
+    # list its index does not enforce): the request carries them, the rows need not match them.
+    # `soft:` here, plus every key whose mapped parameter the endpoint row marks `applied: soft`.
+    soft: tuple[str, ...] = ()
     # `{cursor: <upstream path>}`: where the provider takes back the `next_cursor` its answer carried.
     # Cursor only: a page number over a provider whose order changes between calls (Dropleads)
     # repeats and skips rows.
     paging: dict[str, str] = field(default_factory=dict)
+    # `{page | page0 | offset | cursor: <expression over the provider request>}` (`page0`: a page
+    # number counted from 0): which page of the
+    # answer a request asks for. Read by call events only, so a later page is a different
+    # question from the first (`input_id`), never a retry of it.
+    position: dict[str, str] = field(default_factory=dict)
     verified_capabilities: tuple[str, ...] = ()
     verified: bool = False
     verify_note: str = ""
@@ -235,8 +257,8 @@ class Adapter:
     row_map: dict[str, str] = field(default_factory=dict)
     _row_of: str = ""
     _row_needs: tuple[str, ...] = ()
-    _row_urls: tuple[str, ...] = ()           # row fields of type `url`: never cut, set at load
-    _row_max: dict[str, int] = field(default_factory=dict)   # row field -> its own `max` chars, set at load
+    _row_urls: tuple[str, ...] = ()           # row fields of `format: url`: never cut, set at load
+    _row_max: dict[str, int] = field(default_factory=dict)   # row field -> its own `maxLength`, set at load
     _stand_in: dict[str, str] = field(default_factory=dict)   # the contract's `stand_in`, set at load
 
     def with_stand_in(self, identity: dict[str, Any], keys=None) -> dict[str, Any]:
@@ -369,8 +391,8 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "check", "confirm",
-    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm", "ad_hashes",
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
     "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
 # providers by the keys a caller sent; an order for one kind of request is now a published route
@@ -387,7 +409,8 @@ def retired_contract_keys(doc: dict) -> list[str]:
 
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "in_read", "body_array", "test_identity", "cost_units", "max",
-    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging"})
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row", "paging",
+    "position", "soft"})
 # The longest text a mapped row field keeps: a row is read by an agent, and one provider's
 # multi-page bio would otherwise cost more tokens than the rest of the answer.
 ROW_TEXT_MAX = 300
@@ -416,6 +439,24 @@ def _known_keys(what: str, raw: object, known: frozenset[str]) -> dict:
     return raw
 
 
+# The type words contracts used before the one vocabulary. CI loads the base branch's catalog with
+# a pull request's code (`scripts/catalog_dump.py`), so a base written in them must still parse.
+_EARLIER = {"str": "string", "text": "string", "int": "integer", "float": "number", "bool": "boolean",
+            "dict": "object", "any": "object", "list": "array", "url": "string"}
+
+
+def _field_spec(raw: object) -> dict:
+    """A contract field written as a type word (`string`) or as a spec mapping, as a spec."""
+    spec = dict(raw) if isinstance(raw, dict) else {"type": str(raw)}
+    if isinstance(spec.get("type"), str) and spec["type"] in _EARLIER:
+        if spec["type"] == "url":
+            spec["format"] = "url"
+        spec["type"] = _EARLIER[spec["type"]]
+    if "max" in spec and spec.get("type") == "string":
+        spec["maxLength"] = spec.pop("max")
+    return spec
+
+
 def _expressions(what: str, *exprs: object) -> None:
     for expr in exprs:
         try:
@@ -430,6 +471,10 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
         # A retired key is skipped, so a catalog written before it was retired still loads; the
         # catalog validator refuses it in the shipped catalog (`retired_contract_keys`).
         _known_keys(f"contract {cap}", c, CONTRACT_KEYS | RETIRED_CONTRACT_KEYS.keys())
+        c = {**c, **{section: {k: _field_spec(v) for k, v in c[section].items()}
+                     for section in ("filters", "output") if isinstance(c.get(section), dict)}}
+        if isinstance(c.get("row"), dict) and isinstance(c["row"].get("fields"), dict):
+            c["row"] = {**c["row"], "fields": {k: _field_spec(v) for k, v in c["row"]["fields"].items()}}
         _expressions(f"contract {cap}", *(c.get("derive") or {}).values(), *(c.get("stand_in") or {}).values(),
                      *([c["miss"]] if c.get("miss") else []),
                      *([c["question_miss"]] if c.get("question_miss") else []),
@@ -437,7 +482,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
         types = {}
         for v in c.get("identity") or []:
             if isinstance(v, dict):
-                types.update({k: str(t) for k, t in v.items()})
+                types.update({k: _field_spec(t) for k, t in v.items()})
         if stray := sorted(set(c.get("stand_in") or {}) - set(types)):
             raise ValueError(f"contract {cap}: stand_in must name identity keys, got {stray}")
         scoping = c.get("scoping") or []
@@ -455,17 +500,18 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                                      f"(filters: value or skip), got {mode!r}")
         for k, spec in (c.get("filters") or {}).items():
             if isinstance(spec, dict) and ("min" in spec or "max" in spec) and (
-                    spec.get("type") != "int" or type(spec.get("min")) is not int or spec["min"] < 1
+                    spec.get("type") != "integer" or type(spec.get("min")) is not int or spec["min"] < 1
                     or ("max" in spec and (type(spec["max"]) is not int or spec["max"] < spec["min"]))):
-                raise ValueError(f"contract {cap}: filters.{k} range needs type int, a whole min of at least 1 "
+                raise ValueError(f"contract {cap}: filters.{k} range needs type integer, a whole min of at least 1 "
                                  f"and, when declared, a whole max of at least min, got {spec!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
-            identity_types=types, derive=dict(c.get("derive") or {}),
-            filters={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("filters") or {}).items()},
-            output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
+            identity_specs=types, derive=dict(c.get("derive") or {}),
+            filters=dict(c.get("filters") or {}),
+            output=dict(c.get("output") or {}),
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             question_miss=str(c.get("question_miss") or ""),
+            question_miss_bound=bool(c.get("question_miss_bound")),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
             advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
@@ -474,10 +520,12 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             carried_by=_parse_carried_by(cap, c.get("carried_by"), types, scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
+            ask_last=tuple(str(p).lower() for p in c.get("ask_last") or ()),
             fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             fill_rows=_parse_fill_rows(cap, c.get("fill_rows"), c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
+            ad_hashes=_parse_output_field(cap, "ad_hashes", c.get("ad_hashes"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
@@ -533,7 +581,7 @@ def _parse_identity_notes(cap: str, raw, types: dict) -> dict[str, str]:
 def _parse_fill_rows(cap: str, raw, c: dict) -> int:
     if raw is None:
         return 0
-    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "array" and v.get("required")]
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 2 or not lists:
         raise ValueError(f"contract {cap}: fill_rows is a row count of 2 or more on a contract with a list output, got {raw!r}")
     return raw
@@ -542,7 +590,7 @@ def _parse_fill_rows(cap: str, raw, c: dict) -> int:
 def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:
     if raw is None:
         return ()
-    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "array" and v.get("required")]
     if (not isinstance(raw, list) or not raw or "limit" not in (c.get("filters") or {}) or not lists
             or any(not isinstance(keys, list) or not keys or any(not isinstance(k, str) or k.strip() not in types
                                                                  for k in keys) for keys in raw)):
@@ -589,12 +637,12 @@ def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
     if not raw:
         return {}
     of, fields = raw.get("of") if isinstance(raw, dict) else None, (raw or {}).get("fields") if isinstance(raw, dict) else None
-    if of not in output or (output[of] or {}).get("type") != "list" or not isinstance(fields, dict) or not fields:
+    if of not in output or (output[of] or {}).get("type") != "array" or not isinstance(fields, dict) or not fields:
         raise ValueError(f"contract {cap}: row needs `of` (a list field of its output) and `fields`")
     needs = tuple(str(k) for k in raw.get("needs") or ())
     if not needs or any(k not in fields for k in needs):
         raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
-    row_fields = {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()}
+    row_fields = {str(k): _field_spec(v) for k, v in fields.items()}
     rank = raw.get("rank_by_role") or {}
     if rank and (not isinstance(rank, dict) or set(rank) != {"asked", "now", "since", "past", "ended", "flag"}
                  or rank["asked"] not in types
@@ -603,10 +651,13 @@ def _parse_row(cap: str, raw, output: dict, types: dict) -> dict:
         raise ValueError(f"contract {cap}: row rank_by_role maps asked (an identity key) and now, since, past, ended, "
                          f"flag (row fields), got {rank!r}")
     for k, spec in row_fields.items():
-        if "max" in spec and (isinstance(spec["max"], bool) or not isinstance(spec["max"], int)
-                              or spec["max"] < 1 or spec.get("type") != "str"):
-            # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row.
-            raise ValueError(f"contract {cap}: row field {k} `max` is a positive whole number on a str field")
+        if "maxLength" in spec and (isinstance(spec["maxLength"], bool) or not isinstance(spec["maxLength"], int)
+                                    or spec["maxLength"] < 1 or spec.get("type") != "string"
+                                    or spec.get("format") == "url"):
+            # A text field may keep more than ROW_TEXT_MAX where an agent needs it to judge a row;
+            # a URL is never cut.
+            raise ValueError(f"contract {cap}: row field {k} `maxLength` is a positive whole number on a "
+                             "string field that is not a URL")
     return {"row_of": str(of), "row_fields": row_fields, "row_needs": needs,
             "row_rank": {str(k): str(v) for k, v in rank.items()}}
 
@@ -637,10 +688,14 @@ def _parse_check(cap: str, raw, output: dict) -> Check | None:
 
 
 def _parse_confirm(cap: str, raw, output: dict) -> str:
+    return _parse_output_field(cap, "confirm", raw, output)
+
+
+def _parse_output_field(cap: str, key: str, raw, output: dict) -> str:
     if not raw:
         return ""
     if raw not in output:
-        raise ValueError(f"contract {cap}: confirm must name a field of its output, got {raw!r}")
+        raise ValueError(f"contract {cap}: {key} must name a field of its output, got {raw!r}")
     return str(raw)
 
 
@@ -670,12 +725,32 @@ def _paging(eid: str, raw, out: dict) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+POSITION_KINDS = ("page", "page0", "offset", "cursor")
+
+
+def _position(eid: str, raw) -> dict[str, str]:
+    """`position: {page: queryParams.page}`: one kind, read from one expression."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict) or len(raw) != 1 or next(iter(raw)) not in POSITION_KINDS:
+        raise ValueError(f"adapter {eid}: position is {{page | page0 | offset | cursor: <expression>}}")
+    return {str(k): str(v) for k, v in raw.items()}
+
+
+def _soft(eid: str, raw) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(k, str) and k for k in raw):
+        raise ValueError(f"adapter {eid}: soft is a list of key names")
+    return tuple(raw)
+
+
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
         _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
         _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("in_read") or {}).values(),
-                     *(a.get("out") or {}).values(),
+                     *(a.get("out") or {}).values(), *_position(eid, a.get("position")).values(),
                      *(a.get("row") or {}).values(), *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
@@ -686,7 +761,9 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             filter_max={str(k): int(v) for k, v in (a.get("max") or {}).items()},
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
+            soft=_soft(eid, a.get("soft")),
             paging=_paging(eid, a.get("paging"), a.get("out") or {}),
+            position=_position(eid, a.get("position")),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
             row_map={str(k): str(v) for k, v in (a.get("row") or {}).items()},
             verdict=str(a.get("verdict") or ""),
@@ -794,9 +871,10 @@ def _as_url(v: Any) -> str | None:
     return candidate
 
 
-# `text`: a string and nothing else. A list in a key that providers join into free text is skipped
-# by the join, so the provider would answer the rest of the request alone.
-_TYPE_NORMALISERS = {"url": _as_url, "text": lambda v: v if isinstance(v, str) else None}
+def _normaliser(spec: dict):
+    """How an identity value of this spec is normalised before matching: a `format: url` value is
+    read as a URL; any other value is used as sent."""
+    return _as_url if (spec or {}).get("format") == "url" else None
 
 
 def _sent(v: Any) -> bool:
@@ -804,20 +882,27 @@ def _sent(v: Any) -> bool:
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
-    """The caller's identity fields, and bool filters, that are present but not of their declared
-    type. A bool filter is checked before planning: `"false"` or `0` would otherwise read as asked
-    for. A bool identity key keeps its own rule (a blank value is not sent)."""
+    """The caller's identity fields, and boolean filters, that are present but unreadable: a
+    `format: url` field that reads as no URL (`N/A`, a bare word), a stand-in key (text the
+    contract can write itself) that is not a string, a boolean filter that is not true or false
+    (`"false"` or `0` would otherwise read as asked for). Every other declared rule is the
+    parameter check's (`catalog.params`)."""
     bad = []
-    flags = [(k, "bool", True) for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "bool"]
-    for k, t, flag in [*((k, t, False) for k, t in contract.identity_types.items()), *flags]:
+    flags = [(k, "bool") for k, spec in (contract.filters or {}).items() if (spec or {}).get("type") == "boolean"]
+    for k, kind in [*((k, None) for k in contract.identity_specs), *flags]:
         v = given.get(k)
-        if flag:
+        spec = contract.identity_specs.get(k) or {}
+        if kind == "bool":
             wrong = v is not None and not isinstance(v, bool)
+        elif not _sent(v):
+            wrong = False
+        elif (norm := _normaliser(spec)) is not None:
+            kind, wrong = spec["format"], norm(v) is None
         else:
-            wrong = _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) is not None and norm(v) is None
+            kind, wrong = "text", k in contract.stand_in and not isinstance(v, str)
         if wrong:
             shown = v if isinstance(v, str) else json.dumps(v, default=str)
-            bad.append({"field": k, "type": t,
+            bad.append({"field": k, "type": kind,
                         "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
 
@@ -827,19 +912,19 @@ def flags_off(contract: Contract, identity: dict[str, Any]) -> dict[str, Any]:
     nothing, so it is no part of the question: a provider sample keyed on it would move every
     request that never sent the flag."""
     off = {k for k, spec in (contract.filters or {}).items()
-           if (spec or {}).get("type") == "bool" and identity.get(k) is not True}
+           if (spec or {}).get("type") == "boolean" and identity.get(k) is not True}
     return {k: v for k, v in identity.items() if k not in off} if off else identity
 
 
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:
     """The caller's fields + everything derivable → (identity, the variant they supplied), or
     (identity, None) when no variant is complete. Derived keys count for matching adapters."""
-    ident = {k: v for k, v in given.items() if k in contract.identity_types and _sent(v)}
+    ident = {k: v for k, v in given.items() if k in contract.identity_specs and _sent(v)}
     supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
     if supplied is None:
         return ident, None
-    for k, t in contract.identity_types.items():
-        if k in ident and (norm := _TYPE_NORMALISERS.get(t)):
+    for k, spec in contract.identity_specs.items():
+        if k in ident and (norm := _normaliser(spec)):
             ident[k] = norm(ident[k]) or ident[k]
     for _ in range(2):  # derive until stable (join needs first+last; split needs full_name)
         for k, expr in contract.derive.items():
@@ -874,7 +959,7 @@ def _found_nothing(endpoint: dict, example: Any) -> bool:
     """Beside a status-only miss rule, a v2 row's `error` rule says what a 2xx that found nothing
     looks like, so an example it judges an error is the miss today's adapter expression read."""
     rule = endpoint.get("miss")
-    return (is_v2(endpoint) and isinstance(rule, dict) and "status" in rule
+    return (is_v2(endpoint) and isinstance(rule, dict) and "status" in rule and "ok_when" not in rule
             and outcome.judge(endpoint, 200, example, answer=answer_of(example)).state == "error")
 
 
@@ -895,7 +980,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
            "pathParams": tr.get("pathParams") or {}}
     for field_name, target in adapter.in_map.items():
         v = P.get_path(doc, target)
-        if isinstance(v, list) and len(v) == 1 and contract.identity_types.get(field_name, "str") != "list":
+        if isinstance(v, list) and len(v) == 1 and not takes_list(contract.identity_specs.get(field_name)):
             v = v[0]  # `domains: ["stripe.com"]` in the fixture is the scalar `company_domain`
         if v not in (None, ""):
             ident[field_name] = v
@@ -916,7 +1001,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     for k, v in tr_body.items():
         # `in_expr` targets count only when they are built from the identity (a URL from a handle);
         # filter expressions carry defaults the fixture need not share.
-        ident_names = set(contract.identity_types)
+        ident_names = set(contract.identity_specs)
         expr_targets = [t for t, e in (adapter.in_expr or {}).items()
                         if any(re.search(rf"\b{re.escape(n)}\b", e) for n in ident_names)]
         mapped = {t.split(".", 1)[1].split(".")[0] for t in list(adapter.in_map.values()) + expr_targets if t.startswith("body.")}
@@ -942,6 +1027,66 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     return True, ""
 
 
+def _soft_targets(endpoint: dict) -> set[str]:
+    """The provider parameters (`queryParams.location`, `body.include_domains`) the endpoint row
+    marks `applied: soft`."""
+    inp = endpoint.get("input") or {}
+    body = inp.get("body") if isinstance(inp.get("body"), dict) else {}
+    if isinstance(body.get("properties"), dict):
+        body = body["properties"]
+    return {f"{where}.{name}" for where, params in (("queryParams", inp.get("queryParams")), ("body", body))
+            if isinstance(params, dict)
+            for name, spec in params.items() if isinstance(spec, dict) and spec.get("applied") == "soft"}
+
+
+def _soft_keys(adapter: Adapter, endpoint: dict, contract: Contract) -> tuple[str, ...]:
+    """The adapter's own `soft:` keys plus each contract filter it sends into a parameter marked soft."""
+    targets, filters = _soft_targets(endpoint), set(contract.filters or ())
+    keys = list(adapter.soft)
+    for k, target in adapter.in_map.items():
+        if target in targets and k in filters:
+            keys.append(k)
+    for target, expr in (adapter.in_expr or {}).items():
+        if target in targets:
+            keys += [n for n in re.findall(r"[A-Za-z_]\w*", expr) if n in filters]
+    return tuple(dict.fromkeys(keys))
+
+
+def soft_unrouted(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  endpoints: dict[str, dict]) -> list[str]:
+    """Parameters an endpoint row marks `applied: soft` that no contract filter is mapped into:
+    the mark changes only what `catalog get` says, never a routed plan."""
+    out = []
+    for eid, ep in endpoints.items():
+        targets = _soft_targets(ep)
+        if not targets:
+            continue
+        ad, contract = adapters.get(eid), contracts.get(str(ep.get("capability") or ""))
+        filters = set(contract.filters or ()) if contract is not None else set()
+        routed = set()
+        if ad is not None:
+            routed |= {t for k, t in ad.in_map.items() if k in filters}
+            routed |= {t for t, e in (ad.in_expr or {}).items() if set(re.findall(r"[A-Za-z_]\w*", e)) & filters}
+        out += [f"{eid}: {t} is applied: soft but no contract filter maps into it; only catalog get shows it"
+                for t in sorted(targets - routed)]
+    return out
+
+
+def soft_problems(adapters: dict[str, Adapter], contracts: dict[str, Contract],
+                  capability_of: dict[str, str]) -> list[str]:
+    """An adapter's `soft:` names only its contract's filter or scoping keys."""
+    problems = []
+    for eid, ad in adapters.items():
+        contract = contracts.get(capability_of.get(eid) or "")
+        if not ad.soft or contract is None:
+            continue
+        known = set(contract.filters or ()) | set(contract.scoping)
+        if unknown := [k for k in ad.soft if k not in known]:
+            problems.append(f"adapter {eid}: soft names {', '.join(unknown)}, not a filter or scoping key "
+                            f"of {capability_of[eid]}")
+    return problems
+
+
 def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, read_example) -> tuple[dict[str, Contract], dict[str, Adapter]]:
     """Parse both files and verify every adapter against its endpoint's fixtures."""
     contracts = parse_contracts(read_yaml(directory / "contracts.yaml") or {})
@@ -953,8 +1098,8 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
         if contract is not None:
             ad = Adapter(**{**ad.__dict__, "_filter_keys": tuple(contract.filters or ()),
                             "_row_of": contract.row_of if ad.row_map else "", "_row_needs": contract.row_needs,
-                            "_row_urls": tuple(k for k, spec in contract.row_fields.items() if spec.get("type") == "url"),
-                            "_row_max": {k: spec["max"] for k, spec in contract.row_fields.items() if "max" in spec},
+                            "_row_urls": tuple(k for k, spec in contract.row_fields.items() if spec.get("format") == "url"),
+                            "_row_max": {k: spec["maxLength"] for k, spec in contract.row_fields.items() if "maxLength" in spec},
                             "_stand_in": contract.stand_in,
                             "_verdict": (contract.verdict_from, contract.verdict_words,
                                          contract.required_output, contract.verdict_map)
@@ -972,5 +1117,5 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                 if extra_ok:
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
-                                   "verified_capabilities": tuple(additional)})
+                                   "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep, contract)})
     return contracts, verified

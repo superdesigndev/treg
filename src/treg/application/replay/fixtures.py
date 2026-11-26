@@ -146,7 +146,8 @@ def synthetic_miss(adapter, example: object, endpoint: dict | None = None) -> ob
     if adapter.miss or endpoint is None:
         paths = _miss_paths(adapter.miss)
     else:
-        when = endpoint["miss"].get("when")
+        rule = endpoint["miss"]
+        when = rule.get("ok_when") if "status" in rule else rule.get("when")
         paths = [p for p in map(_adapter_path, leaf_paths(when) if when is not None else []) if p]
     tries: list[list[tuple[str, object]]] = []
     if example is not None:

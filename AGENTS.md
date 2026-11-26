@@ -25,14 +25,24 @@ Everything else in this file is guidance; these are the contract, and they win o
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
-   every path: timeout, cancellation and exceptions included.
-3. A request holds zero database connections while upstream, object-storage or payment-rail
+   every path: timeout, cancellation and exceptions included. A call of a team the operator put on
+   the allowance (`allowance.listed`: named in `money_allowance_org_ids`, or every team under
+   `money_allowance_all_orgs`, never one in `money_allowance_excluded_org_ids`) may instead take
+   its reservation from the team's allowance (one standing hold, mirrored in a shared counter);
+   that take is charged or given back exactly once on the same paths, and a take that is never
+   finished stays in the allowance hold, never spent and never charged, until the hold is closed.
+   A routed child's take (only under `money_allowance_routed_org_ids` or
+   `money_allowance_routed_all_orgs`) is finished by its routed parent, as its hold would be.
+3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
-   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session.
+   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
+   end the transaction before a credential is opened or sealed.
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
-   token with the app secret, replacing any caller value), the transport headers listed in
+   token with the app secret, replacing any caller value; a credential half the provider reads
+   from the URL path, such as an account id bound to the key, fills only its own `{name}` path
+   segment), the transport headers listed in
    `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned
    agents, per-pin re-scoping of the caller's `Idempotency-Key`, treg's own `User-Agent` in place
    of the caller's, and, where the provider file names a `client_header`, treg's opaque per-team code
@@ -56,27 +66,41 @@ Everything else in this file is guidance; these are the contract, and they win o
    settlement and outcome, every other byte as sent, live and archive hits alike, before the caller
    or an idempotent replay sees it. The archive keeps the answer whole; a call sending
    `X-Treg-Keep-Reported-Charge: true` keeps the member.
+   One more, on every answer: the invitation headers `X-Treg-Hint`, `X-Treg-Hint-Text` and
+   `X-Treg-Review` are treg's own, so an upstream's copies are removed before treg decides its
+   invitation; clients show their text as treg's ([feedback](docs/context/architecture/feedback.md)).
+   One replacement, on treg's shared key only: an answer the capacity signature table reads as
+   treg's account out of money or out of its period allowance (`balance` or `quota`, any status, a
+   2xx included), that overflow did not serve and that settled at zero, reaches the caller,
+   uncharged, as the typed 503 `provider_capacity_unavailable` with `Retry-After`; a masked copy of
+   the provider's answer stays in the call's error evidence, and a routed call skips that provider.
+   A team's own key is relayed unchanged.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
    call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
-   hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   reservation and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps
    asking providers until one answers valid or invalid, each attempt billed as usual, and reports it
-   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. Responses needing settlement or ownership evidence are buffered by the application
+   in `_treg.decision`; the answer returned is the deciding provider's, unaltered. With
+   `X-Treg-Route-Domain-Match: strict`, an email find that sent a domain keeps asking providers past a
+   hit at another mail domain, each attempt billed as usual, at most two more such hits; the answer
+   returned is the first on-domain hit, or else the first off-domain one, unaltered and flagged
+   (`_treg.domain_match: false`). Responses needing settlement or ownership evidence are buffered by the application
    up to 8 MiB; exceeding that limit fails without charging, never returns a successful prefix.
    An endpoint declaring `spooled_response` (inline media) instead reads its metered 2xx to an
    unlinked temp file under a per-body cap and per-process budget, settles from only the paths its
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
-   Authorized free final fetches needing no body evidence stream in full.
+   Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
+   list with no ownership rule) stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential
-   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
+   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`, `SIGN-IN-WITH-X`) consumed
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
@@ -160,10 +184,12 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances (plus, when a policy extension asks `call_admission`,
   the team's first owner and whether it ever bought credit), and writes only what
   `tests/test_call_architecture.py`
-  allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
+  allowlists (the ledger entries, the allowance counter, its refills and queued call charges,
+  idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
-  Redis org/endpoint quota admission counters, and the shared provider rate window's members). Extend the
+  Redis org/endpoint quota admission counters, the shared provider rate window's members, and a
+  sampled routed call's short-lived pairwise-comparison marker). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
@@ -188,9 +214,11 @@ agents then built against a constitution that was wrong.
   bought credit and `own_key_required` for one that did, naming the remedy and never the rule. A
   slow or failing extension allows the call, and a call on the team's own credential is never asked.
 - **Agent payments** (behind `TREG_AGENT_PAYMENTS_ENABLED`). A keyless caller's payment confirmed
-  on chain is an ordinary `topup` on its wallet's payer team (`governance.teams.make_payer_team`:
-  a machine user, a member with no token); the call then runs the normal road as that team. What
-  a call does not use stays as that team's credit. `application/agent_payments.py` is the only
+  on chain is an ordinary `topup` on its wallet's payer team, one per (network, address)
+  (`governance.teams.make_payer_team`: a machine user, a member with no token); the call then runs
+  the normal road as that team. What a call does not use stays as that team's credit, which a
+  later call draws with a signed proof that moves no money (MPP's zero-amount charge, x402's
+  sign-in-with-x). `application/agent_payments.py` is the only
   writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. A payment whose
   settlement went unanswered is resolved by `treg-worker agentpay reconcile` from the chain: the
   same `topup`, under the same reference, only for a transfer that landed. See
@@ -212,9 +240,9 @@ agents then built against a constitution that was wrong.
 
 `expose_dev_code` (dev OTP only on a local sqlite database, `config.py`), the call-time SSRF check
 (`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and
-the unconditional `POST /run` denial (`api.py`). Server-side CLI execution is disabled for every
-caller; an executable allow-list and rlimits are not an isolation boundary. Read the fragment before
-touching any of them.
+the unconditional `POST /run` denial (`api.py`). The server holds no CLI execution code; the route
+only tells old clients so. Do not bring it back: an executable allow-list and rlimits are not an
+isolation boundary. Read the fragment before touching any of them.
 
 ## Development
 
@@ -323,3 +351,12 @@ chooses only in the two disclosed cases of non-negotiable 4.
 - This repository is public: flag anything the Public repository section says must not be
   committed.
 - Skip speculative edge cases: report a bug only with a concrete path real usage can hit.
+- Flag as P1 a degraded mode (a fallback, fail-open path, breaker or retry window) that can stay
+  on after its cause is gone. Work it skips must not extend it; a new real failure may restart
+  its timer. A test must show that once the dependency recovers it exits within its stated
+  bound while traffic continues.
+- When a change moves work from the key-value store or a queue onto the database on the call or
+  money path, follow the real path: which rows it contends on, how many pool connections are held
+  while it waits, and what bounds its concurrency. Ask for that evidence when the PR lacks it.
+  Flag P1 when fallback traffic, from one team or several at once, can exhaust the shared pool and
+  block other calls.

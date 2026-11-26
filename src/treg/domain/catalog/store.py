@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from . import schema
 from .schema import CONFIDENCES, COST_SOURCES, COST_UNITS  # noqa: F401 - re-exported vocabulary
@@ -57,6 +58,11 @@ def browsable(ep: dict) -> bool:
     are already on the page, so anywhere public it double-counts and surfaces a provider named
     "treg", which the brand rules say must never appear as a vendor."""
     return ep["kind"] not in HIDDEN_KINDS and ep.get("kind") != "routed"
+
+def _no_cache_providers() -> frozenset[str]:
+    from ...config import get_settings
+    return get_settings().no_cache_providers_set
+
 
 def paused_providers() -> frozenset[str]:
     from ...config import get_settings
@@ -371,7 +377,8 @@ def _table_floor(cost: object, input_schema: object) -> float | None:
             continue
         value = float(row["value"])
         if isinstance(row.get("times"), str):
-            low = row.get("times_min", fields.get(row["times"], {}).get("min"))
+            spec = fields.get(row["times"], {})
+            low = row.get("times_min", spec.get("minItems" if spec.get("type") == "array" else "min"))
             value *= float(low) if isinstance(low, (int, float)) and low > 0 else 1.0
         floors.append(value)
     return min(floors) if floors else None
@@ -713,6 +720,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
     capability = raw.get("capability") or ""
     platform = raw.get("platform") or (capability.split(".")[0] if capability else "other")
     verified = raw.get("verified")
+    keeps_nothing = provider.lower() in _no_cache_providers()
     return {
         "id": str(raw["id"]),
         "provider": provider,
@@ -776,8 +784,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # inherited from the file header unless the endpoint declares its own.
         # Generated media and its task/result utilities must never replay shared-account ids.
         # Enforce this for core and generated extended rows without changing their public kind.
-        "cache": "forbidden" if platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
-        "response_retention": raw.get("response_retention"),
+        # A deployment's no-cache providers (TREG_NO_CACHE_PROVIDERS) keep nothing either.
+        "cache": "forbidden" if keeps_nothing or platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
+        "response_retention": "forbidden" if keeps_nothing else raw.get("response_retention"),
         "verified": str(verified) if verified else None,
         "added": str(raw.get("added") or "") or None,
         # The first UTC day whose observations describe the service as it is now; ranking and the
@@ -845,7 +854,8 @@ def cost_row(ep: dict, cat: Catalog) -> dict | None:
 
 
 _QUOTE_COST = frozenset({"type", "value", "currency", "per", "unit", "usd", "usd_min", "varies", "display_usd",
-                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit"})
+                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit",
+                         "trial_calls_per_team_day"})
 
 
 def quote_cost(cost: dict | None) -> dict | None:
@@ -914,7 +924,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *
         "platform_eligible": cat.platform_eligible(ep) if cat else None,
         **({"platform_auth": "anonymous"} if ep.get("platform_auth") == "anonymous" else {}),
         "platform_blocked": ep.get("platform_blocked") or None,
-        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin")}
+        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin", "ok_when")}
                  if isinstance(ep.get("miss"), dict) and "status" in ep["miss"] else None),
         **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.
@@ -1671,15 +1681,15 @@ def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
     is a number nobody can predict or argue with. Unmeasured sits ABOVE measured-poor and below
     measured-good — a new endpoint is an unknown, not a suspect.
     """
-    def bucket(ep: dict) -> int:
-        rate = (stats.get(ep["id"]) or {}).get("ok_rate")
-        if rate is None:
-            return 1        # no evidence either way (or too few samples to publish one)
-        # `ok_rate` is computed from DECIDED samples only (4xx excluded as the caller's fault), so a
-        # 0 here means the provider failed every call that was its to answer.
-        if rate == 0:
-            return 3
-        return 0 if rate >= 0.9 else 2
+    from ...config import get_settings
+    tiers = get_settings().ranking_tier_map
+
+    def callable_(ep: dict) -> bool:
+        return cat.platform_eligible(ep) if cat else True
+
+    def quality(ep: dict) -> int:
+        tier = tiers.get(ep.get("capability") or "", {}).get(ep.get("provider") or "")
+        return 0 if tier == "good" else 2 if tier == "bad" else 1
 
     def price(ep: dict) -> float:
         cost = (cat.cost_view(ep.get("cost"), ep.get("provider")) if cat else ep.get("cost")) or {}
@@ -1692,8 +1702,35 @@ def rerank(rows: list[tuple[dict, float]], stats: dict[str, dict],
     # over the curated answer trades relevance for change: "tiktok comments" would lead with
     # douyin danmaku because it is cheap.
     return sorted(rows, key=lambda row: (
-        -row[1], bucket(row[0]), row[0]["tier"] != "core", price(row[0]),
-        not row[0]["verified"], row[0]["id"]))
+        -row[1], not callable_(row[0]), quality(row[0]), reliability_band(stats.get(row[0]["id"])),
+        row[0]["tier"] != "core", price(row[0]), not row[0]["verified"], row[0]["id"]))
+
+
+def reliability_band(observed: dict | None) -> int:
+    rate = (observed or {}).get("ok_rate")
+    if rate is None:
+        return 2
+    if rate == 0:
+        return 5
+    n = (observed or {}).get("decided") or (observed or {}).get("samples") or 0
+    low, high = _wilson(rate, n)
+    if low >= 0.9:
+        return 0
+    if low >= 0.8:
+        return 1
+    if high >= 0.8:
+        return 2
+    return 3 if rate >= 0.6 else 4
+
+
+def _wilson(rate: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n <= 0:
+        return rate, rate
+    centre = rate + z * z / (2 * n)
+    margin = z * math.sqrt(rate * (1 - rate) / n + z * z / (4 * n * n))
+    scale = 1 + z * z / n
+    return (centre - margin) / scale, (centre + margin) / scale
+
 
 
 def _placeholder(spec: dict):
@@ -1702,7 +1739,8 @@ def _placeholder(spec: dict):
         # Keep structured examples structured until the wire encoder sees them: str() here would
         # give Python repr (`['US']`, `True`) before the JSON/comma metadata could choose.
         return example
-    return f"<{spec.get('type') or 'value'}>"
+    declared = spec.get("type")
+    return f"<{declared if isinstance(declared, str) and declared else 'value'}>"
 
 
 def wire_value(value) -> str:
@@ -1775,6 +1813,57 @@ def unflatten_dotted(flat: dict) -> dict:
     return nested
 
 
+@dataclass(frozen=True)
+class CallTemplateParts:
+    method: str
+    authorization_method: str
+    path_params: dict
+    query_params: dict
+    body: Any
+    body_type: str | None
+    files: dict
+
+
+def call_template_parts(
+    ep: dict, your_values: dict | None = None, *, merge_path_params: bool = False,
+) -> CallTemplateParts:
+    inp = ep.get("input") or {}
+    test = ep.get("test_request") or {}
+    methods = tuple(ep.get("authorization_methods") or ())
+    auth = str(ep.get("authorization_method") or (methods[0] if methods else ""))
+    path_params = _required_examples(inp.get("pathParams"), auth) | (test.get("pathParams") or {})
+    query_params = _required_examples(inp.get("queryParams"), auth) | (test.get("queryParams") or {})
+    if merge_path_params:
+        path_params, query_params = {}, path_params | query_params
+
+    body = test.get("body")
+    if body is None:
+        body = _required_examples(inp.get("body"), auth) or None
+    if your_values:
+        body_values = {}
+        slots = {
+            "pathParams": query_params if merge_path_params else path_params,
+            "queryParams": query_params,
+            "body": body_values,
+        }
+        for dotted, value in your_values.items():
+            slot, _, name = dotted.partition(".")
+            if slot in slots:
+                slots[slot][name] = value
+        if body_values:
+            body = {**(body or {}), **body_values}
+
+    return CallTemplateParts(
+        method=ep["method"],
+        authorization_method=auth if len(methods) <= 1 else "",
+        path_params=path_params,
+        query_params=query_params,
+        body=body,
+        body_type=test.get("bodyType") or inp.get("bodyType"),
+        files=test.get("files") or {},
+    )
+
+
 def call_template(ep: dict) -> str:
     """A paste-ready `treg call …` line for this endpoint.
 
@@ -1785,25 +1874,16 @@ def call_template(ep: dict) -> str:
     tool (the server walks the marketplace credential ladder), and path `{placeholders}` ride as
     `--query` params the server substitutes — so the line is copy-paste-true for everyone.
     """
-    inp = ep.get("input") or {}
-    test = ep.get("test_request") or {}
-    authorization_methods = tuple(ep.get("authorization_methods") or ())
-    authorization_method = str(ep.get("authorization_method") or "")
-    if not authorization_method and authorization_methods:
-        authorization_method = authorization_methods[0]
-
+    template = call_template_parts(ep)
     parts = ["treg call", ep["id"]]
-    if ep["method"] != "GET":
-        parts += ["--method", ep["method"]]
-    # A static catalog template cannot know which grants this team already connected. Let the
-    # resolver choose the sole existing grant, or the ordered default when both/none exist. A
-    # single-method endpoint stays explicit because there is no alternate route to suppress.
-    if authorization_method and len(authorization_methods) <= 1:
-        parts += ["--authorization-method", authorization_method]
+    if template.method != "GET":
+        parts += ["--method", template.method]
+    if template.authorization_method:
+        parts += ["--authorization-method", template.authorization_method]
     # Path params first (the server folds them into the path), then query params proper.
-    for name, value in {**_required_examples(inp.get("pathParams"), authorization_method), **(test.get("pathParams") or {})}.items():
+    for name, value in template.path_params.items():
         parts += ["--query", shlex.quote(f"{name}={wire_value(value)}")]
-    for name, value in {**_required_examples(inp.get("queryParams"), authorization_method), **(test.get("queryParams") or {})}.items():
+    for name, value in template.query_params.items():
         for encoded in query_values(ep, name, value):
             # Quote the COMPLETE argv token, not just its value. `name=['US']` lost its inner
             # quotes after shell parsing and became either an unmatched glob (zsh) or `[US]`;
@@ -1811,8 +1891,7 @@ def call_template(ep: dict) -> str:
             # same request the structured MCP path sends.
             parts += ["--query", shlex.quote(f"{name}={encoded}")]
 
-    body = test.get("body") if test.get("body") is not None else (
-        _required_examples(inp.get("body"), authorization_method) or None)
+    body = template.body
     # `is not None`, not truthiness: `body: {}` is a real stored test request — a POST that takes no
     # arguments but still requires a JSON body — and dropping `--data '{}'` from the line hands the
     # reader a command that differs from the one that was tested, on handlers that reject an empty
@@ -1820,7 +1899,7 @@ def call_template(ep: dict) -> str:
     # treg can faithfully relay a caller-supplied GET body, but generated shell commands never add
     # one: too many clients/proxies silently discard it. The stored test request can still preserve
     # the provider's unusual verification contract without printing a misleading paste-ready line.
-    if body is not None and ep["method"] != "GET":
+    if body is not None and template.method != "GET":
         # Catalog schemas flatten nested JSON as dotted keys (`params.domain`). MCP callers
         # nest the object themselves; the paste-ready command must do the same expansion so
         # `--data` is a valid wire body rather than a flat object Serpstat (and JSON-RPC)
@@ -1830,6 +1909,25 @@ def call_template(ep: dict) -> str:
         parts += ["--data", shlex.quote(json.dumps(
             body, separators=(",", ":"), ensure_ascii=False))]
     return " ".join(parts)
+
+
+def provider_auth_hint(ep: dict) -> str:
+    if ep.get("platform_auth") == "anonymous":
+        return "no provider key required"
+    return "key injected server-side"
+
+
+def overflow_billing_hint(provider: str, fields: dict) -> str | None:
+    via = fields.get("overflow_via")
+    price = fields.get("overflow_price_usd")
+    unit = fields.get("overflow_price_unit")
+    if not via or price is None or not unit:
+        return None
+    return (
+        f"when treg's own {provider} account is out this may be served through the "
+        f"overflow relay ({via}) and bill ${price:g} per {unit} instead "
+        "of the direct price; the answer says so (X-Treg-Served-Via / served_via)"
+    )
 
 
 def _input_hint(ep: dict) -> str:

@@ -231,7 +231,7 @@ costNative(c){ return c && c.display_unit ? '' : this.nativeAmount(c); },
     // alone, as early reviews.
     verdictPct(r, v){ return Math.round(r.share[v]*100)+'% '+this.verdictLabel(v).toLowerCase(); },
 verdictLabel(v){ return ({useful:'Useful', partly:'Partly useful', not_useful:'Not useful'})[v]||v; },
-verdictClient(c){ return ({'claude-code':'Claude Code', codex:'Codex', cursor:'Cursor', 'claude-connector':'Claude', cli:'treg CLI', pi:'Pi'})[c]||''; },
+verdictClient(c){ return ({'claude-code':'Claude Code', codex:'Codex', cursor:'Cursor', 'claude-connector':'Claude', cli:'treg CLI', pi:'Pi', 'copilot-cli':'Copilot CLI', 'copilot-vscode':'Copilot in VS Code'})[c]||''; },
 verdictDate(d){ try{ const m=String(d).length===7;   // a review carries only its month
       return new Date(d+(m?'-01':'')+'T00:00:00Z').toLocaleDateString('en-US', m ? {month:'short', year:'numeric', timeZone:'UTC'} : {month:'short', day:'numeric', timeZone:'UTC'}); }catch(err){ return d; } },
 // How a provider authorizes: the member's connection registry when signed in, else the open
@@ -299,6 +299,13 @@ endpointConnectLabel(e){
       add('headers','Headers', i.headers);
       add('body','Body', i.body, i.bodyType);
       return out; },
+// A declared type in a few words, the way `treg catalog get` says it: `array of string`,
+    // `boolean or string`, `string (url)`.
+    paramType(spec){
+      const t=spec&&spec.type; if(!t) return '';
+      const inner=t==='array' && spec.items ? this.paramType(spec.items) : '';
+      const label=Array.isArray(t) ? t.join(' or ') : inner ? 'array of '+inner : String(t);
+      return spec.format ? label+' ('+spec.format+')' : label; },
 // Examples arrive as real JSON values, so an array or object has to be stringified rather than
     // rendered as "[object Object]".
     fmtExample(v){ return (typeof v==='object') ? JSON.stringify(v) : String(v); },

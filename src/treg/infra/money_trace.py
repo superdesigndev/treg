@@ -46,6 +46,7 @@ _serial = itertools.count(1)
 _active: dict[str, _Txn] = {}
 _queue: deque[dict] = deque()
 _engines: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_pooled_engines: weakref.WeakSet = weakref.WeakSet()
 _connections: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _session_hooks_installed = False
 _dropped_active_total = 0
@@ -357,7 +358,8 @@ def _after_begin(session, transaction, connection):
         state = _state(session)
         info = connection.info  # existing checked-out connection; never session.connection()
         driver = connection.connection.driver_connection
-        get_pid = getattr(driver, "get_server_pid", None)
+        # Behind a connection pooler the id is the pooler's, not a PostgreSQL backend's.
+        get_pid = None if connection.engine in _pooled_engines else getattr(driver, "get_server_pid", None)
         pid = get_pid() if get_pid is not None else None
         now = _clock()
         txn = _Txn(f"{PROCESS_INSTANCE}:{next(_serial)}", id(transaction), pid,
@@ -700,13 +702,15 @@ def configure(*, enabled: bool = True) -> None:
 
 
 @_safe
-def install_engine(engine, *, pool_name: str = "api") -> None:
+def install_engine(engine, *, pool_name: str = "api", pooled: bool = False) -> None:
     """Install only synchronous metadata callbacks; this does not open a database connection."""
     global _session_hooks_installed
     engine = getattr(engine, "sync_engine", engine)
     if engine in _engines:
         return
     _engines[engine] = _label(pool_name) or "other"
+    if pooled:
+        _pooled_engines.add(engine)
     event.listen(engine, "before_cursor_execute", _before_sql)
     event.listen(engine, "after_cursor_execute", _after_sql)
     event.listen(engine, "handle_error", _handle_error)

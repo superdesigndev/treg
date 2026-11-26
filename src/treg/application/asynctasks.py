@@ -57,9 +57,13 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
 
     `submission_charge_micro` is what the provider reported charging for the submission itself
     (DataForSEO bills at task_post and its task_get answers report no cost). An `observed` basis
-    freezes it, so the terminal settle bills what the provider charged rather than the estimate."""
+    freezes it. A usage basis can instead freeze the catalog's charge for data returned with the
+    submission, which settlement adds to the terminal usage meter."""
     now = utcnow_naive()
     basis = call_cost.persisted(dict(mk.settlement_basis), mk.cost_terms)
+    submission = settlement.non_deferred_charge_micro(basis, json.loads(body))
+    if submission:
+        basis["submission_charge_micro"] = submission
     if ((basis.get("amount") or {}).get("kind") == "observed"
             and isinstance(submission_charge_micro, int)
             and not isinstance(submission_charge_micro, bool) and submission_charge_micro >= 0):
@@ -308,10 +312,10 @@ async def _claim_due(call_id: str, now) -> int | None:
         return attempt
 
 
-def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]:
+def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]], bytes]:
     poll = row.descriptor.get("poll") or {}
     if row.poll_url:
-        return "GET", row.poll_url, []
+        return "GET", row.poll_url, [], b""
     endpoint_id = poll.get("endpoint")
     endpoint = catalog_store.load().by_id.get(endpoint_id)
     if not endpoint:
@@ -322,6 +326,9 @@ def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]
     url = provider.base_url.rstrip("/") + "/" + endpoint["path"].lstrip("/")
     query: list[tuple[str, str]] = []
     param = poll.get("param") or {}
+    if param.get("in") == "body":
+        _, document = asynctasks.poll_inputs(param, row.task_id)
+        return str(endpoint.get("method") or "POST"), url, query, json.dumps(document).encode()
     if param:
         # The declared location decides, never a coincidental placeholder; a path value is
         # percent-encoded so a provider-controlled task id cannot add URL syntax.
@@ -333,14 +340,14 @@ def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]
             url = url.replace(marker, quote(value, safe=""))
         else:
             query.append((name, value))
-    return str(endpoint.get("method") or "GET"), url, query
+    return str(endpoint.get("method") or "GET"), url, query, b""
 
 
 async def _poll(row: AsyncTaskRecord, client: httpx.AsyncClient) -> tuple[int, bytes]:
     provider = oauth_providers.get(row.provider)
     if provider is None:
         raise RuntimeError(f"provider {row.provider!r} is not registered")
-    method, url, query = _poll_target(row)
+    method, url, query, body = _poll_target(row)
     # The query travels as `query_items`: the relay composes the upstream URL from those (it
     # forwards a URL's own query string nowhere), so a query-parameter poll (MiniMax v1
     # `?task_id=`) appended to the URL would reach the provider empty.
@@ -351,12 +358,14 @@ async def _poll(row: AsyncTaskRecord, client: httpx.AsyncClient) -> tuple[int, b
                 base_url=provider.base_url, host=_host_of(provider.base_url),
                 bindings=oauth_providers.platform_bindings(provider, account))
 
-    async def empty():
-        if False:
-            yield b""
+    async def payload():
+        if body:
+            yield body
 
-    request = UpstreamRequest(method=method, raw_headers=(), query_items=tuple(query),
-                              body_stream=empty, has_body=False)
+    headers = ((b"content-type", b"application/json"),
+               (b"content-length", str(len(body)).encode())) if body else ()
+    request = UpstreamRequest(method=method, raw_headers=headers, query_items=tuple(query),
+                              body_stream=payload, has_body=bool(body))
     response = await relay(request, url, tool, [], client, force_identity=True)
     try:
         chunks, size = [], 0
@@ -472,9 +481,19 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             await db.commit()
             return "backed_off"
         row.completed_at = now
+        # the call package imports this module
+        from .call import allowance as allowance_runtime
+
+        overran = await allowance_runtime.overran(
+            db, row.org_id, row.settled_micro or 0, row.reserved_micro)
         await db.commit()
+        # A settlement past its hold may have used the team's last credit; calls admitted
+        # from the team's allowance counter do not meet the balance gate (money.md).
+        frozen = allowance_runtime.freeze(row.org_id) if overran else None
         if settled is not None:
             settled["micro"] = row.settled_micro
+        if frozen is not None:
+            await asyncio.shield(frozen)
         return row.status
 
 
@@ -509,6 +528,16 @@ def _terminal_event(snapshot: AsyncTaskRecord, result: str, outcome: str, *,
         hit=hit, verdict=verdict_word, served_by=snapshot.endpoint_id,
         cost_charged_micro=charged_micro,
         async_outcome="closed_hold" if result == "closed_hold" else outcome)
+
+
+def _record_terminal(snapshot: AsyncTaskRecord, settled: dict, *,
+                     hit: bool | None = None, verdict: str | None = None) -> None:
+    """Copy what the task closed at onto its submission's call record. `settled` is filled only by
+    the transition out of PENDING, so each task writes it once."""
+    if settled.get("micro") is None and hit is None:
+        return
+    audit.record_async_call_terminal(snapshot.call_id, snapshot.endpoint_id, snapshot.org_id,
+                                     hit=hit, verdict=verdict, charged_micro=settled.get("micro"))
 
 
 async def _answers_allowed(db, org_id: int | None) -> bool:
@@ -575,11 +604,10 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
                     hit=terminal_hit if result == expected else None,
                     verdict_word=terminal_verdict if result == expected else None,
                     answers_allowed=answers_allowed, charged_micro=settled.get("micro"))
+    _record_terminal(snapshot, settled,
+                     hit=terminal_hit if result == expected else None,
+                     verdict=terminal_verdict if result == expected else None)
     if result == expected:
-        if terminal_hit is not None:
-            audit.record_async_call_hit(
-                snapshot.call_id, snapshot.endpoint_id, snapshot.org_id, terminal_hit,
-                verdict=terminal_verdict)
         # Only the winning finalizer records evidence; a late poll cannot replace the result
         # whose usage was charged. Archive failure cannot undo the committed money transaction.
         try:
@@ -608,14 +636,19 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,
             snapshot.org_id, "release", call_id, "timed_out", None, now, expected_attempt=attempt,
             settled=settled, deadline=deadline)
         _terminal_event(snapshot, result, "timed_out", charged_micro=settled.get("micro"))
+        _record_terminal(snapshot, settled)
         return result
     try:
         async with asyncio.timeout(POLL_TIMEOUT_S):
             status, body = await _poll(snapshot, client)
         if not 200 <= status < 300:
-            # Only a successful poll is evidence. A 404 or 401 body that happens to carry
-            # "status": "succeeded" is an error envelope, not a terminal state; the CLI treats
-            # every non-2xx the same way, and money must not depend on an error page's fields.
+            try:
+                pending_document = json.loads(body)
+            except (ValueError, TypeError):
+                pending_document = None
+            if asynctasks.is_pending_response(snapshot.descriptor, status, pending_document):
+                return await _finish(call_id, "progress", pending_document, utcnow_naive(),
+                                     expected_attempt=attempt)
             log.warning("async poll for call %s returned HTTP %s; backing off", call_id, status)
             return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
         document = json.loads(body)
@@ -644,6 +677,7 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int, *,
                                        None, utcnow_naive(), expected_attempt=attempt,
                                        settled=settled, deadline=deadline)
         _terminal_event(snapshot, result, "account_retired", charged_micro=settled.get("micro"))
+        _record_terminal(snapshot, settled)
         return result
     except money_admission.AdmissionRefused:
         raise

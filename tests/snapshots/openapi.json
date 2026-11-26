@@ -388,6 +388,45 @@
         "title": "CliApproveIn",
         "type": "object"
       },
+      "ComparisonIn": {
+        "additionalProperties": false,
+        "properties": {
+          "choice": {
+            "enum": [
+              "1",
+              "2",
+              "tie",
+              "both_bad"
+            ],
+            "title": "Choice",
+            "type": "string"
+          },
+          "comparison_id": {
+            "minimum": 1.0,
+            "title": "Comparison Id",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "comparison_id",
+          "choice"
+        ],
+        "title": "ComparisonIn",
+        "type": "object"
+      },
       "ConnectionRenameIn": {
         "properties": {
           "name": {
@@ -774,6 +813,145 @@
         "title": "ListingDecisionIn",
         "type": "object"
       },
+      "MarkIn": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "enum": [
+              "bounced",
+              "cross_checked",
+              "user_said",
+              "impression"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "call_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Call Id",
+            "type": "string"
+          },
+          "checked": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked"
+          },
+          "evidence_call_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Call Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarkItem"
+            },
+            "maxItems": 200,
+            "title": "Items",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "replaces": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaces"
+          }
+        },
+        "required": [
+          "call_id",
+          "basis"
+        ],
+        "title": "MarkIn",
+        "type": "object"
+      },
+      "MarkItem": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_.\\[\\]-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "verdict": {
+            "enum": [
+              "correct",
+              "wrong",
+              "stale",
+              "wrong_entity",
+              "missing",
+              "irrelevant",
+              "duplicate",
+              "other"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "title": "MarkItem",
+        "type": "object"
+      },
       "OAuthStartIn": {
         "description": "Two modes. BYO: supply client_id/client_secret/auth_uri/token_uri/scopes yourself.\nREGISTRY: supply `provider` (+ optional `capability`) and treg fills all of it from its own\napproved app — see oauth_providers.py.",
         "properties": {
@@ -869,10 +1047,26 @@
         "title": "OnboardIn",
         "type": "object"
       },
+      "OnboardTeamIn": {
+        "properties": {
+          "ref": {
+            "default": "",
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "title": "OnboardTeamIn",
+        "type": "object"
+      },
       "OrgIn": {
         "properties": {
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "ref": {
+            "default": "",
+            "title": "Ref",
             "type": "string"
           }
         },
@@ -1113,6 +1307,17 @@
       "ReviewIn": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "default": "impression",
+            "enum": [
+              "bounced",
+              "cross_checked",
+              "user_said",
+              "impression"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
           "call_id": {
             "maxLength": 128,
             "minLength": 1,
@@ -1132,6 +1337,14 @@
               }
             ],
             "title": "Reason"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/MarkItem"
+            },
+            "maxItems": 200,
+            "title": "Rows",
+            "type": "array"
           },
           "usefulness": {
             "enum": [
@@ -7100,6 +7313,147 @@
         "summary": "Cli Latest Download"
       }
     },
+    "/comparisons": {
+      "post": {
+        "operationId": "submit_comparison_comparisons_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Comparison Comparisons Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Comparison"
+      }
+    },
+    "/comparisons/next": {
+      "get": {
+        "description": "The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.\n`compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the\nwords that ask for the verdict (`how_to_vote`), so they change without a CLI release.",
+        "operationId": "next_comparison_comparisons_next_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "compact",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Compact",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Next Comparison"
+      }
+    },
     "/connections": {
       "get": {
         "description": "Every OAuth credential in the org, with health AND expiry. Metadata only — no token material.",
@@ -7624,153 +7978,6 @@
           }
         },
         "summary": "Connection Resources"
-      }
-    },
-    "/demo/sandbox": {
-      "post": {
-        "description": "The landing sandbox is closed: no new sandbox is minted.",
-        "operationId": "demo_sandbox_mint_demo_sandbox_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Mint Demo Sandbox Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Demo Sandbox Mint"
-      }
-    },
-    "/demo/sandbox/live": {
-      "get": {
-        "description": "Live-wire facts for an EXISTING sandbox (the browser reuses one via localStorage, so it may\npredate the mint response carrying them): is the wire on, and who am I in the feed.",
-        "operationId": "demo_sandbox_live_demo_sandbox_live_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-treg-token",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Token",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-treg-org",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Org",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Live Demo Sandbox Live Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Demo Sandbox Live"
-      }
-    },
-    "/demo/sandbox/skill": {
-      "get": {
-        "description": "Export whatever the visitor built in their sandbox as a shareable **skill** (treg.json manifest\n+ SKILL.md + install commands). Sandbox-only — the payoff that shows what skills are.",
-        "operationId": "demo_sandbox_skill_demo_sandbox_skill_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-treg-token",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Token",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-treg-org",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Org",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Skill Demo Sandbox Skill Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Demo Sandbox Skill"
       }
     },
     "/feedback": {
@@ -9068,6 +9275,78 @@
         "summary": "Accept My Invite"
       }
     },
+    "/marks": {
+      "post": {
+        "operationId": "submit_mark_marks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Mark Marks Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Mark"
+      }
+    },
     "/media": {
       "post": {
         "description": "Raw body in, public URL out. The Content-Type header names the media type; there is no\nmultipart wrapper because the CLI and an agent's HTTP client both send bytes more simply.",
@@ -9452,7 +9731,7 @@
     },
     "/onboard/demo": {
       "post": {
-        "description": "Seed a sandbox team owned by the caller — fake teammates (one per role) + a working `echo`\ntool + sample activity — so a brand-new user can feel the product immediately. Idempotent\n(reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI.",
+        "description": "Seed a demo team owned by the caller: fake teammates (one per role) + a working `echo`\ntool + sample activity, so a brand-new user can feel the product immediately. Idempotent\n(reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI.",
         "operationId": "onboard_demo_onboard_demo_post",
         "parameters": [
           {
@@ -9755,6 +10034,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OnboardTeamIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

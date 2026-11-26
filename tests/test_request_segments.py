@@ -131,7 +131,7 @@ def test_a_contract_without_a_segment_set_records_none():
 
 
 def test_a_contract_naming_an_unknown_segment_set_does_not_load():
-    contract = {"identity": [{"q": "str"}], "output": {"rows": {"type": "list"}}, "miss": "rows == []",
+    contract = {"identity": [{"q": "string"}], "output": {"rows": {"type": "array"}}, "miss": "rows == []",
                 "segments": "nope"}
     with pytest.raises(ValueError, match="segments names one of"):
         C.parse_contracts({"contracts": {"x.search": contract}})
@@ -201,7 +201,8 @@ def test_answer_counts_judge_rows_against_the_question():
     asked = {"company_domain": "acme.example", "title": "Head of Sales", "country": "us"}
     assert S.people_search_answer(asked, {"people": _ROWS}) == {
         "rows": "5", "rows_with_profile_url": "2", "rows_dup": "2", "rows_company_match": "3",
-        "rows_title_match": "3", "rows_country_match": "1"}
+        "rows_company_known": "5", "rows_title_match": "3", "rows_title_known": "5",
+        "rows_country_match": "1", "rows_country_known": "2"}
     # a leader asked: a row matches when it is a leader too
     assert S.people_search_answer({"title": "Founder"}, {"people": [
         {"title": "Co-founder & CEO"}, {"title": "CTO"}, {"title": "Geschäftsführer"}]})["rows_title_match"] == "2"
@@ -215,10 +216,75 @@ def test_answer_counts_judge_rows_against_the_question():
 
 @pytest.mark.parametrize("location, code", [
     ("Austin, Texas, United States", "US"), ("Austin, Texas", "US"), ("Berlin, Germany", "DE"),
-    ("San Francisco, CA", None), ("London, UK", "GB"), ("Paris", None), ("", None), (None, None),
+    ("London, UK", "GB"), ("", None), (None, None),
+    # a two-letter part is never a country code: the city before it decides, or nothing does
+    ("Birmingham, AL", None),
+    # a state or province abbreviation beside a city must agree with it, else the row is unknown
+    ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"), ("Perth, WA", "AU"),
+    ("San Francisco, California", "US"), ("Paris, Texas", "US"), ("London, Ontario", None),
+    ("London, ON", None), ("Paris, TX", None), ("Vancouver, WA", None), ("Mexico City, DF", None),
+    # a code that is a country and no state or province is the provider's country only beside a
+    # place in that country or a country name: alone it may be a region's code elsewhere
+    ("Paris, FR", "FR"), ("Austin, TX, US", "US"), ("Austin, Texas, US", "US"),
+    ("Geneva, GE", None), ("Vancouver, US", None), ("Springfield, US", None), ("US", None),
+    # a code that is both a country and a state or province cannot be told apart once joined into
+    # text: the provider's country code (Durham, Ontario) or a US state (California)
+    ("Durham, CA", None), ("San Francisco, CA", None), ("Berlin, DE", None), ("Mumbai, IN", None),
+    ("Adelaide, SA", None), ("CA", None), ("Durham, CA, Canada", "CA"),
+    # Indian and Brazilian state codes too: `MH` is Maharashtra or the Marshall Islands, `RS` Rio
+    # Grande do Sul or Serbia; one that is no country code places the city
+    ("Mumbai, MH", None), ("Mumbai, MH, IN", None), ("Porto Alegre, RS", None),
+    ("Bengaluru, KA", "IN"), ("São Paulo, SP", "BR"), ("Belgrade, RS, Serbia", "RS"),
+    # parts that name different countries name none: a US city named after a country, a British
+    # town named after a state
+    ("Lebanon, US", None), ("Washington, GB", None), ("Paris, France, US", None),
+    ("Cuba, NY", None), ("Havana, Cuba", "CU"), ("Lebanon, PA", None), ("Cuba, MO", None),
+    ("Panama City, PA, Panama", "PA"),
+    ("Washington, District of Columbia, United States", "US"),
+    # a part we do not know leaves a city unread
+    ("Hyderabad, Sindh", None), ("Mumbai, Remote", None),
+    # a country or US state in any part wins over a city of the same name elsewhere
+    ("Birmingham, Alabama", "US"),
 ])
 def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(location, code):
     assert S.location_country(location) == code
+
+
+@pytest.mark.parametrize("location, code", [
+    ("San Francisco Bay Area", "US"), ("Greater Phoenix Area", "US"),
+    ("New York City Metropolitan Area", "US"), ("Dallas-Fort Worth Metroplex", "US"),
+    ("Washington DC-Baltimore Area", "US"), ("Greater Minneapolis-St. Paul Area", "US"),
+    ("Austin, Texas Metropolitan Area", "US"), ("Seattle", "US"), ("New York, NY", "US"),
+    ("Greater London", "GB"), ("Greater Paris Metropolitan Region", "FR"),
+    ("Berlin Metropolitan Area", "DE"), ("Greater Toronto Area", "CA"), ("Amsterdam Area", "NL"),
+    ("Greater Madrid Metropolitan Area", "ES"), ("Mumbai Metropolitan Region", "IN"),
+    # nothing known, or a name that is a large place in two countries
+    ("Remote", None), ("Greater Victoria Area", None), ("Valencia", None),
+    # a city that is a large city elsewhere too needs a part that agrees with it
+    ("San Jose", None), ("Hyderabad", None), ("San Jose, California", "US"),
+    ("Hyderabad, Telangana", None), ("San Jose, TX", "US"), ("San Jose, ON", None),
+    # a metro area across a border names no one country
+    ("San Diego–Tijuana Metropolitan Area", None), ("San Diego-Tijuana Metropolitan Area", None),
+    ("Raleigh-Durham-Chapel Hill Area", "US"), ("Miami-Fort Lauderdale Area", "US"),
+    # what is left once a word is dropped is never read as a country: Canada Bay is in Australia
+    ("Canada Bay", None), ("Greater Jordan Area", None),
+])
+def test_a_city_or_metro_area_names_its_country(location, code):
+    assert S.location_country(location) == code
+
+
+def test_a_row_with_nothing_to_judge_is_unknown_not_a_mismatch():
+    asked = {"company_domain": "acme.example", "title": "Head of Sales", "country": "US"}
+    counts = S.people_search_answer(asked, {"people": [
+        {"name": "Ann", "title": "VP Sales", "company": "Acme", "location": "Greater Phoenix Area"},
+        {"name": "Bo", "title": "CTO", "company": "Other Co", "location": "Berlin, Germany"},
+        {"name": "Cy", "location": "Remote"},
+        {"name": "Di", "title": "", "company": " ", "location": None}]})
+    assert counts == {
+        "rows": "4", "rows_with_profile_url": "0", "rows_dup": "0",
+        "rows_company_match": "1", "rows_company_known": "2",
+        "rows_title_match": "1", "rows_title_known": "2",
+        "rows_country_match": "1", "rows_country_known": "2"}
 
 
 def test_answer_columns_record_counts_with_the_version_and_no_row_value():
@@ -270,8 +336,9 @@ def test_a_routed_child_records_the_filters_its_request_carries():
     adapter = cat.adapters["crawl4ai.people.search"]
     sent = {"company_domain": "acme.example", "title": "VP Sales", "country": "US",
             "location": "Austin", "limit": 40}
-    body = json.dumps({"where": {"company": {"domain": "acme.example", "country": "us", "city": "Austin"},
-                                 "person": {"title": "VP Sales"}}, "limit": 40}).encode()
+    body = json.dumps({"where": {"company": {"domain": "acme.example"},
+                                 "person": {"title": "VP Sales", "country": "us", "city": "Austin"}},
+                       "limit": 40}).encode()
     parent = ev.segment(_contract(), sent)[1]
     child = ev.segment(_contract(), ev.vendor_identity(adapter, _contract(), (), body))[1]
     keys = ("has_country", "country_iso2", "has_location", "location_kind", "limit_bucket",
@@ -314,7 +381,7 @@ def _sent(adapter, variant, field):
 def _mixed(adapter, contract, field):
     """Every expression sending the field also names another field (`coalesce(location, country)`,
     a `join`), so the value sent cannot say which field it came from."""
-    names = set(contract.identity_types) | set(contract.filters or {})
+    names = set(contract.identity_specs) | set(contract.filters or {})
     exprs = [e for e in (adapter.in_expr or {}).values()
              if isinstance(e, str) and re.search(rf"\b{field}\b", e)]
     return bool(exprs) and all(set(re.findall(r"[a-z_][a-z0-9_]*", e)) & (names - {field}) for e in exprs)
@@ -338,7 +405,7 @@ def test_every_field_a_child_sends_reads_back_in_its_callers_category(endpoint_i
         assert _category(field, given[field]) == _category(field, _CALLER[field]), field
     # every identity field read back is the caller's, whatever the adapter sent it through, unless
     # a mixed expression built it (exa's `q` joins the title and place into the query it sends)
-    for field in set(given) & set(contract.identity_types):
+    for field in set(given) & set(contract.identity_specs):
         if not _mixed(adapter, contract, field):
             assert _category(field, given[field]) == _category(field, _CALLER[field]), field
 

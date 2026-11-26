@@ -1274,16 +1274,6 @@ async def test_the_public_log_hides_when_the_maker_switches_it_off(clients: Asyn
 
 
 # ---------------------------------------------------------------------------------------------
-# Phase 10.4: the dashboard's Listing tab carries the two switches.
-
-def test_the_dashboard_carries_the_listing_tab():
-    from pathlib import Path
-    page = (Path(__file__).parents[1] / "frontend/src/pages/HubPage.vue").read_text()
-    for needle in ("setHubFlag('listed'", "setHubFlag('public_log'", "hub.tab==='listing'", "hubListingWords(hub.tool)"):
-        assert needle in page, needle
-
-
-# ---------------------------------------------------------------------------------------------
 # The run ceiling a tool declares, and the cost a script can see (built with lead-pipeline)
 
 def test_the_run_ceiling_comes_from_the_caller_then_the_tool_then_one_dollar():
@@ -1503,6 +1493,8 @@ async def _approved_with_capability(clients, monkeypatch, capability=None):
 
 
 async def test_an_approved_capability_puts_the_tool_beside_the_providers(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    from tests.test_mcp import _call_tool, mcp_session
+
     tool_id = await _approved_with_capability(clients, monkeypatch)
     monkeypatch.setenv("TREG_ADMIN_TOKEN", ADMIN)
     get_settings.cache_clear()
@@ -1521,6 +1513,15 @@ async def test_an_approved_capability_puts_the_tool_beside_the_providers(clients
     got = (await clients.get(f"/catalog/endpoints/{tool_id}")).json()
     assert got["endpoint"]["capability"] == CAP and got["endpoint"]["observed"]["estimated"] is True
     assert EP in [s["id"] for s in got["siblings"]]
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        mcp_tool = await _call_tool(c, "catalog_get", {"endpoint_id": tool_id}, token=token)
+        mcp_provider = await _call_tool(c, "catalog_get", {"endpoint_id": EP}, token=token)
+    assert mcp_tool["endpoint"]["call_template"] == got["endpoint"]["call_template"]
+    assert mcp_tool["endpoint"]["call_template"]["body"]["domain"] == "figma.com"
+    hub_sibling = next(s for s in mcp_provider["siblings"] if s["id"] == tool_id)
+    assert hub_sibling["kind"] == "hub" and hub_sibling["hub"] is True
+    assert hub_sibling["observed"] == mine["observed"] and "platform_eligible" not in hub_sibling
     # a stranger's runs move the seed
     hdr = {"X-Treg-Token": (await funded_user(clients, "cap-buyer@example.com"))["token"]}
     for _ in range(2):

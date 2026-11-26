@@ -8,6 +8,7 @@ sources:
   - src/treg/domain/catalog/results.py
   - src/treg/domain/catalog/rankings.py
   - src/treg/domain/catalog/routing/__init__.py
+  - src/treg/domain/catalog/routing/ad_hashes.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
@@ -333,9 +334,10 @@ Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`sou
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
 deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
 those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
-worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
-included; a missing entry fails validation. Both blocks must stay
-ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
+worse than an honest credit count. An own-key call to such a row still prices (pricing runs on
+every tier): its per-unit and credit figures are an informational zero, while a platform-eligible
+row with no rate still refuses to price. A v2 price in credits or a meter needs an entry, a null
+one included; a missing entry fails validation. Both blocks must stay ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
 Two treg-set kinds exist for providers with no per-call vendor price; [money](money.md) owns the
@@ -371,8 +373,10 @@ cost:
   `queryParams.mode`) so query/body collisions cannot price the wrong field. Every `when` field must
   be required or have a `default`; narrow rows precede broad ones; the validator rejects shadowed or
   duplicate conditions, unknown keys, non-finite values, values outside the input's enum/min/max, and
-  `value` together with `table`.
-- `times` multiplies by one numeric field with a positive `max`. A value outside the declared range,
+  `value` together with `table`. An empty `when: {}` matches every request, so it can only be the
+  last row: a job priced by its size alone is one such row with `times`.
+- `times` multiplies by one numeric field with a positive `max`, or by the length of one list field
+  with a positive `maxItems` (one price per row a job asks for). A value outside the declared range,
   non-finite or non-positive (whatever minimum the field declares) matches no row and prices at the
   fallback, so a request can neither reserve zero nor bill past the ceiling. A sentinel such as
   `-1` is priced by a flat row that pins it, and that row is left out of the advertised rate span.
@@ -382,10 +386,13 @@ cost:
   `value` may also declare `settle: usage` with its `fallback` as the reserve. `worst_case`, the
   most one call can cost, raises the hold to cover that figure ([catalog schema](catalog-schema.md)). `usage.unit` is `usd`,
   `credit` (when fx.yaml prices that provider's credit) or a native meter with a
-  `unit_rates_usd[provider][unit]` entry. `usage.terms` (unit `usd`) sums several meters times
-  positive USD rates; a term path may select a list item by key
+  `unit_rates_usd[provider][unit]` entry. `usage.terms` sums several meters times positive rates in
+  `usage.unit` (USD, or the provider's credit or meter, priced by fx.yaml like a single path); a term path may select a list item by key
   (`candidatesTokensDetails[modality=IMAGE].tokenCount`); an absent meter counts as zero (proto3
-  JSON omits zeros) and a response with none settles at the reserve. Settlement itself is in
+  JSON omits zeros) and a response with none settles at the reserve. A single `usage.path` may add
+  `missing: 0` for a provider that leaves a zero meter out of its finished answer (LeadsForge's
+  `consumedCredits`): absent then settles at zero, while an unreadable value still settles at the
+  reserve. Settlement itself is in
   [money](money.md).
 - Display: `_table_floor` computes the cheapest row into `cost.table_min`, served as `usd_min`
   beside `usd` (still the ceiling reserve and eligibility read), so every surface shows `$low-$high`.
@@ -459,15 +466,22 @@ cost:
   (`resolve._spool_evidence_paths`), so evidence cannot drift from price. A fixed price needs an
   `expect` rule so a refused generation is not billed; the validator refuses the field beside
   `async`, `resource_ownership` or `managed_resource`, which need the whole body.
-- **`pathParams` with an `enum`** is enforced on treg's key (the value names what the shared
-  credential is spent on, such as a model); own-key calls relay any path.
-- **`platform_request`** pins exact body, header or query values needed only on the shared
-  credential. A `queryParams.*` pin must appear exactly once and is read as the pinned value's type,
-  so a run option such as a spend cap can bound one call's cost. A `queryParams.*` pin of `null`
-  means the parameter must be absent (it need not be declared), so a run mode the row does not
-  price, such as a discovery switch, is refused on the shared credential. Resolution applies these and the
-  provider-specific request guards in `resolve` only after selecting the platform offer and before
-  reserve; a team's own credential keeps the upstream contract.
+- **`platform_request`** pins exact body, header, query or path values needed only on the shared
+  credential. Each pin is a value its field declares, written as the declared type: a value only
+  treg's key needs is pinned here and left out of the declaration, which every tier is held to. A
+  path or query pin may list the values allowed: `pathParams.model: [a, b]` names the models a row
+  prices (a stable model and its alias), so treg's key runs no other model at that row's rates, while
+  the declaration lets a team's own key name any. The validator refuses a `pathParams` enum on a row
+  treg's key can serve without such a pin. A `queryParams.*` pin must appear exactly once and
+  is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
+  A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
+  run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
+  outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
+  shared credential, with the field named and its value never echoed.
+  Resolution applies these and the provider-specific request guards in `resolve` only after
+  selecting the platform offer and before reserve; a team's own credential keeps the upstream
+  contract.
 
 ### Provenance - `confidence` is a claim about the PRICE, not about the route
 
@@ -550,6 +564,8 @@ is distinct from `cache: forbidden`. The latter prevents archive storage and rep
 suppresses response bodies in call events, failure evidence, idempotency bodies, routed parent
 output and Web Arena records. Idempotency keeps a body-free 410 receipt so the same key cannot call
 the provider again. `/call/` still returns the body to the active caller.
+A deployment sets both for every endpoint of the providers named in `TREG_NO_CACHE_PROVIDERS`
+(read at catalog load), whatever their rows declare ([archive](archive.md)).
 
 ## Authorization metadata and paths
 
@@ -598,15 +614,22 @@ async:
     #     fetch_param: {in: pathParams, name: video_id, value_from: id}
     ttl_note: 9h
   interval: 10
+  # optional: pending_response: {status: 404, path: error_code, equals: result_pending}
 ```
 
 Validation of the effective descriptor: dotted paths; non-empty `success`; `failure` may be empty
 only when `billed_failure` supplies terminal failure words, or the descriptor has `max_age`; optional
 `progress` names expected non-terminal words; status lists are disjoint; positive `interval`; poll
 has exactly one of `endpoint` or `url_from`, result exactly one of `path` or `fetch`; unknown keys
-fail. Static poll/fetch ids must be same-provider GET utility endpoints; poll `param` is exactly
+fail. Static poll/fetch ids must be same-provider utility endpoints; poll `param` is exactly
 `{in, name}` and `fetch_param` exactly `{in, name, value_from}`, and the named input must exist on
-the target. Body-mode polling is outside the contract. Dynamic URLs need a non-empty `url_hosts`.
+the target. A path or query id needs a GET target. A poll `param` with `in: body` needs a POST
+target and is sent as the whole JSON body `{name: id}` (Icypeas reads a search that way) by the
+worker, the routed bridge, Enrich Arena, `/tasks/` and the CLI awaiter, whose resume line is then
+`treg call <poll> --data '{...}'`; a fetch id is never a body. Dynamic URLs need a non-empty `url_hosts`.
+An optional `pending_response` matches one non-2xx HTTP status and one JSON error value. The CLI
+and worker treat only that exact envelope as progress; other non-2xx responses remain errors and
+never serve as settlement evidence.
 An async endpoint must use `per_success` or `per_call`. Status values compare after string coercion;
 a missing or unknown value means still in progress in the CLI awaiter, `/tasks/` and the worker (a
 waiter warns once for a value outside `progress`). A `billed_failure` is a CLI failure that settles
@@ -812,6 +835,12 @@ price when the deployment can relay it (`routers.catalog._overflow_disclosure`: 
 `overflow_price_unit`, `overflow_via`; MCP `catalog_get` lifts them) - the price a free endpoint can
 bill when treg's own account is out.
 
+Endpoint detail ranks siblings available on treg's key and approved hub tools together, followed by
+catalog siblings that require another credential. Within each group, the sort uses the Wilson
+reliability band, then lower p50 latency, lower advertised USD price, and ascending endpoint ID.
+Reviews are displayed separately from the ranking. The HTTP detail's `siblings_ranked` flag lets
+the CLI use that order while still sorting responses from older servers.
+
 ### Observations: folded off the request path, cached per process
 
 - `stats.EndpointObservationReader` is the domain port; bootstrap wraps
@@ -839,8 +868,7 @@ bill when treg's own account is out.
   writes; the worker owns transactions. Async endpoints with result adapters publish only when
   every applicable day is `terminal_reconciled` and no correction is older than `STALE_AFTER_S`;
   one untrustworthy day suppresses the endpoint's whole observation, because dropping the day would
-  bias its rate. Async hit rates use terminal evidence only. `catalog_stats.requeue_async_stats` and
-  `repair_status` are the explicit, manifest-driven requeue and its completion check.
+  bias its rate. Async hit rates use terminal evidence only.
 - Merging days weights each day's latency sample by the calls it stands for (`Tally.merge`), or the
   window's p95 would be the quiet days'. `stats.Tally` is the one shape for a day, a window and the
   live aggregate; `tests/test_catalog_stats_refresh.py` holds fold and SQL equal.
@@ -853,6 +881,16 @@ bill when treg's own account is out.
 
 ### Rules for the published numbers
 
+- **A v2 row's own declaration decides before the status** (`stats.decided`). The call records what
+  the row judged (`CallRecord.outcome`, from `results.judged_outcome`): `hit` succeeds, `miss` fails
+  where the contract is `empty_is_failure` and succeeds elsewhere, a declared 4xx miss included, and
+  `not_found` (the target itself does not exist) decides nothing. `error` decides nothing either: a
+  2xx failing `expect` or matching `error` is no success, but those rules hold the caller's
+  mistakes (a refused field) beside the provider's failures, so it is held against nobody, as a
+  4xx is, unless it also found nothing on an `empty_is_failure` contract, which fails as below. Rows in today's spelling,
+  async submissions, spooled or streamed answers, a non-2xx the declaration does not decide and
+  rows written before the column keep the rules below. Moving a provider to v2 is what moves it to
+  its own declaration; no provider is named in the stats code.
 - **A 4xx never counts against the provider**; only 2xx versus 5xx decides the rate. **405 is the
   exception**: `/call/` refuses a method mismatch before relay, so a provider 405 says the RECORDED
   method is stale and counts against the endpoint.
@@ -916,12 +954,22 @@ replays labeled agent queries; run it before and after a scoring change.
 ### The evidence decides the ORDER
 
 Token scores tie by the dozen; `catalog_store.rerank()` breaks ties over `rank_band()` on buckets,
-not a blended formula: **relevance, then measured (good / unknown / poor / never worked, from
-`ok_rate` alone), then core before extended, then price.** Evidence outranks curation (a core row
-that never answered is not better); curation outranks price (a tenth of a cent must not promote the
-bulk-ingested tail); unmeasured sits above measured-poor. `rank_band()` takes a tie group whole,
-bounded at `RERANK_BAND` on this open route, and **says when it truncated** (`ranking_note` on MCP,
-an HTTP hint).
+not a blended formula: **relevance, then callable on treg's key, then the operator's quality tier,
+then measured reliability, then core before extended, then price.**
+
+- **Callable.** A row only a team's own key can serve (`platform_eligible` false) stays listed,
+  after every row any caller can run; `/search` folds such vendors into one line.
+- **Quality tier** (`TREG_RANKING_TIERS`, JSON capability -> `{"good": [...], "bad": [...]}`) is
+  an operator's judgement from evidence kept outside this repo, so its values never belong here. It
+  outranks the measured rate because a 2xx is not a useful answer. Unnamed means mid; empty leaves the
+  measured order. Only the order reveals a tier.
+- **Reliability** reads `ok_rate` with its sample size (`reliability_band`): a few early
+  successes rank with the unmeasured, not above a long record.
+
+Evidence outranks curation (a core row that never answered is not better); curation outranks price
+(a tenth of a cent must not promote the bulk-ingested tail); unmeasured sits above measured-poor.
+`rank_band()` takes a tie group whole, bounded at `RERANK_BAND` on this open route, and **says when
+it truncated** (`ranking_note` on MCP, an HTTP hint).
 
 `CapabilityPin` ([data-model](data-model.md)) fixes a capability to one provider, enforced in
 `_resolve_marketplace_call` before reserve. A pin gates the catalog id, the only route to treg's key;
@@ -950,7 +998,9 @@ headers are agent-facing in `src/treg/web/skill.md`; the invariants are AGENTS.m
 
 Per capability: one-of identity variants (structural keys, never provider names), `derive` rules,
 a small output core and `miss` in canonical terms. `raw` (the winning provider's body) is always
-returned and never documented as stable. An output field may say where it lands in a call event
+returned and never documented as stable. The parent's audit row records which child that body came
+from and its hash (`CallRecord.served_call_ref` / `served_content_hash`, set by `route._run_routed` before `_audit_parent`; `_run_upgrade`
+hands back the nested call's own), so the archived answer can be read later by exact id. An output field may say where it lands in a call event
 (`analytics`, [call-events](call-events.md)); the public contract view drops it.
 
 - `advice_unverified` is attached as `_treg.advice` to a hit whose `verified` is not true (a found
@@ -969,6 +1019,11 @@ returned and never documented as stable. An output field may say where it lands 
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
   422 before planning.
+- `ad_hashes` (opt-in via `X-Treg-Route-Ad-Hashes`) names the output field holding an email. After
+  a hit, `route._ad_hashes` adds `_treg.ad_hashes`: `domain/catalog/routing/ad_hashes.hashes` gives
+  the SHA-256 of the address as LinkedIn, Meta and Google each normalize it. No call and no charge;
+  `output` is not altered; a miss or a hit without an address says `hashed: false` with `no_hit` or
+  `no_email`. The header on a contract without `ad_hashes` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
@@ -989,24 +1044,47 @@ returned and never documented as stable. An output field may say where it lands 
   `X-Treg-Route-Prefer` is never reordered). The numbers come from an operator scorer's
   `<route_quality_prefix><capability>/routing.json` in a private bucket (`infra/route_quality.py`,
   cached; a request waits at most a second on a cold cache); without it the header keeps price order.
-- Confirm or Decisive on a contract without the declaration, or with `X-Treg-Route-Waterfall: 0`, is
-  a 422 before anything is held.
-- A filter typed `int` may declare a range: `min` (required, a whole number of at least 1) and `max`
-  (optional, a whole number of at least `min`); anything else fails the load. The routed row shows
-  the range, and the routed call refuses a sent value that is not a whole number in it, read as a
-  count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
-  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held. Without a
-  `max`, every whole number from `min` up passes. This is the routed path's own check
-  (`route.py::_require_ranges`), not `_enforce_catalog_body`. `web.map` and `people.search` declare
+- Confirm, Decisive or Domain-Match on a contract without the declaration, or with
+  `X-Treg-Route-Waterfall: 0`, is a 422 before anything is held.
+- A filter typed `integer` may declare a range: `min` (required, a whole number of at least 1) and
+  `max` (optional, a whole number of at least `min`); anything else fails the load. The routed row
+  shows the range, and the routed call refuses a sent value that is not a whole number in it, read as
+  a count is read (a JSON integer, or ASCII digits; null and `""` are not sent): 400
+  `catalog_parameter_invalid` naming `body.<filter>`, before anything is planned or held, whatever
+  the parameter check's mode. Without a `max`, every whole number from `min` up passes. This is the
+  routed path's own check (`route.py::_require_ranges`). `web.map` and `people.search` declare
   `limit` with `min: 1` and no upper bound.
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
 - `question_miss` is a miss rule that also sees the question: `child_outcome` evaluates it on the
-  caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
-  marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
-  `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
-  call without an identity (a replay record) is not judged by it.
+  caller's identity merged with the child's core output, beside the adapter's own `miss` (both can
+  be true), and an answer it marks true is a miss with `why` naming `question_miss`. It names no
+  provider; `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other
+  sites. A call without an identity (a replay record) is not judged by it. Such an answer walks
+  on to the end, as a `site:` search needs (the next provider may hold the site), unless the
+  contract declares `question_miss_bound: true`: then, on a waterfall, an answer ruled out by the
+  question alone (or with the adapter's own miss) is kept like a weak hit and bounded like one
+  (`route.py`, `MAX_WEAK_FALLBACKS`): the attempt is `weak` with a `question_miss:` detail, at most
+  two more providers are asked (every later answer counts, an empty one too), and if none answers better the first such answer is returned as
+  `outcome: weak`, recorded in the call event as no hit (and in the arena as a miss, `arena.routed_state`). An answer the provider itself reported as
+  failed (`provider_error`, `expect_failed`) stays a miss. `web.extract` declares it, because every
+  provider often returns the same wall page and some bill it.
+  `web.extract` declares `wall_page(pages)` (`paths.py::wall_page`): a page that says it is a
+  wall. An interstitial's phrase (captcha, "checking your browser", "verify you are human")
+  decides on a page of at most 1,000 characters; phrases real pages also carry (sign in to view,
+  not a robot, access denied, enable JavaScript or cookies) decide only on a short page, two of
+  them under twenty-five words and one alone under fifteen ("forgot password" counts only beside
+  another). A short answer is never a wall for
+  being short ("OK", an address, a price), nor is a blank page (the row's own miss rule) or a
+  structured answer (text starting with `{` or `[`). The rule runs on the event loop up to three
+  times per child, so a page past 20,000 characters of text, 256,000 characters in all or 50,000
+  values is left unjudged without being read further. The contract rule does not change a child's
+  charge; a `per_success` child stops billing such a page only where its own adapter `miss` also
+  calls `wall_page` on its text field, and only those adapters count a wall against measured
+  reliability. A v2 row's miss calls it through its plugin (`branddev.scrape_miss`), with the
+  same effect on reliability, but a row settled by `settle.reported` still bills the charge the
+  provider reported for the wall (Context.dev consumes a credit), once the route answers.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
@@ -1017,6 +1095,11 @@ returned and never documented as stable. An output field may say where it lands 
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider. It orders
   only children that express every filter the caller sent (see Ranking).
+- `ask_last` names providers that, on treg's key, are asked after the other treg-key candidates of
+  the same health when the caller sends no `X-Treg-Route-Prefer` and the default order or a route
+  rule does not name them: a free provider that is often refused would otherwise lead on cost per
+  hit. Health still ranks first, so a failing or slow provider is still asked after a healthy one
+  named here. A team's own key is never reordered by it, and the caller's own prefer still places it.
 - `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
@@ -1036,8 +1119,8 @@ returned and never documented as stable. An output field may say where it lands 
   search price; call events record `contents`, so a route rule can put exa first for it. A `false`
   value is not counted as sent. When
   Exa fails the next provider answers without passages, and `_treg.ignored_filters` names `contents`.
-  A bool filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off is
-  left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
+  A boolean filter must be `true` or `false` (422 `invalid_identity` otherwise), and one that is off
+  is left out of the provider-sample hash (`flags_off`), so a request that never sends it samples as
   before the filter existed.
 - `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
   count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
@@ -1073,8 +1156,9 @@ returned and never documented as stable. An output field may say where it lands 
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
   Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
-  field of type `url` is kept whole, since a cut link points at another resource. A `str` field may
-  set its own `max` where an agent needs more to judge the row (`people.search`'s `summary`: 1000).
+  field of `format: url` is kept whole, since a cut link points at another resource. A `string` field
+  may set its own `maxLength` where an agent needs more to judge the row (`people.search`'s
+  `summary`: 1000).
   `rank_by_role` orders the rows when the caller sent the role it wants (`asked`, an identity key):
   rows whose current title (`now`) has every word of it lead and are flagged `current`; rows that
   held it only in the past (`past`) or hold no role now (`ended` set) go last, flagged `past` when
@@ -1089,8 +1173,8 @@ returned and never documented as stable. An output field may say where it lands 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `in_read` (identity field to an expression over the provider request, for
-call events to read back a field the provider takes reshaped; it wins over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
+`body.x`), `in_expr`, `in_read` (an expression that recovers an identity field or filter from the
+provider request for call events, taking precedence over `in`), `const`, `filters` (always sent), `out` (core field to expression), `miss`
 (none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
 expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
@@ -1106,8 +1190,13 @@ whole number from 1 to that child's max: otherwise the routed call is refused (4
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
 before any candidate is held. A filter with its own range is checked against it first; where the
 child's adapter also declares that `max`, a larger value drops the child instead, so this refusal
-is not reached. `verified` is filled only from an explicit mailbox deliverability
-verdict, never a lookup-success flag.
+is not reached. A child whose request, as its adapter builds it for this identity, breaks the
+child's own declarations (the parameter check it runs before a hold) is, in refuse mode, dropped
+from the plan as `needs <child parameter>: <rule>`, never the value, rather than answer a 400 the
+router reads as the caller's fault; with none left the routed call answers 422
+`route_no_candidate`. In log mode the plan keeps the child and the route logs the drop it would have
+made ([proxy model](proxy-model.md#catalog-request-checks)). `verified` is filled only from an
+explicit mailbox deliverability verdict, never a lookup-success flag.
 
 The expression language (`domain/catalog/routing/paths.py`) is deliberately tiny: dotted paths with
 `[i]`, `coalesce`, `/ N`, `==`/`!=` against literals, and named generic transforms listed in that
@@ -1132,12 +1221,17 @@ an invalid extra never disables the primary.
   `usd_per_call: null`, and the note leads with "Not free", because a $0 floor read as free to an
   agent that then paid for hundreds of billed misses. Never hand-written. `catalog_get` on it returns
   the contract and the ranked plan (nothing reserved); `store.quote_cost` cuts each row's cost to
-  price and unit. A child treg would not call on its key ranks last with a `skipped` reason; a child
+  price and unit. The plan ranks as a call with no `X-Treg-Route-Prefer` does: the contract's
+  `prefer` and `ask_last`, and a fixed v2 table row at that row's price (`route.const_table_price`),
+  so the order people read is the order a call tries. A child treg would not call on its key ranks last with a `skipped` reason; a child
   served keyless (`resolve.anonymous_served`, the team-independent half of `_anonymous_offer`) is
   quoted on the anonymous tier, free, and makes the routed row's `no_key_needed` true.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = (P(hit) x cost_at(request) + P(miss) x miss charge) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  request at its requested size and `P(hit)` is the published hit rate. A price table is priced at its
+  fallback ceiling, except a v1 table that multiplies the adapter's `limit` field and a v2 table whose
+  every condition reads a parameter the adapter fixes (`const`): the routed request always picks that
+  row, so the child ranks at the hold its call will take (`route._table_price`). Below the publication floor
   (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
   seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child
@@ -1187,14 +1281,19 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
-  - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
-    complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
-    a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
-    value.
+  - Before planning, each identity field is read (`invalid_identity`, 422, even when another
+    complete variant was sent): one of `format: url` must parse as an HTTP URL with a dotted host and
+    no userinfo (a scheme-less one gets `https://`), and a stand-in key (`q`) must be a string. A
+    derived `linkedin_url` is built only from a handle-shaped value. Then every identity and filter
+    field sent is held to its spec by the parameter check
+    ([catalog schema](catalog-schema.md#parameter-types)): in refuse mode a 400
+    `catalog_parameter_invalid` naming the field before any child is planned or held, in log mode a
+    `catalog_parameter_would_refuse` line ([proxy model](proxy-model.md#catalog-request-checks)).
   - A 2xx lacking a REQUIRED core field is a MISS. The waterfall is on by default;
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
     unbounded, it would pay the whole ladder on lookups whose honest answer is one row.
+    A complete scalar answer satisfies the default minimum of one even when its citations are empty.
     Under `X-Treg-Route-Merge` the distinct rows of every answer so far, not the latest answer
     alone, are compared with `N`, so the walk stops once the union reaches it.
   - **The routed read is bounded.** The router parses each child's answer, so it reads at most
@@ -1237,7 +1336,8 @@ an invalid extra never disables the primary.
     health still counts it slow past half the same bound (`_child_bound_s`), so routing can ask it
     after the healthy ones; only the cancellation is waived.
     *Short-window health* (`route_health`, verdict in `routing/health.py`): every treg-key or
-    anonymous child that reached its provider (never an archive hit, never a local refusal) counts
+    anonymous child that reached its provider (never an archive hit, never a local refusal, never
+    `upstream_busy`: treg's own connection pool or in-flight cap, whose request never left) counts
     as answered, failed (5xx, 405/408/410, a gateway timeout or connect failure, the time bound) or
     slow (past half its bound) in a time bucket of the key-value store (`kv.note_route_health`,
     `BUCKETS` buckets across `route_health_window_s`, expiring with the window), so every worker
@@ -1279,11 +1379,30 @@ an invalid extra never disables the primary.
 - **Domain match on email finds**: with a caller `domain` (or `company_domain` / `website`) and an
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
   matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it. The
-  hit is still billed and unaltered.
+  hit is still billed and unaltered. `X-Treg-Route-Domain-Match: strict` (or `true` / `1` / `yes` / `on`; opt-in, only on a contract
+  that sets `advice_domain_mismatch`, refused with 422 under `Waterfall: 0`) makes an off-domain
+  hit `weak`: the waterfall goes on, at most `MAX_WEAK_FALLBACKS` more off-domain hits, and the first
+  off-domain answer wins only when nothing on-domain turns up (after unconfirmed, undecided and
+  thin fallbacks). A thin off-domain answer under Complete or Min-Results is weak first and counts
+  toward the weak limit, not the off-domain limit. Off by default because the host comparison is exact: a sibling or staff mail
+  domain of the same company reads as off-domain.
 - **The answer says what it ignored**: `ignored_filters` on `_treg` and `X-Treg-Ignored-Filters`.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its
+  provider receives but does not enforce (exa and parallel people.search read the place and the
+  company as words), and an endpoint parameter marked `applied: soft` makes every contract filter
+  the adapter maps into it soft (`Adapter.soft`, set at load by `_soft_keys`). The validator refuses
+  a `soft:` that is not a list of the contract's filter or scoping keys (`soft_problems`), and
+  warns on an `applied: soft` parameter no contract filter maps into (`soft_unrouted`): there the
+  mark changes only the `catalog get` text, as on TinyFish search, whose contracts have no place
+  or domain filter. `ignored_filters()` counts a soft
+  key the caller sent as not applied, a scoping key included, so the answer names it and strict
+  filters drop the child ("applies … only as a hint"). Ranking reads `ignored_filters(soft=False)`
+  (`Candidate.hinted` is the difference): a declaration discloses, it never reorders a plan or
+  takes a published rule's place away. On a direct call `treg catalog get` opens the parameter's
+  note with "a hint, not a filter" (`params_view`); the answer is relayed as sent.
 - **Who a no-candidate refusal is on** (`_no_candidate_refusal`): 503 when capacity or a missing
   key took a candidate (treg's side); 422 for strict-filter and scope drops (the caller's). When
   treg's demo policy alone took every candidate that could take the identity (a child dropped as
@@ -1321,8 +1440,8 @@ an invalid extra never disables the primary.
   into the text of a `q` the caller wrote (`phrase(q, …, company_domain)`, said once; a domain is
   said only as the whole host, so `example.com.au` does not say `example.com`), and
   `unscoped` counts a key carried in an `in_expr` beside a stand-in key only when the caller sent
-  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, typed
-  `text` (anything but a string is refused 422 `invalid_identity`): a caller's `q` counts as sent
+  that key, so `{company_domain, q}` reaches them. The stand-in key itself always counts as sent. `q` is itself a scoping key, a
+  `string` (anything else is refused 422 `invalid_identity`, as a stand-in key): a caller's `q` counts as sent
   only when the adapter's matched variant carries `q` or a key the contract's `carried_by` names
   (`{q: [title]}`). crawl4ai answers `{company_domain, q}` through `{company_domain}` and is
   dropped; icypeas answers `{q, title}` through `{title}` and stays.

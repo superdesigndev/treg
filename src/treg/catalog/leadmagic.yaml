@@ -225,7 +225,7 @@ endpoints:
         company_domain: {type: string, required: false, note: "the company to search inside — the usual entry point", example: "leadmagic.io"}
         company_name: {type: string, required: false, note: "alternative to company_domain"}
         company_filters: {type: object, required: false, note: "filter across many companies instead of naming one"}
-        titles: {type: "array[string]", required: false, note: "job titles to match", example: ["Head of Marketing"]}
+        titles: {type: array, items: {type: string}, required: false, note: "job titles to match", example: ["Head of Marketing"]}
         required_email: {type: boolean, required: false, note: "only return people LeadMagic holds an email for"}
         required_mobile: {type: boolean, required: false, note: "only return people it holds a mobile for"}
         include_contact_details: {type: boolean, required: false, note: "THE EXPENSIVE SWITCH — reveals emails and mobiles inline, adding 1 credit per email and 5 per mobile on top of the per-person charge. Default false"}

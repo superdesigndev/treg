@@ -158,11 +158,11 @@ async def test_the_check_wins_over_a_verified_claim_it_does_not_confirm(
 
 def test_disagree_advice_needs_a_verified_output():
     from treg.domain.catalog.routing import contracts as C
-    base = {"identity": [{"email": "str"}], "output": {"email": {"type": "str"}, "verified": {"type": "bool"}}}
+    base = {"identity": [{"email": "string"}], "output": {"email": {"type": "string"}, "verified": {"type": "boolean"}}}
     check = {"endpoint": VERIFY, "field": "email"}
     with pytest.raises(ValueError, match="verified"):
         C.parse_contracts({"contracts": {"x.find": {
-            **base, "output": {"email": {"type": "str"}}, "check": {**check, "disagree_advice": "x"}}}})
+            **base, "output": {"email": {"type": "string"}}, "check": {**check, "disagree_advice": "x"}}}})
     c = C.parse_contracts({"contracts": {"x.find": {**base, "check": {**check, "disagree_advice": "x"}}}})
     assert c["x.find"].check.disagree_advice == "x"
 
@@ -350,6 +350,7 @@ async def test_a_refused_check_says_why_and_costs_nothing(kind, reason):
     parent.meta = None
     parent.quota_admissions = set()
     parent.quota_pending = ()
+    parent.routed_allowance = parent.routed_root = None
     parent.input = type("I", (), {"raw_headers": (), "caller": None, "client_ip": "", "catalog_only": False})()
     v, cost = await call_route._run_check(parent, Check(endpoint=VERIFY, field="email", prefer=("bounceban",)),
                                           {"email": "a@b.c"}, None, [], refuse, None)

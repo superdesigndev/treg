@@ -70,7 +70,8 @@ async def _create_team(user: User, **cookies: str) -> dict:
     raise AssertionError("unreachable")
 
 
-async def first_team(user: User, *, ad_cookie: str, utm_cookie: str, referral_cookie: str) -> dict:
+async def first_team(user: User, *, ad_cookie: str, utm_cookie: str, referral_cookie: str,
+                     affiliate_cookie: str = "", ref_code: str = "", client_country: str = "") -> dict:
     """The dashboard's first team for a new account. Claims the account's one first run by flipping
     `onboarded`, so a second tab makes no second team; a failed create hands the claim back.
     `created` is false when there was nothing to make: the account was already onboarded or already
@@ -83,7 +84,9 @@ async def first_team(user: User, *, ad_cookie: str, utm_cookie: str, referral_co
             return {"created": False}
         await db.commit()
     try:
-        team = await _create_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie, referral_cookie=referral_cookie)
+        team = await _create_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie,
+                                  referral_cookie=referral_cookie, affiliate_cookie=affiliate_cookie,
+                                  ref_code=ref_code, client_country=client_country)
     except BaseException:
         async with session_maker() as db:
             await db.execute(update(User).where(User.id == user.id).values(onboarded=False))

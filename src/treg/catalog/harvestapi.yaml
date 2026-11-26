@@ -611,7 +611,7 @@ endpoints:
   strict_query: true
   test_request:
     queryParams:
-      currentCompanies: https://www.linkedin.com/company/google
+      currentJobTitles: CEO
       page: 1
   cost:
     type: per_call

@@ -802,10 +802,9 @@ dialog form>.primary { width:100%; margin-top:5px; }
 .vendor-request-success>p { font-size:14px; line-height:1.6; color:var(--muted); margin:0; }
 .vendor-selfserve { border-top:1px solid var(--line); padding-top:20px; margin-top:22px; }
 .vendor-selfserve h3 { font-family:inherit; font-size:14px; font-weight:600; margin:0 0 6px; }
-.vendor-selfserve .vendor-listing-prompt { min-height:94px; resize:none; font:12px/1.65 var(--mono); margin-top:12px; }
 .vendor-selfserve-actions { display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
-.vendor-copy-prompt { background:#f4f7f5; color:#315e50; border:1px solid #dbe5df; border-radius:9px; padding:8px 12px; font-family:inherit; font-size:12px; cursor:pointer; }
-.vendor-copy-prompt:hover { background:#eaf1ed; }
+.vendor-console-link { display:inline-block; background:#f4f7f5; color:#315e50; border:1px solid #dbe5df; border-radius:9px; padding:8px 12px; font-family:inherit; font-size:12px; text-decoration:none; cursor:pointer; }
+.vendor-console-link:hover { background:#eaf1ed; }
 
 /* Shared landing-page community links, kept visible beside the account controls. */
 .masthead>nav[aria-label="Arena account"] { flex-wrap:nowrap; justify-content:flex-end; }

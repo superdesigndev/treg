@@ -23,6 +23,9 @@ sources:
   - src/treg/application/call/service.py
   - src/treg/application/call/settle.py
   - src/treg/alembic/versions/0039_archive_own_key_and_repeat_pricing.py
+  - src/treg/alembic/versions/0120_archivekeyorg_natural_key_index.py
+  - src/treg/alembic/versions/0121_archivekeyorg_natural_primary_key.py
+  - tests/test_archivekeyorg_natural_key_migration.py
   - scripts/backfill_call_archive_links.py
   - src/treg/api.py
   - src/treg/bootstrap.py
@@ -31,6 +34,10 @@ sources:
   - src/treg/application/archive_erasure.py
   - src/treg/alembic/versions/0067_org_archive_opt_out.py
   - tests/test_archive_opt_out.py
+  - src/treg/application/archive_retention.py
+  - src/treg/alembic/versions/0122_archive_retention_cursor.py
+  - src/treg/alembic/versions/0123_idempotentcall_archive_key_hash.py
+  - tests/test_archive_retention.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -43,7 +50,8 @@ Two concepts, one word each: **cache** is the last confirmed useful answer for a
 instead of a vendor call while it is fresh and no later decisive observation invalidates it;
 **archive** is every version of every answer, kept with its timestamp. The cache is the archive's
 top layer. History is kept on purpose (per-key time series are a future data product), so do not
-"clean it up" as waste. History endpoints over it do not exist yet; a team can read only the
+"clean it up" as waste: an `archive`-policy endpoint keeps all of it, and only row retention, when
+an operator turns it on, removes a whole question nobody asked for ("Row retention"). History endpoints over it do not exist yet; a team can read only the
 answer its own call got (see "The call-archive link").
 
 Relay faithfulness extends through time: served bytes are exactly what the vendor sent, and
@@ -79,7 +87,10 @@ endpoint ids to an operator freshness ceiling, and `TREG_ARCHIVE_HIT_REPEAT_PRIC
    written once on the provider YAML header and overridable per endpoint. Absent takes
    `archive_default_policy` (`transient`, flippable to `forbidden` by env). A judged `forbidden`
    is always respected and a missing entry is never stored. A judged entry must carry its quote,
-   source and date (`tests/test_archive.py`).
+   source and date (`tests/test_archive.py`). A deployment can also name providers in
+   `no_cache_providers` (env, read at catalog load): their endpoints load as
+   `cache: forbidden` and `response_retention: forbidden`, whatever the YAML says, so the
+   choice stays in the deployment's config rather than the public catalog.
 3. **Body in hand.** A metered answer is already buffered for the settle, so recording adds no
    latency. An own-key catalog answer is read whole only when it fits the size cap ("Own-key
    answers"). Own-tool calls (no catalog entry) are never touched.
@@ -92,7 +103,8 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches that stream (`streamable_free_result`) and `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
+  `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 
@@ -239,12 +251,26 @@ live call (`Cache-Control: no-cache`) is billed and counts.
 The evidence is `ArchiveKeyOrg`, one row per (org, key_hash), written by
 `archive.note_org_use(s)_in_transaction` inside `_platform_settle` (the allowlisted write
 `archive_org_use_in_settle`), so the mark lands with the charge or not at all. It is an atomic
-upsert against the pair's unique constraint (the constraint, not any lookup, arbitrates
-concurrent counting); batches go in `(org_id, key_hash)` order and a write error propagates so
+upsert against the pair's primary key (the key, not any lookup, arbitrates concurrent counting); batches go in `(org_id, key_hash)` order and a write error propagates so
 charge and marks roll back together. Only a storable question is marked. `lookup` reports
 `repeat_for_org`; the settle scales the raw amount (floor division) before the ledger applies the
 margin. `tool_called` carries `cache_price` (`full` | `repeat` | `free`). 100 restores "a hit
 bills like a live call"; 0 makes repeats free.
+
+The mark is keyed by `(org_id, key_hash)` and nothing else, so writing one takes no number from
+a sequence: a counter that can run out would make every first-time settle roll back, and a routed
+call, which marks all its children in one transaction, would go unpaid whole. `id` is the retired
+serial key (revisions 0120 and 0121 moved the primary key without rewriting the table): it is
+nullable, has no default and is read by nothing; only code older than 0121 still assigns it, from
+its sequence, during a rolling deploy. Dropping the column and its sequence is a later contract
+revision.
+
+0121 attaches a unique index on `(org_id, key_hash)` that 0120 makes sure exists. 0120 builds it
+itself only on a small table (at most `BUILD_IN_MIGRATION_MAX_ROWS` rows, a bounded count); on a
+larger one it refuses at once and prints the `CREATE UNIQUE INDEX CONCURRENTLY` statements to run
+by hand before the deploy, because a concurrent build of a large table can outlast a deploy's
+time limit and leave an INVALID index for every later deploy to rebuild. A lock timeout during
+the small build is raised as a plain error, so `maintenance` does not retry a build from zero.
 
 ## Serving
 
@@ -253,7 +279,12 @@ the reserve, replacing only the network trip. The response carries `X-Treg-Cache
 `X-Treg-Fetched-At` and `X-Treg-Age`; the audit row carries `cached: true` (`CallRecord.cached`
 is declared last in the model to match ALTER TABLE's append position). A hit is not an
 observation: no snapshot, no learning, only a fire-and-forget `last_requested_at` touch, the
-demand signal refresh reads. `lookup` uses the API pool on purpose so it never queues behind the
+demand signal refresh reads. A process writes one key's touch at most once per interval
+(`_TOUCH_EVERY_S`): every hit on a key writes the same row, and a burst on one question would
+otherwise queue its writers on that row's lock. A write that fails or times out clears its
+key's mark, so the next hit tries again. The marks are bounded: when they are full, those whose
+interval is over go first, and if they are still full only the oldest goes, so one key may write
+once early and every other key keeps its mark. `lookup` uses the API pool on purpose so it never queues behind the
 archive's own background writes. A metered hit leaves through the live answer's hand-off, so
 `strip_reported_charge` removes the provider's reported charge from it as from a live answer.
 
@@ -287,8 +318,8 @@ archive treats as it treats `unknown`.
 observation, separately from the newest snapshot; `result_observed_version` marks the newest
 version assessed, so a version appended by an older binary invalidates the saved decision. Legacy
 keys are classified lazily; lookup rechecks the candidate body against current rules and never
-searches behind an explicit empty. The pointer has no FK (snapshots are never deleted), avoiding a
-cyclic foreign key.
+searches behind an explicit empty. The pointer has no FK (a snapshot is deleted only with its whole
+key), avoiding a cyclic foreign key.
 
 For result-aware endpoints: only found-to-found counts stable; found-to-empty counts a change and
 invalidates serving; repeated empties neither grow nor shrink TTL; empty-to-found restores
@@ -334,7 +365,7 @@ absent from the ledger.
 The call replays the stored request shape including the keying headers (`req_headers`; without
 them the recording lands under a different key), with injection from the one authoritative
 builder `oauth_providers.platform_bindings` (outside `api.py`, which this worker must not import),
-and records through the same `_store`.
+a path binding filling its placeholder in the stored URL, and records through the same `_store`.
 
 ## The recorder
 
@@ -368,13 +399,25 @@ hashes depend on.
 `record()` returns `(key_hash, content_hash)`, which the call service writes onto `CallRecord`
 (`archive_key_hash`, `archive_content_hash`). `archive.resolve_result` walks row, key, newest
 snapshot with that content hash, `body_of` carrier, and returns the pre-injection request shape
-plus the answer; a hash-only version reports `stored: false`. `GET /calls/{id}/result` exposes it
+plus the answer; a hash-only version reports `stored: false`, and a key or answer no longer on
+file (erasure, row retention) returns None, which the route reports as `expired`. `GET /calls/{id}/result` exposes it
 to members of the row's org; what makes it safe is that the row belongs to the team and names
 bytes that team already received. A metered answer is returned as its caller received it: with
 `strip_reported_charge` on, without the provider's reported charge unless the request keeps it
 ([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
 provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
-`children`, audited before the parent, so the lookup reads the hour before the parent's row.
+`children`, audited before the parent, so the lookup reads the hour before the parent's row. Its
+`served_call_ref` names the one child whose answer the caller received and `served_content_hash`
+the sha256 of the bytes it returned as `raw` ([data-model](data-model.md)). The reader, with no
+scan of the team's history: read the child row by that exact ref; its own archived answer counts
+when its `archive_content_hash` equals `served_content_hash` (a sync answer, or an async provider
+that finished on submission), read as bytes with `answer_bytes(key_hash, served_content_hash)`,
+which checks them against the hash and returns None for a hash-only or expired version; otherwise the terminal answer filed under the ref,
+`load_terminal_responses([(ref, endpoint_id)])`, counts when sha256 of its bytes equals it.
+Anything else is "archive unavailable", never a substitute: another poller's terminal answer that
+was archived first, a body the call path changed before delivery (the provider's reported charge
+removed), a hash-only version, a shed child row. A NULL link means no usable link was recorded, not that no answer was
+served; rows written before 0127 are NULL too.
 Failure evidence (`error_*`) stays admin-only. `scripts/backfill_call_archive_links.py` links
 older rows best effort (dry run unless `--apply`).
 
@@ -434,7 +477,7 @@ commit (`_count_stats`; a dropped or retried recording counts nothing), and `flu
 them as one statement per endpoint, in endpoint order so two processes cannot deadlock, under the
 archive's write semaphore. A failed or interrupted flush keeps its deltas; a process that dies
 between flushes loses that window, which is fine because nothing serves or bills from the totals.
-The pruner and erasure subtract directly. Arithmetic commutes only while the row exists, so the
+The pruner, erasure and row retention subtract directly. Arithmetic commutes only while the row exists, so the
 first recording of an endpoint creates it zeroed inside its own transaction (`_ensure_stat_row`),
 and a process skips that check only after one of its recordings committed with the row.
 
@@ -449,6 +492,85 @@ exempt. Batch 0 disables. Stripped `both` rows become `r2` and keep their logica
 erasure deletes objects.
 Versions whose `content_hash` an unexpired trimmed `IdempotentCall` row names are protected too
 (read once per pass over Alembic 0100's partial index): that row replays from them.
+It skips `r2` rows on purpose: they hold no Postgres bytes to strip, and their objects go only with
+their rows (erasure, row retention).
+
+## Row retention
+
+`application/archive_retention.run`, the `treg-worker archive retain` command, deletes whole
+questions: a key with its snapshots and every team's `ArchiveKeyOrg` mark on it, in one
+transaction. A mark never goes without its key. Off unless `TREG_ARCHIVE_RETENTION_ENABLED`;
+`--dry-run` reads the same batches, deletes nothing, leaves the cursor, and reports keys,
+snapshots, marks and objects.
+
+A key may go when, at the cutoff (now minus `TREG_ARCHIVE_RETENTION_DAYS`, default 30), it was
+created and last fetched before it, nobody asked for it since (`last_requested_at` NULL or older),
+no team paid for it since (`ArchiveKeyOrg.last_call_at`), its recorded policy and its endpoint's
+current policy are not `archive`, its request URL is not `treg://` (async terminal evidence,
+which Activity reads), and no unexpired trimmed `IdempotentCall` replays from it. A snapshot is
+referenced only from inside its key (`body_of` carriers and `result_snapshot_id` are chosen under
+the key's row lock), so deleting whole keys never removes a snapshot a kept key points at.
+
+Each batch is an id range of `TREG_ARCHIVE_RETENTION_BATCH` keys (default 1,000, at most
+`MAX_BATCH`, 10,000, because a batch's key ids are bound twice in one statement) over the primary
+key, so a statement reads a bounded slice however few rows qualify, and `archiveretentioncursor`
+keeps the position between runs (a pass reaching the end starts from 0).
+
+**Rows before objects.** A batch reads its candidates, then in a fresh transaction under
+`statement_timeout` and `lock_timeout` locks the keys `FOR UPDATE SKIP LOCKED`, repeating the
+candidate predicate, and deletes snapshots and keys, moving the running totals. In the same
+transaction it records in `archiveobjectpending` each object-stored body hash (`r2`, `both`) that
+no snapshot references any more, with the time. Nothing in object storage is touched before that
+commit, so a batch that rolls back deletes no object.
+
+At its start, each real run deletes the pending objects recorded more than
+`TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` ago (default 900 s), page after page (`OBJECT_PAGE`) until
+none is due or the time budget is spent, `OBJECT_CONCURRENCY` object-store calls at a time, with no
+session open while object storage is called. Each object goes in three steps:
+
+1. Mark the row `deleting` and commit. The recorder reads the pending row of the hash it is about
+   to point at `FOR SHARE` in its own transaction (`archive._object_may_be_gone`): a recorder that
+   read it first makes the mark wait for its commit, and one that reads it after sees the mark and
+   keeps the bytes in its own row (`body_storage = db`).
+2. Re-check that no committed snapshot references the hash; one does: the row goes, the object
+   stays.
+3. Delete the object, then keep the row as a tombstone (`deleted_at`) for `TOMBSTONE_KEEP_S` (or
+   the grace period, if longer), so a recorder that confirmed the object just before the delete
+   still sees the mark.
+
+A failed delete moves the row to the back of the queue (`recorded_at` now, `attempts` + 1), so it
+never blocks the rows after it; a row held by another session (its mark and its move-back both
+time out) is logged and skipped for the rest of the run, and a database error outside one row
+ends the run with `stopped: "error"`. The grace period is refused below `MIN_OBJECT_GRACE_S`, the
+recorder's store timeout plus 120 s. Hashes are recorded `_HASH_CHUNK` (5,000) per statement; with no object store configured the due rows wait and the run
+reports `stopped: "error"`. A hash recorded again restarts its grace period and keeps its
+`deleting` mark.
+
+`trim_archived_answers` (the idempotency pruner dropping a retry row's own copy) reads and hashes a
+page's bodies first, then locks the keys it trims `FOR SHARE SKIP LOCKED` for its updates only (`archive.lock_keys_for_share`) and re-checks in its UPDATE
+that the answer is still on file (`archive.answer_on_file`): retention deletes a key only under
+`FOR UPDATE SKIP LOCKED`, so a trimmed retry row never points at an answer retention removed.
+
+The marks go last, just before the commit. A settle locks its team's `org` row and then upserts
+the mark, so a mark lock held across the slow deletes would queue that team's payments behind the
+job. The mark delete repeats `last_call_at < cutoff` (a mark a team paid for after the locked read
+stays, and its next call on the question is a repeat) and locks marks `FOR UPDATE SKIP LOCKED` in
+`(org_id, key_hash)` order, `MARK_CHUNK` (500) at a time, deleting only those: a mark a settle
+holds is left to it, never waited for. The "live retry" check reads the partial index
+`ix_idempotentcall_archive_key_hash` (Alembic 0123), an index probe per candidate instead of a
+scan of `idempotentcall`. A recorder that read a key unlocked and finds it deleted at the lock
+retries and records it as a new question.
+Batches sleep `TREG_ARCHIVE_RETENTION_PAUSE_S` (default 2 s) apart; a run stops at
+`TREG_ARCHIVE_RETENTION_MAX_SECONDS`, after `TREG_ARCHIVE_RETENTION_MAX_KEYS` keys deleted
+(default 200,000, `stopped: "max_keys"`), or after three consecutive failed batches (exit 1). A
+real run holds `pg_try_advisory_lock(RUN_LOCK_KEY)` on a connection of its own (a session lock:
+the worker must reach PostgreSQL directly, not through a transaction-mode pooler); a second run
+while it works returns `stopped: "busy"` at once. `--dry-run` reads through
+`read_session_maker`, the replica when one is configured. The deletes leave dead tuples in the
+three large archive tables; plan a manual `VACUUM` of them after the first full pass.
+
+What a team sees: `GET /calls/{id}/result` for a call whose question went answers `expired`, and
+the next call on it is a full-price first call (its mark went with the key).
 
 ## Change observation
 

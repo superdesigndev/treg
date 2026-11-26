@@ -1,0 +1,33 @@
+{
+  "results": [],
+  "domain_results": [
+    {
+      "domain": "stripe.com",
+      "matched_via": null,
+      "total_matches": 8,
+      "candidates": [
+        {
+          "name": "ocakabosco",
+          "domain": "stripe.com",
+          "linkedin_url": "https://www.linkedin.com/company/ocakabosco",
+          "industry": "Translation and Localization",
+          "employee_count": 19861,
+          "city": "Bolton",
+          "country": "UK"
+        },
+        {
+          "name": "Stripe",
+          "domain": "stripe.com",
+          "linkedin_url": "https://www.linkedin.com/company/stripe",
+          "industry": "Technology, Information and Internet",
+          "employee_count": 8740,
+          "city": "South San Francisco",
+          "country": "US"
+        },
+        "… 6 more item(s) truncated"
+      ]
+    }
+  ],
+  "unmatched_domains": [],
+  "credits_charged": 0
+}

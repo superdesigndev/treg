@@ -1,13 +1,17 @@
 """Reservation and spend-cap helpers for metered calls."""
 
+import functools
+import json
 import logging
 import random
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func
+from sqlalchemy import event, func
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -15,6 +19,7 @@ from ...application import billing
 from ...caller_metadata import TAG_DEFAULT
 from ...config import get_settings
 from ...domain import money as ledger
+from ...domain.money import allowance as money_allowance
 from ...domain.catalog import store as catalog_store
 from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
@@ -24,7 +29,10 @@ from ...infra import money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
+from ...infra.structured_logging import get_logger
 from ...models import CallRecord, Org, TagBudget
+from . import allowance as allowance_runtime
+from . import idempotency
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall
 from .types import ReservationFailed
@@ -146,7 +154,9 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
     if cap <= 0:  # no limit applies: the balance (and the auto-top-up monthly cap) is the bound
         return
     try:
-        spent = await ledger.spent_today(db, caller.org_id)
+        # Today's counter plus what an allowance can still spend today outside it. Read from
+        # the rows, not from the allowance switch: a hold and its queued charges outlive it.
+        spent = await money_allowance.committed_today(db, caller.org_id)
     except Exception as exc:  # cannot verify the ceiling ⇒ do not spend
         logging.getLogger("treg.ledger").warning(
             "platform daily-cap check failed for org %s: %s", caller.org_id, exc)
@@ -164,9 +174,11 @@ async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncS
         })
 
 
-async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSession) -> int | None:
+async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSession, *,
+                                    reap: bool = True) -> int | None:
     """Refuse a call that would take this member past their daily spend limit on treg's keys.
     Returns the member id to attribute the hold to when a limit applies, else None.
+    `reap=False` keeps the check read-only, for a caller outside money admission.
 
     FAIL-CLOSED, like the platform cap: it limits money. SOFT like the tag caps: the figure is an
     aggregate over `MemberSpend`, so concurrent calls can each pass and together overshoot by at most
@@ -179,7 +191,7 @@ async def _enforce_member_spend_cap(caller: Caller, add_micro: int, db: AsyncSes
         spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
         # A crashed call's expired hold still counts here. `reserve_in_transaction` reaps those, but
         # only after this gate, so a refusal reaps first and reads again.
-        if spent + add_micro > cap and await ledger.reap_stale_holds(db, org_id=caller.org_id):
+        if reap and spent + add_micro > cap and await ledger.reap_stale_holds(db, org_id=caller.org_id):
             spent = await ledger.member_spent_since(db, caller.membership.id, _day_start_utc())
     except Exception as exc:  # cannot verify the limit => do not spend
         logging.getLogger("treg.ledger").warning(
@@ -225,8 +237,9 @@ async def _resolve_tag_budget(db: AsyncSession, org_id: int, dim: str, val: str)
 
 
 async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
-                               add_micro: int | None = None) -> None:
-    """Refuse a call that breaches a builder-set limit on one of its tags.
+                               add_micro: int | None = None) -> bool:
+    """Refuse a call that breaches a builder-set limit on one of its tags; return whether any
+    limit (a spend cap or a call count) applies to one of them.
 
     Two passes, called from two places. `add_micro is None` is the PRE-FLIGHT pass (blocked status and
     the daily call count), which runs before the idempotency replay so a blocked user can neither take
@@ -246,7 +259,8 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
     allowed to move money. Never document these caps to builders as hard limits.
     """
     if not meta.tags:
-        return
+        return False
+    limited = False
     dims = budget_policy._budget_dims_of(caller.org)
     for dim in dims:
         val = meta.tags.get(dim)
@@ -275,6 +289,7 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
             }) from exc
         if row is None:
             continue
+        limited = limited or _limits(row)
         if add_micro is None:
             if row.status == "blocked":
                 raise ReservationFailed("tag_blocked", status_code=403, detail={
@@ -309,6 +324,13 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                     "message": (f"{dim} {val!r} has reached its spend limit for this {period} "
                                 f"(${ledger.usd(spent):g} of ${ledger.usd(cap):g})"),
                 })
+    return limited
+
+
+def _limits(row: TagBudget) -> bool:
+    """The row caps spend or counts calls, both read from the tag rows a hold writes."""
+    return (row.daily_cap_micro is not None or row.monthly_cap_micro is not None
+            or (row.calls_per_day is not None and row.calls_per_day >= 0))
 
 
 def _purchased_only(endpoint_id: str) -> bool:
@@ -318,15 +340,204 @@ def _purchased_only(endpoint_id: str) -> bool:
     return bool((catalog.platforms.get(platform) or {}).get("purchased_credit_only"))
 
 
+def _holdless_listed(org_id: int) -> bool:
+    """The team's untagged free calls may take no hold (`holdless_free_*`)."""
+    settings = get_settings()
+    if org_id in settings.holdless_free_excluded_org_ids:
+        return False
+    return settings.holdless_free_all_orgs or org_id in settings.holdless_free_org_ids
+
+
 async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
-    """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
+    """Admit a $0 call without a hold: the daily-cap and member-limit reads, no balance row, no
+    money admission. A member already past their limit is refused, as on the hold path."""
     mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = 0
     mk.reserved_at = time.monotonic()
-    if budget_policy._effective_daily_cap(caller.org) > 0:
+    team_cap = budget_policy._effective_daily_cap(caller.org) > 0
+    member_cap = budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None
+    if team_cap or member_cap:
         async with session_maker() as db:
-            await _enforce_platform_daily_cap(caller, 0, db)
+            # The member first, as on the hold path: its refusal gives back the member's call slot.
+            if member_cap:
+                await _enforce_member_spend_cap(caller, 0, db, reap=False)
+            if team_cap:
+                await _enforce_platform_daily_cap(caller, 0, db)
+
+
+def _allowance_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
+                    allowed: bool) -> str | None:
+    """Why a call keeps its own hold, or None for a call the team's allowance may pay for: a
+    direct, synchronous call on treg's platform key, untagged or (for a team `tagged_listed`) with
+    no tag budget limiting any of its tags, by a member with no spend limit, on an endpoint any
+    credit may pay for.
+
+    Everything else keeps its own hold, because something reads that hold: a tag row a budget
+    counts, a member row written with it, an async task or a routed parent that closes it later, the purchased-credit
+    gate. A child call's reference is its parent's plus a `:suffix` (`_child_kind`). A call whose application did
+    not allow the allowance (`allowed`) keeps its hold too. A routed child whose root lets its
+    children take (`mk.routed_allowance`) is judged as a direct call: its parent finishes its take.
+    """
+    if not call_ref:
+        return "no_call_ref"
+    if ":" in call_ref:
+        if mk.routed_allowance and _routed_chain(call_ref):
+            return _direct_skip(mk, caller, meta, allowed, deferred_settle=False)
+        return _child_kind(call_ref)
+    return _direct_skip(mk, caller, meta, allowed)
+
+
+def _direct_skip(mk: MarketplaceCall, caller: Caller, meta: CallMeta, allowed: bool, *,
+                 deferred_settle: bool = True) -> str | None:
+    """`_allowance_skip` for a call judged as a direct call; `deferred_settle=False` leaves out
+    the deferred-settle rule, which every routed child meets."""
+    if not allowed:
+        return "not_allowed"
+    if (mk.reserved_micro or 0) <= 0:
+        return "zero_price"
+    if not allowance_runtime.enabled_for(caller.org_id):
+        return "allowance_off"
+    if meta.tags:
+        if not allowance_runtime.tagged_listed(caller.org_id):
+            return "tagged"
+        if meta.tag_limited:
+            return "tag_budget"
+        if caller.membership.pinned_tags:
+            # A pinned token's reads find its calls by the tags on their reserve entry when the
+            # audit row is gone; an allowance call has none until its fold, or ever if unbilled.
+            return "pinned"
+    if mk.billed_oauth:
+        return "billed_oauth"
+    if deferred_settle and mk.deferred is not None:
+        return "deferred_settle"
+    if mk.async_owner_call_id is not None or mk.async_descriptor:
+        return "async"
+    if mk.provider in catalog_store.load().trial_pools:
+        return "trial_pool"
+    if budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None:
+        return "member_spend_cap"
+    if _purchased_only(mk.endpoint_id):
+        return "purchased_credit_only"
+    return None
+
+
+_ROUTED_SEGMENT = re.compile(r"r\d+(?:\.\d+)*|v|u")
+
+
+def _routed_chain(call_ref: str | None) -> bool:
+    """Every segment after the root is a routed attempt `rN`, a check `v` or an upgrade `u`."""
+    segments = (call_ref or "").split(":")[1:]
+    return bool(segments) and all(_ROUTED_SEGMENT.fullmatch(s) for s in segments)
+
+
+def _as_direct(mk: MarketplaceCall, caller: Caller, meta: CallMeta, call_ref: str | None,
+               allowed: bool) -> str | None:
+    """For a child of a routed call (every segment after the root a routed attempt `rN`, a
+    check `v` or an upgrade `u`): what `_allowance_skip` would answer if it were a direct
+    call, `eligible` when nothing else keeps it off the allowance. None for any other call."""
+    if not _routed_chain(call_ref):
+        return None
+    return _direct_skip(mk, caller, meta, allowed, deferred_settle=False) or "eligible"
+
+
+def _child_kind(call_ref: str) -> str:
+    """The skip reason of a child call, named by its own `:suffix`: a routed child `:rN`, an
+    overflow rung `:overflow`, a hub step `:sN`, or another child (a poll, a verification)."""
+    last = call_ref.rsplit(":", 1)[1]
+    if last == "overflow":
+        return "child_call:overflow"
+    if last[:1] in ("r", "s") and last[1:].replace(".", "").isdigit():
+        return "child_call:routed" if last[0] == "r" else "child_call:hub_step"
+    return "child_call:other"
+
+
+_SKIP_LOG_EVERY_S = 60.0
+# A minute names at most this many teams before it is logged early; the number is the
+# allowance's own prune threshold for its per-team maps.
+_SKIP_TEAMS_MAX = allowance_runtime._TEAM_STATE_PRUNE_AT
+_SKIP_TOP = 5
+_skips: dict[tuple[int, str], list] = {}
+_skip_totals: dict[str, dict] = {}
+_skip_log = get_logger("treg.allowance_skips")
+
+
+def _note_allowance_skip(org_id: int, reason: str, held_micro: int,
+                         as_direct: str | None = None) -> None:
+    """Count a listed team's call sent to the exact path, by reason, once its reserve is decided:
+    `held_micro` is what the hold it committed reserved, 0 for a call refused or cancelled first.
+
+    Every team counts toward one `allowance_skips` line per reason per minute in this process:
+    the calls, the micro-USD they held, how many teams sent them and the teams that held the
+    most. A routed child also counts under `as_direct`, the reason it would have had as a
+    direct call (`_as_direct`). A team named in `money_allowance_org_ids` also gets its own `allowance_skipped` lines:
+    the first at once, then one per reason per minute with the count since the last.
+    Diagnostics never fail a call."""
+    try:
+        now = time.monotonic()
+        total = _skip_window(now, org_id, reason)
+        total["calls"] += 1
+        total["held_micro"] += held_micro
+        team = total["orgs"][org_id]
+        team[0] += 1
+        team[1] += held_micro
+        if as_direct is not None:
+            direct = total["as_direct"].setdefault(as_direct, [0, 0])
+            direct[0] += 1
+            direct[1] += held_micro
+        if org_id not in get_settings().money_allowance_org_ids:
+            return
+        entry = _skips.setdefault((org_id, reason), [None, 0])
+        entry[1] += 1
+        if entry[0] is not None and now - entry[0] < _SKIP_LOG_EVERY_S:
+            return
+        _skip_log.info("allowance_skipped %s", json.dumps(
+            {"org_id": org_id, "reason": reason, "calls": entry[1]}, separators=(",", ":")))
+        entry[0], entry[1] = now, 0
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _skip_window(now: float, org_id: int, reason: str) -> dict:
+    """The reason's current minute with a row for the team, logging the last one first when the
+    minute is up or it already names `_SKIP_TEAMS_MAX` other teams."""
+    total = _skip_totals.get(reason)
+    if total is not None and (now - total["since"] >= _SKIP_LOG_EVERY_S
+                              or (org_id not in total["orgs"]
+                                  and len(total["orgs"]) >= _SKIP_TEAMS_MAX)):
+        _log_skip_total(now, reason, total)
+        total = None
+    if total is None:
+        total = _skip_totals[reason] = {"since": now, "calls": 0, "held_micro": 0, "orgs": {},
+                                        "as_direct": {}}
+    total["orgs"].setdefault(org_id, [0, 0])
+    return total
+
+
+def _log_skip_total(now: float, reason: str, total: dict) -> None:
+    held = [item for item in total["orgs"].items() if item[1][1] > 0]
+    top = sorted(held, key=lambda kv: (-kv[1][1], -kv[1][0], kv[0]))[:_SKIP_TOP]
+    _skip_log.info("allowance_skips %s", json.dumps({
+        "reason": reason, "calls": total["calls"], "held_micro": total["held_micro"],
+        "orgs": len(total["orgs"]), "window_s": round(now - total["since"], 1),
+        "top": [[org_id, calls, held] for org_id, (calls, held) in top],
+        **({"as_direct": dict(sorted(total["as_direct"].items()))} if total["as_direct"] else {}),
+    }, separators=(",", ":")))
+
+
+async def _schedule_autotopup_after(org_id: int) -> None:
+    """Let auto top-up see the balance a committed reservation just moved. The conditional UPDATE
+    bypasses any ORM instance, so this reloads the org on its own session, outside every lease.
+    The money is committed; a failed read must not fail the call."""
+    org = None
+    try:
+        async with session_maker() as read_db:
+            org = await read_db.get(Org, org_id)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("treg.ledger").warning(
+            "auto top-up read after reserve failed for org %s: %s", org_id, exc)
+    if org is not None:
+        billing.maybe_schedule_autotopup(org)
 
 
 def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
@@ -341,7 +552,10 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
 
 
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
-                            call_ref: str | None = None, *, allow_holdless: bool = False) -> None:
+                            call_ref: str | None = None, *, allow_holdless: bool = False,
+                            allow_allowance: bool = False, mark_in_flight: bool = False,
+                            retry_short: bool = True, skip_reason: str | None = None,
+                            skip_as_direct: str | None = None) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
@@ -350,16 +564,25 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
     dimension here would be a second place that could disagree about who pays.
 
-    `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
-    `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
+    `allow_holdless` admits a `holdless_eligible` call from an untagged caller of a team
+    `_holdless_listed`, unless it holds an Idempotency-Key claim (`mark_in_flight`), without a hold: a $0 reserve and its release only queued on the org's
     balance row. A tagged call keeps its hold,
     because the tag rows written with it count toward `calls_per_day`.
+
+    `allow_allowance` lets an eligible call (`_allowance_skip` is None) of a team on the allowance
+    (`allowance_runtime.listed`) reserve from the team's allowance counter instead: no hold, no
+    balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
+    `mark_in_flight` (a call holding an Idempotency-Key claim) first marks the call as running in
+    the shared store, the one sign of it a stale claim can read; unmarked, it keeps its hold.
+    A hold the balance cannot cover is tried once more (`retry_short`) when the team's
+    allowance counter held money and gave it back to the balance
+    (`allowance_runtime.give_back_for_exact_path`).
 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
     the balance gate already, so only a hold that covers the worst case bounds them."""
-    if (allow_holdless and mk.holdless_eligible and not meta.tags
-            and caller.org_id in get_settings().holdless_free_org_ids):
+    if (allow_holdless and not mark_in_flight and mk.holdless_eligible and not meta.tags
+            and _holdless_listed(caller.org_id)):
         await _holdless_reserve(mk, caller)
         return
     mk.holdless = False
@@ -380,6 +603,39 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     # attribute load while constructing the refusal would otherwise escape the application session.
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
+    mk.allowance_epoch, mk.allowance_marked = None, False
+    listed = retry_short and allowance_runtime.listed(caller.org_id)
+    skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
+    # Marked before the take: from the take on, the mark is all a stale claim can see of the call.
+    if skip is None and mark_in_flight and not await idempotency.mark_in_flight(call_ref):
+        skip = "in_flight_unmarked"
+    if skip is None:
+        before = allowance_runtime.refills(caller.org_id)
+        epoch = await allowance_runtime.take(
+            caller.org_id, mk.reserved_micro,
+            daily_cap_micro=budget_policy._effective_daily_cap(caller.org),
+            after_refill=(
+                functools.partial(_schedule_autotopup_after, caller.org_id) if auto_on else None))
+        if epoch:
+            # Recorded on the call before anything else is awaited: a cancel from here on
+            # finds the take and returns it.
+            mk.call_id, mk.allowance_epoch = call_ref, epoch
+            mk.allowance_marked = mark_in_flight
+            mk.allowance_tags = dict(meta.tags) or None
+        if auto_on and allowance_runtime.refills(caller.org_id) != before:
+            await _schedule_autotopup_after(caller.org_id)
+        if epoch:
+            return
+        skip = "take_refused"
+        if mark_in_flight:
+            await idempotency.clear_in_flight(call_ref)
+    # A listed team's call is counted once, when its reserve is decided (`_note_allowance_skip`);
+    # a retry after a give-back (`skip_reason`) is counted under the first attempt's reason.
+    note = skip if listed else skip_reason
+    as_direct = skip_as_direct
+    if listed and skip.startswith("child_call:"):
+        as_direct = _as_direct(mk, caller, meta, call_ref, allow_allowance)
+    noted, committed = note is None, []
     # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
     # its own session and may call Stripe; that work is not part of this reserve.
     refused_org = None
@@ -417,15 +673,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                         with money_stage(db, "post_refusal_read"):
                             refused_org = await db.get(Org, caller.org_id)
                     raise
+                # A cancellation can reach `commit()` after the database committed;
+                # only the session's commit event says the hold exists.
+                event.listen(db.sync_session, "after_commit",
+                             lambda _session: committed.append(True), once=True)
                 with timing.phase("commit"):
                     await db.commit()
-                # The conditional UPDATE bypasses an ORM instance. Reload after commit so auto-top-up sees
-                # the balance crossing that triggered this reservation.
-                mark_money(db, "reserve_post_commit", org_id=caller.org_id, call_id=call_ref)
-                with timing.phase("post_commit"), money_stage(db, "post_commit_read"):
-                    org = await db.get(Org, caller.org_id)
-            if org is not None:
-                billing.maybe_schedule_autotopup(org)
+        if auto_on:
+            await _schedule_autotopup_after(caller.org_id)
     except ledger.PurchasedCreditShort as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
@@ -446,15 +701,23 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     except ledger.InsufficientBalance as exc:
         if refused_org is not None:
             billing.maybe_schedule_autotopup(refused_org)
+        if retry_short and await allowance_runtime.give_back_for_exact_path(
+                caller.org_id, exc.required_micro - exc.balance_micro):
+            noted = True
+            return await _platform_reserve(
+                mk, caller, meta, call_ref, allow_holdless=allow_holdless,
+                mark_in_flight=mark_in_flight, retry_short=False,
+                skip_reason=note, skip_as_direct=as_direct)
         wallet, alt = wallet_and_alternative(mk)
         # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
         # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
         # otherwise the natural reading of "add funds" is that auto top-up is broken.
         if auto_on:
+            cap = prefs["monthly_cap_micro"]
+            monthly = f" and ${ledger.usd(cap):g}/month" if cap else ""
             auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
                          f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
-                         f"{prefs['per_hour']} times per hour and "
-                         f"${ledger.usd(prefs['monthly_cap_micro']):g}/month. Raise the amount or the "
+                         f"{prefs['per_hour']} times per hour{monthly}. Raise the amount or the "
                          f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
         else:
             auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
@@ -472,3 +735,25 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             "provider": mk.provider,
             "endpoint_id": mk.endpoint_id,
         }) from exc
+    except DBAPIError as exc:
+        # The money session's statement_timeout cancelled a statement (57014): the transaction
+        # rolled back before its commit, so nothing is held and the provider was not reached.
+        if committed or getattr(exc.orig, "sqlstate", None) != "57014":
+            raise
+        retry_base_s = get_settings().money_admission_retry_after_s
+        retry_after_s = random.randint(retry_base_s, 2 * retry_base_s)
+        try:
+            logging.getLogger("treg.money_admission").warning(
+                "money_statement_timeout operation=reserve org_id=%s retry_after_s=%s",
+                caller.org_id, retry_after_s)
+        except Exception:  # noqa: BLE001 - diagnostics cannot change the refusal
+            pass
+        raise ReservationFailed("money_statement_timeout", status_code=503, detail={
+            "error": "money_statement_timeout",
+            "message": ("the team's money writes are slow right now; retry shortly. Nothing was "
+                        "reserved or charged."),
+        }, retry_after_s=retry_after_s) from exc
+    finally:
+        if not noted:
+            _note_allowance_skip(caller.org_id, note, mk.reserved_micro if committed else 0,
+                                 as_direct)

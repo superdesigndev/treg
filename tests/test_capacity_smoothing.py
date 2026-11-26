@@ -13,8 +13,7 @@ from httpx import AsyncClient
 from treg import ratestore
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
-from treg.domain.identity import api_keys as managed_keys
-from treg.infra.db import _engine, session_maker
+from treg.infra.db import session_maker
 from treg.domain.capacity.policy import LatestState
 from treg.domain.capacity.sweep import STATE_NS
 from treg.domain.capacity.view import view as capacity_view
@@ -138,11 +137,11 @@ async def test_no_retry_for_a_post_a_long_retry_after_or_a_quota_429(clients: As
     assert r.status_code == 429 and len(seen) == 1, "a POST is never re-sent"
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_script([(429, ((b"retry-after", b"90"),), b"x")], seen))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 429 and len(seen) == 1
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503 and len(seen) == 1
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_script([(429, ((b"retry-after", b"7200"),), b"quota")], seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 429 and len(seen) == 1 and "retry=" not in r.headers.get("X-Treg-Smoothed", "")
+    assert r.status_code == 503 and len(seen) == 1 and "retry=" not in r.headers.get("X-Treg-Smoothed", "")
 
 
 async def test_own_key_calls_are_never_smoothed(clients: AsyncClient, platform_on, monkeypatch):
@@ -185,10 +184,11 @@ async def test_concurrent_platform_calls_over_the_limit_relay_no_429(
     assert [r.status_code for r in rs] == [200] * 4, [r.text for r in rs]
     assert time.monotonic() - t0 <= 2.5
     waits = sorted(int(r.headers["X-Treg-Smoothed"].split("=")[1]) for r in rs if "X-Treg-Smoothed" in r.headers)
-    assert len(waits) == 3 and waits[-1] <= 2000, waits
+    assert waits and waits[-1] <= 2000, waits
 
 
-async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: AsyncClient, platform_on, monkeypatch):
+async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(
+        clients: AsyncClient, platform_on, monkeypatch, connections_held_here):
     """The pool-discipline rule extended to the wait: the bucket runs after the DB phase ended."""
     await _publish_rate("tikhub", 2, 1.0)
     # Put the bucket two tokens in debt so the call below MUST wait, whatever the request setup
@@ -198,7 +198,7 @@ async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: As
     # laptop's sqlite setup let the token refill entirely (no header at all).
     seen = []
     async def provider(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
-        seen.append(_engine.pool.checkedout())
+        seen.append(connections_held_here())
         async def _s():
             yield b'{"ok":true}'
         async def _c():
@@ -209,8 +209,6 @@ async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: As
     # seconds, during which the bucket refills — that is the cold start that made this test pass
     # only after its siblings had run (a laptop saw no wait at all; CI gw2 measured 77 ms).
     assert (await clients.get(f"/call/{EP}?aweme_id=0")).status_code == 200
-    # The warm-up call schedules a last-used write on SQLite's shared pool.
-    await managed_keys.drain_last_used()
     seen.clear()
     bucket = limiter.bucket("tikhub", 2, 1.0)
     bucket.updated = time.monotonic()

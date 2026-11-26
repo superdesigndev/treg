@@ -100,9 +100,10 @@ rather than a `tool_called` failure, so it does not change the admitted-call pop
 ## MCP V2 path
 
 `TREG_CLAUDE_CONNECTOR_ENABLED=true` mounts `/mcp/v2`, registered before `/mcp` so the parent mount
-cannot consume it. Claude can strip the final slash from a custom-connector URL, so
-`NormalizeDirectoryMCPPath` rewrites exactly `/mcp/v2` to `/mcp/v2/` before route matching; both
-spellings must reach the V2 transport and OAuth audience.
+cannot consume it. Claude strips the final slash from a custom-connector URL and does not follow
+redirects, so `NormalizeMCPPath` (installed whenever MCP is served, independent of the flag) rewrites
+exactly `/mcp` to `/mcp/` and `/mcp/v2` to `/mcp/v2/` before route matching; both spellings of each
+URL must reach the same transport and OAuth audience.
 
 ## Route cloning
 

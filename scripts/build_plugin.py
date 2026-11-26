@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate every plugin's SKILL.md from the one source: `src/treg/web/skill.md`.
 
-Five shop windows, one source:
+Seven shop windows, one source:
 
 - **codex**  -> `plugin/skills/treg/SKILL.md` — ships an MCP connector, so its bootstrap points at
   the MCP tools and tells the reader NOT to reach for a terminal.
@@ -17,6 +17,13 @@ Five shop windows, one source:
   a dsh profile. See docs/DSH-PLUGIN.md.
 - **minimax** -> `plugins/minimax/skills/treg/SKILL.md`: skills-only, the served page unchanged.
   See docs/MINIMAX-PLUGIN.md.
+- **claude-directory** -> `plugins/treg-claude/skills/treg/SKILL.md` — the plugin submitted to
+  Anthropic's Claude plugin directory. Like codex it is NOT the served page: it ships a
+  connector-only skill whole, for the directory connector `/mcp/v2/`. See docs/CLAUDE-PLUGIN.md.
+- **copilot** -> `plugins/copilot/skills/treg/SKILL.md`: the GitHub Copilot plugin (Agent Plugins
+  1.0.0). It declares the remote MCP server like the Claude/Cursor folder, so its bootstrap checks for
+  the tools first; its own root because that spec fixes the MCP config at `mcp.json` with a schema
+  and transport type Cursor does not document.
 
 The bare skill sits at the REPO ROOT because that is what `npx skills add` resolves and what
 `clawhub skill publish` takes. The Claude Code plugin is NOT the repo root: a root plugin ships the
@@ -78,6 +85,13 @@ DSH_TARGET = ROOT / "dsh" / "skills" / "treg" / "SKILL.md"
 # own root — submitted as the GitHub subdirectory `plugins/minimax/`, or zipped from inside it. See
 # docs/MINIMAX-PLUGIN.md.
 MINIMAX_TARGET = ROOT / "plugins" / "minimax" / "skills" / "treg" / "SKILL.md"
+# GitHub Copilot (CLI, VS Code, the Copilot app) installs Agent Plugins 1.0.0: `plugin.json` and
+# `mcp.json` at the plugin root, and nothing else may name the MCP file. Cursor reads `mcp.json` in
+# `plugins/treg/` too, in its own shape, so Copilot gets its own root.
+COPILOT_TARGET = ROOT / "plugins" / "copilot" / "skills" / "treg" / "SKILL.md"
+# Anthropic's plugin directory reads one fixed folder per submission, so its plugin has its own root
+# and leaves `plugins/treg/` (Claude Code marketplace, Cursor) as it is.
+CLAUDE_DIRECTORY_TARGET = ROOT / "plugins" / "treg-claude" / "skills" / "treg" / "SKILL.md"
 CLAUDE_MARKETPLACE = ROOT / ".claude-plugin" / "marketplace.json"
 CLAUDE_MANIFEST = ROOT / "plugins" / "treg" / ".claude-plugin" / "plugin.json"
 WORKFLOWS = ROOT / "plugins" / "workflows"
@@ -131,6 +145,79 @@ ask the human for - treg adds the provider credential on its server.
   data, credentials and raw responses.
 """
 
+# The Claude plugin directory is the second variant that is NOT the served page. Its policy refuses
+# AI-generated images, video and audio, money spent without a human in the loop, instructions
+# pulled from outside sources, and download-and-run commands. So it ships this skill whole, for
+# the tools of the directory connector `/mcp/v2/`, which hides the generation platforms.
+CLAUDE_DIRECTORY_SKILL = """---
+name: treg
+description: Search and call treg's catalog of external data APIs - SEO and search results, backlinks, social profiles, company and business-contact enrichment, ad libraries and web data - through the treg connector. Use when a task needs live data from an outside API; search by the task, check the price, then call.
+---
+
+# treg
+
+This plugin connects Claude to treg's MCP server. treg holds the provider credentials on its server,
+so the human never pastes an API key here. There is nothing to install.
+
+If the treg tools are not visible, or a tool answers "not authenticated", the human has not signed
+in yet. Tell them to connect treg in the app's connector or MCP settings (in Claude Code: `/mcp`,
+pick treg, Authenticate), then stop.
+
+## Tools
+
+| tool | use it for |
+|---|---|
+| `catalog_search` | find endpoints by the task in plain words, such as "backlinks for a domain" |
+| `catalog_get` | one endpoint's parameters, provider documentation, price and measured reliability, plus other providers for the same job |
+| `catalog_call_read` | call an endpoint whose documented method is GET, HEAD or OPTIONS |
+| `catalog_call_write` | call an endpoint whose documented method is POST, PUT, PATCH or DELETE |
+| `balance` | the team's prepaid balance and money held for calls in progress |
+| `catalog_request` | record a request when the catalog has nothing for the task (free) |
+
+## Flow
+
+1. `catalog_search` with the task in plain words, not a vendor name. Read `verdict`: `strong` means
+   these endpoints do the task, `closest` means check them with `catalog_get`, `none` means the
+   catalog has no tool for it.
+2. `catalog_get` the endpoint you picked. When several providers do the same job, compare price,
+   success rate and speed, and pick one that takes the inputs you actually have.
+3. Call it with `catalog_call_read` or `catalog_call_write`, matching the method `catalog_get` shows.
+4. Nothing fits: `catalog_request` one sentence about what is missing, then tell the human.
+
+## Money: the human decides
+
+Calls are paid from the team's prepaid treg balance at the price `catalog_get` shows. Most cost a
+fraction of a cent.
+
+- Before the first paid call in a task, tell the human the price per call and the expected total,
+  and get their agreement. Agree on a budget once for the task, not for each call.
+- Keep a running total of each answer's `cost_usd`, and stop and ask before you go over the budget.
+- Before a loop over many inputs, run one or two calls first and check the result.
+- Do not try to add funds. If a call is refused for funds, check `balance` and tell the human; a
+  team admin adds funds in the treg dashboard.
+
+## Write calls
+
+`catalog_call_write` can create, change or delete data at the provider. Before each write call,
+tell the human what it will change and wait for their approval. Many search endpoints use POST only
+to send a query; `catalog_get` says what an endpoint does.
+
+## When something goes wrong
+
+- **A provider error:** the answer is the provider's own, relayed unchanged. Read it and fix the
+  request. Do not repeat a 4xx with other providers: it is almost always the request.
+- **A 429, 5xx or timeout:** try another provider from `catalog_get`, and tell the human which.
+- **An answer that never arrived** (timeout, dropped connection): the provider may have answered and
+  been paid. Repeat the call with the same `idempotency_key` to get the stored answer without paying
+  again. Use a new key, or none, for new work.
+- An error from treg itself says what to do in its `message`. Tell the human.
+
+## Personal data
+
+Some endpoints return data about people, such as business contact details. Use them only for the
+human's stated task, keep the results in this conversation, and do not send them anywhere else.
+"""
+
 # The plugin folder (Claude Code, Cursor, Grok Bot) declares the MCP server URL-only and the host
 # runs OAuth itself. A `${env:TREG_TOKEN}` header made Grok Bot demand the variable before sign-in
 # could start, which no phone user can supply. The served page already branches on whether the tools
@@ -146,6 +233,20 @@ described in `/plugin`:
 {WORKFLOWS}
 
 When the human's task matches one, offer it once; they add it with `/plugin install <name>@treg`.
+"""
+
+COPILOT_BOOTSTRAP = """
+This plugin ships treg's MCP server (`https://treg.to/mcp/`, OAuth sign-in). If you cannot see its
+tools yet, they are waiting for sign-in: the human connects treg in Copilot's MCP server settings and
+signs in to treg in the browser when asked. Do not install the CLI for this.
+
+treg's own marketplace also offers ready workflow skills as separate plugins. After
+`copilot plugin marketplace add superdesigndev/treg`, the human adds one with
+`copilot plugin install <name>@treg`:
+
+{WORKFLOWS}
+
+When the human's task matches one, offer it once.
 """
 
 DSH_BOOTSTRAP = """
@@ -189,7 +290,7 @@ a directory dsh also scans. Harmless, but redundant with this bundle.
 ---
 """
 
-# variant -> (target, bootstrap, stamp_version). One source, five shop windows; None means the
+# variant -> (target, bootstrap, stamp_version). One source, seven shop windows; None means the
 # served page unchanged.
 VARIANTS = {
     "codex": (CODEX_TARGET, None, False),
@@ -197,6 +298,8 @@ VARIANTS = {
     "plugin": (PLUGIN_TARGET, PLUGIN_BOOTSTRAP, True),
     "dsh": (DSH_TARGET, DSH_BOOTSTRAP, False),
     "minimax": (MINIMAX_TARGET, None, True),
+    "copilot": (COPILOT_TARGET, COPILOT_BOOTSTRAP, True),
+    "claude-directory": (CLAUDE_DIRECTORY_TARGET, None, False),
 }
 
 
@@ -226,6 +329,8 @@ def render(variant: str) -> str:
     target, bootstrap, stamp_version = VARIANTS[variant]
     if variant == "codex":
         return CODEX_SKILL.replace("{BASE}", PUBLIC_BASE)
+    if variant == "claude-directory":
+        return CLAUDE_DIRECTORY_SKILL
     text = SOURCE.read_text(encoding="utf-8")
     if "---" not in text:
         raise SystemExit(f"{SOURCE} has no frontmatter — refusing to guess where it ends")
@@ -250,6 +355,10 @@ def render(variant: str) -> str:
     #    TREG_HUB_TEAMS: so the plugin never carries it. A member of such a team gets the section
     #    from the server itself (`treg skill bootstrap` signed in, or /skill.md with their key).
     out = re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", out, flags=re.S)
+    # 6. `<!--agentpay-->` / `<!--/agentpay-->` delimit the keyless wallet road, which the server
+    #    keeps only while agent payments are on. A plugin user signs in, and a static copy could
+    #    outlive the switch, so the plugin never carries it; a keyless agent reads /skill.md.
+    out = re.sub(r"<!--agentpay-->.*?<!--/agentpay-->\n?", "", out, flags=re.S)
     # `{ENDPOINTS}` / `{PROVIDERS}`: the server fills these per request from the loaded catalog; a
     # static plugin copy gets the numbers as of generation, refreshed with every release.
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())

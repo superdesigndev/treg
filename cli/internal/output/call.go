@@ -30,6 +30,14 @@ func (p *Printer) ShowCall(r *api.Response) error {
 	}
 	if p.JSON {
 		e := envelope(r, ctype)
+		if r.Status < 400 && r.Header.Get("X-Treg-Hint") == "compare" {
+			if pair, words := p.comparison(); pair != nil {
+				e.Treg.Set("compare", jsontext.Value(pair))
+				e.Treg.Set("hint_text", words)
+			} else if t := r.Header.Get("X-Treg-Hint-Text"); t != "" {
+				e.Treg.Set("hint_text", p.withOrg(t))
+			}
+		}
 		data, err := json.Marshal(e, jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))
 		if err != nil {
 			e.Result = text(r.Body)
@@ -113,6 +121,9 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	if v := h.Get("X-Treg-Upstream-Failed"); v != "" {
 		m.Set("upstream_failed", v)
 	}
+	if v := h.Get("X-Treg-Review-Pending-Text"); v != "" {
+		m.Set("review_pending", v)
+	}
 	if h.Get(capacityHeader) == exhausted {
 		m.Set("capacity", exhausted)
 	}
@@ -121,9 +132,14 @@ func envelope(r *api.Response, ctype string) callEnvelope {
 	}
 	if v := h.Get("X-Treg-Hint"); v != "" {
 		m.Set("hint", v)
+		// An invitation's words are the registry's; a script reading --json gets them here,
+		// since nothing goes to stderr in this mode.
+		if t := h.Get("X-Treg-Hint-Text"); t != "" {
+			m.Set("hint_text", t)
+		}
 	}
 	if v := h.Get("X-Treg-Routed-Tool"); v != "" {
-		m.Set("routed_tool", v)
+		m.Set("routed_alternative", v)
 	}
 	return callEnvelope{Result: result, Treg: m}
 }
@@ -202,7 +218,7 @@ func (p *Printer) chargeLine(r *api.Response) {
 	}
 }
 
-// hintLine is the registry's optional invitation (X-Treg-Hint: review|feedback); X-Treg-Review is
+// hintLine is the registry's optional invitation (X-Treg-Hint: review|mark|feedback|compare); X-Treg-Review is
 // what a registry before 0.19 sends.
 func (p *Printer) hintLine(r *api.Response) {
 	h := r.Header
@@ -218,6 +234,23 @@ func (p *Printer) hintLine(r *api.Response) {
 	if id == "" {
 		return
 	}
+	// A compare invitation prints the pair itself: an agent judges answers in front of it, and
+	// rarely fetches them. The words beside it are the registry's (`how_to_vote`).
+	if kind == "compare" {
+		if pair, words := p.comparison(); pair != nil {
+			fmt.Fprintf(p.Err, "treg: comparison waiting: %s\ntreg: %s\n", pair, words)
+			return
+		}
+	}
+	// The registry writes the words (X-Treg-Hint-Text), so they change without a CLI release; the
+	// built-in lines below are for a registry that sends none, and match the Python CLI's.
+	if text := h.Get("X-Treg-Hint-Text"); text != "" && kind != "" {
+		if kind == "compare" {
+			text = p.withOrg(text)
+		}
+		fmt.Fprintf(p.Err, "treg: %s\n", text)
+		return
+	}
 	switch kind {
 	case "review":
 		fmt.Fprintf(p.Err, "treg: after using this result, run treg review %s "+
@@ -228,6 +261,39 @@ func (p *Printer) hintLine(r *api.Response) {
 			"treg feedback submit <quality|pricing|friction|other> \"what you saw\" "+
 			"--call-id %s; omit private data, then keep going with the task.\n", id)
 	}
+}
+
+// comparison is the waiting pair as one JSON line, without its words, and the words; nil when
+// none is waiting or it could not be read.
+func (p *Printer) comparison() ([]byte, string) {
+	if p.Comparison == nil {
+		return nil, ""
+	}
+	r := p.Comparison()
+	if r == nil || r.Status != 200 {
+		return nil, ""
+	}
+	pair := jsonObject(r.Body)
+	words, _ := pair["how_to_vote"].(string)
+	if pair == nil || words == "" {
+		return nil, ""
+	}
+	delete(pair, "how_to_vote")
+	words = p.withOrg(words)
+	line, err := json.Marshal(pair, json.Deterministic(true))
+	if err != nil {
+		return nil, ""
+	}
+	return line, words
+}
+
+// withOrg keeps a one-off --org in a compare command the registry's words name: it chose the
+// team the pair belongs to, so the read and the vote must go to the same team.
+func (p *Printer) withOrg(words string) string {
+	if p.OrgOverride == "" {
+		return words
+	}
+	return strings.ReplaceAll(words, "treg compare", "treg --org "+p.OrgOverride+" compare")
 }
 
 // saturated is treg's own 503 when its database pool is exhausted, typed by `treg_saturated`.
@@ -280,6 +346,8 @@ func (p *Printer) failureDiagnostics(r *api.Response) {
 	fmt.Fprintln(p.Err, line)
 	if notice != "" {
 		fmt.Fprintln(p.Err, "treg: "+notice)
+	} else if review := h.Get("X-Treg-Review-Pending-Text"); relayed && review != "" {
+		fmt.Fprintln(p.Err, "treg: "+review)
 	}
 	if r.Status == 401 && !relayed && os.Getenv("TREG_TOKEN") != "" {
 		fmt.Fprintln(p.Err, "treg: TREG_TOKEN was rejected, and it overrides `treg login`: set it to a current key")

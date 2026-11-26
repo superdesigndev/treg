@@ -29,6 +29,7 @@ sources:
   - cli/internal/commands/connections.go
   - cli/internal/commands/env.go
   - cli/internal/commands/feedback.go
+  - cli/internal/commands/ref.go
   - cli/internal/commands/feedback_get.go
   - cli/internal/commands/health.go
   - cli/internal/commands/help.go
@@ -48,6 +49,7 @@ sources:
   - cli/internal/commands/topup.go
   - cli/internal/commands/update.go
   - cli/internal/commands/upload.go
+  - cli/internal/commands/mark.go
   - cli/internal/commands/upload_clis.go
   - cli/internal/commands/upload_env.go
   - cli/internal/commands/upload_llm.go
@@ -111,7 +113,14 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
 - **Config.** `config.Load` / `Save` read and write `config.json` in the Python layout (atomic
   write, `0600`, empty as `null`, a corrupt file reads as fresh, the legacy multi-org format
   migrates). Fields this version does not know are kept in their order, so a newer writer's
-  additions survive; `channel` and `auto_update` are the binary's own.
+  additions survive; `channel` and `auto_update` are the binary's own. `ad-link` beside it is the
+  Python CLI's file too.
+- **Affiliate partner code (binary only).** `treg login --ref`, `treg org create --ref`, `TREG_REF`
+  and the `ref` file beside the config (left by `install.sh --ref` or `install-bin.sh --ref`) exist
+  only in the binary; the frozen Python CLI has none of them. `commands/ref.go` validates the code,
+  the saved file wins over `TREG_REF` (an explicit `--ref` outranks an environment default), `treg org create` sends it as `ref` and removes the file once the team
+  exists, a sign-in that lands in a team removes it, and the browser sign-in carries it as `&ref=`.
+  `tests/cli_go` checks it against the binary alone.
 - **Requests.** `api/url.go` reproduces httpx's encoding, the only one the registry and every
   upstream behind `/call/` have seen: dot segments resolved after the path joins the base URL,
   existing `%XX` kept, everything outside httpx's `PATH_SAFE` percent-encoded; the query is
@@ -157,6 +166,14 @@ of new installs (no working `treg` on the machine) to the binary instead, bucket
   from the controlling terminal, the auto top-up consent. Without a terminal the access is every
   tool, a pasted-key connect needs `--key-stdin`, and the consent is no, even for a `y` piped in;
   no command reads an agent's idle pipe.
+- **Commands only the binary has.** `treg mark`, `treg review --rows` and `treg compare`
+  ([feedback](../architecture/feedback.md), "Call marks" and "Compare"). The binary sends
+  `X-Treg-Hints: review,mark,feedback,compare`, so it is offered mark and compare invitations; on a
+  compare invitation it prints the waiting pair (`GET /comparisons/next?compact=true`) before the
+  words; the Python CLI sends
+  none and gets review and feedback only. For every invitation the binary prints the registry's
+  `X-Treg-Hint-Text` when sent (under `--json`, `_treg.hint_text`), and its built-in line, the
+  Python CLI's, when not. The Python CLI is frozen and always prints its own lines.
 - **Crashes.** Where the Python CLI dies with a traceback (a `--file` that does not exist), the
   binary prints the exception's last line and exits 1.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers
@@ -192,6 +209,12 @@ whose `claude` records its arguments, and compares every file left in HOME, mode
   `mcpServers` as `type: "http"`, `url`, `headers` and `tools: ["*"]`, merged like Cursor's, the header
   dropped under `--oauth`. It is written when that directory exists or `copilot` is on PATH. The
   frozen Python CLI does not write it; `test_mcp_install_writes_github_copilot_go` holds the difference.
+- **Copilot as a runtime** is named by the binary only. Copilot CLI sets `COPILOT_CLI=1` and
+  `COPILOT_AGENT_SESSION_ID` on the shell its tool runs, under a process named `copilot`;
+  VS Code sets `COPILOT_AGENT=1` only on the hidden terminals its Copilot agent runs, whose
+  ancestors name no agent. So `X-Treg-Client` is `copilot-cli` or `copilot-vscode`, and the session
+  label follows: the `copilot` process, or VS Code's mark when no nearer agent is on the tree. The
+  frozen Python CLI sends `cli` for both; `test_only_the_binary_names_copilot` holds the difference.
 - **`skill install <name>`** also installs one of the registry's public skills (its well-known
   index, what `skill bootstrap --skills` installs) when the team has no skill of that name; the
   Python CLI refused it as "no skill named ... in this org", which was most `skill install`

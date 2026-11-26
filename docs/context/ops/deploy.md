@@ -19,6 +19,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/infra/money_admission.py
   - scripts/bench_money_admission.py
+  - scripts/bench_money_scaling.py
   - src/treg/email.py
   - src/treg/audit.py
   - scripts/dev-local.sh
@@ -44,14 +45,38 @@ stamped at a revision this build does not know is also refused, because an expli
 cross the rollback floor.
 
 `python -m treg` runs the same upgrade phase, bootstraps the single local user when enabled, and
-serves `treg.api:app` on `$PORT` (default 18790). Both pre-Uvicorn paths dispose the async engine
+serves `treg.api:app` on `$PORT` (default 18790). On a database stamped at a revision this build
+does not know (`maintenance.SchemaNewerThanBuild`) and that reads as a later revision of this
+project (all digits and above this build's head, `db.stamped_newer_than_build`) it logs a warning,
+skips the release tasks and serves anyway, as the ASGI entry (`verify_db`) does: a newer release
+whose upgrade committed one revision and then failed on the next leaves such a stamp, and the old
+release must still restart on it. Any other unknown stamp (another Alembic project's id, a typo)
+is still refused. Both pre-Uvicorn paths dispose the async engine
 before their `asyncio.run()` loop closes, so the serving loop never receives connections bound to a
 closed loop; calling `maintenance.upgrade()` directly does not dispose it. `python -m treg keygen`
 prints a Fernet key for `TREG_SECRET_KEY`.
 
+Settings come from the environment and `.env`. With `TREG_AWS_SECRET_ID` set to a Secrets Manager
+ARN, startup also reads that secret, a JSON object keyed by the same `TREG_*` names, and its values
+win over the environment; a secret that cannot be read stops startup. The region is the ARN's, and
+boto3 takes credentials from the standard `AWS_*` variables.
+
+Stored credentials move to KMS in three deploys ([auth & secrets](../architecture/auth-secrets.md),
+Encryption): `TREG_KMS_KEY_ID` on every process that reads credentials, then `TREG_KMS_ENCRYPT_NEW`
+on all of them, then `treg-worker admin reencrypt-credentials` (`--dry-run` first) until it reports
+nothing left to re-seal. The KMS key stays as long as any row is sealed with it.
+
+Rotating `TREG_SECRET_KEY`: deploy `old,new` to every process that decrypts, so processes
+overlapping a rolling deploy can open what updated ones write; then deploy `new,old` everywhere;
+run `treg-worker admin rotate-fernet` until it reports nothing left (it covers Arena payloads and
+any stored credential still on Fernet); then set every process to `new` alone. Keep the old key
+out of the environment but retrievable for as long as a database backup from before the rotation
+can still be restored.
+
 The lifespan and every worker command call read-only `verify_db()`: an unstamped database or a known
-revision behind head is refused; an unknown newer revision (code older than schema) warns and serves,
-because additive revisions tolerate rollback. Startup never creates tables, stamps or runs release
+revision behind head is refused; an unknown newer revision (code older than schema: all digits and
+above this build's head) warns and serves, because additive revisions tolerate rollback; any other
+unknown stamp is refused. Startup never creates tables, stamps or runs release
 tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` raises.
 
 ## Schema upgrade safety
@@ -59,20 +84,97 @@ tasks. If `TREG_SECRET_KEY` is empty on a non-SQLite database, `verify_db()` rai
 - **Rollback floors.** A revision marked `contract = True` is a hard floor: never run older code
   against it. `0034` (managed keys) is one because old code cannot enforce stored disable or revoke
   state. `0078` drops `onboardingprofile`; code older than it touches that table only while a
-  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it.
+  `TREG_ONBOARDING_V2*` setting is on, so keep those off on any rollback past it. `0106` rebuilds
+  `agentpayer` with a per-network key; code older than it writes that table only while
+  `TREG_AGENT_PAYMENTS_ENABLED` is on, so keep it off on any rollback past it. `0114` removes
+  queued call charges whose call is already settled, because a fold now applies every row it
+  claims. With the database at `0114`, code may go back no further than the build whose charge
+  writer takes back a re-queued settled call; that build and later ones run unchanged on what
+  is left. An earlier writer can queue such a row again, and `0114`, already recorded, does not
+  run on the next upgrade. If an earlier writer has run, then before a build with the new fold
+  starts: stop writes, let transactions in flight end, and run the revision's statement by hand
+  (`DELETE FROM callcharge WHERE EXISTS (SELECT 1 FROM ledgerentry WHERE ledgerentry.call_id =
+  callcharge.call_id AND ledgerentry.org_id = callcharge.org_id AND ledgerentry.kind =
+  'settle')`).
+- **Rolling back past a revision.** A build cannot downgrade a revision it does not ship, and its
+  `python -m treg upgrade` refuses a newer stamp, so a rollback deploy whose release phase runs
+  `upgrade` fails there until the schema is back at that build's head. Downgrade first, with the
+  newer build (a running instance of it, or a checkout of its commit pointed at the database):
+  `alembic downgrade <older build's head>`. An upgrade that committed some revisions and then
+  failed leaves the old build serving on a newer stamp (`verify_db` warns) with no running
+  instance that has those downgrades; rolling forward resumes at the revision that failed. A
+  revision that only drops a constraint the old code never relied on can stay applied: revert the
+  code with a forward commit that keeps the revision file, never by deleting it.
 - **Revision-only schema.** An autogenerate drift guard requires Alembic head and
   `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
   schema and stamps it at head.
 - **Deploy schema first**, then application and worker code that expects the new revision. A
   platform whose scheduled workers update independently must sequence them accordingly.
 
+**Release order with scheduled workers.** Every `treg-worker` command refuses a database behind its
+build (`verify_db()`), so a scheduled service that redeploys on its own the moment a revision is
+merged fails every run until the web upgrade has applied it, and keeps failing if that upgrade
+refused. Turn automatic deploys off for scheduled services and redeploy them from the release
+script, only after the web pre-deploy upgrade passed:
+
+1. Merge; the web service builds and its pre-deploy step runs `python -m treg upgrade`.
+2. If the upgrade refused (lock timeout budget spent, or the long-lock-holder check), stop: the
+   database is unchanged or stamped part-way, and both the old web code and the old scheduled
+   workers keep running against it. Fix the cause and redeploy the web service.
+3. Once the upgrade passed and the new web code serves, redeploy each scheduled service.
+
 **PostgreSQL lock queueing.** While an `ALTER TABLE` waits for its `ACCESS EXCLUSIVE` lock, every
-later query on that table queues behind it. So migrations set a 5 s `lock_timeout`, the longest stall
-a deploy may inflict, and no revision may raise it for an `ALTER`. A deploy waits longer by retrying
-instead: `maintenance` re-runs `alembic upgrade head` up to `LOCK_RETRY_ATTEMPTS` times after a lock
-timeout with a jittered pause so short transactions drain, and `env.py` commits each revision on its
-own (`transaction_per_migration`) so a retry resumes at the revision that timed out. Any other error
-fails the deploy at once.
+later query on that table queues behind it. So migrations set `lock_timeout` to
+`TREG_MIGRATION_LOCK_TIMEOUT_S` (2 s, at most 5 s), the longest stall a deploy may inflict, and no
+revision may raise it for an `ALTER`. The value stays above PostgreSQL's default `deadlock_timeout`
+(1 s): that is when a waiting `ALTER` makes an ordinary autovacuum on the table give up its lock,
+and a wait of exactly 1 s can time out at that same instant. `env.py` sets the timeouts again after
+every revision (`on_version_apply`), so an index revision that restores fixed values does not
+lengthen the next revision's wait. A deploy waits longer by retrying instead: `maintenance` re-runs
+`alembic upgrade head` up to `TREG_MIGRATION_LOCK_RETRY_ATTEMPTS` times (30) after a lock timeout,
+within `TREG_MIGRATION_LOCK_RETRY_BUDGET_S` (600 s),
+pausing a random time between half and all of `TREG_MIGRATION_LOCK_RETRY_PAUSE_S` (2 s) so short
+transactions drain, and `env.py` commits each revision on its own (`transaction_per_migration`) so a
+retry resumes at the revision that timed out. Any other error fails the deploy at once.
+
+**Refusing behind a long lock holder.** Retrying helps only against holders that let go soon.
+PostgreSQL never cancels an anti-wraparound autovacuum for a waiting `ALTER`, and an open
+transaction keeps its locks until it ends; behind either, every attempt repeats the stall. So
+before every attempt (the first and each retry), `maintenance._refuse_behind_long_lock_holder`
+reads `pg_locks` and `pg_stat_activity` (read-only, PostgreSQL only) for the tables the pending
+revisions name (string literals in their files, docstrings excluded), together with their
+partitions (`pg_partition_tree`) and TOAST tables (`reltoastrelid`), and refuses at once, naming
+the session, when an anti-wraparound autovacuum or a transaction older than
+`TREG_MIGRATION_LOCK_HOLDER_MAX_XACT_S` (30 s) holds a conflicting lock on one of them. Only
+conflicting modes count: a pending revision that plainly changes rows takes ROW EXCLUSIVE, so
+readers and autovacuum do not stop it; any other revision is taken to need ACCESS EXCLUSIVE,
+which every mode blocks. `maintenance._takes_access_exclusive` reads a revision fail-closed: it
+is data-only only when every call in `upgrade()` and the module functions it calls is
+`op.execute` of literal UPDATE/INSERT/DELETE/SELECT SQL, `op.bulk_insert`, a
+`sa.text`/`sa.table`/`sa.column` expression or another module function, and no string there or
+in a module constant names a DDL keyword (`DO` included) anywhere once SQL comments are removed.
+Any other call (`op.get_bind()`, an imported helper, a class, `sa.Index(...).create`) means ACCESS
+EXCLUSIVE. Table names are read from the revision's strings, docstrings and error messages left
+out. Nothing ran after the check; wait for the holder (never cancel an anti-wraparound vacuum) or
+end the transaction, then deploy again. To go ahead behind the bounded lock wait for this one
+deploy, set `TREG_MIGRATION_LOCK_HOLDER_CHECK_SKIP` to the head revision id the refusal names: it
+applies only while that revision is the head and stops by itself when a later one ships (a value
+that no longer matches is ignored with a warning). `TREG_MIGRATION_LOCK_HOLDER_CHECK=false` still
+turns the check off, for this one deploy only, then remove it; every upgrade logs a warning
+while either bypass is in force. `pg_locks` and `pg_class` are readable by every role, but to a role without
+`pg_read_all_stats` PostgreSQL shows another role's sessions, autovacuum included, with NULL
+`backend_type`, `xact_start` and `query`. The check keeps those rows: one holding `SHARE UPDATE
+EXCLUSIVE` on a table whose `age(relfrozenxid)` or `mxid_age(relminmxid)` has reached
+`autovacuum_freeze_max_age` (or its multixact twin; a lower per-table reloption wins) is taken as
+an anti-wraparound autovacuum and refused; any other hidden holder is logged as a warning naming
+its pid, lock and table, and the upgrade continues, bounded by the lock wait. Granting
+`pg_read_all_stats` to the migration role gives the check full sight.
+
+**Retry time budget.** Beside the attempt count, retries stop once the next pause would pass
+`TREG_MIGRATION_LOCK_RETRY_BUDGET_S` (600 s) since the first attempt, with an error naming the
+setting; revisions committed before the timeout stay applied. The budget keeps the whole retry
+loop well inside a platform's pre-deploy time limit even when each attempt runs long revisions
+before it times out.
 
 - Hot-table ALTERs belong in their own revision, add only nullable columns without defaults
   (metadata-only in PostgreSQL), and leave backfills and `NOT NULL` to later steps.
@@ -87,20 +189,60 @@ fails the deploy at once.
 
 `POOL_SPECS` in `infra/db.py` defines three PostgreSQL pools: `api` (request handlers), `admin`
 (`/admin/*`) and `background` (audit, archive and other background work). Each class can exhaust
-only its own slots. Minor pools deliberately have no overflow, because an unbounded escape hatch
-defeats the bulkhead. A new class of work gets an appropriate pool, not only a module-local
+only its own slots: a pool's cap is `pool_size + max_overflow`, and both are bounded, so overflow
+stays inside the bulkhead. A new class of work gets an appropriate pool, not only a module-local
 semaphore. `tests/test_db_pool_isolation.py` pins the routing.
 
 Every process opens its own pools. Compute the connection peak from pool capacities, process count
 and the maximum overlap during a rolling deploy, and keep it below the database ceiling with
-headroom. `TREG_DB_POOL_OVERRIDES` (`"admin.pool_size=4,background.pool_size=12"`) patches
+headroom. The two halves of a capacity cost differently. A pool opens connections lazily, not
+at startup, and keeps up to `pool_size` of them open after they are returned: once a process has
+used that many at once, it holds them while idle, and old processes still hold theirs during a
+rolling deploy. Overflow connections close when returned, so they cost only while busy, at the
+price of a new connection per burst. Moving capacity from `pool_size` to `max_overflow` lowers
+what stays open after traffic subsides; the full-load peak is still `pool_size + max_overflow`
+per pool. `connection_budget()` reports both, per process and per instance
+(`per_instance`, `retained_per_instance`).
+
+During a rolling deploy both generations hold connections, each with its own specs. Budget the
+overlap as a sum, not a doubling: `old per-process figure x old process count + new per-process
+figure x new process count`, with process count = instances x workers. The first deploy that
+changes `TREG_DB_POOL_OVERRIDES` still runs the old processes on the old specs, so only later
+deploys see the new figure on both sides. Use the capacity for the worst case and the retained
+figure for what an idle overlap keeps open. `TREG_DB_POOL_OVERRIDES` (`"admin.pool_size=4,background.pool_size=12"`) patches
 `POOL_SPECS` at startup; invalid entries are logged and skipped, and zero or negative values must
 never pass through because SQLAlchemy treats some as unlimited. `bootstrap.pool_gauge` emits
 per-pool peak, capacity and headroom: resize from measurements, one pool at a time. A larger pool
 does not repair a slow scan, lock queue or missing index.
 
+`TREG_BACKGROUND_DATABASE_URL` sends the background pool through a transaction-pooling PgBouncer
+in front of the same database. The API and admin pools, the read pool, migrations (`maintenance.py`
+reads `_db_url`) and startup checks keep `TREG_DATABASE_URL`. Only the background pool may go
+there: PgBouncer reports a full server pool only by closing the client connection after
+`query_wait_timeout`, which asyncpg raises as `ConnectionDoesNotExistError`, the same error as a
+dropped connection and far later than `pool_timeout`, so a request pool would wait instead of
+answering the typed 503; and PgBouncer refuses the read pool's `default_transaction_read_only`
+startup parameter. Startup (`verify_background_database`) refuses the URL when it reaches another
+database, role, schema or server, or when asyncpg's prepared statements reach the server under
+their own names: asyncpg prepares every statement, so the pooler must track prepared statements
+(PgBouncer 1.21 or later, `max_prepared_statements` above 0). Behind it the pool's retained
+connections are held by PgBouncer, so `connection_budget()` leaves the pool out: the database sees
+the transactions in flight plus the server connections PgBouncer keeps until its idle timeout,
+which count against the ceiling together with the direct pools. Keep the background cap times
+every process that can run at once, both deploy generations included, below the pooler's server
+pool, so a background checkout never waits there for a server. Nothing survives a transaction
+there: session-level state (session advisory locks, a plain `SET`, `LISTEN`, temporary tables) is
+allowed only where `tests/test_db_pooler.py` lists it.
+
 A request that gets no slot within `pool_timeout` receives `503 {"treg_saturated": true}` with
-`Retry-After: 2` (`bootstrap_handlers._pool_saturated`). SQLite aliases all three makers to one
+`Retry-After: 2` (`bootstrap_handlers._pool_saturated`). The database refusing a new connection
+(asyncpg `TooManyConnectionsError`, including "remaining connection slots are reserved", and
+`CannotConnectNowError`, raw or inside a SQLAlchemy `OperationalError` or `InterfaceError`, the
+`DB_BUSY_WRAPPERS`) is the same condition and gets the same response; `infra/db.py` `DB_BUSY_ERRORS`,
+`is_db_busy` and `answers_db_busy` name it. Any other error type, even one whose cause is a refused
+connection, stays a server error the call router stamps itself. A settle that meets it retries
+once on a fresh session, like a pool timeout, because the error arises before any statement runs.
+SQLite aliases all three makers to one
 engine: it has file-level write locks it cannot share, so separate engines would only manufacture
 lock failures.
 
@@ -159,6 +301,20 @@ and keep writes, cursor advancement and concurrency control on the primary. `con
 covers only primary pools: budget the read pool against its own target, and add both when they share
 a server. Schema upgrades, startup verification and test resets target the primary.
 
+### Connection budget
+
+Per process, the primary connections are the sum over `api`, `admin` and `background` of
+`pool_size + max_overflow` (`connection_budget()["per_process"]`). The ceiling to stay under is
+`per_process * processes alive at once`, where processes alive is `WEB_CONCURRENCY * instances`, doubled
+for the rolling-deploy overlap (`deploy_peak`), plus every worker, cron and admin process, all measured
+against the database `max_connections` minus its reserved slots. Pools open lazily and a healthy
+database holds far fewer than the capacity, but a slow database keeps connections checked out and the
+peak approaches it. Do not shrink the `api` overflow to fit: a smaller api pool turns a short database
+slowdown into saturation 503s. Before adding web workers or instances, put a connection pooler in
+transaction mode between the services and the database (the code uses only `SET LOCAL` and
+transaction-level advisory locks; asyncpg then needs its statement caches off). `python -m treg
+upgrade` and Alembic use session-level settings and must keep a direct database URL, never the pooler's.
+
 ## Configuration (`config.py`)
 
 `Settings` uses the `TREG_` prefix, reads `.env`, and is cached by `get_settings()`. Settings whose
@@ -188,6 +344,10 @@ meaning is not obvious from the field:
   `TREG_FIND_ENGINE` ([find](../architecture/find.md)) are their own kill switches.
 - `TREG_REQUIRED_EXTENSIONS` names installed [policy extensions](../architecture/policy-extensions.md)
   so a build that lost one fails to start instead of serving without it.
+- `TREG_PARAM_CHECK` is `log` (the default; any value but `refuse` reads as it) or `refuse`. Log
+  mode relays a catalog request that breaks a declared type, enum or range as before and logs a
+  `catalog_parameter_would_refuse` line; read those lines before turning on `refuse`, which answers
+  them 400 ([proxy model](../architecture/proxy-model.md#catalog-request-checks)).
 
 Credentials stay in the deployment secret store.
 
@@ -213,6 +373,22 @@ security test or a probe that must not be throttled, list its addresses in
 `TREG_CALL_EVENTS_HMAC_SECRET` on every process that serves calls or settles async tasks. Keep the
 secret stable: changing it breaks every join across the change.
 
+**Pairwise comparisons** ([feedback](../architecture/feedback.md), "Pairwise comparisons") run as
+`treg-worker compare collect`, meant for an hourly cron job with the archive and platform-key
+settings of the web service; every run also removes rows a team deletion missed, so that latency is
+one run. Sampling is off unless `TREG_COMPARE_PAIRS` is set and `TREG_COMPARE_MAX_PER_DAY` is above
+0; the call path then marks sampled calls (`TREG_COMPARE_RATE`) in `TREG_KV_URL`'s store, which the
+job and the web service must share. `TREG_COMPARE_LOOKBACK_HOURS` is at most 2, the marker's life,
+so the job must run at least that often. Each run makes at most `TREG_COMPARE_MAX_PER_RUN` calls on
+treg's key, sequentially; a day's spend is at most `TREG_COMPARE_MAX_PER_DAY` times the paired
+vendors' price per call only where that price is the request's maximum cost. The calls bypass the
+shared provider limiter: check each pilot vendor's price and capacity before enabling a pair.
+Each run prints one JSON line; `skip_reasons` counts, per reason, the candidates that stopped
+before a call (`no_marker`, `a_not_archived`, `b_unavailable`, ...), so a run
+that calls nobody says where its candidates stopped.
+Rollback is `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept: it then calls nobody and only
+removes orphaned rows, which removing the cron would stop.
+
 **Provider client codes.** A provider file's `client_header` is filled only once
 `TREG_CLIENT_ID_SECRET` is set on the processes that relay calls. Turn it on after the provider is
 ready to read the header, and keep the secret stable: changing it gives every team a new code at
@@ -221,7 +397,10 @@ every provider.
 **Agent payments.** `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a
 catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
 of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
-recipient address; the defaults are testnets, and startup names every missing setting in one error.
+recipient address; the defaults are testnets. The web app and `treg-worker agentpay reconcile`
+refuse to start with one error naming every missing setting; other workers start without them, so
+the payment secrets belong on those two, and the Stripe key also wherever
+`treg-worker agentpay stripe-address` runs. A value of the wrong type still stops every process.
 On mainnet the x402 facilitator is Coinbase's
 (`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`) and needs
 `TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
@@ -231,8 +410,13 @@ are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
 `TREG_AGENT_PAYMENTS_STRIPE_SECRET_KEY`, the key of the Stripe account with stablecoins enabled, or
 `TREG_STRIPE_SECRET_KEY` when that is the same account, and an explicit
 `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). Tempo's hosted RPC takes `TREG_AGENT_PAYMENTS_TEMPO_RPC_URL`
-with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. See
-[agent payments](../architecture/agent-payments.md).
+with `TREG_AGENT_PAYMENTS_TEMPO_RPC_API_KEY`. x402 on Base mainnet also needs its own
+`TREG_AGENT_PAYMENTS_X402_RPC_URL` (a paid node: the reconciler reads it at
+`TREG_AGENT_PAYMENTS_X402_BLOCK_TAG`, default `finalized`). Keyless traffic is capped by
+`TREG_AGENT_PAYMENTS_MAX_PAYMENTS_PER_IP_MINUTE`, `TREG_AGENT_PAYMENTS_MAX_QUOTES_PER_IP_MINUTE`
+(unpaid requests) and `TREG_AGENT_PAYMENTS_MAX_VERIFICATIONS_MINUTE` (payment and proof checks
+that reach a chain or facilitator, across all clients). The x402 sign-in-with-x proof names `TREG_PUBLIC_URL`, so it must be the
+origin agents call. See [agent payments](../architecture/agent-payments.md).
 
 ## Optional money admission
 
@@ -248,8 +432,98 @@ and money-worker process must use the same store and rollout settings; no migrat
 semantics are in [money](../architecture/money.md#optional-admission-before-the-settlement-session).
 
 `TREG_HOLDLESS_FREE_ORG_IDS` (default `[]`) lists orgs whose untagged free platform calls skip
-the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless"). Removing
-an id restores the hold path for that org's new calls; no migration is needed.
+the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless").
+`TREG_HOLDLESS_FREE_ALL_ORGS` (default `false`) does the same for every org except those in
+`TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS`, which never skip the hold. To put one org back on the hold
+path, add it to `TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS`; removing it from the list works only while
+the all-orgs switch is off. No migration is needed.
+
+`TREG_MONEY_ALLOWANCE_ORG_IDS` (default `[]`) lists orgs whose eligible metered calls spend from
+a standing allowance instead of one hold per call ([money](../architecture/money.md), "Allowance");
+`TREG_MONEY_ALLOWANCE_ALL_ORGS=true` puts every org on it instead, and
+`TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` (default `[]`) keeps the orgs it lists off either way, so
+one team is taken off without turning the rest back. Every listed org's calls that keep their own
+hold are counted by reason in one `allowance_skips` line per reason a minute per process; the orgs
+in `TREG_MONEY_ALLOWANCE_ORG_IDS` also get `allowance_skipped` lines of their own. The allowance needs `TREG_KV_URL` and PostgreSQL, and is ignored on SQLite. `TREG_MONEY_ALLOWANCE_CHUNK_MICRO` is what a refill brings the counter up
+to, `TREG_MONEY_ALLOWANCE_FRESH_S` how long a refill keeps admitting calls, and
+`TREG_MONEY_ALLOWANCE_LINGER_MS` how long finished calls wait to share one insert.
+`TREG_MONEY_ALLOWANCE_REFILL_WINDOW_S` (default `0`, off) sizes a refill to what the team took
+from its counter over that many seconds instead (at most twice what it took since the last
+refill), never below the chunk; the allowance hold then carries at most
+`TREG_MONEY_ALLOWANCE_REFILL_MAX_MICRO`, at most `TREG_MONEY_ALLOWANCE_REFILL_BALANCE_PERCENT` of
+the team's balance and at most that share of what its daily cap has left, and a call on the
+exact path that the balance alone cannot pay for gets the counter back first when it holds
+enough to make up the difference. A window longer
+than `TREG_MONEY_ALLOWANCE_FRESH_S` buys nothing more. Processes started with it back at `0`
+refill to the chunk again, with nothing else to undo, and processes of different settings can
+run side by side. With the switch off, removing an id
+returns that org's new calls to the hold path at once; no migration is needed. With the switch
+on, removing an id only stops its own skip lines: the org stays on, and counted, until it is excluded. The allowance's
+background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
+closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
+the `background` pool, which is one connection larger per process for it. At most
+`TREG_MONEY_ALLOWANCE_FOLD_SHARDS` processes (default 4) fold at once, each over its own share of
+the teams; raise it when the queue's oldest charge keeps growing and the database has room, or
+set `1` to go back to one process folding every team. The listing it folds by needs revision
+`0126`, so a build from before it cannot be deployed again once `0126` has run (its `upgrade`
+refuses the newer schema): withdraw the shares with `1`, or with a forward release that reverts
+the code and keeps the revision; request processes do
+not fold, so a deployment that turns the allowance on must run at least one process in one of
+those roles. A queued charge is applied as it stands: a fold does not ask the ledger whether
+its call was settled before. What makes that true is the charge writer, which takes back a
+charge it re-queued for a settled call, so an upgrade to this behaviour from a build whose
+writer did not do that is done in this order: stop every process of the earlier build and let
+its transactions in flight end; run `python -m treg upgrade` (revision `0114` removes any such
+row left queued); start the new build. The order matters: an earlier process still serving
+calls after `0114` has run can queue another such row, the revision does not run a second
+time, and the new build's fold would charge that call twice. Where every process already runs
+a build with the writer's cleanup, no such row can be queued any more and the upgrade needs no
+stop. The
+allowance trusts the store to keep the writes it acknowledged for as long as the server
+runs. A server that starts again (a restart that dropped its last writes, a restore from a
+snapshot, a promoted replica) is recognised by its `run_id`: every counter built before is
+discarded and rebuilt by the next refill. Nothing needs doing then, on two conditions.
+Every process that serves calls runs a build with this check: an earlier one does not look
+at the run and spends from a counter that went back until a newer process touches it. And
+the store runs the counter's scripts, which call `INFO`: it must permit `INFO` inside a
+script (some managed offerings refuse it there whatever the ACL grants) and allow it to the
+store's user (ACL category `@dangerous`); where it does not, no counter operation answers
+and every call takes the hold path. After a restart a team whose credit was all in its hold
+is refused until the idle close returns it, since no refill can add the chunk a new counter
+is built from. While processes of an earlier build share the store with newer ones, a
+counter an earlier process builds is discarded by the next newer one that touches it: each
+time, a chunk waits in the hold for the idle close. A freeze an earlier process wrote is
+kept.
+
+Not recognised: a server that goes back to older data WITHOUT starting again (a reload in
+place; a server that kept running, took older data from another primary and became primary
+again), and a restart while processes of an earlier build still serve calls. Either can
+admit the same money twice, with no bound on amount or time while the allowance stays on,
+and what a team's credit cannot cover is the platform's cost. After such an event, take every
+team off: `TREG_MONEY_ALLOWANCE_ALL_ORGS=false` and `TREG_MONEY_ALLOWANCE_ORG_IDS=[]` together
+(emptying the list alone leaves every team on while the switch is on). Put a team back, or turn
+the switch on again, only when all of these can be seen:
+
+- every process that serves calls has restarted with every team off (the settings are read
+  per process, so one still running the old value keeps admitting from the counter);
+- calls admitted before that have ended and their charges are written. A process that still
+  runs logs when it could not confirm call charges and when they are written; the team having
+  no `callcharge` rows shows only that the queue in the database is empty. A process that
+  exited with unconfirmed charges took them with it, and no later log or row shows that:
+  compare the team's calls with its `settle` entries for the interval;
+- the team has no `hold` row with `allowance` set (the idle sweep closes it once no refill has
+  stamped it for the hold lifetime plus its margin);
+- the team's counter in the store has been retired or has expired. With every team off no
+  call reaches a refill, so nothing else removes it; the sweep retires it after closing the
+  hold, and that write is not retried. A counter still there when the team is back on is
+  replaced by the first refill, which does not count what it shows.
+
+When only some teams' counters were affected, list those teams in
+`TREG_MONEY_ALLOWANCE_EXCLUDED_ORG_IDS` instead and remove them from
+`TREG_MONEY_ALLOWANCE_ORG_IDS`, with the same restart of every process that serves calls and the
+same checks for each before taking it out of the exclusion list. An exclusion wins over the
+switch and the list, but a process built before the exclusion list existed reads only
+`TREG_MONEY_ALLOWANCE_ORG_IDS`, and keeps admitting a team still named there.
 
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
@@ -263,6 +537,13 @@ small org set; disabling restores the database path, which remains authoritative
 loopback services via `TREG_TEST_DB_URL` and `TREG_TEST_KV_URL` (skipped without them); the bench
 requires database names starting `treg_admission_test` and resets that schema. Its timings are
 local synthetic evidence, not deployed throughput.
+
+`scripts/bench_money_scaling.py` takes the same two services and the same database-name guard. It
+runs the reserve and the settle of each call from separate OS processes and prints, per process
+count, one team's throughput, latency and database statements per call (BEGIN and COMMIT
+included), then checks the ledger.
+Use it to see whether a change lets a team's throughput grow with processes; its timings are
+local synthetic evidence too.
 
 ## Safe local mode
 
@@ -359,18 +640,20 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   readers read only these summaries: missing or stale worker evidence shows reliability as
   unmeasured, and the reader logs `endpoint stats fold unavailable`. A persistently failing bucket
   needs investigation, not unlimited time. Writers older than the summary schema must be retired
-  before a historical correction, or their unmarked changes need another one.
-  `catalog requeue-async-stats --apply` is one-shot (never schedule it); save its output as the
-  manifest for the read-only `catalog repair-status --manifest`, which exits 0 when every in-window
-  target is reconciled, 1 while any is pending or missing, 2 for an invalid manifest. `repair_pending
-  > 0` on active buckets is normal.
+  before a historical correction, or their unmarked changes need another one. `repair_pending > 0`
+  on active buckets is normal.
 - **`rankings refresh`** rebuilds /rankings from `endpointdaystat`, as its own job so a failure only
   leaves rankings a run older.
 - **`capacity sweep`**, **`overflow verify`** (spends real money) and **`overflow sync`**: see
   [capacity](capacity.md); verify must be followed by sync. The sweep reads
   `TREG_PLATFORM_OPENROUTER_MANAGEMENT_KEY` and `TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID` when those
   balances should be observed.
-- **`asynctasks settle`** completes durable holds for asynchronous upstream operations.
+- **`asynctasks settle`** completes durable holds for asynchronous upstream operations. Where
+  teams spend from an allowance it needs `TREG_KV_URL` too: a task that settles past its hold
+  freezes its team's counter, and without the store the job cannot. Every worker command
+  waits a bounded time before it exits for the freezes it owes (a hub check settles child calls
+  too), waking any that were pausing before another attempt, and says on stderr how many it
+  lost.
 - **`billing reconcile`** checks the top-ups Stripe collected against the ledger
   ([money](../architecture/money.md), "Reconciliation against Stripe"); run it at least daily with an
   overlapping `--hours`. It exits 1 on a gap and posts to `TREG_OPS_SLACK_WEBHOOK_URL` when set.
@@ -383,6 +666,14 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
 - **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
   row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
   incomplete run; run one instance at a time.
+- **`archive retain`**: does nothing until `TREG_ARCHIVE_RETENTION_ENABLED=true`; `--dry-run` counts
+  what it would delete either way. Each run stops at `TREG_ARCHIVE_RETENTION_MAX_SECONDS` and the
+  next resumes from its cursor (also after `TREG_ARCHIVE_RETENTION_MAX_KEYS` deletions); a second
+  instance answers `busy` and does nothing (a session advisory lock: connect the worker to
+  PostgreSQL directly, not through a transaction-mode pooler); run one at a time, with the archive object-store settings
+  when R2 writes are on. Objects of deleted rows go in a later run, once
+  `TREG_ARCHIVE_RETENTION_OBJECT_GRACE_S` (900 s) has passed ([archive](../architecture/archive.md),
+  "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker

@@ -79,6 +79,23 @@ def test_shim_execs_treg_run_with_clean_path_and_verbatim_args(tmp_path):
     assert argv_out.read_text().splitlines() == ["run", "stripe-tool", "--", "balance", "--live"]
 
 
+def test_a_tool_name_cannot_add_a_line_to_the_shim(tmp_path):
+    marker, argv_out = tmp_path / "pwned", tmp_path / "argv.out"
+    fake_treg = tmp_path / "faketreg"
+    fake_treg.write_text(f'#!/bin/sh\nfor a in "$@"; do printf "%s\\0" "$a"; done > {argv_out}\n')
+    fake_treg.chmod(0o755)
+    shim_dir = tmp_path / "bin"
+    shim_dir.mkdir()
+    name = f"x\ntouch {marker}\n#"
+    shell.write_shims(str(shim_dir), [("aws", name, "local")], str(fake_treg))
+
+    subprocess.run([str(shim_dir / "aws"), "s3", "ls"], check=True,
+                   env=dict(os.environ, TREG_SHELL_REALPATH="/usr/bin:/bin"))
+
+    assert not marker.exists()
+    assert argv_out.read_bytes().split(b"\0")[:-1] == [b"run", name.encode(), b"--", b"s3", b"ls"]
+
+
 def test_server_route_shim_execs_treg_run_server(tmp_path):
     """A server-routed shim must call `treg run --server <tool>` through a real shell."""
     argv_out = tmp_path / "argv.out"

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -12,7 +15,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field, PositiveInt, field_validator, model_validator
 from urllib.parse import urlsplit
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import AWSSecretsManagerSettingsSource, BaseSettings, SettingsConfigDict
 
 # Every hostname the hosted service has answered to. treg moved
 # treg.superdesign.dev → treg.to; installed CLIs, skill.md files, .mcp.json configs and
@@ -112,16 +115,139 @@ def _blocked_email_domains(raw: str) -> frozenset[str]:
 TREG_USER_AGENT = "treg/1.0 (+https://treg.to)"
 
 
+_PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+_CAPABILITY_NAME = re.compile(r"[a-z0-9][a-z0-9_.-]*")
+
+
+def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
+    if not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise ValueError("compare_pairs must be a JSON object") from None
+    message = ("compare_pairs must map capabilities to lists of two different lowercase providers, "
+               'e.g. {"web.search": [["provider-a", "provider-b"]]}')
+    if not isinstance(parsed, dict):
+        raise ValueError(message)
+    out: dict[str, list[tuple[str, str]]] = {}
+    for capability, pairs in parsed.items():
+        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
+                and isinstance(pairs, list)):
+            raise ValueError(message)
+        for pair in pairs:
+            if not (isinstance(pair, list) and len(pair) == 2
+                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in pair)
+                    and pair[0] != pair[1]):
+                raise ValueError(message)
+        out[capability] = [(a, b) for a, b in pairs]
+    return out
+
+
+RANKING_TIERS = ("good", "bad")
+
+
+def _parse_ranking_tiers(raw: str) -> dict[str, dict[str, str]]:
+    if not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        raise ValueError("ranking_tiers must be a JSON object") from None
+    message = ("ranking_tiers must map capabilities to {\"good\": [...], \"bad\": [...]} lists of "
+               'lowercase providers, each provider in one list, e.g. {"web.extract": {"good": ["a"], "bad": ["b"]}}')
+    if not isinstance(parsed, dict):
+        raise ValueError(message)
+    out: dict[str, dict[str, str]] = {}
+    for capability, tiers in parsed.items():
+        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
+                and isinstance(tiers, dict) and set(tiers) <= set(RANKING_TIERS)):
+            raise ValueError(message)
+        named: dict[str, str] = {}
+        for tier, providers in tiers.items():
+            if not (isinstance(providers, list)
+                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in providers)):
+                raise ValueError(message)
+            for p in providers:
+                if p in named:
+                    raise ValueError(message)
+                named[p] = tier
+        out[capability] = named
+    return out
+
+
 class Settings(BaseSettings):
     # Most of these values are credentials: a validation error names the field, never the value.
     model_config = SettingsConfigDict(env_file=".env", env_prefix="TREG_", extra="ignore",
                                       hide_input_in_errors=True)
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings,
+                                   file_secret_settings):
+        secret_id = os.environ.get("TREG_AWS_SECRET_ID", "").strip()
+        if not secret_id:
+            return init_settings, env_settings, dotenv_settings, file_secret_settings
+        # An ARN (arn:aws:secretsmanager:<region>:...) names its region; boto3 would otherwise read
+        # AWS_DEFAULT_REGION and ignore AWS_REGION. Credentials come from the standard AWS_* variables.
+        region = secret_id.split(":")[3] if secret_id.startswith("arn:") else None
+        secrets_manager = AWSSecretsManagerSettingsSource(
+            settings_cls, secret_id, region_name=region, case_sensitive=False, env_prefix="TREG_",
+            env_nested_delimiter=None)
+        return init_settings, secrets_manager, env_settings, dotenv_settings, file_secret_settings
 
     review_sample_rate: float = Field(default=0, ge=0, le=1)
     feedback_hint_rate: float = Field(default=0, ge=0, le=1)
     # Review invitations a team can receive per hour, whatever its call volume. Sampling decides
     # WHICH calls qualify; this decides how many of them a team is actually asked about.
     review_budget_per_hour: int = Field(default=5, ge=1)
+    # Targeted review invitations (application/review_targets.py): an endpoint holding fewer than
+    # `review_target_reviews` reviews in the last `review_target_window_days` (at most
+    # `review_target_team_cap` counted per team) is invited more often, up to `review_target_rate`
+    # when it has none. 0 = off: every call is sampled at `review_sample_rate`. A team holding
+    # `review_target_team_cap` reviews of an endpoint is not invited there again; a team holding
+    # none is invited at least at `review_target_new_team_rate` (0 = no such floor).
+    review_target_reviews: int = Field(default=0, ge=0)
+    review_target_rate: float = Field(default=1.0, ge=0, le=1)
+    review_target_window_days: int = Field(default=14, ge=1)
+    review_target_team_cap: int = Field(default=10, ge=1)
+    review_target_new_team_rate: float = Field(default=0, ge=0, le=1)
+    # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
+    # previous call, sent along with the next one). 0 = nobody, the tool as before.
+    mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)
+    # The mark invitation: after a call on one of these capabilities (an endpoint id equal to one,
+    # or ending in `.<capability>`; empty = every catalog call), sampled at `mark_hint_rate` and
+    # capped per team per hour. Each text is one A/B variant, `{call_id}` filled in, chosen per
+    # call; empty = the built-in text. Copy changes are configuration, not a release.
+    mark_hint_rate: float = Field(default=0, ge=0, le=1)
+    mark_hint_capabilities: list[str] = Field(default_factory=list)
+    mark_hint_per_hour: int = Field(default=3, ge=1)
+    mark_hint_texts: list[str] = Field(default_factory=list)
+    ranking_tiers: str = ""
+    # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
+    # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
+    # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
+    # the two answers blinded. Off unless pairs are set and `compare_max_per_day` is above 0.
+    # JSON: capability -> list of unordered provider pairs, e.g.
+    # {"web.search": [["provider-a", "provider-b"]]}.
+    compare_pairs: str = ""
+    compare_rate: float = Field(default=0, ge=0, le=1)
+    # Second-vendor calls one run makes, and all runs of one UTC day together (counted in the table).
+    compare_max_per_run: int = Field(default=20, ge=0)
+    compare_max_per_day: int = Field(default=0, ge=0)
+    # How far back a run looks for routed calls; never past the life of a call's eligibility
+    # marker (`compare.MARKER_TTL_S`, two hours).
+    compare_lookback_hours: int = Field(default=2, ge=1, le=2)
+    # Compare invitations a team receives per hour.
+    compare_budget_per_hour: int = Field(default=3, ge=1)
+    # A team holding this many comparisons of one capability and pair in the window is not sampled.
+    compare_team_cap: int = Field(default=10, ge=1)
+    compare_window_days: int = Field(default=14, ge=1)
+    # A team is compared only if its agent answered a review invitation this recently, on a surface
+    # that shows a compare invitation (application/compare._answering_teams). Shortening it acts at
+    # once; lengthening it reaches CLI answers noted in the last `ANSWERING_NOTE_DAYS` (30), and
+    # beyond that only answers made after the change.
+    compare_answer_days: int = Field(default=7, ge=1)
+    compare_max_answer_bytes: int = Field(default=65536, ge=1024)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 
@@ -144,9 +270,19 @@ class Settings(BaseSettings):
     # Published root-call pause, rate and concurrency admission.
     org_flow_control_enabled: bool = False
     org_flow_control_refresh_s: float = Field(default=2.0, ge=0.2, le=10)
+    # Limits for every Org whose key is confirmed missing; a published snapshot replaces them
+    # whole (org-flow-control.md "Default limits"). None = no default for that limit.
+    org_flow_control_default_max_in_flight: PositiveInt | None = Field(default=None, le=2147483647)
+    org_flow_control_default_rps: float | None = Field(default=None, gt=0, le=9007199254740991)
+    org_flow_control_default_burst: PositiveInt | None = Field(default=None, le=2147483647)
 
     @model_validator(mode="after")
     def _org_flow_control_configuration(self):
+        if (self.org_flow_control_default_rps is None) != (self.org_flow_control_default_burst is None):
+            raise ValueError("a default org rate needs both rps and burst")
+        if (self.org_flow_control_default_max_in_flight is not None
+                or self.org_flow_control_default_rps is not None) and not self.org_flow_control_enabled:
+            raise ValueError("default org limits require org_flow_control_enabled")
         if self.org_flow_control_enabled:
             try:
                 url = urlsplit(self.kv_url)
@@ -188,16 +324,59 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
+    # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
+    # orgs named here also get a line of their own.
+    money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`.
+    money_allowance_all_orgs: bool = False
+    # Never on the allowance, whatever the two settings above say.
+    money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # A routed call's children may take from the allowance too (their parent finishes the takes):
+    # for these teams, or every team on the allowance.
+    money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_routed_all_orgs: bool = False
+    # A tagged call (`X-Treg-Meta` or a pinned token) may take from the allowance too when no tag
+    # budget limits any of its tags: for these teams, or every team on the allowance.
+    money_allowance_tagged_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_tagged_all_orgs: bool = False
+    # What a refill brings the allowance counter up to, in micro-USD.
+    money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
+    # Above 0: a refill brings the counter up to what the team took from it over this many
+    # seconds instead, never below the chunk (money.md "Allowance"). 0 = always the chunk.
+    money_allowance_refill_window_s: int = Field(default=0, ge=0, le=3600)
+    # The most a refill sized to the team's spend brings the counter up to, in micro-USD.
+    money_allowance_refill_max_micro: int = Field(default=50_000_000, ge=1, le=1_000_000_000)
+    # And never more than this share of the team's balance, in percent.
+    money_allowance_refill_balance_percent: int = Field(default=25, ge=1, le=100)
+    # How long after a refill the counter admits calls. A hold not refilled for this long plus
+    # the hold lifetime has nobody spending from it and is closed.
+    money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
+    # How long finished calls wait to share one insert of their charges.
+    money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+    # How many processes may fold queued charges at once, each for its own share of the teams
+    # (money.md "One place folds the queue"). 1 = one process folds for every team.
+    money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
+
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org's untagged free platform calls take no $0 hold, as if listed, except
+    # `holdless_free_excluded_org_ids`.
+    holdless_free_all_orgs: bool = False
+    # Never holdless, whatever the two settings above say.
+    holdless_free_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
 
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.
     # Empty keeps read_session_maker on the existing primary pool.
     read_database_url: str = ""
+    # The background pool's own route to `database_url`'s database: a transaction-pooling PgBouncer.
+    # Empty keeps it on `database_url`. SQLite has no pools and ignores it.
+    background_database_url: str = ""
 
-    @field_validator("database_url", "read_database_url")
+    @field_validator("database_url", "read_database_url", "background_database_url")
     @classmethod
     def _async_pg_driver(cls, v: str) -> str:
         # Some hosts inject a bare `postgres://`/`postgresql://` URL, but
@@ -208,6 +387,11 @@ class Settings(BaseSettings):
         if v.startswith("postgresql://"):
             v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
+
+    @field_validator("param_check", mode="before")
+    @classmethod
+    def _param_check_mode(cls, value: object) -> str:
+        return "refuse" if str(value).strip().lower() == "refuse" else "log"
 
     @field_validator("rate_limit_exempt_ips")
     @classmethod
@@ -223,23 +407,49 @@ class Settings(BaseSettings):
             raise ValueError("read_database_url must use sqlite+aiosqlite or postgresql+asyncpg, or be empty")
         return v
 
+    @model_validator(mode="after")
+    def _background_database(self):
+        if (self.background_database_url and not self.database_url.startswith("sqlite")
+                and not self.background_database_url.startswith("postgresql+asyncpg://")):
+            raise ValueError("background_database_url must be a PostgreSQL URL")
+        return self
+
     # Pool sizing overrides, e.g. "admin.pool_size=4,background.pool_size=12". Empty = the defaults
     # in `infra.db.POOL_SPECS`. This exists because pool sizing can only be validated in production:
     # too small and real traffic gets 503s, too large and the bulkhead is decorative, and neither is
     # visible from a test. A wrong number must be a dashboard edit, not a deploy.
     db_pool_overrides: str = ""
 
+    # `python -m treg upgrade` on PostgreSQL (docs/context/ops/deploy.md "PostgreSQL lock
+    # queueing"). The lock wait stays above PostgreSQL's default `deadlock_timeout` (1 s): that is
+    # when a waiting ALTER makes an ordinary autovacuum give up its lock, so a wait of exactly 1 s
+    # can time out at the instant it would have won.
+    migration_lock_timeout_s: float = Field(default=2.0, gt=1, le=5)
+    migration_lock_retry_attempts: int = Field(default=30, ge=1, le=200)
+    migration_lock_retry_pause_s: float = Field(default=2.0, ge=0, le=60)
+    migration_lock_retry_budget_s: float = Field(default=600.0, gt=0)
+    migration_lock_holder_check: bool = True
+    migration_lock_holder_check_skip: str = ""
+    migration_lock_holder_max_xact_s: float = Field(default=30.0, gt=0)
+
     # Fernet key (urlsafe base64, 32 bytes). Generate with `treg keygen` (see crypto.py).
     # Empty in dev means an ephemeral key is minted at startup (secrets won't survive a restart).
     secret_key: str = ""
 
-    api_token: str = "dev-token"
+    # Stored credentials under AWS KMS envelope encryption (infra/credential_cipher.py). The key
+    # ARN lets this process read KMS-sealed values; kms_encrypt_new also seals new writes with it.
+    kms_key_id: str = ""
+    kms_encrypt_new: bool = False
 
-    # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
-    # live wire: a sandbox call to the exact seeded stripe tool relays for real with THIS key
-    # injected — the key never exists in any sandbox org (see sandbox.is_live_tool / api.call_tool).
-    # Empty = every sandbox call synthesizes.
-    demo_stripe_key: str = ""
+    @model_validator(mode="after")
+    def _kms_configuration(self):
+        if self.kms_key_id and not self.kms_key_id.startswith("arn:aws:kms:"):
+            raise ValueError("kms_key_id must be a KMS key or alias ARN")
+        if self.kms_encrypt_new and not self.kms_key_id:
+            raise ValueError("kms_encrypt_new requires kms_key_id")
+        return self
+
+    api_token: str = "dev-token"
 
     # Cross-tenant super-admin bearer (env TREG_ADMIN_TOKEN). Presenting it authorizes every
     # /admin/* endpoint regardless of org. Empty = the env key is disabled (only is_superadmin
@@ -252,21 +462,6 @@ class Settings(BaseSettings):
     # by the member. Empty = shared-key local runs are refused (owned-secret runs still work). Set it
     # on the server AND install it via `treg setup-local-run --run-proof` to enable shared local runs.
     run_proof: str = ""
-
-    # `treg run --server` allow-list. The server only executes an entrypoint that is a catalog-known CLI
-    # (stripe/gh/vercel/…) OR listed here (comma-separated) — so a member can't name `bash`/`python` and
-    # run arbitrary code as the server user. Extend it as new CLIs are approved.
-    run_allowed_bins: str = ""
-
-    # Server-run resource limits (the DoS half of the server-run sandbox). Every `--server` run's child
-    # process gets these POSIX rlimits so a runaway or hostile CLI can't exhaust the host. On by default;
-    # a no-op where `resource` is unavailable (non-Unix). We deliberately do NOT cap address space or
-    # process count — a virtual-memory cap crashes Go-based CLIs (gh/stripe/doctl), and the per-user
-    # process cap is shared with the server itself. CPU-seconds + max-file-size + no-core-dumps are the
-    # safe, high-value guards. Set TREG_RUN_RLIMITS=false to disable entirely.
-    run_rlimits: bool = True
-    run_cpu_seconds: int = 300          # CPU time a single server run may burn (backstop to the wall timeout)
-    run_fsize_mb: int = 100             # largest single file a server run may write (disk-fill guard)
 
     # Platform markup on a call served by a PLATFORM key, applied to the estimate at reserve time and
     # to the observed cost at settle time. 0.0 = we charge exactly what the provider charges us.
@@ -309,10 +504,18 @@ class Settings(BaseSettings):
     # provider's own charge from (domain/catalog/reported_charge.py), after settlement and outcome;
     # a call sending X-Treg-Keep-Reported-Charge keeps it. The archive keeps the answer whole.
     strip_reported_charge: bool = False
+    # The parameter check (domain/catalog/params.py) on catalog calls and routed calls: `log` (the
+    # default) relays a request that breaks a declared type, enum or range as before and logs one
+    # `catalog_parameter_would_refuse` line; `refuse` answers 400 catalog_parameter_invalid before
+    # any hold. Any other value reads as log.
+    param_check: str = "log"
     # Fair share of a provider's concurrency on treg's own keys (domain/capacity/fair_share.py):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
     fair_share_wait_s: float = Field(default=2.0, ge=0, le=30)
+    # With the shared store, the most places of one capped account (percent of its cap, rounded
+    # up) one team holds across every process; a call over it gets `share_busy`. 0 is off.
+    fair_share_team_ceiling_percent: int = Field(default=0, ge=0, le=99)
     # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
     # about every platform call that goes upstream and logs its verdicts; the buckets named in
     # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
@@ -424,6 +627,7 @@ class Settings(BaseSettings):
     # Enrichment slots: fund the accounts and set the keys before naming any of these in
     # TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key
+    platform_key_fundable: str = ""  # Bearer API key
     platform_key_corpoapi: str = ""      # X-API-Key; prepaid USD balance, $0.05 per paid call, 100 free on signup
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
@@ -441,6 +645,10 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_descovo: str = ""  # Bearer key; monthly plan credits, free balance on /v1/credits
+    platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
+    platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
+    platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
@@ -469,6 +677,7 @@ class Settings(BaseSettings):
     platform_key_spidercloud: str = ""   # Bearer; PAYG USD balance, only priced routes may use shared key
     platform_key_perplexity: str = ""    # Bearer; prepaid USD credits, no documented balance API
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
+    platform_key_mapsdata: str = ""   # Bearer key (mdk_live_…); scrapes settle from the finished job's email_count
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
     # Fish API-credit lookups need the workspace selector to read the shared workspace wallet.
@@ -580,6 +789,26 @@ class Settings(BaseSettings):
     typesafe_url: str = "https://api.typesafe.ai/v1/systemone"
     # Past this the search answers from the baseline alone; the row records `judge_error=timeout`.
     typesafe_timeout_s: float = 2.5
+    # Review judging (application.review_judge): reviews per Jev request, and how long one request may
+    # take. It runs from a cron, so its wait is not a caller's.
+    review_judge_batch: int = Field(default=25, ge=1, le=100)
+    review_judge_timeout_s: float = 60.0
+    # A direct call's negative review is upgraded with the call's answer in view: this many per Jev
+    # request (an answer is far longer than a reason), each answer shortened to
+    # this many characters (`body_view.shrink`, at least its MIN_BUDGET).
+    review_judge_answer_batch: int = Field(default=5, ge=1, le=25)
+    review_judge_answer_chars: int = Field(default=4000, ge=22, le=20000)
+    # An answer not readable yet is tried again, backing off from an hour to a week; after this many
+    # tries its review keeps the codes from its reason.
+    review_judge_answer_attempts: int = Field(default=10, ge=1)
+    # Off: the review judge codes from reasons only, as before the answer upgrade (its rollback switch).
+    review_judge_answers: bool = True
+    # Calls before this moment are never read back as their archived answer: older call rows do not
+    # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
+    # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`
+    # finished serving: until then such an instance answers `/table/` (a retry included) without
+    # recording the surface, though the column exists. Keep `review_judge_answers` off until it is set.
+    review_answer_surface_since: datetime | None = None
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
@@ -635,10 +864,9 @@ class Settings(BaseSettings):
     # already theirs.
     oauth_billed_providers: str = ""
 
-    # OUR billing account's keys. Deliberately NOT the `demo_stripe_*` pair above: that one belongs to
-    # the landing page's sandbox feed and its webhook secret signs a different endpoint. Empty secret
-    # key = top-ups are off (the /billing/* endpoints 503); empty webhook secret = the webhook 404s,
-    # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
+    # OUR billing account's keys. Empty secret key = top-ups are off (the /billing/* endpoints 503);
+    # empty webhook secret = the webhook 404s, so an unconfigured deploy exposes no unauthenticated
+    # POST surface.
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     ops_slack_webhook_url: str = ""
@@ -679,8 +907,8 @@ class Settings(BaseSettings):
     autotopup_default_amount_usd: int = 20
     # Hard guardrails on the off-session charge — the difference between "convenient" and "a runaway
     # agent bills a card all night". Cap is per calendar month, cooldown is between attempts, and
-    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap's
-    # default is `billing.TOPUP_MAX_USD` (see money.md).
+    # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself. The monthly cap
+    # is the team's own choice and has no default (see money.md).
     # The wait after a FAILED charge. After a successful one the wait is one hour divided by the
     # team's `autotopup_max_per_hour` (default below), so a team that spends more than its refill
     # per hour is not left empty for the rest of the hour.
@@ -693,6 +921,8 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # A caller waiting longer than this for that lookup is refused, as an unresolvable host is.
+    ssrf_lookup_timeout_s: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible
@@ -765,6 +995,10 @@ class Settings(BaseSettings):
     # licence that was read and says no) is always respected, and actions are never stored, whatever
     # this says.
     archive_default_policy: str = "transient"
+    # Comma-separated provider ids whose answers this deployment never keeps: each of their
+    # endpoints loads as `cache: forbidden` and `response_retention: forbidden`, whatever its
+    # catalog row says. Read when the catalog loads, so a change takes a restart.
+    no_cache_providers: str = ""
     # The refresh worker (serve mode only): how often it scans for due keys, and how many
     # refresh calls ONE provider may spend per UTC day. A refresh is treg's own vendor spend with
     # no caller attached, so the cap is the brake — 0 disables refreshing without touching serving.
@@ -776,6 +1010,18 @@ class Settings(BaseSettings):
     archive_prune_batch: int = 500             # bodies stripped per pass, the load bound
     archive_prune_keep_versions: int = 2       # newest N bodies kept on servable keys
     archive_prune_min_age_days: int = 7        # servable bodies younger than this are never touched
+    # Row retention (`treg-worker archive retain`, application/archive_retention.py): deletes whole
+    # keys nobody asked for in `archive_retention_days`, with their snapshots, marks and orphaned
+    # objects. Off by default; the command's `--dry-run` counts what it would delete either way.
+    archive_retention_enabled: bool = False
+    archive_retention_days: int = 30
+    archive_retention_batch: int = 1000        # key ids per batch (an id range, not a row count)
+    archive_retention_pause_s: float = 2.0     # sleep between batches
+    archive_retention_max_seconds: int = 600   # time budget per run; the next run resumes
+    archive_retention_max_keys: int = 200_000  # keys deleted per run at most; the next run resumes
+    # A pending object is deleted only once recorded this long ago: longer than a recorder's
+    # check-that-the-object-exists to commit window and its upload budget.
+    archive_retention_object_grace_s: int = 900
 
     # The tool hub (docs/context/architecture/hub.md): tools a maker publishes, made of other tools.
     hub_enabled: bool = False
@@ -803,6 +1049,11 @@ class Settings(BaseSettings):
     # same value entered in that agent's Microsoft OAuth registration. Empty = the client does not
     # exist.
     m365_client_secret: str = ""
+    # The vendor console's OAuth client (`treg-vendor-console`): a separate service where API vendors
+    # sign in with their treg account to apply for a listing. Its secret, and its one redirect URI
+    # (matched exactly). Either empty = the client does not exist.
+    vendor_console_client_secret: str = ""
+    vendor_console_redirect_uri: str = ""
 
     # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
     # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.
@@ -839,7 +1090,9 @@ class Settings(BaseSettings):
     agent_payments_x402_asset_version: str = "2"
     agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
     agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
-    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC
+    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC (testnet only)
+    # Which head the reconciler trusts a transfer at. `finalized`: no reorg can undo it.
+    agent_payments_x402_block_tag: Literal["latest", "safe", "finalized"] = "finalized"
     # A Coinbase Developer Platform API key, for its facilitator (mainnet). Both empty: no auth,
     # which the public testnet facilitator accepts. The secret is the Ed25519 key (base64) or a
     # legacy EC PEM key.
@@ -859,27 +1112,39 @@ class Settings(BaseSettings):
     # Requests carrying a payment credential, per client IP per minute: each one costs a
     # signature check, and an x402 one a facilitator request.
     agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
+    # Payment checks per minute across every client: each one may cost an RPC or facilitator call.
+    agent_payments_max_verifications_minute: int = Field(default=600, ge=1)
+    # Keyless requests with no payment, per client IP per minute: each one is priced.
+    agent_payments_max_quotes_per_ip_minute: int = Field(default=120, ge=1)
 
     @property
     def agent_payments_stripe_key(self) -> str:
         return self.agent_payments_stripe_secret_key or self.stripe_secret_key
 
-    @model_validator(mode="after")
-    def _agent_payments_configuration(self):
+    def check_agent_payments(self) -> None:
+        """Refuse to configure the payment rails with one error naming every problem. Called where
+        the rails are configured, never from `Settings()`: the payment settings live in a shared
+        environment group, and a process that runs no payment code must not fail on a missing or
+        incomplete one. A value of the wrong type still fails `Settings()` everywhere."""
+        if problems := self.agent_payments_problems():
+            raise ValueError("agent payments cannot start: " + "; ".join(problems))
+
+    def agent_payments_problems(self) -> list[str]:
+        """Every payment setting that is malformed, and, with the feature on, every one the enabled
+        rails are missing or get wrong."""
+        problems = []
         for name in ("agent_payments_tempo_recipient", "agent_payments_x402_pay_to",
                      "agent_payments_tempo_currency", "agent_payments_x402_asset"):
             value = getattr(self, name)
             if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
-                raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
+                problems.append(f"TREG_{name.upper()} as a 0x-prefixed 20-byte address")
         if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
-            raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+            problems.append("both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
         if self.agent_payments_enabled:
-            if problems := self._agent_payments_problems():
-                raise ValueError("agent payments cannot start: " + "; ".join(problems))
-        return self
+            problems += self._agent_payments_missing()
+        return problems
 
-    def _agent_payments_problems(self) -> list[str]:
-        """Every setting the enabled rails are missing or get wrong, so one start names them all."""
+    def _agent_payments_missing(self) -> list[str]:
         coinbase = "https://api.cdp.coinbase.com/platform/v2/x402"
         base_usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
         problems = []
@@ -904,6 +1169,9 @@ class Settings(BaseSettings):
                 problems.append("TREG_AGENT_PAYMENTS_X402_PAY_TO")
             if x402_mainnet and not self.agent_payments_x402_cdp_api_key_id:
                 problems.append("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET (Base mainnet)")
+            if x402_mainnet and not self.agent_payments_x402_rpc_url:
+                # Money decisions read the chain; the public endpoint is rate-limited and unpinned.
+                problems.append("TREG_AGENT_PAYMENTS_X402_RPC_URL (a paid Base mainnet RPC)")
             if x402_mainnet and self.agent_payments_x402_asset.lower() != base_usdc:
                 problems.append(f"TREG_AGENT_PAYMENTS_X402_ASSET={base_usdc} (Base mainnet USDC)")
             if (self.agent_payments_x402_asset.lower() == base_usdc
@@ -971,6 +1239,15 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # Where BROWSERS send analytics, when it differs from `posthog_host`: a first-party proxy such as
+    # PostHog's managed reverse proxy. Blockers drop requests to PostHog's own domains, so a page that
+    # talks to them directly loses its blocker-using visitors. Server-side capture and the install
+    # script keep `posthog_host`; nothing blocks them. Empty = browsers use `posthog_host`.
+    posthog_browser_host: str = ""
+
+    @property
+    def posthog_page_host(self) -> str:
+        return (self.posthog_browser_host or self.posthog_host).rstrip("/")
     # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
@@ -1076,6 +1353,26 @@ class Settings(BaseSettings):
     # leads; until then Google rejects the identifiers and the rows would dead-letter.
     ads_conv_user_data: bool = False
 
+    # Dub Partners, the affiliate program (docs/context/architecture/affiliates.md). The workspace API
+    # key: a `dub_test_` key from the staging workspace in test environments, a `dub_` key in
+    # production. Empty = the whole feature is OFF: no click cookie, no lead upload, no Stripe
+    # metadata, and the friend referral behaves as before.
+    dub_api_key: str = Field(default="", repr=False)
+    # The lead event name Dub records at team creation. Dub deduplicates leads on
+    # (customerExternalId, eventName), so changing it after launch re-opens every team to a lead.
+    dub_lead_event: str = "Sign up"
+    # The program's referral-link domain on Dub (the short-link host partners share). A partner code
+    # given with `treg login --ref`/`treg org create --ref` is the key of a link on this domain. Empty
+    # = code-only leads wait in the outbox, retrying, until it is set.
+    dub_link_domain: str = ""
+    # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
+    # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
+    dub_default_country: str = "US"
+    # The most bonus credit one paid top-up can earn from a partner offer set in Dub, whatever the
+    # offer says. A typo in Dub ($500 for $5, 200% for 20%) is then a bounded mistake, not a free
+    # balance. The offer's minimum top-up is the friend referral's (`referral_min_topup_micro`).
+    affiliate_bonus_max_micro: int = 50_000_000  # $50
+
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
 
@@ -1098,7 +1395,7 @@ class Settings(BaseSettings):
     instagram_client_secret: str = ""
     # Comma-separated registry review keys that do not yet have production access. Remove one key
     # when its review is approved; set an explicit empty value when all reviews are complete.
-    oauth_review_pending: str = "instagram-login,page-messages"
+    oauth_review_pending: str = "instagram-login,page-messages,page-engagement"
     # Comma-separated provider service ids this deployment has paused (TREG_PAUSED_PROVIDERS), e.g.
     # one whose upstream access this deployment's app has lost. A paused provider leaves catalog
     # search and the connect listing, and its calls and connects are refused with a typed 503
@@ -1191,6 +1488,32 @@ class Settings(BaseSettings):
         ):
             raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
         return v
+
+    @field_validator("compare_pairs")
+    @classmethod
+    def _compare_pairs_shape(cls, v: str) -> str:
+        _parse_compare_pairs(v)  # raises ValueError on a malformed value
+        return v
+
+    @field_validator("ranking_tiers")
+    @classmethod
+    def _ranking_tiers_shape(cls, v: str) -> str:
+        _parse_ranking_tiers(v)
+        return v
+
+    @property
+    def ranking_tier_map(self) -> dict[str, dict[str, str]]:
+        return _parse_ranking_tiers(self.ranking_tiers)
+
+    @property
+    def compare_pair_map(self) -> dict[str, list[tuple[str, str]]]:
+        """`compare_pairs` parsed: capability -> unordered provider pairs."""
+        return _parse_compare_pairs(self.compare_pairs)
+
+    @property
+    def compare_configured(self) -> bool:
+        """Pairs and a daily limit above 0: what a comparison run needs at all."""
+        return bool(self.compare_pairs.strip() and self.compare_max_per_day > 0)
 
     @property
     def route_provider_sample_percentages(self) -> dict[str, int]:
@@ -1336,6 +1659,13 @@ class Settings(BaseSettings):
         )
 
     @property
+    def no_cache_providers_set(self) -> frozenset[str]:
+        """Provider ids whose answers this deployment never stores."""
+        return frozenset(
+            key.strip().lower() for key in self.no_cache_providers.split(",") if key.strip()
+        )
+
+    @property
     def paused_providers_set(self) -> frozenset[str]:
         """Provider service ids this deployment has paused."""
         return frozenset(
@@ -1361,7 +1691,7 @@ class Settings(BaseSettings):
     # send (dev mode still returns the code; prod without a key silently skips the send). From must
     # be a Resend-verified domain.
     resend_api_key: str = ""
-    email_from: str = "tools-registry <no-reply@treg.to>"
+    email_from: str = "treg <no-reply@treg.to>"
 
 
 @lru_cache

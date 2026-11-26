@@ -58,7 +58,8 @@ export default {
     cards(){
       if(this.find.phase!=='done') return [];
       const byVendor=this.byVendor, seen=new Set();
-      return groupBest(this.find.rows, r=>byVendor ? r.provider : r.platform, (r, slug)=>{
+      const rows=byVendor ? this.find.rows.filter(r=>r.platform_eligible!==false) : this.find.rows;
+      return groupBest(rows, r=>byVendor ? r.provider : r.platform, (r, slug)=>{
         const platform_label=this.platShort(r.platform_label||r.platform);
         return {slug, platform:r.platform, platform_label, label:byVendor ? r.provider_display||r.provider : platform_label};
       }, 'rows').slice(0,12).map(c=>{
@@ -69,6 +70,13 @@ export default {
     },
     // Jobs whose vendors the server folded away (a job under the strong cut shows its first five).
     folded(){ return this.byVendor ? jobGroups(this.find.rows).filter(g=>g.hidden) : []; },
+    ownKey(){
+      if(this.find.phase!=='done' || !this.byVendor) return null;
+      const callable=new Set(this.find.rows.filter(r=>r.platform_eligible!==false).map(r=>r.provider));
+      const rows=this.find.rows.filter(r=>r.platform_eligible===false && !callable.has(r.provider));
+      const providers=new Set(rows.map(r=>r.provider));
+      return providers.size ? {count:providers.size, platform:rows[0].platform, rows} : null;
+    },
     reading(){
       return this.findBusy ? new Set([...this.findCandidatePlatforms.map(s=>'p:'+s), ...this.findCandidateVendors.map(s=>'v:'+s)]) : new Set();
     },
@@ -143,7 +151,7 @@ export default {
     },
     // The landing page's first-screen glyph field (/media/landing/hero-particles.js), mounted on
     // this page area and driven from this page's frame loop, so both first screens share one
-    // implementation. Without WebGL the field declines and the gradient behind it remains.
+    // implementation. Without hardware WebGL the field declines and the gradient behind it remains.
     mountField(){
       const mount=()=>{
         if(this._isUnmounted || !this.$refs.stage) return;
@@ -366,6 +374,9 @@ export default {
       <p v-for="(g, gi) in folded" :key="g.key" class="sp-folded">
         {{g.hidden}} more provider{{g.hidden===1?'':'s'}} for <b>{{g.label}}</b>.
         <button type="button" @click="openJob(g, gi, g)">See them all</button></p>
+      <p v-if="ownKey" class="sp-folded">
+        {{ownKey.count}} more provider{{ownKey.count===1?'':'s'}} need{{ownKey.count===1?'s':''}} your own API key.
+        <button type="button" @click="openJob(ownKey, cards.length, ownKey)">See them all</button></p>
     </div>
   </section>
 

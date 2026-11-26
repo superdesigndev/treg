@@ -51,6 +51,7 @@ present a per-org token directly.
 | `treg login` | _(none)_ | GitHub browser sign-in (register-or-login), stores one identity token |
 | `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code. A server that requires a browser check finishes the sign-in in the browser instead |
 | `treg login` | `--token TOKEN` | agents/CI: use a per-org token directly |
+| `treg login` | `--ref CODE` | binary CLI only. An affiliate partner's code: kept for the first team you create, and spent once you are in a team. Also read from `TREG_REF`, or left by `install.sh --ref CODE` |
 | `treg logout` | — | clear your stored credentials |
 | `treg onboard` | `--path catalog\|setup\|access\|demo` · `--source local\|global\|both` · `--yes` · `--reset` | guided first-run: **catalog** (find a tool and call it with no key), **setup** (share this project's or your global agent skills and keys), **access** (pull your team's shared skills, then a test call) or **demo**; asked when `--path` is omitted. Offered `[Y/n]` after your first login; `--reset` removes demo teams and example teammates |
 
@@ -77,7 +78,7 @@ only what they created; admin/owner manage anything in the org; admin+ can invit
 
 | Command | Options | What it does |
 |---|---|---|
-| `treg org create` | `"NAME"` | create a new org; you become its owner (new token, auto-active) |
+| `treg org create` | `"NAME"`, `--ref CODE` (optional, binary CLI only) | create a new org; you become its owner (new token, auto-active). `--ref` (default: the code `treg login --ref` kept, then `TREG_REF`) credits an affiliate partner for the new team. A friend's referral code works only as a `?ref=` link, not here |
 | `treg org ls` | — | list your orgs (marks the active one) |
 | `treg org use` | `SLUG` | switch the active org |
 | `treg org rename` | `--name "NAME"`, `--slug SLUG` | (admin+) rename the active org and/or change its slug; existing keys keep working |
@@ -202,13 +203,27 @@ never billed to the balance.
 
 ## Review a catalog call
 
-`treg review <call_id> <useful|partly|not_useful|not_sure> [--reason "text"]` rates a catalog
-call after you have used the result. Phase 1 invites only direct catalog calls served on treg's
-own platform key; sampled calls print an invitation on stderr. Routed and own-key catalog calls
-can still be reviewed uninvited. `not_sure` is fine when you cannot tell. The optional reason is
+`treg review <call_id> <useful|partly|not_useful|not_sure> [--reason "text"] [--rows ROWS]`
+rates a catalog call after you have used the result. Invitations go to direct catalog calls served
+on treg's own platform key and to routed calls; sampled calls print an invitation on stderr.
+Own-key catalog calls can still be reviewed uninvited. When the result was partly or not useful,
+`--rows 2/email:wrong,5:missing` names the 0-based rows you found wrong (binary CLI). `not_sure` is fine when you cannot tell. The optional reason is
 1-200 characters after trimming. Omit private data and raw payloads. Use `feedback` for anything confusing or wrong, then keep going
 with the task. The receipt contains `review_id` and `status` (`received` or `already_reviewed`).
 If the call record is not written yet, retry shortly with the same call ID.
+
+## Mark a result you checked
+
+`treg mark <call_id> [item...] --basis <bounced|cross_checked|user_said|impression>` records what
+you found wrong, or confirmed right, in a call's result once you know. Each item is
+`[INDEX][/FIELD]:VERDICT` (INDEX the 0-based row, a bare verdict meaning the whole result) with a
+verdict of `correct`, `wrong`, `stale`, `wrong_entity`, `missing`, `irrelevant`, `duplicate` or
+`other`: `treg mark CALL_ID 2/email:wrong --basis bounced --checked 10`.
+`--checked N` says how many rows you looked at, `--evidence ID` names the call that showed it (a
+verify call), `--note` adds a private note and `--replaces MARK_ID` corrects an earlier mark (no
+items withdraws it). Marks are private and never change charges. The receipt contains `mark_id`
+and `status` (`received` or `already_received`). The binary CLI has this command; with the
+Python CLI, POST the same fields to `/marks` (see `/feedback.md`).
 
 ## Feedback
 
@@ -245,9 +260,9 @@ If treg's **own** account for a provider is out, a metered call is refused with 
 `resets_at` when known and `alternatives` (other providers for the same capability). Your own key
 for the provider is never affected, and treg does not switch providers on your behalf. treg
 re-checks the provider about once a minute, so a retry after a minute can succeed. A call that
-reaches the provider just as treg's account runs out is relayed as the provider answered, with
-`X-Treg-Capacity: exhausted`; `treg call` then prints a notice that the tool is unavailable on
-treg's side instead of naming the provider's wallet.
+reaches the provider just as treg's account runs out is answered with the same 503
+`provider_capacity_unavailable`, uncharged; the provider's own answer is not relayed. Both carry
+`Retry-After`: the seconds until the reset when treg knows it, else 60.
 
 Where the deployment has the overflow relay on, treg may instead serve the **same endpoint** through a
 treg-owned aggregator account — same request, same response shape, the relay's real price (0% markup),
@@ -299,6 +314,22 @@ with `X-Treg-Route-Waterfall: 0`, or on a routed tool without a confirm field, t
 refused (422, unbilled). Agreement is not delivery: combine it with `X-Treg-Route-Verify` to also
 check the mailbox.
 
+`X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find` adds the hit's email as the hashes ad
+platforms match customer lists on: `_treg.ad_hashes: {hashed: true, linkedin, meta, google}`, each
+the SHA-256 of the address as that platform normalizes it (lowercase, no spaces; for Google, a
+gmail.com or googlemail.com address also loses its dots and `+tag`). treg computes them, so there
+is no extra charge, and `output` is not altered. A miss says `{hashed: false, reason: no_hit}`. On
+another routed tool the header is refused (422, unbilled).
+
+`X-Treg-Route-Domain-Match: strict` on `treg.people.email.find` keeps looking past a hit at another
+mail domain than the `domain` you sent: that hit is `weak`, and the waterfall goes on, each attempt
+at its own price inside `X-Treg-Route-Max-Cost`, for at most two more off-domain hits. The first
+on-domain hit wins; when none turns up, the first off-domain answer comes back unaltered, with
+`_treg.outcome: weak`, `_treg.domain_match: false` and the advice. A request without a domain is
+not affected. `true`, `1`, `yes` and `on` mean `strict`; `off`, `false`, `0` and `no` mean off; any other value is a 400.
+With `X-Treg-Route-Waterfall: 0`, or on another routed tool, the header is refused (422, unbilled). Off by default: a company's staff may use a mail domain other than its website's,
+and strict mode would look past those addresses too.
+
 `X-Treg-Route-Decisive: true` on `treg.people.email.verify` counts an answer only when it decides:
 `valid` or `invalid`. An `unknown`, `catch_all` or `risky` verdict, or a failed attempt, sends the
 check on to at most two more providers, each at its own price inside `X-Treg-Route-Max-Cost`; those
@@ -319,7 +350,9 @@ makes the header a no-op).
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
 cache reads. The verdict is `live` / `dead` / `unknown`; a live line is not proof the number is
-this person's (`trestleiq.people.contact.verify` checks a US name). A number not written
+this person's. To check that, call `millionphones.people.contact.verify` with their LinkedIn profile
+(`social_url`) and the `phone_number`, or `trestleiq.people.contact.verify` (`phone`, `name`) for a
+US number. A number not written
 internationally is never sent, because HLR would read its first digits as a country code: reason
 `not_international`, nothing charged.
 
@@ -388,8 +421,8 @@ globally. The tool's `cli` profile (`bin`, `inject`, `deny`, `enabled`) configur
   with a warning). A member may run a tool whose key **they own**; a **shared** (teammate/admin) key
   requires the isolated runner **and** the server's `TREG_RUN_PROOF` (pass it as `--run-proof` at
   setup).
-- `--server` — disabled globally; `POST /run` returns 503 for every caller. `TREG_RUN_ALLOWED_BINS`
-  cannot re-enable server execution.
+- `--server` — disabled globally; `POST /run` returns 503 for every caller. The server holds no
+  CLI execution code.
 
 ```bash
 treg run stripe -- get /v1/balance          # local: CLI runs here, key injected, never held

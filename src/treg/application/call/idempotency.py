@@ -6,20 +6,24 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, or_, text, update
-from sqlalchemy.exc import IntegrityError, TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import archive
 from ...config import get_settings
-from ...infra.db import session_maker
+from ...domain.catalog import store as catalog_store
+from ...infra import kv
+from ...infra.db import is_db_busy, session_maker
 from ...domain.identity.access import Caller
-from ...models import AsyncTaskRecord, CallRecord, Hold, IdempotentCall, LedgerEntry
+from ...models import AsyncTaskRecord, CallCharge, CallRecord, Hold, IdempotentCall, LedgerEntry
 from .types import IdempotencyFailed, IdempotentReplay
 
 if TYPE_CHECKING:
@@ -36,6 +40,10 @@ IDEMPOTENCY_SWEEP_BATCH = 100  # expired labels one claim reclaims; the rest go 
 # terminal answer rather than answering 409 for the whole window; see `_resolve_stale_claim`.
 IDEMPOTENCY_LEASE_RENEW_S = 5 * 60
 IDEMPOTENCY_STALE_PENDING_S = 3 * IDEMPOTENCY_LEASE_RENEW_S
+# A keyed call on the team's allowance has no hold to show it is running, so it keeps a mark in
+# the shared store instead, renewed with its lease. Outlives one missed renewal; gone well before
+# the lease reads stale when the process that set it has died.
+IN_FLIGHT_MARK_MS = 2 * IDEMPOTENCY_LEASE_RENEW_S * 1000
 _POOL_RETRY_PAUSE_S = 0.5  # the settle retry's pause (settle.py); one retry, fresh session
 
 _IDEM_MAX_KEY = 200
@@ -98,7 +106,19 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -
     calls are GETs that carry all their arguments in the query, that made the check almost inert: two
     genuinely different lookups under one label matched, and the second was answered with the first
     one's data instead of the 422 this function exists to raise.
+
+    The surface a label was taken on (`/call/` or `/table/`) is checked beside it, from
+    `IdempotentCall.surface`, not hashed into it (`_replay_idempotent`).
     """
+    return _fingerprint(method, rest, _canonical_json(body), query)
+
+
+def _raw_request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -> str:
+    """The fingerprint of the body's exact bytes, as labels taken before `_canonical_json` stored it."""
+    return _fingerprint(method, rest, body, query)
+
+
+def _fingerprint(method: str, rest: str, body: bytes, query: str) -> str:
     h = hashlib.sha256()
     h.update(method.upper().encode())
     h.update(b"\0")
@@ -110,8 +130,101 @@ def _request_fingerprint(method: str, rest: str, body: bytes, query: str = "") -
     return h.hexdigest()
 
 
+class _NotCanonical(ValueError):
+    pass
+
+
+def _unique_pairs(pairs: list) -> dict:
+    out = dict(pairs)
+    if len(out) != len(pairs):
+        raise _NotCanonical("duplicate key")
+    return out
+
+
+def _exact_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value) or repr(value) != text:
+        raise _NotCanonical("float spelling")
+    return value
+
+
+def _no_constant(text: str):
+    raise _NotCanonical(text)
+
+
+def _exact_int(text: str) -> int:
+    if text == "-0":
+        raise _NotCanonical(text)
+    return int(text)
+
+
+# The parse runs on the event loop; past this a body keeps the byte-for-byte comparison.
+_CANONICAL_MAX_BYTES = 256 * 1024
+
+
+def _canonical_json(body: bytes) -> bytes:
+    """A JSON body's meaning rather than its spelling: a retry that serializes the same object with
+    its keys in another order, or with other whitespace, is the same request. A body whose parse
+    could merge two different requests (a duplicate key, `-0`, a number a float does not spell back
+    exactly, NaN or Infinity), a body over `_CANONICAL_MAX_BYTES` and any non-JSON body are compared
+    byte for byte."""
+    if not body or len(body) > _CANONICAL_MAX_BYTES or body.lstrip()[:1] not in (b"{", b"["):
+        return body
+    try:
+        parsed = json.loads(body, object_pairs_hook=_unique_pairs, parse_float=_exact_float,
+                            parse_int=_exact_int, parse_constant=_no_constant)
+    except (ValueError, RecursionError):
+        return body
+    return json.dumps(parsed, sort_keys=True, separators=(",", ":")).encode()
+
+
+_IN_PROGRESS_RETRY_S = 5
+
+
+def _in_progress(key: str, call_ref: str | None) -> IdempotencyFailed:
+    """The 409 for a label whose first call is still running. It names that call, so a caller whose
+    client gave up can find its answer instead of paying for the work again."""
+    return IdempotencyFailed(
+        "idempotency_in_progress", status_code=409, retry_after_s=_IN_PROGRESS_RETRY_S,
+        detail={"error": "idempotency_in_progress", "call_id": call_ref or None,
+                "message": (f"a call with Idempotency-Key {_idem_display(key)!r} is still in progress. "
+                            "Retry with the same key shortly to receive its answer without a second "
+                            "charge; `call_id` names that call"
+                            + (f" (GET /calls/{call_ref}/result once it is done)." if call_ref else "."))})
+
+
+async def _lost_claim(key: str, fingerprint: str, caller: Caller, db: AsyncSession, *,
+                      raw_fingerprint: str | None = None, surface: str | None = None) -> IdempotencyFailed:
+    """What a request that lost the race to claim this caller's label is told, from the row that won:
+    the 422 mismatch when the winner is another request or surface, else that it is in progress
+    and which call holds it."""
+    row = (await db.execute(select(IdempotentCall).where(
+        IdempotentCall.membership_id == caller.membership.id,
+        IdempotentCall.key == key))).scalar_one_or_none()
+    if row is not None:
+        _check_same_request(row, key, fingerprint, raw_fingerprint, surface)
+    return _in_progress(key, row.call_ref if row is not None else None)
+
+
+def _check_same_request(row: IdempotentCall, key: str, fingerprint: str, raw_fingerprint: str | None,
+                        surface: str | None) -> None:
+    """Raise the 422 mismatch unless `row` holds this same request on this same surface.
+
+    A `/table/` caller receives a reshaped answer, so a label taken on one surface never replays on
+    the other: its call id would name an answer that caller never saw. A label taken before the
+    surface was kept (NULL) cannot say which, and replays as it always did rather than turning a
+    retry of a call already made into a new paid one; such labels expire within the window."""
+    crossed = row.surface is not None and row.surface != _surface(surface)
+    if crossed or (row.request_fingerprint and row.request_fingerprint not in (fingerprint, raw_fingerprint)):
+        raise IdempotencyFailed(
+            "idempotency_mismatch", status_code=422,
+            detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
+                    f"repeat the original request exactly."))
+
+
 async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
-                             db: AsyncSession) -> IdempotentReplay | None:
+                             db: AsyncSession, *, raw_fingerprint: str | None = None,
+                             surface: str | None = None) -> IdempotentReplay | None:
     """The stored answer for this caller's label, or None if there is nothing to replay.
 
     Returns a real response, so the provider is never reached and no money moves. That is the whole
@@ -128,11 +241,7 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         await db.delete(row)
         await db.commit()
         return None
-    if row.request_fingerprint and row.request_fingerprint != fingerprint:
-        raise IdempotencyFailed(
-            "idempotency_mismatch", status_code=422,
-            detail=(f"Idempotency-Key {_idem_display(key)!r} was already used for a different request. Use a new key, or "
-                    f"repeat the original request exactly."))
+    _check_same_request(row, key, fingerprint, raw_fingerprint, surface)
     if (row.status != "done" and row.call_ref
             and row.created_at < _utcnow() - timedelta(seconds=IDEMPOTENCY_STALE_PENDING_S)):
         resolved = await _resolve_stale_claim(row, caller, db)
@@ -141,10 +250,7 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
     if row.status != "done" or row.response_status is None:
         # Still in flight. The first call is talking to the provider right now; telling the caller to
         # retry is honest and cheap, and it is what stops the second one duplicating the spend.
-        raise IdempotencyFailed(
-            "idempotency_in_progress", status_code=409,
-            detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
-                    "is still in progress — retry shortly"))
+        raise _in_progress(key, row.call_ref)
     # A trimmed row names its archive entry instead of carrying bytes. Not read here: this runs
     # inside the request's session, and the read can go to object storage.
     trimmed = row.response_body is None and bool(row.archive_content_hash)
@@ -158,6 +264,11 @@ async def _replay_idempotent(key: str, fingerprint: str, caller: Caller,
         # money, not to a fresh reference for work that never happened.
         call_ref=row.call_ref or "",
     )
+
+
+def _surface(surface: str | None) -> str:
+    """The surface a label is kept under: `call` for `/call/` (whose `CallInput.surface` is None)."""
+    return surface or "call"
 
 
 def _utcnow() -> datetime:
@@ -182,12 +293,26 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
     settling or releasing it, so the tasks the owner started in its lifetime are found the same
     way and their ledger rows read by exact call id, with no time bound: a still-pending task is
     money in flight, and a late settle is a charge.
+
+    A call on the team's allowance has no hold of its own: its charge is a `CallCharge` row until a
+    fold turns it into its settle entry, deleting the row in the same transaction. Until then the
+    amount is what the team owes, not what its credit paid, so a queued charge is money in flight.
+    The row is read before the ledger, so a fold committing in between leaves the settle to be
+    found. A backlog can push the fold past the owner's lifetime, so the owner's own entries are
+    also read past it, by exact id.
     """
     def mine(col):
         return or_(col == call_ref, col.like(f"{call_ref}:%"))
+    # The allowance call's stand-in for its hold (`IN_FLIGHT_MARK_MS`), read before the database:
+    # the mark is cleared only once the charge is written, so one gone by now left its charge to
+    # be found below. Unread is not proof the owner stopped.
+    marked = await kv.store().call_in_flight(call_ref) if kv.configured() else False
     open_hold = (await db.execute(select(Hold.id).where(
         Hold.org_id == org_id, mine(Hold.id)).limit(1))).first() is not None
-    rows = list((await db.execute(select(LedgerEntry.kind, LedgerEntry.amount_micro).where(
+    queued = set((await db.execute(select(CallCharge.call_id).where(
+        CallCharge.org_id == org_id, mine(CallCharge.call_id)))).scalars())
+    rows = list((await db.execute(select(
+        LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
         LedgerEntry.org_id == org_id, LedgerEntry.created_at >= since, LedgerEntry.created_at <= until,
         mine(LedgerEntry.call_id)))).all())
     tasks = (await db.execute(select(AsyncTaskRecord.call_id, AsyncTaskRecord.status).where(
@@ -195,12 +320,53 @@ async def _money_of(db: AsyncSession, org_id: int, call_ref: str, since: datetim
         AsyncTaskRecord.created_at <= until, mine(AsyncTaskRecord.call_id)))).all()
     if any(status == "pending" for _, status in tasks):
         open_hold = True  # a task's hold is its worker's until it resolves
-    if tasks:
-        rows += (await db.execute(select(LedgerEntry.kind, LedgerEntry.amount_micro).where(
-            LedgerEntry.call_id.in_([task_id for task_id, _ in tasks]),
-            LedgerEntry.created_at > until))).all()
+    # Past the lifetime only by exact id, which the call_id index serves: the tasks' late settles,
+    # and the folds of the owner and of every routed child it could have had, which a backlog can
+    # push past it (a fold deletes the queued row it settles).
+    late_ids = list({call_ref, *queued, *(task_id for task_id, _ in tasks),
+                     *_routed_child_ids(call_ref)})
+    rows += (await db.execute(select(
+        LedgerEntry.kind, LedgerEntry.amount_micro, LedgerEntry.call_id).where(
+        LedgerEntry.call_id.in_(late_ids), LedgerEntry.created_at > until))).all()
+    settled = {cid for kind, _, cid in rows if kind == "settle"}
+    if queued - settled:
+        open_hold = True
+    # The mark matters only while the ledger cannot speak for the owner. An entry of its own (a
+    # reserve: it took a hold; a settle: its allowance charge is folded) or of a hub child (a hub
+    # run's steps never take the allowance) puts all its money in the database, so a store that
+    # cannot answer does not keep its claim waiting. An overflow child's or a routed child's
+    # entries do not: the parent's own charge, or another routed child's, may still be unwritten.
+    if marked is not False and not any(_speaks_for(call_ref, cid) for _, _, cid in rows):
+        open_hold = True
     # settle entries are negative (money leaving)
-    return {"in_flight": open_hold, "charged": -sum(amount for kind, amount in rows if kind == "settle")}
+    return {"in_flight": open_hold, "charged": -sum(amount for kind, amount, _ in rows if kind == "settle")}
+
+
+def _routed_child_ids(call_ref: str) -> list[str]:
+    """Every id a routed child of `call_ref` can carry: an attempt `rN` (N a candidate's place in
+    its plan, which never holds more than its capability's endpoints), the check `v`, the
+    upgrade `u`, and the attempts of a routed check or upgrade."""
+    width = _routed_width()
+    attempts = [f"r{n}" for n in range(width)]
+    return [f"{call_ref}:{child}" for child in (
+        *attempts, "v", "u", *(f"{via}:{a}" for via in ("v", "u") for a in attempts))]
+
+
+def _routed_width() -> int:
+    catalog = catalog_store.load()
+    routed = {e["capability"] for e in catalog.by_id.values() if e.get("kind") == "routed"}
+    return max((len(catalog.for_capability(cap)) for cap in routed), default=0)
+
+
+_ROUTED_OR_OVERFLOW = re.compile(r"r\d+(?:\.\d+)*|v|u|overflow")
+
+
+def _speaks_for(call_ref: str, cid: str) -> bool:
+    """Whether a ledger entry under `cid` shows the owner's money is all in the database."""
+    if cid == call_ref:
+        return True
+    child = cid[len(call_ref) + 1:].split(":", 1)[0]
+    return not _ROUTED_OR_OVERFLOW.fullmatch(child)
 
 
 async def _resolve_stale_claim(row: IdempotentCall, caller: Caller, db: AsyncSession):
@@ -254,7 +420,9 @@ async def _with_pool_retry(work):
     pool is the usual reason bookkeeping fails, and a failed write here strands a claim."""
     try:
         return await work()
-    except PoolTimeoutError:
+    except Exception as exc:
+        if not is_db_busy(exc):
+            raise
         await asyncio.sleep(_POOL_RETRY_PAUSE_S)
         return await work()
 
@@ -278,13 +446,32 @@ async def _renew_claim_lease(claim: tuple[int, str, str]) -> None:
 
 
 async def _hold_claim_lease(state) -> None:
-    """Renew `state.idem_claim` until the request drops it; the caller cancels this task on exit."""
+    """Renew `state.idem_claim` until the request drops it; the caller cancels this task on exit.
+    The owner's in-flight mark is renewed with it, when it has one: a lease the database could not
+    renew still reads as running."""
     while True:
         await asyncio.sleep(IDEMPOTENCY_LEASE_RENEW_S)
         claim = getattr(state, "idem_claim", None)
         if not claim:
             return
+        if kv.configured():
+            await kv.store().renew_call_in_flight(claim[2], IN_FLIGHT_MARK_MS)
         await _renew_claim_lease(claim)
+
+
+async def mark_in_flight(call_ref: str) -> bool:
+    """Mark a keyed call on the allowance as running; False when the store did not take it, and
+    the call then keeps a hold of its own. Without the shared store the mark would live in this
+    process only, where a stale claim never reads it (`_money_of`), so it is never set."""
+    if not kv.configured():
+        return False
+    return await kv.store().mark_call_in_flight(call_ref, IN_FLIGHT_MARK_MS)
+
+
+async def clear_in_flight(call_ref: str) -> None:
+    """Remove the mark of a call that did not take the allowance. A call that did hands its mark
+    to the charge writer (`allowance.finish`)."""
+    await kv.store().clear_call_in_flight(call_ref)
 
 
 async def resolve_archived_replay(replay: IdempotentReplay, key: str) -> IdempotentReplay:
@@ -337,7 +524,7 @@ async def _release_idempotent_claim(claim: tuple[int, str, str] | None) -> None:
 
 
 async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Caller,
-                            db: AsyncSession, *, call_ref: str) -> bool:
+                            db: AsyncSession, *, call_ref: str, surface: str | None = None) -> bool:
     """Take the label for this caller, or report that somebody else already has it.
 
     The pending row IS the lock. It goes in before the upstream call, so a concurrent retry loses the
@@ -361,7 +548,7 @@ async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Calle
 
     row = IdempotentCall(
         org_id=caller.org_id, membership_id=caller.membership.id, key=key, call_ref=call_ref,
-        request_fingerprint=fingerprint, endpoint_id=rest[:200], status="pending",
+        request_fingerprint=fingerprint, endpoint_id=rest[:200], surface=_surface(surface), status="pending",
         expires_at=datetime.now(timezone.utc).replace(tzinfo=None)
         + timedelta(seconds=IDEMPOTENCY_WINDOW_S))
     db.add(row)
@@ -636,6 +823,13 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                                            .where(IdempotentCall.id.in_(wanted)))).all()
                 same = [(b.id, len(b.response_body)) for b in bodies
                         if b.response_body is not None and archive.content_hash(b.response_body) == wanted[b.id][1]]
+                if same and not dry_run:
+                    # Hold the keys only for the updates below, after the bodies are read and
+                    # hashed, so row retention cannot delete an answer between the check above and
+                    # the trim, and a recorder (which locks the key) waits for the updates only. A
+                    # key retention holds is left for the next trim.
+                    held = await archive.lock_keys_for_share(db, {wanted[i][0] for i, _ in same})
+                    same = [(i, size) for i, size in same if wanted[i][0] in held]
                 for row_id, size in same:
                     if dry_run:
                         trimmed, freed = trimmed + 1, freed + size
@@ -644,6 +838,7 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                     done = (await db.execute(update(IdempotentCall).where(
                         IdempotentCall.id == row_id, IdempotentCall.status == "done",
                         IdempotentCall.response_body.is_not(None), IdempotentCall.archive_content_hash.is_(None),
+                        archive.answer_on_file(key_hash, body_hash),
                     ).values(response_body=None, archive_key_hash=key_hash, archive_content_hash=body_hash)
                     .execution_options(synchronize_session=False))).rowcount
                     trimmed, freed = trimmed + done, freed + (size if done else 0)

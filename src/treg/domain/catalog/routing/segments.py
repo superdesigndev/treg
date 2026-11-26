@@ -188,6 +188,83 @@ _CITIES = frozenset({
     "taipei", "bangkok", "jakarta", "kuala lumpur", "manila", "ho chi minh city", "hanoi",
     "sydney", "melbourne", "brisbane", "perth", "auckland", "wellington",
 })
+# The country a place that names none belongs to, for a location with no country part: a city
+# (`Seattle`, `Austin, TX`), a metro area once its region words are gone (`Greater Phoenix Area`,
+# `San Francisco Bay Area`, `Dallas-Fort Worth Metroplex`) or a region inside one country. A name
+# that is a large place in two countries (`Birmingham`, `Valencia`, `Victoria`, `Punjab`,
+# `Hyderabad`) is left out.
+_PLACE_COUNTRY: dict[str, str] = {
+    **dict.fromkeys((
+        "new york", "new york city", "nyc", "los angeles", "chicago", "houston", "phoenix",
+        "philadelphia", "san antonio", "san diego", "dallas", "fort worth", "dfw", "austin",
+        "san francisco", "seattle", "denver", "boston", "atlanta", "miami", "nashville",
+        "portland", "las vegas", "detroit", "minneapolis", "charlotte", "raleigh", "durham",
+        "salt lake city", "pittsburgh", "baltimore", "washington dc", "washington d.c.", "tampa",
+        "orlando", "st. louis", "saint louis", "kansas city", "cincinnati", "cleveland", "columbus",
+        "indianapolis", "sacramento", "oakland", "jacksonville", "milwaukee", "new orleans",
+        "oklahoma city", "boise", "tucson", "albuquerque", "scottsdale", "irvine", "palo alto",
+        "mountain view", "sunnyvale", "san mateo", "st. paul", "saint paul", "fort lauderdale",
+        "chapel hill", "bay area", "silicon valley", "midwest",
+        "new england"), "US"),
+    **dict.fromkeys(("toronto", "montreal", "montréal", "vancouver", "calgary", "ottawa",
+                     "edmonton", "winnipeg", "ontario", "quebec", "british columbia", "alberta",
+                     "manitoba", "saskatchewan", "nova scotia"), "CA"),
+    **dict.fromkeys(("mexico city", "guadalajara", "monterrey", "tijuana"), "MX"),
+    **dict.fromkeys(("são paulo", "sao paulo", "rio de janeiro", "são paulo state"), "BR"),
+    "buenos aires": "AR", "bogotá": "CO", "bogota": "CO", "lima": "PE", "santiago": "CL",
+    **dict.fromkeys(("london", "manchester", "edinburgh", "glasgow", "bristol", "leeds"), "GB"),
+    "dublin": "IE",
+    **dict.fromkeys(("paris", "lyon", "marseille", "île-de-france", "ile-de-france", "provence",
+                     "brittany"), "FR"),
+    **dict.fromkeys(("berlin", "munich", "münchen", "hamburg", "frankfurt", "cologne", "köln",
+                     "düsseldorf", "stuttgart", "bavaria", "bayern", "hesse", "hessen", "saxony",
+                     "north rhine-westphalia", "nordrhein-westfalen", "baden-württemberg"), "DE"),
+    **dict.fromkeys(("amsterdam", "rotterdam"), "NL"),
+    **dict.fromkeys(("brussels", "antwerp", "flanders", "wallonia"), "BE"),
+    **dict.fromkeys(("zurich", "zürich", "geneva"), "CH"),
+    "vienna": "AT", "wien": "AT",
+    **dict.fromkeys(("madrid", "barcelona", "catalonia", "cataluña", "andalusia"), "ES"),
+    "lisbon": "PT", "porto": "PT",
+    **dict.fromkeys(("milan", "milano", "rome", "roma", "turin", "lombardy", "lombardia"), "IT"),
+    "stockholm": "SE", "oslo": "NO", "copenhagen": "DK", "helsinki": "FI", "warsaw": "PL",
+    "kraków": "PL", "krakow": "PL", "prague": "CZ", "budapest": "HU", "bucharest": "RO",
+    "athens": "GR", "istanbul": "TR", "tel aviv": "IL", "dubai": "AE", "abu dhabi": "AE",
+    "riyadh": "SA", "doha": "QA", "cairo": "EG", "lagos": "NG", "nairobi": "KE",
+    "johannesburg": "ZA", "cape town": "ZA",
+    **dict.fromkeys(("mumbai", "delhi", "new delhi", "bangalore", "bengaluru", "chennai", "pune",
+                     "kolkata", "gurgaon", "gurugram", "noida", "maharashtra", "karnataka",
+                     "tamil nadu", "gujarat"), "IN"),
+    "singapore": "SG", "hong kong": "HK",
+    **dict.fromkeys(("shanghai", "beijing", "shenzhen", "guangzhou", "guangdong"), "CN"),
+    "tokyo": "JP", "osaka": "JP", "seoul": "KR", "taipei": "TW", "bangkok": "TH",
+    "jakarta": "ID", "kuala lumpur": "MY", "manila": "PH", "ho chi minh city": "VN", "hanoi": "VN",
+    **dict.fromkeys(("sydney", "melbourne", "brisbane", "perth", "new south wales", "queensland",
+                     "western australia", "south australia", "tasmania"), "AU"),
+    "auckland": "NZ", "wellington": "NZ",
+}
+# State and province abbreviations after a city (`Vancouver, WA`, `London, ON`, `Mumbai, MH`):
+# never a country code, but the countries the city must be in. Indian state codes leave out `UK`
+# (Uttarakhand), which reads as Britain.
+_SUBDIVISION_CODES: dict[str, tuple[str, ...]] = {
+    "US": ("al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id", "il", "in", "ia",
+           "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj",
+           "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt",
+           "va", "wa", "wv", "wi", "wy", "dc"),
+    "CA": ("on", "qc", "bc", "ab", "mb", "sk", "ns", "nb", "nl", "pe", "yt", "nt", "nu"),
+    "AU": ("nsw", "vic", "qld", "wa", "sa", "tas", "act", "nt"),
+    "IN": ("ap", "ar", "as", "br", "cg", "ct", "ga", "gj", "hr", "hp", "jk", "jh", "ka", "kl", "mp",
+           "mh", "mn", "ml", "mz", "nl", "od", "or", "pb", "rj", "sk", "tn", "ts", "tg", "tr", "up",
+           "ut", "wb", "dl"),
+    "BR": ("ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms", "mg", "pa", "pb",
+           "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", "sc", "sp", "se", "to"),
+}
+_REGION_CODES: dict[str, frozenset[str]] = {
+    code: frozenset(k for k, codes in _SUBDIVISION_CODES.items() if code in codes)
+    for codes in _SUBDIVISION_CODES.values() for code in codes}
+# Cities that are also a large city or capital elsewhere (San José, Costa Rica; Hyderabad,
+# Pakistan): their country only beside a part that agrees with it (`San Jose, CA`, `Hyderabad, IN`).
+_PLACE_COUNTRY_WITH_REGION: dict[str, str] = {"san jose": "US", "hyderabad": "IN"}
+_METRO_WORDS = re.compile(r"\b(?:greater|metropolitan|metroplex|metro|area|region)\b")
 # Country names that are also common given names: a q naming a person must not read as a place.
 _NOT_PLACES = frozenset({"chad", "jordan"})
 _PLACE_RX: re.Pattern | None = None
@@ -219,16 +296,98 @@ def iso2(value: Any) -> str | None:
     return code.upper() if code and len(code) == 2 else None
 
 
+def _part_country(part: str) -> str | None:
+    if part in _US_STATES:
+        return "US"
+    if (len(part) > 3 or part in _COUNTRY_ALIASES) and (code := iso2(part)) is not None:
+        return code
+    return None
+
+
+def _named_country(name: str) -> str | None:
+    return _part_country(name) or _PLACE_COUNTRY.get(name)
+
+
+def _listed_place(name: str) -> str | None:
+    return "US" if name in _US_STATES else _PLACE_COUNTRY.get(name)
+
+
+def _place_country(part: str) -> str | None:
+    """A city, metro area or one-country region's country: `greater phoenix area`, `san francisco
+    bay area`, `dallas-fort worth metroplex`. A hyphenated name gives a country only when every
+    place in it is known and in that country: `san diego-tijuana` spans two, so it gives none.
+    Once a word is dropped, what is left is looked up only among the cities, regions and US
+    states we list, never as a country: `canada bay` is in Australia, not Canada."""
+    if code := _named_country(part):
+        return code
+    core = re.sub(r"\s+", " ", _METRO_WORDS.sub(" ", part)).strip()
+    for name in (core, core.removesuffix(" bay")):
+        if code := _listed_place(name):
+            return code
+    pieces = re.split(r"\s*[-–/]\s*", core.removesuffix(" bay"))
+    if len(pieces) > 1:
+        codes = {_listed_place(p) for p in pieces}
+        if len(codes) == 1 and None not in codes:
+            return codes.pop()
+    return None
+
+
 def location_country(value: Any) -> str | None:
     """The ISO2 country a free-text location names (`Berlin, Germany` -> `DE`, `Austin, Texas` ->
-    `US`), from its comma parts, last first. A two-letter part is never read as a country code:
-    `San Francisco, CA` names a state, not Canada. None when no part names a country."""
-    for part in reversed([p.strip() for p in _text(value).split(",") if p.strip()]):
-        if part in _US_STATES:
-            return "US"
-        if (len(part) > 3 or part in _COUNTRY_ALIASES) and (code := iso2(part)) is not None:
-            return code
-    return None
+    `US`), from its comma parts: a country name or a US state, with a last part that is a
+    provider's country code (below) and any state code agreeing (`Cuba, NY` and `Lebanon, PA` name none). Parts that name different countries name none (`Lebanon, US`, a US city;
+    `Washington, GB`, a British town). With no country or US state in any part, a city,
+    metro area or one-country region gives its country (`Austin, TX`, `Greater Phoenix Area`,
+    `San Francisco Bay Area` -> `US`) when every part is a place we know or a state or province
+    abbreviation (`Austin, TX`, `Perth, WA`), and all of them point at one country: `London, ON`,
+    `Paris, TX`, `Mexico City, DF` and `Vancouver, WA` (Washington or Western Australia) name
+    none. A part we do not know (`Hyderabad, Sindh`) leaves it None.
+
+    A last part that is a country code and no state or province abbreviation is the provider's
+    own country as adapters write `place(city, country)`, but only beside a place in that country
+    or a country name (`Paris, FR`, `Austin, Texas, US`): `Geneva, GE` (canton Geneva, not
+    Georgia), `Vancouver, US` and a city we do not know with a code are None. One that is
+    both (`CA`, `DE`, `IN`, `SA`) cannot be told apart once joined into text (`Durham, CA` is
+    Durham, Ontario from a provider's country code, or a place in California), so a location
+    holding one names no country unless a part spells the country out."""
+    parts = [p.strip() for p in _text(value).split(",") if p.strip()]
+    named = {code for part in parts if (code := _part_country(part)) is not None}
+    tail = None
+    if parts and len(last := parts[-1]) == 2 and last not in _REGION_CODES:
+        tail = iso2(last)
+    if named:
+        named |= {tail} if tail else set()
+        # A state code must agree too, read as a state or as a country code: `Cuba, NY` is a town
+        # in New York, `Lebanon, PA` one in Pennsylvania (or Panama, never Lebanon).
+        for part in parts:
+            if part in _REGION_CODES and not named & (_REGION_CODES[part] | {iso2(part)}):
+                return None
+        return next(iter(named)) if len(named) == 1 else None
+    within: list[frozenset[str]] = []
+    places = qualified = 0
+    for i, part in enumerate(parts):
+        if tail and i == len(parts) - 1:
+            # Alone, a country code may be a region's code elsewhere (`Geneva, GE`: canton
+            # Geneva, not Georgia): it counts only beside a place in that country.
+            within.append(frozenset({tail}))
+        elif part in _REGION_CODES:
+            if iso2(part) is not None:
+                return None
+            within.append(_REGION_CODES[part])
+        elif (code := _place_country(part)) is not None:
+            within.append(frozenset({code}))
+            places += 1
+        elif (code := _PLACE_COUNTRY_WITH_REGION.get(part)) is not None:
+            within.append(frozenset({code}))
+            qualified += 1
+        else:
+            return None
+    if not places and not (qualified and len(within) > qualified):
+        return None
+    # A city and a state code beside it must agree: `Mexico City, DF` (Mexico's old Distrito
+    # Federal, or Brazil's) and `London, ON` name no one country.
+    common = frozenset.intersection(*within)
+    return next(iter(common)) if len(common) == 1 else None
 
 
 def _is_iso2(value: str) -> bool:
@@ -363,15 +522,19 @@ _LEGAL_FORMS = frozenset({
     "pte", "pty", "pvt", "lda", "ltda"})
 
 
+_COMPANY_DOMAIN_KEYS = ("company_domain", "domain", "company_website", "website")
+_COMPANY_NAME_KEYS = ("company", "company_name", "companyName", "organization")
+
+
 def _company_match(row: dict, domain: str) -> bool:
     """The row's company is the asked one: its domain is the asked domain or a subdomain of it,
     or, for a row with no domain, its name minus a legal form is the domain's first label.
     A longer name is another company (`MetaMask` is not meta.com, `Applebee's` not apple.com)."""
-    row_domain = _host(_row_text(row, "company_domain", "domain", "company_website", "website"))
+    row_domain = _host(_row_text(row, *_COMPANY_DOMAIN_KEYS))
     if row_domain:
         return row_domain == domain or row_domain.endswith("." + domain)
     label = _squash(domain.split(".", 1)[0])
-    words = re.findall(r"[^\W_]+", _row_text(row, "company", "company_name", "companyName", "organization").casefold())
+    words = re.findall(r"[^\W_]+", _row_text(row, *_COMPANY_NAME_KEYS).casefold())
     while len(words) > 1 and words[-1] in _LEGAL_FORMS:
         words.pop()
     return bool(label) and "".join(words) == label
@@ -393,22 +556,30 @@ def people_search_answer(asked: dict, output: dict) -> dict[str, str]:
             dup += k in seen
             seen.add(k)
     out["rows_dup"] = dup
+    # Beside each check, `rows_<check>_known`: the rows that carry something to judge (a company,
+    # a title, a location that names a country). A row with none of it is unknown, not a mismatch,
+    # so a check reads as match / known.
     domain = _host(asked.get("company_domain")) if isinstance(asked.get("company_domain"), str) else ""
     if domain:
         out["rows_company_match"] = sum(_company_match(r, domain) for r in rows)
+        out["rows_company_known"] = sum(bool(_row_text(r, *_COMPANY_DOMAIN_KEYS, *_COMPANY_NAME_KEYS))
+                                        for r in rows)
     fn = title_function(asked.get("title"))
     if fn not in ("other", "none"):
-        out["rows_title_match"] = sum(title_function(_row_text(r, "title", "headline", "job_title")) == fn
-                                      for r in rows)
+        functions = [title_function(_row_text(r, "title", "headline", "job_title")) for r in rows]
+        out["rows_title_match"] = sum(f == fn for f in functions)
+        out["rows_title_known"] = sum(f != "none" for f in functions)
     if (code := iso2(asked.get("country"))) is not None:
-        out["rows_country_match"] = sum(location_country(_row_text(r, "location", "country")) == code
-                                        for r in rows)
+        countries = [location_country(_row_text(r, "location", "country")) for r in rows]
+        out["rows_country_match"] = sum(c == code for c in countries)
+        out["rows_country_known"] = sum(c is not None for c in countries)
     return {k: str(v) for k, v in out.items()}
 
 
 PEOPLE_SEARCH = Segmenter(
     # 2 (2026-11-13): `company_given`.
-    version="2",
+    # 3 (2026-11-23): `rows_<check>_known`; a location's city or metro area names its country.
+    version="3",
     vocab={
         "title_class": TITLE_CLASSES, "title_function": FUNCTIONS, "title_seniority": SENIORITIES,
         "title_lang": LANGS, "title_words": TITLE_WORDS, "has_country": TRUE_FALSE,

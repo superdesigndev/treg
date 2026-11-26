@@ -25,7 +25,6 @@ sources:
   - tests/test_platform_accounts.py
   - src/treg/client_identity.py
   - src/treg/call_surface.py
-  - src/treg/sandbox_identity.py
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/publicdemo.py
   - src/treg/domain/governance/usage.py
@@ -109,7 +108,8 @@ Inside `relay()`:
 4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
    query.
 5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
-   or top-level JSON field. A JSON binding is the only case that buffers and reserializes the body:
+   or top-level JSON field, or fills only its own `{name}` path segment (a key-bound account id,
+   [auth and secrets](auth-secrets.md)). A JSON binding is the only case that buffers and reserializes the body:
    formatting changes, non-ASCII is emitted as UTF-8, duplicate keys fail closed, and it must never
    be used where the upstream signs or hashes the raw body. On a connection to treg's own Meta app
    the credential also carries `appsecret_proof`, replacing any caller value
@@ -203,7 +203,8 @@ bodies on unmetered paths are kept for evidence only when `Content-Length` is de
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
-sent: its payment credential (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`), through
+sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,
+`X-PAYMENT`, `SIGN-IN-WITH-X`), through
 `routers.call._paid_call` and `agent_payments.consumes`. A request with any treg credential relays
 those headers unchanged.
 
@@ -272,9 +273,24 @@ a tool the caller cannot see can neither cause a `409` nor win; this only narrow
 resolves still passes `_require_tool_use`. When ACL alone removed every match the answer is `403`
 naming only the host the caller supplied, never the hidden tool.
 
-A named miss falls through, in order: an exact catalog endpoint, then, only for a top-level call
-(`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog id always wins; a
-hub tool never shadows either. Hub runs take a per-team `hub_limits.slot()` and refuse with
+A named miss falls through, in order: an exact catalog endpoint, then a **vendor path**, then, only
+for a top-level call (`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog
+id always wins; a hub tool never shadows either.
+
+A vendor path is the named shape with a catalog provider for the name: `<provider>/<path>`, where
+`path` is relative to the provider's `base_url` (`/call/dataforseo/serp/google/organic/live/advanced`,
+DataForSEO's base already ending in `/v3`). So a client switches by replacing the vendor's base URL
+with `/call/<provider>`, and the same URL means the same upstream request whether a team's own tool
+named `<provider>` takes it (that wins, as every named shape does) or the catalog does.
+`vendor_path_endpoint` matches the provider's rows on method and path, a `{param}` taking one
+non-empty segment; fewer placeholders win (`/users/me` before `/users/{id}`) and a remaining tie is
+`409 target_ambiguous` with the candidate ids, never a guess. The row then runs exactly as
+`/call/<id>`: the segments become the query parameters of those names, which `_marketplace_upstream`
+consumes, so pricing, holds, capacity and the archive key are the id call's; a query parameter
+repeating one is `400`. A path on a row's other method is `400`; no match is `404` naming the base
+URL (with "drop the leading `/v3`" when the path repeats it) and relays nothing. Rows on another
+host than the base URL, with `authorization_paths`, or with a fixed query in `path` are id-only.
+`/catalog/call/` and keyless agent payments take ids only. Hub runs take a per-team `hub_limits.slot()` and refuse with
 `429 hub_busy` past `MAX_RUNS_PER_TEAM` rather than queue ([hub](hub.md)).
 
 Named-miss diagnostics, all on the error path:
@@ -303,7 +319,9 @@ property id does not become `%253A` and an encoded `/`, `?` or `#` stays escaped
 literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
 fragment delimiters and invalid `%` are escaped. A value that decodes to `.` or `..` is refused
 with `catalog_parameter_invalid` (400) before any hold, since URL normalization would remove it as
-a dot segment. The overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
+a dot segment. A placeholder the provider's credential fills (`credential_path_params`) is left
+for the relay, which fills it with `pathsegment.fill` ([auth and secrets](auth-secrets.md)). The
+overflow road fills Orthogonal's `path` with the same `pathsegment.encode`. A catalog `host` on a provider that opted into
 `catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
 approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
 treg 502 before reserve, so catalog data cannot redirect an injected credential.
@@ -312,12 +330,45 @@ A `retired`/`broken` tombstone is refused with 410, its `status_note` and option
 `superseded_by`, before credentials are selected (audited `refused_by=retired`). An org's own tool
 named like the old id already resolved above and is not shadowed.
 
-`strict_query` rows (`_enforce_catalog_query`) reject bodies, undeclared or duplicate query
-parameters, missing required inputs and unsupported enum values; declared path placeholders pass
-and are consumed. `body_allowlist` rows (`_enforce_catalog_body`) reject undeclared top-level JSON
-fields, missing required fields, invalid declared scalars and arrays outside their declared
-cardinality or item enum (an array of objects may require all or any named item fields; an omitted
-optional array is allowed). Both apply on every tier and never to raw own-tool relays.
+### Catalog request checks
+
+The parameter check holds every declared parameter a catalog call sends to its declaration, on
+every tier and before anything is held or relayed: `_enforce_declared_query` reads each query and
+path value, and `_enforce_catalog_body` each top-level body field (a dotted name reads the nested
+value; a JSON array body is read task by task, a form body as strings, each value of a repeated JSON
+field), both through `catalog.params.check` ([catalog schema](catalog-schema.md#parameter-types)). A
+field nested in a declared object's `properties` is not checked, nor is any field of a multipart
+body. An undeclared parameter is relayed as sent, and a body that does not parse is left for the
+provider. The routed road reads the same function for the routed call's own fields
+([routed endpoints](#routed-endpoints---the-resolve-stage-short-circuit)), and its plan runs each
+child's adapter-built request through these checks (`_query_refusal`, `_body_refusal`).
+
+`TREG_PARAM_CHECK` (`Settings.param_check`) sets what a broken declaration does:
+
+- **`log`**, the default and the reading of any value but `refuse`: the call goes on exactly as
+  without the check (relayed as sent, the routed plan unchanged) and the check writes an INFO line
+  for the first broken parameter of a call (the one refuse mode would name) and for each child the
+  routed plan would drop, on the `treg.param_check` logger, `catalog_parameter_would_refuse`
+  followed by JSON:
+  `endpoint_id`, `parameter` (`queryParams.limit`, `body.urls`, `body.0.limit` in a task array),
+  `rule` (`type`, `repeat`, `enum`, `range`, `length`, `array_length`, `items:<rule>`), `tier` and
+  `road`, never the value. `road` is `catalog` (a direct call), `routed` (a routed call's own
+  identity or filter field; `tier` is `routed`) or `routed_plan` (a child the routed plan would
+  drop, at the tier the plan gave it; that child's own request writes no second line when it is
+  sent). `tier` is the one the call resolved to, or `none` when another rule refused the call
+  first. Counting `catalog` and `routed` lines counts the calls refuse mode would answer 400;
+  `routed_plan` lines count children it would leave out of a plan.
+- **`refuse`**: a 400 `catalog_parameter_invalid` naming the parameter and the declared rule, never
+  the value, and nothing is charged; the routed plan drops the child as `needs <parameter>: <rule>`.
+
+Rules that refused before the parameter check refuse in either mode. `strict_query` GET and query-only POST rows
+(`_enforce_catalog_query`) reject bodies, undeclared or duplicate query parameters, missing required
+inputs and values outside a declared enum; declared path placeholders pass and are consumed.
+`strict_body` and `body_allowlist` rows (`_enforce_strict_body`) require one JSON object body and
+hold its arrays to their item enum and count; `body_allowlist` rows also reject undeclared top-level
+fields and missing required ones, hold each declared scalar to its type, enum and numeric bounds, and
+may require all or any named item fields of an array of objects. All of these apply on every tier
+and never to raw own-tool relays.
 
 ### Authorization and deny rules
 
@@ -339,15 +390,23 @@ member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mir
 Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
 dedicated pool (`ssrf_lookup_threads`), so a slow or dead name server never stops the event loop, and at
 most one lookup per host is in flight (later callers await the same answer). No verdict is kept after it
-lands, so each new call resolves again.
+lands, so each new call resolves again. A caller that has waited `ssrf_lookup_timeout_s` is refused
+(`ssrf_lookup_timeout` in the log) with `AddressLookupTimedOut`, kept apart from a confirmed non-public
+answer: the relay's `502` says the lookup timed out, and the health run marks a credential whose token
+endpoint lookup timed out `unknown`, never `invalid`, so no owner is told it died. A lookup still queued when its last caller stops
+waiting is dropped, so it never delays later lookups; one already running cannot be interrupted, finishes on
+its thread, and the next call after it starts a fresh one, so a refusal never outlasts the slow resolver.
 
 Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
 `proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
 registration can later resolve to `169.254.169.254` or localhost. The other server-side roads to a
 user-chosen address make the same check (`ssrf.url_host_is_public`, resolved off the event loop,
 same switch) just before sending: the health probe (`health._probe`), the owner webhook
-(`health._notify`), and the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
-code exchange (`HTTPXOAuthExchangePort.exchange_code`). Registration
+(`health._notify`), the OAuth token endpoint on refresh (`HTTPXOAuthRefreshPort.exchange`) and
+code exchange (`HTTPXOAuthExchangePort.exchange_code`). The MCP OAuth client-id metadata fetch
+(`mcp_oauth.fetch_client_id_metadata`) uses the same lookup but checks always, whatever
+`proxy_ssrf_check` says: its URL comes from any client on the internet. The blocking `host_is_public` is for sync callers only; an
+async path never calls it directly. Registration
 (`ssrf.safe_webhook_url`) strips a trailing dot (`localhost.`; for a tool's `base_url` only while
 `proxy_ssrf_check` is on, so a local registry can still name a loopback upstream) and normalizes numeric IP encodings
 (`2130706433`, `0x7f000001`, `127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
@@ -393,14 +452,19 @@ the [call-time SSRF guard](#call-time-ssrf-guard) with its address-space list.
 
 A `kind: routed` row (`treg.<capability>`, [catalog](catalog.md) § Routing) never reaches the
 credential ladder itself. `service._execute_call` hands it to `application/call/route.py`, which
-runs each child endpoint through this same use case as a child `CallContext` (`call_ref`
-`{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
+first reads the identity (`invalid_identity`) and filter ranges (`_require_ranges`), then holds each
+identity and filter field the caller sent to its contract spec (the parameter check, in its mode:
+a 400 `catalog_parameter_invalid` naming the field before any child is planned or held, or a
+`catalog_parameter_would_refuse` line), then runs each child endpoint through this same use
+case as a child `CallContext` (`call_ref` `{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
 child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
-`deferred_settles` and leaves its hold open; a child that is not billable or settles at a
+`deferred_settles` and leaves its hold open (or, on the allowance, its take: [money](money.md)
+§ Allowance, "Routed children"); a child that is not billable or settles at a
 provider-reported zero releases at once so it never blocks the next child's reserve. The parent
 closes every child hold exactly once with `settle.close_deferred(charge=...)`: settle each billable
 child as its own settle would have, or release all because a failed routed call charges nothing.
-A crash before that leaves holds to the reaper, which releases in the caller's favor.
+A crash before that leaves holds to the reaper, which releases in the caller's favor, and takes
+in the team's allowance hold until it is closed.
 `route.child_outcome` reads each child's answer and is shared with
 [replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
 A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
@@ -441,7 +505,8 @@ name the label, never a credential, so reordering accounts or regenerating a key
    reaching the provider lands where it can be recognized. The idempotency claim cannot remember the
    account: a failed call deletes its claim, and that is exactly the retry that reaches the
    provider.
-3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating.
+3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating;
+   an account the sweep read below its drain mark (`low`) is passed over while another is not.
    Rules 1-2 run during resolution (`pinned`); rule 3 runs right before relay (`assign`) and takes
    the bucket's token with no await between, so a burst that resolved together still spreads.
 
@@ -452,16 +517,19 @@ carries no `account` and uses the provider's own bucket, so a one-account provid
 Capacity is per account: a signature strikes and locks only the account that answered
 (`marks.lock_key(..., slot)`, `<key>#<label>` for non-primary), a 2xx clears only its own strikes,
 and a probe goes to the locked account. A call is refused before reserve only when its pinned
-account, or every account of an open call, is out. The sweep reads only the primary, so another
-account's lock lifts at expiry or through its own probe.
+account, or every account of an open call, is out. The sweep reads every account, so one read
+empty gets no calls while another can serve, and the next sweep that reads it refilled returns it
+to rotation ([capacity](../ops/capacity.md)).
 
 ## Platform capacity: refuse before reserve
 
 Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
-table price row must equal its value; duplicate JSON keys are rejected so validation and upstream
-cannot disagree), and outright refusal of options whose charge or result arrives later at a
+table price row must equal its value, or be absent when its declared default is that value, as the
+table prices an absent field; duplicate JSON keys are rejected so validation and upstream
+cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
+run), and outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads. Own keys are unaffected: the provider, not treg,
 bears that account's exposure.
 
@@ -493,8 +561,17 @@ answered: `cf-mitigated`, an HTML block page, 1xxx problem-JSON) strikes nothing
 caller's request shape must not take the provider away from every team. An `unrecorded` signal (a
 4xx matching no row whose body still names credits/quota/balance) emits a `capacity` `unrecorded`
 event ([capacity](../ops/capacity.md)): the tripwire for a vendor dialect missing from the table.
-Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged, as is the
-vendor's 402 on this call. The protection is for the next caller.
+Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged.
+
+The call that meets the signature (a strike, a probe, a free route's own quota) is not relayed
+either. `service._execute_call` replaces a tier-4 (treg's shared key) answer whose signal is
+`balance` or `quota`, that overflow did not serve and that settled at zero, with the same typed 503
+`provider_capacity_unavailable` (`_provider_capacity_unavailable`), so a 2xx carrying the vendor's
+own error code or a 401 that reads as the caller's key never reaches the caller. Every
+`provider_capacity` 503 built there, this one and the refusal before any hold alike, carries
+`Retry-After` (the seconds until `resets_at` when known, else `CAPACITY_RETRY_AFTER_S`), since many
+clients retry a 503 at once. The audit row, its error evidence and `tool_called` keep the vendor's status and body. A routed child's
+`provider_capacity` refusal is `skipped` ("treg's account is used up"), never an error.
 
 ## Burst smoothing on treg's own keys
 
@@ -623,6 +700,9 @@ zero estimate, a required fetch ownership rule and no submission, owned poll or 
 evidence. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
 and stream in full with headers (including Range) through the router's close-once lifecycle. Audit
 size is unknown, not zero; nothing is archived or kept for replay, and the claim is released.
+A free `kind: utility` row with no ownership rule or managed resource (a provider's reference
+list, such as DataForSEO's per-country location codes) qualifies the same way: it has nothing to
+settle or learn, and a large country's list outgrows the buffer.
 
 Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget:
 `_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,

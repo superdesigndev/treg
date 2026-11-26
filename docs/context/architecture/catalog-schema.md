@@ -13,13 +13,16 @@ sources:
   - src/treg/domain/catalog/schema/violations.py
   - src/treg/domain/catalog/schema/violations.yaml
   - src/treg/domain/catalog/schema/export.py
+  - src/treg/domain/catalog/params.py
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
   - src/treg/domain/plugins/anyapi.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
+  - scripts/catalog_param_types.py
   - tests/test_catalog_schema.py
+  - tests/test_catalog_params.py
   - tests/test_catalog_v2_codemod.py
   - tests/plugins/test_anyapi.py
 related:
@@ -47,6 +50,52 @@ endpoint file through them, so the two can no longer disagree about a key, a typ
 - **One YAML reading.** Dates stay the strings they were written as, for the loader and the
   validator alike.
 
+## Parameter types
+
+Every declared parameter, a row's query, path, header and body specs and a contract's identity,
+filter, output and row fields alike, uses one vocabulary (`catalog/params.py`):
+
+- **`type`** is one of JSON Schema's `string`, `integer`, `number`, `boolean`, `array` and `object`,
+  or a list of two or more of them for a parameter that takes either (`[boolean, object]`).
+- **`items`** says what each member of an `array` is, as a spec of its own.
+- **`format`** annotates a string: `url` or `email`. It is never a type; a routed identity
+  field of `format: url` is read as a URL (`invalid_identity`), and a row field of it is never cut.
+- **Range keys match the type**: `min`/`max` bound a number or an integer, `minLength`/`maxLength` a
+  string, `minItems`/`maxItems` an array.
+- **`enum`** names whole values: on an array it lists whole arrays; an enum of each item goes in
+  `items`.
+
+The validator holds every declaration to it (`params.declaration_errors`): a type word or list,
+`items` on an array, range keys of the type, a format on a string, enum entries its type can hold.
+The models still parse `minimum`/`maximum` and the contracts parser the earlier contract words
+(`str`, `int`, `url`, ...) so a base catalog written before the vocabulary loads in CI's dump
+comparison; the validator refuses both. A contract identity variant names each key with a type word
+or a spec (`{linkedin_url: {type: string, format: url}}`).
+
+**The check.** `params.check(spec, value)` is the one reading of a sent value: its type, enum and
+range, and each item of an array, answering the rule broken and why (`params.refusal` the why
+alone). It does not read an object's `properties`: a row's body is checked
+field by field at the top level (a field declared by a dotted name, `pagination.limit`, reads the
+nested value), so a field nested inside a declared object is declared but not checked. A null or
+empty value is not sent and meets an optional spec. A query, path or form value is a string read by
+the declared type (ASCII digits for an integer, a decimal for a number, `true`/`false`, JSON for an
+object or array; a repeated parameter is an array); a JSON body value keeps its JSON type, except
+that an integer may be ASCII digits, as the count rule reads it. A query array that is not JSON (a
+comma list) is relayed unread. The refusal names the declared rule, never the value. Where the
+request path calls it, and whether a broken rule is refused or only logged (`TREG_PARAM_CHECK`):
+[proxy model](proxy-model.md#catalog-request-checks) and [catalog](catalog.md) routing.
+
+**The rewrite into it**: `scripts/catalog_param_types.py` (dry run by default, `--apply`), kept for
+re-runs and called by the extended-file ingest so generated rows come out in the vocabulary. It maps
+each word, writes a union as a type list, takes the type an `anyOf` declares, gives an untyped spec
+object when its example, default, test request or note shows a structure and string otherwise, gives
+a bare array its `items` from what the catalog shows of its values (the row's example, default, enum
+and test request, the same parameter on the provider's other rows, a JSON sample or an object shape
+such as `{name, operator, value}` in its note) and string otherwise, widens a type its own test
+request would break, renames range keys and `format: uri`, moves an array's item enum into `items`,
+and writes enum entries YAML reads as another type in the declared one (`off` in a string enum). It
+prints every inferred type for a person to correct.
+
 ## Two spellings, one resolved row
 
 A row is in the **v2 spelling** when it declares `price`, `provenance`, `reserve`, `settle`, `bill`,
@@ -64,12 +113,14 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
   (omitted when a condition is not one equality; its floor `table_min` is served either way),
-  `reserve.rows` with its parameter back in
+  `reserve.rows` (its `platform_max` included) with its parameter back in
   `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
   reads a v2 row unchanged; billing never reads it
-  ([money](money.md#rows-in-the-v2-spelling)).
+  ([money](money.md#rows-in-the-v2-spelling)). When `price.unit: call` pairs a reserve plugin
+  with a reported charge, the plugin estimates the hold and `bill.miss` determines whether the
+  catalog shows `per_call` or `per_success`.
 
 The byte-identical claim is checked by the catalog dump in [replay](replay.md).
 
@@ -86,9 +137,12 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 `domain/catalog/outcome.py` judges one answer to a v2 row from its one declaration: a non-2xx is a
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
-`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
-cache admission) reads it for a row that declares a `miss` rule, for a 2xx or a 4xx status, beside
-a verified adapter, in today's result reasons; routing's `child_outcome` reads it too, keeping its
+`miss` rule holds, or the `ok_when` beside a rule's `status` holds (a provider that answers one miss
+with a 404 and another with an empty 2xx), else a hit. Billing reads it in the settlement order; `results.judged_outcome`
+records it on each call with `not_found` ahead of it, and reliability counts that word before the
+status ([catalog](catalog.md)); `results.classify` (the hit verdict, cache admission) reads it for a
+row that declares a `miss` rule, for a 2xx or a 4xx status, beside a verified adapter, in today's
+result reasons; routing's `child_outcome` reads it too, keeping its
 own checks (declared miss, `not_found`, non-JSON body, empty required output) on top: a 2xx it
 judges an error is a miss with reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's
 adapter only maps fields: `Adapter.is_miss` reads the row's rule, so every reader of an adapter's
@@ -134,8 +188,9 @@ rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
-declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
-USD, and the request
+declared `usd: null`, which keeps the row off treg's key; a settle may not), a free price inherits
+no `settle.reported` (it opts out with `settle: null`, as today's spelling refuses
+`reported_charge` beside `type: free`), usage `terms` are in USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
 declared input fields; an equality-only table also meets today's table checks (enum and range, a
 bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
@@ -172,6 +227,11 @@ A row has two prose fields, and each caveat has one home.
 - **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
   `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
   comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+- **A filter the provider takes only as a hint** carries `applied: soft` beside its note, which
+  says what comes back instead. `treg catalog get` opens that parameter's note with "a hint, not a
+  filter". Routing counts a key mapped into it as not applied only when the endpoint's contract has
+  that filter; otherwise the mark changes only the `catalog get` text, and the validator warns
+  ([catalog](catalog.md)).
 
 The writing rules no check can judge:
 
@@ -202,7 +262,8 @@ locally to see the warnings for the rows you touched.
 ## The shrink-only violation list
 
 `schema/violations.yaml` lists the violations the catalog still carries: keys only one provider
-uses, rows whose parameter specs use JSON Schema words nothing reads, data the models or the
+uses, rows whose parameter specs use JSON Schema words nothing reads (`description`, `examples`,
+`anyOf`, `additionalProperties`), data the models or the
 validator refuse (each with its reason), and v2 legacy holds. The validator fails on a use the
 list does not name and on an entry nothing uses any more; `scripts/catalog_shrink_only.py` fails a
 pull request that adds an entry the base branch lacks. Fix the data; never grow the list.

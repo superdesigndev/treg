@@ -313,7 +313,9 @@ capabilities:
   people.phone.verify: "Validate and format a phone number"
   people.phone.live: "Check whether a phone number is live on its network"
   people.profile.from_phone: "Find social profiles from a contact phone number"
+  people.contact.get: "Get a person's contact information"
   linkedin.profile.from_email: "Find a person's LinkedIn profile from their email address"
+  people.audience.email_hash: "Get a person's emails as hashes ready for ad platform audiences — LinkedIn Matched Audiences, Meta Custom Audiences, Google Customer Match"
   creators.socials.connected: "List a creator's accounts on other platforms"
 
   # --- Ad platforms & libraries -----------------------------------------------------------------
@@ -1351,6 +1353,7 @@ capability_titles:
   web.site.top_pages: "Top pages by authority"
   web.url.metrics: "URL and domain authority"
   linkedin.profile.from_email: "Find a LinkedIn profile from an email"
+  people.audience.email_hash: "Get email hashes for ad audiences"
   video-gen.result.retrieve: "Download a finished video"
   tripadvisor.search.general: "Search places, hotels and restaurants"
   stocks.quote.live: "Current quote for a ticker"

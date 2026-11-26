@@ -28,17 +28,19 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from treg import api as A
 from treg.application import catalog_stats
 from treg.application.call import service as call_service
+from treg.routers import call as call_routes
 from treg import audit
 from treg.domain import money as ledger
-from treg.domain.identity import api_keys as managed_keys
 from treg.config import get_settings
-from treg.infra.db import _background_engine, _engine, session_maker
+from treg.infra.db import _background_engine, _engine, answers_db_busy, is_db_busy, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
 from treg.models import EndpointDayStat, Hold
 
 from test_marketplace_call import EP, EP_MICRO, platform_on  # noqa: F401 — fixture reuse
 from test_mcp import _call_tool, mcp_session
 
+from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 
@@ -50,43 +52,37 @@ async def dispose_exhausted_pool_on_its_own_loop():
     await _engine.dispose()
 
 
-def _relay_that_checks_the_pool(seen: list[int]):
-    """The real relay, with the pool's checked-out count sampled at the moment the upstream is
+def _relay_that_checks_the_pool(seen: list[int], held):
+    """The real relay, with the connections the call holds sampled at the moment the upstream is
     called. Recorded rather than asserted here: an assertion inside the relay would surface as a
     502, not a test failure."""
     original = upstream_relay
 
     async def _relay(*args, **kwargs):
-        seen.append(_engine.pool.checkedout())
+        seen.append(held())
         return await original(*args, **kwargs)
 
     return _relay
 
 
 async def test_a_metered_call_holds_no_db_connection_while_upstream_is_called(
-    clients: AsyncClient, platform_on, monkeypatch,
+    clients: AsyncClient, platform_on, monkeypatch, connections_held_here,
 ):
-    await audit.drain()  # an earlier test's fire-and-forget audit row must not be counted
-    # This call's auth would schedule a last-used write on SQLite's shared pool.
-    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     seen: list[int] = []
-    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
+    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"
 
 
 async def test_an_own_key_call_holds_no_db_connection_while_upstream_is_called(
-    clients: AsyncClient, monkeypatch,
+    clients: AsyncClient, monkeypatch, connections_held_here,
 ):
     """The unmetered path pins one too (the secret loads auto-begin a transaction), and it has no
     second session to deadlock against — it just eats a slot per in-flight call for nothing."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})
-    await audit.drain()
-    # Creating the secret schedules a last-used write on SQLite's shared pool.
-    await managed_keys.drain_last_used()
     seen: list[int] = []
-    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
+    monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200 and r.json()["auth"] == "Bearer MKKEY"
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"
@@ -143,6 +139,71 @@ async def test_a_saturated_pool_answers_a_typed_503_not_an_anonymous_500(
     assert r.headers.get("Retry-After") == "2"
 
 
+@pytest.mark.parametrize("make", [
+    lambda: TooManyConnectionsError("sorry, too many clients already"),
+    lambda: TooManyConnectionsError("remaining connection slots are reserved for roles with SUPERUSER"),
+    lambda: CannotConnectNowError("the database system is starting up"),
+    lambda: OperationalError("connect", {}, TooManyConnectionsError("too many clients")),
+])
+async def test_a_refused_database_connection_answers_the_typed_503(clients: AsyncClient, monkeypatch, make):
+    async def _refused(*args, **kwargs):
+        raise make()
+
+    monkeypatch.setattr(call_service, "_resolve_call", _refused)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503, r.text
+    assert r.json()["treg_saturated"] is True
+    assert r.headers.get("Retry-After") == "2"
+
+
+async def test_another_error_caused_by_a_refused_connection_is_stamped_as_a_server_error(
+    clients: AsyncClient, monkeypatch,
+):
+    # Only the types the application-wide handlers catch may skip the router's own stamp; any other
+    # type reaches Starlette's bare 500, so the router must write its exit first.
+    stamped = []
+    original = call_routes._stamp_call_exit
+
+    async def _spy(request, response, status, **kwargs):
+        stamped.append((status, kwargs.get("failure_kind")))
+        return await original(request, response, status, **kwargs)
+
+    async def _wrapped(*args, **kwargs):
+        raise RuntimeError("wrapped") from TooManyConnectionsError("too many clients")
+
+    monkeypatch.setattr(call_routes, "_stamp_call_exit", _spy)
+    monkeypatch.setattr(call_service, "_resolve_call", _wrapped)
+    with pytest.raises(RuntimeError, match="wrapped"):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    assert (500, "unexpected_exception") in stamped
+
+
+def test_other_database_errors_are_not_busy():
+    assert not is_db_busy(OperationalError("select", {}, RuntimeError("syntax")))
+    assert not is_db_busy(ValueError("x"))
+    assert not answers_db_busy(IntegrityError("insert", {}, TooManyConnectionsError("x")))
+    assert answers_db_busy(InterfaceError("connect", {}, CannotConnectNowError("starting up")))
+
+
+async def test_a_settle_whose_connection_is_refused_once_retries_and_still_charges(
+    clients: AsyncClient, platform_on, monkeypatch,
+):
+    original = ledger.settle_in_transaction
+    calls = 0
+
+    async def _refused_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TooManyConnectionsError("remaining connection slots are reserved")
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(ledger, "settle_in_transaction", _refused_once)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and calls == 2
+    assert r.headers.get("X-Treg-Cost-Micro") == str(EP_MICRO)
+
+
 @pytest.mark.skipif(
     not os.environ.get("TREG_TEST_DB_URL"), reason="requires the Postgres test database"
 )
@@ -182,16 +243,14 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     # take 1.4 s on a laptop, and a CI runner shared by four workers was seen past the old 5 s
     # (7 CI failures, never locally). The refresh starting late is not what this test is about.
     await asyncio.wait_for(refresh_started.wait(), timeout=30)
-    await asyncio.sleep(0.25)  # let the old path fill all 15 pool slots before calls arrive
-
     try:
+        search_responses = await asyncio.wait_for(asyncio.gather(*searches), timeout=30)
         calls = await asyncio.wait_for(asyncio.gather(*(
             clients.get(f"/call/{EP}?aweme_id=catalog-mix-{i}") for i in range(20)
         )), timeout=15)
     finally:
         release_refresh.set()
 
-    search_responses = await asyncio.wait_for(asyncio.gather(*searches), timeout=10)
     await asyncio.wait_for(A.app.state.endpoint_observation_reader.wait_for_idle(), timeout=10)
     assert [r.status_code for r in search_responses] == [200] * 100
     assert [r.status_code for r in calls] == [200] * 20, [
@@ -304,12 +363,44 @@ async def test_auth_releases_a_single_slot_pool_before_an_application_session(
         await limited_engine.dispose()
 
 
+async def test_a_reserve_the_money_statement_timeout_cancelled_answers_a_typed_503(
+    clients, platform_on, monkeypatch,
+):
+    """A reserve statement cancelled by the money session's statement_timeout (57014) rolls the
+    reservation back before the provider is called: the caller gets a retryable 503 of its own,
+    not a bare 500, and nothing is held or charged."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
+
+    async def cancelled(db, *args, **kwargs):
+        if db.bind.dialect.name == 'postgresql':
+            await db.execute(text("DO $$ BEGIN RAISE EXCEPTION USING ERRCODE = '57014', "
+                                  "MESSAGE = 'canceling statement due to statement timeout'; END $$"))
+        error = AsyncAdapt_asyncpg_dbapi.Error('canceling statement due to statement timeout')
+        error.sqlstate = '57014'
+        raise DBAPIError(None, None, error)
+
+    monkeypatch.setattr(ledger, 'reserve_in_transaction', cancelled)
+    org_id = (await clients.get('/orgs')).json()[0]['org_id']
+    before = (await clients.get(f'/orgs/{org_id}/balance')).json()['balance_micro']
+    response = await clients.get(f'/call/{EP}?aweme_id=7')
+    assert response.status_code == 503, response.text
+    assert response.json()['detail']['error'] == 'money_statement_timeout'
+    assert int(response.headers['Retry-After']) >= 1
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold).where(Hold.org_id == org_id))).scalars().all() == []
+        assert await ledger.balance_of(db, org_id) == before
+
+
 @pytest.mark.parametrize('sqlstate,failures,attempts', [('40P01', 1, 2), ('40P01', 2, 2),
+                                                     ('57014', 1, 2), ('57014', 2, 2),
                                                      ('P0001', 1, 1)])
 async def test_wrapped_deadlock_retry_preserves_response_and_transaction(
     clients, platform_on, monkeypatch, caplog, sqlstate, failures, attempts,
 ):
-    """Inject after staged money writes to verify rollback and a fresh transaction on retry.
+    """Inject after staged money writes to verify rollback and a fresh transaction on retry:
+    for a deadlock victim (40P01) and a statement the money session's timeout cancelled (57014).
 
     PostgreSQL raises the real driver exception with RAISE SQLSTATE; SQLite uses its observed
     SQLAlchemy/asyncpg wrapper shape. Neither injection claims to reproduce a lock cycle.
@@ -339,7 +430,7 @@ async def test_wrapped_deadlock_retry_preserves_response_and_transaction(
     response = await clients.get(f'/call/{EP}?aweme_id=7')
     assert response.status_code == 200
     assert len(sessions) == attempts and len({id(s) for s in sessions}) == attempts
-    succeeded = sqlstate == '40P01' and failures == 1
+    succeeded = sqlstate in ('40P01', '57014') and failures == 1
     assert response.headers['X-Treg-Cost-Micro'] == str(EP_MICRO if succeeded else 0)
     async with session_maker() as db:
         holds = (await db.execute(select(Hold).where(Hold.org_id == org_id))).scalars().all()

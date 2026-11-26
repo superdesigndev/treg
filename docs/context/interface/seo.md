@@ -44,6 +44,7 @@ sources:
   - src/treg/web/jobs-api.html
   - src/treg/web/recruit.html
   - src/treg/web/web-access.html
+  - src/treg/web/doomscroll.html
   - src/treg/web/gtm-engineering.html
   - src/treg/web/grokbot.html
   - src/treg/web/fable-gtm.html
@@ -51,6 +52,7 @@ sources:
   - src/treg/web/aeo.html
   - src/treg/web/rea-growth.html
   - src/treg/web/rea-growth.md
+  - src/treg/web/rea-marketing.html
   - src/treg/web/social-search.html
   - src/treg/web/start.html
   - src/treg/web/jev.html
@@ -90,17 +92,17 @@ describes one grant per new verified account, not per team
 |---|---|
 | `/robots.txt` | Bundled, `{BASE}`-templated. Disallows `/app`, `/login`, `/auth/`, `/oauth/`, `/connect-demo`, `/call/`, `/mcp`, `/admin`, `/docs/api`; names the sitemap. `Disallow: /app` is a prefix rule: it also blocks any future public path starting with `/app` (e.g. `/apps`) unless a longer `Allow:` line is added. |
 | `/sitemap.xml` | Generated. Static pages take `lastmod` from file mtime, shelves from the newest mtime under `src/treg/catalog/`. |
-| `/` | Server-rendered `web/landing.html`; visuals under `web/media/landing/` (`SOURCES.md` pins the design reference and library versions; Three.js and Lenis load from version-pinned jsDelivr URLs). Reduced motion is static; WebGL or module-download failure (`gateway-loader.js`, outside the module graph) reveals the static mark; BFCache `pageshow` resumes animation. Signed-in visitors see **Open dashboard**. Session-dependent HTML is `private, no-store` with `Vary: Cookie`. `frontend/e2e/landing.spec.ts`. |
+| `/` | Server-rendered `web/landing.html`; visuals under `web/media/landing/` (`SOURCES.md` pins the design reference and library versions; Three.js and Lenis load from version-pinned jsDelivr URLs). Reduced motion is static; WebGL or module-download failure (`gateway-loader.js`, outside the module graph) reveals the static mark. A CPU-emulated GPU (`failIfMajorPerformanceCaveat`, or a SwiftShader, llvmpipe or Basic Render renderer) gets the static mark without downloading Three.js and no particle fields, since their shaders would run on the main thread at a few frames a second; BFCache `pageshow` resumes animation. Signed-in visitors see **Open dashboard**. Session-dependent HTML is `private, no-store` with `Vary: Cookie`. `frontend/e2e/landing.spec.ts`. |
 | `/catalog`, `/catalog/<slug>`, `/catalog/<slug>/<key>` | The dashboard SPA in public mode (below). `<key>` is a capability two or more providers serve on that shelf (`Catalog.compared`, `_comparison_paths`); a single-provider capability is a 404. All are sitemapped and each is fetched for a 200 in `tests/test_catalog_api.py`. |
 | `/tools/<service>` | One server-rendered page per provider (`_page`, no SPA), counts and prices live from `catalog_store`. No provider index page. Safe from shadowing the API (`/tools`, `/tools/by-name/...`). A signed-out `GET /app/marketplace/<service>` 302s here. |
 | `/agents`, `/agents/<agent>` | Agent pages (below). |
 | `/use-cases`, `/use-cases/<job>`, `/resources` | Use-case pages and hubs (below). |
 | `/workflows`, `/workflows/<slug>`, `/workflows/<slug>.csv` | Workflow pages (below). |
 | `/blog`, `/blog/<post>` | Hand-kept index (`_BLOG_LAUNCHES`, `_BLOG_POSTS`). Posts carry `BlogPosting` (`_blog_posting_ld`) beside breadcrumbs. `/agents/grok-bot` 301s to `/grokbot`. |
-| Launch landings (`/people-search`, `/leads-signals`, `/jobs-api`, `/web-access`, `/recruit`, `/grokbot`, `/fable`, `/ugc`, `/aeo`, `/rea-growth`, `/social`, `/gpt6`, `/jev`) | Bundled files through `_static_page` (placeholders filled, no-cache, ETag revalidation to 304), canonical, OG, sitemapped. `/astra` 301s to `/gpt6` keeping the query (campaign attribution). `ugc.html` uses relative asset paths, which only resolve while the route stays slashless. `/web-access` reads current prices from `/web-arena/api/leaderboard` with a bundled snapshot fallback and deliberately shows no hit-rate board (each vendor sees different traffic; that stays on `/web-arena`). Copy on `/leads-signals` and the Hermes guide must not imply treg schedules or diffs: the agent does. `/rea-growth.md` is `noindex` via `_serve_md`. |
+| Launch landings (`/people-search`, `/leads-signals`, `/jobs-api`, `/web-access`, `/doomscroll`, `/recruit`, `/grokbot`, `/fable`, `/ugc`, `/aeo`, `/rea-growth`, `/rea-marketing`, `/social`, `/gpt6`, `/jev`) | Bundled files through `_static_page` (placeholders filled, no-cache, ETag revalidation to 304), canonical, OG, sitemapped. `/astra` 301s to `/gpt6` keeping the query (campaign attribution). `ugc.html` uses relative asset paths, which only resolve while the route stays slashless. `/web-access` reads current prices from `/web-arena/api/leaderboard` with a bundled snapshot fallback and deliberately shows no hit-rate board (each vendor sees different traffic; that stays on `/web-arena`). Copy on `/leads-signals` and the Hermes guide must not imply treg schedules or diffs: the agent does. `/rea-growth.md` is `noindex` via `_serve_md`. |
 | `/jev` | `/jev/xboost.json` serves the document `treg-worker jev xboost` stores (Ephemeral `jev`/`xboost`), else `media/jev/xboost-seed.json` flagged `snapshot: true`. `POST /jev/xboost/judge` is rate-limited per IP and fleet-wide through ratestore, answers 503 until `jev_treg_token` and `ai_gateway_api_key` are set, and its entries survive the daily run. `application/jev_xboost.py` calls `/call/` with the demo team's token, so the receipt is a real bill. Bundled recipe runs have every email address replaced. `tests/test_jev.py`. |
 | `/start` | Paid-traffic landing. Hosted-only, `noindex` (meta and `X-Robots-Tag`), no canonical, not sitemapped. `?job=` picks copy from a fixed table; unknown values (including `constructor`, `__proto__`) get the general page. `sitetrack.js` loads before the page script so `start_viewed` is not dropped; copy events fire only after a fulfilled clipboard write. `tests/test_start_page.py`. |
-| `/gtm-engineering` (+ `.md`) | Hand-written (not `_page()`) because only hand-written pages load `sitetrack.js`. Its original studies publish results, never rows: the test fails if a catalog provider is named in a study block, a headline figure leaves its section, or a study FAQ answer drifts from its JSON-LD; raw data stays out of the repo. The `.md` twin is hand-kept and `tests/test_gtm_engineering_page.py` fails on a missing chapter heading. Hosted-only. |
+| `/gtm-engineering` (+ `.md`) | Hand-written (not `_page()`). Its original studies publish results, never rows: the test fails if a catalog provider is named in a study block, a headline figure leaves its section, or a study FAQ answer drifts from its JSON-LD; raw data stays out of the repo. The `.md` twin is hand-kept and `tests/test_gtm_engineering_page.py` fails on a missing chapter heading. Hosted-only. |
 | `/compare`, `/compare/treg-vs-<slug>` (+ `.md`) | Comparison pages, hosted-only. All copy is `compare_pages.py`: one record per product, read from its own pages on its `checked` day (default `CHECKED`), with `sources` on its own site; the renderer (`routers/compare.py`) holds no text. Cells say "Not published" where the product's pages are silent, never "No". Every page says where the other product is the better choice. A row in `OPTIONAL_ROWS` (x402, until `TREG_X402`) shows only where the record fills it. treg's side uses `{ENDPOINTS}`/`{PROVIDERS}`. `WebPage` (its `about` names both products as `SoftwareApplication`, treg with the stable `@id` `<base>/#software`) + `BreadcrumbList` + `FAQPage` (FAQ verbatim in the body, each question an `h3`); the `.md` twin is `noindex`, and the Sources box offers it as Copy markdown (to the clipboard) and Open markdown. Where the product's tools are in the catalog (`catalog_provider`: the record's `provider`, else its key), the page links its `/tools/<provider>` page and that page links back (`for_provider`). "Other comparisons" takes half from the page's own group and half from the others, each from an offset that moves with the page, so every page gets about as many links. Re-read a record's sources and move its `checked` before changing a price or claim; move `UPDATED` when the copy changes. The page's `dateModified`, `article:modified_time` and sitemap `lastmod` are `modified()`, the later of the two; the visible chip says only when the facts were checked. Each page has its own share card (`scripts/og_images.py --group compare`, "The social card" below). Every `/app?ref=` link on the hub and the pages opens the shared sign-in dialog in place (`media/compare/signin.js`, as on /rankings and /grokbot); a signed-in visitor goes straight to the link, and the `ref` is kept in `treg-ref` as `/app?ref=` keeps it. The site footers (the shared one and the hand-written footers of landing, rankings, showcase, grokbot, people-search, gtm-engineering and aeo) carry a Compare column: `cp.FOOTER`, by search demand, plus the hub; `test_footers_name_the_same_comparisons` keeps them in step. `tests/test_compare_pages.py`. |
 | `/rankings` | Served on every registry (it counts that registry's traffic), sitemapped. Boards come from the row `treg-worker rankings refresh` saves ([catalog](../architecture/catalog.md)). The first board is inlined as JSON plus an `ItemList`; the rest load from `/rankings/data/{board}`. The page hand-copies the dashboard's `SelectMenu` and `SpendBars` because a static page cannot import Vue components: change them together. `tests/test_rankings.py`. |
 | `/showcase` | Tiles written in the HTML with `CollectionPage`/`ItemList`. The X wall is a committed snapshot (`media/showcase/wall.json`); the page never fetches from X. Hosted-only. `tests/test_showcase_page.py`. |
@@ -118,18 +120,16 @@ Every route is registered in `bootstrap.py`'s route-ownership manifest.
 ## The `_page()` shell and tracking scripts
 
 `_page()` in `routers.web` owns `<title>`, meta description, canonical, og/twitter card, JSON-LD,
-`/adtrack.js` and a "Start free" CTA carrying `?ref=<page>` (the boot treats `ref` as a use-case CTA:
+`/sitetrack.js`, `/click-id.js` and a "Start free" CTA carrying `?ref=<page>` (the boot treats `ref` as a use-case CTA:
 no bounce, sign-in opens in place, and the page that produced the signup is recorded). A page
-without `adtrack.js` silently loses paid attribution: no `treg_ad` cookie, so `org.ad_gclid` stays
-NULL and `adsconv.queue()` no-ops.
-`test_pages_off_the_shared_shell_carry_adtrack` asserts one `adtrack.js` on a `_page()` caller. Pages outside the shell (`_static_page` files, `/docs/api`) carry their tags by
+without `click-id.js` silently loses paid attribution: no `treg_ad` cookie, so `org.ad_gclid` stays
+NULL and `adsconv.queue()` no-ops. A page without `sitetrack.js` sends no pageview and sets no
+`treg_utm`, and since every response sends `Referrer-Policy: no-referrer`, the visitor's next page
+records them as direct traffic. `test_pages_off_the_shared_shell_carry_attribution` asserts one of
+each on a `_page()` caller. Pages outside the shell (`_static_page` files, `/docs/api`) carry their tags by
 hand; nothing sweeps every route, so a new standalone ad destination must add the tag itself.
 
-`/sitetrack.js` is deliberately **not** in the shell. It loads PostHog, and `web/privacy.html`
-promises no analytics or session-replay scripts on the signed-in dashboard; broadening it across
-the programmatic pages is a product/legal decision, not a side effect of an attribution fix.
-Hand-written marketing pages take the opposite default and do load it, or they emit no pageview at
-all. `tests/test_sitetrack.py` enforces that any `web/*.html` carrying an ad script also carries
+Hand-written marketing pages load both tags by hand. `tests/test_sitetrack.py` enforces that any `web/*.html` carrying an ad script also carries
 `sitetrack.js`. Script paths are root-absolute
 (`/sitetrack.js`); the test forbids the relative form.
 

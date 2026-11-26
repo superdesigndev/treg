@@ -63,7 +63,15 @@ _TABLE: list[Signature] = [
     Signature("specstream", 503, r"", "burst"),
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
+    # MillionPhones documents its out-of-credits answer as a 402 carrying billing_url; no other
+    # answer carries that field.
+    Signature("millionphones", 402, r"billing_url", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
+    # MapsData (dashboard API error codes): a scrape submitted with no Scraping Credits left is a 402
+    # {"error": {"code": "lead_limit_reached", ...}}; an unpaid renewal pauses submissions with a
+    # 402 org_past_due until it is paid.
+    Signature("mapsdata", 402, r"lead_limit_reached", "balance", tripwire=True),
+    Signature("mapsdata", 402, r"org_past_due", "balance", tripwire=True),
     Signature("leadocean", 429, r"fair-use pace reached", "quota"),
     # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
@@ -83,6 +91,9 @@ _TABLE: list[Signature] = [
     Signature("jobspipe", 402, r"monthly request quota exceeded", "balance", tripwire=True),
     Signature("jobspipe", 402, r"need the \w+ package or above", "unknown"),
     Signature("jobspipe", 429, r"rate limit exceeded", "burst"),
+    # Forager: its per-key throttle is a 429 {"detail": "Request was throttled. Expected available in 1
+    # second."} with Retry-After.
+    Signature("forager", 429, r"request was throttled", "burst"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),
@@ -132,6 +143,9 @@ _TABLE: list[Signature] = [
     # "insufficient wallet balance" (openapi.json, 402) and not yet observed.
     Signature("anyapi", 402, r"trial_cap_reached|insufficient|spend cap|balance", "balance"),
     Signature("trykitt", 418, r"temporarily throttled", "burst"),
+    # A fair-use block is the whole account, lifted only through a support ticket: "Our system thinks
+    # your activity may be violating our fair use policy. (CASE 001) Please open a support ticket".
+    Signature("trykitt", 418, r"fair use policy", "balance", tripwire=True),
     Signature("trykitt", 402, r"insufficient (?:credits?|funds|balance)|out of credits", "balance"),
     # This API uses 402 for both funds and rate limits. The first matching row wins.
     Signature("trykitt", 402, r"", "unknown"),
@@ -146,6 +160,11 @@ _TABLE: list[Signature] = [
     Signature("cloro", 403, r"insufficient_credits", "balance"),
     Signature("crawl4ai", 402, r"no_credit", "balance", tripwire=True),
     Signature("crawl4ai", 402, r"spend_cap|plan_cap", "quota"),
+    # A plan's period cap is a 429 naming its window ({"metric": "search", "window_secs": 86400,
+    # "retry_after_s": ...}) with Retry-After to its reset; a concurrency cap says "window_secs": 0
+    # and a pace limit a short window (60), both bursts. Only the plan's own cap ("... for plan <name>")
+    # over a window of 1000 s or more is the account's period; a cap on one client is not.
+    Signature("crawl4ai", 429, r'for plan \w+.*"window_secs"\s*:\s*[1-9]\d{3,}', "quota"),
     Signature("crawl4ai", 429, r"", "burst"),
     # Tavily documents distinct custom statuses for the monthly plan allowance and the operator's
     # PAYGO ceiling. Both are quotas: the first resets with the plan period; the second serves again
@@ -160,6 +179,14 @@ _TABLE: list[Signature] = [
     # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
     # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
     Signature("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
+    # DataForSEO answers HTTP 200 and puts its own code in `status_code`, on the envelope or on a
+    # task: 40200 payment required, 40203 the account's cost limit (a daily or per-minute money
+    # ceiling set in its dashboard), 40210 insufficient funds (docs, appendix/errors). All three are
+    # the whole account, so the lock is provider-wide; the probe lifts it on the first 2xx.
+    Signature("dataforseo", 200, r'"status_code"\s*:\s*402(?:00|03|10)\b', "balance"),
+    # Apify: the account's monthly spend ceiling blocks every Actor run, a 403 {"error": {"type":
+    # "platform-feature-disabled", "message": "You've reached your monthly usage limit of $N ..."}}.
+    Signature("apify", 403, r"reached your monthly usage limit", "balance", tripwire=True),
     # Tomba: a route's spent allowance is a 429 "You have reached your usage limit", with no Retry-After.
     Signature("tomba", 429, r"reached your usage limit", "quota", tripwire=True),
     # Fish Audio: too many requests in flight is a 429 "exceeded your current concurrency limit", no Retry-After.

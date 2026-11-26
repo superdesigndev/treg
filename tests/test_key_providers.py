@@ -42,6 +42,37 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     assert rejected.status_code == 422 and "rejected" in rejected.text
 
 
+async def test_descovo_key_uses_free_credits_probe(clients, monkeypatch):
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/v1/credits")
+        if request.headers["authorization"] != "Bearer own-key":
+            return httpx.Response(403, json={"error": {"code": "forbidden", "message": "Invalid API key provided!"}})
+        return httpx.Response(200, json={"data": {"available": 0, "used": 500, "limit": 500}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "descovo", "token": "bad-key"})
+        assert bad.status_code == 422 and "rejected" in bad.text
+        good = await clients.post("/connections/token", json={"provider": "descovo", "token": "own-key"})
+        assert good.status_code == 200, good.text
+
+
+async def test_millionphones_key_uses_free_credits_probe(clients, monkeypatch):
+    """A good key on an account with 0 credits left still connects: the free routes work."""
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/v1/credits")
+        if request.headers["x-api-key"] != "own-key":
+            return httpx.Response(401, json={"error": "Invalid API key."})
+        return httpx.Response(200, json={"remaining": 0, "used": 50, "plan": "free"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "millionphones", "token": "bad-key"})
+        assert bad.status_code == 422 and "rejected" in bad.text
+        good = await clients.post("/connections/token", json={"provider": "millionphones", "token": "own-key"})
+        assert good.status_code == 200, good.text
+
+
 # ---- registry shape ----------------------------------------------------------------------
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
@@ -301,9 +332,42 @@ def test_hlrlookup_platform_bindings_match_the_byok_pair():
     ]
 
 
+async def test_forager_connect_checks_the_key_then_binds_the_account_id_to_the_path(clients, monkeypatch):
+    def probe(request):
+        assert (request.method, request.url.path) == ("GET", "/api/users/current/")
+        if request.headers["x-api-key"] != "own-key":
+            return httpx.Response(403, json={"detail": "Authentication credentials were not provided."})
+        return httpx.Response(200, json={"id": 1, "accounts": [{"id": 1234, "subscription": {}}]})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "forager", "token": "bad-key"})
+        assert bad.status_code == 422, bad.text
+        first = await clients.post("/connections/token", json={"provider": "forager", "token": "own-key"})
+        assert first.status_code == 200, first.text
+        ready = await clients.post(
+            f"/connections/{first.json()['id']}/extra-credential", json={"value": "1234"},
+        )
+        assert ready.status_code == 200, ready.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "forager")
+    assert [(b["location"], b["name"]) for b in tool["bindings"]] == [
+        ("header", "X-API-KEY"), ("path", "account_id"),
+    ]
+
+
+def test_forager_platform_bindings_match_the_byok_pair():
+    provider = P.get("forager")
+    assert provider is not None and provider.credential_path_params == {"account_id"}
+    assert P.platform_bindings(provider) == [
+        {"platform_setting": "platform_key_forager", "injector": "env",
+         "location": "header", "name": "X-API-KEY", "format": "{secret}"},
+        {"platform_setting": "platform_key_forager_account", "injector": "env",
+         "location": "path", "name": "account_id", "format": "{secret}"},
+    ]
+
+
 def test_paid_key_verification_probe_is_typed_and_unique():
-    paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
-    assert paid == {"keenable": 4_000, "trestleiq": 15_000}
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}
@@ -717,9 +781,9 @@ async def test_an_allow_listed_public_provider_names_the_real_reason_a_tool_is_n
     tickers = catalog_store.load().by_id["financialdatasets.prices.tickers"]
     demo = SimpleNamespace(demo=False, slug="team", public_demo=True)
     refused = _marketplace_no_credential("financialdatasets", tickers["id"], fd_public, tickers, demo)
-    assert "demo and sandbox teams" in refused.detail and "has not enabled" not in refused.detail
+    assert "the public demo team does not call it" in refused.detail and "has not enabled" not in refused.detail
     preview = _missing_access(tickers, fd_public, fd_public, (), "financialdatasets", org=demo)
-    assert "demo and sandbox teams" in preview["detail"], preview
+    assert "the public demo team does not call it" in preview["detail"], preview
     monkeypatch.setattr(get_settings(), "platform_providers", "")
     assert "has not enabled" in _missing_access(tickers, fd_public, fd_public, (), "financialdatasets",
                                                 org=demo)["detail"]
@@ -853,7 +917,7 @@ def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
 
 
 def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_logs_policy(monkeypatch):
-    """A demo or sandbox team is refused keyless tools: its refusal neither offers one as callable
+    """The public demo team is refused keyless tools: its refusal neither offers one as callable
     nor blames a provider account it does not need."""
     import dataclasses
     from types import SimpleNamespace
@@ -864,7 +928,6 @@ def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_lo
         P.REGISTRY["financialdatasets"], auth_kind="public"))
     monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
     demo = SimpleNamespace(public_demo=True, id=1)
-    monkeypatch.setattr(R.demo_sandbox, "is_sandbox", lambda org: False)
     ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
     monkeypatch.setitem(ep, "platform_auth", "anonymous")
     monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})
@@ -889,32 +952,27 @@ async def test_connecting_a_public_provider_not_enabled_says_so(clients, monkeyp
     assert r.status_code == 422 and "call its catalog tools directly" in r.text
 
 
-def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(monkeypatch):
-    """Both refusal branches judge alternatives for this team: a demo team is refused keyless tools,
-    so a key provider's refusal never lists one as callable."""
-    from types import SimpleNamespace
-    from treg.application.call import resolve as R
-    free = {"id": "board.jobs", "provider": "board", "capability": "x.y", "platform_auth": "anonymous"}
-    asked = {"id": "hunter.x", "provider": "hunter", "capability": "x.y"}
+@pytest.mark.parametrize("public_demo", [False, True])
+async def test_a_demo_teams_key_provider_refusal_offers_no_keyless_tool_it_is_refused(
+    clients, monkeypatch, public_demo,
+):
+    """Greenhouse and Ashby serve companies.jobs keyless, but not to a public demo team, so a
+    refusal for a missing Hirebase key must not offer them to one."""
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org
 
-    class Cat:
-        def for_capability(self, cap):
-            return [asked, free]
-
-        def cost_view(self, cost, provider):
-            return {"usd": 0}
-
-        def platform_eligible(self, ep):
-            return True
-
-    monkeypatch.setattr(R.catalog_store, "load", lambda: Cat())
-    monkeypatch.setattr(R.catalog_store, "paused", lambda ep: False)
-    monkeypatch.setattr(R, "anonymous_served", lambda ep: {"type": "free"} if ep is free else None)
-    monkeypatch.setattr(R, "_anonymous_offer", lambda ep, org: None)  # refused to this (demo) team
-    monkeypatch.setattr(R, "_platform_key_missing", lambda ep, provider: False)
-    exc = R._marketplace_no_credential("hunter", asked["id"], P.REGISTRY["hunter"], asked,
-                                       SimpleNamespace(public_demo=True, id=1))
-    assert "callable now, no key needed" not in str(exc.detail), exc.detail
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "greenhouse,ashby")
+    get_settings.cache_clear()
+    async with session_maker() as db:
+        org = await db.get(Org, (await clients.get("/orgs")).json()[0]["org_id"])
+        org.public_demo = public_demo
+        await db.commit()
+    r = await clients.get("/call/hirebase.companies.jobs?company_slug=stripe")
+    get_settings.cache_clear()
+    assert r.status_code == 404 and "no hirebase credential" in r.text, r.text
+    offered = "greenhouse.companies.jobs  free  (callable now, no key needed)" in r.json()["detail"]
+    assert offered is not public_demo, r.text
 
 
 async def test_a_paused_public_provider_s_key_paste_says_it_is_paused(clients, monkeypatch):

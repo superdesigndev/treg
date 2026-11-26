@@ -22,6 +22,7 @@ from treg.application.call.types import ReservationFailed
 from treg.application.hub import runner as hub_runner
 from treg.config import Settings, get_settings
 from treg.domain import money as ledger
+from treg.domain.money import allowance as money_allowance
 from treg.domain.identity.access import Caller
 from treg.infra import kv, money_admission
 from treg.infra.money_session import money_session
@@ -737,6 +738,28 @@ async def test_reserve_waits_before_checkout_and_reaps_without_a_second_admit(mo
         assert kinds.count("release") == 1
 
 
+async def test_reserve_reloads_the_org_for_auto_top_up_only_when_on_and_after_the_lease(
+        money_db, monkeypatch):
+    org_id, caller = await _payer("reserve-autotopup")
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    scheduled = []
+    monkeypatch.setattr(
+        call_reserve.billing, "maybe_schedule_autotopup",
+        lambda org: scheduled.append((org.id, org.balance_micro, len(probe.connections_on_exit))))
+    try:
+        await call_reserve._platform_reserve(_call(org_id, "topup-off"), caller, call_ref="topup-off")
+        assert scheduled == []
+        assert probe.checkouts == 1, "a team without auto top-up pays no read after its reserve"
+        caller.org.autotopup_enabled = True
+        caller.org.autotopup_consented_at = datetime(2026, 1, 1)
+        await call_reserve._platform_reserve(_call(org_id, "topup-on"), caller, call_ref="topup-on")
+        assert scheduled == [(org_id, 800, 2)], "the committed balance, read after the lease exits"
+        assert probe.checkouts == 3
+    finally:
+        probe.close()
+
+
 async def test_pure_release_batches_admit_once_as_release(money_db, monkeypatch):
     first, second = await _fund("batch-a"), await _fund("batch-b")
     await _reserve(first, "batch-a")
@@ -1045,7 +1068,7 @@ async def test_reserve_timeout_does_not_cache_429_if_claim_cleanup_keeps_failing
     assert "could not release idempotency claim" in caplog.text
     del store.values[key]
     retry = await _admission_request(clients, "/call/")
-    assert retry["status"] == 409 and "is still in progress" in retry["body"]["detail"]
+    assert retry["status"] == 409 and "is still in progress" in retry["body"]["detail"]["message"]
     monkeypatch.setattr(idempotency, "IDEMPOTENCY_STALE_PENDING_S", 0)
     stale = await _admission_request(clients, "/call/")
     assert stale["status"] == 410 and stale["body"]["detail"]["error"] == "idempotency_outcome_unknown"
@@ -1338,6 +1361,40 @@ async def test_untagged_free_platform_call_takes_no_hold_and_no_admission(
         assert await ledger.balance_of(db, org_id) == before
 
 
+@pytest.mark.parametrize("listed", [False, True])
+@pytest.mark.parametrize("excluded", [False, True])
+async def test_all_orgs_holdless_except_the_excluded(
+        clients, icypeas_platform_on, monkeypatch, excluded, listed):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id] if listed else [])
+    monkeypatch.setattr(get_settings(), "holdless_free_all_orgs", True)
+    monkeypatch.setattr(get_settings(), "holdless_free_excluded_org_ids", [org_id] if excluded else [])
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == (["reserve", "release"] if excluded else [])
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == (
+        ["reserve", "settle"] if excluded else [])
+
+
+async def test_keyed_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(
+            f"/call/{FREE_EP}", json=FREE_BODY, headers={"Idempotency-Key": "free-keyed-1"})
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == ["reserve", "release"]
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == ["reserve", "settle"]
+
+
 async def test_tagged_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
     await _allow_holdless(clients, monkeypatch)
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -1364,10 +1421,58 @@ async def test_free_platform_call_still_honours_an_exhausted_daily_cap(
     async def spent(_db, _org_id):
         return 101
 
-    monkeypatch.setattr(ledger, "spent_today", spent)
+    monkeypatch.setattr(money_allowance, "committed_today", spent)
     response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
     assert response.status_code == 429, response.text
     assert "platform_daily_cap_reached" in response.text
+
+
+async def test_free_platform_call_still_honours_a_members_spent_limit(
+        clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    from treg.domain.governance import budgets as budget_policy
+
+    monkeypatch.setattr(budget_policy, "member_daily_spend_cap", lambda _member, _org: 500)
+
+    async def spent(_db, _membership_id, _since):
+        return 1_000
+
+    monkeypatch.setattr(ledger, "member_spent_since", spent)
+
+    async def no_reaping(*_args, **_kwargs):
+        raise AssertionError("a holdless call must not reap holds outside money admission")
+
+    monkeypatch.setattr(ledger, "reap_stale_holds", no_reaping)
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+        assert response.status_code == 429, response.text
+        assert "member_spend_cap_reached" in response.text
+        assert probe.calls == []
+    finally:
+        probe.close()
+
+
+async def test_free_call_past_both_limits_is_refused_for_the_member_first(
+        clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    from treg.domain.governance import budgets as budget_policy
+
+    monkeypatch.setattr(budget_policy, "member_daily_spend_cap", lambda _member, _org: 500)
+    monkeypatch.setattr(budget_policy, "_effective_daily_cap", lambda _org: 100)
+
+    async def member_spent(_db, _membership_id, _since):
+        return 1_000
+
+    async def team_spent(_db, _org_id):
+        return 101
+
+    monkeypatch.setattr(ledger, "member_spent_since", member_spent)
+    monkeypatch.setattr(money_allowance, "committed_today", team_spent)
+    response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+    assert response.status_code == 429, response.text
+    assert "member_spend_cap_reached" in response.text
 
 
 async def test_cancelled_untagged_free_call_does_not_return_to_the_money_queue(

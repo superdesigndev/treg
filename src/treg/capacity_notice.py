@@ -1,5 +1,7 @@
 """What a caller is told when treg's own provider account refused a call for want of credit or
-quota. Shared by `/call/` (which sets the header), the light CLI and MCP (which render it).
+quota, and the refusals MCP and the light CLI read from treg's answers. A current server answers an
+empty account with the typed `provider_capacity_unavailable` 503; older self-hosted servers relayed
+the provider's answer with `X-Treg-Capacity: exhausted`, which the CLI still renders as the notice.
 
 The caller cannot fix this one: it is not their balance and not their key. So the notice names no
 vendor wallet, top-up page or internal mechanism; it says the tool is out on treg's side, that the

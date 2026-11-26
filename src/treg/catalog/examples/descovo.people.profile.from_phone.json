@@ -1,0 +1,12 @@
+{
+  "data": {
+    "results": [],
+    "rejectionReason": {
+      "reason": "No LinkedIn profile or company found for this phone number."
+    }
+  },
+  "credits": {
+    "charged": 0,
+    "available": null
+  }
+}

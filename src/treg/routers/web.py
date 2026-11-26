@@ -26,6 +26,7 @@ from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
 from ..config import PUBLIC_HOST_ALIASES, get_settings
+from ..application import agent_payments
 from ..application import signup as signup_use_cases
 from ..infra.db import get_session
 from ..models import User
@@ -35,7 +36,7 @@ from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platfor
                       _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _same_origin, _take_oauth_return
-from .signup_cookies import _remember_referral
+from .signup_cookies import _remember_affiliate_click, _remember_referral
 
 
 def _dashboard_index() -> Path:
@@ -93,6 +94,10 @@ app = catalog_pages_router
 _CATALOG_RESERVED = frozenset({"platforms", "search", "find", "endpoints", "examples", "call", "providers"})
 
 _GH = "https://github.com/superdesigndev/treg"
+# The brand mark: same geometry as web/favicon.svg and the dashboard's BrandMark.vue, so it follows
+# the theme instead of depending on a font's quadrant glyph.
+_GLYPH = ('<span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/>'
+          '<rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span>')
 
 
 def _usd_short(usd: float) -> str:
@@ -185,18 +190,12 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     description, the canonical, the og/twitter card and the JSON-LD, so a new page cannot ship
     without them — that omission is exactly what left the landing page bare for a year.
 
-    It owns `/adtrack.js` for the same reason. That script was on the hand-written marketing HTML
-    (landing, usecase-*, resources, index) and on nothing rendered here, so every page off this
-    shell was invisible to paid attribution: no `treg_ad` cookie means
-    `signup._ad_attribution_from` returns empty, `org.ad_gclid` stays NULL, and `adsconv.queue()`
-    no-ops by design — a paid click could sign up and make its first call and Google would never
-    hear about it. It fails silently, with nothing in the logs. Keep it here, not per page.
-
-    `/sitetrack.js` is deliberately NOT here. It already shipped more widely (it is on
-    `tutorial.html` too), but it can load PostHog with pageview/session-recording config, which
-    contradicts what `web/privacy.html` promises and lists no such processor. Broadening it to the
-    whole server-rendered surface is a product/legal call, not a side effect of fixing ad
-    attribution. `treg_ad` and `/adtrack.js` are already documented in that policy, so this is not.
+    It owns both attribution scripts for the same reason; keep them here, not per page.
+    `/sitetrack.js` boots PostHog and sets the first-touch `treg_utm` cookie, and `/click-id.js` sets
+    `treg_ad`. Without them a visitor who lands here from search is invisible, and because every
+    response sends `Referrer-Policy: no-referrer`, the next page they open records them as
+    direct traffic: the first touch is lost, not delayed. `web/privacy.html` covers both (PostHog
+    as the site's product analytics, `treg_utm` set on the first page, `treg_ad`).
 
     The "Start free" CTA carries `?ref=<page>`: a logged-out visit to bare `/app` is bounced to the
     marketing landing with nothing open, which loses the page the visitor was reading. With `ref`
@@ -260,7 +259,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 </head>
 <body>
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <a class="brand" href="/">{_GLYPH} treg</a>
   <div class="links">
     {navlink("/catalog", "Catalog")}
     {navlink("/tutorial", "Tutorial")}
@@ -273,7 +272,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <footer>
   <div class="foot-in">
     <div class="foot-brand">
-      <div class="brand"><span class="glyph">▚</span> treg</div>
+      <div class="brand">{_GLYPH} treg</div>
       <div class="note">100% open source</div>
     </div>
     <nav class="foot-cols" aria-label="Site">
@@ -288,7 +287,8 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     </nav>
   </div>
 </footer>
-<script src="/adtrack.js"></script>
+<script src="/sitetrack.js"></script>
+<script src="/click-id.js"></script>
 <script src="/gtag.js"></script>
 </body>
 </html>""", headers={"Cache-Control": "public, max-age=600"})
@@ -319,7 +319,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     """
     index = _dashboard_index()
     if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+        return HTMLResponse("<h3>treg API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
     t, d = _esc_html(title), _esc_html(description)
     # `path` carries the {slug} from the URL. Today an unknown slug 404s in catalog_platform before
@@ -1593,8 +1593,15 @@ async def use_case_job_page(request: Request, job: str,
                       '<h2>What people actually struggle with</h2>'
                       f'<p>{_esc_html(spec.get("voices_intro", ""))}</p>{voices_html}</div></section>'
                       if spec.get("voices") else "")
-    notes = "".join(f'<h4>{_esc_html(x.split(".")[0])}.</h4><p>{_esc_html(x.split(".", 1)[1].strip())}</p>'
-                    if "." in x else f"<p>{_esc_html(x)}</p>" for x in spec["notes"])
+    note_blocks = []
+    for note in spec["notes"]:
+        first, *rest = re.split(r"(?<=\.)\s+", note, maxsplit=1)
+        tag = "h4" if first.endswith(".") else "p"
+        note_blocks.append(f"<{tag}>{_esc_html(first)}</{tag}>")
+        if rest and rest[0]:
+            note_blocks.append(f"<p>{_esc_html(rest[0])}</p>")
+    notes = "".join(note_blocks)
+
     def _related_card(lbl: str) -> str:
         href, owner = _related_link(lbl, agent_slug)
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
@@ -3059,7 +3066,7 @@ _PV_CSS = """<style>
 .pv-ctas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .pv-btn{border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;text-decoration:none;display:inline-block}
 .pv-btn.p{background:#191917;color:#fff}
-.pv-btn.g{border:1px solid var(--line,#e6e6df);background:#fff;color:inherit;font-family:var(--mono,ui-monospace);font-weight:500;font-size:12.5px}
+.pv-btn.g{border:1px solid var(--line2,#25252233);padding:9px 17px;background:#fff;color:var(--ink,#1a1a1a);font-weight:500}
 .pv-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
 .pv-why div{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:14px 16px;font-size:13.5px;color:#4a4a46}
 .pv-why b{display:block;margin-bottom:5px;color:#191917;font-size:14px}
@@ -3330,6 +3337,9 @@ def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
     return resume
 
 
+_SHARE_LINK_PARAMS = frozenset({"ref", "via", "dub_id", "gclid", "gbraid", "wbraid", "fbclid", "msclkid"})
+
+
 @app.get("/", include_in_schema=False)
 async def landing(request: Request, treg_session: str = Cookie(default=""),
                   db: AsyncSession = Depends(get_session)):
@@ -3340,13 +3350,15 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
     """
     page = _WEB_DIR / "landing.html"
     ref = referrals.normalize_code(request.query_params.get("ref", ""))
-    # An influencer's short link appends utm_* to the ref; those must not push it to the SPA, which
-    # never parks the code.
-    ref_only = all(k == "ref" or k.startswith("utm_") for k in request.query_params.keys())
+    dub_click = bool(request.query_params.get("dub_id"))
+    # Share links carry tracking-only parameters the SPA never reads: an influencer's short link
+    # appends utm_* to the ref, and Dub's partner redirect appends `via` (the partner's link key)
+    # and `dub_id` (the click), plus any ad-click ids the original link carried.
+    ref_only = all(k in _SHARE_LINK_PARAMS or k.startswith("utm_") for k in request.query_params.keys())
     sso_error = request.query_params.get("sso_error", "")
     sso_result = (sso_error in {"domain", "failed", "expired", "link"} and
                   set(request.query_params.keys()) <= {"sso_error", "team"})
-    if page.exists() and (not request.query_params or (ref and ref_only) or sso_result):
+    if page.exists() and (not request.query_params or ((ref or dub_click) and ref_only) or sso_result):
         signed_in = bool(treg_session and await _user_from_session(treg_session, db))
         # The email-code door signs in on the page that opened it and reloads there, and the
         # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
@@ -3365,6 +3377,7 @@ async def landing(request: Request, treg_session: str = Cookie(default=""),
         resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
         if ref:
             _remember_referral(resp, request, ref)
+        _remember_affiliate_click(resp, request)
         return resp
     return await dashboard(request, treg_session, db)
 
@@ -3412,6 +3425,7 @@ async def dashboard(
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    _remember_affiliate_click(resp, request)
     if owner is not None:
         resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
                         httponly=True, samesite="lax",
@@ -3426,7 +3440,7 @@ def _spa_with_og(kind: str, name: str):
     name segment and never exposes resource contents."""
     index = _dashboard_index()
     if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+        return HTMLResponse("<h3>treg API. Dashboard not bundled.</h3>")
     label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
     safe = _esc_html(name)
     meta = (
@@ -3538,6 +3552,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/resources", "resources.html", "0.8"),
     ("/blog", "", "0.7"),
     ("/blog/work-email-finding-bench", "", "0.6"),
+    ("/blog/jobspipe-and-treg", "", "0.6"),
     ("/blog/people-search-bench", "", "0.6"),
     ("/blog/security-incident-2026-10-23", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
@@ -3550,6 +3565,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/jobs-api", "jobs-api.html", "0.8"),
     ("/recruit", "recruit.html", "0.8"),
     ("/web-access", "web-access.html", "0.8"),
+    ("/doomscroll", "doomscroll.html", "0.8"),
     ("/grokbot", "grokbot.html", "0.8"),
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
@@ -3558,6 +3574,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/rea-marketing", "rea-marketing.html", "0.8"),
     ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
@@ -3755,19 +3772,21 @@ def _hub_app_visible(slug: str | None) -> bool:
 
 
 def _strip_routed(text: str, hub_on: bool | None = None) -> str:
-    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), and the
-    `<!--hub-->…<!--/hub-->` blocks the same way behind `hub_enabled`: an agent-facing file must
-    never describe what this deployment has not switched on (AGENTS.md: do not document what is
-    not built)."""
-    if routed_discovery_on():
-        text = text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
-    else:
-        text = re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), the
+    `<!--agentpay-->…<!--/agentpay-->` blocks the same way behind agent payments, and the
+    `<!--hub-->…<!--/hub-->` blocks behind `hub_enabled`: an agent-facing file must never describe
+    what this deployment has not switched on (AGENTS.md: do not document what is not built)."""
+    text = _keep_block(text, "routed", routed_discovery_on())
+    text = _keep_block(text, "agentpay", agent_payments.enabled())
     # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
     # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
-    if hub_on if hub_on is not None else _hub_app_visible(None):
-        return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
-    return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
+    return _keep_block(text, "hub", hub_on if hub_on is not None else _hub_app_visible(None))
+
+
+def _keep_block(text: str, name: str, keep: bool) -> str:
+    if keep:
+        return text.replace(f"<!--{name}-->\n", "").replace(f"\n<!--/{name}-->", "")
+    return re.sub(rf"<!--{name}-->.*?<!--/{name}-->\n?", "", text, flags=re.S)
 
 
 def _fill_headline(text: str) -> str:
@@ -3886,6 +3905,13 @@ async def recruit_skill_md():
     return _serve_md("skills/recruit/SKILL.md")
 
 
+@app.get("/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def doomscroll_skill_md():
+    """The doomscroll skill: a topic and a window in, the posts worth seeing across platforms out,
+    grouped into stories, with its merge script inline. Bundled like lead-signals."""
+    return _serve_md("skills/doomscroll/SKILL.md")
+
+
 @app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
 async def jev_memory_skill_md():
     """The jev-memory skill: install (or build) the Claude Code mod in
@@ -3901,6 +3927,15 @@ async def rea_growth_skill_md():
     the plays to copy) as a file an agent can follow. Opt-in like jev-memory: kept out of the
     well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
     return _serve_md("skills/rea-growth/SKILL.md")
+
+
+@app.get("/skills/rea-marketing/SKILL.md", include_in_schema=False)
+async def rea_marketing_skill_md():
+    """The rea-marketing skill: the /rea-marketing flow (a brand's holiday marketing per channel and
+    week, estimated spend and sales, a verdict, the plays to copy) as a file an agent can follow.
+    Opt-in like rea-growth: kept out of the well-known index, so `treg skill bootstrap` (install.sh)
+    never installs it unasked."""
+    return _serve_md("skills/rea-marketing/SKILL.md")
 
 
 @app.get("/skills/ai-ugc-video/SKILL.md", include_in_schema=False)
@@ -4016,19 +4051,24 @@ async def agent_setup_js():
     return FileResponse(f, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/adtrack.js", include_in_schema=False)
-async def adtrack_js():
+@app.get("/click-id.js", include_in_schema=False)
+async def click_id_js():
     """First-party ad-click capture (see the file itself): sets the `treg_ad` cookie that
-    `_ad_attribution_from` reads at signup. No Google script, no third-party request."""
+    `_ad_attribution_from` reads at signup. No Google script, no third-party request.
+
+    The path names what the script reads, not "ad" or "track": EasyList's `/adtrack.` rule, on by
+    default in uBlock Origin, AdBlock Plus, AdGuard and Brave, blocked this script under its old
+    `/adtrack.js` name, so a visitor with a blocker never got `treg_ad` and their ad click was
+    never uploaded."""
     headers = {"Cache-Control": "no-cache"}
     if not adsconv.enabled():
         # The page keeps one static script include, but an unconfigured/self-hosted deployment must
         # not collect an advertising cookie at all. A stale cookie is also ignored at signup below.
         return Response(content="", media_type="application/javascript", headers=headers)
-    f = _WEB_DIR / "adtrack.js"
+    f = _WEB_DIR / "click-id.js"
     if not f.exists():
-        raise HTTPException(status_code=404, detail="adtrack.js not bundled")
-    # no-cache, same reasoning as tutorial.js: served as a bare `<script src="/adtrack.js">` with no
+        raise HTTPException(status_code=404, detail="click-id.js not bundled")
+    # no-cache, same reasoning as tutorial.js: served as a bare `<script src="/click-id.js">` with no
     # version query, so without this header a browser would keep an ad-window-stale copy after a fix.
     return FileResponse(f, media_type="application/javascript", headers=headers)
 
@@ -4057,7 +4097,7 @@ async def captcha_js(request: Request):
 async def gtag_js():
     """Google Ads conversion tracking via gtag.js. Loads the base tag (AW-18392771132) on every
     page; the signup conversion (AW-18392771132/0usqCIeQrO0cELzUrcJE) fires from the dashboard
-    on first team creation for a new user. Like adtrack.js, returns empty for unconfigured or
+    on first team creation for a new user. Like click-id.js, returns empty for unconfigured or
     self-hosted deployments that don't want external Google requests."""
     headers = {"Cache-Control": "no-cache"}
     if not adsconv.enabled():
@@ -4081,8 +4121,8 @@ async def sitetrack_js():
     s = get_settings()
     js = (f.read_text(encoding="utf-8")
           .replace("{POSTHOG_KEY}", s.posthog_key if s.posthog_key else "")
-          .replace("{POSTHOG_HOST}", s.posthog_host.rstrip("/") if s.posthog_key else ""))
-    # no-cache, same reasoning as adtrack.js: a bare `<script src>` with no version query.
+          .replace("{POSTHOG_HOST}", s.posthog_page_host if s.posthog_key else ""))
+    # no-cache, same reasoning as click-id.js: a bare `<script src>` with no version query.
     return Response(content=js, media_type="application/javascript",
                     headers={"Cache-Control": "no-cache"})
 
@@ -4148,6 +4188,15 @@ async def rea_growth_page(request: Request):
     openings) and returns plays marked seen or inferred, each with the ask that runs it. Served
     like /aeo: canonical, in the sitemap, no-cache, relative asset paths."""
     return _static_page("rea-growth.html", request)
+
+
+@app.get("/rea-marketing", include_in_schema=False)
+async def rea_marketing_page(request: Request):
+    """REA for marketing: take apart a brand's seasonal campaign. The agent pulls its ads, creator
+    posts, own social, offers and prices through treg week by week, estimates spend and sales,
+    grades whether it worked and returns plays to copy; DJI's Black Friday is the example. Served
+    like /rea-growth: canonical, in the sitemap, no-cache, relative asset paths."""
+    return _static_page("rea-marketing.html", request)
 
 
 @app.get("/social", include_in_schema=False)
@@ -4228,6 +4277,13 @@ async def web_access_page(request: Request):
     """Landing page for the web-access launch ("Free WebAccess for agents"). Served like /leads-signals;
     its benchmark and price comparison read /web-arena/api/leaderboard and fall back to a bundled snapshot."""
     return _static_page("web-access.html", request)
+
+
+@app.get("/doomscroll", include_in_schema=False)
+async def doomscroll_page(request: Request):
+    """Landing page for the doomscroll skill ("Let Your Agent Doomscroll for You"). Served like /leads-signals;
+    its demo rows are real posts bundled in the page."""
+    return _static_page("doomscroll.html", request)
 
 
 @app.get("/gtm-engineering", include_in_schema=False)
@@ -4341,6 +4397,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/doomscroll", "Let Your Agent Doomscroll for You", "2026-11-19",
+     "Name a topic and a time window; your agent reads six platforms and hands back the posts worth seeing."),
     ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
      "Seedance, Veo, Wan, Hailuo and Kling with one token; pay per finished clip."),
     ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
@@ -4379,6 +4437,9 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
 # have their own top-level routes), but they sit prominently on the /blog index above launches.
 _BLOG_POSTS: list[tuple[str, str, str, str]] = [
     # (slug under /blog/, title, date, one-line blurb)
+    ("jobspipe-and-treg", "JobsPipe and treg: hiring signals, people search and job data in one agent",
+     "2026-11-20",
+     "Hiring signals from JobsPipe, people and work emails from treg. Prompts and costs for sales, recruiting and job search."),
     ("security-incident-2026-10-23", "23 Oct 2026 Treg security incident report", "2026-10-25",
      "What happened, what may be affected, and what to rotate. Investigation ongoing."),
     ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
@@ -4529,6 +4590,27 @@ async def blog_security_incident_2026_10_23():
     return _page(f"{title} | treg.to",
                  "On October 23, 2026 we confirmed unauthorized access to part of treg's production "
                  "systems. What may be affected, what we have done, and what you need to do.",
+                 f"/blog/{slug}", body, ld)
+
+
+@app.get("/blog/jobspipe-and-treg", include_in_schema=False)
+async def blog_jobspipe_and_treg():
+    """Partner post with JobsPipe: job data from JobsPipe, people and emails from treg. The body is
+    its own HTML file, like the incident report, so copy can change without touching route code."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+    slug = "jobspipe-and-treg"
+    title = next(p[1] for p in _BLOG_POSTS if p[0] == slug)
+    body = (_WEB_DIR / f"blog-{slug}.html").read_text(encoding="utf-8")
+    ld = [_blog_posting_ld(slug, base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": title, "item": f"{base}/blog/{slug}"}]}]
+    return _page(f"{title} | treg.to",
+                 "Hiring signals from JobsPipe and people search, emails and company data from treg. "
+                 "Prompts for sales, recruiting and job search, with what each run costs.",
                  f"/blog/{slug}", body, ld)
 
 
@@ -4716,7 +4798,8 @@ async def well_known_skills_index():
     entries = []
     for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
                        ("lead-signals", "skills/lead-signals/SKILL.md"),
-                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md"),
+                       ("doomscroll", "skills/doomscroll/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
         if summary := (fm.get("metadata") or {}).get("summary"):
@@ -4756,6 +4839,12 @@ async def well_known_web_access_md():
 async def well_known_recruit_md():
     """The fifth entry `index.json` promises; the same file as /skills/recruit/SKILL.md."""
     return _serve_md("skills/recruit/SKILL.md")
+
+
+@app.get("/.well-known/skills/doomscroll/SKILL.md", include_in_schema=False)
+async def well_known_doomscroll_md():
+    """The sixth entry `index.json` promises; the same file as /skills/doomscroll/SKILL.md."""
+    return _serve_md("skills/doomscroll/SKILL.md")
 
 
 @app.get("/connect-demo", include_in_schema=False)

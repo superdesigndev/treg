@@ -90,16 +90,19 @@ def _spec_for(input_schema: dict, dotted: str) -> dict:
 
 def _bounded_multiplier(value: object, spec: dict) -> float | None:
     """A `times` value the table may multiply by: a finite POSITIVE number inside the field's
-    declared range. Anything else is None - the row does not price that request and the explicit
+    declared range, or a list's length inside its declared item count. Anything else is None - the row does not price that request and the explicit
     fallback does, so a caller cannot reserve zero with `duration: 0` or bill past the validated
     ceiling with `duration: 100`. Positive holds even when the declared minimum is not: a field
     that admits a sentinel (Seedance's `-1` auto duration) has it priced by a flat row of its own,
     never multiplied."""
+    if isinstance(value, list):
+        value, low, high = len(value), spec.get("minItems"), spec.get("maxItems")
+    else:
+        low, high = spec.get("min"), spec.get("max")
     if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
         return None
     if value <= 0:
         return None
-    low, high = spec.get("min"), spec.get("max")
     if isinstance(low, (int, float)) and not isinstance(low, bool) and value < low:
         return None
     if isinstance(high, (int, float)) and not isinstance(high, bool) and value > high:
@@ -161,6 +164,12 @@ def derive_basis(
             amount = {"kind": "table", "cost": cost, "input": input_schema,
                       "request": request, "unit_micro": unit_micro}
             reserve = table_amount_micro(cost, request, input_schema, unit_micro)
+        if cost.get("non_deferred_charge"):
+            rule = cost["non_deferred_charge"]
+            amount["non_deferred_charge"] = {
+                "path": rule["path"],
+                "micro": _micro(float(rule["value"]), unit_micro),
+            }
         return {"when": "terminal" if terminal else "response", "amount": amount,
                 "fallback_micro": fallback,
                 "reserve_micro": reserve}
@@ -223,7 +232,10 @@ def usage_evidence(basis: dict, evidence: dict[str, Any]) -> float | None:
     terminal = evidence.get("terminal")
     terms = amount.get("terms")
     if not terms:
-        return _usage_number(_path(terminal, str(amount.get("path") or "")))
+        raw = _path(terminal, str(amount.get("path") or ""))
+        if raw is None and amount.get("missing") == 0:
+            return 0.0  # the provider omits a zero meter (LeadsForge `consumedCredits`)
+        return _usage_number(raw)
     total, seen = 0.0, False
     for term in terms:
         value = usage_term_path(terminal, str(term.get("path") or ""))
@@ -235,6 +247,12 @@ def usage_evidence(basis: dict, evidence: dict[str, Any]) -> float | None:
         total += number * float(term["rate"])
         seen = True
     return total if seen else None
+
+
+def non_deferred_charge_micro(basis: dict, document: object) -> int:
+    """A frozen charge for data present in a submission, with or without a trackable task."""
+    rule = (basis.get("amount") or {}).get("non_deferred_charge") or {}
+    return int(rule.get("micro") or 0) if _path(document, str(rule.get("path") or "")) else 0
 
 
 def settle(basis: dict, evidence: dict[str, Any]) -> int:
@@ -259,7 +277,7 @@ def settle(basis: dict, evidence: dict[str, Any]) -> int:
         # Bases frozen before `unit_micro` existed carry only `unit: usd`.
         per_unit = amount.get("unit_micro") or (1_000_000 if amount.get("unit") == "usd" else None)
         if value is not None and isinstance(per_unit, int) and per_unit > 0:
-            return _micro(float(value), per_unit)
+            return _micro(float(value), per_unit) + max(0, int(basis.get("submission_charge_micro") or 0))
         # A successful task whose terminal response no longer carries the usage field (or whose
         # meter has no frozen rate): the caller got their result, so they pay - the reserve (the
         # rate-card estimate), not the ceiling. The worker marks the row for review.

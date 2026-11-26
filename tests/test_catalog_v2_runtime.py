@@ -104,6 +104,16 @@ def test_the_outcome_is_judged_in_order_status_expect_error_204_miss():
     assert outcome.judge(two, 200, {"items": []}).state == "miss" and outcome.declares_miss(two)
 
 
+def test_ok_when_beside_a_status_makes_both_a_4xx_and_an_empty_2xx_a_miss():
+    ep = row(miss={"status": [404], "ok_when": {"path": "response", "op": "empty"}})
+    assert outcome.judge(ep, 404, {"detail": "Not found."}) == outcome.Outcome("miss", "status")
+    assert outcome.judge(ep, 200, []) == outcome.Outcome("miss", "miss")
+    assert outcome.judge(ep, 200, [{"phone_number": "+15555550100"}]) == outcome.Outcome("hit")
+    assert outcome.judge(ep, 400, {}) == outcome.Outcome("error", "status")
+    with pytest.raises(ValueError, match="ok_when judges a 2xx beside status"):
+        row(miss={"when": {"path": "response.a", "op": "absent"}, "ok_when": {"path": "response", "op": "empty"}})
+
+
 def test_an_outcome_plugin_that_raises_is_false(monkeypatch):
     module = types.ModuleType("treg.domain.plugins.demo")
     module.boom = lambda request, answer: 1 / 0
@@ -173,7 +183,7 @@ def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
 ])
 def test_a_request_repeating_a_single_value_or_with_an_unreadable_count_is_refused(query, body, refused):
     from treg.application.call.types import ResolutionFailed
-    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array[string]"},
+    input_schema = {"queryParams": {"q": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}},
                                     "limit": {"type": "integer"}}}
     ep = row(input_schema, price={"value": "1", "currency": "credit", "per": 10, "round": "up"},
              reserve={"rows": {"param": "query.limit", "default": {"value": 10, "source": "docs"}, "max": 100}})
@@ -501,3 +511,49 @@ def test_treg_s_key_refuses_a_row_whose_credit_or_meter_rate_is_unknown(keys, ra
     assert (refused.value.kind, refused.value.blame, refused.value.status_code) == \
         ("catalog_price_invalid", "treg", 503)
     assert refused.value.detail["endpoint_id"] == "demo.x" and refused.value.detail["rate"] == rate
+
+
+# -- treg's-key bounds and an absent reported figure ---------------------------------------------
+
+def test_platform_max_bounds_treg_key_only_and_must_sit_below_max():
+    rows = {"param": "body.n", "default": {"value": 3, "source": "docs"}, "max": 1000, "platform_max": 100}
+    ep = row({"body": {"n": {"type": "integer"}}}, reserve={"rows": rows})
+    for n in (None, 1, 100):
+        cost.require_rows(ep, settlement.request_evidence([], json.dumps({"n": n}).encode()))
+    over = settlement.request_evidence([], json.dumps({"n": 101}).encode())
+    cost.require_request(ep, over)                                      # every tier: up to max
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_rows(ep, over)                                     # treg's key: up to platform_max
+    assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "body.n"
+    assert ep["reserve"]["rows"]["platform_max"] == 100
+    for bad in ({**rows, "platform_max": 1000}, {**rows, "platform_max": 2},
+                {"default": {"value": 3, "source": "legacy"}, "max": 10, "platform_max": 5}):
+        with pytest.raises(ValueError):
+            row(reserve={"rows": bad})
+
+
+def test_treg_key_refuses_a_plugin_request_priced_above_the_max(monkeypatch):
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.hold = lambda request: request.body["n"]
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = row(price={"value": "1", "currency": "credit"}, reserve={"plugin": "demo.hold", "max": "5"})
+    cost.require_plugin_max(ep, Rates(), settlement.request_evidence([], b'{"n": 5}'))
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_plugin_max(ep, Rates(), settlement.request_evidence([], b'{"n": 6}'))
+    assert exc.value.status_code == 400 and exc.value.detail["error"] == "catalog_parameter_invalid"
+    cost.require_plugin_max(row(), Rates(), settlement.request_evidence([], b"{}"))  # no plugin: no check
+
+
+@pytest.mark.parametrize("reported,answer,headers,actual", [
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {}, {}, 0),
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {}, {"x-cost": "3"}, 60000),
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {}, {"x-cost": "bad"}, 20000),  # unreadable: the hold
+    ({"header": "x-cost", "unit": "credit"}, {}, {}, 20000),            # without missing: the hold
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {}, None, 0),
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {"used": None}, None, 0),
+])
+def test_reported_missing_zero_settles_an_absent_figure_at_zero(reported, answer, headers, actual):
+    ep = row(settle={"reported": reported}, reserve={"rows": {"param": "body.n", "default": {"value": 1, "source": "docs"}, "max": 5}},
+             input_schema={"body": {"n": {"type": "integer"}}})
+    _, decision = call(ep, answer=answer, headers=headers)
+    assert decision.actual_micro == actual

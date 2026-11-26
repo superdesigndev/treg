@@ -73,7 +73,7 @@ from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from . import view
 from .auth_helpers import require_managed_cli, trusted_public_base
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import REFERRAL_COOKIE, _client_country, _forget_affiliate, _take_affiliate_click, _take_partner_code
 from .views import account as account_views
 from .views import toon
 
@@ -90,6 +90,9 @@ sys.modules.setdefault("treg.routers.providers", _providers)
 
 class OrgIn(BaseModel):
     name: str
+    # An affiliate partner's code typed at a CLI or agent signup (`treg org create --ref`): a Dub
+    # partner's link key, allowlisted. Never a friend-referral code; that comes only from `?ref=`.
+    ref: str = ""
 
 
 class InviteIn(BaseModel):
@@ -404,9 +407,6 @@ def _deny_view(r: DenyRule) -> dict:
 
 _SIGNUP_HTTP_ERRORS = {
     "blocked_domain": (403, "this address cannot be used to sign in"),  # same words: leaks no list
-    "sandbox_user": (403, (
-        "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
-    )),
     "slug_conflict": (409, "could not allocate a unique org slug — retry"),
     "reserved_name": (422, "this team name is reserved: it reads as treg itself, as official, or as a "
                            "catalog provider or platform. Choose another name."),
@@ -446,8 +446,11 @@ async def create_org(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
+            ref_code=body.ref or _take_partner_code(request), client_country=_client_country(request),
         )
         response.headers["Cache-Control"] = "no-store"
+        _forget_affiliate(response)
         return result
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc

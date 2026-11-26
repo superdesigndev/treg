@@ -70,10 +70,15 @@ anonymous upstream 429 is relayed without marking treg's account. Removing the p
 working.
 
 A provider can have several treg-owned accounts (`TREG_PLATFORM_ACCOUNTS`,
-`architecture/proxy-model.md`). Smoothing buckets, fair-share places and call-path locks are per
-account (a further account's keys are suffixed `#<label>`), and the provider is out only when every
-account is. Policies, the sweep and balance collectors read only the primary, so a further
-account's balance is not observed and its lock lifts at expiry or by its own probe.
+`architecture/proxy-model.md`). Smoothing buckets, fair-share places, call-path locks, policies,
+snapshots and sweep readings are per account (a further account's keys are suffixed `#<label>`,
+e.g. `apollo#b`), and the provider is out only when every account is. An account the sweep reads
+empty gets no calls while another can serve, so no caller is spent probing it; the next sweep that
+reads it refilled returns it to rotation. A reading below the provider's `_DRAIN_BELOW` mark (in
+its own unit) is `low`: the account still serves, but calls go to the provider's other accounts
+while any is not low, so an account leaves the rotation before it runs dry. Size a mark to outlast
+the gap between two sweeps at the provider's busiest burn. With every account out, a call is
+refused or probes the primary as before.
 
 Provider-specific facts (meter quirks, rate sources, exhaustion bodies) live on the provider's
 collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog file, not here.
@@ -93,17 +98,20 @@ collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog
 - **`collectors.py`** returns `{value, unit, note}` and is shared with `scripts/provider_balances.py`.
   `provider_balance()` never raises (a failure is a row) and reads the key *setting*, not
   `platform_key_for`: the serving allow-list is a kill switch, and a provider just switched off is
-  exactly one whose last balance we still want.
+  exactly one whose last balance we still want. A further account (`apollo#b`) is read with its own
+  credentials only (`account_credential`), the second half of a pair included: a collector that
+  needs another setting takes it through `cred`, never from Settings.
 - **`policy.py`** - `CapacityPolicy` defaults per account (`_KNOWN`). The population is every
-  `platform_key_*` slot plus `overflow:orthogonal` / `overflow:monid` (aggregators are prepaid
-  accounts too). `ensure_policies` inserts missing rows only (a hand-edited row is never
+  `platform_key_*` slot, each further account of one, plus `overflow:orthogonal` /
+  `overflow:monid` (aggregators are prepaid accounts too). `ensure_policies` inserts missing rows only (a hand-edited row is never
   overwritten) and returns the providers still `unknown`, which a person must classify; code never
-  guesses. `latest_state()` is the pure rule: no, failed or old (`STALE_AFTER`) observation is
-  `stale` and never refuses a call; `remaining < EMPTY_BELOW` on an exact observation (a spent float
-  pool can read a few millionths, never zero) is `exhausted` until `resets_at` or the next sweep.
-- **`sweep.py`** - `run_sweep(db)` collects all providers in parallel with the DB idle, writes one
-  `CapacitySnapshot` per provider, publishes each `LatestState` to ratestore as
-  `capacity:state:<provider>` and commits once. The key is the Settings slot spelling
+  guesses. A further account's row takes its provider's classification. `latest_state()` is the
+  pure rule: no, failed or old (`STALE_AFTER`) observation is `stale` and never refuses a call;
+  `remaining < EMPTY_BELOW` on an exact observation (a spent float pool can read a few millionths,
+  never zero) is `exhausted` until `resets_at` or the next sweep; below `_DRAIN_BELOW` it is `low`.
+- **`sweep.py`** - `run_sweep(db)` collects every account in parallel with the DB idle, writes one
+  `CapacitySnapshot` per account, publishes each `LatestState` to ratestore as
+  `capacity:state:<account>` and commits once; `--only apollo` also sweeps `apollo#b`. The key is the Settings slot spelling
   (`fiber_ai`); `state_key()` maps a catalog id (`fiber-ai`) onto it, so readers find the state
   under either spelling. A note that looks like a credential is withheld before it is stored. A
   failed HTTP balance route is stored as its status code only (`_failure_note`: httpx messages
@@ -147,8 +155,10 @@ of calls; one strike must not take the provider away from everyone.
   applies. Otherwise a vendor answering free searches at zero credits erases the paid routes'
   strikes.
 - A signature the call could not avoid (the strike itself, a probe through a lock, a free route)
-  is relayed as the provider answered, with `X-Treg-Capacity: exhausted` so the caller is told it is
-  treg's account, not its balance (`capacity_notice.py`).
+  is not relayed on treg's shared key: when overflow did not serve it and it settled at zero, the
+  caller gets the same typed 503 `provider_capacity_unavailable`, while the call's record keeps the
+  provider's status and body. A routed call skips that provider. The light CLI still reads
+  `X-Treg-Capacity: exhausted`, which older self-hosted servers sent on such a relayed answer.
 - An expired guessed hold that is still dry opens again on its next two strikes, so a lock nobody
   lifts reopens about hourly.
 
@@ -158,8 +168,8 @@ with no wait header takes its reset from the row's `resets`, else from the sweep
 parsed by format, never by provider; a 429 no row matched is a burst when the wait is at most 60 s
 and a quota when longer. Exhaustion can arrive as any status, including a 2xx: the call path reads
 a platform 2xx through the table too, so such an answer is released rather than settled, never
-archived, counted as a strike and eligible for overflow. Bare HTTP 402 uses the shared balance
-signature. Two guards against the next unrecorded vendor:
+archived, counted as a strike, eligible for overflow and otherwise the typed 503. Bare HTTP 402
+uses the shared balance signature. Two guards against the next unrecorded vendor:
 
 - `unrecorded`: a 4xx no row matched whose body still names credits, quota or balance (generic
   nouns plus each row's `tripwire` phrase; a row's regex never joins by itself, since alternations
@@ -222,6 +232,33 @@ lease; expiry cannot stop a request already sent. When the store fails the proce
 and skips the store briefly; without `TREG_KV_URL` each process enforces the cap alone. Choosing an
 account (`keyslots`) reads only this process's places.
 
+The fewest-first choice is per process, so across processes a light team is not ahead of a heavy
+one: a freed place goes to whichever process's request lands first. `TREG_FAIR_SHARE_TEAM_CEILING_PERCENT`
+(0, off, by default) bounds that: with the shared store, one team holds at most `ceil(cap x percent
+/ 100)` places of an account across every process, counted on a second lease key per account and
+team (`<account>:team:<org id>`) through the same lease scripts. A call over its team's ceiling
+leaves at once as `share_busy` (`ShareBusy.reason` "team_ceiling", its own message: "your team
+holds its largest share of <provider>'s places"), so the remaining places stay for other teams;
+other teams are not affected. The team request's time comes out of the same `fair_share_wait_s`
+budget, so a slow store never makes a call wait past it. A cap whose ceiling would equal the cap, a store that fails, and no store leave the
+account's own rule alone. The team request runs only while the account's last store request got an
+answer (`_Pool.store_answered`). A team request that gets no answer clears `store_answered`, and
+its call takes its place from this process's count, as inside the store-down window, instead of
+also waiting on the account request; it never opens or extends that window, which the account
+request alone owns. So a store that stops answering costs each call one wait at most. After
+recovery, the ceiling returns from the second call in each process: the first asks the account and
+sets `store_answered` again.
+
+A lease whose acquire or release the store did not answer (a stall) is kept in a bounded list
+(`provider_concurrency._unanswered`) and released again once the store answers a later request,
+however old: after an outage longer than a lease the store still runs a queued acquire and stamps
+it with its own clock. A release the store dropped would otherwise leave its place counted until
+the lease ends; this holds for the account's places as well as the team's.
+
+The list is drained by one background task (`provider_concurrency._drain`) with 4 requests at a
+time, so a long list never crowds the shared client's connection pool. It stops at the first
+request the store does not answer, keeps the rest, and starts again on the next answered acquire.
+
 ## Upstream connections: a bounded wait and a cap per provider
 
 Every relayed call shares one pooled HTTP client per process (`bootstrap._lifespan`). A provider
@@ -270,7 +307,7 @@ Redis `TREG_KV_URL`, and an enforce list needs `observe`; `Settings` refuses to 
   its error budget.
 - A routed child on treg's own key whose answer the signature table marks `balance` or `quota`
   (treg's account out of money or out of its period allowance, e.g. LeadOcean's 429 "Fair-use pace
-  reached") is likewise `skipped` (`child_outcome` kind `account_exhausted`), never an error: one
+  reached") is likewise `skipped` (its typed `provider_capacity` refusal), never an error: one
   used-up account beside providers that answered "nobody" leaves the call a 200 miss, not a 502.
   A provider that is down (5xx) is still an error, so a failed routed call stays free.
 - A capacity probe (`probe_lock_id`) and a team's poll of its own job (`free_owned_poll`) are
@@ -300,8 +337,10 @@ the aggregator's real price with no markup, disclosed through `X-Treg-Cost-Micro
 - **`OverflowRoute`**: one row per `(endpoint_id, aggregator)` with a derived `enabled` and
   `disabled_reason`. Worker-owned; the call path reads it through `routes_view.py`.
   `overflow sync` and `overflow verify` are the only writers.
-- **`routes.py` `eligible`** holds every rule: platform-eligible, policy allows overflow
-  (`_NO_OVERFLOW`), same unit (a per-result price is accepted for a per-call endpoint returning at
+- **`routes.py` `eligible`** holds every rule: platform-eligible, not an async job (its task would
+  live on the aggregator's account, where neither the caller nor the settlement worker can poll it;
+  `routes_view.for_endpoint` also returns nothing for one before the next sync disables its row),
+  policy allows overflow (`_NO_OVERFLOW`), same unit (a per-result price is accepted for a per-call endpoint returning at
   most one record), `ratio <= MAX_RATIO` or, for an endpoint free to us, an aggregator price at most
   `FREE_ROUTE_MAX_USD` (free routes still refuse when the account is dry), verified within
   `VERIFY_MAX_AGE`. `request_priced` admits the exact fixed-fee contracts in `_FIXED_DISCOVERY_PATHS`

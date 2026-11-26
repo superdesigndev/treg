@@ -11,6 +11,7 @@ Pure collection: nothing here touches the database or the request path. The work
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
 import httpx
@@ -85,8 +86,8 @@ async def _tinyfish(c, key):
             "note": note}
 
 
-async def _fishaudio(c, key):
-    workspace_id = get_settings().platform_fishaudio_workspace_id.strip()
+async def _fishaudio(c, key, cred):
+    workspace_id = cred("platform_fishaudio_workspace_id").strip()
     if not workspace_id:
         return {
             "value": None,
@@ -381,6 +382,25 @@ async def _openmart(c, key):
     period_end = d.get("period_end") if isinstance(d, dict) else None
     return {"value": balance, "unit": "credits",
             "note": f"Monthly subscription balance; current period ends {period_end or 'at the account renewal date'}."}
+
+
+async def _fundable(c: httpx.AsyncClient, key: str) -> dict[str, object]:
+    # GET /api/v1/credits is documented as free and consumes no credits.
+    d = await _get(c, "https://www.tryfundable.ai/api/v1/credits",
+                   headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    if not isinstance(d, dict) or d.get("success") is not True or not isinstance(data, dict):
+        raise ValueError("Fundable returned no valid credit balance")
+    unlimited = data.get("is_unlimited")
+    if type(unlimited) is not bool:
+        raise ValueError("Fundable returned no valid credit balance")
+    if unlimited:
+        return {"value": None, "unit": "credits", "note": "unlimited API account",
+                "informational": True}
+    balance = _finite(data.get("total_available"))
+    if balance is None or balance < 0:
+        raise ValueError("Fundable returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "API credit balance"}
 
 
 async def _harvestapi(c, key):
@@ -801,10 +821,10 @@ async def _oceanio(c, key):
                     f"{d.get('dailyLimitRateLeft')} daily-rate calls left"}
 
 
-async def _tomba(c, key):
+async def _tomba(c, key, cred):
     # Tomba's meaningful routes need the key AND the secret header; the secret rides its own
     # platform slot (TOMBA.platform_extra_setting) rather than being packed into one value.
-    secret = get_settings().platform_key_tomba_secret or ""
+    secret = cred("platform_key_tomba_secret")
     d = await _get(c, "https://api.tomba.io/v1/me",
                    headers={"X-Tomba-Key": key, "X-Tomba-Secret": secret})
     d = d.get("data", d)
@@ -815,10 +835,10 @@ async def _tomba(c, key):
                     f"plan {((d.get('pricing') or {}).get('name', '?'))}"}
 
 
-async def _hlrlookup(c, key):
+async def _hlrlookup(c, key, cred):
     # Free. Both halves of the pair ride in the JSON body; the secret has its own platform slot
     # (HLRLOOKUP.platform_extra_setting). Credits can be fractional (cache hits cost half a credit).
-    secret = get_settings().platform_key_hlrlookup_secret or ""
+    secret = cred("platform_key_hlrlookup_secret")
     r = await c.post("https://api.hlrlookup.com/apiv2/balance",
                      json={"api_key": key, "api_secret": secret})
     r.raise_for_status()
@@ -831,6 +851,23 @@ async def _hlrlookup(c, key):
     if balance is None or not balance.is_finite():
         raise ValueError("HLR Lookup balance returned an invalid credit count")
     return {"value": float(balance), "unit": "credits", "note": ""}
+
+
+async def _forager(c, key):
+    # Free: GET /api/users/current/ spends nothing, needs no account id in the path and answers 403
+    # for a bad key. The key's one account carries the plan's credit balance.
+    d = await _get(c, "https://api-v2.forager.ai/api/users/current/", headers={"X-API-KEY": key})
+    accounts = d.get("accounts") if isinstance(d, dict) else None
+    sub = (accounts[0] or {}).get("subscription") if isinstance(accounts, list) and accounts else None
+    try:
+        balance = Decimal(str(sub.get("credits_balance"))) if isinstance(sub, dict) else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite():
+        raise ValueError("Forager returned no credit balance")
+    tier = (sub.get("subscription_tier") or {}).get("name", "?")
+    return {"value": float(balance), "unit": "credits",
+            "note": f"plan {tier}, subscription {'active' if sub.get('is_active') else 'inactive'}"}
 
 
 async def _predictleads(c, key):
@@ -858,6 +895,25 @@ async def _anymailfinder(c, key):
     if isinstance(credits, bool) or not isinstance(credits, int) or credits < 0:
         raise ValueError("Anymail Finder account returned an invalid credit balance")
     return {"value": credits, "unit": "credits", "note": ""}
+
+
+async def _descovo(c, key):
+    # Free: GET /v1/credits never charges; the plan's monthly credits reset on resetsOn.
+    d = await _get(c, "https://api.descovo.com/v1/credits", headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    credits = _finite(data.get("available")) if isinstance(data, dict) else None
+    if credits is None:
+        raise ValueError("Descovo returned no credit balance")
+    return {"value": credits, "unit": "credits", "note": f"resets {data.get('resetsOn') or '?'}"}
+
+
+async def _millionphones(c, key):
+    # Free: GET /v1/credits never charges and reports what is left to spend now.
+    d = await _get(c, "https://millionphones.com/v1/credits", headers={"x-api-key": key})
+    credits = _finite(d.get("remaining")) if isinstance(d, dict) else None
+    if credits is None:
+        raise ValueError("MillionPhones returned no credit balance")
+    return {"value": credits, "unit": "credits", "note": f"plan {d.get('plan') or '?'}"}
 
 
 async def _enrow(c, key):
@@ -1032,6 +1088,19 @@ async def _jobspipe(c, key):
     return {"value": credits, "unit": "credits", "note": "spendable credits from the free export estimate"}
 
 
+async def _mapsdata(c, key):
+    # GET /usage is MapsData's free registry probe. `scraping_credits` is the spendable balance and
+    # null means the account has no credit cap; `can_submit` goes false once it reaches zero.
+    d = await _get(c, "https://mapsdata.ai/api/v1/usage", headers={"Authorization": f"Bearer {key}"})
+    credits = d.get("scraping_credits") if isinstance(d, dict) else None
+    if credits is not None and (type(credits) is not int or credits < 0):
+        raise ValueError("MapsData returned no valid credit balance")
+    state = "allowed" if d.get("can_submit") is True else "blocked" if d.get("can_submit") is False else "unknown"
+    cap = "no credit cap" if credits is None else "spendable Scraping Credits"
+    return {"value": credits, "unit": "credits",
+            "note": f"{cap}; plan {d.get('plan_tier') or 'unknown'}; submissions {state}"}
+
+
 async def _enrichlayer(c, key):
     d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -1061,10 +1130,10 @@ def _balance(raw, vendor: str, *, signed: bool = False):
     return value
 
 
-async def _openrouter(c, key):
+async def _openrouter(c, key, cred):
     # GET /api/v1/credits is free but takes a management key; the inference key held in the slot
     # gets 401 there, and GET /api/v1/key reports only that key's own spending cap.
-    management = get_settings().platform_openrouter_management_key.strip()
+    management = cred("platform_openrouter_management_key").strip()
     if not management:
         return {"value": None, "unit": "", "no_api": True,
                 "note": "no OpenRouter management credential configured; account credits are in the dashboard"}
@@ -1117,6 +1186,7 @@ BALANCE_ROUTES = {
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,
     "jobspipe": _jobspipe,
+    "mapsdata": _mapsdata,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,
@@ -1148,6 +1218,9 @@ BALANCE_ROUTES = {
     "predictleads": _predictleads,
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
+    "forager": _forager,
+    "millionphones": _millionphones,
+    "descovo": _descovo,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,
@@ -1182,6 +1255,7 @@ BALANCE_ROUTES = {
     "sumble": _sumble,
     "moltsets": _moltsets,
     "openmart": _openmart,
+    "fundable": _fundable,
     "trykitt": _trykitt,
     "contactout": _contactout,
     "millionverifier": _millionverifier,
@@ -1260,13 +1334,15 @@ NO_BALANCE_API = {
 
 # platform_key_* slots that are the SECOND half of a provider's credential pair, not a provider of
 # their own (see OAuthProvider.platform_extra_setting) — they must not become report rows.
-AUX_SLOTS = {"tomba_secret", "hlrlookup_secret"}
+AUX_SLOTS = {"tomba_secret", "hlrlookup_secret", "forager_account"}
 
 # Vendors that keep answering calls past a zero balance and bill the overage. A reading below
 # `EMPTY_BELOW` from one of them is `_overdrawn`, never exact: exact, it would refuse calls the
 # account still serves. Each needs a balance or quota signature for its eventual refusal
 # (`test_every_overdraft_vendor_has_a_refusal_signature`). Every other collector's negative is exact.
 OVERDRAFT_SERVED = frozenset({"cloro", "firecrawl", "hlrlookup"})
+
+_READS_PAIRED_SETTING = frozenset({"fishaudio", "tomba", "hlrlookup", "openrouter"})
 
 
 def all_platform_providers() -> list[str]:
@@ -1277,9 +1353,39 @@ def all_platform_providers() -> list[str]:
                   and name.removeprefix("platform_key_") not in AUX_SLOTS)
 
 
+def account_key(provider: str, label: str | None) -> str:
+    """How capacity names one of treg's accounts: the provider for the primary, `<provider>#<label>`
+    for a further one (`TREG_PLATFORM_ACCOUNTS`)."""
+    return f"{provider}#{label}" if label else provider
+
+
+def split_account(account: str) -> tuple[str, str | None]:
+    provider, _, label = account.partition("#")
+    return provider, label or None
+
+
+def extra_accounts() -> list[str]:
+    """Every further account, keyed by its provider's Settings slot (`fiber_ai#b`)."""
+    return sorted(account_key(platform_setting_name(provider).removeprefix("platform_key_"), slot.slot)
+                  for provider, slots in get_settings().platform_extra_accounts().items()
+                  for slot in slots)
+
+
+def account_credential(account: str) -> Callable[[str], str]:
+    """`setting -> value` on this account alone: a further account never borrows the primary's half."""
+    provider, label = split_account(account)
+    settings = get_settings()
+    if label is None:
+        return lambda setting: getattr(settings, setting, "") or ""
+    wanted = platform_setting_name(provider)
+    values = next((slot.values for name, slots in settings.platform_extra_accounts().items()
+                   if platform_setting_name(name) == wanted for slot in slots if slot.slot == label), {})
+    return lambda setting: values.get(setting, "")
+
+
 def credential_values(provider: str) -> tuple[str, ...]:
     """Every value of treg's credential for `provider`, the second half of a pair included."""
-    setting = platform_setting_name(provider)
+    setting = platform_setting_name(split_account(provider)[0])
     settings = get_settings()
     aux = setting + "_secret"
     pair = settings.platform_credential_values(aux) if aux.removeprefix("platform_key_") in AUX_SLOTS else ()
@@ -1300,34 +1406,38 @@ def _failure_note(provider: str, exc: Exception) -> str:
 
 async def provider_balance(provider: str, client: httpx.AsyncClient | None = None) -> dict:
     """Ask one provider what it thinks our account has left. Never raises — a failure is a row.
+    `provider` may name a further account (`apollo#b`): it is read with that account's credentials.
 
     Reads the SETTING, not `platform_key_for`: the tier-4 allow-list is a serving kill switch, and a
     provider we just switched off is exactly one whose final balance we still want to see."""
-    setting = platform_setting_name(provider)
-    key = getattr(get_settings(), setting, "") or ""
+    base, label = split_account(provider)
+    setting = platform_setting_name(base)
+    cred = account_credential(provider)
+    key = cred(setting)
     if not key:
-        return {"provider": provider, "value": None, "unit": "", "no_key": True,
-                "note": f"no TREG_{setting.upper()} in the env"}
-    if provider in NO_BALANCE_API:
+        where = f"account {label} in TREG_PLATFORM_ACCOUNTS" if label else f"TREG_{setting.upper()} in the env"
+        return {"provider": provider, "value": None, "unit": "", "no_key": True, "note": f"no {where}"}
+    if base in NO_BALANCE_API:
         # `no_api` is the machine-readable half of the note: a provider that publishes no meter
         # must not read as a broken key.
         return {"provider": provider, "value": None, "unit": "", "no_api": True,
-                "note": NO_BALANCE_API[provider]}
-    fetch = BALANCE_ROUTES.get(provider)
+                "note": NO_BALANCE_API[base]}
+    fetch = BALANCE_ROUTES.get(base)
     if fetch is None:
         return {"provider": provider, "value": None, "unit": "", "no_api": True,
                 "note": "no fetcher written yet"}
+    args = (key, cred) if base in _READS_PAIRED_SETTING else (key,)
     try:
         if client is None:
             async with httpx.AsyncClient(timeout=30, headers={"User-Agent": TREG_USER_AGENT}) as c:
-                row = await fetch(c, key)
+                row = await fetch(c, *args)
         else:
-            row = await fetch(client, key)
+            row = await fetch(client, *args)
     except Exception as exc:  # noqa: BLE001 — a sweep must report, not crash
         return {"provider": provider, "value": None, "unit": "",
                 "note": _failure_note(provider, exc)}
     from .policy import EMPTY_BELOW  # policy imports this module
     value = row.get("value")
-    if provider in OVERDRAFT_SERVED and isinstance(value, (int, float)) and value < EMPTY_BELOW:
+    if base in OVERDRAFT_SERVED and isinstance(value, (int, float)) and value < EMPTY_BELOW:
         row = _overdrawn(row)
     return {"provider": provider, **row}

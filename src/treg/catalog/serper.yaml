@@ -362,7 +362,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, note: "Publicly fetchable JPG or PNG image URL.", example: "https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg"}
+        url: {type: string, required: true, format: url, note: "Publicly fetchable JPG or PNG image URL.", example: "https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg"}
         location: {type: string, required: false}
         gl: {type: string, required: false, default: us, example: us}
         hl: {type: string, required: false, default: en, example: en}
@@ -392,7 +392,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        url: {type: string, required: true, format: url, example: "https://example.com"}
         includeMarkdown: {type: boolean, required: false, default: false}
         includeImages: {type: boolean, required: false, default: false}
         includeLinks: {type: boolean, required: false, default: false}

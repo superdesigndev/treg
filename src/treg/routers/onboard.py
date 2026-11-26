@@ -3,12 +3,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from .. import sandbox as demo_sandbox
 from ..application import onboard as onboard_use_cases
 from ..application import signup as signup_use_cases
 from ..application.onboard import first_run
 from ..domain.identity.access import (
-    SANDBOX_CLOSED,
     Caller,
     _require_can_register,
     require_identity,
@@ -17,7 +15,7 @@ from ..domain.identity.access import (
 from ..models import User
 from .auth_helpers import require_managed_cli
 from .orgs import _require_admin_of, _owned_team_limit_error, _signup_http_error
-from .signup_cookies import REFERRAL_COOKIE
+from .signup_cookies import REFERRAL_COOKIE, _client_country, _forget_affiliate, _take_affiliate_click, _take_partner_code
 from ..domain.governance.teams import OwnedTeamLimitReached
 
 
@@ -28,26 +26,11 @@ _ONBOARD_HTTP_ERRORS = {
     "org_not_found": (404, "org not found"),
     "not_demo_email": (400, "onboarding auto-accept is for demo teammates only"),
     "invite_not_found": (404, "no pending invite for that email"),
-    "sandbox_user": (403, (
-        "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
-    )),
 }
 
 
 def _onboard_http_error(exc: onboard_use_cases.OnboardError) -> HTTPException:
     status_code, detail = _ONBOARD_HTTP_ERRORS[exc.kind]
-    return HTTPException(status_code=status_code, detail=detail)
-
-
-_SANDBOX_HTTP_ERRORS = {
-    "rate_limited": (429, "too many demo sandboxes from here — try again later"),
-    "sandbox_only_live": (400, "live-wire info is for the landing-page sandbox only"),
-    "sandbox_only_skill": (400, "skill export is for the landing-page sandbox only"),
-}
-
-
-def _sandbox_http_error(exc: onboard_use_cases.SandboxError) -> HTTPException:
-    status_code, detail = _SANDBOX_HTTP_ERRORS[exc.kind]
     return HTTPException(status_code=status_code, detail=detail)
 
 
@@ -60,8 +43,8 @@ async def onboard_demo(
     body: OnboardIn | None = None,
     user: User = Depends(require_identity),
 ) -> dict:
-    """Seed a sandbox team owned by the caller — fake teammates (one per role) + a working `echo`
-    tool + sample activity — so a brand-new user can feel the product immediately. Idempotent
+    """Seed a demo team owned by the caller: fake teammates (one per role) + a working `echo`
+    tool + sample activity, so a brand-new user can feel the product immediately. Idempotent
     (reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI."""
     try:
         return await onboard_use_cases.provision_demo(
@@ -88,9 +71,14 @@ async def onboard_reset(
     return await onboard_use_cases.reset(user_id=user.id)
 
 
+class OnboardTeamIn(BaseModel):
+    ref: str = ""  # as `OrgIn.ref`: a Dub partner's link key
+
+
 @app.post("/onboard/team")
 async def onboard_team(
     request: Request, response: Response,
+    body: OnboardTeamIn | None = None,
     user: User = Depends(require_identity),
 ) -> dict:
     """A new account's first team, named for it, so the dashboard never asks for a name.
@@ -102,12 +90,15 @@ async def onboard_team(
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+            affiliate_cookie=_take_affiliate_click(request),
+            ref_code=(body.ref if body else "") or _take_partner_code(request), client_country=_client_country(request),
         )
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc
     except OwnedTeamLimitReached as exc:
         raise _owned_team_limit_error() from exc
     response.headers["Cache-Control"] = "no-store"
+    _forget_affiliate(response)
     return result
 
 
@@ -117,38 +108,6 @@ onboard_entry_router = app
 app = APIRouter()
 
 
-@app.post("/demo/sandbox", status_code=410)
-async def demo_sandbox_mint() -> dict:
-    """The landing sandbox is closed: no new sandbox is minted."""
-    raise HTTPException(status_code=410, detail=SANDBOX_CLOSED)
-
-
-@app.get("/demo/sandbox/live")
-async def demo_sandbox_live(caller: Caller = Depends(require_member)) -> dict:
-    """Live-wire facts for an EXISTING sandbox (the browser reuses one via localStorage, so it may
-    predate the mint response carrying them): is the wire on, and who am I in the feed."""
-    try:
-        return onboard_use_cases.sandbox_live_facts(caller.org)
-    except onboard_use_cases.SandboxError as exc:
-        raise _sandbox_http_error(exc) from exc
-
-
-@app.get("/demo/sandbox/skill")
-async def demo_sandbox_skill(
-    caller: Caller = Depends(require_member),
-) -> dict:
-    """Export whatever the visitor built in their sandbox as a shareable **skill** (treg.json manifest
-    + SKILL.md + install commands). Sandbox-only — the payoff that shows what skills are."""
-    try:
-        return await onboard_use_cases.export_sandbox_skill(
-            org_id=caller.org_id, sandbox=demo_sandbox.is_sandbox(caller.org))
-    except onboard_use_cases.SandboxError as exc:
-        raise _sandbox_http_error(exc) from exc
-
-
-sandbox_router = app
-
-app = APIRouter()
 
 
 class TeammateIn(BaseModel):

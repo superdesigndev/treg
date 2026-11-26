@@ -77,13 +77,13 @@ endpoints:
     input:
       queryParams:
         location: {type: string, required: false, note: "country name, or US state name/abbreviation", example: "United States"}
-        sizes: {type: "array[string]", required: false, note: "comma-separated company size buckets, or repeated sizes[]=", example: "11-50"}
-        naics_codes: {type: "array[string]", required: false, note: "comma-separated NAICS codes"}
+        sizes: {type: array, items: {type: string}, required: false, note: "comma-separated company size buckets, or repeated sizes[]=", example: "11-50"}
+        naics_codes: {type: array, items: {type: string}, required: false, note: "comma-separated NAICS codes"}
         industry: {type: string, required: false, note: "free-text industry", example: "Retail"}
         revenue_range_low: {type: integer, required: false, note: "minimum annual revenue in USD", example: 1000000}
         revenue_range_high: {type: integer, required: false, note: "maximum annual revenue in USD", example: 100000000}
         page: {type: integer, required: false, note: "1-based; omitting it drops meta.count for performance"}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — THIS IS THE PRICE DIAL: 1 credit per company returned", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — THIS IS THE PRICE DIAL: 1 credit per company returned", example: 1}
       note: "returns an ESTIMATED count, not an exact one. Always set an explicit small `limit` first — the default of 30 bills 30 credits"
     test_request:
       queryParams: {limit: 1}
@@ -140,7 +140,7 @@ endpoints:
         last_seen_at_until: {type: string, required: false, note: "ISO 8601 date"}
         with_description_only: {type: boolean, required: false}
         with_location_only: {type: boolean, required: false}
-        categories: {type: "array[string]", required: false, note: "comma-separated job categories, e.g. sales,engineering"}
+        categories: {type: array, items: {type: string}, required: false, note: "comma-separated job categories, e.g. sales,engineering"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 100, max 1000 — raising it does NOT cost more; one request is 1 credit however many records return", example: 1}
       note: "postings are scraped from the company's own careers site, so they carry the canonical apply URL, O*NET occupation code, contract types and first/last seen timestamps"
@@ -184,14 +184,14 @@ endpoints:
     summary: "Returns a list of Job Openings filtered by a given profession using O*NET occupation codes and/or location of the company."
     input:
       queryParams:
-        onet_codes: {type: "array[string]", required: false, note: "comma-separated O*NET occupation codes — see onetonline.org", example: "41-3091.00"}
+        onet_codes: {type: array, items: {type: string}, required: false, note: "comma-separated O*NET occupation codes — see onetonline.org", example: "41-3091.00"}
         location: {type: string, required: false, note: "country name or US state name/abbreviation", example: "United States"}
         active_only: {type: boolean, required: false}
         found_at_from: {type: string, required: false, note: "ISO 8601 date", example: "2026-08-01"}
         seniority: {type: string, required: false, note: "one of not_set, founder, c_level, partner, president, vice_president, head, director, manager, mid_senior, junior", example: "director"}
         title: {type: string, required: false, note: "matches postings whose title contains ALL the given words", example: "product manager"}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "only returns postings found within the last year — this is the hiring-signal prospecting route ('who is hiring sales engineers in Texas right now')"
     test_request:
       queryParams: {limit: 1}
@@ -248,7 +248,7 @@ endpoints:
         last_seen_at_from: {type: string, required: false}
         last_seen_at_until: {type: string, required: false}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "the reverse tech-stack lookup across ~54,000 tracked technologies; a fuzzy name works, which saves a /technologies lookup"
     test_request:
       pathParams: {technology_id_or_fuzzy_name: "hubspot"}
@@ -273,7 +273,7 @@ endpoints:
         fuzzy_name: {type: string, required: false, note: "filter by fuzzy technology name", example: "hubspot"}
         order_by: {type: string, required: false, note: "one of created_at_asc (default), created_at_desc, fuzzy_score_desc"}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 100, max 1000 — PRICE DIAL: this route is 3 credits PER RECORD, the most expensive in the file", example: 1}
+        limit: {type: integer, required: false, note: "default 100, max 1000 (100 on treg's key) — PRICE DIAL: this route is 3 credits PER RECORD, the most expensive in the file", example: 1}
       note: "the ~54,000-row technology dictionary behind the detection endpoints. Expensive per record — resolve one name with /technologies/{id_or_fuzzy_name} (1 credit flat) instead of listing when you can"
     test_request:
       queryParams: {limit: 1}
@@ -339,7 +339,7 @@ endpoints:
         location: {type: string, required: false, note: "country name or US state name/abbreviation"}
         found_at_from: {type: string, required: false, note: "ISO 8601 date — filters on found_at, when PredictLeads found the event, not when the event happened: the polling dial for 'what changed since my last run', not a recency filter for events; a recently found row can describe an event months or years old", example: "2026-08-01"}
         found_at_until: {type: string, required: false, note: "ISO 8601 date — filters on found_at (discovery time), not the event date"}
-        categories: {type: "array[string]", required: false, note: "comma-separated event categories, e.g. partners_with,hires,opens_new_location,receives_financing"}
+        categories: {type: array, items: {type: string}, required: false, note: "comma-separated event categories, e.g. partners_with,hires,opens_new_location,receives_financing"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 100, max 1000 — raising it costs nothing extra", example: 1}
       note: "these are CLASSIFIED events, not headlines: each carries a category, a confidence score, the triggering article sentence, and typed slots (amount, headcount, job_title, location, award, division) filled when the category implies them. Dates: found_at is when PredictLeads found the event and first_seen_at when it first recorded the event; neither is when the event happened, and rows are ordered and filtered by found_at. For a timeline use effective_date, and check it against the source article's published_at and any date in the summary: effective_date can be null, can be month-precision (the 1st of a month), and can disagree with the summary. confidence scores the classification, not the date"
@@ -383,11 +383,11 @@ endpoints:
     summary: "Returns a list of News Events, optionally filtered by categories and company's location, company's size, ordered by found_at descending."
     input:
       queryParams:
-        categories: {type: "array[string]", required: false, note: "comma-separated event categories, e.g. receives_financing,opens_new_location,partners_with", example: "partners_with"}
+        categories: {type: array, items: {type: string}, required: false, note: "comma-separated event categories, e.g. receives_financing,opens_new_location,partners_with", example: "partners_with"}
         company_location: {type: string, required: false, note: "country name or US state name/abbreviation", example: "United States"}
-        company_sizes: {type: "array[string]", required: false, note: "comma-separated company size buckets"}
+        company_sizes: {type: array, items: {type: string}, required: false, note: "comma-separated company size buckets"}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "the market-wide signal feed: 'every company that opened a new location this week'. Ordered newest-first by found_at (when PredictLeads found the event), so found_at on the first record is the watermark for the next poll. found_at is discovery time, not event time: for a timeline use effective_date, which can be null, month-precision or older than found_at, and check it against the source article"
     test_request:
       queryParams: {limit: 1}
@@ -435,10 +435,10 @@ endpoints:
     summary: "Returns a list of Financing Events, optionally filtered by normalized financing type and company's location, ordered by updated date."
     input:
       queryParams:
-        financing_types_normalized: {type: "array[string]", required: false, note: "comma-separated normalized financing types, e.g. series_a,seed,venture", example: "series_a"}
+        financing_types_normalized: {type: array, items: {type: string}, required: false, note: "comma-separated normalized financing types, e.g. series_a,seed,venture", example: "series_a"}
         company_location: {type: string, required: false, note: "country name or US state name/abbreviation", example: "United States"}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "the 'who just raised' feed — the standard trigger list for outbound to newly funded companies. Recency here is discovery recency: found_at is when PredictLeads found the event, not when the round happened, and there is no filter on the round date, so a recently found row can be a round from a prior year. Before treating a row as a new round, check effective_date (can be null, and can disagree with the announcement) against the articles in source_urls"
     test_request:
       queryParams: {limit: 1}
@@ -461,7 +461,7 @@ endpoints:
       pathParams:
         company_id_or_domain: {type: string, required: true, note: "company domain or PredictLeads company UUID — only US-listed issuers have filings", example: "microsoft.com"}
       queryParams:
-        form_types: {type: "array[string]", required: false, note: "comma-separated SEC form types, e.g. 10-K,10-Q,8-K", example: "10-K"}
+        form_types: {type: array, items: {type: string}, required: false, note: "comma-separated SEC form types, e.g. 10-K,10-Q,8-K", example: "10-K"}
         filed_at_from: {type: string, required: false, note: "ISO 8601 date"}
         filed_at_until: {type: string, required: false, note: "ISO 8601 date"}
         page: {type: integer, required: false}
@@ -511,7 +511,7 @@ endpoints:
       queryParams:
         first_seen_at_from: {type: string, required: false, note: "ISO 8601 date"}
         first_seen_at_until: {type: string, required: false, note: "ISO 8601 date"}
-        categories: {type: "array[string]", required: false, note: "comma-separated connection categories, e.g. investor,customer,partner,vendor", example: "investor"}
+        categories: {type: array, items: {type: string}, required: false, note: "comma-separated connection categories, e.g. investor,customer,partner,vendor", example: "investor"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 100, max 1000 — raising it costs nothing extra", example: 1}
       note: "relationships mined from the two companies' own websites (logo walls, case studies, portfolio pages), each with the source_url that evidences it — this is the 'who does this company work with' graph"
@@ -540,7 +540,7 @@ endpoints:
         last_seen_at_from: {type: string, required: false}
         last_seen_at_until: {type: string, required: false}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "a portfolio page addition often lands before the funding is announced anywhere else, which is why this is a separate feed from financing events"
     test_request:
       queryParams: {limit: 1}
@@ -619,8 +619,8 @@ endpoints:
       queryParams:
         first_seen_at_from: {type: string, required: false, note: "ISO 8601 date — products first seen after this date, i.e. new launches", example: "2026-08-01"}
         first_seen_at_until: {type: string, required: false, note: "ISO 8601 date"}
-        categories: {type: "array[string]", required: false, note: "comma-separated product categories, e.g. service,software", example: "service"}
-        subcategories: {type: "array[string]", required: false, note: "comma-separated product subcategories"}
+        categories: {type: array, items: {type: string}, required: false, note: "comma-separated product categories, e.g. service,software", example: "service"}
+        subcategories: {type: array, items: {type: string}, required: false, note: "comma-separated product subcategories"}
         page: {type: integer, required: false}
         limit: {type: integer, required: false, note: "default 100, max 1000 — raising it costs nothing extra", example: 1}
       note: "extracted from the company's own product pages, with a normalized name, category/subcategory and description"
@@ -664,10 +664,10 @@ endpoints:
     summary: "Returns a list of Products, optionally filtered by categories and subcategories, ordered by last seen date."
     input:
       queryParams:
-        categories: {type: "array[string]", required: false, note: "comma-separated product categories, e.g. service,solution", example: "solution"}
-        subcategories: {type: "array[string]", required: false, note: "comma-separated product subcategories"}
+        categories: {type: array, items: {type: string}, required: false, note: "comma-separated product categories, e.g. service,solution", example: "solution"}
+        subcategories: {type: array, items: {type: string}, required: false, note: "comma-separated product subcategories"}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "the path is /discover/products; there is no /discover/products/latest route"
     test_request:
       queryParams: {limit: 1}
@@ -690,9 +690,9 @@ endpoints:
       queryParams:
         published_at_from: {type: string, required: false, note: "ISO 8601 date", example: "2026-08-01"}
         published_at_until: {type: string, required: false, note: "ISO 8601 date"}
-        post_types: {type: "array[string]", required: false, note: "comma-separated post types, e.g. show_hn,who_is_hiring", example: "show_hn"}
+        post_types: {type: array, items: {type: string}, required: false, note: "comma-separated post types, e.g. show_hn,who_is_hiring", example: "show_hn"}
         page: {type: integer, required: false}
-        limit: {type: integer, required: false, note: "default 30, max 1000 — PRICE DIAL on this discovery route", example: 1}
+        limit: {type: integer, required: false, note: "default 30, max 1000 (100 on treg's key) — PRICE DIAL on this discovery route", example: 1}
       note: "each post is already resolved to a company_domain and company_name, with a fuzzy_match flag when the resolution is uncertain — that resolution is the point, versus scraping the platforms yourself"
     test_request:
       queryParams: {limit: 1}

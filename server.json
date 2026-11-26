@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.superdesigndev/treg",
+  "title": "treg",
+  "description": "Live data for AI agents. Search the catalog, read the price, call the tool; keys stay server-side.",
+  "repository": {
+    "url": "https://github.com/superdesigndev/treg",
+    "source": "github"
+  },
+  "version": "0.33.0",
+  "websiteUrl": "https://treg.to",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://treg.to/mcp/"
+    }
+  ]
+}

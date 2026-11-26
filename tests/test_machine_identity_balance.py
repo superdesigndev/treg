@@ -43,6 +43,19 @@ async def test_a_machine_identity_reads_the_wallet_but_not_the_purchase_history(
     assert r.json()["blocks"] == [] and r.json()["entries"]["items"] == []
 
 
+async def test_a_withheld_ledger_is_not_reported_as_nothing_spent(clients: AsyncClient):
+    """A member's empty `entries.items` means the ledger was withheld, not that the team spent nothing:
+    the answer says which, and `treg balance` must not tell a spending member "nothing has been spent"."""
+    token, org_id = await _agent_token(clients)
+    member = await clients.get(f"/orgs/{org_id}/balance", headers={"X-Treg-Token": token, "X-Treg-View": "1"})
+    assert member.status_code == 200, member.text
+    assert member.json()["data"]["entries"]["withheld"] is True
+    assert "nothing has been spent" not in member.json()["text"]
+    assert "shown to team admins" in member.json()["text"]
+    owner = (await clients.get(f"/orgs/{org_id}/balance")).json()
+    assert owner["entries"]["withheld"] is False
+
+
 async def test_a_missing_org_is_indistinguishable_from_one_you_cannot_see(clients: AsyncClient):
     """Jason also suspected an org-id enumeration oracle here. There is none, and this keeps it that
     way: a non-existent org and someone else's org must answer identically, or the difference counts

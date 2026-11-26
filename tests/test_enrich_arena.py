@@ -332,7 +332,6 @@ async def test_public_page_and_tasks_but_no_anonymous_spending(clients):
     from treg.domain.catalog import store as catalog_store
     catalog = catalog_store.load()
     assert all(p["price_type"] == catalog.by_id[p["endpoint_id"]]["cost"]["type"] for p in names)
-    assert any(p["provider"] == "orbisearch" and p["price_type"] == "per_call" for p in names)
     async with session_maker() as db:
         assert not (await db.execute(select(ArenaRun))).scalars().all()
         assert not (await db.execute(select(Hold))).scalars().all()
@@ -1377,36 +1376,36 @@ def test_issue_requires_completed_explicit_negative_email_verdict(task,state,sta
     assert rules.verification_rejected_email(attempt,'people.email.find') is expected
     assert not rules.verification_rejected_email(attempt,'people.phone.find')
 
-async def test_new_free_verifier_is_selected_for_auto_verification(clients, enrichment_on, monkeypatch):
+async def test_cheapest_verifier_is_selected_and_charged_for_auto_verification(clients, enrichment_on, monkeypatch):
     from treg.config import get_settings
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,contactout,trykitt,millionverifier')
-    for name in ['CONTACTOUT','TRYKITT','MILLIONVERIFIER']:
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,contactout,millionverifier')
+    for name in ['CONTACTOUT','MILLIONVERIFIER']:
         monkeypatch.setenv('TREG_PLATFORM_KEY_'+name,'SYNTHETIC-VERIFICATION-KEY')
     get_settings.cache_clear()
     seen=[]
-    monkeypatch.setattr(service,'relay',_relay_by_provider({'tomba':[(200,TOMBA_HIT)],'contactout':[(200,{'status_code':200,'data':{'status':'valid'}})]},seen))
+    monkeypatch.setattr(service,'relay',_relay_by_provider({'tomba':[(200,TOMBA_HIT)],'millionverifier':[(200,{'result':'ok','quality':'good','error':''})]},seen))
     q=await plan(clients,mode='waterfall',providers=['tomba'],auto_verify=True)
     assert q['auto_verify']['provider']=='treg'
     assert q['auto_verify']['estimate_micro']>0
     final=await finish(clients,q)
     result=final['results'][0]
-    assert result['verification']['provider']=='contactout'
+    assert result['verification']['provider']=='millionverifier'
     assert result['verification']['output']['valid'] is True
-    assert result['verification']['charged_micro']==0
-    assert result['charged_micro']==result['lookup_charged_micro']
-    assert [c[0] for c in seen]==['tomba','contactout']
+    assert result['verification']['charged_micro']>0
+    assert result['charged_micro']==result['lookup_charged_micro']+result['verification']['charged_micro']
+    assert [c[0] for c in seen]==['tomba','millionverifier']
 
 @pytest.mark.parametrize('automatic', [True, False])
 @pytest.mark.parametrize('first_response', [(403, {'status_code':403,'message':'Out of credits'}), (200, {'status_code':200,'data':{}})])
 @pytest.mark.parametrize('verdict', ['valid', 'invalid', 'catch_all'])
 async def test_email_verification_uses_routed_fallback_and_accounts_for_children(clients, enrichment_on, monkeypatch, automatic, first_response, verdict):
     from treg.config import get_settings
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,contactout,leadmagic')
-    monkeypatch.setenv('TREG_PLATFORM_KEY_CONTACTOUT','SYNTHETIC-VERIFICATION-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,millionverifier,leadmagic')
+    monkeypatch.setenv('TREG_PLATFORM_KEY_MILLIONVERIFIER','SYNTHETIC-VERIFICATION-KEY')
     get_settings.cache_clear()
     seen=[]
     monkeypatch.setattr(service,'relay',_relay_by_provider({
-        'tomba':[(200,TOMBA_HIT)], 'contactout':[first_response],
+        'tomba':[(200,TOMBA_HIT)], 'millionverifier':[first_response],
         'leadmagic':[(200,{'email_status':verdict})]},seen))
     before=await _balance(clients)
     final=await finish(clients,await plan(clients,mode='waterfall',providers=['tomba'],auto_verify=automatic))
@@ -1421,8 +1420,8 @@ async def test_email_verification_uses_routed_fallback_and_accounts_for_children
     assert v['state']=='hit' and v['provider']=='leadmagic'
     assert v['served_by']=='leadmagic.people.email.verify'
     assert v['output']['status']==verdict
-    assert [t['provider'] for t in v['tried']]==['contactout','leadmagic']
-    assert [c[0] for c in seen]==['tomba','contactout','leadmagic']
+    assert [t['provider'] for t in v['tried']]==['millionverifier','leadmagic']
+    assert [c[0] for c in seen]==['tomba','millionverifier','leadmagic']
     assert before-await _balance(clients)==final['charged_micro']
     assert v['charged_micro']>0
     assert bool(final['results'][0].get('report'))==(verdict=='invalid')
@@ -1599,3 +1598,12 @@ async def test_fresh_caller_keeps_key_attribution_and_rechecks_key_controls(clie
         await arena._fresh_caller(snapshot)
     # Browser sessions do not inherit the Default key's lifecycle.
     assert (await arena._fresh_caller(browser)).api_key_id is None
+
+
+
+@pytest.mark.parametrize("status, outcome, state", [
+    (200, "hit", "hit"), (200, "miss", "miss"), (200, "weak", "miss"), (200, "pending", "pending"),
+    (502, "hit", "error"), (502, None, "error")])
+def test_a_routed_weak_answer_is_a_miss_in_the_arena(status, outcome, state):
+    """A weak routed answer (a wall page returned because nothing better turned up) found nothing."""
+    assert arena.routed_state(status, {"outcome": outcome} if outcome else {}) == state

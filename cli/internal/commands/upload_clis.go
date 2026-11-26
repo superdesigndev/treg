@@ -367,7 +367,7 @@ func (e *Env) addCLI(f uploadFlags) error {
 	outf("✓ Registered '%s'. Run it locally: `treg cli run %s`.\n", name, name)
 	outf("  ↗ %s\n", e.detailURL("tool", name))
 	if len(bindings) > 0 {
-		outf("  (key stored - also a callable API tool; to run '%s' on the SERVER too, an admin adds it to TREG_RUN_ALLOWED_BINS.)\n", bin)
+		outf("  (key stored - also a callable API tool.)\n")
 	}
 	tokens := []any{}
 	cli := ojson.Ordered("bin", bin, "auth_mechanism", mech)
