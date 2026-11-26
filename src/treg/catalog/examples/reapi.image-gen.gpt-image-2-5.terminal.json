@@ -1,0 +1,15 @@
+{
+  "id": "task_01a09de4fcdf778db73313b3891f63ea",
+  "model": "gpt-image-2.5-flare-official",
+  "status": "completed",
+  "created_at": 1789355425,
+  "output": {
+    "image_urls": [
+      "https://file.deepytb.com/reapi-slave2/tasks/task_01a09de4fcdf778db73313b3891f63ea/0.png"
+    ]
+  },
+  "usage": {
+    "credits": 5
+  },
+  "error": null
+}
