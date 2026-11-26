@@ -42,30 +42,33 @@ from .types import ReservationFailed
 
 @dataclasses.dataclass
 class PayOnShort:
-    """A request that can pay for itself when its balance is short: a keyless wallet's call that
-    drew the wallet's credit (docs/context/architecture/agent-payments.md). A reservation of the
-    request that the team's money cannot cover anywhere (`allowance_runtime.short_everywhere`)
-    asks `pay` once, with no session held, and runs again in place: the reservation alone, under
-    the same Idempotency-Key claim and rate admission, so nothing that has gone out is sent
-    again. `pay` returns whether it moved money onto the balance. A shortfall the team's money
-    could cover pays nothing: the call is refused `credit_unconfirmed`."""
+    """A keyless wallet's call that drew the wallet's credit (docs/context/architecture/
+    agent-payments.md). Its reservations take no allowance, so the balance alone is the wallet's
+    credit and a balance refusal is a real shortfall. A reservation refused for money before any
+    call of the request has gone out (`going_out`) asks `pay` once, with no session held, and
+    runs again in place: the reservation alone, under the same Idempotency-Key claim and rate
+    admission. No reservation may hold more than `quote_micro`, what the wallet was told the call
+    costs at most. `pay` returns whether it moved money onto the balance, and raises
+    `PaymentOutcomeUnknown` when the settlement could not be confirmed."""
 
     pay: Callable[[], Awaitable[bool]]
+    quote_micro: int
     armed: bool = True
-    sent: bool = False   # a call of the request has gone out (`going_out`)
+    sent: bool = False
+
+
+class PaymentOutcomeUnknown(Exception):
+    def __init__(self, detail: dict) -> None:
+        super().__init__(detail.get("message", ""))
+        self.detail = detail
 
 
 pay_on_short: contextvars.ContextVar[PayOnShort | None] = contextvars.ContextVar(
     "treg_pay_on_short", default=None)
-CREDIT_UNCONFIRMED = {
-    "error": "credit_unconfirmed",
-    "message": ("treg could not confirm this wallet's credit just now, so the call was not made "
-                "and the payment did not move. Send the request again in a moment."),
-}
 
 
 def going_out() -> None:
-    """A call of the request is about to go out: a later refusal can no longer say nothing did."""
+    """A call of the request is about to go out: no later reservation of it pays."""
     if (payer := pay_on_short.get()) is not None:
         payer.sent = True
 
@@ -629,6 +632,16 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)
     mk.reserved_at = time.monotonic()
+    payer = pay_on_short.get()
+    if payer is not None and charged > payer.quote_micro:
+        raise ReservationFailed("payment_quote_exceeded", status_code=503, detail={
+            "error": "payment_quote_exceeded", "endpoint_id": mk.endpoint_id,
+            "provider": mk.provider, "quote_micro": payer.quote_micro,
+            "estimated_cost_micro": charged,
+            "message": (f"{mk.endpoint_id} would reserve ~${ledger.usd(charged):g}, more than the "
+                        f"${ledger.usd(payer.quote_micro):g} this call was quoted at; nothing was "
+                        "charged for it."),
+        })
     if mk.max_cost_micro is not None and charged > mk.max_cost_micro:
         raise ReservationFailed("route_max_cost", status_code=402, detail={
             "error": "route_max_cost", "endpoint_id": mk.endpoint_id, "provider": mk.provider,
@@ -642,7 +655,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
     mk.allowance_epoch, mk.allowance_marked = None, False
-    listed = retry_short and allowance_runtime.listed(caller.org_id)
+    # A keyless wallet's credit is its balance alone (`PayOnShort`).
+    listed = retry_short and payer is None and allowance_runtime.listed(caller.org_id)
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
     # Marked before the take: from the take on, the mark is all a stale claim can see of the call.
     if skip is None and mark_in_flight and not await idempotency.mark_in_flight(call_ref):
@@ -763,14 +777,14 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         # have given it back: `onto_balance` puts it on the balance, or says it is not there.
         moved = retry_short and await allowance_runtime.onto_balance(
             caller.org_id, exc.required_micro)
-        payer = pay_on_short.get()
-        if not moved and payer is not None and payer.armed:
-            if not await allowance_runtime.short_everywhere(caller.org_id, exc.required_micro):
-                raise ReservationFailed("credit_unconfirmed", status_code=503, retry_after_s=2,
-                                        detail=CREDIT_UNCONFIRMED) from exc
+        if not moved and payer is not None and payer.armed and not payer.sent:
             payer.armed = False
-            # No session is held here: a payment rail is never awaited inside one.
-            moved = await payer.pay()
+            try:
+                # No session is held here: a payment rail is never awaited inside one.
+                moved = await payer.pay()
+            except PaymentOutcomeUnknown as unknown:
+                raise ReservationFailed("payment_outcome_unknown", status_code=503,
+                                        detail=unknown.detail) from exc
         if moved:
             noted = True
             return await _platform_reserve(

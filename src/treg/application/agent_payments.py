@@ -24,7 +24,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
-from sqlalchemy import and_, delete, false, or_
+from sqlalchemy import and_, false, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select, update
 
@@ -42,6 +42,7 @@ from ..infra.agent_payments.x402 import CONSUMED_HEADERS as X402_HEADERS
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
 from .call import allowance as call_allowance
+from .call import reserve as call_reserve
 from .call.resolve import (
     QueryValues, _catalog_endpoint_for, async_utility, platform_quote, wallet_refusal)
 
@@ -438,9 +439,9 @@ async def _settle(rail: PaymentRail, verified: Verified, paid: PaidOffer, paymen
 
 
 class DrawnCall:
-    """A call that drew its wallet's credit, as the reservation's `PayOnShort` sees it: when the
-    team's credit is confirmed short of the call, before any of it has gone out, `pay` settles
-    the payment the call carried and the reservation runs again in place. `call` is the call as
+    """A call that drew its wallet's credit, as the reservation's `PayOnShort` sees it: when its
+    balance refuses a reservation before any of the call has gone out, `pay` settles the payment
+    the call carried and the reservation runs again in place. `call` is the call as
     it stands (settled once paid); `refusal` is the PaymentChallenge or PaymentPending a failed
     settlement raised, for the caller to answer with."""
 
@@ -461,27 +462,14 @@ class DrawnCall:
         try:
             settlement = await _settle(admission.rail, admission.verified, self.call.paid,
                                        admission.payment_id, org_id)
-        except (PaymentChallenge, PaymentPending) as exc:
+        except PaymentChallenge as exc:
             self.refusal = exc
             return False
+        except PaymentPending as exc:
+            self.refusal = exc
+            raise call_reserve.PaymentOutcomeUnknown(exc.detail) from exc
         self.call = replace(self.call, admission=replace(admission, settlement=settlement))
         return True
-
-
-async def release_draw(call: "PaidCall") -> None:
-    """The call drew credit and was refused before anything moved or went out
-    (`credit_unconfirmed`): its proof is unclaimed, the `credit` row deleted or the zero-amount
-    proof's claim dropped, so the same request with the same signature is admitted again."""
-    admission = call.admission
-    if admission.settlement is not None:
-        return
-    async with session_maker() as db:
-        if admission.payment_id is not None:
-            await db.execute(delete(AgentPayment).where(
-                AgentPayment.id == admission.payment_id, AgentPayment.status == "credit"))
-        else:
-            await ratestore.kv_pop(db, PROOF_NS, admission.verified.proof_id)
-        await db.commit()
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:

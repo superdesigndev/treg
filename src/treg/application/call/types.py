@@ -48,8 +48,10 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "platform_cap_unavailable": ("treg", "treg_capacity"),
     "money_admission_timeout": ("treg", "treg_capacity"),
     "money_statement_timeout": ("treg", "treg_capacity"),
-    # A keyless wallet's call short of a balance the team's money could still cover.
-    "credit_unconfirmed": ("treg", "treg_capacity"),
+    # A keyless wallet's call: a settlement treg could not confirm, or a reservation (an
+    # overflow's) above what the call was quoted at.
+    "payment_outcome_unknown": ("treg", "treg_capacity"),
+    "payment_quote_exceeded": ("treg", "treg_policy"),
     "catalog_price_invalid": ("treg", "treg_error"),
     "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
     "tag_budget_unavailable": ("treg", "treg_capacity"),

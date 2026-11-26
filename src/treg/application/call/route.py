@@ -257,7 +257,7 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_vide
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
 _TEAM_BUSY = frozenset({"money_admission_timeout", "money_statement_timeout",
                         "platform_cap_unavailable", "tag_budget_unavailable",
-                        "member_spend_cap_unavailable", "credit_unconfirmed"})
+                        "member_spend_cap_unavailable"})
 
 
 MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or budget read is busy

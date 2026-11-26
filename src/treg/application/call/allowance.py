@@ -759,10 +759,11 @@ async def reach(org_id: int, amount_micro: int) -> Reach:
     The team's money wherever it sits (`allowance.credit_bound`, the database alone) below the
     amount, or a team off the allowance, is answered from the database and the store is not
     asked. Otherwise the counter and the database are read under the team's money lease
-    (`_team_lease`), so no refill or give-back moves money between them while they are read;
-    what the counter offers plus the balance, when it covers the amount, is what calls can
-    spend. When it does not, the team is not shown short (`sure` False): its money is the
-    database's reading, and a start asks again. Opens its own sessions: call it with none held."""
+    (`_team_lease`), so no refill or give-back moves money between them while they are read:
+    what the counter offers plus the balance is what calls can spend. A hold released or a take
+    made between the two readings can still move it by that much; an arena decision costs only
+    a refusal or a start whose calls each reserve their own money. Opens its own sessions: call
+    it with none held."""
     if amount_micro <= 0:
         return Reach(0, True)
     async with session_maker() as db:
@@ -774,11 +775,7 @@ async def reach(org_id: int, amount_micro: int) -> Reach:
             return Reach(anywhere, False)
         offer = await _counter_state(org_id) if lease == "acquired" else None
         async with session_maker() as db:
-            found = await spendable(db, org_id, offer or (0, None))
-    # The counter and the balance are read apart: a hold released or a take made between the two
-    # readings can make their sum short of what the team could spend at any moment, so only the
-    # one reading of `credit_bound` above says the team is short.
-    return Reach(found, True) if found >= amount_micro else Reach(anywhere, False)
+            return Reach(await spendable(db, org_id, offer or (0, None)), True)
 
 
 async def onto_balance(org_id: int, amount_micro: int) -> bool:
@@ -789,8 +786,7 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
     team whose money is not there at all (`allowance.credit_bound`): one statement, no store.
     Waits for the lease no longer than a call waits for a refill. False is a refusal, not a
     confirmed shortfall: the balance and the counter are read apart, and the lease, the store
-    or the give-back may fail; `short_everywhere` is the one reading that confirms one. Opens
-    its own sessions: call it with none held."""
+    or the give-back may fail. Opens its own sessions: call it with none held."""
     async with session_maker() as db:
         free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
@@ -819,15 +815,6 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
     return free + returned >= amount_micro
-
-
-async def short_everywhere(org_id: int, amount_micro: int) -> bool:
-    """Whether the team's money wherever it sits (`allowance.credit_bound`: the balance and the
-    allowance hold, less the queue's claims) is below `amount_micro`: one statement, so one
-    consistent reading, and never below what calls can spend. A refusal it does not confirm
-    may be money the counter or a call in flight still holds. Opens its own session."""
-    async with session_maker() as db:
-        return await allowance.credit_bound(db, org_id) < amount_micro
 
 
 async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:

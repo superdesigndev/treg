@@ -4807,13 +4807,13 @@ async def test_a_balance_refusal_read_before_another_request_gave_the_counter_ba
     assert await _per_call_holds(org_id) == ["routed:r0"] and len(seen) == 2
 
 
-async def test_a_wallet_pays_after_a_cap_recheck_when_the_team_is_short_everywhere(
+async def test_a_wallet_pays_after_a_cap_recheck_and_takes_no_allowance(
         org_id, store, monkeypatch):
-    """The day's cap refused, the counter went back and every check ran again: the rerun is
-    the same reservation, so a keyless wallet short everywhere still pays from it, once, and
-    the hold is taken. Short only of what the counter could cover, it pays nothing."""
+    """The day's cap refused, the counter went back and every check ran again: the rerun is the
+    same reservation, so a keyless wallet whose balance is short still pays from it, once, and
+    the hold is taken. A wallet's reservation never takes from the allowance."""
     caller = await _caller(org_id)
-    cap, short, paid = [], [True], []
+    cap, paid, taken = [], [], []
 
     async def cap_once(caller, add_micro, db):
         cap.append(1)
@@ -4829,11 +4829,11 @@ async def test_a_wallet_pays_after_a_cap_recheck_when_the_team_is_short_everywhe
             raise ledger.InsufficientBalance(org, 0, 80_000)
         return await real(db, org, *args, **kwargs)
 
-    async def everywhere(org_id, amount_micro):
-        return short[0]
-
     async def given_back(org_id, excess_micro):
         return True
+
+    async def no_take(*args, **kwargs):
+        taken.append(1)
 
     async def pay():
         paid.append(1)
@@ -4841,21 +4841,50 @@ async def test_a_wallet_pays_after_a_cap_recheck_when_the_team_is_short_everywhe
 
     monkeypatch.setattr(call_reserve, "_enforce_platform_daily_cap", cap_once)
     monkeypatch.setattr(ledger, "reserve_in_transaction", short_until_paid)
-    monkeypatch.setattr(runtime, "short_everywhere", everywhere)
     monkeypatch.setattr(runtime, "give_back_for_exact_path", given_back)
+    monkeypatch.setattr(runtime, "take", no_take)
     monkeypatch.setattr(runtime, "listed", lambda org_id: True)
-    token = call_reserve.pay_on_short.set(call_reserve.PayOnShort(pay))
+    call = _call(org_id, estimate=80_000)
+    quote = ledger.with_margin(max(call.estimate_micro, call.worst_case_micro))
+    token = call_reserve.pay_on_short.set(call_reserve.PayOnShort(pay, quote_micro=quote))
     try:
-        await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+        await call_reserve._platform_reserve(call, caller, allow_allowance=True,
                                              call_ref="paid-after-cap")
-        assert paid == [1] and await _per_call_holds(org_id) == ["paid-after-cap"]
-        short[0], paid[:], cap[:] = False, [], []
-        call_reserve.pay_on_short.set(call_reserve.PayOnShort(pay))
+        assert paid == [1] and taken == []
+        assert await _per_call_holds(org_id) == ["paid-after-cap"]
+    finally:
+        call_reserve.pay_on_short.reset(token)
+
+
+async def test_a_wallet_reservation_pays_only_before_anything_went_out_and_within_its_quote(
+        org_id, store, monkeypatch):
+    """After a call of the request went out (an overflow child once the direct call failed),
+    a short balance is an ordinary refusal: nothing settles. A reservation above the quote the
+    wallet was told is refused before any balance is read."""
+    caller = await _caller(org_id)
+    paid = []
+
+    async def short(db, org, *args, **kwargs):
+        raise ledger.InsufficientBalance(org, 0, 80_000)
+
+    async def pay():
+        paid.append(1)
+        return True
+
+    monkeypatch.setattr(ledger, "reserve_in_transaction", short)
+    call = _call(org_id, estimate=80_000)
+    quote = ledger.with_margin(max(call.estimate_micro, call.worst_case_micro))
+    payer = call_reserve.PayOnShort(pay, quote_micro=quote)
+    token = call_reserve.pay_on_short.set(payer)
+    try:
+        call_reserve.going_out()
         with pytest.raises(ReservationFailed) as refused:
-            await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
-                                                 call_ref="covered")
-        assert refused.value.kind == "credit_unconfirmed" and refused.value.status_code == 503
-        assert paid == []
+            await call_reserve._platform_reserve(call, caller, call_ref="after-out")
+        assert refused.value.kind == "insufficient_balance" and paid == []
+        with pytest.raises(ReservationFailed) as refused:
+            await call_reserve._platform_reserve(_call(org_id, estimate=3 * quote), caller,
+                                                 call_ref="over-quote")
+        assert refused.value.kind == "payment_quote_exceeded" and paid == []
     finally:
         call_reserve.pay_on_short.reset(token)
 
@@ -4901,8 +4930,7 @@ async def test_a_balance_an_overrun_left_below_zero_takes_the_counter_back_for_a
 async def test_a_counter_that_cannot_be_given_back_is_no_confirmed_shortfall(
         org_id, store, monkeypatch):
     """The balance is short and the counter holds the money, but another request holds the
-    team's money lease past the wait: `onto_balance` refuses, and only `short_everywhere`, one
-    reading of the database, says whether the team is short. A team with no money is."""
+    team's money lease past the wait: `onto_balance` refuses, the money left where it is."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
     assert await runtime.take(org_id, 1_000)
@@ -4912,8 +4940,7 @@ async def test_a_counter_that_cannot_be_given_back_is_no_confirmed_shortfall(
 
     monkeypatch.setattr(store, "acquire_lease", held)
     assert await runtime.onto_balance(org_id, 50_000) is False
-    assert await runtime.short_everywhere(org_id, 50_000) is False
-    assert await runtime.short_everywhere(org_id, 2 * GRANT) is True
+    assert await _given_back(org_id) == []
 
 
 async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short(
@@ -4953,8 +4980,7 @@ def _moved_by_another(store, org_id: int, move) -> asyncio.Task:
 async def test_credit_another_request_is_giving_back_is_read_once(org_id, store, monkeypatch):
     """Calls in flight hold most of the hold, and another request is giving the rest of the
     counter back to the balance. The reading waits for its lease, so the money is counted once,
-    where it landed. More than that is not a sure shortfall while the calls in flight still
-    hold the team's money: the answer is unsure, and shows that money."""
+    where it landed."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     epoch = await runtime.take(org_id, GRANT - 100_000)
 
@@ -4962,9 +4988,8 @@ async def test_credit_another_request_is_giving_back_is_read_once(org_id, store,
         assert await runtime._give_back(org_id, epoch) == 100_000
 
     moving = _moved_by_another(store, org_id, give_back)
-    assert await runtime.reach(org_id, 150_000) == runtime.Reach(GRANT, False)
+    assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
     await moving
-    assert await runtime.reach(org_id, 100_000) == runtime.Reach(100_000, True)
 
 
 async def test_a_team_whose_money_is_not_there_is_answered_without_the_store(
