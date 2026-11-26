@@ -17,6 +17,7 @@ from typing import Any
 
 from ..domain import table as table_domain
 from ..domain.catalog import store as catalog_store
+from .call import allowance as call_allowance
 from .call.types import CallContext, UpstreamResponse
 
 MAX_TABLE_BYTES = 8 * 1024 * 1024   # the most of one answer /table/ reads (non-negotiable 4's cap)
@@ -250,6 +251,6 @@ async def account_teams(db, *, user_id: int, only_org_id: int | None,
     if oauth:
         rows = [(m, org) for m, org in rows if await sso_team_allowed(db, m, oauth_sso_org_id)]
     return [{"org_id": org.id, "slug": org.slug, "name": org.name, "role": m.role,
-             "balance_micro": int(org.balance_micro or 0)}
+             "balance_micro": await call_allowance.spendable(db, org.id)}
             for m, org in rows if not org.suspended]
 

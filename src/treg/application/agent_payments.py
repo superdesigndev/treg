@@ -40,6 +40,7 @@ from ..infra.agent_payments.tempo import CONSUMED_HEADERS as MPP_HEADERS
 from ..infra.agent_payments.x402 import CONSUMED_HEADERS as X402_HEADERS
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
+from .call import allowance as call_allowance
 from .call.resolve import (
     QueryValues, _catalog_endpoint_for, async_utility, platform_quote, wallet_refusal)
 
@@ -352,7 +353,7 @@ async def credit_short(paid: PaidOffer, org_id: int | None) -> PaymentChallenge:
     credit = 0
     if org_id is not None:
         async with session_maker() as db:
-            credit = max(await ledger.balance_of(db, org_id), 0)
+            credit = max(await call_allowance.spendable(db, org_id), 0)
     return await challenge(paid, reason="credit_insufficient", offer_proof=False,
                            message=f"this wallet's credit (${ledger.usd(credit):g}) does not cover "
                                    "this call")
@@ -434,7 +435,7 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
         credit = 0
         if org_id is not None:
             async with session_maker() as db:
-                credit = await ledger.balance_of(db, org_id)
+                credit = await call_allowance.spendable(db, org_id)
         if org_id is None or credit < paid.quote_micro:
             raise await credit_short(paid, org_id)
     if reason := await _suspension(org_id):
@@ -555,7 +556,7 @@ async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int
     """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
     before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
     async with session_maker() as db:
-        balance = await ledger.balance_of(db, org_id)
+        balance = await call_allowance.spendable(db, org_id)
         draw = verified.deferrable and balance >= quote_micro
         row = AgentPayment(
             proof_id=verified.proof_id, protocol=verified.protocol, network=verified.network,
@@ -647,7 +648,7 @@ class PaidCall:
     async def answer_headers(self) -> list[tuple[str, str]]:
         """Which money paid, and the credit left once the call has settled or released."""
         async with session_maker() as db:
-            credit = await ledger.balance_of(db, int(self.caller.org.id))
+            credit = await call_allowance.spendable(db, int(self.caller.org.id))
         return [*payment_headers(self.admission), ("X-Treg-Credit-Micro", str(max(credit, 0)))]
 
     def receipt_headers(self, status: int) -> list[tuple[str, str]]:
@@ -722,7 +723,7 @@ async def credit_of(headers: Mapping[str, str]) -> dict:
     credit, recent = 0, []
     if org_id is not None:
         async with session_maker() as db:
-            credit = max(await ledger.balance_of(db, org_id), 0)
+            credit = max(await call_allowance.spendable(db, org_id), 0)
             rows = (await db.execute(
                 select(AgentPayment).where(AgentPayment.org_id == org_id)
                 .order_by(AgentPayment.created_at.desc(), AgentPayment.id.desc())

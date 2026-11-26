@@ -2166,7 +2166,8 @@ async def billing_state(db: AsyncSession, org: Org) -> dict:
     prefs = autotopup_prefs(org)
     s = get_settings()
     spent = await monthly_autotopup_spend(db, org.id) if org.id else 0
-    balance = await ledger.spendable_of(db, org.id) if org.id else 0
+    from .call import allowance as call_allowance  # the call runtime imports this module
+    balance = await call_allowance.spendable(db, org.id) if org.id else 0
     return {
         "org_id": org.id,
         "configured": configured(),

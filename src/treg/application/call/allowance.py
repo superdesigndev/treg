@@ -470,6 +470,18 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
         await db.commit()
 
 
+async def spendable(db, org_id: int) -> int:
+    """The balance a team is shown (`allowance.spendable`): its balance plus what its counter
+    offers now. A store that cannot answer shows the balance alone."""
+    state = None
+    try:
+        state = await kv.store().allowance_state(org_id)
+    except Exception:
+        log.warning("reading the allowance counter of org %s failed", org_id, exc_info=True)
+    counter, epoch = (state[0], state[3]) if state else (0, None)
+    return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
+
+
 async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
     """Return what a team's counter holds to its balance, for a call on the exact path that the
     balance alone could not pay for, by `short_micro`: money set aside for the allowance is out

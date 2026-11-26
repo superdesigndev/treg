@@ -25,6 +25,7 @@ from ..models import LedgerEntry, User, WebArenaRun
 from ..timeutil import utcnow_naive as now
 from . import arena
 from . import web_arena_quality
+from .call import allowance as call_allowance
 from .call import route, service
 from .call.resolve import _marketplace_pricing
 from .call.types import CallFailure, CallInput, CallerSnapshot
@@ -252,7 +253,7 @@ async def start(caller, run_id, client, client_ip):
         required = sum(a["estimate_micro"] for a in payload["attempts"]) if row.mode == "battle" else payload["attempts"][0]["estimate_micro"]
         if row.mode == "battle" and required > 10_000_000:
             raise rules.WebArenaError("This Battle exceeds the $10 run limit. Select fewer providers.", 409)
-        if await money.balance_of(db, caller.org_id) < required:
+        if await call_allowance.spendable(db, caller.org_id) < required:
             raise rules.WebArenaError("Not enough team credits.", 402)
         active = (await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
             WebArenaRun.state == "running", WebArenaRun.deadline_at > now()).limit(3))).all()

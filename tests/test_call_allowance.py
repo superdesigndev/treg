@@ -17,7 +17,7 @@ from sqlalchemy import event, select, update
 from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
-from treg.application import billing, home
+from treg.application import agent_payments, billing, home, table
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
@@ -30,6 +30,7 @@ from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
 from treg.infra import kv
+from treg.infra.agent_payments import Verified
 from treg.infra.db import reset_db, session_maker
 from treg.routers import billing as billing_routes
 from treg.domain.identity.access import Caller
@@ -3726,30 +3727,59 @@ async def test_with_the_window_off_a_team_whose_balance_sits_in_its_allowance_is
     assert await _given_back(org_id) == [GRANT - 4_000]
 
 
+async def _shown(org_id: int, caller: Caller) -> set[int]:
+    """Every figure a team is shown as its balance."""
+    async with session_maker() as db:
+        route = await billing_routes.org_balance(org_id, limit=1, offset=0, caller=caller, db=db)
+        assert route["holds"] == []
+        state = await billing.billing_state(db, await db.get(Org, org_id))
+        summary = await home.summary(db, caller.user.email, caller, teams=1)
+        [sheets] = await table.account_teams(db, user_id=caller.user.id, only_org_id=org_id)
+        return {await runtime.spendable(db, org_id), route["balance_micro"],
+                state["balance_micro"], summary["balance_micro"], sheets["balance_micro"]}
+
+
 async def test_a_team_whose_balance_sits_in_its_allowance_is_shown_what_it_can_spend(
         org_id, store, monkeypatch):
     """The refill moves the whole balance into the allowance hold and `org.balance_micro`
-    reads 0. The route, the dashboard's billing state and the CLI's home show the balance plus
-    what the hold has not spent, before the fold and after it; the hold is not a call in flight."""
+    reads 0. The route, the dashboard's billing state, the CLI's home and the Sheets panel show
+    the balance plus what the counter offers, before the fold and after it; the hold is not a
+    call in flight."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
     caller = await _caller(org_id)
     epoch = await runtime.take(org_id, 4_000)
     assert await _finish(org_id, "spent", epoch, 4_000, billable=True, actual_micro=3_500) == 3_500
     assert await _state(org_id) == (0, GRANT) and await _queued(org_id) == 1
-
-    async def shown() -> set[int]:
-        async with session_maker() as db:
-            route = await billing_routes.org_balance(org_id, limit=1, offset=0, caller=caller, db=db)
-            assert route["holds"] == []
-            state = await billing.billing_state(db, await db.get(Org, org_id))
-            summary = await home.summary(db, caller.user.email, caller, teams=1)
-            return {await ledger.spendable_of(db, org_id), route["balance_micro"],
-                    state["balance_micro"], summary["balance_micro"]}
-
-    assert await shown() == {GRANT - 3_500}
+    assert await _shown(org_id, caller) == {GRANT - 3_500}
     await _fold(org_id)
     assert await _state(org_id) == (0, GRANT - 3_500)
-    assert await shown() == {GRANT - 3_500}
+    assert await _shown(org_id, caller) == {GRANT - 3_500}
+
+
+async def test_what_calls_in_flight_took_and_a_lost_counter_left_behind_are_not_shown(
+        org_id, store, monkeypatch):
+    """Only what the counter offers now is spendable: a take still in flight is not, and money a
+    counter lost with the store left in the hold waits for the idle sweep."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 2_500_000)
+    assert await _shown(org_id, caller) == {GRANT - 2_500_000}
+    del store.counters[org_id]
+    assert await _state(org_id) == (0, GRANT)
+    assert await _shown(org_id, caller) == {0}
+
+
+async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_paying_again(
+        org_id, store, monkeypatch):
+    """Whether a paying wallet's call draws its credit or settles a new transfer reads the
+    balance it is shown: credit on the allowance counter is credit."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    proof = Verified(protocol="x402", network="base", proof_id=uuid4().hex, payer="0xabc",
+                     amount_micro=50_000, asset="0xusdc", pay_to="0xtreg",
+                     expires_at=datetime(2099, 1, 1))
+    payment_id, draw = await agent_payments._claim(proof, org_id, 50_000)
+    assert payment_id and draw is True
 
 
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):

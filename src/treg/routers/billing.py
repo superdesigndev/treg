@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application import billing, view_context
+from ..application.call import allowance as call_allowance
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.identity.access import Caller, _role_at_least, require_member
@@ -51,7 +52,7 @@ async def org_balance(
     detailed = _role_at_least(caller.role, "admin")
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
-    balance = await ledger.spendable_of(db, org_id)
+    balance = await call_allowance.spendable(db, org_id)
     # An auto-top-up trigger point besides `reserve`. Fire-and-forget by contract (see billing.maybe_schedule_autotopup): it starts a background task at most, so no
     # Stripe latency lands in this response, and reading a balance can therefore never be slow.
     billing.maybe_schedule_autotopup(caller.org)
