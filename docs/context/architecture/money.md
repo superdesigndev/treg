@@ -1884,8 +1884,10 @@ field and checks its own estimate; a preceding direct charge reduces the remaind
 
 A keyless wallet's call carries a second bound, `MarketplaceCall.charge_cap_micro`: its quote
 ([agent payments](agent-payments.md) "At most the quote"). It refuses nothing at the reserve, whose
-hold is the quote. `decide_settle` caps a billable charge at it (`cost_within` of what is left), so
-a provider figure above the quote is treg's to absorb; overflow tries only a route that fits it.
+hold is the quote. `decide_settle` caps a billable charge at it (`capped_cost`, through `cost_within`
+of what is left), so a provider figure above the quote is treg's to absorb; the settle entry keeps
+that figure as `observed_micro` (`settle_in_transaction(observed_micro=)`) beside the smaller
+charge, so the provider report counts what treg paid. Overflow tries only a route that fits it.
 
 Before either reserve, the `call_admission` decision point ([policy extensions](policy-extensions.md))
 may refuse a call on treg's money with a 403 (`funds_required` or `own_key_required`); like the

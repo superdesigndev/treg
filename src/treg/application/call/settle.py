@@ -995,6 +995,7 @@ class SettleDecision:
     actual_micro: int | None
     charged_micro: int
     repeat_percent: int
+    provider_micro: int | None = None   # the provider's figure, when a wallet's quote charged less
 
 
 def decide_settle(
@@ -1019,18 +1020,18 @@ def decide_settle(
         # A routed child the provider reported free (a miss on a per-success rate card): there is
         # nothing for the parent to decide, so it is released below like any unbilled child.
         billable, reason = False, reason or "free_answer"
-    if billable and actual is not None and mk.charge_cap_micro is not None:
+    provider = None
+    if billable and actual is not None and ledger.capped_cost(actual, mk.charge_cap_micro) < actual:
         # A wallet was told the most this call costs; treg absorbs any cost above it.
-        capped = ledger.cost_within(mk.charge_cap_micro)
-        if actual > capped:
-            logging.getLogger("treg.ledger").warning(
-                "wallet call on %s cost %s micro, above its quote; charged the quote",
-                mk.endpoint_id, actual)
-            actual = capped
+        logging.getLogger("treg.ledger").warning(
+            "wallet call on %s cost %s micro, above its quote; charged the quote",
+            mk.endpoint_id, actual)
+        provider, actual = actual, ledger.capped_cost(actual, mk.charge_cap_micro)
     charged = (ledger.with_margin(actual) if actual is not None
                else ledger.with_margin(mk.estimate_micro)) if billable else 0
     return SettleDecision(billable=billable, reason=reason, observed_micro=observed,
-                          actual_micro=actual, charged_micro=charged, repeat_percent=repeat_percent)
+                          actual_micro=actual, charged_micro=charged, repeat_percent=repeat_percent,
+                          provider_micro=provider)
 
 
 def _capacity_release(mk: MarketplaceCall, status_code: int, headers, body: bytes) -> str:
@@ -1231,7 +1232,8 @@ async def _platform_settle(
                 mark_money(db, "close", call_id=call_id)
                 with timing.phase("ledger"):
                     if billable:
-                        charged = await ledger.settle_in_transaction(db, call_id, actual, meta={
+                        charged = await ledger.settle_in_transaction(
+                            db, call_id, actual, observed_micro=decision.provider_micro, meta={
                             "provider": mk.provider, "status_code": status_code, "cost_type": mk.cost_type,
                             "cost_source": ("aggregator" if overflow_spend is not None else
                                             "provider" if observed is not None else

@@ -142,6 +142,14 @@ def cost_within(charge_micro: int) -> int:
     return lo
 
 
+def capped_cost(cost_micro: int, charge_cap_micro: int | None) -> int:
+    """`cost_micro`, or less when its charge would exceed `charge_cap_micro` (a wallet's quote):
+    the largest cost whose charge fits. None caps nothing."""
+    if charge_cap_micro is None:
+        return cost_micro
+    return min(cost_micro, cost_within(charge_cap_micro))
+
+
 def usd(amount_micro: int) -> float:
     """micro-USD → USD, for DISPLAY only. Never feed this back into a balance computation."""
     return round(amount_micro / 1_000_000, 6)
@@ -606,25 +614,32 @@ async def settle(
 
 async def settle_in_transaction(
     db: AsyncSession, call_id: str, actual_micro: int | None = None, *, meta: dict | None = None,
+    observed_micro: int | None = None,
 ) -> int:
-    """Stage settlement in the caller-owned transaction and return the consumed amount."""
-    consumed, _ = await _settle_in_transaction(db, call_id, actual_micro, meta=meta)
+    """Stage settlement in the caller-owned transaction and return the consumed amount.
+    `observed_micro`, when given, is the provider's own figure where the call charges less than it
+    (`actual_micro`, a wallet's quote): the entry records both."""
+    consumed, _ = await _settle_in_transaction(db, call_id, actual_micro, meta=meta,
+                                               observed_micro=observed_micro)
     return consumed
 
 
 async def _settle_in_transaction(
     db: AsyncSession, call_id: str, actual_micro: int | None = None, *, meta: dict | None = None,
+    observed_micro: int | None = None,
 ) -> tuple[int, bool]:
     mark_money(db, "settle", call_id=call_id)
     hold = await _claim_hold(db, call_id)
     if hold is None:
         return 0, False
-    return await _settle_claimed(db, call_id, hold, actual_micro, meta=meta), True
+    return await _settle_claimed(db, call_id, hold, actual_micro, meta=meta,
+                                 observed_micro=observed_micro), True
 
 
 async def _settle_claimed(
     db: AsyncSession, call_id: str, hold: _ClaimedHold, actual_micro: int | None,
     *, meta: dict | None = None, blocks: list[CreditBlock] | None = None,
+    observed_micro: int | None = None,
 ) -> int:
     reserved = hold.amount_micro
     # ONE instant for this settlement — shared by the ledger entry and the tag rows below.
@@ -645,7 +660,9 @@ async def _settle_claimed(
         db, org_id=hold.org_id, kind="settle", amount_micro=-consumed, call_id=call_id,
         endpoint_id=hold.endpoint_id, created_at=settled_at,
         meta={**(meta or {}),
-              "reserved_micro": reserved, "observed_micro": None if actual_micro is None else int(actual_micro),
+              "reserved_micro": reserved,
+              "observed_micro": (int(observed_micro) if observed_micro is not None
+                                 else None if actual_micro is None else int(actual_micro)),
               "settled_micro": settled, "consumed_micro": consumed,
               "refunded_micro": reserved - consumed, "margin": get_settings().platform_margin,
               # Blocks came up short of what the call cost (price drift, or a race with a refund):

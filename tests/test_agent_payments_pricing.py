@@ -102,6 +102,9 @@ async def test_a_wallet_s_overflow_settles_at_most_its_quote(anon: AsyncClient, 
     assert await _balance(payer) == FLOOR - EP_MICRO
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).first() is None
+    # The ledger keeps what the aggregator reported beside what the wallet paid.
+    (settle,) = [e for e in await _entries(payer) if e.kind == "settle"]
+    assert (settle.meta["observed_micro"], -settle.amount_micro) == (3 * EP_MICRO, EP_MICRO)
 
 
 async def test_a_wallet_on_credit_is_not_asked_to_pay_again_for_an_overflow(
