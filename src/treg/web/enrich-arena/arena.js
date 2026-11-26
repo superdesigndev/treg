@@ -633,7 +633,7 @@
         if(this.busy||this.running||!this.readyQuote)return;
         const id=this.readyQuote.id;this.busy=true;this.error='';this.selectedEntry=null;this.resultFilter='all';this.expandedResults=[];this.runTeam=this.team;clearTimeout(this.quoteTimer);
         try{await this.api('/arena/runs/'+id+'/start',{method:'POST'},this.runTeam);this.scrollOnComplete=id;this.quote=null;await this.pollRun(id);this.syncUrl(id);if(this.running)await this.refreshHistory();}
-        catch(e){if(e.status===401){this.user=null;this.quote=null;await this.openLogin(true);}else if(e.status===402){this.topUp();}else{this.error=e.message;if(e.status===409){this.quote=null;await this.prepare(true);}}}
+        catch(e){if(e.status===401){this.user=null;this.quote=null;await this.openLogin(true);}else if(e.status===402){this.topUp();}else{this.error=e.message;if(e.status===409){const message=e.message;this.quote=null;await this.prepare(true);if(!this.error)this.error=message;}}}
         finally{this.busy=false;}
       },
       async pollRun(id){
@@ -673,7 +673,7 @@
         }catch(e){if(e.status===402)this.topUp();else this.error=e.message;}finally{delete this.verificationPending[r.id];}
       },
       manualPrice(r){const q=this.manualQuotes[r.id];return q?.required_micro??((q?.estimate_micro??r.estimate_micro)+(this.run?.auto_verify?.estimate_micro||0));},
-      manualUnaffordable(r){const q=this.manualQuotes[r.id],price=this.manualPrice(r);return price>0&&((Number.isFinite(this.balance)&&this.balance<price)||(q?.affordable===false));},
+      manualUnaffordable(r){const q=this.manualQuotes[r.id];return this.manualPrice(r)>0&&q?.affordable===false;},
       manualLabel(r){const q=this.manualQuotes[r.id];return (this.manualPending[r.id]?'Starting…':this.manualUnaffordable(r)?'Top up':'Try')+' · '+this.usd(this.manualPrice(r));},
       ratingValue(r){return r.rating?.value || (r.report?'down':'');},
       openReport(r){if(this.isBatch&&!this.selectedVendor)this.selectedEntry=r.entry_index;this.reporting=r.id;this.reportDrafts[r.id] ||= {reason:r.report?.reason||'',comment:r.report?.comment||''};},
