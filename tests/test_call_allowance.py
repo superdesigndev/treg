@@ -3432,6 +3432,27 @@ async def test_the_stalest_starved_team_cannot_use_up_every_pass_turn(
     assert time.monotonic() - began < 0.3
 
 
+async def test_a_starved_team_whose_first_try_folded_a_batch_still_logs_the_skip_after_it(
+        org_id, store, monkeypatch, fold_skip_lines):
+    """A starved team's first try does not log its skip, since its turn follows; but a try
+    that committed a batch gets no turn, so a skip after that batch is still logged."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    await _queue_charge(org_id, "queued", 600)
+    key = runtime.money_key(org_id)
+
+    async def a_full_batch_then_another_process(db, team, **kwargs):
+        store.leases[key] = "another process"
+        return SimpleNamespace(calls=0, claimed=allowance_sweep._FOLD_BATCH)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction",
+                        a_full_batch_then_another_process)
+    await allowance_sweep.fold_queued_once(session_maker)
+    [line] = fold_skip_lines()
+    assert line["reason"] == "lease_held" and line["oldest_s"] >= 599
+
+
 async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_for(
         org_id, store, monkeypatch):
     """Two folds of one team (a deploy that changes the number of shares): the one without the

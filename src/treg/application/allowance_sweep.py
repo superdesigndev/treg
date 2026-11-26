@@ -453,7 +453,8 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
     another process has the team, the team's money sessions are busy (a request in this process
     holding its lock among them), or its rows stay locked past `LOCK_WAIT_MS`, and the next
     pass comes back: the teams behind it are not kept waiting. Every such stop is counted
-    (`_note_skip`, unless `note` is off for a try the pass will follow with a turn) with when
+    (`_note_skip`, unless `note` is off for a try that committed nothing, which the pass
+    follows with a turn) with when
     the team's `oldest` queued charge was written. One team failing
     does not stop the pass.
 
@@ -505,7 +506,7 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
         else:
             skipped = "failed"
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
-    if skipped is not None and note:
+    if skipped is not None and (note or committed):
         _note_skip("fold", org_id, skipped, oldest)
     if until is not None:
         log.info("allowance_fold_starved org_id=%s waited_s=%s folded=%s skipped=%s",
