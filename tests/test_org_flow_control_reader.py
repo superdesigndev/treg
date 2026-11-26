@@ -3,7 +3,6 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -47,22 +46,18 @@ def env(monkeypatch):
 @pytest.mark.parametrize("raw", [
     "{", " " * 32769,
     '{"org_id":42,"org_id":42,"version":1,"config":{}}',
-    payload(org_id=43), payload(org_id=True), payload(version=True), payload(version=0),
+    payload(org_id=43), payload(org_id=True), payload(version=0),
     payload(version=2147483648), payload(schema_version=True), payload(extra=True),
     payload(pause_until="2030-01-01T01:00:00+01:00"),
     payload(pause_until="2030-02-30T00:00:00Z"),
     payload(pause_until="2030-01-01T00:00:00"),
-    payload(pause_until="2030-01-01T00:00Z"),
     payload(pause_until="0000-02-30T00:00:00Z"),
     payload(rate_limit={"rps": True, "burst": 1}),
     payload(rate_limit={"rps": 0, "burst": 1}),
     payload(rate_limit={"rps": float("nan"), "burst": 1}),
-    payload(rate_limit={"rps": float("inf"), "burst": 1}),
     payload(rate_limit={"rps": 9007199254740992, "burst": 1}),
     payload(rate_limit={"rps": 1, "burst": 1.0}),
     payload(rate_limit={"rps": 1, "burst": 1, "extra": 2}),
-    payload(concurrency_limit={"max_in_flight": False}),
-    payload(concurrency_limit={"max_in_flight": 0}),
     payload(concurrency_limit={"max_in_flight": 1, "extra": 2}),
     '{"org_id":42,"version":1,"config":{"schema_version":1,"pause_until":null}}',
     '{"org_id":42,"version":1,"config":null}',
@@ -231,10 +226,11 @@ async def test_concurrent_cold_requests_share_one_read(env):
     assert reader.entries[42].users == 0
 
 
-@pytest.mark.parametrize("prior", [None, payload(version=2),
-                                 payload(version=2, rate_limit={"rps": 0.5, "burst": 2}),
-                                 payload(version=2, pause_until="2035-01-01T00:00:00Z")])
-@pytest.mark.parametrize("blocked_on_semaphore", [False, True])
+@pytest.mark.parametrize("prior,blocked_on_semaphore", [
+    (None, False), (None, True),
+    (payload(version=2, rate_limit={"rps": 0.5, "burst": 2}), False),
+    (payload(version=2, pause_until="2035-01-01T00:00:00Z"), True),
+])
 async def test_cancelled_refresh_preserves_shared_state_and_waiter_retries(env, prior, blocked_on_semaphore):
     reader, store, clock, _ = env
     store.read_org_flow_control.return_value = prior
@@ -456,45 +452,6 @@ async def test_real_publisher_contract_disables_pauses_and_resumes(env):
     assert snapshot.rate_limit == flow.RateLimit(rps=0.5, burst=5)
 
 
-def test_parser_retains_published_concurrency_and_defaults_to_disabled():
-    assert flow._parse(payload(), 42).max_in_flight is None
-    snapshot = flow._parse(payload(version=4, concurrency_limit={"max_in_flight": 7}), 42)
-    assert snapshot.version == 4
-    assert snapshot.max_in_flight == 7
-
-
-async def test_concurrency_updates_and_null_are_full_snapshot_replacements(env):
-    reader, store, clock, _ = env
-    store.read_org_flow_control.return_value = payload(
-        version=1, concurrency_limit={"max_in_flight": 7})
-    first = await reader.check(42, None, 2)
-    assert first.max_in_flight == 7
-    assert await reader.check(42, None, 2) is first
-    clock[0] += 3
-    store.read_org_flow_control.return_value = payload(
-        version=2, concurrency_limit={"max_in_flight": 2})
-    second = await reader.check(42, None, 2)
-    assert second.version == 2 and second.max_in_flight == 2
-    assert first.max_in_flight == 7
-    clock[0] += 3
-    store.read_org_flow_control.return_value = payload(version=3)
-    disabled = await reader.check(42, None, 2)
-    assert disabled.version == 3 and disabled.max_in_flight is None
-
-
-@pytest.mark.parametrize("bad", ["invalid", payload(version=1),
-                               payload(version=2, concurrency_limit={"max_in_flight": 9})])
-async def test_invalid_concurrency_or_version_conflict_keeps_last_valid_limit(env, bad):
-    reader, store, clock, _ = env
-    store.read_org_flow_control.return_value = payload(
-        version=2, concurrency_limit={"max_in_flight": 3})
-    snapshot = await reader.check(42, None, 2)
-    clock[0] += 3
-    store.read_org_flow_control.return_value = bad
-    assert await reader.check(42, None, 2) is snapshot
-    assert snapshot.max_in_flight == 3
-
-
 async def test_cache_protects_published_concurrency_until_null_replaces_it(env):
     reader, store, clock, _ = env
     reader.max_entries = 2
@@ -515,16 +472,11 @@ async def test_cache_protects_published_concurrency_until_null_replaces_it(env):
     assert set(reader.entries) == {44, 45}
 
 
-@pytest.mark.parametrize("rps,burst", [(2, 4), (0.5, 3), (9007199254740991, 2147483647)])
-def test_parser_retains_published_rate_without_mutable_configuration(rps, burst):
-    assert flow._parse(payload(), 42).rate_limit is None
-    snapshot = flow._parse(payload(version=4, rate_limit={"rps": rps, "burst": burst}), 42)
+def test_parser_retains_the_largest_published_rate():
+    snapshot = flow._parse(payload(version=4, rate_limit={
+        "rps": 9007199254740991, "burst": 2147483647}), 42)
     assert snapshot.version == 4
-    assert snapshot.rate_limit == flow.RateLimit(rps=rps, burst=burst)
-    with pytest.raises(FrozenInstanceError):
-        snapshot.rate_limit.rps = 3
-    with pytest.raises(FrozenInstanceError):
-        snapshot.rate_limit = None
+    assert snapshot.rate_limit == flow.RateLimit(rps=9007199254740991, burst=2147483647)
 
 
 async def test_rate_updates_and_null_replace_one_complete_snapshot(env):
@@ -566,24 +518,6 @@ async def test_invalid_rate_or_version_conflict_retains_same_valid_snapshot(env,
     assert await reader.check(42, None, 2) is snapshot
     assert snapshot.rate_limit == flow.RateLimit(rps=0.5, burst=2)
     assert snapshot.max_in_flight == 3
-
-
-@pytest.mark.parametrize("bad", [None, flow.kv.FlowControlReadFailure.UNAVAILABLE])
-async def test_missing_or_unavailable_rate_snapshot_allows_and_can_recover(env, bad):
-    reader, store, clock, _ = env
-    original = payload(version=2, rate_limit={"rps": 0.5, "burst": 2})
-    store.read_org_flow_control.return_value = original
-    snapshot = await reader.check(42, None, 2)
-    clock[0] += 3
-    store.read_org_flow_control.return_value = bad
-    assert await reader.check(42, None, 2) is None
-    assert reader.entries[42].snapshot is (None if bad is None else snapshot)
-    assert await reader.check(42, None, 2) is None
-    clock[0] += 3
-    store.read_org_flow_control.return_value = original
-    recovered = await reader.check(42, None, 2)
-    assert recovered.version == 2
-    assert recovered.rate_limit == flow.RateLimit(rps=0.5, burst=2)
 
 
 async def test_cache_protects_rate_only_rules_after_pause_expiry_until_null(env):

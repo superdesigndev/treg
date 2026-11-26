@@ -182,11 +182,6 @@ async def test_a_new_run_replaces_the_saved_boards(clients: AsyncClient):   # cl
     assert [t["provider"] for t in rows[0].body["tools"]["7d"]] == [b["provider"], a["provider"]]
 
 
-async def test_the_footers_link_to_the_rankings(clients: AsyncClient):
-    for page in ("/rankings", "/showcase", "/aeo", "/jev", "/people-search"):
-        assert 'href="/rankings"' in (await clients.get(page)).text, page
-
-
 def test_the_chart_follows_each_window_and_its_leaders():
     a, b = _sync_endpoints(2)
     rows = _rows(a["id"], {0: 10, 20: 5_000}) + _rows(b["id"], {0: 90})

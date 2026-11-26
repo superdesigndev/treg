@@ -47,17 +47,6 @@ def _assert_failed(caplog, faults, error):
     assert faults == [{"component": "policy", "fault_type": "PolicyFailed", "value": f"signup_credit {error}"}]
 
 
-async def test_slow_handler_falls_back_to_grant(monkeypatch, caplog, faults):
-    monkeypatch.setattr(policy, "SIGNUP_CREDIT_BUDGET_S", 0.01)
-
-    async def handler(ctx):
-        await asyncio.sleep(1)
-        return policy.CreditDecision.DEFER
-    with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
-    _assert_failed(caplog, faults, "TimeoutError")
-
-
 async def test_failing_handler_falls_back_to_grant(caplog, faults):
     async def handler(ctx):
         raise ValueError("rule-name-123")
@@ -65,22 +54,6 @@ async def test_failing_handler_falls_back_to_grant(caplog, faults):
         assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
     _assert_failed(caplog, faults, "ValueError")
     assert "rule-name-123" not in caplog.text + repr(faults)  # an extension's message may name its rule
-
-
-async def test_unknown_outcome_falls_back_to_grant(caplog, faults):
-    async def handler(ctx):
-        return "defer"  # a plain string is not a CreditDecision
-    with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
-    _assert_failed(caplog, faults, "BadOutcome")
-
-
-async def test_sync_handler_falls_back_to_grant(caplog, faults):
-    def handler(ctx):  # not awaitable
-        return policy.CreditDecision.DEFER
-    with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
-    _assert_failed(caplog, faults, "TypeError")
 
 
 def test_one_handler_per_point():

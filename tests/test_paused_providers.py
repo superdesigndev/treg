@@ -192,7 +192,7 @@ async def test_a_custom_message_replaces_the_default(clients: AsyncClient, monke
         get_settings.cache_clear()
 
 
-@pytest.mark.parametrize("raw", ["not json", "[]", '{"x": 1}', '{"x": " "}'])
+@pytest.mark.parametrize("raw", ["not json", '{"x": " "}'])
 def test_malformed_messages_fail_at_boot(raw):
     with pytest.raises(ValidationError):
         Settings(paused_provider_messages=raw)

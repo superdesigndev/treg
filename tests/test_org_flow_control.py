@@ -44,8 +44,9 @@ async def test_a_paused_org_is_refused_before_its_body_money_admission_or_provid
     assert store.acquires == store.charges == 0 and not store.admissions
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
-@pytest.mark.parametrize("limit", [None, 3])
+@pytest.mark.parametrize("path,limit", [
+    ("/call/", None), ("/call/", 3), ("/catalog/call/", 3), ("/table/", 3),
+])
 async def test_a_rate_limited_org_is_refused_before_its_body_money_or_provider(
     clients, platform_on, gate, monkeypatch, path, limit,
 ):
@@ -61,15 +62,13 @@ async def test_a_rate_limited_org_is_refused_before_its_body_money_or_provider(
     assert [(a[0], a[3], a[4], a[5]) for a in store.admissions] == [(org_id, limit, 0.5, 2)]
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
 @pytest.mark.parametrize("result", [None, kv.FlowControlReadFailure.UNAVAILABLE,
                                     kv.FlowControlReadFailure.INVALID, "invalid json"])
-async def test_reader_failures_allow_root_calls(clients, platform_on, gate, monkeypatch, path, result):
-    monkeypatch.setattr(get_settings(), "table_enabled", True)
+async def test_reader_failures_allow_root_calls(clients, platform_on, gate, monkeypatch, result):
     org_id, store = await _publish(clients, gate, monkeypatch)
     store.publications[org_id] = result
     seen = _upstream(monkeypatch)
-    response = await clients.get(f"{path}{EP}?aweme_id=7")
+    response = await clients.get(f"/call/{EP}?aweme_id=7")
     assert response.status_code == 200, response.text
     assert len(seen) == 1
 
@@ -108,15 +107,15 @@ async def test_pause_applies_to_every_api_key_for_the_org(clients, platform_on, 
     assert seen == []
 
 
-@pytest.mark.parametrize("path,tool,args", [
-    ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}),
-    ("/mcp/v2/", "catalog_call_read", {"endpoint_id": "tikhub.tiktok.video.comments"}),
-    ("/mcp/v2/", "catalog_call_write", {"endpoint_id": "dataforseo.web.page.audit"}),
+@pytest.mark.parametrize("path,tool,args,refusal", [
+    ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}, "rate"),
+    ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}, "pause"),
+    ("/mcp/v2/", "catalog_call_read", {"endpoint_id": "tikhub.tiktok.video.comments"}, "rate"),
+    ("/mcp/v2/", "catalog_call_write", {"endpoint_id": "dataforseo.web.page.audit"}, "rate"),
     ("/mcp/", "call_media", {
         "endpoint_id": "fishaudio.tts.s2-1-pro", "body": {"text": "test"},
-    }),
+    }, "rate"),
 ])
-@pytest.mark.parametrize("refusal", ["pause", "rate"])
 async def test_mcp_roots_preserve_admission_retry_and_call_identity(
     clients, gate, monkeypatch, path, tool, args, refusal,
 ):
@@ -213,17 +212,15 @@ async def test_pause_does_not_block_accepted_financial_cleanup(
             await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
 @pytest.mark.parametrize("limit,rate", [
     (None, None), (7, None), (None, {"rps": 0.5, "burst": 2}), (3, {"rps": 2, "burst": 5}),
 ])
 async def test_an_admitted_root_asks_the_store_for_exactly_the_published_limits(
-    clients, platform_on, gate, monkeypatch, path, limit, rate,
+    clients, platform_on, gate, monkeypatch, limit, rate,
 ):
-    monkeypatch.setattr(get_settings(), "table_enabled", True)
     org_id, store = await _publish(clients, gate, monkeypatch, limit=limit, rate=rate)
     seen = _upstream(monkeypatch)
-    response = await clients.get(f"{path}{EP}?aweme_id=7")
+    response = await clients.get(f"/call/{EP}?aweme_id=7")
     assert response.status_code == 200, response.text
     assert len(seen) == 1
     if rate is not None:

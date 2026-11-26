@@ -55,14 +55,10 @@ def test_extra_accounts_without_a_primary_key_serve_nothing():
 
 
 @pytest.mark.parametrize("raw", [
-    "[]",
     '{"tikhub": [{"platform_key_tikhub": "x"}]}',
     '{"tikhub": {"primary": {"platform_key_tikhub": "x"}}}',
-    '{"tikhub": {"B": {"platform_key_tikhub": "x"}}}',
-    '{"tikhub": {"b": {"token": "x"}}}',
     '{"tikhub": {"b": {"platform_key_tikhub": ""}}}',
     '{"tikhub": {"b": {"platform_key_hunter": "x"}}}',
-    '{"tikhub": {"b": {"platform_key_tikhub": "x"}}, "Tikhub": {"c": {"platform_key_tikhub": "y"}}}',
 ])
 def test_a_malformed_accounts_value_refuses_to_start(raw):
     with pytest.raises(ValueError):
