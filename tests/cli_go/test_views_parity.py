@@ -117,9 +117,18 @@ CATALOG = [
 ]
 
 
-@pytest.mark.parametrize("signed_in", [True, False], ids=["signed-in", "anonymous"])
-@pytest.mark.parametrize("json_flag", [False, True], ids=["text", "json"])
-@pytest.mark.parametrize("argv", CATALOG, ids=" ".join)
+# The Go side turns argv into a request and prints the server's text, or the raw JSON under
+# `--json`; that branch does not depend on argv. Every argv runs as text signed in; a few
+# representatives cover anonymous text and JSON.
+_ANONYMOUS = (["catalog"], ["catalog", "search", "tiktok", "comments"], ["catalog", "get", "tikhub.tiktok.video.comments"])
+_JSON = (["catalog", "tiktok"], ["catalog", "search", "tiktok", "comments"],
+         ["catalog", "get", "tikhub.tiktok.video.comments"], ["catalog", "get", "nope.nope"])
+CATALOG_CASES = ([pytest.param(a, False, True, id=" ".join(a) + "-text-signed-in") for a in CATALOG]
+                 + [pytest.param(a, False, False, id=" ".join(a) + "-text-anonymous") for a in _ANONYMOUS]
+                 + [pytest.param(a, True, True, id=" ".join(a) + "-json-signed-in") for a in _JSON])
+
+
+@pytest.mark.parametrize(("argv", "json_flag", "signed_in"), CATALOG_CASES)
 def test_catalog(tmp_path, live, team, go_bin, argv, json_flag, signed_in):
     if argv[1:2] == ["get"] and len(argv) > 2:
         _warm_observations(live, argv[2])
@@ -130,11 +139,15 @@ def test_catalog(tmp_path, live, team, go_bin, argv, json_flag, signed_in):
 
 def _warm_observations(live, endpoint_id: str) -> None:
     """`observed_pending` says the observation cache had not read an endpoint yet and fills in on
-    its own; read it until it has, so both CLIs see the same answer."""
+    its own; read it until the answer settles, so both CLIs see the same one. No stats worker
+    runs in this registry, so after its first failed refresh the cache answers pending until its
+    retry window: two pending reads in a row mean it will not change before the CLIs ask."""
+    pending = False
     for _ in range(50):
         r = live.http.get(f"/catalog/endpoints/{endpoint_id}")
-        if r.status_code != 200 or not r.json().get("observed_pending"):
+        if r.status_code != 200 or not r.json().get("observed_pending") or pending:
             return
+        pending = True
         time.sleep(0.1)
 
 

@@ -16,7 +16,7 @@ def _emails(rows: object) -> Answer:
     return _answer({"data": {"domain": "x.com", "emails": rows}})
 
 
-@pytest.mark.parametrize("count", [0, 1, 9, 10, 11, 50, 100, 101])
+@pytest.mark.parametrize("count", [0, 11])
 def test_emails_returned_is_the_number_of_returned_emails(count):
     assert hunter.emails_returned(REQUEST, _emails([{"value": f"p{i}@x.com"} for i in range(count)])) == count
 

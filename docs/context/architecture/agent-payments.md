@@ -22,7 +22,6 @@ sources:
   - src/treg/alembic/versions/0106_agentpayer_per_network.py
   - src/treg/ratestore.py
   - tests/test_agent_payments.py
-  - tests/test_agentpayer_network_migration.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md

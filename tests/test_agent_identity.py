@@ -105,11 +105,18 @@ async def test_no_login_door_can_resolve_an_agent_address(env):
 async def test_the_verify_door_is_blocked_even_if_a_code_were_obtained(env):
     """Belt and braces: `_find_or_create_user` is the choke point EVERY door shares, so even handed a
     valid code (dev mode returns one for a real address) an agent address cannot be signed in."""
+    from sqlalchemy import update
+    from treg.application.auth import OTP_NS
+    from treg.models import Ephemeral
     email = (await _agent(env, name="sneak"))["email"]
-    # mint a real code for a REAL address, then try to redeem it against the agent address
+    # mint a real code for a REAL address, then move it onto the agent address: /start refuses to
+    # mint one there, so this is the only way to hand the verify door a code it would accept
     code = await email_code(env.c, "human@x.dev")
+    async with session_maker() as s:
+        await s.execute(update(Ephemeral).where(Ephemeral.ns == OTP_NS, Ephemeral.k == "human@x.dev").values(k=email))
+        await s.commit()
     r = await env.c.post("/auth/email/verify", json={"email": email, "code": code})
-    assert r.status_code != 200, r.text
+    assert r.status_code == 403 and r.json()["detail"] == "this address cannot be used to sign in", r.text
     async with session_maker() as s:
         rows = (await s.execute(select(User).where(User.email == email))).scalars().all()
     assert len(rows) == 1, "no second identity may be created for an agent address"

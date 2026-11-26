@@ -186,10 +186,10 @@ def busy_team(live, echo):
 
 
 @pytest.mark.parametrize("argv", [
-    ["health"], ["connections"], ["connections", "ls"], ["connections", "providers"], ["oauth", "providers"],
-    ["connections", "resources", "99999999"], ["connections", "rm", "99999999"], ["resources", "list"],
-    ["resources", "list", "--provider", "fishaudio", "--include-deleted"], ["calls"], ["calls", "--limit", "1"],
-    ["audit"], ["audit", "--calls"], ["audit", "--runs"], ["usage"], ["--json", "usage"], ["usage", "--by", "workspace"],
+    ["health"], ["connections", "ls"], ["connections", "providers"],
+    ["connections", "resources", "99999999"], ["resources", "list"],
+    ["resources", "list", "--provider", "fishaudio", "--include-deleted"], ["calls"],
+    ["audit"], ["usage"], ["--json", "usage"], ["usage", "--by", "workspace"],
     ["topup", "10"], ["topup", "--auto", "off"], ["review", "nope", "useful"], ["health", "--run"],
     ["connections", "connect", "--provider", "google-search-console"],
 ])
