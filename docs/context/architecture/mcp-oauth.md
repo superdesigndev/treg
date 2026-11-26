@@ -282,9 +282,13 @@ stream. Protected-resource metadata is also served at the trailing-slash paths R
 Two cases. **No credential**: the plain challenge. **A dead access token** (a bearer whose unverified
 `typ` claims to be treg's access token but fails `read_access_token`): 401 with
 `error="invalid_token"` (RFC 6750 §3.1), the code an OAuth client runs its refresh grant on. Access-token
-validation is stateless (HMAC + expiry), so the transport can afford it. Anything needing the
-database (a per-org or identity token) passes through for the tool to validate: its holder has no
-refresh grant to run, and judging it here would be a second authentication implementation. The
+validation is stateless (HMAC + expiry), so the transport can afford it. A **dead signed identity
+bearer** (`payload.signature`, the static key `treg mcp install` saves into an agent's config) gets the
+same 401 when `read_identity_claims` rejects it (bad signature, or an expired legacy key with no team
+pin). It has no refresh grant, and before this it returned a 200 whose body said "not signed in", so
+the client showed Connected. Anything needing the database (a per-org token, a team key, or a revoked
+identity token, which fails on `tv`) still passes through for the tool to validate; judging those here
+would be a second authentication implementation. The
 transport's DNS-rebinding host check (421) and Origin check (403) sit behind this middleware, so auth
 never masks them.
 

@@ -1049,6 +1049,34 @@ async def test_an_EXPIRED_access_token_gets_401_invalid_token(clients):
     assert r.json()["error"] == "invalid_token"
 
 
+async def test_a_static_identity_key_with_a_dead_signature_gets_401_invalid_token(clients):
+    """A key saved in an MCP config by `treg mcp install` is a signed identity bearer. Once the
+    secret rotates it no longer verifies; that must be a 401 `invalid_token` at the transport, not a
+    200 whose tool result says "not signed in" (Claude Code then shows Connected and never prompts)."""
+    from treg.domain.identity import session
+    live = session.make_identity(user_id=7, token_version=0, org="superdesign")
+    payload, sig = live.split(".", 1)
+    dead = f"{payload}.{'A' * len(sig)}"  # same payload, signature from some other secret
+    async with mcp_session(clients) as c:
+        r = await c.post("http://localhost/mcp/", json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "balance", "arguments": {}}},
+            headers={**MCP_HEADERS, "Authorization": f"Bearer {dead}"})
+    assert r.status_code == 401, r.text
+    assert 'error="invalid_token"' in r.headers.get("www-authenticate", "")
+
+
+async def test_a_valid_static_identity_key_still_reaches_the_tool(clients):
+    """The signature gate must not catch a live copied key: it reaches the tool and gets an answer."""
+    token = (await verified_signup(clients, json={"email": "static-key-live@superdesign.dev"})).json()["token"]
+    async with mcp_session(clients) as c:
+        r = await c.post("http://localhost/mcp/", json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "balance", "arguments": {}}},
+            headers={**MCP_HEADERS, "Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+
+
 async def test_a_wrong_audience_access_token_gets_401_invalid_token(clients):
     """A grant consented to a DIFFERENT resource must not be honoured here — and the refusal should
     still be the machine-readable 401, not tool prose."""

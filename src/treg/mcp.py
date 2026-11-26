@@ -2819,9 +2819,16 @@ class RequireAuthForProtectedTools:
                 break
         if not token:
             return "missing"
-        from .domain.identity import mcp_oauth
-        if mcp_oauth.looks_like_access_token(token) and \
-                mcp_oauth.read_access_token_any(token, self.resource_version) is None:
+        from .domain.identity import mcp_oauth, session
+        if mcp_oauth.looks_like_access_token(token):
+            if mcp_oauth.read_access_token_any(token, self.resource_version) is None:
+                return "invalid"
+        # A static identity bearer written by `treg mcp install` (`payload.signature`). Once its
+        # secret rotates or it expires, every later call fails inside the tool with a 200, and the
+        # client shows "Connected" forever. Judge it as the API does downstream (bad signature, or an
+        # expired legacy key with no team pin), so a dead key is a 401 here too.
+        # Team keys (`treg_…`, DB-hashed, no dot) are not signed tokens and pass through untouched.
+        elif token.count(".") == 1 and session.read_identity_claims(token) is None:
             return "invalid"
         return None             # a live access token, or a per-org token the tool validates itself
 
