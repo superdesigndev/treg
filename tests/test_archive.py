@@ -1332,9 +1332,11 @@ async def _stat_snapshots() -> dict[str, tuple[int, int]]:
     return {r.endpoint_id: (r.snapshots, r.kept_bytes) for r in rows}
 
 
-def _lock_timeout_on(endpoint_id: str):
-    """A `before_cursor_execute` hook failing the stats write of one endpoint the way Postgres
-    fails a statement whose `lock_timeout` elapsed."""
+def _lock_timeout_on(*endpoint_ids: str, wait_s: float = 0.0):
+    """A `before_cursor_execute` hook failing the stats write of these endpoints the way Postgres
+    fails a statement whose `lock_timeout` elapsed, after `wait_s` spent waiting."""
+    import time
+
     from sqlalchemy.exc import OperationalError
 
     class LockNotAvailableError(Exception):
@@ -1342,9 +1344,10 @@ def _lock_timeout_on(endpoint_id: str):
 
     def hook(conn, cursor, statement, params, *args):
         text = statement.lower()
+        values = params if isinstance(params, (tuple, list)) else tuple((params or {}).values())
         if "archiveendpointstat" in text and not text.lstrip().startswith("select") \
-                and endpoint_id in (params if isinstance(params, (tuple, list)) else
-                                    tuple((params or {}).values())):
+                and any(ep in values for ep in endpoint_ids):
+            time.sleep(wait_s)
             raise OperationalError(statement, params, LockNotAvailableError(
                 "canceling statement due to lock timeout"))
     return hook
@@ -1486,6 +1489,79 @@ async def test_a_late_delta_adds_its_counts_but_not_its_older_fetch(
         st = await s.get(ArchiveEndpointStat, "stats.a", populate_existing=True)
         assert (st.snapshots, st.newest_fetch, st.policy) == (4, datetime(2026, 1, 1), "forbidden")
 
+
+
+async def test_drain_stops_inside_its_budget_however_many_rows_are_busy(
+        clients: AsyncClient, monkeypatch):
+    """drain()'s budget bounds the whole pass, not each attempt: with every endpoint's lock wait
+    adding up to well over it, drain() returns about on time, keeps the deltas it did not land,
+    and re-arms the timer; once the rows are free each lands exactly once."""
+    import time
+
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    eps = [f"stats.{n:02d}" for n in range(10)]
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    monkeypatch.setattr(archive, "_STATS_DRAIN_S", 0.3)
+    monkeypatch.setattr(archive, "_STATS_DRAIN_RETRY_S", 0.05)
+    for ep in eps:
+        _pending_stat(ep)
+    await archive.flush_stats()
+    for ep in eps:
+        _pending_stat(ep)
+
+    hook = _lock_timeout_on(*eps, wait_s=0.1)           # one pass would take 1 s
+    event.listen(Engine, "before_cursor_execute", hook)
+    try:
+        started = time.monotonic()
+        await archive.drain()
+        took = time.monotonic() - started
+    finally:
+        event.remove(Engine, "before_cursor_execute", hook)
+    assert took < 0.3 + 0.1 + 0.2
+    assert set(archive._stat_deltas) == set(eps)
+    assert archive._stat_flush_task is not None and not archive._stat_flush_task.done()
+    await archive.flush_stats()
+    got = await _stat_snapshots()
+    assert {ep: got[ep] for ep in eps} == {ep: (2, 20) for ep in eps}
+    assert archive._stat_deltas == {}
+
+
+async def test_drain_budget_holds_against_real_row_locks(clients: AsyncClient, monkeypatch):
+    """The same bound against PostgreSQL row locks: one pass over the held rows would wait far
+    longer than the budget, yet drain() returns while they are still held, and every delta lands
+    exactly once after they are let go."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("row locks are PostgreSQL's")
+    eps = [f"stats.{n:02d}" for n in range(12)]          # one pass: 12 x 200 ms lock waits
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    monkeypatch.setattr(archive, "_STATS_DRAIN_S", 0.5)
+    for ep in eps:
+        _pending_stat(ep)
+    await archive.flush_stats()
+    for ep in eps:
+        _pending_stat(ep)
+
+    async with session_maker() as holder:
+        await holder.execute(text(
+            "SELECT 1 FROM archiveendpointstat WHERE endpoint_id LIKE 'stats.%' FOR UPDATE"))
+        draining = asyncio.create_task(archive.drain())
+        try:
+            done, _ = await asyncio.wait({draining}, timeout=1.5)
+        finally:
+            await holder.rollback()
+            await asyncio.gather(draining, return_exceptions=True)
+    assert done, "drain() outlived its budget while the rows were held"
+    assert set(archive._stat_deltas) == set(eps)
+    await archive.flush_stats()
+    got = await _stat_snapshots()
+    assert {ep: got[ep] for ep in eps} == {ep: (2, 20) for ep in eps}
+    assert archive._stat_deltas == {}
 
 
 async def test_a_flush_cancelled_after_its_commit_does_not_count_it_again(
