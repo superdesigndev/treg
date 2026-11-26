@@ -8,12 +8,12 @@ The tag spend reads (`money.tag_spent_since`, `tag_invoice_since`) are index-onl
 `ix_tagspend_org_dim_val_created_amount` (0134). An index-only scan skips a row's heap page only
 when the visibility map marks the page all-visible, and only vacuum sets that bit. Every call that
 carries a tag inserts a row and its settle rewrites it, so pages leave the all-visible state as
-fast as calls arrive. With the default thresholds autovacuum waits for dead rows worth a fifth of
-the table, or inserts worth a fifth of it; on a large table that is days of traffic, during which
-a busy tag's month read fetches the heap for a large share of its rows, inside the reserve's money
-session. A manual VACUUM brings it back to almost no heap fetches; these settings make autovacuum
-do the same on its own, at a hundredth of the table instead of a fifth, and analyze at a fiftieth
-so the planner's row estimates for a tag's range follow the table.
+fast as calls arrive. With the default scale factors autovacuum waits for dead or inserted rows
+worth a fifth of the table (plus a base row count), and on a large table a busy tag's month read
+fetches the heap for a large share of its rows until then, inside the reserve's money session. A
+manual VACUUM brings it back to almost no heap fetches; these settings make autovacuum do the same
+on its own: both vacuum scale factors go from 0.2 to 0.01 and the analyze scale factor from 0.1 to
+0.02, so the planner's row estimates for a tag's range follow the table.
 
 Each pass after the first finds most pages already all-visible and skips them, and PostgreSQL
 skips the index pass when few rows are dead, so a smaller, more frequent vacuum costs less per pass
