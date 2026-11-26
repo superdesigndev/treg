@@ -463,7 +463,8 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
         # Optional invitation, decided before the body streams (application/call/invite.py).
         kind = await invitation(context, response.status_code,
                                 replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
-                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints")))
+                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints"),
+                                                       _client_of(request)))
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
             if kind == "review":
