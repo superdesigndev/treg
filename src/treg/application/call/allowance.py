@@ -451,7 +451,9 @@ async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
             if money_lock(org_id).locked():
                 return _Fold.HERE
             if await store.acquire_lease(key, token, _REFILL_LEASE_MS) != "acquired":
-                return _Fold.ELSEWHERE
+                # The lease may be held by this process's own fold, which took it while this
+                # call waited for the store: its lock says so.
+                return _Fold.HERE if money_lock(org_id).locked() else _Fold.ELSEWHERE
             try:
                 # Asked for again after the wait: an idle lock can be pruned meanwhile, and the
                 # one this process's other calls test is the one now in the map. Nothing is

@@ -2025,6 +2025,55 @@ async def test_calls_of_one_team_in_one_process_fold_one_at_a_time(
     assert await _queued(org_id) == 0
 
 
+async def test_a_call_told_the_lease_is_busy_by_its_own_process_waits_without_reading(
+        org_id, store, monkeypatch):
+    """Eight calls ask the store for the team's lease at once. The first gets it; the store tells
+    the others it is taken only after the first has begun folding. Their own process holds it,
+    so they wait for that fold instead of reading the ledger as if another process had it."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"call-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(8)])
+        await db.commit()
+    fold, settled_micro, acquire = (allowance.fold_charges_in_transaction,
+                                    allowance.settled_micro, store.acquire_lease)
+    folding, resume, reads, asked = asyncio.Event(), asyncio.Event(), [], []
+
+    async def first_fold_waits(db, org, **kwargs):
+        if not folding.is_set():
+            folding.set()
+            await resume.wait()
+        return await fold(db, org, **kwargs)
+
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return await settled_micro(db, org, call_id)
+
+    all_asked = asyncio.Event()
+
+    async def busy_once_the_first_folds(*args, **kwargs):
+        asked.append(True)
+        if len(asked) == 8:
+            all_asked.set()
+        if len(asked) == 1:
+            await all_asked.wait()
+            return await acquire(*args, **kwargs)
+        await folding.wait()
+        return "busy" if not resume.is_set() else await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", first_fold_waits)
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    monkeypatch.setattr(store, "acquire_lease", busy_once_the_first_folds)
+    calls = [asyncio.create_task(runtime._settled(org_id, f"call-{index}", 99))
+             for index in range(8)]
+    await folding.wait()
+    for _ in range(50):
+        await asyncio.sleep(0)
+    assert len(asked) == 8 and reads == []
+    resume.set()
+    assert await asyncio.gather(*calls) == [10] * 8
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
