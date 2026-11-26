@@ -522,13 +522,16 @@ past the bound do not make every new team scan them.
   conditional debit and the `free` check are unchanged, so a refill still never sets aside
   money the team does not have.
 
-  Money set aside this way is out of the balance's sight. A call on the exact path that the
+  Money set aside this way is out of the balance's sight, and so is a chunk: for a team with
+  about a chunk of credit, a signup grant among them, the first refill moves all of it into the
+  hold. Whatever the refills are sized to, a call on the exact path that the
   balance alone cannot pay for (`reserve_in_transaction` refuses it) therefore asks for the
-  team's counter back (`give_back_for_exact_path`, handed what the call is short of), at as
-  little cost to a refusal as it can. It reads the counter first, without the team's lease,
-  and leaves it alone unless it holds at least the shortfall, so a team out of money that keeps
-  calling costs the store one read per refusal. It asks for the team's lease once: a refill or
-  a fold holding it means the call is refused as before, not kept waiting. Then `_give_back`
+  team's counter back (`onto_balance`), at as little cost to a refusal as it can. A balance that
+  already covers the call (another request gave the counter back after the refusal read it)
+  answers at once, and a team whose money is not there at all (`allowance.credit_bound`) costs
+  one statement and no store read. Otherwise it takes the team's money lease, waiting no longer
+  than a call waits for a refill, reads the balance and the counter under it, and leaves the
+  counter alone unless it holds at least the shortfall. Then `_give_back`
   takes the team's money admission first, for no longer than a call waits for a refill and
   refusing rather than falling back, and only then empties the counter and returns what it
   held, in that same transaction: a timeout or a cancel before then leaves the counter as it
@@ -546,6 +549,17 @@ past the bound do not make every new team scan them.
   minutes after its last refill (that refill's deadline, `money_allowance_fresh_s` on, plus
   `hold_ttl_s()` and the clocks' margin, at the next pass of the sweep). A team that stops
   calling leaves what its counter held there for the same time.
+
+  The same give-back serves two more refusals. The platform daily cap
+  (`_enforce_platform_daily_cap`) counts all of an allowance hold opened today as committed, and
+  checks a call at what its hold will take, margin applied, the figure the day's committed spend
+  counts it at; so a call it refuses asks for the counter back by what the day is over, and runs
+  every check again when that frees it or when the day's committed figure, read again, already
+  leaves room (another request gave the counter back first). A reserve the balance refuses, the
+  hub's price hold (`hub.runner._reserve_price`) included, asks `onto_balance`, which gives the
+  counter back, or finds it already given back, and runs again when the balance then covers the
+  call. A keyless wallet's call takes no allowance (`reserve.keyless_payer`), so its team's
+  balance is all its credit (agent-payments.md).
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing
@@ -776,7 +790,46 @@ such hold in full (`close_stale_allowance_in_transaction`, under the release lea
 its counter so a late writer is refused. A charge recorded after that still finds no hold and
 comes out of the balance. While a team keeps calling, its hold is never idle and what a crash left
 in it stays there; the team's balance is lower by up to a refill's target (a chunk, unless
-refills are sized to the team's spend) plus that, and the hold is in `/balance`.
+refills are sized to the team's spend) plus that.
+
+**The balance a team is shown** is what it can spend now
+(`application/call/allowance.spendable`, figured by `allowance.spendable`): `org.balance_micro`
+less what queued charges owe the balance (`_queued_unbacked`), plus what the team's counter
+offers (`counter_offer`), counted only for the hold its epoch names, never past that hold's
+amount, and only for a team on the allowance: a team taken off it takes from no counter. The
+rest of the hold is not counted: calls in flight took it, or a counter lost with the store left
+it there until the idle sweep. A store that cannot answer shows the balance alone. The counter is
+a store read, taken before a session holds a connection or a lock where the caller can, and for
+several teams at once in one round (`counter_offers`). `GET /orgs/{id}/balance`, the billing
+state the dashboard reads, the CLI's home, the Sheets panel's teams, the team choice on the MCP
+consent page, and the arenas' quotes and start checks read this figure; the route's `holds` lists only calls on holds of their own.
+
+The figure reads two stores one after the other, so a refill or a give-back moving money between
+them can make one reading short or long by what moved. It is shown, and a long reading costs
+nothing, since every call still reserves its own money; nothing is decided on it alone. An arena
+decision reads `reach`. The team's money wherever it sits (`allowance.credit_bound`, the balance
+plus the whole hold less what queued charges spent, from the database alone) below the amount, or a
+team off the allowance, is answered from the database, and the store is not asked. Otherwise the
+counter and the database are read under the team's money lease (`_team_lease`), which every request
+that moves the team's money between them holds (a refill, a give-back, a fold, the idle sweep), so
+no refill or give-back moves money between them while they are read. A hold released or a take
+made between the two readings can still move the sum by that much; an arena decision costs only a
+refusal, or a start whose calls each reserve their own money. A store that cannot answer leaves the
+database alone, as no call can take from a counter then either. A lease another request keeps, or
+a background fold has claimed (`acquire_money_lease`), for as long as a call waits for a refill
+makes the answer unsure. A paying wallet decides nothing on it: its calls take no allowance, so
+its team's balance is its credit, which the payment path reads (agent-payments.md). An arena run's start never decides inside its session: its check (`short_of`) raises
+`CreditShort`, `gives_counter_back` asks `reach` outside it and runs the start again with the
+answer, or refuses (402) or asks for another try (409); its quote takes whether the team can pay
+from `reach` (`balance_for`) and shows `reach`'s figure when it can, the team's money wherever it
+sits while the lease is held, and its own reading, counter included, when it cannot. A reserve the
+balance refused, a hub price hold included, runs again when `onto_balance` finds the balance already
+covers it (another request gave the counter back) or gives the counter back under the same lease,
+waiting for it no longer than a call waits for a refill; a daily-cap refusal runs again when a
+give-back frees the day's excess or the day's committed figure, read again, now leaves room. The
+Sheets panel's teams, the consent page and the CLI's home end their read before asking the store,
+and the billing state's callers read the counter before opening their session, so no connection
+waits on it. The column itself is unchanged and the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 
@@ -1336,8 +1389,8 @@ cumulative target per block (the bonus target is `bonus * refunded // paid`).
 ### Who sees what, history and portal
 
 `_billing_org` (every `/billing/*` route) requires **admin or owner**: cards, spend policy and
-invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure and in-flight
-holds (a machine identity must read the balance it spends, and every 402 already carries
+invoices are the org's money. `GET /orgs/{id}/balance` shows any **member** the figure (with what the
+allowance counter offers, "The balance a team is shown") and in-flight holds (a machine identity must read the balance it spends, and every 402 already carries
 `balance_micro`); credit blocks and the ledger stay admin+, and `entries.withheld` says when an
 empty ledger was withheld rather than empty.
 
@@ -1876,7 +1929,9 @@ cross-team money movement in treg.
 A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-payments.md)) is a
 payer team per wallet address and network. A payment confirmed on chain is an ordinary `topup` on that team,
 `payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
-transaction; then the call reserves, settles or releases as any team's call. The topup is booked
+transaction; then the call reserves, settles or releases as any team's call, except that it
+takes no allowance (`reserve.keyless_payer`): the payment path decides between drawing credit and
+settling on the team's balance, so no reservation moves that balance into a counter. The topup is booked
 only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
 has not received. A wallet whose existing credit covers the call proves itself instead of paying
 (MPP: a zero-amount proof; x402: a payment that is not settled) and books nothing. When the settlement answer never arrives, `treg-worker agentpay reconcile` reads the chain

@@ -17,6 +17,7 @@ from .. import audit
 from .. import hints
 from ..application import agent_payments
 from ..application.call import call_errors
+from ..application.call import reserve as call_reserve
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -374,6 +375,9 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 503, exc.detail, [])
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
+    # The wallet's credit is its team's balance, which decided whether this payment draws it:
+    # no reservation of the call moves that balance into the allowance (`keyless_payer`).
+    keyless = call_reserve.keyless_payer.set(True)
     try:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
@@ -390,6 +394,8 @@ async def _paid_call(rest: str, request: Request) -> Response:
         exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
                        **dict(await paid.answer_headers())}
         raise
+    finally:
+        call_reserve.keyless_payer.reset(keyless)
     for name, value in await paid.answer_headers():
         response.headers[name] = value
     for name, value in paid.receipt_headers(response.status_code):

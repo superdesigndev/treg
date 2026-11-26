@@ -358,6 +358,52 @@ def _epoch_of(created_at: datetime) -> int:
     return (created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
 
 
+async def unheld_free(db: AsyncSession, org_id: int) -> int:
+    """`org.balance_micro` less what queued charges owe it (`_queued_unbacked`): what a reserve
+    meets. Below zero when an overrun is owed, which a reserve of anything, nothing included,
+    then cannot pass."""
+    return int((await db.execute(
+        select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+    )).scalar() or 0)
+
+
+async def spendable(db: AsyncSession, org_id: int, *, counter_micro: int = 0,
+                    counter_epoch: int | None = None) -> int:
+    """The balance a team is shown: what it can spend now. `org.balance_micro` less what its
+    queued charges owe the balance (`_queued_unbacked`), plus what its allowance counter offers
+    (`counter_micro`, read from the store for `counter_epoch`). A refill moves up to a chunk from
+    the balance into the hold, which for a small team is all of it; what the counter still
+    offers is the team's to spend, and a call short of money takes it back.
+
+    The rest of the hold is not counted: calls in flight took it, or a counter lost with the
+    store left it behind until the idle sweep returns it. A counter built for another hold, or
+    showing more than this hold has, counts for nothing beyond the hold."""
+    free = await unheld_free(db, org_id)
+    offered = 0
+    if counter_micro > 0 and counter_epoch:
+        hold = (await db.execute(select(Hold.created_at, Hold.amount_micro).where(
+            Hold.id == allowance_id(org_id)))).one_or_none()
+        if hold is not None and _epoch_of(hold.created_at) == counter_epoch:
+            offered = min(int(counter_micro), int(hold.amount_micro))
+    return max(0, free + offered)
+
+
+async def credit_bound(db: AsyncSession, org_id: int) -> int:
+    """The team's money wherever it sits: `org.balance_micro` plus its allowance hold, less what
+    queued charges have spent, in one statement. Above what it can spend now by what calls in
+    flight took and what a lost counter left in the hold; never below it, so money a refill or
+    a give-back is moving between the store and the database is inside it. Not a balance to
+    show or spend against: below a figure, it says the money is not there at all."""
+    from_hold, outright = _charge_parts(org_id)
+    queued = func.coalesce(select(func.sum(from_hold + outright)).where(
+        CallCharge.org_id == org_id).scalar_subquery(), 0)
+    held = func.coalesce(select(Hold.amount_micro).where(
+        Hold.id == allowance_id(org_id)).scalar_subquery(), 0)
+    bound = (await db.execute(
+        select(Org.balance_micro + held - queued).where(Org.id == org_id))).scalar()
+    return max(0, int(bound or 0))
+
+
 async def committed_today(db: AsyncSession, org_id: int) -> int:
     """The most a team can turn out to have spent today from what is already committed: the
     number a daily cap is checked against. One statement.

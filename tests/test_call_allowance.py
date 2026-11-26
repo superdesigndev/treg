@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -17,6 +18,8 @@ from sqlalchemy import event, select, update
 from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
+from treg.application import billing, home, table
+from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
 from treg.application.call import settle as call_settle
@@ -31,6 +34,7 @@ from treg.domain.governance.teams import cascade_delete_org, lock_allowance_hold
 from treg.infra import db as infra_db
 from treg.infra import kv, money_session
 from treg.infra.db import reset_db, session_maker
+from treg.routers import billing as billing_routes
 from treg.domain.identity.access import Caller
 from treg.models import (
     ArchiveKeyOrg, CallCharge, Hold, LedgerEntry, Membership, Org, TagBudget, TagSpend, Tool, User,
@@ -3522,6 +3526,105 @@ async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_
     assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
 
 
+async def test_a_reading_cancelled_while_the_store_grants_its_lease_gives_the_lease_back(
+        org_id, store, monkeypatch):
+    """The store granted the team's lease, and the reading (an arena quote) was cancelled before
+    the answer reached it: the lease is given back at once, so the next short reserve can take
+    the counter back instead of waiting for the lease to expire."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    acquire, granted = store.acquire_lease, asyncio.Event()
+
+    async def granted_then_slow(key, token, *args, **kwargs):
+        answer = await acquire(key, token, *args, **kwargs)
+        if key == runtime.money_key(org_id):
+            granted.set()
+            await asyncio.sleep(10)
+        return answer
+
+    monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    reading = asyncio.create_task(runtime.reach(org_id, 50_000))
+    await granted.wait()
+    reading.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await reading
+    monkeypatch.setattr(store, "acquire_lease", acquire)
+    await asyncio.sleep(0)
+    assert runtime.money_key(org_id) not in store.leases
+    assert await runtime.onto_balance(org_id, 50_000) is True
+
+
+async def test_a_lease_the_store_granted_but_timed_out_answering_is_given_back(
+        org_id, store, monkeypatch):
+    """The store took the lease and its answer timed out, which the adapter reports as
+    "unavailable": the reading gives back whatever its token holds, so the next short reserve
+    takes the counter back instead of waiting for the lease to expire."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    acquire, dropped = store.acquire_lease, []
+
+    async def granted_but_unanswered(key, token, *args, **kwargs):
+        answer = await acquire(key, token, *args, **kwargs)
+        if key == runtime.money_key(org_id) and not dropped:
+            dropped.append(answer)
+            return "unavailable"
+        return answer
+
+    monkeypatch.setattr(store, "acquire_lease", granted_but_unanswered)
+    await runtime.reach(org_id, 50_000)
+    await asyncio.sleep(0)
+    assert dropped == ["acquired"] and runtime.money_key(org_id) not in store.leases
+    assert await runtime.onto_balance(org_id, 50_000) is True
+
+
+@pytest.mark.parametrize("where", ["granted", "given_back"])
+async def test_a_cap_give_back_cancelled_leaves_no_lease(org_id, store, monkeypatch, where):
+    """A daily-cap refusal's give-back (`give_back_for_exact_path`) cancelled after the store
+    granted its lease, or after the counter went back and before the lease was released: the
+    lease is given back either way, and the team's next reading takes it at once."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.take(org_id, 1_000)
+    acquire, release, reached = store.acquire_lease, store.release_lease, asyncio.Event()
+
+    async def granted_then_slow(key, token, *args, **kwargs):
+        answer = await acquire(key, token, *args, **kwargs)
+        if where == "granted" and key == runtime.money_key(org_id):
+            reached.set()
+            await asyncio.sleep(10)
+        return answer
+
+    async def slow_release(key, token):
+        if where == "given_back" and not reached.is_set():
+            reached.set()
+            await asyncio.sleep(0.05)
+        return await release(key, token)
+
+    monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    monkeypatch.setattr(store, "release_lease", slow_release)
+    giving = asyncio.create_task(runtime.give_back_for_exact_path(org_id, 80_000))
+    await reached.wait()
+    giving.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await giving
+    monkeypatch.setattr(store, "acquire_lease", acquire)
+    await asyncio.sleep(0.1)
+    assert runtime.money_key(org_id) not in store.leases
+    assert (await runtime.reach(org_id, 50_000)).sure
+
+
+async def test_a_reading_or_a_give_back_leaves_a_claimed_fold_its_turn(org_id, store, monkeypatch):
+    """The background fold claimed the team's next lease: a wallet's or an arena's reading and
+    a give-back for a short reserve do not take it first, so they cannot starve the fold."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.take(org_id, 1_000)
+    store.leases[runtime.fold_claim_key(org_id)] = "the fold"
+    assert await runtime.onto_balance(org_id, 50_000) is False
+    assert await runtime.reach(org_id, 50_000) == runtime.Reach(GRANT, False)
+    assert await _given_back(org_id) == []
+
+
 async def test_a_starved_team_waits_for_this_processs_money_session_within_its_turn(
         org_id, store, monkeypatch):
     await _queue_charge(org_id, "queued", 60)
@@ -3988,14 +4091,21 @@ async def test_an_allowance_already_past_a_lowered_cap_is_drained(org_id, store)
 @pytest.mark.parametrize("switched_off", [False, True])
 async def test_the_exact_path_leaves_room_for_an_allowance_carried_over_midnight(
         org_id, store, monkeypatch, switched_off):
-    """The hold and its money outlive the switch, so the cap check may not depend on it."""
+    """The hold and its money outlive the switch, so the cap check may not depend on it. With
+    the allowance on, what the counter still offers goes back to the balance and the call is
+    served against what the hold keeps; with it off, nothing goes back."""
     caller = await _caller(org_id)
     caller.org.daily_cap_micro = CHUNK + 500
     await runtime.take(org_id, 600, daily_cap_micro=CHUNK + 500)
     await _move_hold_to_yesterday(org_id)
-    if switched_off:
-        monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
-        monkeypatch.setattr(kv, "configured", lambda: False)
+    if not switched_off:
+        await call_reserve._platform_reserve(
+            _call(org_id), caller, CallMeta(tags={"user": "u1"}), "tagged-1", allow_allowance=True)
+        assert await _per_call_holds(org_id) == ["tagged-1"]
+        assert await _given_back(org_id) == [CHUNK - 600]
+        return
+    monkeypatch.setattr(get_settings(), "money_allowance_org_ids", [])
+    monkeypatch.setattr(kv, "configured", lambda: False)
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(
             _call(org_id), caller, CallMeta(tags={"user": "u1"}), "tagged-1", allow_allowance=True)
@@ -4676,15 +4786,331 @@ async def test_a_give_back_cancelled_before_the_counter_is_emptied_changes_nothi
     assert await _given_back(org_id) == []
 
 
-async def test_with_the_window_off_an_exact_path_call_short_of_money_is_refused_as_before(
+async def test_with_the_window_off_a_call_the_counter_cannot_make_up_is_refused_as_before(
         org_id, store):
     caller = await _caller(org_id)
     assert await runtime.take(org_id, 600_000)
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(
-            _call(org_id, estimate=4_200_000), caller, call_ref="exact-1")
+            _call(org_id, estimate=4_500_000), caller, call_ref="exact-1")
     assert refused.value.status_code == 402
     assert store.counters[org_id]["avail"] == CHUNK - 600_000, "the counter is left alone"
+
+
+async def test_with_the_window_off_a_team_whose_balance_sits_in_its_allowance_is_served(
+        org_id, store, monkeypatch):
+    """The chunk is all a small team has, so the refill moves its whole balance into the
+    allowance hold. A call that keeps its own hold (a routed child, an async call) then finds
+    the balance at 0: the counter goes back to the balance and the call is served."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    assert await _state(org_id) == (0, GRANT)
+    await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"]
+    assert await _state(org_id) == (GRANT - 4_000 - 80_000, 4_000), "what the take stands on"
+    assert await _given_back(org_id) == [GRANT - 4_000]
+
+
+async def _shown(org_id: int, caller: Caller) -> set[int]:
+    """Every figure a team is shown as its balance."""
+    async with session_maker() as db:
+        route = await billing_routes.org_balance(org_id, limit=1, offset=0, caller=caller, db=db)
+        assert route["holds"] == []
+        state = await billing.billing_state(db, await db.get(Org, org_id))
+        summary = await home.summary(db, caller.user.email, caller, teams=1)
+        [sheets] = await table.account_teams(db, user_id=caller.user.id, only_org_id=org_id)
+        return {await runtime.spendable(db, org_id), route["balance_micro"],
+                state["balance_micro"], summary["balance_micro"], sheets["balance_micro"]}
+
+
+async def test_a_team_whose_balance_sits_in_its_allowance_is_shown_what_it_can_spend(
+        org_id, store, monkeypatch):
+    """The refill moves the whole balance into the allowance hold and `org.balance_micro`
+    reads 0. The route, the dashboard's billing state, the CLI's home and the Sheets panel show
+    the balance plus what the counter offers, before the fold and after it; the hold is not a
+    call in flight."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    epoch = await runtime.take(org_id, 4_000)
+    assert await _finish(org_id, "spent", epoch, 4_000, billable=True, actual_micro=3_500) == 3_500
+    assert await _state(org_id) == (0, GRANT) and await _queued(org_id) == 1
+    assert await _shown(org_id, caller) == {GRANT - 3_500}
+    await _fold(org_id)
+    assert await _state(org_id) == (0, GRANT - 3_500)
+    assert await _shown(org_id, caller) == {GRANT - 3_500}
+
+
+async def test_what_calls_in_flight_took_and_a_lost_counter_left_behind_are_not_shown(
+        org_id, store, monkeypatch):
+    """Only what the counter offers now is spendable: a take still in flight is not, and money a
+    counter lost with the store left in the hold waits for the idle sweep."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 2_500_000)
+    assert await _shown(org_id, caller) == {GRANT - 2_500_000}
+    del store.counters[org_id]
+    assert await _state(org_id) == (0, GRANT)
+    assert await _shown(org_id, caller) == {0}
+
+
+async def test_a_daily_cap_counting_the_allowance_hold_gives_the_counter_back(
+        org_id, store, monkeypatch):
+    """The day's committed spend counts all of the allowance hold opened today. A call that
+    keeps its own hold would pass the cap but for the money its counter still offers: the
+    counter goes back, every check runs again, and the call is served."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=GRANT))
+        await db.commit()
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"]
+    assert await _given_back(org_id) == [GRANT - 4_000]
+
+
+async def test_a_balance_refusal_read_before_another_request_gave_the_counter_back_runs_again(
+        org_id, store, monkeypatch):
+    """The refusal read the balance before another request gave the counter back: this call's
+    own give-back finds nothing left. The balance now covers it, so the reserve runs again."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    epoch = await runtime.take(org_id, 4_000)
+    assert await runtime._give_back(org_id, epoch) == GRANT - 4_000
+    real, seen = ledger.reserve_in_transaction, []
+
+    async def read_before_the_give_back(db, org, *args, **kwargs):
+        seen.append(1)
+        if len(seen) == 1:
+            raise ledger.InsufficientBalance(org, 0, 80_000)
+        return await real(db, org, *args, **kwargs)
+
+    monkeypatch.setattr(ledger, "reserve_in_transaction", read_before_the_give_back)
+    await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"] and len(seen) == 2
+
+
+async def test_a_keyless_wallet_s_reservation_takes_no_allowance(org_id, store, monkeypatch):
+    """A keyless wallet's call holds from its team's balance alone: the payment path decided on
+    that balance, so no reservation of the call moves it into the allowance."""
+    caller = await _caller(org_id)
+    taken = []
+
+    async def take(*args, **kwargs):
+        taken.append(1)
+        return 1
+
+    monkeypatch.setattr(runtime, "take", take)
+    monkeypatch.setattr(runtime, "listed", lambda org_id: True)
+    token = call_reserve.keyless_payer.set(True)
+    try:
+        await call_reserve._platform_reserve(_call(org_id, estimate=1_000), caller,
+                                             allow_allowance=True, call_ref="keyless")
+    finally:
+        call_reserve.keyless_payer.reset(token)
+    assert taken == [] and await _per_call_holds(org_id) == ["keyless"]
+
+
+async def test_a_cap_refusal_read_before_another_request_gave_the_counter_back_runs_again(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=GRANT))
+        await db.commit()
+    caller = await _caller(org_id)
+    epoch = await runtime.take(org_id, 4_000)
+    assert await runtime._give_back(org_id, epoch) == GRANT - 4_000
+    real, seen = call_reserve._enforce_platform_daily_cap, []
+
+    async def read_before_the_give_back(caller, add_micro, db):
+        seen.append(1)
+        if len(seen) == 1:
+            raise ReservationFailed("platform_daily_cap_reached", status_code=429, detail={
+                "error": "platform_daily_cap_reached", "spent_today_micro": GRANT,
+                "daily_cap_micro": GRANT, "estimated_cost_micro": add_micro})
+        return await real(caller, add_micro, db)
+
+    monkeypatch.setattr(call_reserve, "_enforce_platform_daily_cap", read_before_the_give_back)
+    await call_reserve._platform_reserve(_call(org_id, estimate=80_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"] and len(seen) == 2
+
+
+async def test_a_balance_an_overrun_left_below_zero_takes_the_counter_back_for_a_free_call(
+        org_id, store, monkeypatch):
+    """An overrun left the balance below zero, so a reserve of nothing fails. The counter makes
+    that up: it goes back to the balance, which `onto_balance` reads unclamped."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(balance_micro=-10))
+        await db.commit()
+    assert await runtime.onto_balance(org_id, 0) is True
+    assert await _given_back(org_id) == [GRANT - 1_000]
+
+
+async def test_a_counter_that_cannot_be_given_back_is_no_confirmed_shortfall(
+        org_id, store, monkeypatch):
+    """The balance is short and the counter holds the money, but another request holds the
+    team's money lease past the wait: `onto_balance` refuses, the money left where it is."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.take(org_id, 1_000)
+
+    async def held(*args, **kwargs):
+        return "held"
+
+    monkeypatch.setattr(store, "acquire_lease", held)
+    assert await runtime.onto_balance(org_id, 50_000) is False
+    assert await _given_back(org_id) == []
+
+
+async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    parent = SimpleNamespace(input=SimpleNamespace(caller=caller), meta=None)
+    tool = SimpleNamespace(org_id=org_id + 1, tool_id="maker/tool", version=1)
+    assert await hub_runner._reserve_price(parent, tool, "run-1", 80_000) == 80_000
+    assert await _per_call_holds(org_id) == ["run-1:price"]
+    assert await _given_back(org_id) == [GRANT - 4_000]
+
+
+def _moved_by_another(store, org_id: int, move) -> asyncio.Task:
+    """Another request holds the team's money lease and moves its money, then lets go."""
+    key = runtime.money_key(org_id)
+    store.leases[key] = "another request"
+
+    async def run():
+        await asyncio.sleep(0.05)
+        await move()
+        del store.leases[key]
+
+    return asyncio.create_task(run())
+
+
+async def test_credit_another_request_is_giving_back_is_read_once(org_id, store, monkeypatch):
+    """Calls in flight hold most of the hold, and another request is giving the rest of the
+    counter back to the balance. The reading waits for its lease, so the money is counted once,
+    where it landed."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    epoch = await runtime.take(org_id, GRANT - 100_000)
+
+    async def give_back():
+        assert await runtime._give_back(org_id, epoch) == 100_000
+
+    moving = _moved_by_another(store, org_id, give_back)
+    assert await runtime.reach(org_id, 150_000) == runtime.Reach(100_000, True)
+    await moving
+
+
+async def test_a_team_whose_money_is_not_there_is_answered_without_the_store(
+        org_id, store, monkeypatch):
+    """Money nowhere near the amount, or a team off the allowance: one reading of the database,
+    no lease, no counter."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    noted = _Asked(store)
+    monkeypatch.setattr(kv, "store", lambda: noted)
+    assert await runtime.reach(org_id, 2 * GRANT) == runtime.Reach(0, True)
+    monkeypatch.setattr(get_settings(), "money_allowance_excluded_org_ids", [org_id])
+    assert await runtime.reach(org_id, 1_000) == runtime.Reach(0, True)
+    assert noted.names == []
+
+
+async def test_a_run_short_of_credit_inside_its_session_runs_again_with_the_confirmed_answer(
+        org_id, store, monkeypatch):
+    """The run's check inside its session never reads the two stores: it asks for the credit to
+    be confirmed, and `reach` does that outside it. The run then takes the answer; money that is
+    not there is refused after one run, and money that could not be confirmed says so."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 1_000)
+    runs = []
+
+    @runtime.gives_counter_back
+    async def start(caller, need):
+        async with session_maker() as db:
+            await ledger.balance_of(db, caller.org_id)
+            runs.append(runtime.short_of(caller.org_id, need))
+            if runs[-1]:
+                raise runtime.CreditShort(need, ValueError("not enough"), LookupError("moving"))
+        return "started"
+
+    assert await start(caller, 50_000) == "started"
+    assert runs == [True, False]
+    runs.clear()
+    with pytest.raises(ValueError):
+        await start(caller, 2 * GRANT)
+    assert runs == [True], "nothing makes it up: refused without a second run"
+    runs.clear()
+    store.leases[runtime.money_key(org_id)] = "a refill"
+    with pytest.raises(LookupError):
+        await start(caller, 50_000)
+    assert runs == [True]
+
+
+async def test_a_quote_shows_what_the_team_can_spend_or_where_its_money_sits(
+        org_id, store, monkeypatch):
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.05)
+    assert await runtime.take(org_id, 1_000)
+    assert await runtime.balance_for(org_id, 0, 10_000) == GRANT - 1_000
+    assert await runtime.balance_for(org_id, GRANT - 1_000, 2 * GRANT) == GRANT - 1_000, (
+        "short of the need: the quote's own figure, with what the counter offers")
+    store.leases[runtime.money_key(org_id)] = "a refill"
+    assert await runtime.balance_for(org_id, 0, 10_000) == GRANT, (
+        "while another request holds the lease: the team's money wherever it sits, for the "
+        "start to confirm")
+
+
+async def test_the_sheets_teams_end_their_read_before_the_store_is_asked(
+        org_id, store, monkeypatch):
+    caller = await _caller(org_id)
+    offers = runtime.counter_offers
+    async with session_maker() as db:
+        async def asked(org_ids):
+            assert not db.in_transaction(), "the session keeps no connection over the store read"
+            return await offers(org_ids)
+        monkeypatch.setattr(runtime, "counter_offers", asked)
+        [team] = await table.account_teams(db, user_id=caller.user.id, only_org_id=None)
+    assert team["org_id"] == org_id and team["balance_micro"] == GRANT
+
+
+async def test_a_team_off_the_allowance_is_not_shown_what_its_counter_holds(
+        org_id, store, monkeypatch):
+    """No call of a team taken off the allowance takes from its counter, so what the counter
+    holds is not spendable until the idle sweep returns it."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 1_000)
+    monkeypatch.setattr(get_settings(), "money_allowance_excluded_org_ids", [org_id])
+    assert await _shown(org_id, caller) == {0}
+
+
+async def test_the_daily_cap_counts_a_call_with_the_platform_margin(org_id, store, monkeypatch):
+    """The day's committed spend counts holds as they are taken, margin applied, so a call is
+    checked against the cap at that same figure: what a give-back must free, and what the
+    retry admits, are the margin-applied amount."""
+    monkeypatch.setattr(get_settings(), "platform_margin", 0.5)
+    cap = CHUNK + 100_000
+    async with session_maker() as db:
+        await db.execute(update(Org).where(Org.id == org_id).values(daily_cap_micro=cap))
+        await db.commit()
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 4_000)
+    await call_reserve._platform_reserve(_call(org_id, estimate=100_000), caller,
+                                         call_ref="routed:r0")
+    assert await _per_call_holds(org_id) == ["routed:r0"]
+    assert await _given_back(org_id) == [CHUNK - 4_000]
+    async with session_maker() as db:
+        assert await allowance.committed_today(db, org_id) == 4_000 + 150_000 <= cap
 
 
 async def test_a_team_that_stopped_calling_is_refilled_to_the_chunk_again(org_id, store, paced):

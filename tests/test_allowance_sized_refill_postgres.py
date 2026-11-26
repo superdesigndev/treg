@@ -236,11 +236,11 @@ class _Process:
         return noted
 
 
-async def test_refusals_of_a_team_out_of_money_cost_one_store_read_each(store, monkeypatch):
+async def test_refusals_of_a_team_out_of_money_ask_the_store_nothing(store, monkeypatch):
     """A team that has run out of money keeps calling from three processes at once, on the
-    exact path and on its allowance, which keeps asking for a refill it cannot have. Each
-    refusal reads the team's counter once, asks for no lease and waits for nothing: a refusal
-    costs what it did before, plus one read."""
+    exact path and on its allowance, which keeps asking for a refill it cannot have. Its money
+    is not there anywhere (`allowance.credit_bound`), so no refusal asks for its counter back:
+    a refusal costs what it did before, plus one statement."""
     real, teams = store
     monkeypatch.setattr(get_settings(), "money_allowance_refill_window_s", 30)
     team, caller = await _team(monkeypatch, teams, "broke", grant=50_000)
@@ -276,8 +276,7 @@ async def test_refusals_of_a_team_out_of_money_cost_one_store_read_each(store, m
     finally:
         for each in processes:
             await each.client.aclose()
-    assert len(asked) == 60 and {tuple(names) for names, _ in asked} == {("allowance_state",)}
-    assert max(waited for _, waited in asked) < 0.25, "no lease waited for"
+    assert asked == []
     async with session_maker() as db:
         assert await ledger.balance_of(db, team) == 50_000
         assert await ledger.open_holds_of(db, team) == []

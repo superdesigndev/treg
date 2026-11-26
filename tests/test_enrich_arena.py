@@ -243,7 +243,10 @@ async def test_batch_waterfall_admits_first_step_for_every_entry(clients, enrich
     assert q["required_micro"] == single["required_micro"] * 2
     async def one_entry_balance(*args):
         return single["required_micro"]
-    monkeypatch.setattr(arena.money, "balance_of", one_entry_balance)
+    monkeypatch.setattr(arena.call_allowance, "spendable", one_entry_balance)
+    async def one_entry_reach(*args):
+        return arena.call_allowance.Reach(single["required_micro"], True)
+    monkeypatch.setattr(arena.call_allowance, "reach", one_entry_reach)
     q = await batch_plan(clients, "waterfall")
     assert not q["affordable"]
     assert (await clients.post(f"/arena/runs/{q['id']}/start")).status_code == 402
@@ -671,21 +674,23 @@ async def test_manual_plan_rechecks_own_key_and_credit_admission(clients, enrich
     target = result['results'][1]
     path = '/arena/runs/' + result['id'] + '/attempts/' + target['id']
     q = (await clients.post(path+'/plan')).json()
-    from treg.domain import money
-    original = money.balance_of
+    money = arena.call_allowance
+    original = money.spendable
     async def empty(*args, **kwargs): return 0
-    monkeypatch.setattr(money, 'balance_of', empty)
+    async def none_found(*args, **kwargs): return money.Reach(0, True)
+    monkeypatch.setattr(money, 'spendable', empty)
+    monkeypatch.setattr(money, 'reach', none_found)
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 402
     assert len(seen) == 1
-    monkeypatch.setattr(money, 'balance_of', original)
+    monkeypatch.setattr(money, 'spendable', original)
     await clients.post('/secrets',json={'name':'hunter','value':'OWN-KEY'})
     before = await _balance(clients)
     async def negative(*args, **kwargs): return -100
-    monkeypatch.setattr(money, 'balance_of', negative)
+    monkeypatch.setattr(money, 'spendable', negative)
     q = (await clients.post(path+'/plan')).json()
     assert q['estimate_micro'] == 0 and q['affordable'] is True
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 200
-    monkeypatch.setattr(money, 'balance_of', original)
+    monkeypatch.setattr(money, 'spendable', original)
     task = arena._owners.get(result['id'])
     if task: await task
     extra = (await clients.get('/arena/runs/'+result['id'])).json()['results'][1]
@@ -1290,9 +1295,10 @@ async def test_verification_credit_admission_and_ownership(clients, enrichment_o
     final = await finish(clients,await plan(clients,mode='waterfall'))
     path = '/arena/runs/'+final['id']+'/attempts/'+final['results'][0]['id']+'/verification'
     q = (await clients.post(path+'/plan')).json()
-    from treg.domain import money
     async def empty(*args,**kwargs): return 0
-    monkeypatch.setattr(money,'balance_of',empty)
+    monkeypatch.setattr(arena.call_allowance,'spendable',empty)
+    async def none_found(*args,**kwargs): return arena.call_allowance.Reach(0, True)
+    monkeypatch.setattr(arena.call_allowance,'reach',none_found)
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 402
     assert (await clients.post(path+'/plan')).json()['affordable'] is False
     assert len(seen) == 1
