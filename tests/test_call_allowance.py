@@ -2356,11 +2356,14 @@ async def test_a_fold_still_waiting_for_a_connection_gives_up_at_the_deadline(
             yield session
 
     monkeypatch.setattr(runtime, "money_session", full_pool)
-    assert await runtime._settled(org_id, "queued", 400) == 400
-    await asyncio.sleep(0.05)
-    loop = asyncio.get_running_loop()
-    assert not [task for task in runtime._background_folds if task.get_loop() is loop]
-    pool_full.set()
+    try:
+        assert await runtime._settled(org_id, "queued", 400) == 400
+        await asyncio.sleep(0.05)
+        loop = asyncio.get_running_loop()
+        assert not [task for task in runtime._background_folds if task.get_loop() is loop]
+    finally:
+        # A fold still waiting would otherwise hold the store fixture's teardown forever.
+        pool_full.set()
     await _background_done()
     assert connected == [] and runtime.money_key(org_id) not in store.leases
 
