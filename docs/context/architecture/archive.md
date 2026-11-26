@@ -13,6 +13,7 @@ sources:
   - src/treg/config.py
   - src/treg/infra/object_store.py
   - src/treg/alembic/versions/0032_archive_body_storage.py
+  - src/treg/alembic/versions/0138_archivesnapshot_reported_headers.py
   - tests/test_archive_r2.py
   - tests/fake_object_store.py
   - scripts/smoke_archive_r2.py
@@ -257,6 +258,18 @@ charge and marks roll back together. Only a storable question is marked. `lookup
 `repeat_for_org`; the settle scales the raw amount (floor division) before the ledger applies the
 margin. `tool_called` carries `cache_price` (`full` | `repeat` | `free`). 100 restores "a hit
 bills like a live call"; 0 makes repeats free.
+
+A hit is settled from the stored answer. A `settle.reported` path reads the stored body as it
+would live. The body carries no provider header, so for a v2 row whose `settle.reported` reads a
+header, `record()` keeps that one header's raw value on the snapshot (`reported_headers`,
+`{name: value}`, the value null when the provider sent none; NULL for a row that reads no header),
+on a caller's answer and on a refresh alike, and `lookup` hands it to the settle with the served
+snapshot. The hit then settles as the live answer did ([money](money.md)): a stored figure is the
+charge, a stored absence is 0 under `missing: 0`. A snapshot with nothing stored for the row's
+current header (every row older than migration 0138, or one recorded while the row read no
+header) leaves the figure unknown: `missing: 0` does not make it free, and it settles by the
+outcome and `bill`, then the hold. The stored value feeds settlement only; the answer the caller
+receives on a hit carries no provider header.
 
 The mark is keyed by `(org_id, key_hash)` and nothing else, so writing one takes no number from
 a sequence: a counter that can run out would make every first-time settle roll back, and a routed

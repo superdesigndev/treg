@@ -385,6 +385,7 @@ def record(
     observation: archive_bodies.StorageReport | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
+    response_headers=None,
 ) -> tuple[str, str]:
     """Schedule one observation of a catalog answer. Returns immediately; the write runs
     off-request on its own session. Call sites gate on `recording()` and 2xx — this function
@@ -396,8 +397,16 @@ def record(
     answer. They are what the audit row keeps so a call can later be joined back to its stored
     bytes (`/calls/{id}/result`). Computed here rather than in `_store` so they are computed
     ONCE (the store reuses them) and are true whether or not the write lands: a shed recording
-    still names the provider's answer."""
+    still names the provider's answer. `response_headers` are the provider's; the snapshot keeps
+    only the one a v2 row settles its reported charge from, so a hit settles as this answer did."""
     global _pending_bytes
+    from .domain.catalog import reported_charge
+    from .domain.catalog import store as catalog_store
+    try:
+        reported = reported_charge.settle_headers(catalog_store.load().by_id.get(endpoint_id),
+                                                  response_headers)
+    except Exception:  # noqa: BLE001 - recording never raises; an unrecorded figure is unknown
+        reported = None
     kh = cache_key(method, endpoint_id, url, caller_body, headers, scope=scope)
     ch = content_hash(body)
     observation = observation or archive_bodies.StorageReport()
@@ -407,7 +416,8 @@ def record(
             method=method, endpoint_id=endpoint_id, provider=provider, url=url,
             caller_body=caller_body, headers=headers, status_code=status_code,
             media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-            observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope),
+            observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope,
+            reported_headers=reported),
             len(body), observation, content_hash=ch)
         if rejection is None:
             return kh, ch
@@ -430,7 +440,8 @@ def record(
         method=method, endpoint_id=endpoint_id, provider=provider, url=url,
         caller_body=caller_body, headers=headers, status_code=status_code,
         media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-        observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope))
+        observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope,
+            reported_headers=reported))
     _pending.add(task)
     # Release bytes AND task when done. NOT redundant with drain()'s own removal: on a running
     # server drain() never fires, and this callback is the only exit from `_pending` — without it
@@ -840,6 +851,7 @@ async def _store(
     plan: archive_bodies.WritePlan | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
+    reported_headers: dict | None = None,
 ) -> None:
     """One recording: upsert the key, append a version, keep the change statistics honest.
 
@@ -902,7 +914,8 @@ async def _store(
                                 caller_body=caller_body, headers=headers, status_code=status_code,
                                 media_type=media_type, body=body, origin=origin,
                                 key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches,
-                                initial_results=initial_results, origin_org_id=origin_org_id, scope=scope)
+                                initial_results=initial_results, origin_org_id=origin_org_id, scope=scope,
+                                reported_headers=reported_headers)
                             stored, reason = plan.storage, plan.reason
                             break
                         except (IntegrityError, NoResultFound):
@@ -1190,6 +1203,7 @@ async def _store_locked(
     initial_results: dict | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
+    reported_headers: dict | None = None,
 ) -> tuple[int, bool] | None:
     from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
@@ -1259,7 +1273,7 @@ async def _store_locked(
             status_code=status_code, media_type=media_type, content_hash=ch,
             body=stored, enc=enc, size_bytes=len(body),
             fetched_at=now, origin=origin, body_storage=plan.storage,
-            origin_org_id=origin_org_id)
+            origin_org_id=origin_org_id, reported_headers=reported_headers)
         # Byte deduplication is independent of usefulness, including empty history.
         if newest is not None and newest.content_hash == ch:
             carrier = newest.body_of or (newest.id if newest_has_body else None)
@@ -1795,6 +1809,7 @@ async def _lookup_key(kh: str, *, entry, endpoint_id: str, result_aware: bool,
         if age_s < 0 or age_s > window:
             return miss("stale")
         pointer = await archive_bodies.pointer(s, newest, "lookup")
+        reported_headers = newest.reported_headers
         repeat = False
         if price_repeat and org_id is not None:
             repeat = (await s.execute(
@@ -1815,6 +1830,8 @@ async def _lookup_key(kh: str, *, entry, endpoint_id: str, result_aware: bool,
     return {"body": body, "media_type": newest.media_type,
             "status_code": newest.status_code, "fetched_at": newest.fetched_at,
             "age_s": age_s, "repeat_for_org": repeat,
+            # What settlement reads off the answer's headers (None: nothing was recorded).
+            "reported_headers": reported_headers,
             # Identities of the served answer, for the audit row's call→archive link.
             "key_hash": kh, "content_hash": newest.content_hash, "version": newest.version}
 
@@ -2086,7 +2103,8 @@ async def _refresh_call(client, key) -> bool:
         record(method=key.req_method or "GET", endpoint_id=key.endpoint_id,
                provider=key.provider, url=key.req_url, caller_body=key.req_body or b"",
                headers=dict(key.req_headers or {}), status_code=resp.status_code,
-               media_type=resp.headers.get("content-type", ""), body=body, origin="refresh")
+               media_type=resp.headers.get("content-type", ""), body=body, origin="refresh",
+               response_headers=resp.headers)
         return True
     except Exception:  # noqa: BLE001 — one dead key must not stop the pass
         _log.warning("archive refresh call failed for %s", key.endpoint_id, exc_info=True)

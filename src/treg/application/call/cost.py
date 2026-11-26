@@ -371,10 +371,14 @@ def _last_line(raw: bytes) -> object:
     return document(last)
 
 
-def reported(terms: dict, doc: object, headers=None) -> int | None:
-    """The provider's own charge for this answer after `scale`, or None when it is unreadable."""
+def reported(terms: dict, doc: object, headers=None, *, archived: bool = False) -> int | None:
+    """The provider's own charge for this answer after `scale`, or None when it is unreadable.
+    An `archived` answer is stored bytes without the provider's headers, so a header figure is
+    unknown on it: None, whatever `missing` says."""
     rule = (terms.get("settle") or {}).get("reported")
     if rule is None or terms.get("reported_micro") is None:
+        return None
+    if "header" in rule and archived:
         return None
     if "header" in rule:
         raw = headers.get(rule["header"]) if headers is not None else None
@@ -461,23 +465,25 @@ def _settled(terms: dict, basis_: dict, hold: int, doc: object, raw: bytes, evid
     return hold if evidence is None else evidence
 
 
-def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None) -> int | None:
+def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None,
+            archived: bool = False) -> int | None:
     """The provider's reported charge: read off this answer, or for an async task the one it
     reported on the submission, which is when the task was billed; a terminal answer's own figure
     is never read."""
     if terminal:
         return submitted if (terms.get("settle") or {}).get("reported") else None
-    return reported(terms, doc, headers)
+    return reported(terms, doc, headers, archived=archived)
 
 
 def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, raw: bytes = b"",
            headers=None, request_data: dict | None = None, terminal: bool = False,
-           submitted: int | None = None) -> tuple[int | None, int]:
+           submitted: int | None = None, archived: bool = False) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
     what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
     today's spelling records it. A `terminal` answer is an async task's, settled with what the
-    provider reported on its `submitted` submission."""
+    provider reported on its `submitted` submission. An `archived` answer is an archive hit,
+    which carries no provider header to report a charge."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -488,7 +494,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if free_when is not None and holds(free_when, {
             **request_document(endpoint, request_values, defaults=True), "response": doc}):
         return 0, 0
-    if (figure := _figure(terms, doc, headers, terminal, submitted)) is not None:
+    if (figure := _figure(terms, doc, headers, terminal, submitted, archived)) is not None:
         return figure, figure
     evidence = _evidence(terms, hold, doc, request, answer)
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
