@@ -746,14 +746,15 @@ async def reach(org_id: int, amount_micro: int) -> Reach:
             return Reach(await spendable(db, org_id, offer or (0, None)), True)
 
 
-async def onto_balance(org_id: int, amount_micro: int) -> bool:
+async def onto_balance(org_id: int, amount_micro: int) -> bool | None:
     """Whether the balance, free of the queue's claims, covers `amount_micro`, the team's
     counter given back to it under the team's money lease when it does not: for a reserve the
     balance refused, which runs again on True. A balance that already covers it (another
     request gave the counter back after the refusal read it) answers at once, and so does a
     team whose money is not there at all (`allowance.credit_bound`): one statement, no store.
-    Waits for the lease no longer than a call waits for a refill. Opens its own sessions: call
-    it with none held."""
+    Waits for the lease no longer than a call waits for a refill. None when the money may be
+    there but could not be moved (the lease busy, the store or the give-back failing): not a
+    confirmed shortfall. Opens its own sessions: call it with none held."""
     async with session_maker() as db:
         free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
@@ -762,23 +763,25 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
             return False
     async with _team_lease(org_id) as lease:
         if lease != "acquired":
-            return False
+            return None
         async with session_maker() as db:
             free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
             return True
         state = await _counter_state(org_id)
-        if state is None or not state[1] or state[0] < amount_micro - free:
+        if state is None:
+            return None
+        if not state[1] or state[0] < amount_micro - free:
             return False
         try:
             returned = await _give_back(org_id, state[1])
         except money_admission.AdmissionTimeout:
-            return False
+            return None
         except Exception:
             # The call is refused as it would have been: never an error of the give-back's own.
             log.error("returning the allowance of org %s for the exact path failed", org_id,
                       exc_info=True)
-            return False
+            return None
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
     return free + returned >= amount_micro

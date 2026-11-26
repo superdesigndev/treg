@@ -548,7 +548,10 @@ past the bound do not make every new team scan them.
   leaves room (another request gave the counter back first). A reserve the balance refuses, the
   hub's price hold (`hub.runner._reserve_price`) included, asks `onto_balance`, which gives the
   counter back, or finds it already given back, and runs again when the balance then covers the
-  call.
+  call. It answers None, not False, when the money may be there but could not be moved (the
+  lease busy past the wait, the store or the give-back failing): a refusal either way, but only
+  False is a confirmed shortfall, the one a keyless wallet's payment settles on
+  (agent-payments.md).
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing

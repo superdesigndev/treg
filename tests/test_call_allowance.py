@@ -4369,6 +4369,22 @@ async def test_a_balance_an_overrun_left_below_zero_takes_the_counter_back_for_a
     assert await _given_back(org_id) == [GRANT - 1_000]
 
 
+async def test_a_counter_that_cannot_be_given_back_is_no_shortfall(org_id, store, monkeypatch):
+    """The balance is short and the counter holds the money, but another request holds the
+    team's money lease past the wait: `onto_balance` cannot confirm the shortfall, which a
+    caller that pays on a shortfall must not read as one. A team with no money says so."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.take(org_id, 1_000)
+
+    async def held(*args, **kwargs):
+        return "held"
+
+    monkeypatch.setattr(store, "acquire_lease", held)
+    assert await runtime.onto_balance(org_id, 50_000) is None
+    assert await runtime.onto_balance(org_id, 2 * GRANT) is False
+
+
 async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short(
         org_id, store, monkeypatch):
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
