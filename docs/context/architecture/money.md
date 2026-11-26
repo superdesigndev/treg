@@ -679,8 +679,8 @@ past the bound do not make every new team scan them.
   balance or daily cap, and the team goes back to the exact path). A long queue makes that one
   request slow; the order, fold then return, is what keeps the returned money from being spent
   twice. The first of them is optional, so it is bounded like the loop's: `_fold_backlog`
-  folds at most `_BACKLOG_BATCHES` for the call in all (a call that comes back after another
-  fold keeps what it has left), asks `admit` to refuse after a short wait, waits at most
+  folds a batch at a time and reads the call's entry after each, at most `_BACKLOG_BATCHES`
+  for the call in all (a call that comes back after another fold keeps what it has left), asks `admit` to refuse after a short wait, waits at most
   `LOCK_WAIT_MS` for the team's row locks, and never starts while this process has a money
   session of the team open (the team's lock is looked up again after the lease wait, since an
   idle one can be pruned meanwhile). A call that finds one open waits for it holding no

@@ -426,66 +426,66 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
 
 class _Fold(enum.Enum):
     SHORT = "short"  # the queue is short now
+    MORE = "more"  # one batch folded, and more may be queued
     HERE = "here"  # this process has a money session of the team open
     ELSEWHERE = "elsewhere"  # another process has the team's lease
     GAVE_UP = "gave_up"  # admission or row locks not free in time, too long a queue, or a fault
 
 
 async def _fold_backlog(org_id: int, budget: list[int]) -> _Fold:
-    """Fold a team's queued charges now, a batch per transaction, until the queue is short. For
-    a call that must know what the ledger took for it (`_settled`); everything else is left to
-    the background loop. Calls keep taking from the counter meanwhile, since a fold moves only
-    money their takes already removed from it.
+    """Fold one batch of a team's queued charges now, in its own transaction. For a call that
+    must know what the ledger took for it (`_settled`), which reads its entry after each batch
+    and comes back while the queue is long; everything else is left to the background loop.
+    Calls keep taking from the counter meanwhile, since a fold moves only money their takes
+    already removed from it.
 
     It never waits on another fold, here or elsewhere, and never waits long for the team's
     admission or row locks while it holds a connection: the call is answering, and the
     background fold applies the queue anyway. `budget` holds the batches the call has left and
-    is spent here, so a call that comes back after another fold still folds no more than
-    `_BACKLOG_BATCHES` in all."""
+    is spent here, so a call folds no more than `_BACKLOG_BATCHES` in all."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     try:
-        while budget[0] > 0:
-            # The lease is given up between batches, and a moment left for a refill to take it:
-            # calls are waiting on a refill, nobody is waiting on this.
-            await asyncio.sleep(0.05)
-            if money_lock(org_id).locked():
+        if budget[0] <= 0:
+            return _Fold.GAVE_UP
+        # The lease is given up between batches, and a moment left for a refill to take it:
+        # calls are waiting on a refill, nobody is waiting on this.
+        await asyncio.sleep(0.05)
+        if money_lock(org_id).locked():
+            return _Fold.HERE
+        try:
+            acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        except BaseException:
+            # The store may have granted the lease before the call stopped waiting for its
+            # answer: give back whatever this token holds, or the team's refills and the
+            # background fold wait for it to expire. Release deletes only this token's.
+            await asyncio.shield(store.release_lease(key, token))
+            raise
+        if acquired != "acquired":
+            # The lease may be held by this process's own fold, which took it while this
+            # call waited for the store: its lock says so.
+            return _Fold.HERE if money_lock(org_id).locked() else _Fold.ELSEWHERE
+        try:
+            # Asked for again after the wait: an idle lock can be pruned meanwhile, and the
+            # one this process's other calls test is the one now in the map. Nothing is
+            # awaited between this test and taking it, so a free lock is taken at once.
+            lock = money_lock(org_id)
+            if lock.locked():
                 return _Fold.HERE
-            try:
-                acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
-            except BaseException:
-                # The store may have granted the lease before the call stopped waiting for its
-                # answer: give back whatever this token holds, or the team's refills and the
-                # background fold wait for it to expire. Release deletes only this token's.
-                await asyncio.shield(store.release_lease(key, token))
-                raise
-            if acquired != "acquired":
-                # The lease may be held by this process's own fold, which took it while this
-                # call waited for the store: its lock says so.
-                return _Fold.HERE if money_lock(org_id).locked() else _Fold.ELSEWHERE
-            try:
-                # Asked for again after the wait: an idle lock can be pruned meanwhile, and the
-                # one this process's other calls test is the one now in the map. Nothing is
-                # awaited between this test and taking it, so a free lock is taken at once.
-                lock = money_lock(org_id)
-                if lock.locked():
-                    return _Fold.HERE
-                async with (
-                    lock,
-                    money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="close",
-                        max_wait_s=_REFILL_WAIT_S, refuse_on_timeout=True),
-                    money_session(session_maker()) as db,
-                ):
-                    budget[0] -= 1
-                    await bound_lock_wait(db)
-                    folded = await allowance.fold_charges_in_transaction(
-                        db, org_id, limit=_BACKLOG_FOLD)
-                    await db.commit()
-            finally:
-                await store.release_lease(key, token)
-            if folded.claimed < _BACKLOG_FOLD:
-                return _Fold.SHORT
-        return _Fold.GAVE_UP
+            async with (
+                lock,
+                money_admission.admit(
+                    money_admission.require_balance_orgs([org_id]), operation="close",
+                    max_wait_s=_REFILL_WAIT_S, refuse_on_timeout=True),
+                money_session(session_maker()) as db,
+            ):
+                budget[0] -= 1
+                await bound_lock_wait(db)
+                folded = await allowance.fold_charges_in_transaction(
+                    db, org_id, limit=_BACKLOG_FOLD)
+                await db.commit()
+        finally:
+            await store.release_lease(key, token)
+        return _Fold.SHORT if folded.claimed < _BACKLOG_FOLD else _Fold.MORE
     except money_admission.AdmissionTimeout:
         return _Fold.GAVE_UP
     except Exception as exc:
@@ -1055,9 +1055,10 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
                     settled = await allowance.settled_micro(db, org_id, call_id)
                 if settled is not None:
                     return settled
-                if outcome is _Fold.GAVE_UP:
+                if outcome in (_Fold.GAVE_UP, _Fold.SHORT):
                     break
-                await asyncio.sleep(0.05)
+                if outcome is _Fold.ELSEWHERE:
+                    await asyncio.sleep(0.05)
     except TimeoutError:
         pass
     except Exception:

@@ -2093,6 +2093,34 @@ async def test_a_call_cancelled_while_the_store_grants_its_lease_leaves_no_lease
     assert runtime.money_key(org_id) not in store.leases
 
 
+async def test_a_call_answers_from_the_first_batch_that_wrote_its_entry(org_id, store, monkeypatch):
+    """The queue is longer than a batch and the call's charge is in the first one. It reads its
+    entry after that batch commits, rather than folding on and answering with its charge when
+    a slower second batch runs past the deadline."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.3)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index}", org_id, "e", 10, reserved_micro=10)
+            for index in range(4)])
+        await db.commit()
+    fold, batches = allowance.fold_charges_in_transaction, []
+
+    async def second_batch_is_slow(db, org, **kwargs):
+        batches.append(True)
+        if len(batches) > 1:
+            await asyncio.sleep(5)
+        return await fold(db, org, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", second_batch_is_slow)
+    async with session_maker() as db:
+        first = set((await db.execute(select(CallCharge.call_id).where(
+            CallCharge.org_id == org_id).limit(2))).scalars())
+    call_id = sorted(first)[0]
+    assert await runtime._settled(org_id, call_id, 99) == 10
+    assert batches == [True]
+
+
 @pytest.mark.parametrize("slow", ["fold", "read"])
 async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
         org_id, store, monkeypatch, slow):
