@@ -199,26 +199,9 @@ that account's access key.
    refuses a suspended team or member with 403 `payer_suspended`, as `require_member` does on the
    account path, before the proof is claimed or anything settles. `agentpayer` and `agentpayment`
    carry `org_id` with no foreign key (AGENTS.md); team deletion removes both.
-3. `_may_draw`: a deferrable payment is tried on the credit the wallet already holds when the
-   team's money wherever it sits (`allowance.credit_bound`, from the database alone) covers the
-   call; below that the team cannot pay now, and it settles. A keyless wallet's call takes no
-   allowance (`reserve.PayOnShort`): its reservations hold from the balance alone, so a balance
-   refusal is a real shortfall, never money waiting in a counter. A call that drew credit and
-   whose reservation the balance refuses (an allowance hold left from before given back first)
-   settles the same payment there (`DrawnCall.pay` through the request's `PayOnShort`, the row
-   moving from `credit` to `settling` with its fee), once per request, with no session held, and
-   that reservation runs again in place: the reservation alone, under the same Idempotency-Key
-   claim and rate admission, a daily-cap recheck included. Only a reservation before any call of
-   the request has gone out (`reserve.going_out`) pays; one after (an overflow child once the
-   direct call failed) is refused and the wallet answered treg's own 503, not a 402 that would
-   draw the same credit again. No reservation of the request may hold more than the call's quote
-   (`payment_quote_exceeded`, 503: an overflow priced above the direct call), so the wallet is
-   never charged above what it was told. A settlement that cannot be confirmed answers 503
-   `payment_outcome_unknown`, logged as treg's refusal. The proof path (`_admit_proof`) asks the same before it claims the proof;
-   a proof has nothing to settle, so its refused call answers the `credit_insufficient` 402.
-4. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
+3. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
    `settling` and commits. A unique violation is a replay: 402 with a fresh challenge.
-5. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that
+4. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that
    disconnects mid-settlement is still credited when the transfer lands. No session is open during
    `rail.settle`. A definite refusal marks the row `failed` and answers 402; no call runs and no
    money moves. An unknown outcome (`settlement_unknown`: the node or facilitator did not answer
@@ -226,9 +209,12 @@ that account's access key.
    and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again; the
    reconciler resolves it later. Success tops up and marks the row `settled` in one transaction
    (`_credit`).
-6. The request headers minus every payment credential header, whichever rails are on
+5. The request headers minus every payment credential header, whichever rails are on
    (`agent_payments.consumes`), go to the call as
-   the payer team. Every answer after this point, a refusal included, carries
+   the payer team. The call takes no allowance (`reserve.keyless_payer`, set by the router for
+   the whole call, routed and overflow children included): the draw-or-settle decision read the
+   team's balance, so no reservation moves that balance into an allowance counter, where it
+   would read as missing and settle a payment the credit covered. Every answer after this point, a refusal included, carries
    `X-Treg-Payment: paid|credit`, `X-Treg-Credit-Micro` (the payer's credit once the call has
    settled or released) and, when this payment settled, `X-Treg-Paid-Micro` and
    `X-Treg-Payment-Reference: <transaction>`; `X-Treg-Cost-Micro` is the call's charge as on

@@ -375,26 +375,14 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 503, exc.detail, [])
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
-    # A call drawing the wallet's credit pays from its reservation when its balance is short,
-    # before anything has gone out, and that reservation runs again in place
-    # (`call_reserve.PayOnShort`).
-    drawn = agent_payments.DrawnCall(paid) if paid.admission.settlement is None else None
-    payer = (call_reserve.PayOnShort(drawn.pay, quote_micro=paid.paid.quote_micro)
-             if drawn is not None else None)
-    token = call_reserve.pay_on_short.set(payer)
+    # The wallet's credit is its team's balance, which decided whether this payment draws it:
+    # no reservation of the call moves that balance into the allowance (`keyless_payer`).
+    keyless = call_reserve.keyless_payer.set(True)
     try:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
-        if drawn is not None:
-            paid = drawn.call
-            if isinstance(drawn.refusal, agent_payments.PaymentChallenge):
-                return await _payment_refusal(request, 402, drawn.refusal.detail,
-                                              drawn.refusal.headers)
-            if isinstance(drawn.refusal, agent_payments.PaymentPending):
-                return await _payment_refusal(request, 503, drawn.refusal.detail, [])
-        if (exc.status_code == 402 and paid.admission.settlement is None
-                and (payer is None or not payer.sent)):
+        if exc.status_code == 402 and paid.admission.settlement is None:
             # The credit was spent by another call between the check and the hold: ask this
             # wallet to pay, as a payment client expects of a 402.
             challenge = await agent_payments.credit_short(paid.paid, int(paid.caller.org.id))
@@ -407,9 +395,7 @@ async def _paid_call(rest: str, request: Request) -> Response:
                        **dict(await paid.answer_headers())}
         raise
     finally:
-        call_reserve.pay_on_short.reset(token)
-    if drawn is not None:
-        paid = drawn.call
+        call_reserve.keyless_payer.reset(keyless)
     for name, value in await paid.answer_headers():
         response.headers[name] = value
     for name, value in paid.receipt_headers(response.status_code):
@@ -434,8 +420,6 @@ async def agent_payment_credit(request: Request) -> Response:
     except agent_payments.PaymentChallenge as exc:
         return _credit_refusal(402, exc.detail, exc.headers)
     return JSONResponse(view, headers={"Cache-Control": "no-store"})
-
-
 
 
 def _credit_refusal(status: int, detail: dict, headers: list[tuple[str, str]]) -> Response:

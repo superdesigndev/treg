@@ -32,7 +32,6 @@ from .. import ratestore
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.governance.teams import make_payer_team
-from ..domain.money import allowance as money_allowance
 from ..domain.identity.access import Caller
 from ..infra import stripe as stripe_api
 from ..infra.agent_payments import (
@@ -41,8 +40,6 @@ from ..infra.agent_payments.tempo import CONSUMED_HEADERS as MPP_HEADERS
 from ..infra.agent_payments.x402 import CONSUMED_HEADERS as X402_HEADERS
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
-from .call import allowance as call_allowance
-from .call import reserve as call_reserve
 from .call.resolve import (
     QueryValues, _catalog_endpoint_for, async_utility, platform_quote, wallet_refusal)
 
@@ -96,10 +93,6 @@ class PayerAdmission:
     caller: Caller
     verified: Verified
     settlement: Settlement | None   # None: the call draws credit the payer already holds
-    # A payment drawing credit keeps what settling it needs, for a call the credit turns out
-    # not to cover (`DrawnCall.pay`). None for a proof, which moves no money.
-    rail: PaymentRail | None = None
-    payment_id: int | None = None
 
 
 class PaymentPending(Exception):
@@ -358,9 +351,8 @@ async def credit_short(paid: PaidOffer, org_id: int | None) -> PaymentChallenge:
     """The 402 for a proven wallet whose credit does not cover the call: payment challenges only."""
     credit = 0
     if org_id is not None:
-        offer = await call_allowance.counter_offer(org_id)
         async with session_maker() as db:
-            credit = max(await call_allowance.spendable(db, org_id, offer), 0)
+            credit = max(await ledger.balance_of(db, org_id), 0)
     return await challenge(paid, reason="credit_insufficient", offer_proof=False,
                            message=f"this wallet's credit (${ledger.usd(credit):g}) does not cover "
                                    "this call")
@@ -405,71 +397,29 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         org_id = await _payer_org(verified.network, verified.payer)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
-    draw = verified.deferrable and await _may_draw(org_id, paid.quote_micro)
-    payment_id, draw = await _claim(verified, org_id, draw)
+    payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
     if draw is None:
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
-    if draw:
-        return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None,
-                              rail=None if paid.proof_only else rail, payment_id=payment_id)
-    settlement = await _settle(rail, verified, paid, payment_id, org_id)
-    return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
-
-
-async def _settle(rail: PaymentRail, verified: Verified, paid: PaidOffer, payment_id: int | None,
-                  org_id: int) -> Settlement:
-    """Settle the payment and credit the payer team. A settlement outlives the request: a caller
-    that disconnects mid-settlement must still be credited for a transfer that lands, so the
-    work runs as its own task. Raises PaymentPending or a PaymentChallenge."""
-    work = asyncio.ensure_future(_settle_and_credit(rail, verified, paid, payment_id, org_id))
-    _inflight.add(work)
-    work.add_done_callback(_forget)
-    try:
-        return await asyncio.shield(work)
-    except PaymentRejected as exc:
-        if exc.code == "settlement_unknown":
-            raise PaymentPending({
-                "error": "payment_outcome_unknown", "endpoint_id": paid.endpoint_id,
-                "message": ("treg could not confirm the settlement of this payment, so the "
-                            "call was not made. If the transfer lands it is kept as this "
-                            "wallet's credit; do not send this payment again."),
-            }) from exc
-        raise await challenge(paid, reason=exc.code, message=exc.message) from exc
-
-
-class DrawnCall:
-    """A call that drew its wallet's credit, as the reservation's `PayOnShort` sees it: when its
-    balance refuses a reservation before any of the call has gone out, `pay` settles the payment
-    the call carried and the reservation runs again in place. `call` is the call as
-    it stands (settled once paid); `refusal` is the PaymentChallenge or PaymentPending a failed
-    settlement raised, for the caller to answer with."""
-
-    def __init__(self, call: "PaidCall") -> None:
-        self.call, self.refusal = call, None
-
-    async def pay(self) -> bool:
-        admission = self.call.admission
-        if admission.settlement is not None or admission.rail is None or admission.payment_id is None:
-            return False
-        org_id = int(self.call.caller.org.id)
-        async with session_maker() as db:
-            row = await db.get(AgentPayment, admission.payment_id)
-            row.status, row.fee_micro, row.updated_at = (
-                "settling", fee_of(admission.verified.amount_micro), _now())
-            db.add(row)
-            await db.commit()
+    settlement = None
+    if not draw:
+        # A settlement outlives the request: a caller that disconnects mid-settlement must still
+        # be credited for a transfer that lands, so the work runs as its own task.
+        work = asyncio.ensure_future(_settle_and_credit(rail, verified, paid, payment_id, org_id))
+        _inflight.add(work)
+        work.add_done_callback(_forget)
         try:
-            settlement = await _settle(admission.rail, admission.verified, self.call.paid,
-                                       admission.payment_id, org_id)
-        except PaymentChallenge as exc:
-            self.refusal = exc
-            return False
-        except PaymentPending as exc:
-            self.refusal = exc
-            raise call_reserve.PaymentOutcomeUnknown(exc.detail) from exc
-        self.call = replace(self.call, admission=replace(admission, settlement=settlement))
-        return True
+            settlement = await asyncio.shield(work)
+        except PaymentRejected as exc:
+            if exc.code == "settlement_unknown":
+                raise PaymentPending({
+                    "error": "payment_outcome_unknown", "endpoint_id": paid.endpoint_id,
+                    "message": ("treg could not confirm the settlement of this payment, so the "
+                                "call was not made. If the transfer lands it is kept as this "
+                                "wallet's credit; do not send this payment again."),
+                }) from exc
+            raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+    return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
 
 
 async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
@@ -481,7 +431,11 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
             raise await challenge(paid, reason="unknown_wallet",
                                   message="this wallet has started no task on treg")
     else:
-        if org_id is None or not await _may_draw(org_id, paid.quote_micro):
+        credit = 0
+        if org_id is not None:
+            async with session_maker() as db:
+                credit = await ledger.balance_of(db, org_id)
+        if org_id is None or credit < paid.quote_micro:
             raise await credit_short(paid, org_id)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
@@ -597,20 +551,12 @@ async def _payer_org(network: str, address: str) -> int:
     raise RuntimeError("payer team could not be created")
 
 
-async def _may_draw(org_id: int, quote_micro: int) -> bool:
-    """Whether the call is tried on the credit the wallet already holds: when the team's money
-    wherever it sits (`allowance.credit_bound`, from the database alone) covers it. Below that
-    the team cannot pay now, so the payment settles. Above it, whether the credit can be spent
-    is the call's own reservation to find (`DrawnCall.pay`): a reading taken here, across
-    the store and the database while calls take and give back, could only guess."""
+async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int | None, bool | None]:
+    """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
+    before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
     async with session_maker() as db:
-        return await money_allowance.credit_bound(db, org_id) >= quote_micro
-
-
-async def _claim(verified: Verified, org_id: int, draw: bool) -> tuple[int | None, bool | None]:
-    """Record the proof as used, with whether it draws credit (`_may_draw`) or must settle. A proof
-    seen before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
-    async with session_maker() as db:
+        balance = await ledger.balance_of(db, org_id)
+        draw = verified.deferrable and balance >= quote_micro
         row = AgentPayment(
             proof_id=verified.proof_id, protocol=verified.protocol, network=verified.network,
             payer_address=verified.payer, org_id=org_id, amount_micro=verified.amount_micro,
@@ -700,9 +646,8 @@ class PaidCall:
 
     async def answer_headers(self) -> list[tuple[str, str]]:
         """Which money paid, and the credit left once the call has settled or released."""
-        offer = await call_allowance.counter_offer(int(self.caller.org.id))
         async with session_maker() as db:
-            credit = await call_allowance.spendable(db, int(self.caller.org.id), offer)
+            credit = await ledger.balance_of(db, int(self.caller.org.id))
         return [*payment_headers(self.admission), ("X-Treg-Credit-Micro", str(max(credit, 0)))]
 
     def receipt_headers(self, status: int) -> list[tuple[str, str]]:
@@ -776,9 +721,8 @@ async def credit_of(headers: Mapping[str, str]) -> dict:
     org_id = await _known_payer_org(verified.network, verified.payer)
     credit, recent = 0, []
     if org_id is not None:
-        offer = await call_allowance.counter_offer(org_id)
         async with session_maker() as db:
-            credit = max(await call_allowance.spendable(db, org_id, offer), 0)
+            credit = max(await ledger.balance_of(db, org_id), 0)
             rows = (await db.execute(
                 select(AgentPayment).where(AgentPayment.org_id == org_id)
                 .order_by(AgentPayment.created_at.desc(), AgentPayment.id.desc())

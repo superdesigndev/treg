@@ -61,7 +61,7 @@ from .evidence import (
 )
 from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
 from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_intake
-from .reserve import _enforce_tag_budgets, _platform_reserve, going_out as _going_out
+from .reserve import _enforce_tag_budgets, _platform_reserve
 from .resolve import (
     AUTHORIZATION_METHOD_HEADER,
     MarketplaceCall,
@@ -1513,8 +1513,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # content reaches it. A tag-cap detail carries the tag's `val`, the caller's own identifier,
             # bounded by the same redaction and retention as the request bodies.
             _audit(exc.status_code, charged_micro=0, failure=exc,
-                   refused_by=(None if exc.status_code >= 500 else
-                               "balance" if exc.status_code == 402 else "cap"),
+                   refused_by="balance" if exc.status_code == 402 else "cap",
                    error_response=(
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,
@@ -1522,7 +1521,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             if exc.kind in _MEMBER_SPEND_REFUSALS:
                 await return_daily_slot(caller, slot_day)
             raise
-    _going_out()
     body = b""
     task_answer: bytes | None = None
     task_answer_read = False

@@ -18,7 +18,7 @@ from sqlalchemy import event, select, update
 from sqlalchemy.exc import DBAPIError
 
 from treg.application import allowance_sweep
-from treg.application import agent_payments, billing, home, table
+from treg.application import billing, home, table
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as runtime
 from treg.application.call import reserve as call_reserve
@@ -4807,86 +4807,25 @@ async def test_a_balance_refusal_read_before_another_request_gave_the_counter_ba
     assert await _per_call_holds(org_id) == ["routed:r0"] and len(seen) == 2
 
 
-async def test_a_wallet_pays_after_a_cap_recheck_and_takes_no_allowance(
-        org_id, store, monkeypatch):
-    """The day's cap refused, the counter went back and every check ran again: the rerun is the
-    same reservation, so a keyless wallet whose balance is short still pays from it, once, and
-    the hold is taken. A wallet's reservation never takes from the allowance."""
+async def test_a_keyless_wallet_s_reservation_takes_no_allowance(org_id, store, monkeypatch):
+    """A keyless wallet's call holds from its team's balance alone: the payment path decided on
+    that balance, so no reservation of the call moves it into the allowance."""
     caller = await _caller(org_id)
-    cap, paid, taken = [], [], []
+    taken = []
 
-    async def cap_once(caller, add_micro, db):
-        cap.append(1)
-        if len(cap) == 1:
-            raise ReservationFailed("platform_daily_cap_reached", status_code=429, detail={
-                "error": "platform_daily_cap_reached", "spent_today_micro": GRANT,
-                "daily_cap_micro": GRANT, "estimated_cost_micro": add_micro})
-
-    real = ledger.reserve_in_transaction
-
-    async def short_until_paid(db, org, *args, **kwargs):
-        if not paid:
-            raise ledger.InsufficientBalance(org, 0, 80_000)
-        return await real(db, org, *args, **kwargs)
-
-    async def given_back(org_id, excess_micro):
-        return True
-
-    async def no_take(*args, **kwargs):
+    async def take(*args, **kwargs):
         taken.append(1)
+        return 1
 
-    async def pay():
-        paid.append(1)
-        return True
-
-    monkeypatch.setattr(call_reserve, "_enforce_platform_daily_cap", cap_once)
-    monkeypatch.setattr(ledger, "reserve_in_transaction", short_until_paid)
-    monkeypatch.setattr(runtime, "give_back_for_exact_path", given_back)
-    monkeypatch.setattr(runtime, "take", no_take)
+    monkeypatch.setattr(runtime, "take", take)
     monkeypatch.setattr(runtime, "listed", lambda org_id: True)
-    call = _call(org_id, estimate=80_000)
-    quote = ledger.with_margin(max(call.estimate_micro, call.worst_case_micro))
-    token = call_reserve.pay_on_short.set(call_reserve.PayOnShort(pay, quote_micro=quote))
+    token = call_reserve.keyless_payer.set(True)
     try:
-        await call_reserve._platform_reserve(call, caller, allow_allowance=True,
-                                             call_ref="paid-after-cap")
-        assert paid == [1] and taken == []
-        assert await _per_call_holds(org_id) == ["paid-after-cap"]
+        await call_reserve._platform_reserve(_call(org_id, estimate=1_000), caller,
+                                             allow_allowance=True, call_ref="keyless")
     finally:
-        call_reserve.pay_on_short.reset(token)
-
-
-async def test_a_wallet_reservation_pays_only_before_anything_went_out_and_within_its_quote(
-        org_id, store, monkeypatch):
-    """After a call of the request went out (an overflow child once the direct call failed),
-    a short balance is an ordinary refusal: nothing settles. A reservation above the quote the
-    wallet was told is refused before any balance is read."""
-    caller = await _caller(org_id)
-    paid = []
-
-    async def short(db, org, *args, **kwargs):
-        raise ledger.InsufficientBalance(org, 0, 80_000)
-
-    async def pay():
-        paid.append(1)
-        return True
-
-    monkeypatch.setattr(ledger, "reserve_in_transaction", short)
-    call = _call(org_id, estimate=80_000)
-    quote = ledger.with_margin(max(call.estimate_micro, call.worst_case_micro))
-    payer = call_reserve.PayOnShort(pay, quote_micro=quote)
-    token = call_reserve.pay_on_short.set(payer)
-    try:
-        call_reserve.going_out()
-        with pytest.raises(ReservationFailed) as refused:
-            await call_reserve._platform_reserve(call, caller, call_ref="after-out")
-        assert refused.value.kind == "insufficient_balance" and paid == []
-        with pytest.raises(ReservationFailed) as refused:
-            await call_reserve._platform_reserve(_call(org_id, estimate=3 * quote), caller,
-                                                 call_ref="over-quote")
-        assert refused.value.kind == "payment_quote_exceeded" and paid == []
-    finally:
-        call_reserve.pay_on_short.reset(token)
+        call_reserve.keyless_payer.reset(token)
+    assert taken == [] and await _per_call_holds(org_id) == ["keyless"]
 
 
 async def test_a_cap_refusal_read_before_another_request_gave_the_counter_back_runs_again(
@@ -4953,15 +4892,6 @@ async def test_a_hub_price_hold_takes_the_counter_back_when_the_balance_is_short
     assert await hub_runner._reserve_price(parent, tool, "run-1", 80_000) == 80_000
     assert await _per_call_holds(org_id) == ["run-1:price"]
     assert await _given_back(org_id) == [GRANT - 4_000]
-
-
-async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_paying_again(
-        org_id, store, monkeypatch):
-    """Whether a paying wallet's call draws its credit or settles a new transfer reads the
-    balance it is shown: credit on the allowance counter is credit."""
-    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    assert await runtime.take(org_id, 1_000)
-    assert await agent_payments._may_draw(org_id, 50_000) is True
 
 
 def _moved_by_another(store, org_id: int, move) -> asyncio.Task:

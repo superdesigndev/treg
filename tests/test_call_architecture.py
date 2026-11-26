@@ -42,12 +42,6 @@ _DATAPLANE_DERIVED_WRITES = {
         (archive._store, "archive_bodies.prepare"),
         (archive_bodies.prepare, "_store.put"),
     ),
-    # A keyless wallet's call that drew credit settles the payment it carried from the
-    # reservation its team's money cannot cover anywhere (agent-payments.md): the payment row and
-    # its `topup`, written by agent_payments through the request's PayOnShort, no session held.
-    "keyless_payment_on_short": (
-        (reserve._platform_reserve, "payer.pay"),
-    ),
     "auto_topup_task": (
         (reserve._platform_reserve, "billing.maybe_schedule_autotopup"),
         (billing.maybe_schedule_autotopup, "loop.create_task"),
@@ -208,7 +202,6 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "money_admission_lease",
     "archive_body_object",
     "auto_topup_task",
-    "keyless_payment_on_short",
     "public_demo_ratestore_hit",
     "first_call_adconversion_outbox",
     "lazy_stale_hold_reap",
@@ -245,7 +238,7 @@ _DERIVED_WRITE_FILES = {
         "billing.maybe_schedule_autotopup", "money_admission.admit", "reserve_admission",
         "ledger.reap_stale_holds", "allowance_runtime.take",
         "allowance_runtime.give_back_for_exact_path",
-        "idempotency.mark_in_flight", "idempotency.clear_in_flight", "payer.pay",
+        "idempotency.mark_in_flight", "idempotency.clear_in_flight",
     },
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
@@ -346,7 +339,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/reserve.py", "_platform_reserve",
      "allowance_runtime.give_back_for_exact_path"),
     ("application/call/reserve.py", "_platform_reserve", "allowance_runtime.take"),
-    ("application/call/reserve.py", "_platform_reserve", "payer.pay"),
     ("application/call/reserve.py", "_schedule_autotopup_after", "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_cleanup", "allowance_runtime.finish"),
     ("application/call/settle.py", "_finish_cancelled_call", "allowance_runtime.finish"),

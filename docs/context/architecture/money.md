@@ -558,8 +558,8 @@ past the bound do not make every new team scan them.
   leaves room (another request gave the counter back first). A reserve the balance refuses, the
   hub's price hold (`hub.runner._reserve_price`) included, asks `onto_balance`, which gives the
   counter back, or finds it already given back, and runs again when the balance then covers the
-  call. A keyless wallet's call takes no allowance, so its balance refusal is a real shortfall
-  (agent-payments.md).
+  call. A keyless wallet's call takes no allowance (`reserve.keyless_payer`), so its team's
+  balance is all its credit (agent-payments.md).
 - **finish.** `_platform_settle` and the cancel cleanup end a take exactly once (`mk.allowance_epoch`
   is cleared first). A billable call queues its charge, then gives back what it did not use; a
   call that is not billable gives everything back and writes nothing. Charges of calls finishing
@@ -802,8 +802,7 @@ it there until the idle sweep. A store that cannot answer shows the balance alon
 a store read, taken before a session holds a connection or a lock where the caller can, and for
 several teams at once in one round (`counter_offers`). `GET /orgs/{id}/balance`, the billing
 state the dashboard reads, the CLI's home, the Sheets panel's teams, the team choice on the MCP
-consent page, a paying wallet's `X-Treg-Credit-Micro`, and the arenas' quotes and start checks
-read this figure; the route's `holds` lists only calls on holds of their own.
+consent page, and the arenas' quotes and start checks read this figure; the route's `holds` lists only calls on holds of their own.
 
 The figure reads two stores one after the other, so a refill or a give-back moving money between
 them can make one reading short or long by what moved. It is shown, and a long reading costs
@@ -818,8 +817,8 @@ made between the two readings can still move the sum by that much; an arena deci
 refusal, or a start whose calls each reserve their own money. A store that cannot answer leaves the
 database alone, as no call can take from a counter then either. A lease another request keeps, or
 a background fold has claimed (`acquire_money_lease`), for as long as a call waits for a refill
-makes the answer unsure. A paying wallet decides nothing on it: its calls take no allowance, and a
-payment settles when a reservation's balance is short (agent-payments.md). An arena run's start never decides inside its session: its check (`short_of`) raises
+makes the answer unsure. A paying wallet decides nothing on it: its calls take no allowance, so
+its team's balance is its credit, which the payment path reads (agent-payments.md). An arena run's start never decides inside its session: its check (`short_of`) raises
 `CreditShort`, `gives_counter_back` asks `reach` outside it and runs the start again with the
 answer, or refuses (402) or asks for another try (409); its quote takes whether the team can pay
 from `reach` (`balance_for`) and shows `reach`'s figure when it can, the team's money wherever it
@@ -1922,7 +1921,9 @@ cross-team money movement in treg.
 A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-payments.md)) is a
 payer team per wallet address and network. A payment confirmed on chain is an ordinary `topup` on that team,
 `payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
-transaction; then the call reserves, settles or releases as any team's call. The topup is booked
+transaction; then the call reserves, settles or releases as any team's call, except that it
+takes no allowance (`reserve.keyless_payer`): the payment path decides between drawing credit and
+settling on the team's balance, so no reservation moves that balance into a counter. The topup is booked
 only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
 has not received. A wallet whose existing credit covers the call proves itself instead of paying
 (MPP: a zero-amount proof; x402: a payment that is not settled) and books nothing. When the settlement answer never arrives, `treg-worker agentpay reconcile` reads the chain

@@ -188,9 +188,8 @@ agents then built against a constitution that was wrong.
   idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
-  Redis org/endpoint quota admission counters, the shared provider rate window's members, a
-  sampled routed call's short-lived pairwise-comparison marker, and, for a keyless wallet's call
-  that drew credit its balance cannot cover, the settlement of the payment it carried). Extend the
+  Redis org/endpoint quota admission counters, the shared provider rate window's members, and a
+  sampled routed call's short-lived pairwise-comparison marker). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
