@@ -498,9 +498,69 @@ async def counter_offers(org_ids) -> dict[int, Offer]:
 async def spendable(db, org_id: int, offer: Offer | None = None) -> int:
     """The balance a team is shown (`allowance.spendable`): its balance plus what its counter
     offers now (`offer`, read here when not given). A store that cannot answer shows the
-    balance alone. For a decision whose wrong side costs money, see `allowance.credit_bound`."""
+    balance alone. For a decision a short reading would cost, see `covers`."""
     counter, epoch = offer if offer is not None else await counter_offer(org_id)
     return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
+
+
+async def covers(org_id: int, amount_micro: int) -> bool:
+    """Whether the team can pay `amount_micro` now, for a decision a wrong answer costs: a
+    wallet settling a transfer or drawing credit, an arena run starting. The balance shown is
+    read across the store and the database and can miss money a refill or a give-back is moving
+    between them, so a short answer asks for the counter back (`give_back_for_exact_path`) and
+    reads the database alone again: money on the counter is then on the balance. A counter
+    that cannot make up the difference (calls in flight hold the money, the store lost it, the
+    team is off the allowance) leaves the answer short. Opens its own sessions: call it with
+    none held."""
+    if amount_micro <= 0:
+        return True
+    offer = await counter_offer(org_id)
+    async with session_maker() as db:
+        free = await allowance.spendable(db, org_id)
+        have = await spendable(db, org_id, offer)
+    if have >= amount_micro:
+        return True
+    if not await give_back_for_exact_path(org_id, amount_micro - free):
+        return False
+    async with session_maker() as db:
+        return await allowance.spendable(db, org_id) >= amount_micro
+
+
+async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
+    """The balance to quote against `need_micro`: `shown_micro` when it covers it, and when it
+    does not but `covers` finds the money, the balance read after that. Opens its own sessions."""
+    if shown_micro >= need_micro or not await covers(org_id, need_micro):
+        return shown_micro
+    async with session_maker() as db:
+        return await spendable(db, org_id)
+
+
+class CreditShort(Exception):
+    """Raised from inside a session by a check that found the team short of `need_micro`, so
+    `gives_counter_back` can ask `covers` with no session held. `refusal` is what the caller
+    raises when the money is not there."""
+
+    def __init__(self, need_micro: int, refusal: Exception) -> None:
+        super().__init__(need_micro)
+        self.need_micro, self.refusal = need_micro, refusal
+
+
+def gives_counter_back(run):
+    """`run(caller, ...)` runs once more when it raised `CreditShort` and `covers` then finds the
+    money; a second short, or a counter that cannot make up the difference, raises the refusal.
+    `run` must change nothing before it raises, as a check inside a transaction it rolls back."""
+    @functools.wraps(run)
+    async def again(caller, *args, **kwargs):
+        try:
+            return await run(caller, *args, **kwargs)
+        except CreditShort as short:
+            if not await covers(caller.org_id, short.need_micro):
+                raise short.refusal from None
+        try:
+            return await run(caller, *args, **kwargs)
+        except CreditShort as short:
+            raise short.refusal from None
+    return again
 
 
 async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:

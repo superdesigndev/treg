@@ -369,23 +369,6 @@ async def spendable(db: AsyncSession, org_id: int, *, counter_micro: int = 0,
     return max(0, free + offered)
 
 
-async def credit_bound(db: AsyncSession, org_id: int) -> int:
-    """The most a team can turn out to have: `org.balance_micro` plus its allowance hold, less
-    what queued charges have spent, in one statement. Above what it can spend now by what calls
-    in flight took and what a lost counter left in the hold. For a decision that must not
-    understate the team's credit and must not depend on the store: whether a paying wallet's
-    call draws its credit or settles another transfer. A call that finds less is refused as
-    any call is."""
-    from_hold, outright = _charge_parts(org_id)
-    queued = func.coalesce(select(func.sum(from_hold + outright)).where(
-        CallCharge.org_id == org_id).scalar_subquery(), 0)
-    held = func.coalesce(select(Hold.amount_micro).where(
-        Hold.id == allowance_id(org_id)).scalar_subquery(), 0)
-    bound = (await db.execute(
-        select(Org.balance_micro + held - queued).where(Org.id == org_id))).scalar()
-    return max(0, int(bound or 0))
-
-
 async def committed_today(db: AsyncSession, org_id: int) -> int:
     """The most a team can turn out to have spent today from what is already committed: the
     number a daily cap is checked against. One statement.

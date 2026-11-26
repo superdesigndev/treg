@@ -3820,22 +3820,66 @@ async def test_a_wallet_whose_credit_sits_in_its_allowance_draws_it_without_payi
     assert payment_id and draw is True
 
 
-@pytest.mark.parametrize("store_answers", [True, False])
-async def test_a_wallet_never_pays_again_for_credit_the_store_does_not_show(
-        org_id, store, monkeypatch, store_answers):
-    """Whether a proof draws credit or settles a transfer reads the database alone: a store
-    that times out, or a counter read before a refill moved the balance onto it, must not make
-    the wallet pay for credit the team has."""
+def _proof() -> Verified:
+    return Verified(protocol="x402", network="base", proof_id=uuid4().hex, payer="0xabc",
+                    amount_micro=50_000, asset="0xusdc", pay_to="0xtreg",
+                    expires_at=datetime(2099, 1, 1))
+
+
+@pytest.mark.parametrize("case", ["read_before_a_refill", "store_down", "held_by_calls_in_flight"])
+async def test_a_wallet_pays_only_for_credit_no_call_can_reach(org_id, store, monkeypatch, case):
+    """A wallet's payment settles only when the call cannot be paid from credit now. Money a
+    refill moved onto the counter after the counter was read is found by giving the counter
+    back, so the wallet does not pay for it twice. Money the store cannot answer for, or that
+    calls in flight hold, no call can reach: the payment settles, and the retry it was asked
+    for is never answered with credit that is not there."""
     monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
-    assert await runtime.take(org_id, 1_000)
-    if not store_answers:
+    if case == "held_by_calls_in_flight":
+        assert await runtime.take(org_id, GRANT)
+    else:
+        assert await runtime.take(org_id, 1_000)
+    if case == "read_before_a_refill":
+        async def before_the_refill(org_id):
+            return 0, None
+        monkeypatch.setattr(runtime, "counter_offer", before_the_refill)
+    if case == "store_down":
         async def silent(org_id):
             return None
         monkeypatch.setattr(store, "allowance_state", silent)
-    proof = Verified(protocol="x402", network="base", proof_id=uuid4().hex, payer="0xabc",
-                     amount_micro=50_000, asset="0xusdc", pay_to="0xtreg",
-                     expires_at=datetime(2099, 1, 1))
-    assert (await agent_payments._claim(proof, org_id, 50_000))[1] is True
+    draws = case == "read_before_a_refill"
+    for _ in range(2):
+        assert (await agent_payments._claim(_proof(), org_id, 50_000))[1] is draws
+    assert await _given_back(org_id) == ([GRANT - 1_000] if draws else [])
+
+
+async def test_a_run_short_of_credit_inside_its_session_runs_again_once_the_counter_is_back(
+        org_id, store, monkeypatch):
+    """The run read the counter before a refill moved the balance onto it, and found the team
+    short inside its session. Outside it, the counter goes back to the balance and the run is
+    served on its second try; a need nothing can make up is refused after one run."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 1_000)
+
+    async def before_the_refill(org_id):
+        return 0, None
+    monkeypatch.setattr(runtime, "counter_offer", before_the_refill)
+    runs = []
+
+    @runtime.gives_counter_back
+    async def start(caller, need):
+        async with session_maker() as db:
+            runs.append(await runtime.spendable(db, caller.org_id))
+            if runs[-1] < need:
+                raise runtime.CreditShort(need, ValueError("not enough"))
+        return "started"
+
+    assert await start(caller, 50_000) == "started"
+    assert runs == [0, GRANT - 1_000]
+    runs.clear()
+    with pytest.raises(ValueError):
+        await start(caller, 2 * GRANT)
+    assert runs == [GRANT - 1_000], "nothing to give back: refused without a second run"
 
 
 async def test_a_team_off_the_allowance_is_not_shown_what_its_counter_holds(

@@ -730,12 +730,17 @@ state the dashboard reads, the CLI's home, the Sheets panel's teams, the team ch
 consent page, a paying wallet's `X-Treg-Credit-Micro`, and the arenas' quotes and start checks
 read this figure; the route's `holds` lists only calls on holds of their own.
 
-Whether a paying wallet's proof draws credit or settles a transfer is the one decision that reads
-otherwise: settling moves the payer's money for good, so it reads `allowance.credit_bound`, the
-balance plus the whole allowance hold less what queued charges spent, from the database alone in
-one statement. It may count money a call cannot reach now; that call is refused like any other
-and the wallet pays then, never twice for credit the team has. The column itself is unchanged and
-the invariant below still holds for it.
+The figure reads two stores one after the other, so a refill or a give-back moving money between
+them can make one reading short or long by what moved. A long reading costs nothing: every call
+still reserves its own money and is refused when it is not there. A decision a short reading would
+cost reads `covers`: the figure, and when it falls short, the counter given back
+(`give_back_for_exact_path`) and the database read again, where the money now is. A counter that
+cannot make up the difference (calls in flight hold the money, the store lost it, the team is off
+the allowance) leaves the answer short. Whether a paying wallet's payment settles or its proof draws
+credit reads it, so the wallet neither pays twice for credit it has nor is answered again and again
+with credit no call can reach; so do the arenas' start checks, from outside their sessions
+(`CreditShort`, `gives_counter_back`), and their quotes (`balance_for`). The column itself is
+unchanged and the invariant below still holds for it.
 
 ## The six operations (`domain/money`)
 

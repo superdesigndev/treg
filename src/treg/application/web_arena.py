@@ -228,6 +228,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
                           expires_at=now() + timedelta(days=rules.RETENTION_DAYS))
         db.add(row)
         await db.commit()
+    balance = await call_allowance.balance_for(caller.org_id, balance, required)
     return {"id": row.id, "task": task, "mode": mode, "providers": [
         {k: a[k] for k in ("provider", "endpoint_id", "tier", "estimate_micro", "price_type")} for a in chosen],
         "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,
@@ -236,6 +237,7 @@ async def quote(caller, *, task: str, value: str, query: str = "", mode: str = "
         "jev": jev, "jev_cost": "Covered by treg; not part of the provider quote."}
 
 
+@call_allowance.gives_counter_back
 async def start(caller, run_id, client, client_ip):
     _check_enabled()
     offered = await call_allowance.counter_offer(caller.org_id)
@@ -256,7 +258,7 @@ async def start(caller, run_id, client, client_ip):
         if row.mode == "battle" and required > 10_000_000:
             raise rules.WebArenaError("This Battle exceeds the $10 run limit. Select fewer providers.", 409)
         if await call_allowance.spendable(db, caller.org_id, offered) < required:
-            raise rules.WebArenaError("Not enough team credits.", 402)
+            raise call_allowance.CreditShort(required, rules.WebArenaError("Not enough team credits.", 402))
         active = (await db.execute(select(WebArenaRun.id).where(WebArenaRun.user_id == caller.user.id,
             WebArenaRun.state == "running", WebArenaRun.deadline_at > now()).limit(3))).all()
         if len(active) >= 3:

@@ -32,7 +32,6 @@ from .. import ratestore
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.governance.teams import make_payer_team
-from ..domain.money import allowance as money_allowance
 from ..domain.identity.access import Caller
 from ..infra import stripe as stripe_api
 from ..infra.agent_payments import (
@@ -434,11 +433,7 @@ async def _admit_proof(paid: PaidOffer, verified: Verified) -> PayerAdmission:
             raise await challenge(paid, reason="unknown_wallet",
                                   message="this wallet has started no task on treg")
     else:
-        credit = 0
-        if org_id is not None:
-            async with session_maker() as db:
-                credit = await money_allowance.credit_bound(db, org_id)
-        if org_id is None or credit < paid.quote_micro:
+        if org_id is None or not await call_allowance.covers(org_id, paid.quote_micro):
             raise await credit_short(paid, org_id)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
@@ -557,12 +552,10 @@ async def _payer_org(network: str, address: str) -> int:
 async def _claim(verified: Verified, org_id: int, quote_micro: int) -> tuple[int | None, bool | None]:
     """Record the proof as used, deciding whether it draws credit or must settle. A proof seen
     before returns `(None, None)`: the unique `proof_id` is what refuses a replay."""
+    # Whether the call can be paid from credit now: money a refill or a give-back is moving
+    # between the store and the database is found, and money calls in flight hold is not.
+    draw = verified.deferrable and await call_allowance.covers(org_id, quote_micro)
     async with session_maker() as db:
-        # Settling moves the payer's money for good, so this reads the most the team can turn
-        # out to have, from the database alone: a call its credit does not cover after all is
-        # refused like any call, and the wallet pays then.
-        balance = await money_allowance.credit_bound(db, org_id)
-        draw = verified.deferrable and balance >= quote_micro
         row = AgentPayment(
             proof_id=verified.proof_id, protocol=verified.protocol, network=verified.network,
             payer_address=verified.payer, org_id=org_id, amount_micro=verified.amount_micro,

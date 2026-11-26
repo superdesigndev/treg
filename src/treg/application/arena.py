@@ -176,10 +176,12 @@ async def manual_plan(caller, run_id, attempt_id):
         balance = await call_allowance.spendable(db, caller.org_id, offered)
         db.add(row)
         await db.commit()
+    balance = await call_allowance.balance_for(caller.org_id, balance, required)
     return {"id": quote["id"], "estimate_micro": estimate, "required_micro": required, "balance_micro": balance,
             "affordable": required == 0 or balance >= required, "expires_at": quote["expires_at"] + "Z"}
 
 
+@call_allowance.gives_counter_back
 async def start_manual(caller, run_id, attempt_id, quote_id, client, client_ip):
     from datetime import datetime
     offered = await call_allowance.counter_offer(caller.org_id)
@@ -196,7 +198,7 @@ async def start_manual(caller, run_id, attempt_id, quote_id, client, client_ip):
             raise rules.ArenaError("The catalog changed. Refresh this service's price.", 409)
         required = quote.get("required_micro", quote["estimate_micro"])
         if required > 0 and await call_allowance.spendable(db, caller.org_id, offered) < required:
-            raise rules.ArenaError("Not enough team credits.", 402)
+            raise call_allowance.CreditShort(required, rules.ArenaError("Not enough team credits.", 402))
         active = (await db.execute(select(ArenaRun.id).where(ArenaRun.user_id == caller.user.id,
             ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
         if row.state != "running" and len(active) >= 3:
@@ -280,10 +282,12 @@ async def verification_plan(caller, run_id, attempt_id):
         row.payload = _pack(payload)
         db.add(row)
         await db.commit()
+    balance = await call_allowance.balance_for(caller.org_id, balance, v["estimate_micro"])
     return {"id":q["id"], "estimate_micro":v["estimate_micro"], "provider":v["provider"], "balance_micro":balance,
             "affordable":v["estimate_micro"] == 0 or balance >= v["estimate_micro"], "expires_at":q["expires_at"]+"Z"}
 
 
+@call_allowance.gives_counter_back
 async def start_verification(caller, run_id, attempt_id, quote_id, client, client_ip):
     from datetime import datetime
     offered = await call_allowance.counter_offer(caller.org_id)
@@ -298,7 +302,8 @@ async def start_verification(caller, run_id, attempt_id, quote_id, client, clien
         if not _verification_catalog_matches(cat, v):
             raise rules.ArenaError("The catalog changed. Refresh verification pricing.", 409)
         if v["estimate_micro"] > 0 and await call_allowance.spendable(db, caller.org_id, offered) < v["estimate_micro"]:
-            raise rules.ArenaError("Not enough team credits.", 402)
+            raise call_allowance.CreditShort(
+                v["estimate_micro"], rules.ArenaError("Not enough team credits.", 402))
         active = (await db.execute(select(ArenaRun.id).where(ArenaRun.user_id == caller.user.id, ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
         if row.state != "running" and len(active) >= 3:
             raise rules.ArenaError("Finish or cancel an active Arena run first.", 429)
@@ -477,6 +482,7 @@ async def quote(caller, *, capability: str, mode: str, providers: list[str] | No
                        deadline_at=now() + timedelta(minutes=5), expires_at=now() + timedelta(days=rules.RETENTION_DAYS))
         db.add(row)
         await db.commit()
+    balance = await call_allowance.balance_for(caller.org_id, balance, required)
     provider_quotes = {}
     for a in chosen:
         if a["provider"] not in provider_quotes:
@@ -492,6 +498,7 @@ async def quote(caller, *, capability: str, mode: str, providers: list[str] | No
             "expires_at": row.deadline_at.isoformat() + "Z"}
 
 
+@call_allowance.gives_counter_back
 async def start(caller, run_id: str, client, client_ip: str) -> dict:
     offered = await call_allowance.counter_offer(caller.org_id)
     async with session_maker() as db:
@@ -515,7 +522,8 @@ async def start(caller, run_id: str, client, client_ip: str) -> dict:
                 raise rules.ArenaError("The catalog changed. Refresh your quote before running.", 409)
         required = rules.required_credit(payload["attempts"], row.mode) + payload.get("verification_required_micro", 0)
         if required > 0 and await call_allowance.spendable(db, caller.org_id, offered) < required:
-            raise rules.ArenaError("Not enough team credits. Add credits or choose fewer services.", 402)
+            raise call_allowance.CreditShort(required, rules.ArenaError(
+                "Not enough team credits. Add credits or choose fewer services.", 402))
         active = (await db.execute(select(ArenaRun.id).where(
             ArenaRun.user_id == caller.user.id, ArenaRun.state == "running", ArenaRun.deadline_at > now()).limit(3))).all()
         if len(active) >= 3:
