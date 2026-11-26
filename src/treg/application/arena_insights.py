@@ -19,7 +19,8 @@ import zlib
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import Integer, String, case, column, delete, func, select, update, values
+from sqlalchemy import Integer, String, case, column, delete, func, literal, select, text, update, values
+from sqlalchemy.exc import DBAPIError
 
 from ..domain import arena, arena_insights as rules
 from .. import archive_bodies
@@ -35,7 +36,71 @@ WINDOW_DAYS = 30
 REFRESH_SECONDS = 1800
 BATCH_SIZE = 100
 MAX_BODY_BYTES = 2_000_000
+# Statement timeout for the rewind query (seconds). The rewind catches recent evidence that arrived
+# after the scan started; a timeout here skips the rewind this pass rather than blocking.
+REWIND_TIMEOUT_S = 30
+# Max retries for transient disconnects (ConnectionDoesNotExistError, connection reset).
+MAX_TRANSIENT_RETRIES = 2
 log = logging.getLogger(__name__)
+
+
+def _is_transient_disconnect(exc: BaseException) -> bool:
+    """True when `exc` looks like a transient connection drop (pg_terminate_backend, network reset).
+
+    Covers ConnectionDoesNotExistError from asyncpg (connection closed mid-query, as when
+    pg_terminate_backend terminates a backend), and InterfaceError wrapping connection resets.
+    Does NOT include pool exhaustion or refused connections — those are capacity, not transient."""
+    exc_str = str(exc).lower()
+    if "connection was closed" in exc_str or "connectiondoesnotexisterror" in exc_str:
+        return True
+    if "connection reset" in exc_str or "broken pipe" in exc_str:
+        return True
+    if isinstance(exc, DBAPIError):
+        orig = getattr(exc, "orig", None)
+        if orig and _is_transient_disconnect(orig):
+            return True
+    return False
+
+
+async def _rewind_cursor(db, endpoints: list[str], cutoff) -> int | None:
+    """Find the minimum callrecord.id for recent Arena evidence, index-driven.
+
+    Uses LATERAL to look up each endpoint individually, letting each probe ride
+    ix_callrecord_endpoint_id_created_at (ORDER BY created_at, id LIMIT 1) instead of scanning
+    the whole table with a large IN list. The global min is taken from those per-endpoint mins.
+
+    Returns None if no recent records exist for any endpoint. On SQLite (tests), falls back to
+    a simple query that works correctly on the small test dataset.
+    """
+    if not endpoints:
+        return None
+
+    if db.bind.dialect.name == "postgresql":
+        # Build a VALUES CTE of endpoint_ids, then LATERAL join to get each endpoint's min id.
+        # This ensures the planner uses the (endpoint_id, created_at) index for each lookup.
+        # Query shape:
+        #   WITH eps(eid) AS (VALUES ('ep1'), ('ep2'), ...)
+        #   SELECT min(cr.id) FROM eps, LATERAL (
+        #       SELECT id FROM callrecord
+        #       WHERE endpoint_id = eps.eid AND created_at >= :cutoff
+        #       ORDER BY created_at, id LIMIT 1
+        #   ) cr
+        endpoint_values = values(column("eid", String)).data([(e,) for e in endpoints]).cte("eps")
+        lateral = (
+            select(CallRecord.id)
+            .where(CallRecord.endpoint_id == endpoint_values.c.eid, CallRecord.created_at >= cutoff)
+            .order_by(CallRecord.created_at, CallRecord.id)
+            .limit(1)
+            .lateral("cr")
+        )
+        stmt = select(func.min(lateral.c.id)).select_from(endpoint_values.join(lateral, literal(True)))
+        return (await db.execute(stmt)).scalar_one()
+    else:
+        # SQLite: simple query works fine on small test datasets
+        return (await db.execute(
+            select(func.min(CallRecord.id))
+            .where(CallRecord.endpoint_id.in_(endpoints), CallRecord.created_at >= cutoff)
+        )).scalar_one()
 
 
 def _catalog():
@@ -275,10 +340,10 @@ async def collect_batch(session_factory=session_maker):
                     and not asynctasks.finished_on_submission(ep["async"], evidence[record.id][2])):
                 # "Still working" is no answer yet: neither a hit nor a miss.
                 category = "unresolved_pending"
-            values = dict(id=record.id, version=version, endpoint=record.endpoint_id, task=ep["capability"],
+            obs_values = dict(id=record.id, version=version, endpoint=record.endpoint_id, task=ep["capability"],
                 input=inp, request_hash=record.params_hash or "", category=category,
                 duration_ms=record.duration_ms, created_at=record.created_at)
-            observations.append(values)
+            observations.append(obs_values)
         if observations:
             stmt = _insert(db, ArenaObservation).values(observations)
             await db.execute(stmt.on_conflict_do_update(index_elements=["id"], set_={k: getattr(stmt.excluded, k) for k in observations[0] if k != "id"}))
@@ -286,19 +351,65 @@ async def collect_batch(session_factory=session_maker):
             state.cursor = records[-1].id
         backlog = len(records) == BATCH_SIZE
         if not backlog:
+            # Aggregate and rewind: run _aggregate under the state lock (it reads ArenaObservation),
+            # then commit, then run rewind in a separate short session with statement_timeout.
+            # This avoids holding FOR UPDATE across the potentially slow rewind query.
+            agg_start = time.monotonic()
             state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
-            # Revisit recent evidence for delayed archive writes / concurrent audit commits. Only
-            # the Arena's own endpoints are ever consumed, so the rewind asks about those rows and
-            # rides `ix_callrecord_endpoint_id_created_at`; `callrecord` has no bare `created_at`
-            # index, and the unconstrained form of this question is a walk of the whole table.
-            rewind = (await db.execute(select(func.min(CallRecord.id)).where(
-                CallRecord.endpoint_id.in_(endpoints),
-                CallRecord.created_at >= until - timedelta(minutes=10)))).scalar_one()
-            state.cursor = max(0, rewind - 1) if rewind else state.cursor
             state.scan_until = current - timedelta(seconds=60)
+            agg_ms = (time.monotonic() - agg_start) * 1000
+            log.info("Arena aggregate completed in %.1f ms", agg_ms)
         db.add(state)
         await db.commit()
+
+    # Rewind: find minimum id for recent evidence in a separate session.
+    # This runs outside the state lock, with its own statement_timeout and retry.
+    if not backlog:
+        rewind_start = time.monotonic()
+        rewind_cursor = None
+        endpoint_list = list(endpoints.keys())
+        cutoff = current - timedelta(seconds=60) - timedelta(minutes=10)
+
+        for attempt in range(MAX_TRANSIENT_RETRIES + 1):
+            try:
+                async with session_factory() as db:
+                    if db.bind.dialect.name == "postgresql":
+                        await db.execute(text(f"SET LOCAL statement_timeout = '{REWIND_TIMEOUT_S}s'"))
+                    rewind_cursor = await _rewind_cursor(db, endpoint_list, cutoff)
+                break
+            except DBAPIError as exc:
+                if _is_transient_disconnect(exc) and attempt < MAX_TRANSIENT_RETRIES:
+                    log.warning("Arena rewind transient disconnect (attempt %d/%d): %s",
+                                attempt + 1, MAX_TRANSIENT_RETRIES + 1, exc)
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+                if sqlstate == "57014":  # query_canceled (statement_timeout)
+                    log.warning("Arena rewind timed out after %ds; skipping rewind this pass", REWIND_TIMEOUT_S)
+                    rewind_cursor = None
+                    break
+                raise
+            except Exception as exc:
+                if _is_transient_disconnect(exc) and attempt < MAX_TRANSIENT_RETRIES:
+                    log.warning("Arena rewind transient disconnect (attempt %d/%d): %s",
+                                attempt + 1, MAX_TRANSIENT_RETRIES + 1, exc)
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                raise
+
+        rewind_ms = (time.monotonic() - rewind_start) * 1000
+        if rewind_cursor is not None:
+            async with session_factory() as db:
+                state = (await db.execute(select(ArenaInsightState).where(
+                    ArenaInsightState.id == version).with_for_update())).scalar_one()
+                state.cursor = max(0, rewind_cursor - 1)
+                db.add(state)
+                await db.commit()
+            log.info("Arena rewind completed in %.1f ms, cursor=%d", rewind_ms, rewind_cursor - 1)
+        else:
+            log.info("Arena rewind completed in %.1f ms, no rewind needed", rewind_ms)
+
     return backlog
 
 
