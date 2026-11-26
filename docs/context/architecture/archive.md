@@ -482,7 +482,8 @@ next, so a busy row costs the others nothing. On PostgreSQL each statement runs 
 erasure) still holds past it keeps its delta, merged with newer ones, for the next flush, and the
 flush moves on. Such a late delta still adds its counts, but `newest_fetch`, and the
 provider and policy seen with it, only move forward (a `CASE` in the same `UPDATE`). Any other failure, or an interrupted flush, puts back the deltas that have not
-committed and raises; the ones already committed are not counted again. Across endpoints the
+committed and raises; a cancellation first waits for the endpoint transaction in flight to
+finish, so the ones already committed are not counted again. Across endpoints the
 totals are not one snapshot, which is fine for a staff report; a process that dies between
 flushes loses that window, which is fine because nothing serves or bills from the totals.
 The pruner, erasure and row retention subtract directly. Arithmetic commutes only while the row exists, so the

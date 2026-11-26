@@ -1486,6 +1486,38 @@ async def test_a_late_delta_adds_its_counts_but_not_its_older_fetch(
 
 
 
+async def test_a_flush_cancelled_after_its_commit_does_not_count_it_again(
+        clients: AsyncClient, monkeypatch):
+    """A cancellation landing while an endpoint's transaction commits waits for that commit, so
+    the delta it wrote is not put back and counted a second time by the next flush."""
+    import asyncio
+
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    monkeypatch.setattr(archive, "_STATS_FLUSH_S", 3600)
+    _pending_stat("stats.a")
+    await archive.flush_stats()
+    _pending_stat("stats.a")
+
+    flushing: list[asyncio.Task] = []
+    def cancel_the_flush(session):
+        if flushing and not flushing[0].done():
+            flushing[0].cancel()
+    event.listen(Session, "after_commit", cancel_the_flush)
+    try:
+        flushing.append(asyncio.create_task(archive.flush_stats()))
+        with pytest.raises(asyncio.CancelledError):
+            await flushing[0]
+    finally:
+        event.remove(Session, "after_commit", cancel_the_flush)
+    assert (await _stat_snapshots())["stats.a"] == (2, 20)
+    assert archive._stat_deltas == {}
+    await archive.drain()
+    assert (await _stat_snapshots())["stats.a"] == (2, 20)
+
+
+
 async def test_any_other_flush_failure_keeps_only_what_did_not_land(
         clients: AsyncClient, monkeypatch):
     """A failure that is not a lock timeout still raises, and puts back only the deltas whose

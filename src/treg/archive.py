@@ -674,6 +674,20 @@ async def _land_stat(s, endpoint_id: str, d: dict, *, postgres: bool) -> None:
             await s.execute(sa_update(Stat).where(where).values(**values))
 
 
+async def _land_and_commit(s, endpoint_id: str, d: dict, *, postgres: bool) -> bool:
+    """True once the endpoint's transaction committed, False when its row stayed locked past the
+    lock timeout (rolled back); any other failure rolls back and raises."""
+    try:
+        await _land_stat(s, endpoint_id, d, postgres=postgres)
+        await s.commit()
+    except Exception as exc:
+        await s.rollback()
+        if not _is_lock_timeout(exc):
+            raise
+        return False
+    return True
+
+
 async def flush_stats() -> None:
     """Land every pending delta, one short transaction per endpoint, in endpoint order so two
     processes flushing the same endpoints cannot deadlock. No transaction holds one endpoint's row
@@ -693,16 +707,27 @@ async def flush_stats() -> None:
         async with _get_sem(), background_session_maker() as s:
             postgres = s.get_bind().dialect.name == "postgresql"
             for endpoint_id in sorted(taken):
+                # Shielded: a cancellation (drain, shutdown) waits for this endpoint's transaction
+                # to finish, so whether it committed is known and its delta is put back only if not.
+                step = asyncio.ensure_future(_land_and_commit(
+                    s, endpoint_id, taken[endpoint_id], postgres=postgres))
                 try:
-                    await _land_stat(s, endpoint_id, taken[endpoint_id], postgres=postgres)
-                    await s.commit()
-                except Exception as exc:
-                    await s.rollback()
-                    if not _is_lock_timeout(exc):
-                        raise
+                    landed = await asyncio.shield(step)
+                except asyncio.CancelledError:
+                    while not step.done():
+                        try:
+                            await asyncio.shield(step)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:  # noqa: BLE001 - read from the task below
+                            break
+                    if not step.cancelled() and step.exception() is None and step.result():
+                        del unlanded[endpoint_id]
+                    raise
+                if landed:
+                    del unlanded[endpoint_id]
+                else:
                     busy += 1
-                    continue
-                del unlanded[endpoint_id]
     except BaseException:
         _restore_deltas(unlanded)
         _log.warning("archive running totals flush failed; kept for the next one", exc_info=True)
