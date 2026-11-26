@@ -1449,6 +1449,7 @@ async def test_a_row_held_by_another_transaction_is_skipped_not_waited_for(
             await holder.rollback()
             await asyncio.gather(flushing, return_exceptions=True)
     assert done, "the flush waited for the held row instead of moving on"
+    flushing.result()
     assert (got["stats.a"], got["stats.b"], got["stats.c"]) == ((2, 20), (1, 10), (2, 20))
     assert set(archive._stat_deltas) == {"stats.b"}
     await archive.flush_stats()
@@ -1600,6 +1601,7 @@ async def test_drain_budget_holds_against_real_row_locks(clients: AsyncClient, m
             await holder.rollback()
             await asyncio.gather(draining, return_exceptions=True)
     assert done, "drain() outlived its budget while the rows were held"
+    draining.result()
     assert set(archive._stat_deltas) == set(eps)
     await archive.flush_stats()
     got = await _stat_snapshots()
