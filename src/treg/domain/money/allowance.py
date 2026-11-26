@@ -231,7 +231,7 @@ async def _lock_team(db: AsyncSession, org_id: int) -> bool:
     team. One lock per fold, not per row."""
     with money_stage(db, "lock_team"):
         return (await db.execute(select(Org.id).where(Org.id == org_id)
-                                 .with_for_update(key_share=True))).first() is not None
+                                 .with_for_update(read=True, key_share=True))).first() is not None
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:

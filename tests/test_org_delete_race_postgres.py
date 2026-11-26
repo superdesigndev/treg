@@ -11,7 +11,7 @@ import asyncio
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select, text, update
+from sqlalchemy import event, func, select, text, update
 
 from treg.domain.governance import teams
 from treg.infra.db import reset_db, session_maker
@@ -190,6 +190,15 @@ async def test_a_charge_queued_after_the_deletion_read_the_queue_leaves_nothing_
 
     fold_session = session_maker()
     folded = asyncio.Event()
+    statements: list[str] = []
+
+    def seen(conn, cursor, statement, *args):
+        if conn.info.get("fold"):
+            statements.append(statement)
+
+    engine = session_maker.kw["bind"].sync_engine
+    event.listen(engine, "before_cursor_execute", seen)
+    (await fold_session.connection()).info["fold"] = True
 
     async def fold() -> None:
         await allowance.fold_charges_in_transaction(fold_session, org_id)
@@ -205,6 +214,12 @@ async def test_a_charge_queued_after_the_deletion_read_the_queue_leaves_nothing_
     await fold_session.commit()
     await fold_session.close()
     await asyncio.wait_for(deletion, 10)
+    event.remove(engine, "before_cursor_execute", seen)
+    if team_lock:
+        # The fold shares the team row with balance writes (FOR NO KEY UPDATE) instead of
+        # queueing behind them.
+        on_team = [s for s in statements if "FROM org" in s and " FOR " in s]
+        assert on_team and all(s.rstrip().endswith("FOR KEY SHARE") for s in on_team), on_team
 
     async with session_maker() as db:
         left = [(await db.execute(select(func.count()).select_from(model)
