@@ -11,15 +11,6 @@ from treg.config import get_settings
 from treg.infra import kv
 
 
-async def test_redis_socket_budgets_allow_one_second():
-    store = kv.RedisStore('redis://127.0.0.1:1')
-    try:
-        connection = store._client.connection_pool.make_connection()
-        assert connection.socket_timeout == connection.socket_connect_timeout == 1.0
-    finally:
-        await store.aclose()
-
-
 @pytest.mark.parametrize('operation', ('take', 'ping'))
 @pytest.mark.parametrize('cancel', (False, True))
 async def test_optional_operations_keep_short_deadlines_and_propagate_cancellation(

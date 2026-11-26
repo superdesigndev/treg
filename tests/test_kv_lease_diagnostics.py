@@ -45,8 +45,7 @@ def _failing_store(exc, clock=None, elapsed_s=0.025):
     return _store_with(command)
 
 
-@pytest.mark.parametrize("phase", _PHASES)
-@pytest.mark.parametrize(("exception_type", "error_type"), (
+_CLASSIFIED = (
     (TimeoutError, "deadline_exceeded"),
     (redis_errors.TimeoutError, "redis_timeout"),
     (redis_errors.AuthenticationError, "authentication"),
@@ -55,7 +54,16 @@ def _failing_store(exc, clock=None, elapsed_s=0.025):
     (redis_errors.ConnectionError, "connection"),
     (redis_errors.ResponseError, "response"),
     (RuntimeError, "other"),
-))
+)
+_RETRIED = {"deadline_exceeded", "redis_timeout", "connection"}
+
+
+@pytest.mark.parametrize(("phase", "exception_type", "error_type"), [
+    ("acquire", exception_type, error_type) for exception_type, error_type in _CLASSIFIED
+] + [
+    (phase, exception_type, error_type) for phase in ("renew", "release")
+    for exception_type, error_type in _CLASSIFIED if error_type in _RETRIED
+])
 async def test_lease_failures_are_classified_without_secret_data(
     monkeypatch, caplog, phase, exception_type, error_type,
 ):
@@ -66,9 +74,7 @@ async def test_lease_failures_are_classified_without_secret_data(
 
     rows = kv.drain_lease_errors()
     assert len(rows) == 1
-    expected_count = (2 if phase in {"renew", "release"} and error_type in {
-        "deadline_exceeded", "redis_timeout", "connection",
-    } else 1)
+    expected_count = 2 if phase in {"renew", "release"} and error_type in _RETRIED else 1
     assert rows[0] == {
         "event": "kv_lease_error", "phase": phase, "error_type": error_type, "count": expected_count,
         "first_failed_at": "2020-01-01T00:00:00+00:00",

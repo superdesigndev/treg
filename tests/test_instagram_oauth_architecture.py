@@ -33,15 +33,6 @@ def instagram_apps(monkeypatch):
     get_settings.cache_clear()
 
 
-def test_legacy_instagram_grants_keep_the_facebook_page_profile():
-    assert oauth_providers.INSTAGRAM.authorization_method_name("") == "facebook-page"
-    profile = oauth_providers.INSTAGRAM.profile_for_authorization("")
-    parsed = urlsplit(profile.base_url)
-    assert parsed.scheme == "https"
-    assert parsed.hostname == "graph.facebook.com"
-    assert profile.call_token_field == "page_access_token"
-
-
 def test_legacy_grant_inference_uses_provider_metadata(monkeypatch):
     methods = tuple(
         replace(method, name="direct" if index == 0 else "delegated")

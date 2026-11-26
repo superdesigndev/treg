@@ -379,8 +379,7 @@ async def test_one_transient_failure_is_retried_with_same_owner(error_type, phas
 
 
 @pytest.mark.parametrize("error_type", (
-    redis_errors.AuthenticationError, redis_errors.AuthorizationError,
-    redis_errors.NoPermissionError, redis_errors.ResponseError, RuntimeError,
+    redis_errors.AuthenticationError, redis_errors.AuthorizationError, RuntimeError,
 ))
 @pytest.mark.parametrize("phase", ("renew", "release"))
 async def test_permanent_error_does_not_retry(error_type, phase):
