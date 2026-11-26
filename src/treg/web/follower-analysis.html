@@ -14,7 +14,7 @@
 <link rel="icon" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
 <style>
   :root {
     --paper: #fff; --ink: #000; --grey: #6a6763; --line: rgba(0,0,0,.09); --soft: #f5f5f4;
@@ -382,7 +382,7 @@
       </div>
     </div>
 
-    <div id="cRoles" style="flex: 1; margin: 34px 0 20px; display: grid; gap: 28px; align-content: start"></div>
+    <div id="cRoles" style="flex: 1; margin: 30px 0 20px; display: grid; gap: 28px; align-content: start"></div>
     <div id="cFoot" style="display: flex; gap: 36px; text-align: left"></div>
   </div>
 </div>
@@ -955,10 +955,12 @@
     var n = count(rows, 'role'), keys = topRoles(rows);
     var roles = keys.map(function (k) {
       var mine = rows.filter(function (r) { return r.role === k; }), topics = top(count(mine, 'topic'), 2), levels = count(mine, 'level'), level = top(levels, 1)[0];
-      return { text: ROLE_LABEL[k] || k, share: n[k] / rows.length, name: named(k, topics[0]), pains: pains(mine),
+      return { key: k, topics: topics, text: ROLE_LABEL[k] || k, share: n[k] / rows.length, pains: pains(mine),
         about: (level && levels[level] * 3 >= mine.length ? 'Mostly ' + LEVEL_TEXT[level] + '.' : 'All levels.') +
           (topics.length ? ' Into ' + topics.map(function (t) { return t === 'ai' ? 'AI' : (TOPIC_LABEL[t] || t).toLowerCase(); }).join(' and ') + '.' : '') };
     });
+    var same = roles.length > 1 && roles.every(function (r) { return r.topics[0] === roles[0].topics[0]; });
+    roles.forEach(function (r) { r.name = named(r.key, same && r.topics[1] || r.topics[0]); });
     var nouns = keys.slice(0, 3).map(function (k) { return ROLE_NOUN[k] || (ROLE_LABEL[k] || k).toLowerCase(); }), adj = TOPIC_ADJ[top(count(rows, 'topic'), 1)[0]];
     var headline = (adj ? adj + ' ' : '') + (nouns.length > 1 ? nouns.slice(0, -1).join(', ') + ' and ' + nouns[nouns.length - 1] : nouns[0] || 'A mixed crowd');
     /* who buys: the role whose share among the leads most exceeds its share of everyone */
@@ -982,18 +984,17 @@
     $('cOwner').style.visibility = c.photo ? '' : 'hidden';
     $('cHandle').textContent = '@' + c.handle;
     var COLORS = ['#F7A8CB', '#A9CCFF', '#C9B4F5', '#A8E0C4'], f = c.facts;
-    var label = function (t) { return '<div style="font-size: 12px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #8A8A8A">' + t + '</div>'; };
+    var label = function (t) { return '<div style="font-size: 13px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #8A8A8A">' + t + '</div>'; };
     $('cHead').textContent = f.headline;
     $('cRoles').style.gridTemplateColumns = 'repeat(' + Math.max(f.roles.length, 1) + ', minmax(0, 1fr))';
     $('cRoles').innerHTML = f.roles.map(function (r, i) {
-      return '<div style="text-align: left; display: flex; flex-direction: column; min-height: 0"><div style="display: flex; align-items: flex-end; gap: 12px"><div style="font-family: \'Geist Pixel\', monospace; font-size: 60px; line-height: 0.85">' + Math.round(r.share * 100) + '%</div>' +
-        '<div style="display: flex; align-items: center; gap: 7px; font-size: 16px; font-weight: 600; line-height: 1.15; color: #3F3F3F"><span style="width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: ' + COLORS[i] + '"></span>' + esc(r.text) + '</div></div>' +
-        '<div style="margin-top: 18px; padding-top: 16px; border-top: 3px solid ' + COLORS[i] + '">' +
-        '<div style="font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.5px">' + esc(r.name) + '</div>' +
-        '<div style="margin-top: 8px; font-size: 17px; font-weight: 500; line-height: 1.38; color: #5E5E5E">' + esc(r.about) + '</div>' +
-        '<div style="margin-top: 18px">' + label('Pain points') + (r.pains.length ? r.pains : ['None in recent posts']).map(function (x) {
-          return '<div style="margin-top: 5px; font-size: 19px; font-weight: 600; letter-spacing: -0.2px; color: ' + (r.pains.length ? '#111111' : '#8A8A8A') + '">' + esc(x) + '</div>';
-        }).join('') + '</div></div></div>';
+      return '<div style="text-align: left"><div style="font-size: 84px; font-weight: 800; line-height: 0.85; letter-spacing: -3px">' + Math.round(r.share * 100) + '%</div>' +
+        '<div style="margin-top: 14px; display: flex; align-items: center; gap: 7px; font-size: 18px; font-weight: 600; line-height: 1.15; color: #3F3F3F"><span style="width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: ' + COLORS[i] + '"></span>' + esc(r.text) + '</div>' +
+        '<div style="margin-top: 16px; font-size: 31px; font-weight: 700; line-height: 1.15; letter-spacing: -0.7px">' + esc(r.name) + '</div>' +
+        '<div style="margin-top: 8px; font-size: 20px; font-weight: 500; line-height: 1.38; color: #5E5E5E">' + esc(r.about) + '</div>' +
+        '<div style="margin-top: 20px">' + label('Pain points') + (r.pains.length ? r.pains : ['None in recent posts']).map(function (x) {
+          return '<div style="margin-top: 5px; font-size: 22px; font-weight: 600; letter-spacing: -0.3px; color: ' + (r.pains.length ? '#111111' : '#8A8A8A') + '">' + esc(x) + '</div>';
+        }).join('') + '</div></div>';
     }).join('');
     $('cFoot').innerHTML = f.foot.map(function (x) {
       return '<div>' + label(x[0]) + '<div style="margin-top: 3px; font-size: 19px; font-weight: 600; letter-spacing: -0.2px">' + esc(x[1]) + '</div></div>';
@@ -1002,7 +1003,7 @@
   /* Google Fonts subset to the card's own characters, inlined so the PNG draws the same type */
   function cardFontCss() {
     var chars = Array.from(new Set($('cardNode').textContent.replace(/\s+/g, '') + ' ')).join('');
-    var url = 'https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Geist+Pixel&text=' + encodeURIComponent(chars);
+    var url = 'https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Geist+Pixel&text=' + encodeURIComponent(chars);
     return fetch(url).then(function (r) { return r.text(); }).then(function (css) {
       var urls = css.match(/url\([^)]+\)/g) || [];
       return Promise.all(urls.map(function (u) { return asData(u.slice(4, -1).replace(/['"]/g, '')); })).then(function (datas) {
