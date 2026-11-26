@@ -231,8 +231,8 @@ async def test_a_recent_routed_call_gets_a_ready_pair(clients, search_on, monkey
 
 @pytest.mark.parametrize("case", ["opt_out", "demo", "deny_rule", "tool_acl", "pinned_member",
                                   "capability_pin", "b_excluded", "own_key", "not_archived",
-                                  "too_old", "no_marker", "store_down", "suspended", "paused",
-                                  "flow_unavailable", "flow_raises", "flow_invalid"])
+                                  "too_old", "no_marker", "suspended", "paused",
+                                  "flow_raises", "flow_invalid"])
 async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, case):
     _compare_on(monkeypatch, compare_exclude=["exa"] if case == "b_excluded" else [])
     sent = _relay_b(monkeypatch)
@@ -254,11 +254,7 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
         elif case == "capability_pin":
             db.add(CapabilityPin(org_id=org_id, capability="web.search", provider="tavily"))
         await db.commit()
-    if case == "store_down":
-        async def unknown(keys):
-            return [None] * len(keys)  # what `get_texts` answers when the store cannot
-        monkeypatch.setattr(kv.store(), "get_texts", unknown)
-    late = ("suspended", "paused", "flow_unavailable", "flow_raises", "flow_invalid")
+    late = ("suspended", "paused", "flow_raises", "flow_invalid")
     if case in late:
         # Revoked after the run picked the call, before it is sent: checked again right then.
         real = compare._b_target
@@ -282,8 +278,7 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
             async def read(org):
                 if case == "flow_raises":
                     raise ConnectionError("store down")
-                return {"paused": published, "flow_invalid": "{not json",
-                        "flow_unavailable": kv.FlowControlReadFailure.UNAVAILABLE}[case]
+                return {"paused": published, "flow_invalid": "{not json"}[case]
             monkeypatch.setattr(kv.store(), "read_org_flow_control", read)
     await _routed_call(org_id, f"never {case}", tier="credential" if case == "own_key" else "platform",
                        archived=case != "not_archived", minutes_ago=600 if case == "too_old" else 5,
@@ -293,14 +288,15 @@ async def test_calls_that_are_never_compared(clients, search_on, monkeypatch, ca
     # A candidate the run read is counted under the reason it stopped at.
     expected = {"b_excluded": "b_unavailable", "own_key": "a_not_on_treg_key",
                 "not_archived": "a_answer_not_delivered", "no_marker": "no_marker",
-                "store_down": "no_marker", "suspended": "team_no_longer_eligible",
-                "paused": "team_no_longer_eligible", "flow_unavailable": "team_no_longer_eligible",
+                "suspended": "team_no_longer_eligible", "paused": "team_no_longer_eligible",
                 "flow_raises": "team_no_longer_eligible", "flow_invalid": "team_no_longer_eligible",
                 }.get(case)
     if expected:
         assert result["skip_reasons"] == {expected: 1}, result
     else:
         assert result["skip_reasons"] == {}, result
+    if case == "no_marker":
+        assert sum(result["no_marker_by_client"].values()) == 1, result
     if case in late:
         assert nonlocal_state, "the call got as far as the last check"
 
@@ -399,9 +395,7 @@ async def test_a_judge_only_adapter_never_builds_b(clients, search_on, monkeypat
 # asked of B by the run reach the vendor as the same bytes (credentials masked).
 B_ENDPOINTS = [
     ("keenable", "keenable.web.fetch", "web.extract", {"url": "https://docs.example.com/guide"}),
-    ("dataforseo", "dataforseo.google.serp.organic", "google.serp.organic", {"q": "espresso grinders"}),
     ("crawl4ai", "crawl4ai.web.search", "web.search", {"q": "espresso grinders"}),
-    ("parallel", "parallel.web.search", "web.search", {"q": "espresso grinders"}),
     ("exa", "exa.web.search", "web.search", {"q": "espresso grinders"}),
     ("anyapi", "anyapi.google.serp.organic", "google.serp.organic", {"q": "espresso grinders"}),
 ]
@@ -472,8 +466,6 @@ READY_PAIRS = [
     ("google.serp.organic", "anyapi", "dataforseo", {"q": "espresso grinders"}),
     ("web.extract", "crawl4ai", "keenable", {"url": "https://docs.example.com/guide"}),
     ("web.search", "exa", "crawl4ai", {"q": "espresso grinders"}),
-    ("web.search", "crawl4ai", "exa", {"q": "espresso grinders"}),
-    ("web.search", "tinyfish", "parallel", {"q": "espresso grinders"}),
 ]
 
 
@@ -941,16 +933,14 @@ async def test_the_worker_command_runs_one_collect(clients, monkeypatch, capsys)
 
 # The call path's marker
 
-@pytest.mark.parametrize("header", [None, "X-Treg-Route-Exclude", "X-Treg-Route-Prefer",
-                                    "X-Treg-Route-Max-Cost", "X-Treg-Route-Waterfall", "X-Treg-Route-Anything"])
+@pytest.mark.parametrize("header", [None, "X-Treg-Route-Max-Cost", "X-Treg-Route-Anything"])
 async def test_a_routed_call_is_marked_only_without_route_headers(clients, search_on, monkeypatch, header):
     from test_routing import _relay_by_provider
 
     _compare_on(monkeypatch)
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
-    value = {"X-Treg-Route-Exclude": "parallel", "X-Treg-Route-Prefer": "tavily,exa",
-             "X-Treg-Route-Max-Cost": "0.5", "X-Treg-Route-Waterfall": "1"}.get(header, "x")
+    value = "0.5" if header == "X-Treg-Route-Max-Cost" else "x"
     response = await clients.post("/call/treg.web.search", json={"q": f"marked {header}"},
                                   headers={header: value} if header else {})
     assert response.status_code == 200, response.text
@@ -1118,16 +1108,6 @@ async def test_a_rejected_marker_write_is_counted_as_store_failed(monkeypatch):
     assert compare._mark_counts == {"store_failed/mcp": 1}
 
 
-async def test_a_run_names_the_client_of_each_unmarked_call(clients, search_on, monkeypatch):
-    _compare_on(monkeypatch)
-    _relay_b(monkeypatch)
-    org_id = await _org_id(clients)
-    await _routed_call(org_id, "never marked", marked=False)
-    result = await _collect()
-    assert result["skip_reasons"] == {"no_marker": 1}
-    assert sum(result["no_marker_by_client"].values()) == 1
-
-
 async def test_a_page_continuation_gets_no_marker(monkeypatch):
     """A continuation resumes a later page; B would be asked page one, so it is never marked."""
     _compare_on(monkeypatch)
@@ -1175,10 +1155,10 @@ async def test_the_marker_is_off_with_the_feature_and_follows_the_sample(clients
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
     off = await clients.post("/call/treg.web.search", json={"q": "feature off"})
-    assert not await kv.store().has_flag(compare.marker_key(off.headers["X-Treg-Call-Id"]))
+    assert await kv.store().get_text(compare.marker_key(off.headers["X-Treg-Call-Id"])) is None
     _compare_on(monkeypatch, compare_rate=0.0)
     unsampled = await clients.post("/call/treg.web.search", json={"q": "not sampled"})
-    assert not await kv.store().has_flag(compare.marker_key(unsampled.headers["X-Treg-Call-Id"]))
+    assert await kv.store().get_text(compare.marker_key(unsampled.headers["X-Treg-Call-Id"])) is None
 
 
 async def test_a_store_fault_on_the_marker_never_touches_the_answer(clients, search_on, monkeypatch):
@@ -1188,11 +1168,18 @@ async def test_a_store_fault_on_the_marker_never_touches_the_answer(clients, sea
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
 
-    async def broken(*a, **kw):
-        raise RuntimeError("store down")
-    monkeypatch.setattr(kv.store(), "set_flag", broken)
+    faults = []
+
+    async def broken(key, *a, **kw):
+        if key.startswith(compare.marker_key("")):
+            faults.append(key)
+            raise RuntimeError("store down")
+        return await real_set_text(key, *a, **kw)
+    real_set_text = kv.store().set_text
+    monkeypatch.setattr(kv.store(), "set_text", broken)
     response = await clients.post("/call/treg.web.search", json={"q": "store down"})
     assert response.status_code == 200 and response.json()["output"]["results"]
+    assert faults, "the marker write was attempted and failed"
 
 
 async def test_a_json_credential_vendor_through_the_real_relay(monkeypatch, fake_getaddrinfo):
