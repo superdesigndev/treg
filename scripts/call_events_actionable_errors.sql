@@ -42,7 +42,7 @@ classified AS (
     SELECT *,
            CASE WHEN refused_by IS NULL THEN 'upstream' ELSE 'treg' END AS refuser,
            CASE
-               WHEN status_code = 499 THEN 'caller_disconnected'
+               WHEN status_code = 499 AND refused_by IS NOT NULL THEN 'caller_disconnected'
                WHEN refused_by IN ('balance', 'cap') THEN 'caller_balance_or_cap'
                WHEN refused_by = 'policy' THEN 'caller_policy'
                WHEN refused_by IN ('retired', 'paused') THEN 'treg_policy'
