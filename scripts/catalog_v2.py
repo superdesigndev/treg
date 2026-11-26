@@ -270,7 +270,10 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
         if key not in (defaults or {}) or key == "bill":
             continue
         if key not in keys:
-            if key == "settle":
+            if key == "settle" and (keys.get("price") or {}).get("value") == "0" \
+                    and (defaults[key] or {}).get("reported") is not None:
+                keys[key] = None
+            elif key == "settle":
                 # like `bill`, a settle default translates the provider's branch the batch deletes
                 continue
             keys[key] = None
