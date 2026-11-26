@@ -1556,11 +1556,13 @@ async def _note_capacity_recovery(mk: MarketplaceCall) -> None:
                         endpoint_id=mk.endpoint_id, key=lock.key, lock_id=lock.lock_id, via="probe",
                         locked_s=int((_utcnow_naive() - (lock.opened_at or lock.first_signal_at))
                                      .total_seconds()))
+        account = keyslots.capacity_key(mk.provider, mk.key_slot)
         if ((mk.probe_lock_id or "").startswith(capacity_marks.SWEEP_PROBE)
-                and await capacity_marks.clear_sweep_state(mk.provider, probe_id=mk.probe_lock_id)):
+                and await capacity_marks.clear_sweep_state(account, probe_id=mk.probe_lock_id)):
             cleared = True
-            capacity_events.emit("lock_cleared", provider=mk.provider, slot=None,
-                                 endpoint_id=mk.endpoint_id, key=mk.provider, via="sweep_probe")
+            capacity_events.emit("lock_cleared", provider=mk.provider,
+                                 slot=keyslots.capacity_slot(mk.key_slot),
+                                 endpoint_id=mk.endpoint_id, key=account, via="sweep_probe")
         if cleared:
             capacity_view.invalidate()
     except asyncio.CancelledError:

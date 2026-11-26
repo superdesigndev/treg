@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...models import CapacityPolicy, CapacitySnapshot
 from ...timeutil import utcnow_naive
-from .collectors import NO_BALANCE_API, all_platform_providers
+from .collectors import NO_BALANCE_API, all_platform_providers, extra_accounts, split_account
 
 AGGREGATORS = ("orthogonal", "monid")
 """The overflow aggregators — prepaid accounts of ours that run dry like any vendor's."""
@@ -284,8 +284,10 @@ _ENDPOINT_CONCURRENCY: dict[str, dict] = {
 
 
 def policy_population(configured_keys: set[str] | None = None) -> list[str]:
-    """Every account a policy must exist for: each platform-key slot plus each aggregator."""
-    return sorted(set(all_platform_providers()) | {f"overflow:{a}" for a in AGGREGATORS})
+    """Every account a policy must exist for: each platform-key slot, each further account of one
+    (`apollo#b`), and each aggregator."""
+    return sorted(set(all_platform_providers()) | set(extra_accounts())
+                  | {f"overflow:{a}" for a in AGGREGATORS})
 
 
 # tikhub is out of overflow scope (429s, auto top-up works, Monid re-shapes
@@ -294,14 +296,15 @@ _NO_OVERFLOW = frozenset({"tikhub", "scrapecreators"})
 
 
 def default_policy(provider: str, *, has_key: bool) -> CapacityPolicy:
-    ctype, funding, source = _KNOWN.get(provider, ("unknown", "unknown", "none"))
-    if provider in NO_BALANCE_API and source == "api":
+    base = split_account(provider)[0]
+    ctype, funding, source = _KNOWN.get(base, ("unknown", "unknown", "none"))
+    if base in NO_BALANCE_API and source == "api":
         source = "manual"
     return CapacityPolicy(
         provider=provider, capacity_type=ctype, funding_mode=funding, source=source,
         auto_funding_enabled=funding == "auto_recharge", enabled=has_key,
-        overflow_allowed=provider not in _NO_OVERFLOW,
-        quota=_QUOTAS.get(provider), rate_limit=_RATE_LIMITS.get(provider),
+        overflow_allowed=base not in _NO_OVERFLOW,
+        quota=_QUOTAS.get(base), rate_limit=_RATE_LIMITS.get(base),
     )
 
 
@@ -369,6 +372,10 @@ STALE_AFTER = timedelta(hours=6)
 # `<= 0` never fires. No route bills that little, in credits or in USD.
 EMPTY_BELOW = 0.01
 
+_DRAIN_BELOW: dict[str, float] = {
+    "apollo": 5000,
+}
+
 
 def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
                  now: datetime | None = None) -> LatestState:
@@ -397,5 +404,6 @@ def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
         return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at,
                            snap.confidence, exhausted_until=until, health="exhausted",
                            note=snap.note, rate_limit=rl)
+    low = snap.remaining < _DRAIN_BELOW.get(split_account(policy.provider)[0], EMPTY_BELOW)
     return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at,
-                       snap.confidence, health="ok", note=snap.note, rate_limit=rl)
+                       snap.confidence, health="low" if low else "ok", note=snap.note, rate_limit=rl)

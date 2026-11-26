@@ -2773,10 +2773,11 @@ async def _resolve_catalog_tier(
         key_slot = key_slot or keyslots.PRIMARY_SLOT
         cap_slot = keyslots.capacity_slot(key_slot)
         lock = capacity_view.active_lock(service, ep["id"], cap_slot, metered=metered)
-        state = capacity_view.get(service) if lock is None and cap_slot is None and metered else None
+        state = capacity_view.get(service, cap_slot) if lock is None and metered else None
         if lock is not None and capacity_marks.probe_due(lock.key):
             probe_lock_id = lock.lock_id
-        elif state is not None and capacity_marks.sweep_probe_due(service, state.observed_at):
+        elif state is not None and capacity_marks.sweep_probe_due(
+                keyslots.capacity_key(service, key_slot), state.observed_at):
             probe_lock_id = capacity_marks.sweep_probe_id(state.observed_at)
         elif (get_settings().overflow_mode == "on" and not caller.org.platform_overflow_disabled
                 and overflow_routes_view.for_endpoint(ep["id"])):
