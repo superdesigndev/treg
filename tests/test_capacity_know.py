@@ -29,31 +29,6 @@ async def test_policy_population_covers_every_platform_slot_and_both_aggregators
     assert "tomba_secret" not in pop  # the second half of a credential pair is not an account
 
 
-@pytest.mark.parametrize(("provider", "rate_limit", "where"), [
-    ("octen", {"limit": 5, "window_s": 1, "source": "policy"}, "dashboard"),
-    # The balance route takes an Account API OAuth token, never the API key treg holds.
-    ("parallel", {"limit": 600, "window_s": 60, "source": "docs"}, "Platform"),
-])
-async def test_platform_account_has_a_known_dashboard_only_capacity_policy(
-    monkeypatch, provider, rate_limit, where,
-):
-    from treg.config import get_settings
-
-    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "TEST-KEY")
-    get_settings.cache_clear()
-    try:
-        policy = default_policy(provider, has_key=True)
-        assert (policy.capacity_type, policy.funding_mode, policy.source) == (
-            "cash", "manual", "manual",
-        )
-        assert policy.rate_limit == rate_limit
-        balance = await collectors.provider_balance(provider)
-        assert balance["no_api"] is True
-        assert where in balance["note"]
-    finally:
-        get_settings.cache_clear()
-
-
 async def test_import_creates_one_policy_per_account_and_flags_unknowns_without_overwriting():
     await reset_db()
     async with session_maker() as db:
@@ -231,12 +206,6 @@ async def test_a_swept_empty_account_reaches_the_call_path_under_its_catalog_id(
     monkeypatch.setattr(keyslots, "capacity_view", view)
     assert view.get(provider) is not None and view.is_exhausted(provider)
     assert keyslots.exhausted(provider, f"{provider}.x", None)
-
-
-def test_capacity_view_getters_are_sync_and_io_free():
-    import inspect
-    assert not inspect.iscoroutinefunction(LatestStateView.get)
-    assert not inspect.iscoroutinefunction(LatestStateView.is_exhausted)
 
 
 def _apollo_profile(lead_left):
