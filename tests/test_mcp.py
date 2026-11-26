@@ -1658,6 +1658,8 @@ async def test_catalog_get_shows_what_a_FREE_endpoint_bills_through_the_relay(cl
     token = clients.headers["X-Treg-Token"]
     await _route(endpoint_id=APOLLO_SEARCH_EP, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
                  price_micro=2_000, ratio=None)
+    rest = (await clients.get(f"/catalog/endpoints/{APOLLO_SEARCH_EP}")).json()
+    overflow_hint = next(h for h in rest["hints"] if "overflow relay (orthogonal)" in h)
     async with mcp_session(clients) as c:
         team = await _call_tool(c, "catalog_get", {"endpoint_id": APOLLO_SEARCH_EP}, token=token)
     async with directory_session() as client:
@@ -1667,7 +1669,43 @@ async def test_catalog_get_shows_what_a_FREE_endpoint_bills_through_the_relay(cl
         assert out["overflow_price_usd"] == 0.002 and out["overflow_via"] == "orthogonal"
         assert out["overflow_price_unit"] == "call"
         assert out["endpoint"]["overflow_price_usd"] == 0.002
-        assert any("overflow relay (orthogonal)" in h for h in out["hints"])
+        assert overflow_hint in out["hints"]
+
+
+def test_catalog_get_builds_the_overflow_hint_from_billing_fields():
+    from treg import mcp
+
+    ep = {"method": "GET", "provider": "example"}
+    billing = {
+        "overflow_via": "relay",
+        "overflow_price_usd": 0.125,
+        "overflow_price_unit": "result",
+    }
+    unrelated = {"hints": ["old route prose about an overflow relay (wrong)"]}
+    for surface in (mcp._TEAM_SURFACE, mcp._DIRECTORY_SURFACE):
+        plain_hint, = mcp._mcp_catalog_hints(unrelated, ep, surface=surface)
+        primary, overflow = mcp._mcp_catalog_hints(billing | unrelated, ep, surface=surface)
+        assert primary == plain_hint
+        assert "treg's own example account is out" in overflow
+        assert "overflow relay (relay)" in overflow and "$0.125 per result" in overflow
+        assert "X-Treg-Served-Via / served_via" in overflow
+
+
+@pytest.mark.parametrize(("endpoint_id", "auth_note", "other_note"), [
+    ("ashby.companies.jobs", "no provider key required", "key injected server-side"),
+    ("tikhub.tiktok.video.comments", "key injected server-side", "no provider key required"),
+])
+async def test_catalog_get_explains_provider_auth_on_both_surfaces(clients, endpoint_id, auth_note, other_note):
+    from test_mcp_directory import _call_tool as _directory_call, directory_session
+
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": endpoint_id}
+    async with mcp_session(clients) as client:
+        team = await _call_tool(client, "catalog_get", args, token)
+    async with directory_session() as client:
+        directory = await _directory_call(client, "catalog_get", args, token)
+    for out in (team, directory):
+        assert auth_note in out["hints"][0] and other_note not in out["hints"][0]
 
 
 async def test_a_lone_surrogate_in_an_upstream_body_still_returns_the_paid_answer(clients, monkeypatch):
@@ -1788,3 +1826,216 @@ async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_even
     assert old["client"] == "mcp" and old["user_agent"].startswith("python-httpx/")
     assert old["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and old["mcp_client"] is None
     assert new["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and new["mcp_client"] == "test"
+
+
+async def test_catalog_get_preserves_sibling_order_and_comparison_evidence(clients, monkeypatch):
+    from treg.routers import catalog
+    from treg.routers.views import catalog as cli_catalog
+
+    observations = {
+        "anyapi.web.scrape": {"samples": 10_000, "ok_rate": 0.4, "p50_ms": 100},
+        "branddev.web.scrape": {"samples": 10_000, "decided": 1, "ok_rate": 1.0, "p50_ms": 100},
+        "exa.web.contents.get": {"samples": 10_000, "ok_rate": 0.999, "p50_ms": 1400},
+        "olostep.web.scrape": {"samples": 10_000, "ok_rate": 0.998, "p50_ms": 1400},
+        "linkup.web.fetch": {
+            "samples": 10_000, "decided": 9_990, "ok_rate": 0.985, "p50_ms": 1100, "p95_ms": 1900,
+            "last_ok_days": 0, "hit_rate": 0, "hit_samples": 80, "optional": None,
+        },
+    }
+    reviews = {"teams": 20, "share": {"useful": 1.0}}
+
+    async def get_many(ids):
+        return {key: observations[key] for key in ids if key in observations}
+
+    async def verdicts():
+        return {"olostep.web.scrape": reviews, "anyapi.web.scrape": reviews,
+                "exa.web.contents.get": {"teams": 0, "samples": [{"reason": "early quote"}]}}
+
+    monkeypatch.setattr(app.state.endpoint_observation_reader, "get_many", get_many)
+    monkeypatch.setattr(catalog.feedback_app, "endpoint_verdicts", verdicts)
+    endpoint_id = "crawl4ai.web.scrape"
+    rest = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "catalog_get", {"endpoint_id": endpoint_id}, token=token)
+
+    assert "call_template" not in out["endpoint"]
+    assert json.loads(out["call_template"]) == {
+        "endpoint_id": endpoint_id, "params": {"url": "https://example.com", "format": "md"},
+    }
+    assert all("treg call" not in h and "treg catalog" not in h for h in out["hints"])
+    ids = [row["id"] for row in out["siblings"]]
+    assert ids == [row["id"] for row in rest["siblings"]]
+    assert ids[:3] == ["linkup.web.fetch", "exa.web.contents.get", "olostep.web.scrape"]
+    assert ids.index("branddev.web.scrape") < ids.index("anyapi.web.scrape")
+    assert "linkup.web.fetch" in rest["hints"][-1] and "linkup.web.fetch" in out["hints"][-1]
+    cli, hints = cli_catalog.endpoint(rest, access=None, pinned=lambda _: None, limit=None, base_url="http://registry")
+    # The CLI keeps the routed option in its own slot, ahead of the ordered direct alternatives.
+    assert [row["id"] for row in cli["compare"]][:5] == [endpoint_id, "treg.web.extract", *ids[:3]]
+    assert all("anyapi.web.scrape" not in hint for hint in hints)
+    top = out["siblings"][0]
+    assert "params" not in top
+    assert top["observed"] == {key: value for key, value in observations[top["id"]].items()
+                               if value is not None}
+    assert out["siblings"][1]["reviews"] == {"teams": 0}
+    assert out["siblings"][2]["reviews"] == reviews
+
+
+async def test_catalog_get_siblings_quote_grouped_prices_and_trial_limits(clients):
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "catalog_get", {"endpoint_id": "apollo.people.search"}, token=token)
+    siblings = {row["id"]: row for row in out["siblings"]}
+    hunter = siblings["hunter.companies.emails"]
+    assert hunter["usd"] == hunter["cost"]["display_usd"] == 0.0245
+    assert hunter["cost"]["usd"] == 0.00245
+    assert hunter["cost"]["display_unit"] == "started 10 emails"
+    assert hunter["cost"]["per"] == 10 and "reported_charge" not in hunter["cost"]
+    trial = siblings["getleadsio.people.search"]
+    assert trial["usd"] == 0 and trial["cost"]["trial_calls_per_team_day"] == 5
+
+
+async def test_catalog_get_uses_personal_values_in_query_and_nested_body(clients):
+    from treg.application.call.resolve import team_label
+
+    email = "ax-native@superdesign.dev"
+    token = (await verified_signup(clients, json={"email": email})).json()["token"]
+    clients.headers["X-Treg-Token"] = token
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with mcp_session(clients) as c:
+        watch = await _call_tool(c, "catalog_get", {"endpoint_id": "crawl4ai.watch.create"}, token=token)
+        budget = await _call_tool(c, "catalog_get", {"endpoint_id": "crawl4ai.watch.budget.add"}, token=token)
+    assert json.loads(watch["call_template"])["params"] == {
+        "url": "https://example.com/pricing", "agent": team_label(org_id), "notify": {"email": email},
+    }
+    budget_args = json.loads(budget["call_template"])
+    assert budget_args["query"] == {"label": team_label(org_id)}
+    assert budget_args["body"]["credits"] == 500
+
+
+@pytest.mark.parametrize(("endpoint_id", "expected"), [
+    ("instagram.x.user-messages", {"params": {"ig_user_id": "17841400000000000"}}),
+    ("openmart.deny-rules.delete", {"body": {"rules": [{"type": "DOMAIN", "value": "example.invalid"}]}}),
+    ("fishaudio.voices.create", {
+        "form": {"type": "tts", "title": "treg verification voice", "train_mode": "fast",
+                 "visibility": "private"},
+        "uploads": [{"name": "voices", "filename": "voice-reference.wav", "content_type": "audio/wav",
+                     "data_base64": "<base64 file contents>"}],
+    }),
+])
+async def test_catalog_get_call_template_uses_the_endpoint_wire_contract(clients, endpoint_id, expected):
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "catalog_get", {"endpoint_id": endpoint_id}, token=token)
+    assert json.loads(out["call_template"]) == {"endpoint_id": endpoint_id, **expected}
+
+
+def test_cli_and_mcp_call_templates_share_required_examples_and_test_values():
+    import shlex
+
+    from treg import mcp
+    from treg.domain.catalog import store
+
+    ep = {
+        "id": "example.write", "method": "POST", "authorization_methods": ["app", "oauth"],
+        "input": {
+            "pathParams": {"id": {"required": True, "example": "fallback"}},
+            "queryParams": {
+                "limit": {"required": True, "example": 10, "authorization_methods": ["app"]},
+                "oauth_only": {"required": True, "type": "string", "authorization_methods": ["oauth"]},
+            },
+            "body": {"payload.name": {"required": True, "example": "example name"}},
+        },
+        "test_request": {"pathParams": {"id": "actual"}, "queryParams": {"live": False}},
+    }
+    cli = shlex.split(store.call_template(ep))
+    args = json.loads(mcp._mcp_call_template(ep))
+    assert cli == [
+        "treg", "call", ep["id"], "--method", "POST", "--query", "id=actual",
+        "--query", "limit=10", "--query", "live=false", "--data", '{"payload":{"name":"example name"}}',
+    ]
+    assert args == {
+        "endpoint_id": ep["id"], "query": {"id": "actual", "limit": 10, "live": False},
+        "body": json.loads(cli[-1]),
+    }
+    assert json.loads(mcp._mcp_call_template(ep, {
+        "pathParams.id": "team", "queryParams.live": True, "body.payload.name": "caller name",
+    })) == {
+        "endpoint_id": ep["id"], "query": {"id": "team", "limit": 10, "live": True},
+        "body": {"payload": {"name": "caller name"}},
+    }
+
+
+@pytest.mark.parametrize("body", [{}, [{"name": "example"}], "raw body"])
+def test_cli_and_mcp_call_templates_keep_explicit_bodies(body):
+    import shlex
+
+    from treg import mcp
+    from treg.domain.catalog import store
+
+    ep = {
+        "id": "example.write", "method": "POST", "authorization_method": "oauth",
+        "test_request": {"body": body},
+    }
+    assert shlex.split(store.call_template(ep)) == [
+        "treg", "call", ep["id"], "--method", "POST", "--authorization-method", "oauth",
+        "--data", json.dumps(body, separators=(",", ":")),
+    ]
+    assert json.loads(mcp._mcp_call_template(ep)) == {
+        "endpoint_id": ep["id"], "authorization_method": "oauth", "params": body,
+    }
+
+
+async def test_call_max_cost_usd_enforces_a_metered_platform_ceiling(clients, platform_on, monkeypatch):
+    from treg.application.call import service as call_service
+    from test_marketplace_call import EP, EP_MICRO, _fake_relay
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data":{"comments":[{"id":"1"}]}}'))
+    token = clients.headers["X-Treg-Token"]
+    args = {"endpoint_id": EP, "params": {"aweme_id": "7"}}
+    async with mcp_session(clients) as c:
+        balance = (await _call_tool(c, "balance", {}, token=token))["balance_usd"]
+        refused = await _call_tool(c, "call", {**args, "max_cost_usd": 0.0009974997}, token=token)
+        assert refused["status"] == 402
+        detail = refused["body"]["detail"]
+        assert detail["error"] == "route_max_cost"
+        assert detail["max_cost_micro"] == 997 and detail["estimated_cost_micro"] == EP_MICRO
+        assert (await _call_tool(c, "balance", {}, token=token))["balance_usd"] == balance
+
+        conflict = await _call_tool(c, "call", {
+            **args, "max_cost_usd": 0.001, "headers": {"x-TrEg-rOuTe-Max-Cost": "0.0005"},
+        }, token=token)
+        assert conflict["error"] == "max_cost_usd conflicts with the X-Treg-Route-Max-Cost header"
+        assert (await _call_tool(c, "balance", {}, token=token))["balance_usd"] == balance
+
+        allowed = await _call_tool(c, "call", {
+            **args, "max_cost_usd": 0.001, "headers": {"x-TrEg-rOuTe-Max-Cost": "1e-3"},
+        }, token=token)
+    assert allowed["status"] == 200 and allowed["cost_usd"] == EP_MICRO / 1_000_000
+
+
+@pytest.mark.parametrize("ceiling", [True, 0, -1, float("nan"), float("inf"), -float("inf")])
+async def test_call_rejects_invalid_max_cost_usd_before_relay(clients, platform_on, monkeypatch, ceiling):
+    from treg.application.call import service as call_service
+    from test_marketplace_call import EP
+
+    async def no_relay(*args, **kwargs):
+        pytest.fail("an invalid max_cost_usd reached the upstream relay")
+
+    monkeypatch.setattr(call_service, "relay", no_relay)
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                    "clientInfo": {"name": "test", "version": "1"}}, token)
+        # httpx's JSON encoder refuses nonfinite values, so send the raw payload to exercise MCP.
+        r = await c.post("http://localhost/mcp/", headers=MCP_HEADERS | {"Authorization": f"Bearer {token}"},
+                         content=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                             "params": {"name": "call", "arguments": {
+                                                 "endpoint_id": EP, "params": {"aweme_id": "7"},
+                                                 "max_cost_usd": ceiling,
+                                             }}}))
+    out = mcp_text_result("call", r.json())
+    if isinstance(ceiling, bool):
+        assert r.json()["result"]["isError"] and "max_cost_usd" in out["_text"]
+    else:
+        assert out["error"] == "max_cost_usd must be a finite positive number"
