@@ -516,6 +516,18 @@ async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = No
 
 
 _lease_releases: set[asyncio.Task] = set()
+_background_folds: set[asyncio.Task] = set()
+
+
+async def _fold_beside(org_id: int, budget: list[int], call_id: str,
+                       found: list[int]) -> _Fold:
+    """`_fold_backlog` in a task of its own, which the call waits for only until its deadline.
+    The batch, and what follows its commit (closing the session, giving back the team's
+    admission and lease, its lock in this process), then finishes in order without the call."""
+    task = asyncio.ensure_future(_fold_backlog(org_id, budget, call_id, found))
+    _background_folds.add(task)
+    task.add_done_callback(_background_folds.discard)
+    return await asyncio.shield(task)
 
 
 def _release_lease_soon(store, key: str, token: str) -> asyncio.Task:
@@ -1083,7 +1095,7 @@ async def _settled(org_id: int, call_id: str, amount: int) -> int:
     try:
         async with asyncio.timeout_at(folding_until):
             while True:
-                outcome = await _fold_backlog(org_id, budget, call_id, found)
+                outcome = await _fold_beside(org_id, budget, call_id, found)
                 if found:
                     return found[0]
                 if outcome is _Fold.MORE:
