@@ -625,7 +625,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
             return
-        skip = "take_refused"
+        skip = ("refill_admission_busy" if allowance_runtime.refill_admission_busy(caller.org_id)
+                else "take_refused")
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
     # A listed team's call is counted once, when its reserve is decided (`_note_allowance_skip`);

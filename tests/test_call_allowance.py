@@ -1254,6 +1254,21 @@ async def test_a_keyed_call_the_allowance_cannot_serve_keeps_its_hold_and_no_mar
     assert skip_lines() == [_skip(org_id, reason, 1)]
 
 
+async def test_a_take_whose_refill_money_admission_turns_away_is_counted_as_such(
+        org_id, store, monkeypatch, skip_lines):
+    """The counter is empty and the team's money queue is busy: the refill gives up on its
+    admission and the call is counted as having met a busy queue, not a short balance."""
+    monkeypatch.setattr(get_settings(), "money_admission_enabled", True)
+    monkeypatch.setattr(get_settings(), "money_admission_wait_s", 0.05)
+    store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
+    caller, mk = await _caller(org_id), _call(org_id)
+    with pytest.raises(ReservationFailed) as refused:
+        await call_reserve._platform_reserve(mk, caller, call_ref="busy-1", allow_allowance=True)
+    assert refused.value.status_code == 429 and mk.allowance_epoch is None
+    assert runtime.refill_admission_busy(org_id)
+    assert skip_lines() == [_skip(org_id, "refill_admission_busy", 1)]
+
+
 @pytest.fixture
 def skip_lines(monkeypatch, caplog):
     """`skip_lines()` is every skip line the default sink wrote, as raw text."""

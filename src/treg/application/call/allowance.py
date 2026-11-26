@@ -50,6 +50,9 @@ _SETTLED_TRIES = 20
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+# Until when a call the counter cannot serve is said to have met a refill that money admission
+# turned away: the team's money queue was busy, not its balance short.
+_admission_busy_until: dict[int, float] = {}
 # Takes this process admitted and has not finished. Each will hand the charge writer one row at
 # most, so admitting against the writer's room now is what keeps it from ever overflowing.
 _in_flight = [0]
@@ -77,7 +80,7 @@ _next_prune_at = 0
 
 
 def _team_state_size() -> int:
-    return max(len(_money_locks), len(_refills), len(_refused_until))
+    return max(len(_money_locks), len(_refills), len(_refused_until), len(_admission_busy_until))
 
 
 def _prune_if_full() -> None:
@@ -92,6 +95,8 @@ def _prune() -> None:
     now = time.monotonic()
     for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
         del _refused_until[org_id]
+    for org_id in [org_id for org_id, until in _admission_busy_until.items() if until <= now]:
+        del _admission_busy_until[org_id]
     # asyncio has no public count of a lock's waiters.
     for key in [key for key, lock in _money_locks.items()
                 if not lock.locked() and not lock._waiters]:
@@ -108,6 +113,12 @@ def refills(org_id: int) -> int:
     """How many refills this process has committed for the team: a caller compares it around a
     take to learn that the balance moved."""
     return _refills.get(org_id, 0)
+
+
+def refill_admission_busy(org_id: int) -> bool:
+    """Whether a refill of the team was turned away by money admission within the last
+    `_REFILL_WAIT_S`: a take refused now most likely met that refill, not a short balance."""
+    return _admission_busy_until.get(org_id, 0.0) > time.monotonic()
 
 
 def listed(org_id: int) -> bool:
@@ -386,6 +397,11 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
+        if org_id not in _admission_busy_until:
+            _prune_if_full()
+        _admission_busy_until[org_id] = time.monotonic() + _REFILL_WAIT_S
+        log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
+                 org_id, need_micro, available)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
