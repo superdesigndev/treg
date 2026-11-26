@@ -3526,6 +3526,34 @@ async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_
     assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
 
 
+async def test_a_reading_cancelled_while_the_store_grants_its_lease_gives_the_lease_back(
+        org_id, store, monkeypatch):
+    """The store granted the team's lease, and the reading (an arena quote) was cancelled before
+    the answer reached it: the lease is given back at once, so the next short reserve can take
+    the counter back instead of waiting for the lease to expire."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    assert await runtime.take(org_id, 1_000)
+    acquire, granted = store.acquire_lease, asyncio.Event()
+
+    async def granted_then_slow(key, token, *args, **kwargs):
+        answer = await acquire(key, token, *args, **kwargs)
+        if key == runtime.money_key(org_id):
+            granted.set()
+            await asyncio.sleep(10)
+        return answer
+
+    monkeypatch.setattr(store, "acquire_lease", granted_then_slow)
+    reading = asyncio.create_task(runtime.reach(org_id, 50_000))
+    await granted.wait()
+    reading.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await reading
+    monkeypatch.setattr(store, "acquire_lease", acquire)
+    await asyncio.sleep(0)
+    assert runtime.money_key(org_id) not in store.leases
+    assert await runtime.onto_balance(org_id, 50_000) is True
+
+
 async def test_a_reading_or_a_give_back_leaves_a_claimed_fold_its_turn(org_id, store, monkeypatch):
     """The background fold claimed the team's next lease: a wallet's or an arena's reading and
     a give-back for a short reserve do not take it first, so they cannot starve the fold."""

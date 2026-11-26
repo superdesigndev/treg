@@ -741,6 +741,12 @@ async def _team_lease(org_id: int):
         except Exception:
             log.warning("asking for the allowance lease of org %s failed", org_id, exc_info=True)
             answer = "unavailable"
+        except BaseException:
+            # The store may have granted the lease before a cancel stopped the wait for its
+            # answer: give back whatever this token holds, or the team's refills, give-backs and
+            # fold wait for it to expire.
+            _release_lease_soon(store, key, token)
+            raise
         if answer != "busy" or time.monotonic() >= deadline:
             break
         await asyncio.sleep(pause + random.random() * pause)
@@ -749,7 +755,8 @@ async def _team_lease(org_id: int):
         yield answer
     finally:
         if answer == "acquired":
-            await store.release_lease(key, token)
+            # Released in a task of its own, so a cancel of the reading cannot stop it.
+            await asyncio.shield(_release_lease_soon(store, key, token))
 
 
 async def reach(org_id: int, amount_micro: int) -> Reach:
