@@ -18,13 +18,14 @@ The instant is read from the row, never recomputed from this process's settings.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import time
 import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ..config import get_settings
 from ..domain import money as ledger
@@ -55,10 +56,71 @@ _ADMISSION_WAIT_S = 0.25
 _LEASE_MS = 5000
 _PASS_KEY = "treg:money-allowance-pass:v1"
 _PASS_LEASE_MS = 30_000
+# Skips are counted per kind of work and reason, and logged once a minute per process with the
+# teams skipped most stale first (`_note_skip`); a window naming this many teams is logged early.
+_SKIP_LOG_EVERY_S = 60.0
+_SKIP_TEAMS_MAX = 1000
+_SKIP_TOP = 5
+_skips: dict[tuple[str, str], dict] = {}
 
 
 def _row_locks() -> bool:
     return not infra_db._is_sqlite
+
+
+def _note_skip(kind: str, org_id: int, reason: str, oldest=None) -> None:
+    """Count one team given up for the pass: `kind` is the work (`fold` or `close`), `reason`
+    why (`lease_held`: another process has the team's lease; `busy_lock`: a money session of
+    the team is open in this process; `admission_timeout`; `lock_timeout`; `failed`), `oldest`
+    when the team's oldest queued charge was written. One `allowance_fold_skips` line per kind
+    and reason per minute in this process: the skips, the teams, the longest wait, and the teams
+    whose charges have waited longest. Diagnostics never stop a pass."""
+    try:
+        now = time.monotonic()
+        window = _skips.get((kind, reason))
+        if window is not None and org_id not in window["orgs"] and (
+                len(window["orgs"]) >= _SKIP_TEAMS_MAX):
+            _log_skips(now, kind, reason, window)
+            window = None
+        if window is None:
+            window = _skips[(kind, reason)] = {"since": now, "skips": 0, "orgs": {}}
+        window["skips"] += 1
+        age_s = _waited_s(oldest)
+        team = window["orgs"].setdefault(org_id, [0, None])
+        team[0] += 1
+        if age_s is not None:
+            team[1] = max(team[1] or 0, age_s)
+        _log_due_skips(now)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _waited_s(oldest) -> int | None:
+    """Whole seconds since `oldest`, a queued charge's `created_at` as `queued_teams` read it
+    (SQLite hands back text); None when there is none."""
+    if isinstance(oldest, str):
+        oldest = datetime.fromisoformat(oldest)
+    if not isinstance(oldest, datetime):
+        return None
+    return max(0, int((utcnow_naive() - oldest.replace(tzinfo=None)).total_seconds()))
+
+
+def _log_due_skips(now: float) -> None:
+    for (kind, reason), window in list(_skips.items()):
+        if now - window["since"] >= _SKIP_LOG_EVERY_S:
+            _log_skips(now, kind, reason, window)
+
+
+def _log_skips(now: float, kind: str, reason: str, window: dict) -> None:
+    _skips.pop((kind, reason), None)
+    teams = sorted(window["orgs"].items(), key=lambda item: (-(item[1][1] or 0), -item[1][0],
+                                                             item[0]))
+    ages = [age for _, (_, age) in teams if age is not None]
+    log.info("allowance_fold_skips %s", json.dumps({
+        "kind": kind, "reason": reason, "skips": window["skips"], "orgs": len(teams),
+        "window_s": round(now - window["since"], 1), "oldest_s": max(ages) if ages else None,
+        "top": [[org_id, skips, age] for org_id, (skips, age) in teams[:_SKIP_TOP]],
+    }, separators=(",", ":")))
 
 
 @asynccontextmanager
@@ -207,6 +269,7 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
         async with _team_lease(org_id) as free:
             lock = money_lock(org_id)
             if not free or lock.locked():
+                _note_skip("close", org_id, "busy_lock" if free else "lease_held")
                 return False
             async with (
                 lock,
@@ -228,12 +291,14 @@ async def _close_idle(session_maker, org_id: int, stale_before) -> bool:
                  org_id, result.released_micro, result.folded.calls)
         return True
     except money_admission.AdmissionTimeout:
+        _note_skip("close", org_id, "admission_timeout")
         return False
     except Exception as exc:
         if lock_timed_out(exc):
-            log.info("closing the idle allowance of org %s waited too long on its rows", org_id)
+            _note_skip("close", org_id, "lock_timeout")
         else:
             log.error("closing the idle allowance of org %s failed", org_id, exc_info=True)
+            _note_skip("close", org_id, "failed")
         return False
 
 
@@ -254,30 +319,34 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
         async with session_maker() as db:
             page = await allowance.queued_teams(
                 db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
-        for org_id, _ in page:
+        for org_id, oldest in page:
             if worked >= _TEAMS_PER_PASS or not keep_going():
+                _log_due_skips(time.monotonic())
                 return total
-            folded = await _fold_team(session_maker, org_id)
+            folded = await _fold_team(session_maker, org_id, oldest)
             if folded is not None:
                 worked += 1
                 total += folded
         if len(page) < _TEAMS_LISTED:
+            _log_due_skips(time.monotonic())
             return total
         after = page[-1]
 
 
-async def _fold_team(session_maker, org_id: int) -> int | None:
+async def _fold_team(session_maker, org_id: int, oldest=None) -> int | None:
     """A few batches of one team's queue; None when not one batch was committed. Stops when
     another process has the team, the team's money sessions are busy (a request in this process
     holding its lock among them), or its rows stay locked past `LOCK_WAIT_MS`, and the next
-    pass comes back: the teams behind it are not kept waiting. One team failing does not stop
-    the pass."""
-    total, committed = 0, False
+    pass comes back: the teams behind it are not kept waiting. Every such stop is counted
+    (`_note_skip`) with when the team's `oldest` queued charge was written. One team failing
+    does not stop the pass."""
+    total, committed, skipped = 0, False, None
     try:
         for _ in range(_FOLD_BATCHES_PER_PASS):
             async with _team_lease(org_id) as free:
                 lock = money_lock(org_id)
                 if not free or lock.locked():
+                    skipped = "busy_lock" if free else "lease_held"
                     break
                 async with (
                     lock,
@@ -295,12 +364,15 @@ async def _fold_team(session_maker, org_id: int) -> int | None:
             if folded.claimed < _FOLD_BATCH:
                 break
     except money_admission.AdmissionTimeout:
-        pass
+        skipped = "admission_timeout"
     except Exception as exc:
         if lock_timed_out(exc):
-            log.info("folding the queued charges of org %s waited too long on its rows", org_id)
+            skipped = "lock_timeout"
         else:
+            skipped = "failed"
             log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+    if skipped is not None:
+        _note_skip("fold", org_id, skipped, oldest)
     return total if committed else None
 
 

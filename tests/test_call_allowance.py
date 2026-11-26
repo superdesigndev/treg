@@ -24,6 +24,7 @@ from treg.application.call.intake import CallMeta, prepare_call_intake
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import ReservationFailed
 from treg.config import get_settings
+from treg.timeutil import utcnow_naive
 from treg.domain import money as ledger
 from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
@@ -2656,7 +2657,7 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
     folded: list[int] = []
     real = allowance_sweep._fold_team
 
-    async def first_only(session_maker, team):
+    async def first_only(session_maker, team, oldest=None):
         folded.append(team)
         return await real(session_maker, team)
 
@@ -2798,6 +2799,73 @@ async def test_a_team_whose_rows_stay_locked_does_not_hold_up_the_others(
         assert await allowance_sweep.fold_queued_once(session_maker) == 1
     assert await _queued(org_id) == 1 and await _queued(org_id + 1) == 0
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+async def _skip_lines(caplog) -> list[dict]:
+    return [json.loads(r.getMessage().split(" ", 1)[1]) for r in caplog.records
+            if r.getMessage().startswith("allowance_fold_skips ")]
+
+
+@pytest.mark.parametrize("reason", [
+    "lease_held", "busy_lock", "admission_timeout", "lock_timeout", "failed"])
+async def test_every_team_a_fold_gives_up_is_logged_with_how_long_its_queue_waited(
+        org_id, store, monkeypatch, caplog, reason):
+    """A busy team skipped on every pass grows its queue silently otherwise: each skip is
+    counted by reason and the minute's line names the teams whose charges waited longest."""
+    monkeypatch.setattr(allowance_sweep, "_skips", {})
+    monkeypatch.setattr(allowance_sweep, "_SKIP_LOG_EVERY_S", 0.0)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e.metered", 400, reserved_micro=400)])
+        await db.execute(update(CallCharge).where(CallCharge.call_id == "queued").values(
+            created_at=utcnow_naive() - timedelta(seconds=90)))
+        await db.commit()
+    lock = runtime.money_lock(org_id)
+    if reason == "lease_held":
+        store.leases[runtime.money_key(org_id)] = "another process"
+    elif reason == "busy_lock":
+        await lock.acquire()
+    elif reason == "admission_timeout":
+        async def waited_out():
+            raise runtime.money_admission.AdmissionTimeout("wait_timeout")
+        monkeypatch.setattr(allowance_sweep.money_admission, "admit", _admission(waited_out))
+    else:
+        message = "canceling statement due to lock timeout" if reason == "lock_timeout" else "boom"
+
+        async def stuck(db, team, **kwargs):
+            raise DBAPIError("SELECT", None, Exception(message))
+        monkeypatch.setattr(allowance, "fold_charges_in_transaction", stuck)
+    try:
+        with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+            assert await allowance_sweep.fold_queued_once(session_maker) == 0
+    finally:
+        if lock.locked():
+            lock.release()
+    assert await _queued(org_id) == 1
+    [line] = await _skip_lines(caplog)
+    assert line["kind"] == "fold" and line["reason"] == reason
+    assert line["skips"] == 1 and line["orgs"] == 1 and line["oldest_s"] >= 89
+    assert line["top"][0][:2] == [org_id, 1] and line["top"][0][2] >= 89
+
+
+async def test_a_minute_of_skips_is_one_line_per_reason_with_the_stalest_teams_first(
+        monkeypatch, caplog):
+    monkeypatch.setattr(allowance_sweep, "_skips", {})
+    now = utcnow_naive()
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        for team in range(1, 8):
+            for _ in range(team):
+                allowance_sweep._note_skip("fold", team, "lease_held",
+                                           now - timedelta(seconds=10 * team))
+        allowance_sweep._note_skip("close", 3, "admission_timeout")
+        assert await _skip_lines(caplog) == [], "nothing before the minute is up"
+        allowance_sweep._log_due_skips(time.monotonic() + allowance_sweep._SKIP_LOG_EVERY_S)
+    lines = {(line["kind"], line["reason"]): line for line in await _skip_lines(caplog)}
+    folds = lines[("fold", "lease_held")]
+    assert folds["skips"] == 28 and folds["orgs"] == 7 and folds["oldest_s"] >= 70
+    assert [team for team, _, _ in folds["top"]] == [7, 6, 5, 4, 3]
+    assert lines[("close", "admission_timeout")]["top"] == [[3, 1, None]]
+    assert allowance_sweep._skips == {}
 
 
 async def test_renewals_the_store_could_not_answer_are_asked_again_within_the_lease(
