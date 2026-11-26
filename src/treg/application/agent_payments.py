@@ -504,8 +504,35 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                 }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     if not agreed:
+        if not any(rail.proves(paid.offer) for rail in _rails):
+            # No proof is offered on this host, so a 402 could only be answered by paying again.
+            raise await _kept_on_changed_terms(paid, org_id)
         raise await _price_changed(paid, kept=True)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+class PriceChanged(Exception):
+    """A transfer the payer already sent was signed on terms that no longer buy the call. It is
+    kept as credit; the answer is not a 402, because none of this host's challenges spends credit
+    without paying again."""
+
+    def __init__(self, detail: dict) -> None:
+        super().__init__(detail["message"])
+        self.detail = detail
+
+
+async def _kept_on_changed_terms(paid: PaidOffer, org_id: int) -> PriceChanged:
+    async with session_maker() as db:
+        credit = max(await ledger.balance_of(db, org_id), 0)
+    realm = get_settings().public_url.rstrip("/")
+    return PriceChanged({
+        "error": "price_changed", "reason": "price_changed", "endpoint_id": paid.endpoint_id,
+        "estimated_cost_micro": paid.quote_micro, "credit_micro": credit,
+        "message": (f"the price of this call changed after this transfer was signed. The transfer "
+                    f"is kept as this wallet's credit (${ledger.usd(credit):g}); do not pay again. "
+                    f"Send the request to {realm} and sign its zero-amount proof to pay the new "
+                    f"price (at most ${ledger.usd(paid.quote_micro):g}) from that credit."),
+    })
 
 
 async def _claim_terms(terms: Terms, verified: Verified) -> bool:
@@ -775,7 +802,7 @@ async def open_call(*, rest: str, method: str, path: str, query: str,
                     headers: Mapping[str, str],
                     raw_headers: Sequence[tuple[bytes, bytes]]) -> PaidCall:
     """Price the call, take its payment or draw credit, and return the call to run. Raises
-    NotServed, RateLimited, PaymentChallenge or PaymentPending; no call has run when it raises.
+    NotServed, RateLimited, PaymentChallenge, PaymentPending or PriceChanged; no call has run when it raises.
     `limit_request` has already run for this request."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
                        query_items=query_items, body=body, host=headers.get("host", ""))

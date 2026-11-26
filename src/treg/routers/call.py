@@ -375,6 +375,8 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 503, exc.detail, [])
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
+    except agent_payments.PriceChanged as exc:
+        return await _payment_refusal(request, 409, exc.detail, [], refused_by="payment")
     # The call runs as the wallet: its quote bounds what it charges, and no reservation of it
     # moves the team's balance (its credit) into the allowance.
     paid_by = call_wallet.WalletCall(quote_micro=paid.paid.quote_micro,
@@ -455,7 +457,8 @@ async def _capped_body(request: Request) -> bytes:
 
 
 async def _payment_refusal(request: Request, status: int, detail: dict,
-                           headers: list[tuple[str, str]]) -> Response:
+                           headers: list[tuple[str, str]], *,
+                           refused_by: str | None = None) -> Response:
     resp = JSONResponse({"detail": detail}, status_code=status)
     for name, value in headers:
         resp.headers.append(name, value)
@@ -463,7 +466,8 @@ async def _payment_refusal(request: Request, status: int, detail: dict,
     resp.headers["X-Treg-Error"] = "1"
     # A 402 here asks a keyless caller to pay or prove a wallet: a step of the payment, not a
     # balance refusal.
-    await _stamp_call_exit(request, resp, status, refused_by="payment" if status == 402 else None)
+    await _stamp_call_exit(request, resp, status,
+                           refused_by=refused_by or ("payment" if status == 402 else None))
     return resp
 
 

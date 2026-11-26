@@ -219,6 +219,23 @@ async def test_a_pushed_transfer_signed_before_a_price_change_is_kept_as_credit(
     assert r.status_code == 200 and r.headers["X-Treg-Cost-Micro"] == str(2 * EP_MICRO), r.text
 
 
+async def test_a_kept_transfer_on_a_host_without_proofs_is_not_asked_to_pay_again(
+        anon: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """This host is offered no zero-amount proof, so a 402 could only be answered by paying
+    again: the kept transfer is answered 409, naming the credit and where to spend it."""
+    from mpp import Credential
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d0" * 32})
+    _raise_margin(monkeypatch)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 409 and r.json()["detail"]["error"] == "price_changed", r.text
+    assert r.json()["detail"]["credit_micro"] == FLOOR
+    assert "www-authenticate" not in r.headers and "payment-required" not in r.headers
+    assert await _balance(chain.payer) == FLOOR
+
+
 async def test_a_payment_is_credited_at_the_fee_it_was_offered(anon: AsyncClient, payments_on,
                                                                monkeypatch, terms_on):
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")

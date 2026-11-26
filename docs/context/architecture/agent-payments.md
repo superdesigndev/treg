@@ -305,7 +305,10 @@ headers (`X-Treg-Payment` among them) and no receipt.
   is charged. An MPP payment is checked against its own challenge's amount and terms, not today's:
   a push transfer (`Verified.moved`) is already on chain, so on changed terms it is claimed and
   credited first and then answered `price_changed`, and the wallet pays the new price from that
-  credit with the zero-amount proof. A payment is credited less the fee it was offered.
+  credit with the zero-amount proof. On a host offered no proof (`Offer.host` is not the realm or
+  `public_url`'s host) a 402 could only be answered by paying again, so the kept transfer answers
+  409 `price_changed` (`PriceChanged`: `credit_micro`, and the host whose proof spends it) with no
+  challenge, recorded `refused_by=payment`. A payment is credited less the fee it was offered.
 - On x402 the token rides outside what the wallet signs (EIP-3009 covers the transfer, not
   `extra`), so the HMAC proves only that treg offered those terms. They therefore buy one
   authorization per rail, the first presented while the token is live (`agentpay-terms`, kept
