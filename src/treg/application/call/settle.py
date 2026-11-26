@@ -127,27 +127,6 @@ def _openmart_record_count(endpoint_id: str, doc: object) -> int | None:
     return None
 
 
-def _companyenrich_record_count(endpoint_id: str, doc: object) -> int | None:
-    """Rows returned by a CompanyEnrich search, floored at one. The provider bills each person or
-    company returned at the row's credits (2 a person, 1 a company, 5 a lookalike) and an empty
-    page at one row (catalog notes, verified live). The reserve is the requested `pageSize`, so
-    without counting an empty `{"items": []}` settled a whole page."""
-    if endpoint_id not in (
-        "companyenrich.people.search",
-        "companyenrich.people.search.scroll",
-        "companyenrich.companies.search",
-        "companyenrich.companies.similar",
-    ):
-        return None
-    if not isinstance(doc, dict):
-        return None
-    items = doc.get("items")
-    if not isinstance(items, list):
-        return None
-    # An empty page still bills one row's credits.
-    return max(len(items), 1)
-
-
 def _aviato_bulk_hits(rows: list) -> int:
     """Rows of an Aviato bulk enrich answer that Aviato bills. Every lookup answers a row, and a
     failed one is `{"lookupSuccessful": false}` with no record, which is free."""
@@ -212,7 +191,7 @@ def _rows_billed_micro(mk: MarketplaceCall, ep: dict | None, rows: int | None,
                        credits_per_row: Decimal | None = None) -> int | None:
     """What `rows` billed rows cost, never more than the hold. For a credit-priced row
     `mk.unit_micro` is ONE provider credit, so it is scaled by the row's credits (`cost.value`:
-    2 per CompanyEnrich person, 10 per Icypeas reverse-email hit). Capped at the reserve because a
+    10 per Icypeas reverse-email hit). Capped at the reserve because a
     row whose catalog `unit` names an input entity (`call`, `keyword`, `domain`) reserves per thing
     asked about, not per row returned: counting may only ever lower such a bill."""
     if rows is None:
@@ -377,7 +356,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
       - apify: DERIVED by counting the dataset rows a run-sync call returns, plus the row's flat
         `call_fee` for the actor start or compute the run bills regardless of rows.
-      - companyenrich / icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
+      - icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
     Everyone else settles at the estimate. A v2 row reads its own `settle.reported` instead."""
@@ -477,8 +456,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(doc, list) and mk.unit_micro > 0:
             return _aviato_bulk_hits(doc) * mk.unit_micro
         return None
-    if provider == "companyenrich" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        return _rows_billed_micro(mk, ep, _companyenrich_record_count(mk.endpoint_id, doc))
     if (provider == "icypeas" and isinstance(doc, dict) and doc.get("success") is False
             and not doc.get("item") and not doc.get("file")):
         return 0
