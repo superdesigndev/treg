@@ -212,6 +212,16 @@ async def _take_lock(lock: asyncio.Lock, until: float | None) -> bool:
         return False
 
 
+async def _connect_within(db, until: float) -> None:
+    """Take the session's connection, which begins its transaction, before a starved turn ends
+    or not at all: a pool kept busy by other work must not begin the fold past its turn."""
+    try:
+        async with asyncio.timeout_at(until):
+            await db.connection()
+    except TimeoutError:
+        raise money_admission.AdmissionTimeout("turn_over") from None
+
+
 def fold_shards() -> int:
     return get_settings().money_allowance_fold_shards
 
@@ -448,9 +458,9 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
     does not stop the pass.
 
     With `until` (a starved team's turn, on the loop's clock, `fold_queued_once`) the fold claims the team's lease for the turn (`_fold_claim`), waits for the
-    lease, the lock and the team's admission (with priority over the team's other money
-    sessions, `admit(priority=True)`) until the turn ends, and folds its batches; no batch
-    starts once the turn is over, and no wait outlasts it. A busy team's
+    lease, the lock, the team's admission (with priority over the team's other money
+    sessions, `admit(priority=True)`) and a connection until the turn ends, and folds its
+    batches; no batch or transaction starts once the turn is over, and no wait outlasts it. A busy team's
     own requests can keep it from the fold for one pass, not for every pass."""
     loop = asyncio.get_running_loop()
     total, committed, skipped = 0, False, None
@@ -475,6 +485,8 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
                                 refuse_on_timeout=True, priority=until is not None),
                             money_session(session_maker()) as db,
                         ):
+                            if until is not None:
+                                await _connect_within(db, until)
                             await bound_lock_wait(db)
                             folded = await allowance.fold_charges_in_transaction(
                                 db, org_id, limit=_FOLD_BATCH)
