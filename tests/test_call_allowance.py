@@ -1974,31 +1974,101 @@ async def test_a_calls_fold_caps_its_wait_for_row_locks_and_then_answers_the_cha
     assert await _queued(org_id) == 1, "left for the background fold"
 
 
-async def test_calls_of_one_team_in_one_process_fold_one_at_a_time(org_id, store, monkeypatch):
-    """Many calls of a busy team ask for their settle entries at once. One folds; the others
-    wait for it holding no connection, and read what it wrote."""
+@pytest.mark.parametrize("pruned", [False, True], ids=["kept", "pruned_during_the_lease_wait"])
+async def test_calls_of_one_team_in_one_process_fold_one_at_a_time(
+        org_id, store, monkeypatch, pruned):
+    """Many calls of a busy team ask for their settle entries at once. One folds; until it is
+    done the others neither read the ledger nor take a connection, then each reads what it
+    wrote. Also when the team's idle lock is pruned while the first call waits for the lease:
+    the lock it then takes must be the one the others test."""
     async with session_maker() as db:
         await allowance.record_charges(db, [
             allowance.Charge(f"call-{index}", org_id, "e", 10, reserved_micro=10)
             for index in range(8)])
         await db.commit()
-    fold, open_now, most = allowance.fold_charges_in_transaction, [0], [0]
+    fold, settled_micro, acquire = (allowance.fold_charges_in_transaction,
+                                    allowance.settled_micro, store.acquire_lease)
+    paused, resume, reads, sessions = asyncio.Event(), asyncio.Event(), [], []
 
-    async def counted(db, org, **kwargs):
-        open_now[0] += 1
-        most[0] = max(most[0], open_now[0])
-        try:
-            await asyncio.sleep(0.01)
-            return await fold(db, org, **kwargs)
-        finally:
-            open_now[0] -= 1
+    async def first_fold_waits(db, org, **kwargs):
+        if not paused.is_set():
+            paused.set()
+            await resume.wait()
+        return await fold(db, org, **kwargs)
 
-    monkeypatch.setattr(allowance, "fold_charges_in_transaction", counted)
-    told = await asyncio.gather(*(runtime._settled(org_id, f"call-{index}", 99)
-                                  for index in range(8)))
-    assert most == [1]
+    async def counted_read(db, org, call_id):
+        reads.append(call_id)
+        return await settled_micro(db, org, call_id)
+
+    def counted_session():
+        sessions.append(True)
+        return session_maker()
+
+    async def lease_after_a_prune(*args, **kwargs):
+        if pruned:
+            runtime._prune()
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", first_fold_waits)
+    monkeypatch.setattr(allowance, "settled_micro", counted_read)
+    monkeypatch.setattr(runtime, "session_maker", counted_session)
+    monkeypatch.setattr(store, "acquire_lease", lease_after_a_prune)
+    calls = [asyncio.create_task(runtime._settled(org_id, f"call-{index}", 99))
+             for index in range(8)]
+    await paused.wait()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert reads == [] and sessions == [True], "only the folding call holds a connection"
+    resume.set()
+    told = await asyncio.gather(*calls)
     assert told == [10] * 8, "each read its own settle entry, not the 99 it would fall back to"
     assert await _queued(org_id) == 0
+
+
+@pytest.mark.parametrize("slow", ["fold", "read"])
+async def test_a_call_waits_for_its_settle_entry_no_longer_than_its_deadline(
+        org_id, store, monkeypatch, slow):
+    """A full pool makes the fold's or the read's connection slow to come. Both share the
+    call's one deadline, so the call answers with its charge once it has passed."""
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge("queued", org_id, "e", 400, reserved_micro=400)])
+        await db.commit()
+
+    async def stuck(*args, **kwargs):
+        await asyncio.sleep(5)
+
+    target = "fold_charges_in_transaction" if slow == "fold" else "settled_micro"
+    monkeypatch.setattr(allowance, target, stuck)
+    monkeypatch.setattr(runtime, "_SETTLED_WAIT_S", 0.2)
+    started = time.monotonic()
+    assert await runtime._settled(org_id, "queued", 400) == 400
+    assert time.monotonic() - started < 1
+
+
+async def test_a_call_folds_no_more_batches_than_its_budget_across_retries(
+        org_id, store, monkeypatch):
+    """Another process takes the team's lease between two of this call's batches. The call
+    comes back to fold after it, but with the batches it has left, not a fresh budget."""
+    monkeypatch.setattr(runtime, "_BACKLOG_FOLD", 2)
+    monkeypatch.setattr(runtime, "_BACKLOG_BATCHES", 3)
+    async with session_maker() as db:
+        await allowance.record_charges(db, [
+            allowance.Charge(f"queued-{index:02}", org_id, "e", 10, reserved_micro=10)
+            for index in range(20)])
+        await db.commit()
+    acquire, asked = store.acquire_lease, []
+
+    async def busy_once(*args, **kwargs):
+        asked.append(True)
+        if len(asked) == 3:
+            return "held"
+        return await acquire(*args, **kwargs)
+
+    monkeypatch.setattr(store, "acquire_lease", busy_once)
+    await runtime._settled(org_id, "not-queued", 10)
+    assert len(asked) > 3, "the call came back after the other process"
+    assert await _queued(org_id) == 20 - 3 * 2
 
 
 async def test_an_overrun_written_late_freezes_the_counter_when_it_lands(org_id, store, monkeypatch):
@@ -2999,7 +3069,7 @@ async def test_no_allowance_money_session_starts_while_another_process_holds_the
         await db.commit()
     store.leases[runtime.money_key(org_id)] = "another-process"
     store.expire()
-    await runtime._fold_backlog(org_id)
+    await runtime._fold_backlog(org_id, [runtime._BACKLOG_BATCHES])
     assert await allowance_sweep.fold_queued_once(session_maker) == 0
     assert await allowance_sweep.sweep_once(session_maker) == 0
     assert await runtime.take(org_id, 600) is None
