@@ -35,7 +35,7 @@ from ...models import CallRecord, Org, TagBudget
 from . import allowance as allowance_runtime
 from . import idempotency
 from .intake import CallMeta, _NO_META
-from .resolve import MarketplaceCall
+from .resolve import MarketplaceCall, held_micro
 from .types import ReservationFailed
 
 
@@ -600,7 +600,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
         await _holdless_reserve(mk, caller)
         return
     mk.holdless = False
-    held = max(mk.estimate_micro, mk.worst_case_micro)
+    held = held_micro(mk.estimate_micro, mk.worst_case_micro)
     charged = ledger.with_margin(held)
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)

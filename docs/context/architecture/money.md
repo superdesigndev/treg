@@ -1071,8 +1071,8 @@ stay in catalog YAML. `table_amount_micro` bounds a `times` multiplier by the fi
   sequence; calls in flight together all passed the balance gate already. So a row whose reported
   figure can exceed the estimate declares its worst case (`cost.worst_case`, `settle.worst_case` in
   v2; `Pricing.worst_case_micro`, `MarketplaceCall.worst_case_micro`), and `_platform_reserve` holds
-  the higher of the estimate and the worst case, through the tag, member and daily-cap gates as
-  well. The settle is unchanged and the unused part of the hold goes back. The estimate stays the
+  the higher of the estimate and the worst case (`resolve.held_micro`, also what a wallet's quote
+  is), through the tag, member and daily-cap gates as well. The settle is unchanged and the unused part of the hold goes back. The estimate stays the
   basis's `reserve_micro`: a success with no usage figure settles
   at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling or the worst case.
   The validator warns on a usage row with no worst case. The unit's

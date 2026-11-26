@@ -75,7 +75,7 @@ def platform_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str],
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
         call_id="replay", payer_org_id=0,
-        reserved_micro=ledger.with_margin(max(pricing.estimate_micro, pricing.worst_case_micro)),
+        reserved_micro=ledger.with_margin(pricing.held_micro),
         deferred=[] if routed_child else None,
     )
 

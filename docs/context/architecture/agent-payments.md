@@ -125,7 +125,10 @@ and the payer's next call draws the credit without a new transfer.
 
 ## Prices: the quote and the payment floor
 
-The quote is `money.with_margin(price_call(...).estimate_micro)`, the amount the call will reserve.
+The quote is `money.with_margin(price_call(...).held_micro)`, the amount the call will reserve:
+the estimate, or the row's declared worst case when that is higher (`resolve.held_micro`, the one
+computation `_platform_reserve` holds). Quoting the estimate alone would let credit that covers the
+quote fall short of the hold, and the refused hold would ask the wallet to pay again.
 One payment carries `max(with_fee(quote), agent_payments_min_payment_micro)` (default $0.05).
 **Fee.** `agent_payments_fee_bps` (default 0; 100 = 1%) is treg's cut of each settled payment.
 `with_fee` raises the quote so the payment, less the fee, still covers it; `_claim` stores the fee

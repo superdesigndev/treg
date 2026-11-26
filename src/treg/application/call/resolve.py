@@ -2465,6 +2465,16 @@ class Pricing:
     terms: dict | None = None
     worst_case_micro: int = 0
 
+    @property
+    def held_micro(self) -> int:
+        return held_micro(self.estimate_micro, self.worst_case_micro)
+
+
+def held_micro(estimate_micro: int, worst_case_micro: int) -> int:
+    """RAW micro-USD a tier-4 call holds: the estimate, or the row's declared worst case when that
+    is higher. `_platform_reserve` holds this and a wallet's quote is this, both with margin."""
+    return max(estimate_micro, worst_case_micro)
+
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
     """Price one catalog call from the caller's query (path params included, named by `consumed`)
@@ -2881,7 +2891,7 @@ def wallet_refusal(ep: dict, *, allow_free: bool = False) -> str:
 
 def platform_quote(ep: dict, query: QueryValues, body: bytes, *,
                    allow_free: bool = False) -> tuple[int, str]:
-    """The raw estimate a tier-4 call of `ep` would reserve for this query and body, and "", or
+    """The raw amount a tier-4 call of `ep` would hold for this query and body, and "", or
     0 and the reason a caller holding no credential cannot pay for it. The agent-payments
     challenge prices from this, before any team exists
     (docs/context/architecture/agent-payments.md)."""
@@ -2890,10 +2900,10 @@ def platform_quote(ep: dict, query: QueryValues, body: bytes, *,
     provider = oauth_providers.get(ep["provider"])
     try:
         _, consumed = _marketplace_upstream(ep, provider, query)
-        estimate = price_call(ep, query, body, consumed).estimate_micro
+        held = price_call(ep, query, body, consumed).held_micro
     except ResolutionFailed:
         return 0, "invalid_request"
-    return (estimate, "") if estimate > 0 or allow_free else (0, "free")
+    return (held, "") if held > 0 or allow_free else (0, "free")
 
 
 async def resolve_marketplace_target(
