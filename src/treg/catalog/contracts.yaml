@@ -640,7 +640,8 @@ contracts:
     summary: "Search Instagram reels by keyword — provider-native reel objects in `reels`"
     identity:
       - {q: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       reels: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -927,7 +928,8 @@ contracts:
     identity:
       - {shortcode: string}
       - {url: {type: string, format: url}}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -1024,7 +1026,8 @@ contracts:
     summary: "Replies to an X (Twitter) post by tweet id — provider-native rows in `comments`"
     identity:
       - {tweet_id: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
