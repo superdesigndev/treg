@@ -646,8 +646,10 @@ records the cost in `OverflowSpend` (treg pays, budget-bounded); the caller stil
 error and pays nothing.
 
 Never on tiers 1/2, a caller-caused 4xx, a 401, a timeout, PUT/PATCH/DELETE, a route the worker has
-not enabled, or a team that opted out (`Org.platform_overflow_disabled`) - checked before any
-aggregator is contacted, on both entry points.
+not enabled, a team that opted out (`Org.platform_overflow_disabled`), or a route priced above what
+a keyless wallet's call may still charge (`MarketplaceCall.charge_cap_micro`, its quote;
+[agent payments](agent-payments.md) "At most the quote") - checked before any aggregator is
+contacted, on both entry points.
 
 ## Asynchronous submissions on the call path
 

@@ -18,6 +18,7 @@ sources:
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/api_keys.py
   - src/treg/application/call/resolve.py
+  - src/treg/application/call/wallet.py
   - src/treg/alembic/versions/0104_agent_payments.py
   - src/treg/alembic/versions/0106_agentpayer_per_network.py
   - src/treg/ratestore.py
@@ -130,6 +131,16 @@ the estimate, or the row's declared worst case when that is higher (`resolve.hel
 computation `_platform_reserve` holds). Quoting the estimate alone would let credit that covers the
 quote fall short of the hold, and the refused hold would ask the wallet to pay again.
 One payment carries `max(with_fee(quote), agent_payments_min_payment_micro)` (default $0.05).
+**At most the quote.** The router marks the call it runs (`application.call.wallet.current`:
+the quote, and whether this request paid or draws credit), and the call carries the quote as
+`MarketplaceCall.charge_cap_micro`. The direct hold is the quote. A settlement that reads a higher
+provider figure charges the quote and treg absorbs the rest (`settle.decide_settle`, through
+`money.cost_within`). Overflow (`ops/capacity.md`) tries only a route whose price fits what is
+left of the quote and caps its settlement the same way; an overflow priced above it does not
+serve, and the wallet gets the vendor's answer or the typed `provider_capacity_unavailable` 503,
+never a 402: a payment client answers a 402 by paying again, and the next admission would draw the
+same credit at the direct price and be refused again.
+
 **Fee.** `agent_payments_fee_bps` (default 0; 100 = 1%) is treg's cut of each settled payment.
 `with_fee` raises the quote so the payment, less the fee, still covers it; `_claim` stores the fee
 as `AgentPayment.fee_micro` (0 on a credit draw), and `_credit` tops up `amount_micro - fee_micro`,

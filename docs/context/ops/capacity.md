@@ -410,6 +410,11 @@ the aggregator's real price with no markup, disclosed through `X-Treg-Cost-Micro
   aggregator's estimate before any request (inherited from a direct caller's ceiling or a routed
   child's remainder). A refusal releases the budget claim and leaves no child hold
   (`architecture/money.md`).
+- **A wallet's quote.** A keyless wallet's call (`architecture/agent-payments.md`) carries its
+  quote as `MarketplaceCall.charge_cap_micro`, less what the direct attempt charged. Only a route
+  whose price, with margin, fits it is tried; with none, the call is answered as if no route
+  existed (the vendor's answer, or the typed 503), never a 402, and the child's settlement is
+  capped at it like the direct one's.
 - **Advisory.** An unexpected budget, adapter, mark or settlement failure is logged, any child hold
   is released, and the caller gets the direct vendor response (or, on a skip-direct call, the
   original `provider_capacity` 503). Cancellation and typed call failures still propagate.

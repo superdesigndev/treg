@@ -382,6 +382,7 @@ class MarketplaceCall:
     estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
     worst_case_micro: int = 0       # RAW declared worst case; the hold is never below it
     max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
+    charge_cap_micro: int | None = None  # the most a wallet's call may still charge, its quote
     params_hash: str = ""
     call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
     payer_org_id: int | None = None  # captured from the trusted caller when reserving

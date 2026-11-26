@@ -1019,6 +1019,14 @@ def decide_settle(
         # A routed child the provider reported free (a miss on a per-success rate card): there is
         # nothing for the parent to decide, so it is released below like any unbilled child.
         billable, reason = False, reason or "free_answer"
+    if billable and actual is not None and mk.charge_cap_micro is not None:
+        # A wallet was told the most this call costs; treg absorbs any cost above it.
+        capped = ledger.cost_within(mk.charge_cap_micro)
+        if actual > capped:
+            logging.getLogger("treg.ledger").warning(
+                "wallet call on %s cost %s micro, above its quote; charged the quote",
+                mk.endpoint_id, actual)
+            actual = capped
     charged = (ledger.with_margin(actual) if actual is not None
                else ledger.with_margin(mk.estimate_micro)) if billable else 0
     return SettleDecision(billable=billable, reason=reason, observed_micro=observed,

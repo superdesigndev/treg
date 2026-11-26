@@ -42,7 +42,7 @@ from ...infra import org_traffic
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import admission, call_errors, keyslots
+from . import admission, call_errors, keyslots, wallet
 from .authorize import authorize_call, return_daily_slot
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -1399,6 +1399,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
     if mk is not None and mk.metered:
         _set_caller_max_cost(request, mk)
+        if (paid_by := wallet.current.get()) is not None:
+            mk.charge_cap_micro = paid_by.quote_micro
 
     async def _serve_overflow_instead(*, status: int, note: str, force_trigger: str, refusal,
                                       keep_refusal: bool = False) -> UpstreamResponse:
@@ -2054,6 +2056,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if may_overflow:
             if mk.max_cost_micro is not None:
                 mk.max_cost_micro = max(0, mk.max_cost_micro - charged)
+            if mk.charge_cap_micro is not None:
+                mk.charge_cap_micro = max(0, mk.charge_cap_micro - charged)
             # Overflow: the primary attempt is settled ($0) and audited above; a child cycle may now
             # serve the SAME endpoint through an aggregator. Off by default; shadow mode returns the
             # vendor's answer regardless. The event waits for the verdict.

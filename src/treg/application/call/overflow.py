@@ -16,7 +16,8 @@ aggregator is called, status/shape/cost logged and the spend recorded (treg pays
 by the daily budget), and the caller still gets the vendor's own error, charged nothing.
 
 Never on: tiers 1/2, a caller-caused 4xx, a timeout, a non-idempotent method (PUT/PATCH/DELETE), an
-org that opted out (step F), or a route the worker has not enabled.
+org that opted out (step F), a route the worker has not enabled, or a route whose price is above
+what a wallet's call may still charge (`charge_cap_micro`, its quote).
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import httpx
 
 from ... import audit
 from ...config import get_settings
+from ...domain import money as ledger
 from ...infra.db import session_maker
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity import overflow_spend as overflow_spend_ledger
@@ -253,7 +255,9 @@ async def _maybe_overflow_attempt(
     routes = routes_view.for_endpoint(mk.endpoint_id)
     routes = [r for r in routes if settings.overflow_key_for(r.aggregator)
               and not capacity_view.is_exhausted(f"overflow:{r.aggregator}")
-              and not capacity_view.is_exhausted(f"overflow:{r.aggregator}:{mk.provider}")]
+              and not capacity_view.is_exhausted(f"overflow:{r.aggregator}:{mk.provider}")
+              and (mk.charge_cap_micro is None
+                   or ledger.with_margin(int(r.agg_price_micro or 0)) <= mk.charge_cap_micro)]
     if not routes:
         return None
     route = routes[0]
