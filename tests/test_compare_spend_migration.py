@@ -1,4 +1,4 @@
-"""0136 gives each existing day the spend its stored comparisons already carry."""
+"""0137 gives each existing day the spend its stored comparisons already carry."""
 import asyncio
 from datetime import datetime
 
@@ -13,11 +13,11 @@ from treg.maintenance import _alembic_config
 
 
 @pytest.fixture
-async def at_0135():
+async def at_0136():
     await audit.drain()
     await _drop_everything()
     try:
-        await _upgrade_to("0135")
+        await _upgrade_to("0136")
         yield
     finally:
         await _drop_everything()
@@ -30,7 +30,7 @@ async def _execute(sql: str, **params):
             else await connection.execute(sa.text(sql), params)
 
 
-async def test_a_day_under_way_keeps_what_it_spent(at_0135):
+async def test_a_day_under_way_keeps_what_it_spent(at_0136):
     for ref, cost, at in (("a", 90_000, datetime(2026, 11, 26, 1)), ("b", 5_000, datetime(2026, 11, 26, 23)),
                           ("c", 70_000, datetime(2026, 11, 25, 12))):
         await _execute(
@@ -41,6 +41,6 @@ async def test_a_day_under_way_keeps_what_it_spent(at_0135):
     for day in ("20261126", "20261124"):
         await _execute("INSERT INTO compareattemptday (day, attempts) VALUES (:day, 2)", day=day)
     await db._engine.dispose()
-    await asyncio.to_thread(command.upgrade, _alembic_config(), "0136")
+    await asyncio.to_thread(command.upgrade, _alembic_config(), "0137")
     rows = dict(await _execute("SELECT day, spent_micro FROM compareattemptday"))
     assert rows == {"20261126": 95_000, "20261124": 0}

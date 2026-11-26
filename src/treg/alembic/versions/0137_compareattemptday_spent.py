@@ -1,7 +1,7 @@
 """compareattemptday.spent_micro: the day's second-vendor spend, kept apart from any team's rows
 
-Revision ID: 0136
-Revises: 0135
+Revision ID: 0137
+Revises: 0136
 Create Date: 2026-11-26
 
 The comparison run caps a UTC day at `compare_daily_usd` of B's catalog prices. Summing the day's
@@ -27,8 +27,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0136"
-down_revision: str | Sequence[str] | None = "0135"
+revision: str = "0137"
+down_revision: str | Sequence[str] | None = "0136"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # an additive column plus its backfill; see the rollback floor note

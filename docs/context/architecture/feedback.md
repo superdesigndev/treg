@@ -33,7 +33,7 @@ sources:
   - src/treg/alembic/versions/0025_feedback.py
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
-  - src/treg/alembic/versions/0136_compareattemptday_spent.py
+  - src/treg/alembic/versions/0137_compareattemptday_spent.py
   - src/treg/alembic/versions/0105_callmark.py
   - src/treg/alembic/versions/0115_callcomparison.py
   - tests/test_feedback_handling_schema.py
