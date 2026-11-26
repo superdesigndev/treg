@@ -3991,6 +3991,33 @@ ATLY = OAuthProvider(
 )
 
 
+DATAWEBOT = OAuthProvider(
+    service="datawebot",
+    display_name="datawebot",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="dwb_…",
+    # Bearer header only; the docs say never to put the key in a URL.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.datawebot.com/dashboard?view=api-keys",
+    setup_action_label="Get your datawebot API key",
+    setup_steps=(
+        "Sign in at datawebot.com with your email (no card, no password); every account starts with 200 free credits.",
+        "Open API keys on the dashboard, name a key, choose when it expires (30, 90 or 365 days) and copy it once; it starts with dwb_.",
+    ),
+    setup_note="A search on one shop costs 5 credits, across shops 25, and a product read 1; failed requests are free. The account and shop checks are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Search products for sale on a named online shop or across shops, and read one product's details with every seller's price and a direct link.",
+    base_url="https://api.datawebot.com",
+    docs_url="https://www.datawebot.com/docs/api/reference",
+    probe_path="/v1/account",  # free; a bad key gets HTTP 401 {"error": {"code": "unauthorized"}} (verified live 2026-11-26)
+)
+
+
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
     display_name="influencers.club",
@@ -4629,6 +4656,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
+        # E-commerce product data: shop search and product reads
+        DATAWEBOT,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

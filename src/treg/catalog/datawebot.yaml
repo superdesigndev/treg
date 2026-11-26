@@ -1,0 +1,182 @@
+provider: datawebot
+source:
+  docs: https://www.datawebot.com/docs/api/reference
+  llms: https://www.datawebot.com/llms.txt
+  openapi: https://www.datawebot.com/openapi.json
+  curated: '2026-11-26'
+pricing_url: https://www.datawebot.com/pricing
+# One intent router, POST /v1/requests, answers searches and product reads; the body's capability
+# field picks which. Each answer carries its charge in meta.credits_used. A request that takes longer
+# than about 15 seconds answers 200 {"status": "working", "request_id": ...}; GET /v1/requests/{id}
+# (free) finishes it. Probe: GET /v1/account is free; a bad key answers 401 {"error": {"code": "unauthorized"}}.
+limits: "30 POST /v1/requests a minute per account; 429 rate_limited carries Retry-After."
+proposed_capabilities:
+  web.search.products: "Search products for sale on an online shop by keyword"
+  web.product.detail: "Get a product's details and every seller's price"
+  web.shop.detail: "Check what an online shop supports and what each request costs"
+defaults:
+  provenance: {source: docs, source_url: 'https://www.datawebot.com/pricing', checked: '2026-11-26', confidence: documented}
+  # A failed request answers 200 with status failed and is not charged.
+  error: {when: {path: response.status, op: equals, value: failed}}
+
+endpoints:
+  - id: datawebot.amazon.search.products
+    added: '2026-11-26'
+    capability: amazon.search.products
+    platform: amazon
+    scope: any_account
+    method: POST
+    path: /v1/requests
+    name: Amazon search results
+    summary: "Search Amazon products by keyword and get title, price, original price, rating, review count, image, link and a product_id for a product read. Ads come back apart, in sponsored."
+    input:
+      bodyType: json
+      body:
+        capability: {type: string, required: true, enum: [search], note: "always search for this endpoint", example: "search"}
+        site: {type: string, required: true, enum: [amazon.com], note: "always amazon.com for this endpoint", example: "amazon.com"}
+        query: {type: string, required: true, minLength: 2, maxLength: 200, example: "usb c hub"}
+        country: {type: string, required: false, default: "US", note: "two-letter market code", example: "US"}
+        limit: {type: integer, required: false, min: 1, max: 20, default: 10, note: "products to return; the price is the same for any limit", example: 1}
+        max_credits: {type: integer, required: false, min: 0, max: 1000000, note: "budget: a quote above it runs nothing and answers 402 price_exceeds_max"}
+    test_request: {body: {capability: "search", site: "amazon.com", query: "usb c hub", limit: 1}}
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "5 credits per search whatever the number of products; a failed search is free, a search that loads and finds nothing is charged."}
+    provenance: {source: observed, source_url: 'https://www.datawebot.com/pricing', checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.meta.credits_used, unit: credit}}
+    bill: {miss: charged}
+    miss: {when: {path: response.products, op: empty}}
+    docs_url: https://www.datawebot.com/docs/api/reference
+
+  - id: datawebot.walmart.search.products
+    added: '2026-11-26'
+    capability: walmart.search.products
+    platform: walmart
+    scope: any_account
+    method: POST
+    path: /v1/requests
+    name: Walmart search results
+    summary: "Search Walmart products by keyword and get title, price, original price, rating, review count, image, link and a product_id for a product read. Ads come back apart, in sponsored."
+    input:
+      bodyType: json
+      body:
+        capability: {type: string, required: true, enum: [search], note: "always search for this endpoint", example: "search"}
+        site: {type: string, required: true, enum: [walmart.com], note: "always walmart.com for this endpoint", example: "walmart.com"}
+        query: {type: string, required: true, minLength: 2, maxLength: 200, example: "usb c hub"}
+        limit: {type: integer, required: false, min: 1, max: 20, default: 10, note: "products to return; the price is the same for any limit", example: 1}
+        max_credits: {type: integer, required: false, min: 0, max: 1000000, note: "budget: a quote above it runs nothing and answers 402 price_exceeds_max"}
+    test_request: {body: {capability: "search", site: "walmart.com", query: "usb c hub", limit: 1}}
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "5 credits per search whatever the number of products; a failed search is free, a search that loads and finds nothing is charged."}
+    provenance: {source: observed, source_url: 'https://www.datawebot.com/pricing', checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.meta.credits_used, unit: credit}}
+    bill: {miss: charged}
+    miss: {when: {path: response.products, op: empty}}
+    docs_url: https://www.datawebot.com/docs/api/reference
+
+  - id: datawebot.web.search.products
+    added: '2026-11-26'
+    capability: web.search.products
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/requests
+    name: Search products on one shop
+    summary: "Search one online shop's products by keyword, the shop named by its domain (target.com), and get title, price, rating, review count, image, link and a product_id for a product read. Ads come back apart, in sponsored."
+    note: "Check a shop first with datawebot.web.shop.detail: it says whether search is available there and what it costs."
+    input:
+      bodyType: json
+      body:
+        capability: {type: string, required: true, enum: [search], note: "always search for this endpoint", example: "search"}
+        site: {type: string, required: true, minLength: 2, maxLength: 253, note: "the shop's domain (target.com, amazon.de) or name; a domain that does not resolve answers 422 site_unreachable, free", example: "target.com"}
+        query: {type: string, required: true, minLength: 2, maxLength: 200, example: "usb c hub"}
+        country: {type: string, required: false, default: "US", note: "two-letter market code; picks the shop's domain when site is a name", example: "US"}
+        limit: {type: integer, required: false, min: 1, max: 20, default: 10, note: "products to return; the price is the same for any limit", example: 1}
+        max_credits: {type: integer, required: false, min: 0, max: 1000000, note: "budget: a quote above it runs nothing and answers 402 price_exceeds_max"}
+    test_request: {body: {capability: "search", site: "target.com", query: "usb c hub", limit: 1}}
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "5 credits per search on one shop at the default price; GET /v1/sites gives a shop's own price. A failed search is free."}
+    settle: {reported: {path: response.meta.credits_used, unit: credit}}
+    bill: {miss: charged}
+    miss: {when: {path: response.products, op: empty}}
+    docs_url: https://www.datawebot.com/docs/api/reference
+
+  - id: datawebot.web.search.products.any
+    added: '2026-11-26'
+    capability: web.search.products
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/requests
+    name: Search products across shops
+    summary: "Search products by keyword across online shops and get title, price, shop, rating, review count, image, link and a product_id whose product read lists every seller's price."
+    input:
+      bodyType: json
+      body:
+        capability: {type: string, required: true, enum: [search], note: "always search for this endpoint", example: "search"}
+        site: {type: string, required: true, enum: [any], note: "always any for this endpoint", example: "any"}
+        query: {type: string, required: true, minLength: 2, maxLength: 200, example: "anker 737 power bank"}
+        country: {type: string, required: false, default: "US", note: "two-letter market code", example: "US"}
+        limit: {type: integer, required: false, min: 1, max: 20, default: 10, note: "products to return; the price is the same for any limit", example: 1}
+        max_credits: {type: integer, required: false, min: 0, max: 1000000, note: "budget: a quote above it runs nothing and answers 402 price_exceeds_max"}
+    test_request: {body: {capability: "search", site: "any", query: "anker 737 power bank", limit: 1}}
+    price: {value: '25', currency: credit, per: 1, unit: call, note: "25 credits per search across shops; a failed search is free."}
+    provenance: {source: observed, source_url: 'https://www.datawebot.com/pricing', checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.meta.credits_used, unit: credit}}
+    bill: {miss: charged}
+    miss: {when: {path: response.products, op: empty}}
+    docs_url: https://www.datawebot.com/docs/api/reference
+
+  - id: datawebot.web.product.detail
+    added: '2026-11-26'
+    capability: web.product.detail
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/requests
+    name: Read one product, with every seller's price
+    summary: "Read one product by its page URL or a search result's product_id: title, price, availability, rating, review count, images, brand and category. A product_id from a search across shops also returns every seller's offer, with price, shipping and a direct link."
+    note: "Pass url or product_id, not both. Offers come back only for a product_id from datawebot.web.search.products.any; a product URL reads that one shop's page."
+    input:
+      bodyType: json
+      body:
+        capability: {type: string, required: true, enum: [product], note: "always product for this endpoint", example: "product"}
+        url: {type: string, required: false, maxLength: 2048, note: "a product page URL", example: "https://www.amazon.com/dp/B0DXJQT19B"}
+        product_id: {type: string, required: false, maxLength: 4096, note: "product_id from a search result"}
+        country: {type: string, required: false, default: "US", note: "two-letter market code", example: "US"}
+        max_credits: {type: integer, required: false, min: 0, max: 1000000, note: "budget: a quote above it runs nothing and answers 402 price_exceeds_max"}
+    test_request: {body: {capability: "product", url: "https://www.amazon.com/dp/B0DXJQT19B"}}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit per product read at the default price, offers included; a failed read is free."}
+    provenance: {source: observed, source_url: 'https://www.datawebot.com/pricing', checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.meta.credits_used, unit: credit}}
+    miss: {when: {path: response.product, op: absent}}
+    docs_url: https://www.datawebot.com/docs/api/reference
+
+  - id: datawebot.web.shop.detail
+    added: '2026-11-26'
+    kind: utility
+    capability: web.shop.detail
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/sites
+    name: Check a shop's support and prices
+    summary: "Check whether a shop supports search, product reads and catalogue pages, and the most credits each costs. Runs nothing."
+    input:
+      queryParams:
+        site: {type: string, required: true, minLength: 2, maxLength: 253, note: "a shop domain (walmart.com) or name", example: "walmart.com"}
+        country: {type: string, required: false, default: "US", note: "two-letter market code; picks the domain when site is a name", example: "US"}
+    test_request: {queryParams: {site: "walmart.com"}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.datawebot.com/docs/api/reference
+
+  - id: datawebot.account.usage
+    added: '2026-11-26'
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/account
+    name: Credit balance
+    summary: "Read the key's account balance: credits available, credits held by running requests, and when credits expire."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.datawebot.com/docs/api/reference
