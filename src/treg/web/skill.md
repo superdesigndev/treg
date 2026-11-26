@@ -339,7 +339,7 @@ When it refuses:
   charged: sign the fresh challenge. If your transfer was already sent, it is kept as your credit
   and the 402 offers only a zero-amount proof: sign it, do not pay again.
 - **409 `challenge_used`**: another payment already used this challenge, so this transfer ran no
-  call; it is kept as credit. Check the answer to the request that sent the first payment; do not
+  call; it is kept as credit (sending the same transfer again gets this answer again). Check the answer to the request that sent the first payment; do not
   send this request again with this challenge.
 - **409 `price_changed`**: the price rose and the transfer you sent is kept as credit, but this
   host offers your rail no zero-amount proof. Do not pay again: send the request to `proof_url`

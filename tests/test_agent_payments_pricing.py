@@ -296,6 +296,61 @@ async def test_a_challenge_used_before_a_price_rise_runs_one_call(
     assert len(calls) == 1 and await _balance(chain.payer) == 2 * FLOOR - EP_MICRO
 
 
+async def test_a_kept_transfer_sent_again_gets_its_answer_again(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The 409 was lost and the wallet resends the same transfer: it ran no call and gets the
+    same final answer, never a challenge to pay anew."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    first = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d7" * 32})
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": first.to_authorization()})).status_code == 200
+    second = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d8" * 32})
+    answers = [await wallet.get(f"/call/{EP}?aweme_id=7",
+                                headers={"Authorization": second.to_authorization()})
+               for _ in range(2)]
+    assert [a.status_code for a in answers] == [409, 409], answers[1].text
+    assert answers[1].json()["detail"]["reason"] == "challenge_used"
+    assert answers[1].headers["X-Treg-Payment-Reference"] == answers[0].headers["X-Treg-Payment-Reference"]
+    assert "www-authenticate" not in answers[1].headers
+    assert len(calls) == 1 and await _balance(chain.payer) == 2 * FLOOR - EP_MICRO
+
+
+@pytest.mark.parametrize("public_url, realm, expected", [
+    ("https://registry.test:8443/tools", "pay.registry.test",
+     f"https://pay.registry.test:8443/tools/call/{EP}?aweme_id=7"),
+    ("https://registry.test:8443", "::1", f"https://[::1]:8443/call/{EP}?aweme_id=7"),
+])
+async def test_the_proof_url_keeps_the_prefix_and_brackets_an_ipv6_host(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch, public_url, realm, expected):
+    from mpp import Credential
+
+    monkeypatch.setenv("TREG_PUBLIC_URL", public_url)
+    get_settings.cache_clear()
+    x402 = next(rail for rail in agent_payments._rails if rail.protocol == "x402")
+    agent_payments.configure([
+        MppTempoRail(secret="s" * 40, realm=realm, recipient=RECIPIENT, chain_id=42431), x402])
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": "0x" + "d9" * 32})
+    _raise_margin(monkeypatch)
+    r = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 409 and r.json()["detail"]["proof_url"] == expected, r.text
+    # The proxy in front of treg strips the prefix; the host is what the proof is offered on.
+    there = expected.replace("/tools", "")
+    async with AsyncClient(transport=ASGITransport(app=app)) as client:
+        asked = await client.get(there)
+        assert any(c.request["amount"] == "0" for c in _mpp_challenges(asked)), asked.text
+        paid = await client.get(there, headers={"Authorization": await _mpp_proof(asked, account)})
+    assert paid.status_code == 200 and paid.headers["X-Treg-Payment"] == "credit", paid.text
+
+
 async def test_challenge_used_does_not_claim_the_first_call_ran(
         wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
     """The first payment's settlement failed, so no call ran: the 409 says only that another

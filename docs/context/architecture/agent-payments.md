@@ -310,8 +310,10 @@ headers (`X-Treg-Payment` among them) and no receipt.
   credit), and a payment challenge there would be answered by paying again; a wallet whose credit
   still falls short is then asked to pay through `credit_insufficient`. Where the paying rail
   offers this host no proof (`Offer.host` is not its `proof_host`), the kept transfer answers 409
-  `price_changed` with no challenge and `proof_url`: this request on that rail's host, with
-  `public_url`'s scheme and port, where its proof spends the credit. Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
+  `price_changed` with no challenge and `proof_url`: this request's own URL (`resource_url`, so
+  `public_url`'s scheme, port and path prefix) on that rail's host, bracketed when it is an IPv6
+  literal, where its proof spends the credit. Hosts compare without an IPv6 literal's brackets
+  (`_hostname`, `proof_host`). Every such answer names the top-up the wallet can match: `X-Treg-Payment: paid`,
   `X-Treg-Paid-Micro`, `X-Treg-Payment-Reference` and `X-Treg-Credit-Micro`, and `paid_micro`,
   `payment_reference`, `credit_micro` in the body; it is recorded `refused_by=payment`. A
   payment is credited less the fee it was offered.
@@ -326,7 +328,10 @@ headers (`X-Treg-Payment` among them) and no receipt.
   a price change) is credited and answered a final 409 `challenge_used` with no challenge and the
   top-up named as above. It says only that another payment used the challenge and this transfer
   ran no call (that payment's own call may not have run either, if it failed to settle): the
-  wallet reads the first request's answer rather than retrying.
+  wallet reads the first request's answer rather than retrying. A kept transfer's row is marked
+  (`AgentPayment.error` `kept:challenge_used` or `kept:price_changed`, status still `settled`),
+  so the same transfer sent again after its answer was lost gets that answer again rather than
+  `payment_replayed` and a challenge to pay anew.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
   data, no `tregTerms` key in x402's `extra`, or, on a SIWX proof only, a nonce of pympp's own 32
   hex digits) is taken on today's terms,

@@ -300,7 +300,7 @@ def _hostname(host: str) -> str:
     """The Host header's name, lowercase, without its port."""
     host = (host or "").strip().lower()
     if host.startswith("["):
-        return host.split("]", 1)[0] + "]"
+        return host[1:].split("]", 1)[0]   # an IPv6 literal, compared without its brackets
     return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
 
 
@@ -495,6 +495,12 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro,
                                     fee_bps=signed.fee_bps if signed is not None else None)
     if draw is None:
+        if verified.moved and (kept := await _kept_before(verified.proof_id)) is not None:
+            # The same pushed transfer sent again after its answer was lost: it ran no call
+            # then, so it gets that answer again, never a challenge to pay anew.
+            org, reference, was_used = kept
+            raise await _kept(paid, rail, verified, Settlement(reference=reference), org,
+                              used=was_used)
         raise await challenge(paid, reason="payment_replayed",
                               message="this payment was already used")
     settlement = None
@@ -516,8 +522,32 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                 }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     if not agreed:
+        await _note_kept(payment_id, used=used)
         raise await _kept(paid, rail, verified, settlement, org_id, used=used)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+# `AgentPayment.error` of a settled transfer that ran no call, so a resend gets the same answer.
+KEPT_USED, KEPT_REPRICED = "kept:challenge_used", "kept:price_changed"
+
+
+async def _note_kept(payment_id: int | None, *, used: bool) -> None:
+    async with session_maker() as db:
+        await db.execute(update(AgentPayment).where(
+            AgentPayment.id == payment_id, AgentPayment.status == "settled",
+        ).values(error=KEPT_USED if used else KEPT_REPRICED, updated_at=_now()))
+        await db.commit()
+
+
+async def _kept_before(proof_id: str) -> tuple[int, str, bool] | None:
+    """(team, transaction, whether its challenge was used) of a settled transfer that ran no
+    call, or None."""
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment).where(
+            AgentPayment.proof_id == proof_id))).scalars().first()
+    if row is None or row.status != "settled" or row.error not in (KEPT_USED, KEPT_REPRICED):
+        return None
+    return row.org_id, row.reference or "", row.error == KEPT_USED
 
 
 class PriceChanged(Exception):
@@ -582,12 +612,14 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, verified: Verified,
 
 
 def _proof_url(rail: PaymentRail, offer: Offer) -> str:
-    """This request's URL on the host where `rail` offers its proof: `public_url`'s scheme and
-    port, the rail's host."""
-    public = urlsplit(get_settings().public_url)
-    host = rail.proof_host or public.hostname or ""
-    netloc = f"{host}:{public.port}" if public.port else host
-    return urlunsplit((public.scheme or "https", netloc, offer.path, offer.query, ""))
+    """This request's own URL (`resource_url`: scheme, port and any path prefix of `public_url`)
+    on the host where `rail` offers its proof."""
+    parts = urlsplit(offer.resource_url)
+    host = rail.proof_host or parts.hostname or ""
+    netloc = f"[{host}]" if ":" in host else host
+    if parts.port:
+        netloc += f":{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
 
 
 async def _claim_terms(terms: Terms, verified: Verified) -> bool:

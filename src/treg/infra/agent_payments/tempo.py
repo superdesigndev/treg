@@ -62,7 +62,9 @@ class MppTempoRail:
         self.network = f"tempo:{chain_id}"
         self.pay_to = recipient.lower()
         self.realm = realm.lower()
-        self.proof_host = self.realm
+        # Compared with the request's host, which `agent_payments._hostname` gives without an
+        # IPv6 literal's brackets.
+        self.proof_host = self.realm.strip("[]")
         self._challenge_ttl = timedelta(seconds=challenge_ttl_s)
         # Tempo's hosted RPC takes its console API key in this header, not in the URL. pympp sends
         # every RPC through this client, so its hook is where a verification first costs a call.
@@ -89,7 +91,7 @@ class MppTempoRail:
     def proves(self, offer: Offer) -> bool:
         # Clients refuse to sign a proof whose realm is not the hostname they called (mppx throws
         # instead of choosing another challenge), so a request to any other host gets none.
-        return bool(offer.host) and offer.host == self.realm
+        return bool(offer.host) and offer.host == self.proof_host
 
     async def challenge(self, offer: Offer, *, pay: bool = True,
                         prove: bool = False) -> list[tuple[str, str]]:
