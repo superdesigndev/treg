@@ -28,7 +28,7 @@ from treg.domain import money as ledger
 from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
-from treg.infra import kv
+from treg.infra import kv, money_session
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity.access import Caller
 from treg.models import (
@@ -2631,11 +2631,11 @@ async def test_a_fold_on_postgresql_caps_its_wait_for_row_locks(monkeypatch):
             ran.append(str(statement))
 
     monkeypatch.setattr(infra_db, "_is_sqlite", False)
-    await allowance_sweep._bound_lock_wait(Recorder())
-    assert ran == [f"SET LOCAL lock_timeout = '{allowance_sweep._LOCK_WAIT_MS}ms'"]
+    await money_session.bound_lock_wait(Recorder())
+    assert ran == [f"SET LOCAL lock_timeout = '{money_session.LOCK_WAIT_MS}ms'"]
     monkeypatch.setattr(infra_db, "_is_sqlite", True)
     ran.clear()
-    await allowance_sweep._bound_lock_wait(Recorder())
+    await money_session.bound_lock_wait(Recorder())
     assert ran == []
 
 

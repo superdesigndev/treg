@@ -644,7 +644,7 @@ past the bound do not make every new team scan them.
   the store could not answer is asked again sooner, within what is left of the lease, and a pass
   whose lease is known to be gone stops at the next team. Since one process folds for a whole
   share, a fold or idle close skips a team whose lock a request in the same process holds, and
-  waits at most `_LOCK_WAIT_MS` for a team's row locks (`lock_timeout`) before giving that team
+  waits at most `LOCK_WAIT_MS` (`infra/money_session.py`) for a team's row locks (`lock_timeout`) before giving that team
   up for the pass. A worker cancelled at shutdown still gives the lease back. Each pass lists the teams of its share with queued charges, listed or
   not, the team whose oldest charge has waited longest first (a walk of the queue's team numbers
   on `ix_callcharge_org_id_created_at`, one probe per queued team and one more per team of the
