@@ -886,6 +886,16 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   and cleanup must run. One caller opts out: work that can simply come back later (the allowance
   fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
   before the database, counted as `rejected`.
+- **Priority.** A waiter passing `priority` (only the allowance fold of a queue that has waited
+  too long, below) does not queue behind its process's local waiters, and once it finds the
+  lease busy it claims the next turn: a second key beside the lease (`…:claim`, token-owned,
+  expiring with the waiter's budget). Every acquisition asks for the lease `unless` another
+  token holds that claim (`kv.acquire_lease(unless=…)`, one script), so every other waiter of
+  the team, in any process, is turned away until the claimant has the lease; it gives the claim
+  back at once on entry, and on timeout, cancellation or a store fault (the TTL bounds one not
+  given back). Their own budgets keep running meanwhile, so a reserve behind it can shed load
+  as above. A process still running without `unless` ignores claims: priority is then lost, not
+  isolation.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before
