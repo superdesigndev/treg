@@ -669,6 +669,10 @@ past the bound do not make every new team scan them.
   `allowance_fold_skips` line per kind of work and reason a minute (logger
   `treg.allowance_fold_skips`, one physical line of JSON like `allowance_skips`): the skips, the teams, the
   longest any of their oldest charges had waited, and the teams waiting longest (`_note_skip`).
+  A team's wait is how old its oldest charge was when the pass read the teams with queued
+  charges, not when it was skipped: a team whose queue an earlier batch of the same pass
+  emptied is still listed with that age. Reading the queue again for each skip would cost a
+  query per skip for a diagnostic line.
   A team skipped on every pass is visible there, not only in the queue's age. The loop writes
   due lines on every turn, so a process that lost its share still writes what it counted. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own

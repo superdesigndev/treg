@@ -74,10 +74,11 @@ def _note_skip(kind: str, org_id: int, reason: str, oldest=None) -> None:
     """Count one team given up for the pass: `kind` is the work (`fold` or `close`), `reason`
     why (`busy_lock`: a money session of the team is open in this process, whoever holds the
     lease; `lease_held`: the lease is taken and no session of the team is open here, so another
-    process has it; `admission_timeout`; `lock_timeout`; `failed`), `oldest`
-    when the team's oldest queued charge was written. One `allowance_fold_skips` line per kind
-    and reason per minute in this process: the skips, the teams, the longest wait, and the teams
-    whose charges have waited longest. Diagnostics never stop a pass."""
+    process has it; `admission_timeout`; `lock_timeout`; `failed`), `oldest` when the team's
+    oldest queued charge was written, as the pass read it (a snapshot). One
+    `allowance_fold_skips` line per kind and reason per minute in this process: the skips, the
+    teams, the longest wait, and the teams whose charges have waited longest. Diagnostics never
+    stop a pass."""
     try:
         now = time.monotonic()
         window = _skips.get((kind, reason))
