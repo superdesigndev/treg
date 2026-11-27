@@ -104,7 +104,8 @@ collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog
 - **`policy.py`** - `CapacityPolicy` defaults per account (`_KNOWN`). The population is every
   `platform_key_*` slot, each further account of one, plus `overflow:orthogonal` /
   `overflow:monid` (aggregators are prepaid accounts too). `ensure_policies` inserts missing rows only (a hand-edited row is never
-  overwritten) and returns the providers still `unknown`, which a person must classify; code never
+  overwritten; a stored `rate_limit` still equal to a default listed in `_PREVIOUS_RATE_LIMITS`
+  was seeded, not edited, and moves to the current default) and returns the providers still `unknown`, which a person must classify; code never
   guesses. A further account's row takes its provider's classification. `latest_state()` is the
   pure rule: no, failed or old (`STALE_AFTER`) observation is `stale` and never refuses a call;
   `remaining < EMPTY_BELOW` on an exact observation (a spent float pool can read a few millionths,
