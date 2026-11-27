@@ -3156,6 +3156,36 @@ SPIDERCLOUD = OAuthProvider(
     probe_path="/data/credits",
 )
 
+CLAWIFI = OAuthProvider(
+    service="clawifi",
+    display_name="Clawifi",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Clawifi API key",
+    # Clawifi takes the key as a Bearer token. A bad or missing key answers 401 "Invalid API key"
+    # on the probe.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://clawifi.dev/signup",
+    setup_action_label="Get your Clawifi API key",
+    setup_steps=(
+        "Sign up at clawifi.dev and verify your email.",
+        "Copy the API key the console shows (it is shown once), or create one under API keys.",
+    ),
+    setup_note=(
+        "Calls spend Clawifi credits: most cost 1, a browser render 3. Cache hits and empty "
+        "answers cost 0. Connecting checks the free usage endpoint."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search the web, read and extract pages, map sites, and search papers, packages and datasets.",
+    base_url="https://api.clawifi.dev",
+    docs_url="https://clawifi.dev/docs",
+    probe_path="/usage",  # free: reads the account's usage summary, spends no credits
+)
+
 PERPLEXITY = OAuthProvider(
     service="perplexity",
     display_name="Perplexity",
@@ -4621,7 +4651,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, CLAWIFI, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
