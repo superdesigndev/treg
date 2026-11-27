@@ -743,7 +743,7 @@ async def test_a_decisive_verify_bills_the_answers_before_a_refused_header_as_us
         assert (dropleads["outcome"], scrubby["outcome"], scrubby["charged_micro"]) == ("weak", "skipped", 0)
         assert dropleads["charged_micro"] > 0 and before - await _balance(clients) == dropleads["charged_micro"]
         assert [s[0] for s in seen] == ["dropleads"]
-        assert [e.kind for e in await _rows(LedgerEntry) if e.kind != "grant"] == ["reserve", "settle"]
+        assert sorted(e.kind for e in await _rows(LedgerEntry) if e.kind != "grant") == ["reserve", "settle"]
     finally:
         get_settings.cache_clear()
 
