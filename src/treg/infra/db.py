@@ -10,7 +10,7 @@ from functools import cache
 from importlib import import_module
 
 from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
-from sqlalchemy import Engine, bindparam, event, inspect, text
+from sqlalchemy import Engine, bindparam, event, exists, inspect, literal, select, text, union_all
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -474,13 +474,22 @@ async def _schema_fingerprint(connection) -> tuple:
     return tuple(sorted(tuple(row) for row in rows))
 
 
+async def _tables_with_rows(connection, tables: list) -> set[str]:
+    """The names of the tables holding at least one row, read in one query."""
+    probe = union_all(*(
+        select(literal(table.name)).where(exists().select_from(table)) for table in tables
+    ))
+    return set((await connection.execute(probe)).scalars())
+
+
 async def reset_db() -> None:
     """Give each test a clean, head-stamped registry.
 
     reset_db runs before every test, so it deletes the rows the previous test left behind instead
     of rebuilding every table: an order of magnitude cheaper, and no DDL (a containerized Postgres
-    fed per-test DDL accumulates WAL until an unrelated commit stalls). The schema is rebuilt only
-    when it is not the one this function last built: a fresh database, or a test that altered it.
+    fed per-test DDL accumulates WAL until an unrelated commit stalls). Only the tables that hold
+    rows are emptied, found by one probe. The schema is rebuilt only when it is not the one this
+    function last built: a fresh database, or a test that altered it.
     """
     global _built_schema, _ddl_seen
     from .. import models  # noqa: F401 - populate SQLModel.metadata
@@ -498,12 +507,15 @@ async def reset_db() -> None:
             built = await _schema_fingerprint(connection) == _built_schema
     else:
         built = True
+    if built:
+        async with _engine.begin() as connection:
+            filled = await _tables_with_rows(connection, tables)
     # Postgres holds every lock a transaction takes until it ends, in one table shared by every
     # database on the server (max_locks_per_transaction x max_connections entries). One
     # transaction over every table and index, in each of many parallel test workers, fills it
     # ("out of shared memory"), so each transaction covers a few tables. Children go first.
     if built:
-        for batch in _batches(list(reversed(tables))):
+        for batch in _batches([table for table in reversed(tables) if table.name in filled]):
             async with _engine.begin() as connection:
                 for table in batch:
                     await connection.execute(table.delete())

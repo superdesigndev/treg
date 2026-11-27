@@ -6,7 +6,8 @@ from __future__ import annotations
 import os
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, select, text
+from sqlmodel import SQLModel
 
 from treg.infra.db import _engine, reset_db
 
@@ -39,3 +40,22 @@ async def test_a_test_that_alters_the_schema_gets_it_rebuilt_by_the_next_reset()
             lambda sync: {index["name"] for index in inspect(sync).get_indexes("callrecord")})
 
     assert "ix_reset_probe" not in names
+
+
+async def test_a_reset_empties_what_a_test_wrote_and_restarts_ids() -> None:
+    """Only tables holding rows are emptied, and every id restarts at 1, including a table the
+    test emptied itself after advancing its sequence."""
+    misses, snapshots = SQLModel.metadata.tables["searchmiss"], SQLModel.metadata.tables["capacitysnapshot"]
+    await reset_db()
+    async with _engine.begin() as connection:
+        await connection.execute(misses.insert(), [{"query": "a"}, {"query": "b"}])
+        await connection.execute(snapshots.insert().values(provider="p"))
+        await connection.execute(snapshots.delete())
+
+    await reset_db()
+    async with _engine.begin() as connection:
+        assert await connection.scalar(select(func.count()).select_from(misses)) == 0
+        await connection.execute(misses.insert().values(query="c"))
+        await connection.execute(snapshots.insert().values(provider="q"))
+        assert await connection.scalar(select(misses.c.id)) == 1
+        assert await connection.scalar(select(snapshots.c.id)) == 1
