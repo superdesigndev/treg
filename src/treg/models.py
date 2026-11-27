@@ -1982,8 +1982,8 @@ class CallReview(SQLModel, table=True):
     reason: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
     # Jev's judgements of `reason` (`application.review_judge`), each written once and on its own:
-    # the probability it names or identifies a person (gates public quotes), and for a `partly` or
-    # `not_useful` review the codebook codes for what it blames.
+    # the probability it names or identifies a person (gates public quotes), and the codebook
+    # codes for what a `partly` or `not_useful` review blames or a `useful` one praises.
     person_p: float | None = Field(default=None)
     privacy_judged_at: NaiveUTC | None = Field(default=None)
     primary_code: str | None = Field(default=None)
@@ -1993,6 +1993,7 @@ class CallReview(SQLModel, table=True):
     # What the codes were judged from (`application.review_judge`): NULL or "reason" (an upgrade with
     # the call's answer may follow), "answer", or "reason_final" (no answer can be shown). An answer
     # not readable yet is tried again from `answer_retry_at`, backing off with `answer_attempts`.
+    # A `useful` review, never upgraded, keeps there its back-off while Jev cannot code its reason.
     code_basis: str | None = Field(default=None)
     answer_retry_at: NaiveUTC | None = Field(default=None)
     answer_attempts: int | None = Field(default=None)

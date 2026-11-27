@@ -489,7 +489,7 @@ Rules a change must keep:
   judged is not quoted. Reasons are otherwise quoted as written.
 
 Jev's judgements are written to the review row by `treg-worker reviews judge`, an hourly cron
-(`application.review_judge`), once per review and in two independent passes over the window:
+(`application.review_judge`), once per review and in independent passes over the window:
 
 - Privacy: each quotable reason gets `person_p` and `privacy_judged_at`.
 - Attribution: each `partly` or `not_useful` review gets `primary_code`, an optional `secondary_code`
@@ -499,6 +499,27 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   call's (its rows cannot prove which answer the caller got) or one without a reason; `answer` once
   upgraded. A review with no reason is `NOREASON` without asking. A new codebook version re-judges
   only reviews coded under an older one, from their reasons, and the upgrade follows again.
+- Praise (`judge_praise`): each `useful` review gets a code from `review_codes.PRAISE_CODES`, an
+  optional second one and `PRAISE_CODEBOOK_VERSION` in the same columns; its usefulness, which never
+  changes, says which codebook they are from. Most praise codes pair with a negative one, so a
+  report card can set a praise and a complaint about the same thing side by side: ACCURATE with
+  ACCURACY and RISKY, FRESH with STALE, RELEVANT with WRONG and PARAM, COMPLETE with PARTIAL and
+  COVER, STRUCTURED with FORMAT, ACCESS with BLOCK and JS, CHEAP with PRICE; HONEST (a plain miss
+  instead of a guess), FAST and GENERIC (useful, nothing specific praised) have no pair. Generated
+  media has no code of its own: following the prompt is RELEVANT and a faithful output ACCURATE,
+  the axes its complaints are coded on (PARAM, ACCURACY). Praise is coded from the reason only and
+  is always `reason_final`: an upgrade would read an answer per review, and useful reviews are
+  most reviews. A blank reason is `NOREASON` without asking. Only
+  the last `review_judge_praise_days` (28) are coded, newest first and at most
+  `review_judge_praise_per_run` per run, which bounds the backfill when the pass is first turned
+  on or the praise codebook changes; it runs last, on the time the other passes leave. A review Jev
+  could not code steps aside so the cap never stays stuck on the same newest rows: an unreadable
+  answer backs off from an hour to a week, a failed request waits an hour without counting a try,
+  in `answer_retry_at` / `answer_attempts` (a useful review is never upgraded, so it has no other
+  use for them; coding it clears both). The run reports `pending` (the whole window still uncoded
+  when it starts), `selected` (its share) and `retry_later`.
+  `review_judge_praise` off skips it (its rollback switch; codes already written stay, and a
+  reader that wants none ignores `useful` rows).
 - Upgrade with the answer (`judge_answers`): a direct call's review coded from its reason is asked
   again with the request and the shortened answer beside its reason (`application.review_answers`,
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to
