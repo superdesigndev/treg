@@ -456,12 +456,14 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
-- `reset_db()` is test-only: it deletes every row (one probe names the tables holding any, and
-  only those are emptied), rewinds Postgres sequences and stamps head, rebuilding the schema only when its column-and-index fingerprint changed. The fingerprint is
-  read only after some engine in the process ran DDL (a listener on every `Engine`, installed by
-  the first reset, so a server never carries it). It works a few tables
-  per transaction: Postgres's lock table is shared by every database on the server, and parallel
-  test workers each locking every table at once exhaust it.
+- `reset_db()` is test-only: it deletes every row (one probe names the tables holding any, and only
+  those are emptied), rewinds Postgres sequences and stamps head, rebuilding the schema only when
+  its column-and-index fingerprint changed. The fingerprint is read only after some engine in the
+  process ran DDL (a listener on every `Engine`, installed by the first reset, so a server never
+  carries it), and only then are the pools disposed, so no connection keeps a statement prepared
+  against an old table; otherwise pooled connections live on into the next test, as a server's do
+  between requests. It works a few tables per transaction: Postgres's lock table is shared by every
+  database on the server, and parallel test workers each locking every table at once exhaust it.
 - `TREG_READ_DATABASE_URL` adds `read_session_maker`, read-only by default (PostgreSQL read-only
   transactions, SQLite `PRAGMA query_only`); these guard accidents, not deliberate SQL. Failures
   never fall back to the primary. Authorization always stays on the primary. Replication and lag

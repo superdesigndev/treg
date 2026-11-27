@@ -489,16 +489,15 @@ async def reset_db() -> None:
     of rebuilding every table: an order of magnitude cheaper, and no DDL (a containerized Postgres
     fed per-test DDL accumulates WAL until an unrelated commit stalls). Only the tables that hold
     rows are emptied, found by one probe. The schema is rebuilt only when it is not the one this
-    function last built: a fresh database, or a test that altered it.
+    function last built: a fresh database, or a test that altered it. After any DDL every pool is
+    disposed, so no connection keeps a statement prepared against an old table; otherwise pooled
+    connections live on into the next test, as a server's do between requests.
     """
     global _built_schema, _ddl_seen
     from .. import models  # noqa: F401 - populate SQLModel.metadata
 
     if not event.contains(Engine, "before_cursor_execute", _note_ddl):
         event.listen(Engine, "before_cursor_execute", _note_ddl)
-
-    for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
-        await engine.dispose()
     tables = SQLModel.metadata.sorted_tables
     if _built_schema is None:
         built = False
@@ -507,6 +506,9 @@ async def reset_db() -> None:
             built = await _schema_fingerprint(connection) == _built_schema
     else:
         built = True
+    if _ddl_seen:
+        for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
+            await engine.dispose()
     if built:
         async with _engine.begin() as connection:
             filled = await _tables_with_rows(connection, tables)
