@@ -605,6 +605,13 @@ async def test_a_recovery_short_of_credit_pays_as_that_recovery(
                       payload={"type": "hash", "hash": "0x" + "fc" * 32}).to_authorization()
     run = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": paid})
     assert run.status_code == 200, run.text
+    # Another payment signed under the same funding challenge, not yet sent: final, no challenge.
+    unsent = Credential(challenge=pay.to_echo(), payload={
+        "type": "transaction", "signature": "0x76" + "22" * 40}).to_authorization()
+    second = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": unsent})
+    assert second.status_code == 409, second.text
+    assert second.json()["detail"]["reason"] == "challenge_used"
+    assert "www-authenticate" not in second.headers
     resent = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
     assert resent.status_code == 402, resent.text
     again = await wallet.get(f"/call/{EP}?aweme_id=7",

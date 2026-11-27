@@ -538,7 +538,7 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     # A kept transfer's recovery that already ran its call answers that first, before the price,
     # the credit or a replay could ask the wallet to pay.
     recovery = _issued_recovery(verified.terms, paid.offer.resource_url)
-    if (verified.kind == "proof" and recovery is not None
+    if (recovery is not None and (verified.kind == "proof" or not verified.moved)
             and await _recovery_spent(recovery[0])):
         raise _recovery_used(paid)
     # The terms the payer was offered, which treg's own token names: a price that rose since then
@@ -596,6 +596,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         # A challenge's terms buy one call: the first payment made under them, before they expire
         # (on x402 they ride outside what the wallet signs). A second transfer already sent is
         # kept as credit below, and runs no call.
+        if not verified.moved and signed.recovery:
+            raise _recovery_used(paid)   # the other payment runs the recovery's one call
         if not verified.moved:
             raise await challenge(paid, reason="challenge_used",
                                   message="another payment already used this challenge's terms")
@@ -617,7 +619,7 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     if draw is None:
         if (resent := await _resent_kept(paid, rail, credential)) is not None:
             raise resent
-        raise await challenge(paid, reason="payment_replayed",
+        raise await challenge(_recovering(paid, signed), reason="payment_replayed",
                               message="this payment was already used")
     settlement = None
     if not draw:
@@ -636,7 +638,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                                 "call was not made. If the transfer lands it is kept as this "
                                 "wallet's credit; do not send this payment again."),
                 }) from exc
-            raise await challenge(paid, reason=exc.code, message=exc.message) from exc
+            raise await challenge(_recovering(paid, signed), reason=exc.code,
+                                  message=exc.message) from exc
     if not agreed:
         raise await _kept(paid, rail, verified.amount_micro,
                           settlement.reference if settlement is not None else "", org_id,
@@ -852,8 +855,8 @@ async def _admit_proof(paid: PaidOffer, verified: Verified,
 def _recovery_used(paid: PaidOffer) -> PriceChanged:
     return PriceChanged({
         "error": "challenge_used", "reason": "challenge_used", "endpoint_id": paid.endpoint_id,
-        "message": ("A proof already spent this kept transfer's credit on this call, so this proof "
-                    "ran none. Check that request's answer; do not send it again."),
+        "message": ("Another proof or payment already ran this kept transfer's recovery call, so "
+                    "this one ran none. Check that request's answer; do not send it again."),
     }, [("X-Treg-Payment", "credit")])
 
 
