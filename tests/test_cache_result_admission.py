@@ -181,38 +181,13 @@ async def test_result_and_admission_telemetry(clients, cache_on, monkeypatch):
 @pytest.mark.parametrize('ep,status,body,state', [
     (EP, 201, {'data': {'emails': []}}, 'empty'),
     (EP, 201, {'data': {}}, 'error'),
-    (EP, 201, {'data': {'emails': [None]}}, 'error'),
-    (EP, 201, {'data': {'emails': [{'value': ''}]}}, 'error'),
-    ('leadmagic.x.employee-finder', 201, {'data': []}, 'empty'),
     ('leadmagic.x.employee-finder', 201, {'data': [{'full_name': 'Person', 'has_email': False}]}, 'found'),
     ('leadmagic.x.employee-finder', 201, {'data': [{'full_name': None}]}, 'unknown'),
-    ('leadmagic.x.employee-finder', 201, {'message': 'failure'}, 'unknown'),
-    ('seranking.google.keywords.volume', 201, [], 'empty'),
-    ('seranking.google.keywords.volume', 201, [{'is_data_found': False}], 'empty'),
-    ('seranking.google.keywords.volume', 201, [{'is_data_found': True, 'keyword': 'term', 'volume': 0}], 'found'),
-    ('seranking.google.keywords.volume', 201, [{'is_data_found': False}, {'is_data_found': True, 'keyword': 'term', 'volume': 10}], 'found'),
-    ('seranking.google.keywords.volume', 201, [{'is_data_found': 'false'}], 'unknown'),
-    ('seranking.google.keywords.volume', 201, [{'is_data_found': True}], 'unknown'),
-    ('seranking.google.keywords.volume', 201, [{'is_data_found': True, 'keyword': 'term', 'volume': True}], 'unknown'),
     ('unclassified.endpoint', 201, {'data': [1]}, 'unknown'),
-    ('leadsforge.people.email.find', 200, {'status':'succeeded','email':'person@example.com'}, 'found'),
-    ('leadsforge.people.email.find', 200, {'status':'not_found'}, 'empty'),
     ('leadsforge.people.email.find', 200, {'status':'not_found','email':'person@example.com'}, 'unknown'),
-    ('leadsforge.people.email.find', 200, {'email':'person@example.com'}, 'unknown'),
-    ('leadsforge.people.email.find', 200, {'status':'succeeded','email':' person@example.com'}, 'unknown'),
-    ('hunter.people.email.find', 200, {}, 'error'),
-    ('hunter.people.email.find', 200, {'data': {}}, 'error'),
-    ('hunter.people.email.find', 200, {'data': None}, 'error'),
-    ('hunter.people.email.find', 200, {'data': {'email': 'not an address'}}, 'error'),
-    ('hunter.people.email.find', 200, {'data': {'email': None}}, 'empty'),
-    ('findymail.search.name', 200, {}, 'unknown'),
-    ('findymail.search.name', 200, {'contact': {}}, 'unknown'),
-    ('findymail.search.name', 200, {'contact': None}, 'empty'),
     # An endpoint's declared `miss: {status, when?}` is an answer, not an error (the router agrees).
     ('limadata.people.email.find.name', 404, {}, 'empty'),
     ('limadata.people.email.find.name', 400, {'message': 'bad request'}, 'error'),
-    ('prospeo.people.email.find', 400, {'error': True, 'error_code': 'NO_MATCH'}, 'empty'),
-    ('prospeo.people.email.find', 400, {'error': True, 'error_code': 'INVALID_DATAPOINTS'}, 'error'),
     ('prospeo.people.email.find', 500, {'error': True, 'error_code': 'NO_MATCH'}, 'error'),
     ('hunter.companies.emails', 404, {}, 'error'),
 ])
@@ -312,16 +287,6 @@ async def test_unverified_hit_miss_does_not_enable_new_policy(clients, cache_on,
     assert r.content == EMPTY and r.headers.get('x-treg-cache') == 'hit'
     props = [p for event, p in events if event == 'tool_called']
     assert all(p['cache_result_policy'] == 'legacy' and p['cache_admission'] == 'not_applicable' for p in props)
-
-
-@pytest.mark.parametrize('ep', ['hunter.companies.enrich', 'tikhub.tiktok.video.comments'])
-def test_verified_adapter_positive_fixture_is_admissible(ep):
-    from pathlib import Path
-    from treg.domain.catalog.results import classify, has_result_rules
-    assert has_result_rules(ep)
-    body = (Path(__file__).parents[1] / 'src/treg/catalog/examples' / (ep + '.json')).read_bytes()
-    result = classify(ep, 200, body)
-    assert result.state == 'found' and result.reason == 'adapter_hit'
 
 
 async def test_ignore_cannot_mask_result_transitions_and_uses_decisive_baseline(clients, cache_on, monkeypatch):

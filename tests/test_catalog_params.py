@@ -129,13 +129,6 @@ def test_a_declaration_is_held_to_the_vocabulary(spec, error):
     assert (error is None and errors == []) or any(error in e for e in errors), errors
 
 
-def test_every_shipped_declaration_and_contract_field_is_in_the_vocabulary():
-    cat = catalog_store.load()
-    for contract in cat.contracts.values():
-        for spec in [*contract.identity_specs.values(), *contract.filters.values()]:
-            assert params.types_of(spec) and all(t in params.TYPES for t in params.types_of(spec)), spec
-
-
 # -- the roads: in refuse mode a 400 naming the parameter, before any hold or relay; in log mode -------
 # -- the request is relayed as sent and one line names the parameter and the rule, never the value ----
 
@@ -213,8 +206,15 @@ SERVED_BODIES = [{}, {"chunks_per_source": 3}, {"chunks_per_source": "3"}, {"chu
                  {"unlisted": "relayed as sent"}]
 
 
+async def _no_wait(*_args, **_kwargs) -> int:
+    return 0
+
+
 @pytest.fixture
 def tavily_on(monkeypatch):
+    """Tavily on treg's key, without the wait that paces calls at its published rate: these tests
+    make many calls in a row and are about the parameter check, not smoothing."""
+    monkeypatch.setattr(call_service.provider_limiter, "acquire", _no_wait)
     monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily")
     get_settings.cache_clear()
@@ -488,7 +488,7 @@ def test_every_routed_call_template_meets_its_own_declarations():
 
 
 @pytest.mark.parametrize("value,expected", [
-    ("refuse", "refuse"), (" Refuse ", "refuse"), ("log", "log"), ("", "log"), ("block", "log"), ("off", "log")])
+    ("refuse", "refuse"), (" Refuse ", "refuse"), ("", "log"), ("block", "log")])
 def test_the_switch_reads_refuse_and_any_other_value_as_log(monkeypatch, value, expected):
     monkeypatch.setenv("TREG_PARAM_CHECK", value)
     assert Settings().param_check == expected

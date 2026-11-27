@@ -25,16 +25,16 @@ source:
 endpoints:
   - id: lusha.x.contacts-prospecting-filters
     kind: utility
-    tier: extended
     platform: people
     method: GET
     path: /v3/contacts/prospecting/filters/{filterType}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.lusha.com/v3/account/usage', checked: '2026-08-07', note: 'measured on our own account — called it twice and credits.used did not move (24 -> 24); only the request rate-limit counter advanced. Filter enumeration is metadata, not data'}
+    price: {value: '0', currency: USD, unit: call, note: "free: it uses no credits"}
+    settle: null
     name: "List contact filter values"
-    summary: "Enumerate the accepted values for one contact-prospecting filter type (job titles, seniority, departments, locations, etc.)"
+    summary: "List the accepted values for one contact-search filter: departments, seniority, data points, countries or locations"
     input:
       pathParams:
-        filterType: {type: string, required: true, note: "which filter's accepted values to list. CORRECTED at verify time from the real OpenAPI bundle (https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml, unreachable from the client-rendered reference pages): the enum is departments | seniority | existingDataPoints | countries | locations (locations additionally requires a `query` param)", example: "departments"}
+        filterType: {type: string, required: true, note: "departments | seniority | existingDataPoints | countries | locations; locations also needs a `query` parameter", example: "departments"}
       note: "companion to POST /v3/contacts/prospecting — call this first to know what to pass into filters.contacts.include/exclude"
     test_request:
       pathParams: {filterType: "departments"}
@@ -45,16 +45,16 @@ endpoints:
 
   - id: lusha.x.companies-prospecting-filters
     kind: utility
-    tier: extended
     platform: companies
     method: GET
     path: /v3/companies/prospecting/filters/{filterType}
-    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://api.lusha.com/v3/account/usage', checked: '2026-08-07', note: 'measured on our own account — called it twice and credits.used did not move (24 -> 24); only the request rate-limit counter advanced. Filter enumeration is metadata, not data'}
+    price: {value: '0', currency: USD, unit: call, note: "free: it uses no credits"}
+    settle: null
     name: "List company filter values"
-    summary: "Enumerate the accepted values for one company-prospecting filter type (industry, size, revenue, technologies, intent topics, etc.)"
+    summary: "List the accepted values for one company-search filter: names, sizes, revenues, locations, SIC, NAICS, industries, intent topics or technologies"
     input:
       pathParams:
-        filterType: {type: string, required: true, note: "CORRECTED at verify time from the real OpenAPI bundle: enum is names | sizes | revenues | locations | sics | naics | industriesLabels | intentTopics | technologies (names/technologies/locations additionally require a `query` param)", example: "sizes"}
+        filterType: {type: string, required: true, note: "names | sizes | revenues | locations | sics | naics | industriesLabels | intentTopics | technologies; names, technologies and locations also need a `query` parameter", example: "sizes"}
       note: "companion to POST /v3/companies/prospecting"
     test_request:
       pathParams: {filterType: "sizes"}
@@ -66,44 +66,48 @@ endpoints:
   - id: lusha.x.companies-enrich-by-id
     added: '2026-07-28'
     domain: companies
-    tier: extended
     platform: companies
     method: POST
     path: /v3/companies/enrich
     name: "Enrich companies by Lusha id (up to 100)"
-    summary: "Enrich companies you already found in a prospecting search, by ids (max 100), into full firmographic records"
+    summary: "Enrich up to 100 companies by Lusha id into full records: industry, headcount, revenue, funding, tech"
     input:
       bodyType: json
       body:
-        ids: {type: array, items: {type: string}, required: true, note: "1-100 Lusha company ids from a prior prospecting search — CORRECTED at verify time: the field is `ids`, not `companyIds` as the doc prose paraphrases it", example: ["16303253"]}
+        ids: {type: array, items: {type: string}, required: true, note: "1-100 company ids from lusha.companies.search", example: ["16303253"]}
+        reveal: {type: array, items: {type: string, enum: [employeesByDepartment, employeesByLocation, employeesBySeniority, competitors, estimatedAnnualItSpend, monthlyWebsiteTraffic, openJobsTotal, openJobsByDepartment, openJobsByLocation, openJobsBySeniority, directParent, ultimateParent]}, required: false, note: "premium fields to add; each costs 1 credit per company returned"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table"}
-      note: "the id-based sibling of lusha.companies.enrich (which takes domain/name); use this once you already hold ids from POST /v3/companies/prospecting"
+      note: "use lusha.companies.enrich when you have a domain or name instead of an id"
     test_request:
-      body: {ids: ["v1.A1gXjPYd63SSPjSvxO4uwqXqE5ilJV9S"]}
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: docs, source_url: 'https://www.lusha.com/pricing/', checked: '2026-07-28', confidence: documented, note: billed on the reveal_company action per company returned; a no-match is free. Lusha does not publish the numeric credit cost — read GET /v3/account/usage.pricing for the calling plan's actual number.}
-    skipped: "field-name bug fixed and a real id (from lusha.companies.search) is in test_request, but not called to conserve budget — lusha.companies.enrich (core) already verifies this exact reveal_company billing path against the same company (domain-based instead of id-based); top up credits and re-run to confirm the id-based variant specifically"
+      body: {ids: ["v1.3J1rAxaCJItvAYiCFRJaszj9lstdGJw"]}
+    price: {value: '1', currency: credit, unit: result, note: "1 credit per company returned, plus 1 per premium `reveal` field per company"}
+    provenance: {source: observed, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-11', confidence: verified}
+    reserve: {plugin: lusha.company_reveal_credits, max: '1300'}
+    verified: 2026-11-11
+    example_response: examples/lusha.x.companies-enrich-by-id.json
     docs_url: https://docs.lusha.com/apis/openapi/company-search-and-enrich
 
   - id: lusha.x.contacts-lookalike
     domain: contacts
-    tier: extended
     platform: people
     method: POST
     path: /v3/contacts/lookalike
     name: "Find lookalike contacts from 5-100 seed contacts"
-    summary: "AI-powered recommendations for contacts who share similar roles, seniority and company profile to 5-100 seed contacts"
+    summary: "Find contacts with roles, seniority and companies like 5-100 seed contacts"
     input:
       bodyType: json
       body:
-        seeds: {type: object, required: true, note: "CORRECTED at verify time from the real OpenAPI bundle: seeds is a single object {linkedinUrls, contacts, emails, ids}, NOT an array of per-seed objects. Combined items across the sub-arrays must total 5-100", example: {ids: ["4389064654", "4389064624"]}}
+        seeds: {type: object, required: true, note: "one object {linkedinUrls, contacts, emails, ids}, not an array; the items in all its lists must total 5-100", example: {ids: ["4389064654", "4389064624"]}}
         exclude: {type: object, required: false, note: "same ContactIdentifiersBatch shape as seeds"}
-        dedupeSessionId: {type: string, required: false, note: "omit on the first call — Lusha generates one and returns it; reuse it for 'get more' pagination (retained 30 days)"}
+        dedupeSessionId: {type: string, required: false, note: "omit on the first call; send the returned id again to get more results (kept 30 days)"}
         limit: {type: integer, required: false, note: "1-100, default 25"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table"}
-      note: "returns lightweight previews; call lusha.people.contacts.enrich on the returned ids for full details"
+      note: "returns previews; pass the returned ids to lusha.people.contacts.enrich for emails and phones"
     test_request:
       body: {seeds: {ids: ["v1.-R1YwK7SIvBv1FVAOW1zmel9bZ4XD9mxNQ", "v1.ujDPLE3res-lYBnt6iiLr3jwCe9wXPdmrg", "v1.n0ghmmrFpkVf6z0q-rKCjt4kTMVGydVe", "v1.Ex7lVhKX97ZmbbTTg4AumQqE0SPKKsw", "v1.AUMmbUKy3d9zrSEMaIog-hADfblVwPQCZQ"]}, limit: 1}
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, checked: '2026-07-28', confidence: verified, note: 'OBSERVED live 2026-07-28: 1 credit for 1 returned result (lookalikeContact, perQuantity 5 per account/usage pricing)'}
+    price: {value: '1', currency: credit, per: 5, round: up, unit: result, note: "1 credit per started block of 5 contacts returned"}
+    provenance: {source: rate_card_api, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 100}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/lusha.x.contacts-lookalike.json
@@ -112,24 +116,25 @@ endpoints:
 
   - id: lusha.x.companies-lookalike
     domain: companies
-    tier: extended
     platform: companies
     method: POST
     path: /v3/companies/lookalike
     name: "Find lookalike companies from 5-100 seed companies"
-    summary: "AI-powered recommendations for companies of similar size, industry and profile to 5-100 seed companies"
+    summary: "Find companies with a size, industry and profile like 5-100 seed companies"
     input:
       bodyType: json
       body:
-        seeds: {type: object, required: true, note: "CORRECTED at verify time: seeds is a single object {domains, linkedinUrls}, NOT an array of per-seed objects. Combined items must total 5-100", example: {domains: ["salesforce.com", "hubspot.com", "zoominfo.com", "apollo.io", "clearbit.com"]}}
+        seeds: {type: object, required: true, note: "one object {domains, linkedinUrls}, not an array; the items in both lists must total 5-100", example: {domains: ["salesforce.com", "hubspot.com", "zoominfo.com", "apollo.io", "clearbit.com"]}}
         exclude: {type: object, required: false, note: "same CompanyIdentifiersBatch shape as seeds"}
-        dedupeSessionId: {type: string, required: false, note: "omit on the first call; reuse the returned id for 'get more' pagination (retained 30 days)"}
+        dedupeSessionId: {type: string, required: false, note: "omit on the first call; send the returned id again to get more results (kept 30 days)"}
         limit: {type: integer, required: false, note: "1-100, default 25"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table"}
-      note: "returns lightweight previews; call lusha.companies.enrich / lusha.x.companies-enrich-by-id on the returned ids for full details"
+      note: "returns previews; pass the returned ids to lusha.x.companies-enrich-by-id for full records"
     test_request:
       body: {seeds: {domains: ["salesforce.com", "hubspot.com", "zoominfo.com", "apollo.io", "clearbit.com"]}, limit: 1}
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, checked: '2026-07-28', confidence: verified, note: 'OBSERVED live 2026-07-28: 1 credit for 1 returned result (lookalikeCompany, perQuantity 5 per account/usage pricing)'}
+    price: {value: '1', currency: credit, per: 5, round: up, unit: result, note: "1 credit per started block of 5 companies returned"}
+    provenance: {source: rate_card_api, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 100}}
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/lusha.x.companies-lookalike.json
@@ -138,49 +143,52 @@ endpoints:
   - id: lusha.x.contacts-signals
     added: '2026-07-28'
     domain: contacts
-    tier: extended
     platform: people
     method: POST
     path: /v3/contacts/signals
     name: "Job-change and promotion signals for contact ids"
     summary: "Retrieve signal events for a list of contacts — job changes and promotions"
+    platform_blocked: Lusha bills each matched signal, and one call can match hundreds per company, more than a hold can cover. Connect your own Lusha key.
     input:
       bodyType: json
       body:
-        contactIds: {type: array, items: {type: string}, required: true, note: "up to 100 Lusha contact ids", example: ["12345"]}
+        ids: {type: array, items: {type: string}, required: true, note: "up to 100 Lusha contact ids (the field is `ids`; Lusha refuses `contactIds`)", example: ["12345"]}
         signalTypes: {type: array, items: {type: string}, required: false, note: "promotion | companyChange | allSignals"}
         startDate: {type: string, required: false, note: "ISO date; only signals on/after this date"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table's Signals column"}
       note: "standalone alternative to the signals filter on the search/prospecting endpoints"
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: docs, source_url: 'https://www.lusha.com/pricing/', checked: '2026-07-28', confidence: documented, note: billed on the showSignalsContact action per matched signal. Lusha does not publish the numeric credit cost — read GET /v3/account/usage.pricing for the calling plan's actual number.}
-    untestable: "requires contactIds minted by a prior search on this account; no public/stable id is documented to probe with"
+    price: {value: '1', currency: credit, unit: result, note: "1 credit per matched signal; set signalTypes and startDate to keep the bill small"}
+    provenance: {source: rate_card_api, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
+    reserve: {entities: {from: body.ids.*, max: 100}}
+    untestable: "requires ids minted by a prior search on this account; no public/stable id is documented to probe with"
     docs_url: https://docs.lusha.com/apis/openapi/signals
     capability: people.signals
 
   - id: lusha.x.companies-signals
     added: '2026-07-28'
     domain: other
-    tier: extended
     platform: companies
     method: POST
     path: /v3/companies/signals
     name: "Hiring and headcount signals for company ids"
     summary: "Retrieve signal events for a list of companies — hiring activity, headcount changes, web traffic, IT spend and news"
+    platform_blocked: Lusha bills each matched signal, and one call can match hundreds per company, more than a hold can cover. Connect your own Lusha key.
     input:
       bodyType: json
       body:
-        companyIds: {type: array, items: {type: string}, required: true, note: "up to 100 Lusha company ids", example: ["12345"]}
+        ids: {type: array, items: {type: string}, required: true, note: "up to 100 Lusha company ids (the field is `ids`; Lusha refuses `companyIds`)", example: ["12345"]}
         signalTypes: {type: array, items: {type: string}, required: false, note: "e.g. headcountIncrease1m, surgeInHiring, websiteTrafficIncrease, itSpendIncrease, riskNews, allSignals — see lusha.x.company-signal-types"}
         startDate: {type: string, required: false, note: "ISO date; only signals on/after this date"}
         tableId: {type: string, required: false, note: "persist results into a Lusha Table's Signals column"}
       note: "standalone alternative to the signals filter on the search/prospecting endpoints"
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: docs, source_url: 'https://www.lusha.com/pricing/', checked: '2026-07-28', confidence: documented, note: billed on the showSignalsCompany action per matched signal. Lusha does not publish the numeric credit cost — read GET /v3/account/usage.pricing for the calling plan's actual number.}
-    untestable: "requires companyIds minted by a prior search on this account; no public/stable id is documented to probe with"
+    price: {value: '1', currency: credit, unit: result, note: "1 credit per matched signal; set signalTypes and startDate to keep the bill small"}
+    provenance: {source: rate_card_api, source_url: 'https://www.lusha.com/pricing/', checked: '2026-11-12', confidence: verified}
+    reserve: {entities: {from: body.ids.*, max: 100}}
+    untestable: "requires ids minted by a prior search on this account; no public/stable id is documented to probe with"
     docs_url: https://docs.lusha.com/apis/openapi/signals
 
   - id: lusha.x.contact-signal-types
     kind: utility
-    tier: extended
     platform: people
     method: GET
     path: /v3/contacts/signals/types
@@ -188,7 +196,8 @@ endpoints:
     summary: "Returns the list of supported contact signal types (promotion, companyChange, allSignals)"
     input:
       note: "no parameters"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: type/filter discovery endpoint; not billed}
+    price: {value: '0', currency: USD, unit: call, note: "type/filter discovery endpoint; not billed"}
+    settle: null
     test_request: {queryParams: {}}
     verified: 2026-07-28
     added: '2026-07-28'
@@ -197,7 +206,6 @@ endpoints:
 
   - id: lusha.x.company-signal-types
     kind: utility
-    tier: extended
     platform: companies
     method: GET
     path: /v3/companies/signals/types
@@ -205,7 +213,8 @@ endpoints:
     summary: "Returns the list of supported company signal types (headcount changes, hiring surges, website traffic, IT spend, news categories)"
     input:
       note: "no parameters"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: type/filter discovery endpoint; not billed}
+    price: {value: '0', currency: USD, unit: call, note: "type/filter discovery endpoint; not billed"}
+    settle: null
     test_request: {queryParams: {}}
     verified: 2026-07-28
     added: '2026-07-28'
@@ -214,7 +223,6 @@ endpoints:
 
   - id: lusha.x.company-signal-filters
     kind: utility
-    tier: extended
     platform: companies
     method: GET
     path: /v3/companies/signals/filters
@@ -222,7 +230,8 @@ endpoints:
     summary: "Returns the available filter types for company signals and their query requirements"
     input:
       note: "no parameters"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: filter discovery endpoint; not billed}
+    price: {value: '0', currency: USD, unit: call, note: "filter discovery endpoint; not billed"}
+    settle: null
     test_request: {queryParams: {}}
     verified: 2026-07-28
     added: '2026-07-28'
@@ -231,7 +240,6 @@ endpoints:
 
   - id: lusha.x.company-signal-filter-values
     kind: utility
-    tier: extended
     platform: companies
     method: GET
     path: /v3/companies/signals/filters/{filterType}
@@ -240,7 +248,8 @@ endpoints:
     input:
       pathParams:
         filterType: {type: string, required: true, note: "one of the filter type names returned by GET /v3/companies/signals/filters"}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: filter discovery endpoint; not billed}
+    price: {value: '0', currency: USD, unit: call, note: "filter discovery endpoint; not billed"}
+    settle: null
     test_request:
       pathParams: {filterType: "newsEventTypes"}
     verified: 2026-07-28
@@ -253,7 +262,6 @@ endpoints:
     status_note: "Lusha removed POST /v3/contacts/decision-makers on 2026-08-12 (API changelog 2.9.0) in favour of POST /v3/contacts/buying-group, the only operation that accepts contactsLimit and personas. A legacy handler still answers companies-only bodies on the old path, but it rejects contactsLimit and personas with 400 'property … should not exist', so the per-company spend cap documented here never applied: every call ran uncapped at Lusha's 60-contacts-per-company default, 1 credit per contact. Retired 2026-09-09."
     superseded_by: lusha.x.buying-group
     domain: contacts
-    tier: extended
     platform: people
     method: POST
     path: /v3/contacts/decision-makers
@@ -262,11 +270,13 @@ endpoints:
     input:
       bodyType: json
       body:
-        companies: {type: array, items: {type: object}, required: true, note: "up to 25 entries; each needs exactly one of domain (resolved server-side) or id (encrypted vN.… Lusha company id). Optional clientReferenceId echoes back per company. The key is `domain` INSIDE each entry — a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (all four seen live 2026-09-02)", example: [{"domain": "lusha.com"}]}
-      note: "contactsLimit and personas were documented here but never honoured on this path (400 'property <name> should not exist' since Lusha removed it 2026-08-12). Returned previews (name, title, company, location, LinkedIn, seniority, department) grouped per company; every preview row costs 1 credit - see cost. Retired: see status_note. Use lusha.x.buying-group."
+        companies: {type: array, items: {type: object}, required: true, note: "up to 25 entries; each needs exactly one of domain or id (a vN.… Lusha company id). Optional clientReferenceId is echoed back per company. `domain` goes inside each entry: a top-level domain, company_domain, website or company_name is rejected with 'property … should not exist'", example: [{"domain": "lusha.com"}]}
+      note: "this path rejects contactsLimit and personas with 400 'property <name> should not exist'; use lusha.x.buying-group"
     test_request:
       body: {companies: [{domain: "lusha.com"}]}
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-09-03', confidence: verified, note: 'OBSERVED live 2026-09-02: billing.creditsCharged 44 for resultsReturned 44 (one company, no contactsLimit). Lusha''s OpenAPI bundle says "Charged per contact returned via the buyingGroupContact action". Previously catalogued as free from the docs prose — wrong, like lusha.people.search: trust billing.creditsCharged, never the prose. treg settles from that field, so the estimate is the reservation only; the bill is the row count'}
+    price: {value: '1', currency: credit, unit: result, note: "1 credit per contact returned"}
+    provenance: {source: observed, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-09-03', confidence: verified}
+    reserve: {entities: {from: body.companies.*, max: 100}}
     verified: 2026-09-02
     added: '2026-07-28'
     example_response: examples/lusha.x.decision-makers.json
@@ -276,35 +286,36 @@ endpoints:
   - id: lusha.x.buying-group
     added: '2026-09-19'
     domain: contacts
-    tier: extended
     platform: people
     method: POST
     path: /v3/contacts/buying-group
     name: "Find the buying-committee contacts at a company"
-    summary: "Resolve up to 25 companies to Lusha company ids, rank their buying committee (decision makers, champions, end users) with Lusha's persona model, and return lightweight contact previews grouped per company (1 credit per contact returned - always pass contactsLimit)"
+    summary: "Find the buying committee at up to 25 companies: decision makers, champions and end users, ranked, as contact previews grouped per company"
     input:
       bodyType: json
       body:
-        companies: {type: array, items: {type: object}, required: true, note: "1-25 entries (V3BuyingGroupCompanyItem); each needs exactly one of `domain` (resolved server-side) or `id` (Lusha company id, vN.… form, e.g. from lusha.companies.search). Optional `clientReferenceId` is echoed back on the matching result. The key is `domain` INSIDE each entry - a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (seen live on the retired sibling path 2026-09-02)", example: [{"domain": "lusha.com"}]}
-        personas: {type: array, items: {type: string, enum: [decision_maker, potential_champion, end_user]}, required: false, note: "filter to buying-committee roles: decision_maker (budget or sign-off authority) | potential_champion (likely internal advocate) | end_user (likely day-to-day user); omit for all three", example: ["decision_maker"]}
-        contactsLimit: {type: integer, required: false, note: "THE SPEND CAP: maximum contacts returned PER COMPANY, minimum 1, default 60, and every contact returned costs 1 credit - so the bill is at most companies × contactsLimit credits. Lusha's default is 60, i.e. an uncapped single-company call can cost 60 credits ($7.49 at the catalog rate) and a 25-company call 1,500. Always set it", example: 5}
+        companies: {type: array, items: {type: object}, required: true, note: "1-25 entries (V3BuyingGroupCompanyItem); each needs exactly one of `domain` (resolved server-side) or `id` (Lusha company id, vN.… form, e.g. from lusha.companies.search). Optional `clientReferenceId` is echoed back on the matching result. `domain` goes inside each entry: a top-level domain, company_domain, website or company_name is rejected with 'property … should not exist'", example: [{"domain": "lusha.com"}]}
+        personas: {type: array, items: {type: string, enum: [decision_maker, potential_champion, end_user]}, required: false, note: "filter to buying-committee roles: decision_maker (budget or sign-off authority) | potential_champion (an internal advocate) | end_user (a day-to-day user); omit for all three", example: ["decision_maker"]}
+        contactsLimit: {type: integer, required: false, note: "the spend cap: most contacts returned per company, 1 or more, default 60. Each contact costs 1 credit, so one call bills at most companies × contactsLimit credits and never more than its page size (pagination.size, 100 by default). Always set it", example: 5}
         pagination: {type: object, required: false, note: "optional {page, size}; page >= 0 (default 0), size 10-100 (default 100). Pages across the ranked contacts; contactsLimit still bounds what one company can return", example: {"page": 0, "size": 100}}
-      note: "contactsLimit is the only spend control on this route and Lusha defaults it to 60 contacts per company, so set it on every call. Returns previews (name, title, company, location, social links, `has`/`canReveal` data-point flags, persona `roles`, relevance `score` 0-1) grouped per company under `results[].contacts`; call lusha.people.contacts.enrich on the returned contact ids for emails/phones (a further 1 credit per email, 5 per phone). NOT free: every preview row costs 1 credit - see cost. Successor of the retired lusha.x.decision-makers path (removed by Lusha 2026-08-12, changelog 2.9.0); this is the only operation that accepts contactsLimit and personas"
+      note: "returns previews (name, title, company, location, social links, `has`/`canReveal` data-point flags, persona `roles`, relevance `score` 0-1) grouped per company under `results[].contacts`; pass the contact ids to lusha.people.contacts.enrich for emails and phones"
     test_request:
       body: {companies: [{domain: "lusha.com"}], contactsLimit: 1}
-    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: docs, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-09-09', confidence: documented, note: 'Lusha''s OpenAPI bundle: "Charged per contact returned via the buyingGroupContact action". The same action was OBSERVED on the retired decision-makers path 2026-09-02 (billing.creditsCharged 44 for resultsReturned 44); this path has not been called by treg yet. treg settles from billing.creditsCharged, so the per_result estimate (contactsLimit) is the reservation only; the bill is the row count'}
-    skipped: "not called while cataloguing (2026-09-09): the request shape and billing action are copied from Lusha's OpenAPI bundle, and the 1-credit-per-contact bill was already observed on the retired decision-makers path, which ran the same buyingGroupContact action. No example_response is shipped rather than inventing one; re-verify with the test_request (1 contact = 1 credit) when a Lusha credit is worth spending"
+    price: {value: '1', currency: credit, unit: result, note: "1 credit per contact returned"}
+    provenance: {source: observed, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-11-11', confidence: verified}
+    reserve: {plugin: lusha.buying_group_contacts, max: '100'}
+    verified: 2026-11-11
+    example_response: examples/lusha.x.buying-group.json
     docs_url: https://docs.lusha.com/apis/openapi/buying-group
     capability: people.decision_makers
 
   - id: lusha.x.companies-website-visits
     added: '2026-07-28'
     domain: other
-    tier: extended
     platform: companies
     method: POST
     path: /v3/companies/website-visits
-    cost: {type: per_call, value: null, currency: USD, unit: call, source: observed, checked: '2026-08-07', confidence: unknown, note: 'NOT on our plan — the API answers "Website Visits is not available on your current plan", so there is no rate to record and treg cannot serve it on our key'}
+    price: null
     name: "Rank companies by website-visit signals"
     summary: "Returns companies ranked by website-visit signals for your tracked domains, combining firmographics with visit metrics (score, sessions, unique visitors, avg session length)"
     input:
@@ -319,7 +330,6 @@ endpoints:
 
   - id: lusha.x.webhook-subscriptions-list
     kind: account
-    tier: extended
     platform: account
     method: GET
     path: /api/subscriptions
@@ -335,7 +345,6 @@ endpoints:
 
   - id: lusha.x.webhook-subscriptions-create
     kind: account
-    tier: extended
     platform: account
     method: POST
     path: /api/subscriptions
@@ -349,7 +358,8 @@ endpoints:
       note: "deliveries are signed with HMAC-SHA256 (X-Lusha-Signature, X-Lusha-Timestamp) and must be acknowledged within 10s with a 2xx + {received, timestamp, webhookId} body. NOT free-standing — each subscription is bound to one entityId, so it needs a real contact/company id on hand (e.g. from lusha.companies.search)"
     test_request:
       body: {defaults: {entityType: "company", signalTypes: ["headcountIncrease1m"], url: "https://example.com/webhooks/lusha-catalog-test"}, subscriptions: [{entityId: "v1.A1gXjPYd63SSPjSvxO4uwqXqE5ilJV9S", name: "catalog-verify-test"}]}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: webhook management is not metered against the data-credit balance}
+    price: {value: '0', currency: USD, unit: call, note: "webhook management is not metered against the data-credit balance"}
+    settle: null
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/lusha.x.webhook-subscriptions-create.json
@@ -358,7 +368,6 @@ endpoints:
   - id: lusha.x.webhook-subscription-get
     added: '2026-07-28'
     kind: account
-    tier: extended
     platform: account
     method: GET
     path: /api/subscriptions/{id}
@@ -373,7 +382,6 @@ endpoints:
   - id: lusha.x.webhook-subscription-update
     added: '2026-07-28'
     kind: account
-    tier: extended
     platform: account
     method: PATCH
     path: /api/subscriptions/{id}
@@ -390,7 +398,6 @@ endpoints:
 
   - id: lusha.x.webhook-subscriptions-delete
     kind: account
-    tier: extended
     platform: account
     method: POST
     path: /api/subscriptions/delete
@@ -403,7 +410,8 @@ endpoints:
       note: "idempotent and safe to probe blind: an id that does not exist is reported per-item as NOT_FOUND inside a 200, not an error, which is what the test_request below deliberately exercises"
     test_request:
       body: {ids: ["000000000000000000000000"]}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: webhook management is not metered against the data-credit balance}
+    price: {value: '0', currency: USD, unit: call, note: "webhook management is not metered against the data-credit balance"}
+    settle: null
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/lusha.x.webhook-subscriptions-delete.json
@@ -412,7 +420,6 @@ endpoints:
   - id: lusha.x.webhook-subscription-test
     added: '2026-07-28'
     kind: account
-    tier: extended
     platform: account
     method: POST
     path: /api/subscriptions/{id}/test
@@ -426,7 +433,6 @@ endpoints:
 
   - id: lusha.x.webhook-audit-logs
     kind: account
-    tier: extended
     platform: account
     method: GET
     path: /api/audit-logs
@@ -442,7 +448,6 @@ endpoints:
 
   - id: lusha.x.webhook-audit-log-stats
     kind: account
-    tier: extended
     platform: account
     method: GET
     path: /api/audit-logs/stats
@@ -459,7 +464,6 @@ endpoints:
   - id: lusha.x.webhook-secret-get
     added: '2026-07-28'
     kind: account
-    tier: extended
     platform: account
     method: GET
     path: /api/account/secret
@@ -475,7 +479,6 @@ endpoints:
   - id: lusha.x.webhook-secret-regenerate
     added: '2026-07-28'
     kind: account
-    tier: extended
     platform: account
     method: POST
     path: /api/account/secret/regenerate
@@ -489,7 +492,6 @@ endpoints:
   - id: lusha.x.webhook-opt-out-subscribe
     added: '2026-07-28'
     kind: account
-    tier: extended
     platform: account
     method: POST
     path: /api/subscriptions/opt-out

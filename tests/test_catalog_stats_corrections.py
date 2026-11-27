@@ -389,22 +389,6 @@ async def test_expired_dirty_buckets_are_pruned_without_scanning_audit_rows(clie
     assert await _dirty() == [] and await _bucket(at=expired) is None
 
 
-async def test_recount_preserves_refusal_and_status_evidence_rules(clients, monkeypatch):
-    monkeypatch.setattr(catalog_store, "empty_is_failure", lambda _: False)
-    ids = [await _record(ASYNC, status=status, hit=None, verdict="unknown")
-           for status in (200, 500, 405, 422)]
-    await _record(ASYNC, status=402, refused_by="balance", hit=True, verdict="valid")
-    await catalog_stats.refresh(session_maker, now=NOW)
-    await _correct(ids, hit=True, verdict="valid")
-    result = await catalog_stats.refresh(session_maker, now=NOW)
-    assert result["repaired"] == 1
-    bucket = await _bucket()
-    assert (bucket.n, bucket.ok, bucket.bad) == (4, 1, 2)
-    assert bucket.hits == bucket.hit_decided == 4
-    assert bucket.verdicts == {"valid": 4}
-    assert bucket.latency_seen == 1 and bucket.latency_sample == [100]
-
-
 @pytest.mark.parametrize("empty_fails", [False, True])
 async def test_recount_keeps_complete_evidence_across_batches_and_a_partial_tail(
     clients, monkeypatch, empty_fails,

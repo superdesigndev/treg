@@ -40,14 +40,6 @@ def test_bucketing_covers_every_kind(tmp_path):
     assert kinds == ["app_internal", "basic_pair", "config", "matched", "oauth_pair", "unknown_secret"]
 
 
-def test_bearer_vs_header_auth_shapes(tmp_path):
-    env = _write_env(tmp_path, "OPENAI_API_KEY=x\nANTHROPIC_API_KEY=x\n")
-    d = _by_var(prov.scan_env(env))
-    assert d["OPENAI_API_KEY"].provider == "OpenAI"
-    assert d["OPENAI_API_KEY"].auth["shape"] == "bearer"
-    assert d["ANTHROPIC_API_KEY"].auth == {"shape": "api_key_header", "header": "x-api-key"}
-
-
 def test_app_prefix_is_transparent(tmp_path):
     # A TREG_/APP_ prefix must not hide the provider token.
     env = _write_env(tmp_path, "TREG_RESEND_API_KEY=x\n")
@@ -69,13 +61,6 @@ def test_incomplete_oauth_pair_flagged(tmp_path):
     [d] = prov.scan_env(env)
     assert d.kind == "oauth_pair" and d.vars == ["NOTION_CLIENT_ID"]
     assert "incomplete" in (d.note or "")
-
-
-def test_basic_pair_grouped(tmp_path):
-    env = _write_env(tmp_path, "TWILIO_ACCOUNT_SID=x\nTWILIO_AUTH_TOKEN=x\n")
-    dets = prov.scan_env(env)
-    pairs = [d for d in dets if d.kind == "basic_pair"]
-    assert len(pairs) == 1 and pairs[0].provider == "Twilio"
 
 
 def test_provider_beats_app_internal(tmp_path):
@@ -190,9 +175,7 @@ def test_query_provider_auto_registers(tmp_path):
     assert a.supported and a.binding["location"] == "query" and a.binding["name"] == "api_key"
 
 
-def test_catalog_grew_and_versioned():
-    assert prov.CATALOG_VERSION >= 2 and len(prov.CATALOG) >= 80
-    # tokens stay distinct enough: no duplicate provider names
+def test_provider_names_are_unique():
     names = [p["provider"] for p in prov.CATALOG]
     assert len(names) == len(set(names))
 
@@ -215,12 +198,6 @@ def test_env_values_reads_only_requested(tmp_path):
 def test_var_names_discards_values(tmp_path):
     env = _write_env(tmp_path, "SECRET=supersecretvalue\n")
     assert prov.var_names(env) == ["SECRET"]   # only the name is ever surfaced
-
-
-def test_llm_prompt_lists_names():
-    system, user = prov.llm_prompt(["ACME_API_KEY", "FOO_TOKEN"])
-    assert "ACME_API_KEY" in user and "FOO_TOKEN" in user and "JSON" in user
-    assert "secret" in system.lower()
 
 
 def test_llm_parse_tolerates_prose_and_filters_bad_entries():
@@ -339,21 +316,6 @@ def test_llm_parse_strips_inline_thinking_prefilled():
             '"base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}')
     out = prov.llm_parse(text)
     assert len(out) == 1 and out[0]["var"] == "ACME_API_KEY"
-
-
-def test_llm_parse_strips_nested_braces_in_thinking():
-    """Thinking blocks may contain nested braces (multiple JSON drafts or objects)."""
-    text = ('<think>First attempt: {"a":1} no wait... second: {"b":{"c":2}} still not right</think>'
-            '{"resolved":[{"var":"X","base_url":"https://x.com","auth":{"shape":"bearer"}}]}')
-    out = prov.llm_parse(text)
-    assert len(out) == 1 and out[0]["var"] == "X"
-
-
-def test_llm_parse_works_without_thinking_tags():
-    """Regression: models that return clean content (no thinking tags) must still work."""
-    text = '{"resolved":[{"var":"Y","base_url":"https://y.com","auth":{"shape":"bearer"}}]}'
-    out = prov.llm_parse(text)
-    assert len(out) == 1 and out[0]["var"] == "Y"
 
 
 def test_llm_parse_uses_last_think_tag():

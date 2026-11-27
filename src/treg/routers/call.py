@@ -9,14 +9,15 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
+from starlette.requests import ClientDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
 from .. import audit
 from .. import hints
 from ..application import agent_payments
-from .. import sandbox as demo_sandbox
 from ..application.call import call_errors
+from ..application.call import reserve as call_reserve
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -31,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation
+from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation, review_endpoint
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -56,6 +57,9 @@ app = APIRouter()
 router = app
 
 
+_CLIENT_GONE = "the client closed the request before sending its body"
+
+
 class _HttpRequestBody:
     def __init__(self, request: Request) -> None:
         self._request = request
@@ -64,7 +68,10 @@ class _HttpRequestBody:
         return self._request.stream()
 
     async def read(self) -> bytes:
-        return await self._request.body()
+        try:
+            return await self._request.body()
+        except ClientDisconnect as exc:
+            raise CallFailure("client_disconnected", status_code=499, detail=_CLIENT_GONE) from exc
 
 
 class _LeasedStreamingResponse(StreamingResponse):
@@ -146,8 +153,7 @@ async def _enforce_daily_cap(caller: Caller, db: AsyncSession) -> None:
     (`application/call/authorize.py`), so a member cannot dodge the cap by switching path. Commits,
     because the gate takes the slot with a write and this request's session is the only owner."""
     try:
-        await usage_policy.enforce_daily_cap(
-            caller, db, sandbox=demo_sandbox.is_sandbox(caller.org))
+        await usage_policy.enforce_daily_cap(caller, db)
     except usage_policy.UsagePolicyError as exc:
         await db.commit()
         raise HTTPException(status_code=429, detail=exc.detail) from exc
@@ -308,6 +314,8 @@ def _capture_hint(request: Request, context, kind: str, variant: int | None = No
         "kind": kind, "call_id": context.call_ref, "client": _client_of(request),
         "endpoint_id": catalog_endpoint(context),
         **({"variant": variant} if variant is not None else {}),
+        **({"budget": context.review_budget, "credited_endpoint": review_endpoint(context)}
+           if kind == "review" else {}),
     }, groups={"team": slug} if slug else None)
 
 
@@ -369,6 +377,9 @@ async def _paid_call(rest: str, request: Request) -> Response:
         return await _payment_refusal(request, 503, exc.detail, [])
     except agent_payments.PayerSuspended as exc:
         return await _payment_refusal(request, 403, exc.detail, [])
+    # The wallet's credit is its team's balance, which decided whether this payment draws it:
+    # no reservation of the call moves that balance into the allowance (`keyless_payer`).
+    keyless = call_reserve.keyless_payer.set(True)
     try:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
@@ -385,6 +396,8 @@ async def _paid_call(rest: str, request: Request) -> Response:
         exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
                        **dict(await paid.answer_headers())}
         raise
+    finally:
+        call_reserve.keyless_payer.reset(keyless)
     for name, value in await paid.answer_headers():
         response.headers[name] = value
     for name, value in paid.receipt_headers(response.status_code):
@@ -426,11 +439,16 @@ async def _capped_body(request: Request) -> bytes:
     if declared.isdigit() and int(declared) > limit:
         raise HTTPException(status_code=413, detail="request body too large")
     chunks, size = [], 0
-    async for chunk in request.stream():
-        size += len(chunk)
-        if size > limit:
-            raise HTTPException(status_code=413, detail="request body too large")
-        chunks.append(chunk)
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > limit:
+                raise HTTPException(status_code=413, detail="request body too large")
+            chunks.append(chunk)
+    except ClientDisconnect as exc:
+        failure = CallFailure("client_disconnected", status_code=499, detail=_CLIENT_GONE)
+        request.state.call_failure = failure
+        raise _translate_call_failure(failure) from exc
     body = b"".join(chunks)
     # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
     # has been consumed; the call road reads the body again through those.
@@ -463,7 +481,8 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
         # Optional invitation, decided before the body streams (application/call/invite.py).
         kind = await invitation(context, response.status_code,
                                 replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
-                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints")))
+                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints"),
+                                                       _client_of(request)))
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
             if kind == "review":

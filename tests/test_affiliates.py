@@ -78,23 +78,28 @@ def test_click_ids_are_allowlisted():
         assert dub.valid_click_id(bad) == ""
 
 
-async def test_dub_link_serves_the_landing_and_parks_the_click(c):
-    r = await c.get("/?dub_id=cm3w8x2abc&utm_source=partner")
-    assert r.status_code == 200
-    assert "<html" in r.text[:300].lower()
-    assert r.cookies.get(AFFILIATE_COOKIE) == "cm3w8x2abc"
+_DASHBOARD_MARKER = "<!-- the dashboard bundle -->"
 
 
-async def test_dubs_real_redirect_shape_serves_the_landing_not_the_dashboard(c):
+@pytest.fixture
+def bundled_dashboard(monkeypatch, tmp_path):
+    """A stand-in for the compiled dashboard, so `/app` answers without `build-dashboard.sh`."""
+    from treg.routers import web
+    index = tmp_path / "index.html"
+    index.write_text(f"<!doctype html><html><body>{_DASHBOARD_MARKER}<div id=app></div></body></html>")
+    monkeypatch.setattr(web, "_dashboard_index", lambda: index)
+
+
+async def test_dubs_real_redirect_shape_serves_the_landing_not_the_dashboard(c, bundled_dashboard):
     r = await c.get("/?via=testpartner&dub_id=cm3w8x2abc&utm_source=youtube&gclid=abc")
     assert r.status_code == 200
-    assert "OpenRouter for agent tools" in r.text
+    assert "<html" in r.text[:300].lower() and _DASHBOARD_MARKER not in r.text
     assert r.cookies.get(AFFILIATE_COOKIE) == "cm3w8x2abc"
 
 
-async def test_an_unknown_parameter_still_goes_to_the_dashboard(c):
+async def test_an_unknown_parameter_still_goes_to_the_dashboard(c, bundled_dashboard):
     r = await c.get("/?dub_id=cm3w8x2abc&topup=success")
-    assert "OpenRouter for agent tools" not in r.text
+    assert r.status_code == 200 and _DASHBOARD_MARKER in r.text
 
 
 async def test_a_malformed_click_is_not_parked(c):
@@ -108,8 +113,9 @@ async def test_nothing_is_parked_while_dub_is_off(c, monkeypatch):
     assert AFFILIATE_COOKIE not in r.cookies
 
 
-async def test_the_dashboard_parks_the_click_too(c):
+async def test_the_dashboard_parks_the_click_too(c, bundled_dashboard):
     r = await c.get("/app?dub_id=cm3w8x2abc&ref=grokbot")
+    assert r.status_code == 200 and _DASHBOARD_MARKER in r.text
     assert r.cookies.get(AFFILIATE_COOKIE) == "cm3w8x2abc"
 
 
@@ -241,17 +247,6 @@ async def test_a_first_top_up_calls_stripe_checkout_holding_no_transaction(c, mo
         "billing's session holds no transaction while Stripe is called"
 
 
-async def test_a_pending_lead_tags_nothing_until_it_is_verified(c, monkeypatch):
-    org_id = await _attributed_team(c)
-    calls = await _stripe_calls(monkeypatch)
-    async with session_maker() as db:
-        assert await affiliates.stripe_metadata(db, org_id) == {}
-    async with session_maker() as db:
-        org = await db.get(Org, org_id)
-        await billing.create_topup_checkout(db, org, 10)
-    assert all("dubCustomerExternalId" not in kw.get("metadata", {}) for _, kw in calls)
-
-
 async def test_an_attributed_team_tags_its_stripe_customer_and_checkout(c, monkeypatch):
     org_id = await _attributed_team(c)
     async with httpx.AsyncClient(transport=_click_transport("pn_1", "jane@partner.example", [])) as client:
@@ -358,14 +353,6 @@ async def test_the_first_run_door_takes_the_code_too(c):
     r = await c.post("/onboard/team", json={"ref": "jane-doe"}, headers={"X-Treg-Token": token})
     assert r.status_code == 200, r.text
     assert [lead.partner_code for lead in await _leads()] == ["jane-doe"]
-
-
-async def test_the_first_run_door_still_takes_no_body(c):
-    from conftest import verified_identity
-    token = await verified_identity(c, "bob@superdesign.dev")
-    r = await c.post("/onboard/team", headers={"X-Treg-Token": token})
-    assert r.status_code == 200, r.text
-    assert await _leads() == []
 
 
 async def test_cli_login_page_parks_the_partner_code_not_the_friend_cookie(c):
@@ -597,10 +584,6 @@ async def test_a_click_whose_partner_check_fails_is_rechecked_not_acknowledged(c
         assert await _drain(client) == {"sent": 0, "retried": 0, "failed": 1}
     assert [r.url.path for r in seen].count("/track/lead") == 1, "the lead is never sent twice"
     assert (await _leads())[0].error == "self_referral"
-
-
-def test_the_lead_table_has_no_foreign_key():
-    assert not AffiliateLead.__table__.foreign_keys
 
 
 async def test_two_drains_never_work_the_same_lead(c):

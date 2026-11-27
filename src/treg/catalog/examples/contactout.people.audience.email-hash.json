@@ -1,0 +1,16 @@
+{
+  "status_code": 200,
+  "matches": {
+    "emails": [
+      "120fbfd17ddf37330684af1502e8be0d65eb9f45c990ba09e5a27bea7528055f",
+      "a9af5461cf203b7ef4d501b84cc6d03f04f1da7a9f28b3a5c9888472dd9a8418"
+    ]
+  },
+  "matches_found": 2,
+  "unmatched": [
+    "https://www.linkedin.com/in/routing-fixture-3",
+    "https://www.linkedin.com/in/routing-fixture-4",
+    "https://www.linkedin.com/in/routing-fixture-5"
+  ],
+  "unmatched_count": 3
+}

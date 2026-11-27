@@ -18,61 +18,6 @@ from httpx import AsyncClient
 from treg import oauth_providers as P
 
 
-async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
-    def valid(request):
-        assert request.method == "GET"
-        assert request.url.path == "/v5.1/account"
-        assert request.headers["authorization"] == "own-key"
-        return httpx.Response(200, json={"credits_left": 0, "email": "account@example.com"})
-
-    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "anymailfinder", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-    async with AsyncClient(transport=httpx.MockTransport(
-            lambda request: httpx.Response(401, json={
-                "error": "unauthorized", "message": "Missing or invalid API key."}))) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        rejected = await clients.post(
-            "/connections/token", json={"provider": "anymailfinder", "token": "bad-key"},
-        )
-    assert rejected.status_code == 422 and "rejected" in rejected.text
-
-
-async def test_descovo_key_uses_free_credits_probe(clients, monkeypatch):
-    def probe(request):
-        assert (request.method, request.url.path) == ("GET", "/v1/credits")
-        if request.headers["authorization"] != "Bearer own-key":
-            return httpx.Response(403, json={"error": {"code": "forbidden", "message": "Invalid API key provided!"}})
-        return httpx.Response(200, json={"data": {"available": 0, "used": 500, "limit": 500}})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        bad = await clients.post("/connections/token", json={"provider": "descovo", "token": "bad-key"})
-        assert bad.status_code == 422 and "rejected" in bad.text
-        good = await clients.post("/connections/token", json={"provider": "descovo", "token": "own-key"})
-        assert good.status_code == 200, good.text
-
-
-async def test_millionphones_key_uses_free_credits_probe(clients, monkeypatch):
-    """A good key on an account with 0 credits left still connects: the free routes work."""
-    def probe(request):
-        assert (request.method, request.url.path) == ("GET", "/v1/credits")
-        if request.headers["x-api-key"] != "own-key":
-            return httpx.Response(401, json={"error": "Invalid API key."})
-        return httpx.Response(200, json={"remaining": 0, "used": 50, "plan": "free"})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        bad = await clients.post("/connections/token", json={"provider": "millionphones", "token": "bad-key"})
-        assert bad.status_code == 422 and "rejected" in bad.text
-        good = await clients.post("/connections/token", json={"provider": "millionphones", "token": "own-key"})
-        assert good.status_code == 200, good.text
-
-
 # ---- registry shape ----------------------------------------------------------------------
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
@@ -83,147 +28,6 @@ def test_key_providers_are_offerable_without_deployment_credentials():
         assert p.uses_pasted_secret is True, p.service
         assert p.is_token_kind is False, f"{p.service}: an API key is not a Slack bot token"
         assert P.is_configured(p) is True, p.service
-
-
-async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "GET"
-        assert request.url.path == "/data/credits"
-        assert request.headers["authorization"] == "Bearer own-key"
-        return httpx.Response(200, json={"data": {"credits": "250000.000000"}})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "spidercloud", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-
-async def test_crawl4ai_key_uses_free_balance_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "GET"
-        assert request.url.path == "/v1/billing/balance"
-        assert request.headers["authorization"] == "Bearer own-key"
-        return httpx.Response(200, json={"credit": "37500.00", "credit_mc": 37500000, "tier": "supporter"})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "crawl4ai", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-
-async def test_crawl4ai_rejects_a_key_its_balance_endpoint_refuses(clients, monkeypatch):
-    """The live answer to a bogus key, 2026-10-05: 401 {"error": "sign in"}."""
-    async with AsyncClient(transport=httpx.MockTransport(
-            lambda request: httpx.Response(401, json={"error": "sign in"}))) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "crawl4ai", "token": "sk_live_bogus"},
-        )
-    assert response.status_code == 422, response.text
-    assert "rejected" in response.text
-
-
-async def test_dropcontact_key_uses_credit_balance_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "POST"
-        assert request.url.path == "/v1/enrich/all"
-        assert request.headers["x-access-token"] == "own-key"
-        assert json.loads(request.content) == {"data": [{}]}
-        return httpx.Response(200, json={"credits_left": 4050})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "dropcontact", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-
-async def test_dropcontact_rejects_unknown_account(clients, monkeypatch):
-    async with AsyncClient(transport=httpx.MockTransport(
-            lambda request: httpx.Response(401, json={"error": True, "reason": "Unknown account"}))) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "dropcontact", "token": "bogus-key"},
-        )
-    assert response.status_code == 422, response.text
-    assert "rejected" in response.text
-
-
-async def test_search1api_key_uses_free_usage_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "GET"
-        assert request.url.path == "/usage"
-        assert request.headers["authorization"] == "Bearer own-key"
-        return httpx.Response(200, json={"usage": 100, "credential_type": "api_key"})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "search1api", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-
-async def test_parallel_key_uses_free_monitor_stats_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "GET"
-        assert request.url.path == "/v1/monitors/stats"
-        assert request.headers["x-api-key"] == "own-key"
-        return httpx.Response(200, json={"total": 0, "processor_counts": {}})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "parallel", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-
-async def test_parallel_rejects_a_key_its_monitor_stats_refuse(clients, monkeypatch):
-    """The live answer to a bogus key, 2026-10-09."""
-    async with AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(
-            401, json={"code": 16, "message": "Invalid API key (C.1)"}))) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "parallel", "token": "bogus-key"},
-        )
-    assert response.status_code == 422, response.text
-    assert "rejected" in response.text
-
-
-async def test_enrichlayer_key_uses_free_balance_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "GET"
-        assert request.url.path == "/api/v2/credit-balance"
-        assert request.headers["authorization"] == "Bearer own-key"
-        return httpx.Response(200, json={"credit_balance": 100})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "enrichlayer", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
-
-
-async def test_perplexity_key_uses_free_model_list_probe(clients, monkeypatch):
-    def probe(request):
-        assert request.method == "GET"
-        assert request.url.path == "/v1/models"
-        assert request.headers["authorization"] == "Bearer own-key"
-        return httpx.Response(200, json={"object": "list", "data": []})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        response = await clients.post(
-            "/connections/token", json={"provider": "perplexity", "token": "own-key"},
-        )
-    assert response.status_code == 200, response.text
 
 
 async def test_octen_key_uses_unbilled_validation_probe(clients, monkeypatch):
@@ -307,31 +111,6 @@ async def test_hlrlookup_connect_defers_the_key_until_the_secret_is_added(client
     ]
 
 
-async def test_hlrlookup_connect_rejects_a_wrong_pair(clients, monkeypatch):
-    def probe(request):
-        return httpx.Response(401, json={"error": "UNAUTHORIZED",
-                                         "message": "Invalid api_key or api_secret"})
-
-    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(app.state, "http", upstream)
-        bad = await clients.post(
-            "/connections/token", json={"provider": "hlrlookup", "token": "bad-key"},
-        )
-    assert bad.status_code == 422, bad.text
-    assert "rejected" in bad.text
-
-
-def test_hlrlookup_platform_bindings_match_the_byok_pair():
-    provider = P.get("hlrlookup")
-    assert provider is not None
-    assert P.platform_bindings(provider) == [
-        {"platform_setting": "platform_key_hlrlookup", "injector": "env",
-         "location": "json", "name": "api_key", "format": "{secret}"},
-        {"platform_setting": "platform_key_hlrlookup_secret", "injector": "env",
-         "location": "json", "name": "api_secret", "format": "{secret}"},
-    ]
-
-
 async def test_forager_connect_checks_the_key_then_binds_the_account_id_to_the_path(clients, monkeypatch):
     def probe(request):
         assert (request.method, request.url.path) == ("GET", "/api/users/current/")
@@ -367,12 +146,12 @@ def test_forager_platform_bindings_match_the_byok_pair():
     ]
 
 
-def test_paid_key_verification_probe_is_typed_and_unique():
-    assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
-               for p in P.REGISTRY.values())
+def test_key_verification_probe_cost_is_integer_micro_usd_and_listed():
+    for p in P.REGISTRY.values():
+        assert isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0, p.service
     listing = {row["service"]: row for row in P.listing()}
-    assert listing["trestleiq"]["probe_cost_micro"] == 15_000
-    assert listing["wiza"]["probe_cost_micro"] == 0
+    for service, row in listing.items():
+        assert row["probe_cost_micro"] == P.REGISTRY[service].probe_cost_micro, service
 
 
 async def test_trestleiq_paid_probe_rejects_bad_key_and_is_never_saved_as_health_check(
@@ -781,9 +560,9 @@ async def test_an_allow_listed_public_provider_names_the_real_reason_a_tool_is_n
     tickers = catalog_store.load().by_id["financialdatasets.prices.tickers"]
     demo = SimpleNamespace(demo=False, slug="team", public_demo=True)
     refused = _marketplace_no_credential("financialdatasets", tickers["id"], fd_public, tickers, demo)
-    assert "demo and sandbox teams" in refused.detail and "has not enabled" not in refused.detail
+    assert "the public demo team does not call it" in refused.detail and "has not enabled" not in refused.detail
     preview = _missing_access(tickers, fd_public, fd_public, (), "financialdatasets", org=demo)
-    assert "demo and sandbox teams" in preview["detail"], preview
+    assert "the public demo team does not call it" in preview["detail"], preview
     monkeypatch.setattr(get_settings(), "platform_providers", "")
     assert "has not enabled" in _missing_access(tickers, fd_public, fd_public, (), "financialdatasets",
                                                 org=demo)["detail"]
@@ -917,7 +696,7 @@ def test_a_public_provider_not_enabled_is_logged_as_treg_side(monkeypatch):
 
 
 def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_logs_policy(monkeypatch):
-    """A demo or sandbox team is refused keyless tools: its refusal neither offers one as callable
+    """The public demo team is refused keyless tools: its refusal neither offers one as callable
     nor blames a provider account it does not need."""
     import dataclasses
     from types import SimpleNamespace
@@ -928,7 +707,6 @@ def test_a_demo_teams_refusal_lists_no_keyless_alternative_it_cannot_call_and_lo
         P.REGISTRY["financialdatasets"], auth_kind="public"))
     monkeypatch.setattr(get_settings(), "platform_providers", "financialdatasets")
     demo = SimpleNamespace(public_demo=True, id=1)
-    monkeypatch.setattr(R.demo_sandbox, "is_sandbox", lambda org: False)
     ep = catalog_store.load().by_id["financialdatasets.prices.snapshot"]
     monkeypatch.setitem(ep, "platform_auth", "anonymous")
     monkeypatch.setitem(ep, "cost", {"type": "free", "value": 0, "currency": "USD", "unit": "call"})

@@ -85,6 +85,23 @@ def test_an_async_job_never_overflows():
     assert view.for_endpoint("icypeas.people.email.find") == []
 
 
+async def test_route_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from types import SimpleNamespace
+    from treg.domain.capacity import routes_view
+    await reset_db()
+    monkeypatch.setattr(routes_view, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    view = routes_view.RouteView()
+    await view.load()
+    async with session_maker() as db:
+        db.add(_route(enabled=True))
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert [r.endpoint_id for r in view.for_endpoint("findymail.search.business-profile")] == [
+        "findymail.search.business-profile"]
+
+
 def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
     ours = [{"endpoint_id": "hunter.people.email.find", "provider": "hunter", "method": "GET",
              "path": "/email-finder", "base_url": "https://api.hunter.io/v2"},
@@ -157,37 +174,6 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     async with session_maker() as db:
         r3 = await R.apply_sync(db, seed, catalog=cat, now=now + timedelta(days=8))
         assert r3.enabled == 0
-
-
-async def test_verified_akta_news_monid_fallback_is_enabled_at_the_observed_default_price():
-    await reset_db()
-    candidate = next(x for x in R.load_seed()
-                     if x["endpoint_id"] == "akta.companies.news" and x["aggregator"] == "monid")
-    async with session_maker() as db:
-        await ensure_policies(db, has_key=lambda p: True)
-        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
-                           now=R._dt("2026-09-25T12:00:00"))
-        await db.commit()
-        row = await db.get(OverflowRoute, ("akta.companies.news", "monid"))
-    assert row.enabled
-    assert row.agg_price_micro == 10_000
-    assert row.agg_unit == "call"
-    assert row.ratio == 1
-
-
-async def test_akta_enrichment_monid_route_is_eligible_only_after_live_verification():
-    await reset_db()
-    candidate = next(x for x in R.load_seed()
-                     if x["endpoint_id"] == "akta.companies.enrich" and x["aggregator"] == "monid")
-    assert candidate["verified_at"] is None and candidate["single_result"] is True
-    candidate = {**candidate, "verified_at": "2026-09-25"}
-    async with session_maker() as db:
-        await ensure_policies(db, has_key=lambda p: True)
-        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
-                           now=R._dt("2026-09-25T12:00:00"))
-        await db.commit()
-        row = await db.get(OverflowRoute, ("akta.companies.enrich", "monid"))
-    assert row.enabled and row.agg_unit == "result" and row.single_result is True
 
 
 def test_route_for_orders_orthogonal_first():

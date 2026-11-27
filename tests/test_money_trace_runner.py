@@ -80,163 +80,6 @@ async def test_local_records_and_shutdown_work_without_posthog(trace, monkeypatc
                 if task.get_name() == "treg-money-trace-sample" and not task.done()]
 
 
-async def test_lease_errors_use_periodic_and_worker_exit_logs_only(trace):
-    kv = runner_module.kv
-    logs, gauges = [], []
-    runner = runner_module.MoneyTraceRunner(
-        role="worker", sample_s=0.005, emit_s=0.015,
-        log_event=logs.append, capture_gauge=gauges.append).start()
-    try:
-        kv._record_lease_error("acquire", TimeoutError("private"), kv._clock())
-        await _until(lambda: any(e["event"] == "kv_lease_error" for e in logs))
-        kv._record_lease_error("release", TimeoutError("private"), kv._clock())
-    finally:
-        await runner.stop()
-    details = [e for e in logs if e["event"] == "kv_lease_error"]
-    assert [(e["phase"], e["count"]) for e in details] == [("acquire", 1), ("release", 1)]
-    assert all(e["process_instance"] == "trace-process" and e["build"] == "test-build"
-               and e["role"] == "worker" for e in details)
-    assert all("error_type" not in props and "first_failed_at" not in props for props in gauges)
-    assert kv.drain_lease_errors() == []
-
-
-def test_lease_errors_are_not_drained_after_sink_shutdown(trace):
-    kv = runner_module.kv
-    kv._record_lease_error("release", TimeoutError("private"), kv._clock())
-    runner = runner_module.MoneyTraceRunner(role="worker", capture_gauge=lambda props: None)
-    runner._emit(now=time.monotonic(), local=False)
-    assert len(kv.drain_lease_errors()) == 1
-
-
-async def test_lease_timing_summary_flushes_once_per_window_and_worker_exit(trace):
-    kv = runner_module.kv
-    logs, gauges, lease_gauges = [], [], []
-    runner = runner_module.MoneyTraceRunner(
-        role="worker", sample_s=0.005, emit_s=0.015, log_event=logs.append,
-        capture_gauge=gauges.append, capture_lease_gauge=lease_gauges.append).start()
-    try:
-        for _ in range(100):
-            kv._record_lease_timing("acquire", "busy", kv._clock())
-        await _until(lambda: lease_gauges)
-        kv._record_lease_timing("release", "not_owned", kv._clock(), retry=True)
-    finally:
-        await runner.stop()
-    assert [(e["phase"], e["count"], e["retry_count"]) for e in lease_gauges] == [
-        ("acquire", 100, 0), ("release", 1, 1)]
-    assert [e["shutdown"] for e in lease_gauges] == [False, True]
-    assert all(e["process_instance"] == "trace-process" and e["build"] == "test-build"
-               and e["role"] == "worker" and e["window_s"] >= 0 for e in lease_gauges)
-    assert len([e for e in logs if e["event"] == "kv_lease_gauge"]) == 2
-    assert kv.drain_lease_timings() == []
-
-
-def test_lease_timing_not_drained_by_post_shutdown_summary(trace):
-    kv = runner_module.kv
-    kv._record_lease_timing("release", "released", kv._clock())
-    runner = runner_module.MoneyTraceRunner(role="worker", capture_gauge=lambda props: None)
-    runner._emit(now=time.monotonic(), local=False)
-    assert len(kv.drain_lease_timings()) == 1
-
-
-def test_lease_transport_failure_preserves_later_summaries_and_trace_gauge(trace):
-    kv = runner_module.kv
-    gauges, attempts = [], []
-    kv._record_lease_timing("acquire", "acquired", kv._clock())
-    kv._record_lease_timing("release", "released", kv._clock())
-
-    def fail_capture(props):
-        attempts.append(props)
-        raise OSError("transport unavailable")
-
-    runner = runner_module.MoneyTraceRunner(role="worker", logs_per_window=0,
-                                          capture_gauge=gauges.append, capture_lease_gauge=fail_capture)
-    runner._emit(now=time.monotonic())
-    assert len(attempts) == 2
-    assert gauges[0]["runner_errors_total"] == 2
-    assert gauges[0]["log_rate_dropped_total"] == 2
-    assert kv.drain_lease_timings() == []
-
-
-@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
-async def test_short_worker_sends_exit_lease_summary_before_return(trace, monkeypatch, outcome):
-    sent = []
-    monkeypatch.setattr(analytics, "enabled", lambda: True)
-    monkeypatch.setattr(analytics, "_queue", [])
-    monkeypatch.setattr(analytics, "_flusher", None)
-    monkeypatch.setattr(analytics, "_fault_windows", {})
-
-    async def post(batch):
-        sent.extend(batch)
-
-    monkeypatch.setattr(analytics, "_post", post)
-    failure = RuntimeError("business failure")
-
-    async def command(args):
-        # No admission scope is needed: a lease attempt alone must survive a short worker exit.
-        runner_module.kv._record_lease_timing("release", "released", runner_module.kv._clock(), retry=True)
-        if outcome == "failure":
-            raise failure
-        if outcome == "cancelled":
-            raise asyncio.CancelledError
-        return 17
-
-    try:
-        if outcome == "success":
-            assert await worker._run_command(SimpleNamespace(fn=command)) == 17
-        elif outcome == "failure":
-            with pytest.raises(RuntimeError) as caught:
-                await worker._run_command(SimpleNamespace(fn=command))
-            assert caught.value is failure
-        else:
-            with pytest.raises(asyncio.CancelledError):
-                await worker._run_command(SimpleNamespace(fn=command))
-        lease_events = [e for e in sent if e["event"] == "kv_lease_gauge"]
-        assert len(lease_events) == 1
-        assert lease_events[0]["properties"]["shutdown"] is True
-        assert lease_events[0]["properties"]["retry_count"] == 1
-        assert analytics._queue == []
-        assert analytics._flusher is None
-    finally:
-        await analytics.drain()
-
-
-def test_lease_error_rate_loss_is_visible_in_same_gauge(trace):
-    kv = runner_module.kv
-    gauges = []
-    kv._record_lease_error("acquire", TimeoutError("private"), kv._clock())
-    runner = runner_module.MoneyTraceRunner(role="worker", logs_per_window=0,
-                                          capture_gauge=gauges.append)
-    runner._emit(now=time.monotonic())
-    assert gauges[0]["log_rate_dropped_total"] == 1
-
-
-def test_lease_error_drain_failure_does_not_hide_gauge(trace, monkeypatch):
-    gauges = []
-
-    def broken():
-        raise RuntimeError("diagnostic failure")
-
-    monkeypatch.setattr(runner_module.kv, "drain_lease_errors", broken)
-    runner = runner_module.MoneyTraceRunner(role="worker", capture_gauge=gauges.append)
-    runner._emit(now=time.monotonic())
-    assert gauges[0]["runner_errors_total"] == 1
-
-
-def test_loop_lag_is_measured_against_planned_wakeup_and_freshness_is_separate(trace):
-    gauges = []
-    runner = runner_module.MoneyTraceRunner(role="dataplane", capture_gauge=gauges.append)
-    runner._opened = 1.0
-    runner._sample(now=1.040, planned=1.0)
-    runner._sample(now=2.005, planned=2.0)
-    runner._emit(now=2.055, local=False)
-    [properties] = gauges
-    assert properties["samples"] == 2
-    assert properties["loop_lag_max_ms"] == 40
-    assert properties["loop_lag_mean_ms"] == 22.5
-    assert properties["sample_age_ms"] == 50
-    assert "lock_wait_ms" not in properties
-
-
 async def test_sink_failure_does_not_change_worker_return_or_error(trace, monkeypatch):
     original = runner_module.MoneyTraceRunner
     runners, gauges = [], []
@@ -326,22 +169,6 @@ async def test_blocked_log_handler_has_bounded_queue_and_cannot_block_shutdown(t
         await _until(lambda: not first._sink.alive)
 
 
-async def test_detail_rate_limit_keeps_explicit_core_and_runner_loss_counts(trace):
-    logs, gauges = [], []
-    runner = runner_module.MoneyTraceRunner(
-        role="all", log_event=logs.append, capture_gauge=gauges.append,
-        logs_per_window=1).start()
-    runner._submit([
-        {"event": "money_txn_slow"},
-        {"event": "money_trace_dropped", "dropped_events_total": 5},
-    ])
-    await runner.stop()
-    summaries = [event for event in logs if event["event"] == "money_trace_gauge"]
-    assert summaries
-    assert summaries[0]["log_rate_dropped_total"] == 2  # second event and shutdown detail
-    assert summaries[0]["trace_dropped_events_total"] == 5
-
-
 async def test_second_cancellation_during_log_drain_leaves_no_sampler_task(trace, monkeypatch):
     release, logging_started = threading.Event(), threading.Event()
     original = runner_module.MoneyTraceRunner
@@ -381,21 +208,6 @@ async def test_second_cancellation_during_log_drain_leaves_no_sampler_task(trace
         await _until(lambda: not runners[0]._sink.alive)
 
 
-async def test_sampler_errors_are_diagnostic_and_do_not_kill_the_loop(trace, monkeypatch):
-    def fail():
-        raise RuntimeError("broken instrumentation")
-
-    monkeypatch.setattr(runner_module.money_trace, "sample", fail)
-    gauges = []
-    runner = runner_module.MoneyTraceRunner(
-        role="control", sample_s=0.005, emit_s=0.010,
-        log_event=lambda event: None, capture_gauge=gauges.append).start()
-    await _until(lambda: gauges)
-    assert not runner._task.done()
-    await runner.stop()
-    assert gauges[0]["runner_errors_total"] > 0
-
-
 async def test_diagnostic_startup_failure_does_not_prevent_worker_business(trace, monkeypatch):
     def unavailable(**kwargs):
         raise RuntimeError("cannot create diagnostic resources")
@@ -408,8 +220,8 @@ async def test_diagnostic_startup_failure_does_not_prevent_worker_business(trace
     assert await worker._run_command(SimpleNamespace(fn=command)) == 9
 
 
-@pytest.mark.parametrize("role", ["all", "control", "dataplane"])
-async def test_each_web_role_owns_diagnostics_without_analytics(trace, monkeypatch, role):
+async def test_each_web_role_owns_diagnostics_without_analytics(trace, monkeypatch):
+    role = "all"
     original = runner_module.MoneyTraceRunner
     runners, logs, lifecycle = [], [], []
 

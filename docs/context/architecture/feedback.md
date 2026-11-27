@@ -27,12 +27,14 @@ sources:
   - src/treg/config.py
   - src/treg/routers/call.py
   - src/treg/application/call/invite.py
+  - src/treg/application/review_targets.py
   - src/treg/infra/kv.py
   - src/treg/application/feedback.py
   - src/treg/routers/feedback.py
   - src/treg/alembic/versions/0025_feedback.py
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
+  - src/treg/alembic/versions/0137_compareattemptday_spent.py
   - src/treg/alembic/versions/0105_callmark.py
   - src/treg/alembic/versions/0115_callcomparison.py
   - tests/test_feedback_handling_schema.py
@@ -44,6 +46,7 @@ sources:
   - tests/test_hints.py
   - tests/test_kv.py
   - tests/test_compare.py
+  - tests/test_compare_spend_migration.py
 related:
   - architecture/data-model.md
   - architecture/mcp-oauth.md
@@ -172,7 +175,9 @@ through to the next. The team `/mcp/` and the binary CLI send all four (`review,
 `X-Treg-Hint: compare|review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`, only
 to a client that sent `X-Treg-Hints`, since the words name flags an older release lacks; plus
 `X-Treg-Review: requested` on a review, read by CLI releases up to 0.18) and emits one
-`hint_attached` event per invitation sent. Surfaces only translate
+`hint_attached` event per invitation sent (`kind`, `call_id`, `client`, `endpoint_id`, which is
+`treg.<capability>` for a routed parent; a review adds `budget`, `main` or `extra`, and
+`credited_endpoint`, the endpoint its review would be credited to). Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
 priority replay > 402 > compare > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
 so for them `hint_attached` counts an invitation the agent never saw.
@@ -183,6 +188,10 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `kv.store().take("review-budget:<org_id>", review_budget_per_hour, 3600)`. Per-call sampling scales
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
+  A caller that names no runtime (`X-Treg-Client`) and sends no `X-Treg-Hints` is a script or
+  backend with no agent reading the header: it is never asked (`invite.UNNAMED_KINDS`) and spends
+  no budget, which stays for the team's agents' calls; it still gets the feedback hint. `invited`
+  on a review does not recompute this, so such a review, rare, can still read as invited.
   With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
   endpoint a review would be credited to (a direct call's own, or a routed parent's latest
   successful child, which the router records as `route_summary["credited"]`; not `served_by`,
@@ -201,7 +210,14 @@ so for them `hint_attached` counts an invitation the agent never saw.
   endpoints where its review still counts; a team holding none is invited at least at
   `review_target_new_team_rate` (0 = no floor), because a ranking needs many teams per endpoint.
   Both act on the snapshot, so a team can receive a few more invitations in the minutes before
-  the next refresh. `invited`
+  the next refresh. A busy team spends its budget within minutes of each hour on whatever it
+  calls most, which leaves short endpoints uninvited however high their rate. So once
+  `review-budget:<org_id>` is spent, a sampled call whose rate is boosted above the base
+  (`review_targets.boosted`: its endpoint is short of the target, or the team is new to it at a
+  floor above the base) may draw on a second budget, `review-target-budget:<org_id>` with
+  `review_target_budget_per_hour` (0 = off). It only adds invitations, never moves the first
+  budget's. Such a call tries both budgets in one store operation (`kv.take_first`, one Lua
+  script under the one 200 ms optional deadline), so a slow store delays its response once. `invited`
   on a review recomputes with the snapshot of its moment, so near an endpoint's target it can
   disagree with the invitation sent; `hint_attached` is the exact record.
 - **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
@@ -242,7 +258,8 @@ writes; a fault can only lose the header. Sampling rates default to 0.
 
 `infra/kv.py` is Redis at `TREG_KV_URL`, or a bounded in-process dictionary when unset. Its tenants:
 
-- Counters (`take`, one atomic `INCR` + `EXPIRE NX`) **fail closed**: a store that cannot answer is a
+- Counters (`take`, one atomic `INCR` + `EXPIRE NX`; `take_first`, the same on each of several
+  budgets in order until one has room, in one script) **fail closed**: a store that cannot answer is a
   spent budget, so an outage withholds review invitations rather than flooding a team; `hint_attached`
   dropping to zero is the signal. Counter calls have their own short outer deadline because the router
   awaits them before returning, and must not inherit the money lease budget.
@@ -268,34 +285,40 @@ New tenants add narrow methods, never a generic get/set surface. `/admin/kv` rep
 ## Pairwise comparisons
 
 A second kind of review: the team's agent sees two vendors' answers to one input it sent and says
-which serves it better. It separates vendors a usefulness score cannot, and the pairs are chosen.
-Results are internal; nothing here is published or changes routing.
+which serves it better. It separates vendors a usefulness score cannot. Only the capabilities are
+configured (`compare_capabilities`, ones an agent can judge by reading the answers): A is the vendor
+that served the call, B is chosen per call among the capability's other vendors. Results are
+internal; nothing here is published or changes routing.
 
 **The marker, on the call path.** After a successful routed answer, `application.call.service`
 calls `compare.mark_eligible(call_ref, capability, raw_headers, route_summary, archive_opted_out=...)`:
-when the feature is configured (`compare_pairs` set, `compare_max_per_day` above 0), the capability
-has a valid pair, the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
+when the feature is configured (`compare_capabilities` listed, `compare_max_per_day` and
+`compare_daily_usd` above 0), the capability is comparable (`compare.comparable()`: listed, with a
+contract and at least two providers with a verified adapter), the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
 routing is left alone), the team keeps an archive and `hints.sampled_at("compare", call_ref,
-compare_rate)` samples it in, it writes `compare-ok:<call_ref>` in the shared store for two hours
+compare_rate)` samples it in, it writes `compare-ok:v2:<call_ref>` in the shared store for two hours
 (`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
 (`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
 `MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
-the summary) is never marked: B would be asked page one against A's later page. A team opted out of the archive gets no
+the summary) is never marked: B would be asked page one against A's later page. Nor is a merged
+answer (`merged_from` in the summary, several vendors' rows delivered as one): no single vendor's
+answer is A. The key carries the marker's version (`MARKER_VERSION`), so a run never reads a
+marker an earlier build wrote under rules it no longer applies. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 Every decision is counted by reason and `X-Treg-Client` (`marked`, `not_sampled`, `route_header`,
-`page_continuation`, `not_paired`, ...) and logged per process every `MARK_LOG_EVERY_S` as one
+`page_continuation`, `not_listed`, ...) and logged per process every `MARK_LOG_EVERY_S` as one
 `compare markers {...}` line of counts; a run reports its `no_marker` calls by client too.
 
 **The run.** `treg-worker compare collect` (`application.compare.collect`), meant for an hourly
-cron. `compare.pairs()` keeps a configured pair only when both providers have a verified adapter for
-the capability, and logs the rest. Each run:
+cron. A listed capability short of two verified vendors is logged and skipped. Each run:
 
 1. Removes the rows of teams that no longer exist, on every run, the feature on or off. Team
    deletion removes a team's comparisons itself (`ORG_SCOPED_MODELS`); this catches a row written
    while the team was being deleted, within one run.
-2. Stops when off (no pairs, `compare_max_per_day` 0 or `compare_rate` 0) or when the UTC day's
-   attempts (`compareattemptday`) have reached `compare_max_per_day`.
+2. Stops when off (no capability, `compare_max_per_day` or `compare_daily_usd` 0, or
+   `compare_rate` 0), or when the UTC day's `compareattemptday` row has reached
+   `compare_max_per_day` attempts or `compare_daily_usd` of spend (`spent_micro`).
 3. Chooses eligible teams first: not opted out of the archive, not a demo, whose agent answered
    at least one review invitation in `compare_answer_days` on a surface that shows a compare
    invitation (`CallReview.invited`): the team MCP (client `mcp` or `mcp-prior`), or a client that
@@ -305,46 +328,84 @@ the capability, and logs the rest. Each run:
    pipeline calling without reading hints, or one on a CLI that does not show compare, would leave
    its pairs unjudged and take the day's budget. And holding no
    access policy at all (a member or project tool ACL, a member pinned to tags, a deny rule, or a
-   capability pin on a paired capability). A team with any is skipped, so the run never has to
+   capability pin on a compared capability). A team with any is skipped, so the run never has to
    emulate a team's authorization.
-4. Reads those teams' recent routed parents per paired capability: `endpoint_id =
+4. Reads those teams' recent routed parents per comparable capability: `endpoint_id =
    treg.<capability>`, `org_id` among the eligible teams and `created_at` within
    `compare_lookback_hours` (at most two, the marker's life), newest first, at most
-   `SCAN_PER_CAPABILITY` (one ordered range of the `(endpoint_id, created_at)` index each), 2xx and
-   `credential_tier` routed; drops calls already compared. Teams come first because other teams'
+   `SCAN_PER_CAPABILITY`, 2xx, `credential_tier` routed, and naming what the caller got
+   (`served_call_ref` and `served_content_hash` set, filtered before the limit so calls that cannot
+   be compared never fill it); drops calls already compared. Teams come first because other teams'
    calls can fill a newest-N window read over every team, leaving eligible teams' earlier marked
    calls unread until their markers expire.
-5. Per call, until `compare_max_per_run` or `--max-seconds`, one at a time, any error ending only
-   that call: the marker must exist (none, or a store that cannot say, skips it; the marker holds
-   the sample, so the run does not sample again); the credited child (the latest successful
-   `<call>:r<n>`, as reviews attribute it), on treg's key, with its archive identities and a
-   retention-allowed endpoint; its provider A on a pair, B the other side; the team under
-   `compare_team_cap` comparisons of this capability and pair (either order) in
-   `compare_window_days`, counting decided ones and pending or ready ones younger than three days.
-6. The contract input is the marker's value, canonicalized (`canonical_identity`): exactly the
+5. Reads every candidate's marker in one `MGET`: it must exist (none, or a store that cannot say,
+   skips it; the marker holds the sample, so the run does not sample again). For each marked call,
+   before any archive body is read: the credited child, on treg's key, with its archive identities
+   and a retention-allowed endpoint; its provider A one of the capability's verified vendors. The
+   child is the one the parent names as what its caller got (`served_call_ref`), read for every
+   marked call in one query, and nothing else: a missing or cached row skips the call
+   (`served_child_missing`), never another attempt. A parent with no `served_call_ref` or
+   `served_content_hash` is skipped (`a_delivery_unknown`): the call path leaves them empty when
+   it could not check the answer (one over `route.SERVED_CHECK_MAX`, for one), and then the
+   latest successful attempt may not be the vendor whose answer was delivered.
+6. **Spreading the calls.** The run reads every team's comparisons of the comparable capabilities
+   in `compare_window_days` that are not failed, counted per (capability, A, B)
+   (`comparisons.tallies`), and takes the marked calls one at a time, until `compare_max_per_run`
+   or `--max-seconds`, any error ending only that call: next is the call whose served vendor has
+   been A least often on its capability (ties at random). A vendor that rarely serves is still
+   compared as A, which the familiarity check needs, and no capability takes a run's calls only
+   because its calls were read first. B (`_choose_b`): of the capability's other vendors not in
+   `compare_exclude` and not failing (its last `FAIL_STREAK` answers as B in `FAIL_WINDOW_H` hours
+   all failed, `comparisons.failure_streaks`, updated as the run goes; skipped as `b_failing` when
+   no other is left), the least compared with A in either order across every team (ties at
+   random) for which step 8 finds a target at most `compare_max_b_micro` and within what is left
+   of the day's spend (read here so an unaffordable B gives way to a cheaper one; the claim checks
+   again), and whose pair this team
+   holds under `compare_team_cap` comparisons (either order) in `compare_window_days`, counting
+   decided ones and pending or ready ones younger than three days. Each claim adds to the counts,
+   so one run moves on to the next least compared pair.
+7. The contract input is the marker's value, canonicalized (`canonical_identity`): exactly the
    question the caller asked, so nothing is read back from A's provider request. A marker without
-   an input (an older one) is skipped. A's answer comes from the archive record of that child
-   (`arena_insights._evidence`), read through A's adapter (`route.child_outcome`); only a hit goes
-   on.
-7. B's target: an endpoint the router itself would ask for this input (`plan.candidates_for`, so
+   an input (an older one) is skipped. A's answer is only the bytes its caller got: the child's
+   archived answer when its content hash is the parent's `served_content_hash`
+   (`archive.answer_bytes`, which also checks the bytes read against that hash), otherwise, for an
+   async provider, the terminal answer filed under the child's ref
+   (`archive.load_terminal_snapshots`) when its bytes hash to it; anything else is skipped as
+   `a_answer_not_delivered`. The answer is read through A's adapter (`route.child_outcome`); only
+   a hit goes on. Skip reasons are a fixed set, never text read from an answer.
+8. B's target: an endpoint the router itself would ask for this input (`plan.candidates_for`, so
    a routing adapter: a judge-only `route: false` adapter builds no request; then `build_plan`'s
-   filter cap, declaration and scope checks), on a provider with a pasted-key credential shape, not
-   paused, platform-eligible with every platform credential its bindings name, not exhausted on
-   treg's primary account, retention allowed, priced, with no second host or path parameter. B's
-   adapter builds the request (`to_upstream`) with the router's variant.
-8. Right before sending, the team is read again: it still exists, is not suspended, has no active
+   filter cap, declaration and scope checks), on a provider with a pasted-key credential shape that
+   the router's per-provider sampling (`route_provider_sample_pct`, `plan.sampled_provider_allowed`)
+   would ask for this team's question, not paused, platform-eligible with every platform
+   credential its bindings name, not exhausted on treg's primary account, retention allowed,
+   priced within the limit step 6 sets, with no second host or path parameter. The provider's
+   endpoints are tried in the order `build_plan` ranks a treg-key child (`plan.rank` over the
+   caller's keys, the filters each endpoint can express, its price and observed stats; the worker
+   has no bound stats cache, so it reads the same day buckets through
+   `PostgresEndpointObservationReader`, keeping the endpoints whose fold is ready when another's is
+   behind, as the web cache does), after the router's short-window health (`route_health`,
+   when `on`: a failing endpoint is never asked, as a comparison never takes a probe turn, and a
+   slow one ranks after the healthy ones), so B
+   answers the question the router would have asked it (one that ignores a sent filter is not
+   asked ahead of one that sends it), and one dear endpoint does not hide a cheaper one that
+   answers the same input. B's adapter builds the request (`to_upstream`) with the router's
+   variant.
+9. Right before sending, the team is read again: it still exists, is not suspended, has no active
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
    invalid publication or a pause in force all skip, unlike admission, which allows on failure),
    and still has no access policy and no archive opt-out.
-9. The claim, in one short transaction: one attempt on the current UTC day's `compareattemptday`
-   row, read at the claim, so a run crossing midnight counts on the new day (one conditional
-   `UPDATE ... SET attempts = attempts + 1 WHERE attempts < limit`, the day's first row inserted
-   on conflict do nothing; at the limit nothing is written and the run stops), then the team and
-   pair cap read again (on Postgres the day row's lock, taken by that update, orders concurrent
+10. The claim, in one short transaction: one attempt and B's price on the current UTC day's
+   `compareattemptday` row, read at the claim, so a run crossing midnight counts on the new day
+   (one conditional `UPDATE ... SET attempts = attempts + 1, spent_micro = spent_micro + price
+   WHERE attempts < limit AND spent_micro + price <= spend limit`, the day's first row inserted on
+   conflict do nothing; at the call limit nothing is written and the run stops, over the spend
+   nothing is written and the call is skipped as `day_spend_cap`), then the team and pair cap
+   read again (on Postgres the day row's lock, taken by that update, orders concurrent
    claims), then the comparison row as `pending` (its unique `call_ref` stops a second run,
    concurrent or later). A crash after the claim leaves `pending`: it still counts and is never
-   resent. The day's count is no team's row, so deleting a team gives no quota back.
-10. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
+   resent. The day's counts are no team's row, so deleting a team gives no quota and no spend back.
+11. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
     (`platform_bindings`): the request the router's first child call on treg's key sends for the
     team's question. The adapter's values go to the relay unformatted (a `false` reaches the vendor
     as `false`), the body as `route._child_body`, path parameters dropped as the call path drops
@@ -354,18 +415,19 @@ the capability, and logs the rest. Each run:
     the JSON body is injected from it). No router, no fallback, no overflow, no hold, no ledger
     entry, no archive record, no capacity mark. Calls are `CALL_GAP_S` apart. The catalog price of
     the request is logged and stored as `b_cost_micro`.
-11. B's answer is read through B's adapter as the router reads a child on treg's key
+12. B's answer is read through B's adapter as the router reads a child on treg's key
     (`route.child_outcome` with the canonical identity: a `question_miss`, such as no row on a
     `site:` the question names, is a miss), so both are contract `output`; the log line names the
     outcome and its reasons, never the body. The row is settled to
     `ready` only on a hit; anything else (an error, no answer, a miss) settles it `failed`, with no
     bodies, and nothing else is called. If the team was deleted meanwhile, the row is taken back.
 
-**Spend and capacity.** A day's spend is at most `compare_max_per_day` times B's catalog price per
-call, and that holds only where the catalog price is the request's maximum cost (a per-result or
-usage-settled price can charge more than the estimate). The direct relay does not take the shared
-provider limiter, fair-share or rate window the router's children take, so check each pilot
-vendor's price and capacity before turning a pair on.
+**Spend and capacity.** A day's spend is at most `compare_daily_usd` of B's catalog prices, no one
+request above `compare_max_b_micro`, and that holds only where the catalog price is the request's
+maximum cost (a per-result or usage-settled price can charge more than the estimate). The direct
+relay does not take the shared provider limiter, fair-share or rate window the router's children
+take, and any vendor of a listed capability can be asked: list a capability only after checking
+its vendors' prices and capacity, and put a vendor that must never be asked in `compare_exclude`.
 
 **Storage** (`callcomparison`, written only by `domain/feedback/comparisons.py`, as is
 `compareattemptday`; no foreign keys): one row per call (`call_ref` unique), `pending` until its
@@ -401,8 +463,9 @@ With no pair waiting (the flag outlived it) the result carries neither. In a sim
 (2026-11-21), agents that had to fetch the pair with the `compare` tool first almost never judged
 it, while agents that found both answers in the call result nearly always did.
 
-**Settings** (all off by default): `TREG_COMPARE_PAIRS` (JSON, capability to unordered provider
-pairs, e.g. `{"web.search": [["provider-a", "provider-b"]]}`), `TREG_COMPARE_RATE`,
+**Settings** (all off by default): `TREG_COMPARE_CAPABILITIES` (a JSON list, e.g.
+`["web.search"]`), `TREG_COMPARE_EXCLUDE` (a JSON list of providers never asked as B),
+`TREG_COMPARE_DAILY_USD`, `TREG_COMPARE_MAX_B_MICRO` (default 100000, $0.10), `TREG_COMPARE_RATE`,
 `TREG_COMPARE_MAX_PER_RUN`, `TREG_COMPARE_MAX_PER_DAY`, `TREG_COMPARE_LOOKBACK_HOURS`,
 `TREG_COMPARE_BUDGET_PER_HOUR` (compare invitations per team per hour), `TREG_COMPARE_TEAM_CAP`,
 `TREG_COMPARE_WINDOW_DAYS`, `TREG_COMPARE_ANSWER_DAYS`, `TREG_COMPARE_MAX_ANSWER_BYTES`. Rollback: `TREG_COMPARE_MAX_PER_DAY=0` with the cron kept:
@@ -437,7 +500,7 @@ Rules a change must keep:
   judged is not quoted. Reasons are otherwise quoted as written.
 
 Jev's judgements are written to the review row by `treg-worker reviews judge`, an hourly cron
-(`application.review_judge`), once per review and in two independent passes over the window:
+(`application.review_judge`), once per review and in independent passes over the window:
 
 - Privacy: each quotable reason gets `person_p` and `privacy_judged_at`.
 - Attribution: each `partly` or `not_useful` review gets `primary_code`, an optional `secondary_code`
@@ -447,6 +510,30 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   call's (its rows cannot prove which answer the caller got) or one without a reason; `answer` once
   upgraded. A review with no reason is `NOREASON` without asking. A new codebook version re-judges
   only reviews coded under an older one, from their reasons, and the upgrade follows again.
+- Praise (`judge_praise`): each `useful` review gets a code from `review_codes.PRAISE_CODES`, an
+  optional second one and `PRAISE_CODEBOOK_VERSION` in the same columns; its usefulness, which never
+  changes, says which codebook they are from. Most praise codes pair with a negative one, so a
+  report card can set a praise and a complaint about the same thing side by side: ACCURATE with
+  ACCURACY and RISKY, FRESH with STALE, RELEVANT with WRONG and PARAM, COMPLETE with PARTIAL and
+  COVER, STRUCTURED with FORMAT, ACCESS with BLOCK and JS, CHEAP with PRICE; HONEST (a plain miss
+  instead of a guess), FAST and GENERIC (useful, nothing specific praised) have no pair. GENERIC
+  stands alone: it is never a second code nor takes one, and GENERIC with a named quality likely
+  beside it is coded as that quality (`review_codes.NO_SECONDARY`). Generated
+  media has no code of its own: following the prompt is RELEVANT and a faithful output ACCURATE,
+  the axes its complaints are coded on (PARAM, ACCURACY), and never HONEST, which is only for a
+  miss or an uncertainty flag. Praise is coded from the reason only and
+  is always `reason_final`: an upgrade would read an answer per review, and useful reviews are
+  most reviews. A blank reason is `NOREASON` without asking. Only
+  the last `review_judge_praise_days` (28) are coded, newest first and at most
+  `review_judge_praise_per_run` per run, which bounds the backfill when the pass is first turned
+  on or the praise codebook changes; it runs last, on the time the other passes leave. A review Jev
+  could not code steps aside so the cap never stays stuck on the same newest rows: an unreadable
+  answer backs off from an hour to a week, a failed request waits an hour without counting a try,
+  in `answer_retry_at` / `answer_attempts` (a useful review is never upgraded, so it has no other
+  use for them; coding it clears both). The run reports `pending` (the whole window still uncoded
+  when it starts), `selected` (its share) and `retry_later`.
+  `review_judge_praise` off skips it (its rollback switch; codes already written stay, and a
+  reader that wants none ignores `useful` rows).
 - Upgrade with the answer (`judge_answers`): a direct call's review coded from its reason is asked
   again with the request and the shortened answer beside its reason (`application.review_answers`,
   `review_codes.body_code_question`), `review_judge_answer_batch` per request, each answer cut to

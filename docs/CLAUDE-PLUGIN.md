@@ -17,6 +17,16 @@ ship the whole repository. Never edit a generated `SKILL.md`; change `src/treg/w
 run `uv run python scripts/build_plugin.py` (`--check` is also a test). Bump `version` in
 `pyproject.toml` and every manifest together (`test_plugin_version_tracks_the_package`).
 
+## The Claude plugin directory
+
+Anthropic's directory gets its own folder, `plugins/treg-claude/`, which no marketplace lists. It
+declares the directory connector `https://treg.to/mcp/v2` (the same URL as the connector listing)
+and ships `CLAUDE_DIRECTORY_SKILL` from `scripts/build_plugin.py`: only the six connector tools, a
+budget the human agrees before paid calls, approval before write calls, and no CLI, installer,
+media generation or instructions fetched from treg.to. The directory reads one fixed path per
+submission, so a change of folder is a new submission. `claude plugin validate plugins/treg-claude`
+runs part of the directory's checks; its policy review runs only after submission.
+
 ## Listing runbook
 
 Self-serve listings first, review queues last.

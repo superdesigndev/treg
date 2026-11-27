@@ -617,12 +617,12 @@ def _categories_by_endpoint() -> dict[str, str]:
 
 
 async def _window_floor(db: AsyncSession, org_id: int, since: date) -> int:
-    """Just before the team's first call of the window, found on the (org_id, created_at) index;
-    past its newest call when there is none. A key's calls are the team's, so it starts there too."""
+    """Just before the team's first call of the window (the lowest id among calls sharing its
+    timestamp), found on the (org_id, created_at) index; past its newest call when there is none. A key's calls are the team's, so it starts there too."""
     begin = datetime(since.year, since.month, since.day)
     first = (await db.execute(select(CallRecord.id).where(
         CallRecord.org_id == org_id, CallRecord.created_at >= begin)
-        .order_by(CallRecord.created_at).limit(1))).scalar_one_or_none()
+        .order_by(CallRecord.created_at, CallRecord.id).limit(1))).scalar_one_or_none()
     if first is not None:
         return first - 1
     newest = (await db.execute(select(func.max(CallRecord.id)).where(CallRecord.org_id == org_id))).scalar_one()

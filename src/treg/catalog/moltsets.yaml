@@ -16,8 +16,6 @@ expect: &found
 proposed_capabilities:
   linkedin.profile.search: Find professional profiles by name and company
   people.audiences.maid: Convert an email to mobile advertising IDs
-  people.audiences.sha256: Convert a business email to personal-email SHA-256 hashes
-  people.audiences.hashes: Resolve business and personal email hashes from a professional profile
   companies.identify.ip: Identify companies associated with an IP address
 endpoints:
 - id: moltsets.people.search
@@ -255,7 +253,7 @@ endpoints:
 
 - id: moltsets.people.audiences.sha256
   domain: contacts
-  capability: people.audiences.sha256
+  capability: people.audience.email_hash
   platform: people
   scope: any_account
   method: POST
@@ -266,14 +264,14 @@ endpoints:
   test_request: {body: {email: nobody-20260916@example.invalid}}
   cost: *success_cost
   expect: *found
-  verified: '2026-09-16'
+  verified: '2026-11-25'
   added: '2026-09-16'
   example_response: examples/moltsets.people.audiences.sha256.json
   docs_url: https://docs.moltsets.com/api-reference/business-email-to-sha256
 
 - id: moltsets.people.audiences.hashes
   domain: contacts
-  capability: people.audiences.hashes
+  capability: people.audience.email_hash
   platform: people
   scope: any_account
   method: POST
@@ -281,10 +279,11 @@ endpoints:
   name: Resolve email hashes from profile
   summary: Resolve business and personal email hashes from a professional profile
   input: *linkedin_input
+  note: Returns SHA-256 and MD5 hashes of the person's business and personal emails. Each *_array field is one hash as a string when the person has one email of that kind.
   test_request: {body: {linkedin_url: https://linkedin.com/in/treg-nonexistent-20260916}}
   cost: *success_cost
   expect: *found
-  verified: '2026-09-16'
+  verified: '2026-11-25'
   added: '2026-09-16'
   example_response: examples/moltsets.people.audiences.hashes.json
   docs_url: https://docs.moltsets.com/api-reference/linkedin-to-sha256

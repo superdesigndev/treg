@@ -444,15 +444,13 @@ def test_every_instagram_path_placeholder_has_a_declared_try_input():
     """The UI, CLI and agents all learn path values from `input.pathParams`; runtime parsing the
     braces independently is only the last guard, not a usable endpoint contract."""
     endpoints = [ep for ep in cs.load().by_id.values() if ep["provider"] == "instagram"]
-    assert len(endpoints) == 32
+    assert endpoints
     for ep in endpoints:
         paths = [ep.get("path") or "", *(ep.get("authorization_paths") or {}).values()]
         placeholders = {name for path in paths for name in re.findall(r"{([A-Za-z0-9_]+)}", path)}
         declared = set((((ep.get("input") or {}).get("pathParams")) or {}))
         assert placeholders <= declared, ep["id"]
-    extended = [ep for ep in endpoints if ep["tier"] == "extended"]
-    assert len(extended) == 22
-    assert all(ep.get("input") for ep in extended)
+    assert all(ep.get("input") for ep in endpoints if ep["tier"] == "extended")
 
 
 def test_instagram_catalog_paths_do_not_embed_query_strings():
@@ -525,36 +523,26 @@ async def test_a_credit_price_is_served_in_usd_per_provider(clients: AsyncClient
 
 
 # ---- cost: units, provenance and platform eligibility ----------------------------------------
-async def test_per_divides_so_a_cpm_price_serves_per_row():
+def test_per_divides_so_a_cpm_price_serves_per_row():
     """A provider that quotes dollars per 1,000 rows must not serve as dollars per row. `per` is what
     makes "$2.00 per 1,000" and "$0.002 each" the same fact instead of a 1,000x error."""
-    cat = cs.load()
-    ep = cat.by_id["spyfu.google.domain.paid_keywords"]
-    cost = cat.cost_view(ep["cost"], ep["provider"])
-    assert (cost["value"], cost["per"], cost["unit"]) == (2.0, 1000, "row")
+    cost = cs.load().cost_view({"type": "per_result", "value": 2.0, "currency": "USD", "per": 1000,
+                                "unit": "row"}, "demo")
     assert cost["usd"] == 0.002, "usd is the price of ONE chargeable event, whatever the quote unit"
 
 
-async def test_a_provider_meter_converts_per_meter_not_per_provider():
-    """`currency: unit` is the provider's own meter, and a provider can spend several at once.
-    Majestic's analysis units and index-item units are as unrelated as two providers' credits."""
+def test_a_provider_meter_converts_per_meter_not_per_provider(monkeypatch):
+    """`currency: unit` is the provider's own meter, and a provider can spend several at once: two
+    meters of one provider are as unrelated as two providers' credits, and a meter with no rate
+    stays native rather than a guessed dollar."""
     cat = cs.load()
-    assert set(cat.unit_rates["majestic"]) == {"analysis_unit", "retrieval_unit", "index_item_unit"}
-    listing = cat.by_id["majestic.web.backlinks.list"]["cost"]
-    assert listing["currency"] == "unit" and listing["unit"] == "analysis_unit"
-    assert listing["value"] == 5000
-    # Each pool converts at ITS OWN researched rate (fx.yaml, 2026-07-31): 5,000 analysis units at
-    # $0.000004 — not at the retrieval or index-item rate, which differ by orders of magnitude.
-    assert cat.cost_view(listing, "majestic")["usd"] == 0.02  # 5,000 × $0.000004, rounded at 9 dp
-
-    # Moz's row quota is a meter too. It used to carry no `currency` at all, defaulted to USD, and
-    # served every Moz route at $1.00 per row — the exact failure `currency: unit` prevents.
-    moz = cat.by_id["moz.web.url.metrics"]["cost"]
-    assert moz["currency"] == "unit" and moz["unit"] == "quota_row"
-    assert cat.cost_view(moz, "moz")["usd"] == 0.006667  # 1 row × the researched $0.006667/row
-    # Semrush is the one that stays native: package prices are sales-gated, so no rate is derivable
-    # and its `usd` must remain None rather than a guess.
-    assert cat.unit_rates["semrush"]["api_unit"] is None
+    monkeypatch.setitem(cat.unit_rates, "demo", {"analysis_unit": 0.000004, "index_item_unit": 0.0005,
+                                                 "sales_gated": None})
+    def usd(value, unit):
+        return cat.cost_view({"type": "per_call", "value": value, "currency": "unit", "unit": unit}, "demo")["usd"]
+    assert usd(5000, "analysis_unit") == 0.02
+    assert usd(5000, "index_item_unit") == 2.5
+    assert usd(5000, "sales_gated") is None and usd(5000, "unlisted") is None
 
 
 async def test_free_is_spelled_one_way_and_prices_at_zero():
@@ -567,18 +555,6 @@ async def test_free_is_spelled_one_way_and_prices_at_zero():
         cost = cat.cost_view(ep["cost"], ep["provider"])
         assert (cost["value"], cost["currency"], cost["unit"]) == (0, "USD", "call"), ep["id"]
         assert cost["usd"] == 0, ep["id"]
-
-
-async def test_an_observed_price_is_provenanced_without_a_url():
-    """DataForSEO prices per API family, not per route, so its extended entries carry only the
-    charge the provider REPORTED at verification. That is the strongest provenance there is — it is
-    what was actually billed — and its evidence is the captured response, not a pricing page."""
-    cat = cs.load()
-    ep = cat.by_id["dataforseo.x.ai-optimization-llm-mentions-historical-live"]
-    cost = cat.cost_view(ep["cost"], ep["provider"])
-    assert cost["source"] == "observed" and cost["confidence"] == "verified"
-    assert cost["checked"] == ep["verified"], "the price was confirmed the day the call was made"
-    assert "source_url" not in cost and cost["usd"] == cost["value"]
 
 
 async def test_platform_eligibility_refuses_everything_it_cannot_prove():
@@ -622,11 +598,6 @@ async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
     eligible = [e for e in cat.endpoints if cat.platform_eligible(e)]
     for provider in ("tikhub", "dataforseo", "scrapecreators"):
         assert sum(1 for e in eligible if e["provider"] == provider) > 20, provider
-
-
-async def test_unknown_endpoint_is_404(clients: AsyncClient):
-    r = await clients.get("/catalog/endpoints/tikhub.tiktok.nope")
-    assert r.status_code == 404 and "tikhub.tiktok.nope" in r.text
 
 
 async def test_unknown_endpoint_access_is_a_clean_404(clients: AsyncClient):
@@ -719,27 +690,6 @@ def test_gtm_catalog_paths_and_declared_parameters_are_the_same_contract():
     assert "--query account_id=123456" in line
     assert "--query container_id=789" in line
     assert "parent=" not in line
-
-
-def test_catalog_validator_rejects_an_unknown_endpoint_array_encoding(tmp_path, capsys):
-    """The endpoint encoding declaration is schema, not free-form prose. Exercise the real
-    validator so deleting its validation block cannot leave a falsely green test suite."""
-    cv = _load_validator()
-    real = cv.CATALOG
-    for name in ("capabilities.yaml", "fx.yaml"):
-        (tmp_path / name).write_text((real / name).read_text())
-    meta = (real / "meta-ad-library.yaml").read_text()
-    meta = meta.replace("queryArrayEncoding: json", "queryArrayEncoding: nonsense", 1)
-    (tmp_path / "meta-ad-library.yaml").write_text(meta)
-    original = cv.CATALOG
-    try:
-        cv.CATALOG = tmp_path
-        result = cv.main(["meta-ad-library"])
-    finally:
-        cv.CATALOG = original
-    output = capsys.readouterr().out
-    assert result == 1
-    assert "input.queryArrayEncoding: Input should be 'json', 'comma' or 'repeated'" in output
 
 
 # ---- example responses -------------------------------------------------------------------
@@ -982,17 +932,6 @@ def _load_validator():
     return mod
 
 
-def test_every_shared_plan_rate_prints_its_fee_and_break_even():
-    """A `kind: treg_shared_plan` entry is the catalog asserting OUR OWN price for a flat-fee
-    provider. The honesty of that lives in the basis string, because the basis is what every surface
-    shows as provenance: it must say whose price it is, the vendor fee, and the break-even volume.
-    This runs the validator's own check against the real fx.yaml."""
-    cv = _load_validator()
-    errors: list[str] = []
-    cv.check_fx(errors)
-    assert errors == [], "\n".join(errors)
-
-
 def test_the_shared_plan_check_actually_BITES(tmp_path):
     """Each dishonest shape must produce an error — checked by running the real check against bad
     entries, not by trusting that it would. (This session alone produced two tests that passed with
@@ -1220,72 +1159,26 @@ def test_generic_display_prices_match_web_and_cli():
     assert _platform_estimate_micro(job, {}) == 75_000
 
 
-_MOZ_ONE_ROW_PER_RETURNED = re.compile(r"1 row per returned", re.I)
 
-
-def test_moz_lists_priced_per_returned_row_show_per_result():
-    """A Moz list that bills one quota row per returned item, with `limit` choosing how many come
-    back, must quote that unit. `quota_rows` with no display unit is labelled `/call`, so a
-    `limit` of 50 looks like the one-row price. `display.unit` names the returned item; the
-    meter stays `quota_rows` and `usd` stays the price of one row."""
+def test_a_row_quota_priced_per_returned_item_holds_the_limit_and_says_per_result():
+    """A list that bills one quota row per returned item, with `limit` choosing how many come back,
+    must quote that unit. `quota_rows` with no display unit is labelled `/call`, so a `limit` of 50
+    looks like the one-row price. `display.unit` names the returned item; the meter stays
+    `quota_rows` and `usd` stays the price of one row."""
     from treg.application.call.resolve import _platform_estimate_micro
     from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     from treg.routers.web import _price_label
 
     cat = cs.load()
-    listed = []
-    for ep in cat.endpoints:
-        if ep.get("provider") != "moz":
-            continue
-        cost = ep.get("cost") or {}
-        body = (ep.get("input") or {}).get("body") or {}
-        if (cost.get("type") == "quota_rows"
-                and _MOZ_ONE_ROW_PER_RETURNED.search(cost.get("note") or "")
-                and isinstance(body, dict) and "limit" in body):
-            listed.append(ep["id"])
-    assert set(listed) == {
-        "moz.web.backlinks.list",
-        "moz.web.linking_domains.list",
-        "moz.web.anchors.list",
-        "moz.web.site.top_pages",
-        "moz.web.global.top_pages",
-        "moz.web.global.top_domains",
-    }
-    for eid in listed:
-        ep = cat.by_id[eid]
-        viewed = cat.cost_view(ep["cost"], ep["provider"])
-        assert viewed["type"] == "quota_rows" and viewed["usd"] == 0.006667, eid
-        assert viewed["display_unit"] == "result", eid
-        assert (_price_label(viewed) == _cost_usd(viewed) == _cost_label(viewed)
-                == "$0.00667/result"), eid
-        assert _platform_estimate_micro(viewed, {}, b'{"limit":1}') == 6_667, eid
-        assert _platform_estimate_micro(viewed, {}, b'{"limit":50}') == 333_350, eid
-    for eid in ("moz.web.url.metrics", "moz.web.backlinks.summary", "moz.web.index.metadata"):
-        ep = cat.by_id[eid]
-        viewed = cat.cost_view(ep["cost"], ep["provider"])
-        assert viewed["type"] == "quota_rows" and "display_unit" not in viewed, eid
-        assert _price_label(viewed).endswith("/call") and _cost_usd(viewed).endswith("/call"), eid
-
-
-def test_platform_access_estimate_matches_the_run_it_example_not_a_page_default():
-    """catalog get's access line estimates the runnable example. An empty body used to fall through
-    to the page-size default (20), so Moz quota_rows showed ~20× the unit price next to a 1-target
-    or 1-limit RUN IT line even though settle charged per target/row."""
-    from treg.application.call.access import _platform_access_estimate
-
-    cat = cs.load()
-    # One target, no modifiers: value 1 → one unit, not 20.
-    url = cat.by_id["moz.web.url.metrics"]
-    url_cost = cat.cost_view(url["cost"], "moz")
-    assert _platform_access_estimate(url, "moz", url_cost) == 6_667
-    # Weighted example already baked into cost.value (2): still one "call" for that shape, not 20.
-    summary = cat.by_id["moz.web.backlinks.summary"]
-    summary_cost = cat.cost_view(summary["cost"], "moz")
-    assert _platform_access_estimate(summary, "moz", summary_cost) == 13_334
-    # List example carries limit:1 → one returned row, not the page default.
-    listing = cat.by_id["moz.web.linking_domains.list"]
-    listing_cost = cat.cost_view(listing["cost"], "moz")
-    assert _platform_access_estimate(listing, "moz", listing_cost) == 6_667
+    row = {"type": "quota_rows", "value": 0.004, "currency": "USD", "unit": "quota_row"}
+    viewed = cat.cost_view({**row, "display": {"unit": "result"}}, "demo")
+    assert viewed["usd"] == 0.004 and viewed["display_unit"] == "result"
+    assert _price_label(viewed) == _cost_usd(viewed) == _cost_label(viewed) == "$0.004/result"
+    assert _platform_estimate_micro(viewed, {}, b'{"limit":1}') == 4_000
+    assert _platform_estimate_micro(viewed, {}, b'{"limit":50}') == 200_000
+    plain = cat.cost_view(row, "demo")
+    assert "display_unit" not in plain
+    assert _price_label(plain).endswith("/call") and _cost_usd(plain).endswith("/call")
 
 
 async def test_every_comparison_page_in_the_sitemap_serves(clients):

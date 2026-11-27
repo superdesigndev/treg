@@ -12,7 +12,6 @@ proposed_capabilities:
   people.database.autocomplete: List accepted values for a LimaData database filter
   people.employees.search: Search employees at named companies
   people.audience.resolve: Resolve a person to advertising audience identifiers
-  people.audience.email_hash: Resolve a person to hashed email identifiers
   linkedin.company.from_domain: Find a company's LinkedIn page from its domain
   people.identity.from_email: Resolve an email address to social profiles
   web.research: Search and synthesize web research for a question

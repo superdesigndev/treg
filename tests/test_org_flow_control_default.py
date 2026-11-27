@@ -1,6 +1,5 @@
 """Default limits for an Org with no published snapshot; a publication replaces them whole."""
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -82,18 +81,6 @@ async def test_a_cache_full_worker_allows_without_the_default(env):
         await reader.check(org, None, 2, DEFAULT)
     store.read_org_flow_control.return_value = None
     assert await reader.check(42, None, 2, DEFAULT) is None
-
-
-async def test_check_passes_the_configured_default(monkeypatch):
-    reader = SimpleNamespace(check=AsyncMock(return_value=None))
-    monkeypatch.setattr(flow, "_reader", reader)
-    monkeypatch.setattr(flow, "get_settings", lambda: SimpleNamespace(
-        org_flow_control_enabled=True, org_flow_control_refresh_s=2,
-        org_flow_control_default_max_in_flight=3, org_flow_control_default_rps=None,
-        org_flow_control_default_burst=None))
-    await flow.check(42, "ref")
-    (_, _, _, default), _ = reader.check.await_args
-    assert default.version == 0 and default.max_in_flight == 3 and default.rate_limit is None
 
 
 async def _hold_one_and_refuse_the_next(clients, monkeypatch, target):

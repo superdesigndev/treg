@@ -3,8 +3,7 @@
 Opt-in. An adapter that cannot map every field the contract lists as `complete` is asked last; an
 answer missing one is weak (keep going, the fullest wins if nothing better turns up); and an
 answer whose profile identifier differs from the one asked counts only once another provider
-reports the same identifier (a renamed profile), never on its own (a match on someone else).
-Measured 2026-10-29 on 278 live LinkedIn URLs: net correct fields 79.7 today, 95.6 with the header."""
+reports the same identifier (a renamed profile), never on its own (a match on someone else)."""
 
 from __future__ import annotations
 
@@ -85,17 +84,6 @@ async def test_without_the_header_the_cheapest_thin_answer_ends_the_route(client
     assert r.json()["_treg"]["served_by"] == "anyapi.linkedin.user.profile" and len(seen) == 1
 
 
-async def test_without_the_header_a_mapped_headline_still_ends_the_route(clients, profile_on, monkeypatch):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"anyapi": [(200, THIN_FULL)]}, seen))
-    r = await clients.post(PROFILE, json={"linkedin_url": ASKED})
-    assert r.status_code == 200, r.text
-    d = r.json()
-    assert d["_treg"]["served_by"] == "anyapi.linkedin.user.profile" and len(seen) == 1
-    assert d["output"]["headline"] == "Chair, Gates Foundation"
-    assert d["output"]["linkedin_url"] == "https://www.linkedin.com/in/williamhgates"
-
-
 async def test_with_the_header_a_complete_thin_answer_ends_the_route(clients, profile_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"anyapi": [(200, THIN_FULL)]}, seen))
@@ -157,8 +145,7 @@ async def test_another_identifier_nobody_confirms_is_not_returned(clients, profi
 
 async def test_the_contract_names_what_a_complete_answer_carries(clients, profile_on, monkeypatch):
     """Most fields but no headline (a scraper that reads only the top card): still weak, because the
-    contract's `complete` list names the headline. Measured 2026-10-29: such answers on 20 of 278
-    people cost 3 points of net correct fields."""
+    contract's `complete` list names the headline."""
     assert store.load().contracts["linkedin.user.profile"].complete == ("full_name", "headline", "location")
     headless = _fetchin()
     headless["title"] = None

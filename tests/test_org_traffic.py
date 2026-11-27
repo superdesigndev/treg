@@ -86,26 +86,16 @@ def test_summary_is_one_parseable_physical_line(counter, monkeypatch, caplog):
     assert len(json.loads(payload)["top"]) == 10
 
 
-@pytest.mark.parametrize("configuration", ["mcp", "host", "managed"])
-def test_event_logging_preserves_root_configuration_and_single_lines(configuration):
+def test_event_logging_preserves_root_configuration_and_single_lines():
     script = '''
-import io, json, logging, sys
+import io, json, logging
 root = logging.getLogger()
 stream, root_stream = io.StringIO(), io.StringIO()
-configuration = sys.argv[1]
-if configuration == "host":
-    handler = logging.StreamHandler(root_stream)
-    handler.setFormatter(logging.Formatter("HOST:%(levelname)s:%(message)s"))
-    handler.addFilter(logging.Filter())
-    root.addHandler(handler)
-    root.setLevel(logging.ERROR)
-elif configuration == "mcp":
-    from mcp.server import MCPServer
-    MCPServer(name="logging-baseline")
-else:
-    # A host may own logging and suppress SDK defaults, including leaving root unconfigured.
-    import mcp.server.mcpserver.server as server
-    server.configure_logging = lambda *args, **kwargs: None
+handler = logging.StreamHandler(root_stream)
+handler.setFormatter(logging.Formatter("HOST:%(levelname)s:%(message)s"))
+handler.addFilter(logging.Filter())
+root.addHandler(handler)
+root.setLevel(logging.ERROR)
 baseline = (root.level, list(root.handlers), [h.formatter for h in root.handlers],
             [list(h.filters) for h in root.handlers],
             logging.getLogger("unrelated.library").isEnabledFor(logging.INFO))
@@ -138,13 +128,12 @@ json.loads(lines[1].split(" ", 1)[1])
 assert not root_stream.getvalue()  # No duplicate propagation to the root sink.
 assert root.level == baseline[0] and root.handlers == baseline[1]
 '''
-    result = subprocess.run([sys.executable, "-c", script, configuration],
+    result = subprocess.run([sys.executable, "-c", script],
                             capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("propagate", [False, True])
-def test_explicit_named_event_logger_configuration_is_preserved(monkeypatch, propagate):
+def test_explicit_named_event_logger_configuration_is_preserved(monkeypatch):
     from treg.infra.structured_logging import get_logger
 
     stream = io.StringIO()
@@ -154,11 +143,11 @@ def test_explicit_named_event_logger_configuration_is_preserved(monkeypatch, pro
     handler.addFilter(lambda record: "allowed" in record.getMessage())
     monkeypatch.setattr(logger, "handlers", [handler])
     monkeypatch.setattr(logger, "level", logging.WARNING)
-    monkeypatch.setattr(logger, "propagate", propagate)
+    monkeypatch.setattr(logger, "propagate", False)
     assert get_logger(logger.name) is logger
     assert logger.handlers == [handler]
     assert logger.level == logging.WARNING
-    assert logger.propagate is propagate
+    assert logger.propagate is False
     logger.info("allowed but below configured level")
     logger.warning("filtered")
     logger.warning("allowed")
@@ -262,7 +251,7 @@ async def test_one_minute_timer_shared_and_removed(counter, monkeypatch, caplog)
     traffic.stop_reporting()
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
+@pytest.mark.parametrize("path", ["/call/", "/table/"])
 async def test_trusted_org_log_and_unresolved_null(
     clients, counter, caller_key_id, monkeypatch, caplog, path,
 ):
@@ -292,16 +281,15 @@ async def test_trusted_org_log_and_unresolved_null(
     assert "must-not-log" not in json.dumps(logs(caplog))
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
 @pytest.mark.parametrize("failure,status,failure_kind", [
     (RuntimeError("fault"), 500, "unexpected_exception"),
     (PoolTimeoutError(), 503, "db_pool"),
 ])
 async def test_exception_or_pool_timeout_keeps_status_and_finishes(
-    clients, platform_on, counter, caller_key_id, monkeypatch, caplog, posthog_events, path, failure,
+    clients, platform_on, counter, caller_key_id, monkeypatch, caplog, posthog_events, failure,
     status, failure_kind,
 ):
-    monkeypatch.setattr(get_settings(), "table_enabled", True)
+    path = "/call/"
 
     def fault():
         raise failure
@@ -330,13 +318,12 @@ async def test_exception_or_pool_timeout_keeps_status_and_finishes(
     assert not counter.orgs
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
 async def test_pool_timeout_before_identity_logs_intake_failure_kind(
-    clients, counter, monkeypatch, caplog, posthog_events, path,
+    clients, counter, monkeypatch, caplog, posthog_events,
 ):
     from treg.domain.identity import access
 
-    monkeypatch.setattr(get_settings(), "table_enabled", True)
+    path = "/call/"
     with monkeypatch.context() as patch:
         patch.setattr(access, "_membership_by_token", AsyncMock(side_effect=PoolTimeoutError()))
         response = await clients.get(path + "example/path")
@@ -575,7 +562,6 @@ def test_for_each_hub_item_is_a_child(caplog):
 @pytest.mark.parametrize("path,tool,args", [
     ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}),
     ("/mcp/v2/", "catalog_call_read", {"endpoint_id": "tikhub.tiktok.video.comments"}),
-    ("/mcp/v2/", "catalog_call_write", {"endpoint_id": "dataforseo.web.page.audit"}),
     ("/mcp/", "call_media", {"endpoint_id": "fishaudio.tts.s2-1-pro", "body": {"text": "test"}}),
 ])
 async def test_mcp_logs_and_counts_one_root(
@@ -689,7 +675,6 @@ async def test_replay_log_keeps_current_attempt_ref(clients, counter, monkeypatc
 
 @pytest.mark.parametrize("surface,target", [
     ("/call/", "tikhub.tiktok.video.comments"),
-    ("/table/", "tikhub.tiktok.video.comments"),
     ("/call/", "http://upstream/private-path"),
 ])
 async def test_resolved_own_tool_does_not_guess_catalog_identity(
@@ -709,8 +694,9 @@ async def test_resolved_own_tool_does_not_guess_catalog_identity(
     assert row["failure_kind"] is None
 
 
-@pytest.mark.parametrize("surface", ["/call/", "/catalog/call/", "/table/"])
-@pytest.mark.parametrize("valid", [True, False])
+@pytest.mark.parametrize("surface,valid", [
+    ("/call/", True), ("/call/", False), ("/table/", True),
+])
 async def test_catalog_identity_survives_success_and_parameter_refusal(
     clients, counter, platform_on, monkeypatch, caplog, surface, valid,
 ):

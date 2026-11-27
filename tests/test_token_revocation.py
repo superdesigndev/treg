@@ -18,6 +18,7 @@ from httpx import ASGITransport, AsyncClient
 from treg.domain.identity import session as sess
 from treg.api import app
 from treg.infra.db import reset_db
+from conftest import email_code
 
 
 @pytest.fixture
@@ -31,7 +32,7 @@ async def client():
 
 
 async def _otp_login(c: AsyncClient, email: str) -> str:
-    code = (await c.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    code = await email_code(c, email)
     return (await c.post("/auth/email/verify", json={"email": email, "code": code})).json()["token"]
 
 
@@ -49,7 +50,7 @@ async def test_revoke_kills_old_identity_token_and_issues_a_fresh_one(client):
 
 
 async def test_revoke_signs_out_other_browser_sessions_but_keeps_the_caller(client):
-    code = (await client.post("/auth/email/start", json={"email": "multi@x.io"})).json()["dev_code"]
+    code = await email_code(client, "multi@x.io")
     verify = await client.post("/auth/email/verify", json={"email": "multi@x.io", "code": code})
     old_cookie = verify.cookies.get("treg_session")
     assert old_cookie

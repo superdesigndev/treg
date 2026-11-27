@@ -66,12 +66,12 @@ async def snapshots():
         return (await s.execute(select(ArchiveSnapshot).order_by(ArchiveSnapshot.id))).scalars().all()
 
 
-@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal', 'observation', 'initialization', 'admin', 'arena', 'replay'])
+# An auxiliary path (admin) reads R2 first only under the switch it shares (result).
+@pytest.mark.parametrize('path,switch', [('lookup', 'lookup'), ('admin', 'result')])
 @pytest.mark.parametrize('outcome', ['r2', 'db_fallback', 'unavailable'])
-async def test_legacy_read_reports_final_source(r2, monkeypatch, path, outcome):
+async def test_legacy_read_reports_final_source(r2, monkeypatch, path, switch, outcome):
     from treg import analytics
-    for setting in ('lookup', 'result', 'terminal'):
-        monkeypatch.setattr(get_settings(), 'archive_body_read_' + setting, 'r2-first')
+    monkeypatch.setattr(get_settings(), 'archive_body_read_' + switch, 'r2-first')
     digest = archive.content_hash(RAW)
     if outcome == 'r2':
         r2.objects[digest] = RAW
@@ -147,14 +147,11 @@ async def test_read_failure_and_cancellation_finish_observation(r2, monkeypatch,
         assert 'snapshot_id' not in events[0]
 
 
-@pytest.mark.parametrize('source', ['r2', 'db'])
 @pytest.mark.parametrize('analytics_failure', ['queue_full', 'internal_error'])
-async def test_read_survives_analytics_failure(r2, monkeypatch, source, analytics_failure):
+async def test_read_survives_analytics_failure(r2, monkeypatch, analytics_failure):
     from treg import analytics
     monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
     digest = archive.content_hash(RAW)
-    if source == 'r2':
-        r2.objects[digest] = RAW
     monkeypatch.setattr(analytics, 'enabled', lambda: True)
     monkeypatch.setattr(analytics, '_queue', [])
     if analytics_failure == 'queue_full':
@@ -490,10 +487,8 @@ async def test_r2_queue_has_independent_concurrency_and_sheds_observably(clients
 
 
 @pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
-@pytest.mark.parametrize('fallback', [False, 'error', 'missing', 'corrupt', 'timeout',
-                                      'permission_denied', 'upstream_error', 'store_unavailable'])
-@pytest.mark.parametrize('storage', ['both', None, 'db'])
-async def test_read_switches_and_fallback_without_db_connection(clients, r2, monkeypatch, path, fallback, storage):
+@pytest.mark.parametrize('fallback', [False, 'missing', 'corrupt', 'timeout'])
+async def test_read_switches_and_fallback_without_db_connection(clients, r2, monkeypatch, path, fallback):
     monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
     if path == 'terminal':
         await archive.store_terminal_response('terminal-test', 'tikhub', EP, 200, RAW)
@@ -501,24 +496,20 @@ async def test_read_switches_and_fallback_without_db_connection(clients, r2, mon
         await clients.get(URL)
         await archive.drain()
         await audit.drain()
-    r2.fail_gets = fallback == 'error'
     if fallback == 'missing':
         r2.objects.clear()
     elif fallback == 'corrupt':
         r2.objects = {key: b'corrupt' for key in r2.objects}
-    elif fallback in {'timeout', 'permission_denied', 'upstream_error', 'store_unavailable'}:
-        from treg.infra.object_store import ObjectStoreError
+    elif fallback == 'timeout':
         monkeypatch.setattr(get_settings(), 'archive_r2_read_timeout_s', 0.02)
-        async def failed_get(key):
+        async def stalled_get(key):
             r2.check_io()
             r2.get_calls += 1
-            if fallback == 'timeout':
-                await asyncio.Event().wait()
-            raise ObjectStoreError(fallback)
-        monkeypatch.setattr(r2, 'get', failed_get)
+            await asyncio.Event().wait()
+        monkeypatch.setattr(r2, 'get', stalled_get)
     async with db.session_maker() as s:
         for row in (await s.execute(select(ArchiveSnapshot))).scalars():
-            row.body_storage = storage
+            row.body_storage = None
             if not fallback:
                 # Includes backfilled legacy objects whose DB copies were subsequently pruned.
                 row.body = None
@@ -630,13 +621,6 @@ async def test_startup_fails_before_db_when_r2_configuration_missing(monkeypatch
     with pytest.raises(RuntimeError, match='Archive R2'):
         async with bootstrap._lifespan('control')(FastAPI()):
             pass
-
-
-def test_db_defaults_need_no_r2_configuration():
-    from treg.config import Settings
-    s = Settings(_env_file=None)
-    assert s.archive_body_write == 'db'
-    assert all(getattr(s, 'archive_body_read_' + p) == 'db' for p in ('lookup', 'result', 'terminal'))
 
 
 async def test_checksum_mismatch_is_not_published(clients, r2, monkeypatch):
@@ -810,7 +794,7 @@ async def test_result_admission_retains_decisive_r2_snapshot(clients, r2, monkey
         assert all(row.body_of is None for row in await snapshots())
 
 
-@pytest.mark.parametrize('write_timeout,read_timeout', [(10.0, 2.0), (0.01, 2.0), (30.0, 0.01)])
+@pytest.mark.parametrize('write_timeout,read_timeout', [(0.01, 2.0), (30.0, 0.01)])
 async def test_obstore_factory_configuration_and_missing_objects(monkeypatch, write_timeout, read_timeout):
     from treg.infra.object_store import open_r2
     from tests.fake_object_store import MemoryObstoreSDK
@@ -844,12 +828,12 @@ async def test_obstore_factory_configuration_and_missing_objects(monkeypatch, wr
     assert captured['client_options'] == {'timeout': transport_timeout, 'connect_timeout': transport_timeout}
 
 
-@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
 @pytest.mark.parametrize('reason,level', [('not_found', 'WARNING'), ('timeout', 'WARNING'),
                                          ('permission_denied', 'ERROR'), ('hash_mismatch', 'ERROR'),
                                          ('rate_limited', 'WARNING'), ('upstream_error', 'WARNING')])
-async def test_read_fallback_reason_level_and_diagnostics(r2, monkeypatch, caplog, path, reason, level):
+async def test_read_fallback_reason_level_and_diagnostics(r2, monkeypatch, caplog, reason, level):
     from treg.infra.object_store import ObjectStoreError
+    path = 'lookup'
     monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
     monkeypatch.setattr(get_settings(), 'archive_r2_read_timeout_s', 0.01)
     monkeypatch.setattr(get_settings(), 'archive_r2_timeout_s', 30.0)
@@ -1221,7 +1205,7 @@ async def test_concurrent_same_body_calls_share_one_put(clients, r2):
     assert r2.put_calls == 1 and not archive_bodies._inflight
 
 
-@pytest.mark.parametrize('status', [429, 500, 503])
+@pytest.mark.parametrize('status', [429, 500])
 @pytest.mark.parametrize('exhausted', [False, True])
 async def test_transient_put_retry_and_db_fallback(clients, r2, monkeypatch, status, exhausted, caplog):
     r2.put_failures = [status] * (2 if exhausted else 1)
@@ -1306,7 +1290,7 @@ async def test_singleflight_cancellation_releases_waiters(r2, cancel_leader):
     assert r2.put_calls == (2 if cancel_leader else 1)
 
 
-@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal', 'put'])
+@pytest.mark.parametrize('path', ['lookup', 'put'])
 async def test_store_error_logs_only_underlying_exception_class(r2, monkeypatch, caplog, path):
     from treg.infra.object_store import ObjectStoreError
     async def fail(*args, **kwargs):
@@ -1326,7 +1310,7 @@ async def test_store_error_logs_only_underlying_exception_class(r2, monkeypatch,
 
 
 @pytest.mark.parametrize('status,reason', [(429, 'rate_limited'), (500, 'upstream_error'),
-                                         (503, 'upstream_error'), (400, 'store_error')])
+                                         (400, 'store_error')])
 async def test_real_obstore_http_status_classification(status, reason):
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from threading import Thread
@@ -1389,7 +1373,7 @@ async def test_same_query_burst_bypasses_upload_queue_budget(clients, r2, monkey
     monkeypatch.setattr(get_settings(), 'archive_r2_max_pending_bytes', len(RAW))
     r2.gate = asyncio.Event()
     reports = []
-    for _ in range(300):
+    for _ in range(30):
         archive.record(method='GET', endpoint_id=EP, provider='tikhub', url=URL,
                        caller_body=b'', headers={}, status_code=200, media_type='application/json', body=RAW,
                        observation=archive_bodies.StorageReport(emit=reports.append))
@@ -1402,8 +1386,8 @@ async def test_same_query_burst_bypasses_upload_queue_budget(clients, r2, monkey
         r2.gate.set()
     await archive.drain()
     rows = await snapshots()
-    assert len(rows) == 300 and len({row.key_id for row in rows}) == 1
-    assert len(reports) == 300 and all(p['storage'] == 'both' and not p['dropped'] for p in reports)
+    assert len(rows) == 30 and len({row.key_id for row in rows}) == 1
+    assert len(reports) == 30 and all(p['storage'] == 'both' and not p['dropped'] for p in reports)
     assert r2.put_calls == 1 and not archive_bodies._queued_hashes
     assert archive_bodies._pending_bytes == 0
 

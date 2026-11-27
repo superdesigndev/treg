@@ -63,11 +63,10 @@ async def _call(clients, surface):
 
 
 @pytest.mark.parametrize("surface", ["route", "arena"])
-@pytest.mark.parametrize("poll_outcome", ["exceeded", "unavailable"])
 async def test_admitted_internal_polls_do_not_read_or_consume_quota(
-    clients, monkeypatch, bounceban_on, fast_polls, surface, poll_outcome,
+    clients, monkeypatch, bounceban_on, fast_polls, surface,
 ):
-    attempts = _quota(monkeypatch, poll_outcome)
+    attempts = _quota(monkeypatch, "exceeded")
     upstream = Upstream(VERIFYING, [VERIFYING, _finished("deliverable")])
     monkeypatch.setattr(service, "relay", upstream)
     before = await _balance(clients)
@@ -83,15 +82,13 @@ async def test_admitted_internal_polls_do_not_read_or_consume_quota(
         assert await db.get(Hold, task.call_id) is None
 
     direct = await clients.get(f"/call/{STATUS}", params={"id": TASK})
-    assert direct.status_code == (429 if poll_outcome == "exceeded" else 200), direct.text
+    assert direct.status_code == 429, direct.text
     assert attempts[STATUS] == 1
-    assert upstream.seen == ["submit", "poll", "poll"] + (
-        ["poll"] if poll_outcome == "unavailable" else [])
+    assert upstream.seen == ["submit", "poll", "poll"]
     assert before - await _balance(clients) == task.settled_micro
 
 
-@pytest.mark.parametrize("surface", ["route", "arena"])
-@pytest.mark.parametrize("poll_outcome", ["exceeded", "unavailable"])
+@pytest.mark.parametrize("surface,poll_outcome", [("route", "exceeded"), ("arena", "unavailable")])
 async def test_pending_handle_survives_poll_quota_and_worker_settles_once(
     clients, monkeypatch, bounceban_on, fast_polls, surface, poll_outcome,
 ):

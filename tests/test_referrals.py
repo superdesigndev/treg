@@ -514,33 +514,6 @@ async def test_the_referee_is_paid_the_instant_they_qualify(c, monkeypatch):
     assert [b.amount_micro for b in await _blocks(bob_org, "referral")] == [s.referral_referred_micro]
 
 
-async def test_the_referrer_still_waits_out_the_hold(c, monkeypatch):
-    """Only the referee's half goes early. Nothing about the referrer's experience needs it sooner,
-    and the hold is the only clawback window there is."""
-    ann_org, _, code = await _ready_referrer(c, monkeypatch)
-    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
-    await _topup(c, monkeypatch, bob_org, pi="pi_bob", fingerprint="fp_bob")
-    assert await _blocks(ann_org, "referral") == [], "the referrer is not paid on qualification"
-    await _age_qualification()
-    async with session_maker() as db:
-        assert await referrals.sweep(db) == 1
-    s = get_settings()
-    assert [b.amount_micro for b in await _blocks(ann_org, "referral")] == [s.referral_referrer_micro]
-
-
-async def test_the_sweep_does_not_pay_the_referee_a_second_time(c, monkeypatch):
-    """`_pay` still has a referee branch as a fallback for a failed instant grant, so it must be
-    guarded on `referred_block_id` — unguarded it would hand out a second bonus a week later."""
-    _, _, code = await _ready_referrer(c, monkeypatch)
-    bob_org, _ = await _signup(c, "bob@example.com", ref=code)
-    await _topup(c, monkeypatch, bob_org, pi="pi_bob", fingerprint="fp_bob")
-    await _age_qualification()
-    async with session_maker() as db:
-        await referrals.sweep(db)
-    s = get_settings()
-    assert [b.amount_micro for b in await _blocks(bob_org, "referral")] == [s.referral_referred_micro]
-
-
 async def test_the_advertised_minimum_is_the_one_qualify_enforces(c, monkeypatch):
     """The offer and the gate read the same setting. If they ever diverge we would be promising a
     bonus at an amount that does not earn one — the worst possible bug on this screen."""

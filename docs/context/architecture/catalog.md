@@ -8,6 +8,7 @@ sources:
   - src/treg/domain/catalog/results.py
   - src/treg/domain/catalog/rankings.py
   - src/treg/domain/catalog/routing/__init__.py
+  - src/treg/domain/catalog/routing/ad_hashes.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
@@ -475,6 +476,9 @@ cost:
   is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
   A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
+  outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
+  shared credential, with the field named and its value never echoed.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.
@@ -831,6 +835,12 @@ price when the deployment can relay it (`routers.catalog._overflow_disclosure`: 
 `overflow_price_unit`, `overflow_via`; MCP `catalog_get` lifts them) - the price a free endpoint can
 bill when treg's own account is out.
 
+Endpoint detail ranks siblings available on treg's key and approved hub tools together, followed by
+catalog siblings that require another credential. Within each group, the sort uses the Wilson
+reliability band, then lower p50 latency, lower advertised USD price, and ascending endpoint ID.
+Reviews are displayed separately from the ranking. The HTTP detail's `siblings_ranked` flag lets
+the CLI use that order while still sorting responses from older servers.
+
 ### Observations: folded off the request path, cached per process
 
 - `stats.EndpointObservationReader` is the domain port; bootstrap wraps
@@ -858,8 +868,7 @@ bill when treg's own account is out.
   writes; the worker owns transactions. Async endpoints with result adapters publish only when
   every applicable day is `terminal_reconciled` and no correction is older than `STALE_AFTER_S`;
   one untrustworthy day suppresses the endpoint's whole observation, because dropping the day would
-  bias its rate. Async hit rates use terminal evidence only. `catalog_stats.requeue_async_stats` and
-  `repair_status` are the explicit, manifest-driven requeue and its completion check.
+  bias its rate. Async hit rates use terminal evidence only.
 - Merging days weights each day's latency sample by the calls it stands for (`Tally.merge`), or the
   window's p95 would be the quiet days'. `stats.Tally` is the one shape for a day, a window and the
   live aggregate; `tests/test_catalog_stats_refresh.py` holds fold and SQL equal.
@@ -1010,6 +1019,11 @@ hands back the nested call's own), so the archived answer can be read later by e
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
   422 before planning.
+- `ad_hashes` (opt-in via `X-Treg-Route-Ad-Hashes`) names the output field holding an email. After
+  a hit, `route._ad_hashes` adds `_treg.ad_hashes`: `domain/catalog/routing/ad_hashes.hashes` gives
+  the SHA-256 of the address as LinkedIn, Meta and Google each normalize it. No call and no charge;
+  `output` is not altered; a miss or a hit without an address says `hashed: false` with `no_hit` or
+  `no_email`. The header on a contract without `ad_hashes` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked

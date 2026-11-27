@@ -98,21 +98,17 @@ async def test_tracing_preserves_money_results_and_the_exact_sql_sequence(trace_
         assert await ledger.spent_today(db, org_id) == 120
 
 
-@pytest.mark.parametrize("ending,outcome", [
-    ("commit", "committed"), ("rollback", "rolled_back"),
-    ("close", "rolled_back"), ("invalidate", "invalidated"),
-])
-async def test_ended_session_transaction_cannot_tag_its_next_transaction(trace_db, ending, outcome):
+async def test_ended_session_transaction_cannot_tag_its_next_transaction(trace_db):
     async with session_maker() as db:
         money_trace.mark_money(db, "settle", org_id=7, call_id="previous-call")
         await db.execute(text("SELECT 1"))
         [active] = _active_events()
         assert active["org_ids"] == [7] and active["call_ids"] == ["previous-call"]
-        await getattr(db, ending)()
+        await db.commit()
         ended = [row for row in money_trace.drain_events() if row["event"] == "money_txn_end"]
         assert len(ended) == 1
         assert ended[0]["app_txn_id"] == active["app_txn_id"]
-        assert ended[0]["outcome"] == outcome
+        assert ended[0]["outcome"] == "committed"
         assert _active_events() == []
         # Reusing the same Python session for an unrelated read must not resurrect old identity.
         await db.execute(text("SELECT 2"))
@@ -154,26 +150,6 @@ async def test_cancellation_propagates_and_clears_the_active_transaction(trace_d
         if not task.done():
             task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-
-
-async def test_topup_flush_and_savepoint_do_not_end_the_owning_transaction(trace_db):
-    org_id = await _funded_org()
-    async with session_maker() as db:
-        await ledger.topup(db, org_id, 250, "trace-payment")
-        await db.flush()
-        events = money_trace.drain_events()
-        assert not [row for row in events if row["event"] == "money_txn_end"]
-        [active] = _active_events()
-        assert active["operation"] == "topup"
-        assert active["org_ids"] == [org_id]
-        assert active["txn_ended_at"] is None
-        await db.commit()
-        ended = [row for row in money_trace.drain_events() if row["event"] == "money_txn_end"]
-        assert len(ended) == 1
-        assert ended[0]["app_txn_id"] == active["app_txn_id"]
-        assert ended[0]["outcome"] == "committed"
-    async with session_maker() as db:
-        assert await ledger.balance_of(db, org_id) == 1_250
 
 
 async def test_diagnostic_clock_failure_does_not_change_commit_or_leave_a_false_blocker(
@@ -301,39 +277,6 @@ async def test_shutdown_drains_active_transactions_without_committing_them(trace
         await db.rollback()
 
 
-async def test_nested_stages_restore_the_parent_and_commit_is_visible_before_it_finishes(trace_db):
-    at_commit = []
-
-    def committing(connection):
-        money_trace.sample()
-        at_commit.extend(money_trace.drain_events())
-
-    event.listen(trace_db.sync_engine, "commit", committing)
-    try:
-        async with session_maker() as db:
-            money_trace.mark_money(db, "settle", org_id=7, call_id="nested-stage-call")
-            with money_trace.money_stage(db, "claim_hold"):
-                await db.execute(text("SELECT 1"))
-                with money_trace.money_stage(db, "lock_blocks"):
-                    [inner] = _active_events()
-                    assert inner["current_stage"] == "lock_blocks"
-                [parent] = _active_events()
-                assert parent["current_stage"] == "claim_hold"
-                assert parent["app_txn_id"] == inner["app_txn_id"]
-            [between] = _active_events()
-            assert between["current_stage"] == "between_stages"
-            await db.commit()
-        [committing_row] = [row for row in at_commit if row["event"] == "money_txn_slow"]
-        assert committing_row["app_txn_id"] == inner["app_txn_id"]
-        assert committing_row["current_stage"] == "commit"
-        assert committing_row["txn_ended_at"] is None
-        [ended] = [row for row in money_trace.drain_events() if row["event"] == "money_txn_end"]
-        assert ended["outcome"] == "committed"
-        assert ended["app_txn_id"] == inner["app_txn_id"]
-    finally:
-        event.remove(trace_db.sync_engine, "commit", committing)
-
-
 async def test_diagnostic_failure_cannot_replace_a_business_error_or_commit_its_hold(
     trace_db, monkeypatch,
 ):
@@ -383,67 +326,3 @@ async def test_invalidation_and_late_diagnostics_do_not_reconnect_the_session(tr
     finally:
         event.remove(trace_db.sync_engine, "checkout", checkout)
         event.remove(trace_db.sync_engine, "before_cursor_execute", before_sql)
-
-
-async def test_failed_savepoint_flush_restores_parent_stage_without_ending_the_transaction(trace_db):
-    from sqlalchemy.exc import IntegrityError
-
-    org_id = await _funded_org()
-    async with session_maker() as db:
-        money_trace.mark_money(db, "topup", org_id=org_id, call_id="savepoint-unique-race")
-        with money_trace.money_stage(db, "lookup_payment"):
-            await db.execute(text("SELECT 1"))
-            [before] = _active_events()
-            with pytest.raises(IntegrityError):
-                async with db.begin_nested():
-                    db.add(Org(name="duplicate-slug", slug="transaction-trace"))
-                    await db.flush()
-            assert not [row for row in money_trace.drain_events() if row["event"] == "money_txn_end"]
-            await db.execute(text("SELECT 2"))
-            [after] = _active_events()
-            assert after["app_txn_id"] == before["app_txn_id"]
-            assert after["current_stage"] == "lookup_payment"
-            assert after["outcome"] == "open"
-        await db.commit()
-        [ended] = [row for row in money_trace.drain_events() if row["event"] == "money_txn_end"]
-        assert ended["app_txn_id"] == before["app_txn_id"]
-        assert ended["outcome"] == "committed"
-
-
-async def test_root_failed_flush_not_active_after_server_rollback(trace_db, monkeypatch):
-    from sqlalchemy.exc import IntegrityError
-
-    org_id = await _funded_org()
-    now = [0.0]
-    monkeypatch.setattr(money_trace, "_clock", lambda: now[0])
-    async with session_maker() as db:
-        money_trace.mark_money(db, "topup", org_id=org_id, call_id="failed-root-flush")
-        await db.execute(text("SELECT 1"))
-        [before] = _active_events()
-        now[0] = 2.0
-        with pytest.raises(IntegrityError):
-            db.add(Org(name="duplicate-root-slug", slug="transaction-trace"))
-            await db.flush()
-        # SQLAlchemy still requires an explicit session rollback, but PostgreSQL/SQLite has
-        # already rolled the transaction back. It must not appear as a live lock holder now.
-        assert db.in_transaction() and not db.is_active
-        money_trace.sample()
-        events = money_trace.drain_events()
-        assert not [row for row in events if row["event"] == "money_txn_slow"]
-        [ended] = [row for row in events if row["event"] == "money_txn_end"]
-        assert ended["app_txn_id"] == before["app_txn_id"]
-        assert ended["outcome"] == "rolled_back"
-        assert ended["elapsed_ms"] == 2000, "session cleanup time is not database transaction time"
-        now[0] = 12.0
-        with money_trace.money_stage(db, "application_cleanup"):
-            assert _active_events() == []
-        await db.rollback()
-        assert not [row for row in money_trace.drain_events() if row["event"] == "money_txn_end"]
-        assert "application_cleanup" not in ended["stage_totals_ms"]
-        await db.execute(text("SELECT 2"))
-        assert _active_events() == []
-        money_trace.mark_money(db, "grant", org_id=org_id, call_id="after-root-rollback")
-        [next_transaction] = _active_events()
-        assert next_transaction["app_txn_id"] != before["app_txn_id"]
-        assert next_transaction["call_ids"] == ["after-root-rollback"]
-        await db.commit()

@@ -116,6 +116,13 @@ def targeted_rate(endpoint_id: str | None, org_id: int | None = None) -> float |
     return rate_
 
 
+def boosted(endpoint_id: str | None, org_id: int | None = None) -> bool:
+    """This call is invited above the base rate: its endpoint is short of its target, or its team
+    is new to it with a floor above the base. What the extra budget is spent on."""
+    boosted_rate = targeted_rate(endpoint_id, org_id)
+    return boosted_rate is not None and boosted_rate > get_settings().review_sample_rate
+
+
 def rate(endpoint_id: str | None, org_id: int | None = None) -> float:
     """The review invitation rate for a call by team `org_id` credited to `endpoint_id`."""
     boosted = targeted_rate(endpoint_id, org_id)

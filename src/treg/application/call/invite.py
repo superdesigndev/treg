@@ -6,6 +6,8 @@ A review invitation asks the agent for work, so it is rationed twice: `hints.sam
 calls qualify (deterministic, so `POST /reviews` can recompute eligibility), and a per-team hourly
 budget in the shared store caps HOW MANY a team is asked about, whatever its call volume. A team
 hammering one endpoint 2,000 times in an hour is asked `review_budget_per_hour` times, not 100.
+Once that budget is spent, a call on an endpoint short of reviews (or new to the team) may draw
+on a second, smaller one, `review_target_budget_per_hour`.
 The feedback hint asks for nothing and stays purely sampled. A comparison invitation
 (`compare`) is decided from a flag the comparison worker sets when a team has a pair waiting
 (application/compare.py), so it reads no database either, and is rationed per team per hour.
@@ -27,15 +29,28 @@ BUDGET_WINDOW_S = 3600
 LEGACY_KINDS: frozenset[str] = frozenset({"review", "feedback"})
 
 
-def accepted_kinds(header: str | None) -> frozenset[str]:
-    """The invitations a client says it shows (`X-Treg-Hints: review,mark,feedback,compare`)."""
+# What a caller that names no runtime (`X-Treg-Client`) and declares nothing is assumed to show: a
+# script or backend calling the API directly, with no agent reading the hint header. It is never
+# asked for a review, so a team's review budget goes to its agents' calls; the feedback hint asks
+# for nothing and stays.
+UNNAMED_KINDS: frozenset[str] = LEGACY_KINDS - {"review"}
+
+
+def accepted_kinds(header: str | None, client: str = "") -> frozenset[str]:
+    """The invitations a client says it shows (`X-Treg-Hints: review,mark,feedback,compare`).
+    Without the header, a named runtime (`client`, from `X-Treg-Client`) gets `LEGACY_KINDS`
+    and an unnamed caller `UNNAMED_KINDS`."""
     if header is None:
-        return LEGACY_KINDS
+        return LEGACY_KINDS if client else UNNAMED_KINDS
     return frozenset(k.strip().lower() for k in header.split(",") if k.strip())
 
 
 def budget_key(org_id: int) -> str:
     return f"review-budget:{org_id}"
+
+
+def target_budget_key(org_id: int) -> str:
+    return f"review-target-budget:{org_id}"
 
 
 def mark_budget_key(org_id: int) -> str:
@@ -90,11 +105,20 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
     marketplace = context.marketplace
     platform = marketplace is not None and getattr(marketplace, "tier", None) == "platform"
     routed = marketplace is None and context.route_summary is not None
+    org_id = context.input.caller.org_id
     if ("review" in accepts and (platform or routed)
-            and review_targets.sampled(context.call_ref, review_endpoint(context),
-                                          context.input.caller.org_id)):
-        if await kv.store().take(budget_key(context.input.caller.org_id),
-                                 get_settings().review_budget_per_hour, BUDGET_WINDOW_S):
+            and review_targets.sampled(context.call_ref, review_endpoint(context), org_id)):
+        settings = get_settings()
+        budgets = [(budget_key(org_id), settings.review_budget_per_hour)]
+        if (settings.review_target_budget_per_hour > 0
+                and review_targets.boosted(review_endpoint(context), org_id)):
+            budgets.append((target_budget_key(org_id), settings.review_target_budget_per_hour))
+        if len(budgets) == 1:
+            used = 0 if await kv.store().take(*budgets[0], BUDGET_WINDOW_S) else None
+        else:
+            used = await kv.store().take_first(budgets, BUDGET_WINDOW_S)
+        if used is not None:
+            context.review_budget = ("main", "extra")[used]
             return "review"
     # A mark asks for later work, only once the agent knows; capped per team like a review.
     if ("mark" in accepts and _markable(catalog_endpoint(context))

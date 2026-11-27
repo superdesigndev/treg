@@ -76,9 +76,15 @@ USECASE = "/use-cases/find-professional-emails"
 
 
 async def test_use_case_note_heading_keeps_decimal_prices_together(clients: AsyncClient):
-    response = await clients.get("/use-cases/how-ai-answers-mention-your-brand")
-    assert response.status_code == 200
-    assert "costs about $0.003 to $0.004.</h4><p>The DataForSEO example" in response.text
+    """A note's first sentence becomes its heading; the decimal point of a price does not end it."""
+    import re
+    pages = [slug for slug, spec in agent_pages.USE_CASE_PAGES.items()
+             if any(re.search(r"\d\.\d", note) for note in spec.get("notes", []))]
+    assert pages, "no use-case note carries a decimal to check"
+    for slug in pages:
+        response = await clients.get(f"/use-cases/{slug}")
+        assert response.status_code == 200, slug
+        assert not re.search(r"\d\.</h4><p>\d", response.text), slug
 
 
 async def test_non_canonical_casing_redirects_to_the_one_spelling(clients: AsyncClient):
@@ -366,30 +372,32 @@ LEAD_LIST = "/workflows/find-and-verify-a-lead-list"
 
 
 async def test_the_lead_list_page_names_claude_and_carries_its_tested_section(clients: AsyncClient):
-    """The page targets "ai lead generation" and the Claude phrasing, uses Claude Code as its example
-    agent (other workflows keep the default), and its hand-written description and "tested" section
-    reach both the HTML and the .md twin."""
+    """The page uses its spec's example agent (other workflows keep the default), its title and
+    description fit a results page, and its hand-written sections reach both the HTML and the .md
+    twin, tables kept as tables, cell for cell."""
+    import html as html_mod
     import json
     import re
     spec = agent_pages.WORKFLOWS["find-and-verify-a-lead-list"]
     page = (await clients.get(LEAD_LIST)).text
     title = re.search(r"<title>(.*?)</title>", page).group(1)
-    assert "AI lead generation" in title and "Claude" in title and len(title) <= 65, title
+    assert len(title) <= 65, title
     desc = re.search(r'name="description" content="([^"]*)"', page).group(1)
-    # the run's figures must survive _serp_desc's cut, so the whole sentence has to fit
-    assert "50 companies, 20 verified contacts, $0.12 each" in desc and len(desc) <= 155, desc
+    assert len(desc) <= 155, desc
     assert "What Claude Code calls" in page and "What ChatGPT calls" not in page
     other = next(s for s in agent_pages.WORKFLOWS if s != "find-and-verify-a-lead-list")
     assert "What Claude Code calls" not in (await clients.get(f"/workflows/{other}")).text
-    assert 'id="tested"' in page and "$0.0056" in page
     md = (await clients.get(LEAD_LIST + ".md")).text
-    assert "## What lead generation in Claude costs: recorded data costs" in md and "work-email-finding-bench)" in md
-    for row in ("| Tool | Per correct email | Exact match |", "| treg.to | $0.0056 | 90.4% |",
-                "| Clay | $0.0395 | 89.7% |", "| Freckle | $0.0427 | 90.1% |", "| Deepline | $0.0924 | 86.6% |",
-                "| This workflow, 23 Sep 2026, 50 companies in | $0.12 per verified contact ($2.33 metered, 20 contacts) |"):
-        assert row in md, row  # the .md twin keeps the tables as tables, cell for cell
+    rows = 0
+    for section in spec["sections"]:
+        assert f'id="{section["id"]}"' in page and f"## {section['h2']}" in md
+        for tr in re.findall(r"<tr>(.*?)</tr>", section["html"], re.S):
+            cells = [html_mod.unescape(re.sub(r"<[^>]+>", "", c)).strip()
+                     for c in re.findall(r"<t[hd]>(.*?)</t[hd]>", tr, re.S)]
+            assert "| " + " | ".join(cells) + " |" in md, cells
+            rows += 1
+    assert rows, "the spec's sections carry no table to check"
     faqs = [q for q, _a in spec["faq"]]
-    assert "Can Claude do lead generation?" in faqs
     ld = [json.loads(m) for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S)]
     faq_ld = next(x for x in (y for b in ld for y in (b if isinstance(b, list) else [b])) if x.get("@type") == "FAQPage")
     assert [q["name"] for q in faq_ld["mainEntity"]] == faqs
@@ -402,20 +410,17 @@ async def test_jev_page_embeds_the_walkthrough_and_links_the_lead_list(clients: 
     import json
     import re
     page = (await clients.get("/jev")).text
-    assert 'data-yt="o4Vi5uBZYH0"' in page and "<iframe" not in page.split('id="walkthrough"')[1][:2000]
+    assert "data-yt=" in page and "<iframe" not in page.split('id="walkthrough"')[1][:2000]
     # the site sends no referrer and YouTube's player refuses to start without one (error 153)
     assert "f.referrerPolicy = 'strict-origin-when-cross-origin'" in page
     blocks = [json.loads(m) for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, re.S)]
     video = next(b for b in blocks if b.get("@type") == "VideoObject")
-    assert video["uploadDate"].startswith("2026-09-21") and video["duration"] == "PT14M29S"
-    assert all(c["startOffset"] < c["endOffset"] for c in video["hasPart"])
+    assert video["hasPart"] and all(c["startOffset"] < c["endOffset"] for c in video["hasPart"])
     assert f'href="{LEAD_LIST}"' in page and (await clients.get(LEAD_LIST)).status_code == 200
     faq = next(b for b in blocks if b.get("@type") == "FAQPage")
     faq_html = page.split('id="faq"', 1)[1].split("</section>", 1)[0]
     visible = [html_mod.unescape(q) for q in re.findall(r"<summary>(.*?)</summary>", faq_html)]
-    assert [q["name"] for q in faq["mainEntity"]] == visible  # same questions, same order, both ways
-    assert {"How do I use jev in Claude Code, Codex, Hermes or OpenClaw?",
-            "Can I use jev for lead generation?"} <= set(visible)
+    assert visible and [q["name"] for q in faq["mainEntity"]] == visible  # same questions, same order
 
 
 async def test_no_served_page_mentions_monid(clients: AsyncClient):

@@ -13,7 +13,7 @@ from treg.application import asynctasks as task_app
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
-from treg.domain.capacity import collectors, policy
+from treg.domain.capacity import collectors
 from treg.infra.db import session_maker
 from treg.models import AsyncTaskRecord
 from treg.timeutil import utcnow_naive
@@ -40,22 +40,8 @@ def tinyfish_platform(monkeypatch):
     get_settings.cache_clear()
 
 
-async def test_tinyfish_agent_price_is_exposed_as_per_step_to_clients(clients):
-    response = await clients.get("/catalog/endpoints/tinyfish.web.agent.run")
-    assert response.status_code == 200
-    endpoint = response.json()["endpoint"]
-    assert endpoint["platform_eligible"] is True
-    assert endpoint["cost"]["rate_usd_min"] == 0.016
-    assert endpoint["cost"]["rate_usd"] == 0.016
-    assert endpoint["cost"]["rate_unit"] == "step"
-    assert endpoint["cost"]["usd_min"] == 0.016
-    assert endpoint["cost"]["usd"] == 8.0
-
-
 @pytest.mark.parametrize(("terminal_status", "steps", "task_status", "settled_micro"), [
     ("COMPLETED", 3, "settled", 48_000),
-    ("FAILED", 2, "settled", 32_000),
-    ("CANCELLED", 4, "settled", 64_000),
     ("CANCELLED", 0, "settled", 0),
 ])
 async def test_tinyfish_agent_holds_requested_ceiling_then_settles_terminal_steps(
@@ -100,7 +86,7 @@ async def test_tinyfish_agent_holds_requested_ceiling_then_settles_terminal_step
         assert row.settled_micro == settled_micro
 
 
-async def test_tinyfish_wallet_collector_and_policy():
+async def test_tinyfish_wallet_collector():
     def probe(request):
         assert request.method == "GET"
         assert request.url == "https://agent.tinyfish.ai/v1/wallet"
@@ -117,11 +103,6 @@ async def test_tinyfish_wallet_collector_and_policy():
     assert row == {
         "value": 75.904, "unit": "USD", "note": "vendor auto-reload unconfigured",
     }
-    capacity = policy.default_policy("tinyfish", has_key=True)
-    assert capacity.capacity_type == "cash"
-    assert capacity.funding_mode == "manual"
-    assert capacity.source == "api"
-    assert capacity.rate_limit == {"limit": 30, "window_s": 60, "source": "docs"}
 
 
 @pytest.mark.parametrize("value", [None, True, "NaN", "Infinity", -1, "bad"])

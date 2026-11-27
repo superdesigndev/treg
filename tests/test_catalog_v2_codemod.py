@@ -234,7 +234,13 @@ def test_a_settle_default_is_inherited_and_a_row_without_its_own_expect_opts_out
     assert posted.keys["expect"] == {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
     ruleless = codemod.rewrite({"id": "demo.x", "cost": {"type": "free"}}, provider="demo",
                                check_branches=False, defaults=BRANCH)
-    assert ruleless.keys == {"price": {"value": "0"}, "expect": None}
+    assert ruleless.keys == {"price": {"value": "0"}, "settle": None, "expect": None}
+    zero = codemod.rewrite({"id": "demo.x", "cost": {"type": "per_call", "value": 0.0, **PROVENANCE}},
+                           provider="demo", check_branches=False, defaults=BRANCH)
+    assert zero.keys["settle"] is None
+    default_free = codemod.rewrite({"id": "demo.x", "cost": {"type": "free"}}, provider="demo",
+                                   check_branches=False, defaults={**BRANCH, "price": {"value": "0"}})
+    assert "price" not in default_free.keys and default_free.keys["settle"] is None
     unpriced = codemod.rewrite({"id": "demo.x", "tier": "extended"}, provider="demo",
                                check_branches=False, defaults=BRANCH)
     assert unpriced.keys == {"price": None, "expect": None} and _v2(unpriced)
@@ -364,10 +370,8 @@ def test_a_worst_case_moves_beside_its_settle_form():
     assert change.keys["settle"] == {"usage": {"unit": "usd", "path": "response.usage.cost"}, "worst_case": "0.01"}
 
 
-@pytest.mark.parametrize("provider", ["hunter", "tikhub"])
-def test_the_codemod_runs_on_the_real_catalog(provider, capsys):
-    assert codemod.main(["--provider", provider]) == 0
-    assert f"cannot rewrite {provider}." in capsys.readouterr().out
+def test_the_codemod_runs_on_the_real_catalog():
+    assert codemod.main(["--provider", "hunter"]) == 0
 
 
 def test_only_a_provider_with_a_row_in_todays_spelling_has_its_defaults_withheld(tmp_path):

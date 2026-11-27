@@ -6,23 +6,19 @@ A provider can sit behind several treg-owned accounts (`TREG_PLATFORM_ACCOUNTS`,
 1. A call on something an account owns (an async task, its result, a managed resource) uses that
    account: the object exists nowhere else. An owner row without a slot predates pools and lives on
    the primary account.
-2. A call carrying an Idempotency-Key uses the account the key hashes to, so a retry that reaches
-   the provider again lands where the provider can recognise it. Adding or removing an account can
-   move a key; a retry across that change is a new request to the provider.
-3. Otherwise an account not out of capacity whose rate bucket would make the call wait least; ties
-   rotate per provider. This one
-   is chosen right before the relay, not during resolution, so the choice and the token it takes
-   happen in one step.
+2. Otherwise an account not out of capacity whose rate bucket would make the call wait least; ties
+   rotate per provider. An account the sweep read below its drain mark is passed over while another
+   is not. This one is chosen right before the relay, not during resolution, so the choice and the
+   token it takes happen in one step.
 
 The primary account's credentials are the deployment's own fields, so a call on it carries no
 account and smooths in the provider's own bucket: a provider with one account behaves as before.
-Capacity is per account: each further account has its own locks (`capacity_slot`); the sweep
-reads only the primary. Sync and I/O-free: resolution calls `pinned` while it holds its session.
+Capacity is per account: each further account has its own locks and sweep reading
+(`capacity_slot`). Sync and I/O-free: resolution calls `pinned` while it holds its session.
 """
 
 from __future__ import annotations
 
-import hashlib
 import itertools
 import random
 
@@ -65,7 +61,7 @@ def _labels(service: str) -> list[str]:
     return [s.slot for s in get_settings().platform_slots(service)] or [PRIMARY_SLOT]
 
 
-def pinned(service: str, *, owners: tuple[str | None, ...] = (), idempotency_key: str = "") -> str | None:
+def pinned(service: str, *, owners: tuple[str | None, ...] = ()) -> str | None:
     """The account this call must use, or None when any account may serve it (`assign` picks one
     right before the relay). `owners` are the key slots of the rows the call acts on."""
     slots = _labels(service)
@@ -94,12 +90,7 @@ def pinned(service: str, *, owners: tuple[str | None, ...] = (), idempotency_key
                             "here right now; nothing was charged, retry later"),
             })
         return wanted.pop()
-    if len(slots) == 1:
-        return slots[0]
-    if idempotency_key:
-        slots.sort()
-        return slots[int(hashlib.sha256(idempotency_key.encode()).hexdigest()[:8], 16) % len(slots)]
-    return None
+    return slots[0] if len(slots) == 1 else None
 
 
 def capacity_slot(slot: str | None) -> str | None:
@@ -132,9 +123,11 @@ def assign(mk) -> None:
     if mk.key_slot is not None:
         return
     metered = spends_balance(mk.cost_type)
-    slots = [slot for slot in _labels(mk.provider)
-             if not exhausted(mk.provider, mk.endpoint_id, slot, metered=metered)]
-    slots = slots or _labels(mk.provider)
+    serving = [slot for slot in _labels(mk.provider)
+               if not exhausted(mk.provider, mk.endpoint_id, slot, metered=metered)]
+    full = [slot for slot in serving
+            if not capacity_view.is_low(mk.provider, capacity_slot(slot), metered=metered)]
+    slots = full or serving or _labels(mk.provider)
     pool, _ = capacity_view.concurrency_pool(mk.provider, mk.endpoint_id)
     start = next(_rotation.setdefault(mk.provider, itertools.count(random.randrange(1 << 16)))) % len(slots)
     mk.key_slot = min(slots[start:] + slots[:start],

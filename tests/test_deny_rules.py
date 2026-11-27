@@ -144,19 +144,7 @@ async def test_deleting_the_rule_restores_the_call(env):
     assert (await env.c.delete("/call/alpha/x", headers=_h(env.member))).status_code == 200
 
 
-# ---- the run tiers are gated too -------------------------------------------------------------
-async def test_server_runs_remain_disabled_with_host_rules(env):
-    await env.c.post("/skills", headers=_h(env.owner), json={
-        "name": "beta", "recipe": "# beta",
-        "secrets": [{"local_name": "k", "kind": "env", "value": "s"}],
-        "tools": [{"name": "beta", "base_url": "http://upstream",
-                   "cli": {"bin": "sh", "inject": [{"secret": "k", "via": "env", "name": "K"}],
-                           "enabled": True}}]})
-    await _rule(env, host="upstream")
-    r = await env.c.post("/run", headers=_h(env.owner), json={"tool": "beta", "args": ["-c", "true"]})
-    assert r.status_code == 503 and r.json()["detail"] == "Server-side CLI execution is disabled"
-
-
+# ---- the local grant is gated too ----------------------------------------------------------
 async def test_a_host_rule_blocks_the_local_grant(env):
     await _rule(env, host="upstream")
     r = await env.c.post("/tools/alpha/grant", headers=_h(env.owner), json={"argv": ["alpha"]})

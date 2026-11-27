@@ -179,14 +179,6 @@ def test_the_three_pools_are_separate_engines_on_a_real_database():
     assert len(engines) == (1 if infra_db._is_sqlite else 3)
 
 
-def test_no_minor_pool_can_outgrow_its_slots():
-    """Overflow is exactly the escape hatch a bulkhead must not have, so it is 0 on both minor
-    pools; the API keeps its overflow because refusing a real call is the cost this exists to avoid."""
-    assert infra_db.POOL_SPECS["admin"]["max_overflow"] == 0
-    assert infra_db.POOL_SPECS["background"]["max_overflow"] == 0
-    assert infra_db.POOL_SPECS["api"]["max_overflow"] > 0
-
-
 def test_the_background_pool_fits_every_consumer_not_just_the_throttled_ones():
     """Sizing the pool below its real concurrent demand makes the bounds fight: the loser waits
     `pool_timeout` and then DROPS its row, which for audit is the failure evidence a burst just

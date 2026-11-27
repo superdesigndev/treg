@@ -633,7 +633,7 @@
         if(this.busy||this.running||!this.readyQuote)return;
         const id=this.readyQuote.id;this.busy=true;this.error='';this.selectedEntry=null;this.resultFilter='all';this.expandedResults=[];this.runTeam=this.team;clearTimeout(this.quoteTimer);
         try{await this.api('/arena/runs/'+id+'/start',{method:'POST'},this.runTeam);this.scrollOnComplete=id;this.quote=null;await this.pollRun(id);this.syncUrl(id);if(this.running)await this.refreshHistory();}
-        catch(e){if(e.status===401){this.user=null;this.quote=null;await this.openLogin(true);}else if(e.status===402){this.topUp();}else{this.error=e.message;if(e.status===409){this.quote=null;await this.prepare(true);}}}
+        catch(e){if(e.status===401){this.user=null;this.quote=null;await this.openLogin(true);}else if(e.status===402){this.topUp();}else{this.error=e.message;if(e.status===409){const message=e.message;this.quote=null;await this.prepare(true);if(!this.error)this.error=message;}}}
         finally{this.busy=false;}
       },
       async pollRun(id){
@@ -659,12 +659,13 @@
         const id=this.run.id,team=this.runTeam,task=({'people.email.find':'people.email.verify','people.phone.find':'people.phone.verify'})[this.run.capability];
         this.verificationPending[r.id]=true;this.error='';
         try{
-          let q=this.verificationQuotes[r.id];const displayed=q?.estimate_micro??this.verificationEstimate(task);
+          let q=this.verificationQuotes[r.id];const displayed=q?.estimate_micro??this.verificationEstimate(task),askedTopUp=q?.affordable===false;
           if(!q||Date.parse(q.expires_at)<=Date.now()){
             q=await this.api('/arena/runs/'+id+'/attempts/'+r.id+'/verification/plan',{method:'POST'},team);
             if(this.run?.id!==id||this.runTeam!==team)return;
             this.verificationQuotes[r.id]=q;this.balance=q.balance_micro;
             if(displayed==null||q.estimate_micro>displayed){this.error='Review the verification price and click Verify again.';return;}
+            if(askedTopUp&&q.affordable){this.error='Your credits now cover this. Click Verify to run it.';return;}
           }
           if(!q.affordable){this.topUp();return;}
           await this.api('/arena/runs/'+id+'/attempts/'+r.id+'/verification/start',{method:'POST',body:JSON.stringify({quote_id:q.id})},team);
@@ -673,7 +674,7 @@
         }catch(e){if(e.status===402)this.topUp();else this.error=e.message;}finally{delete this.verificationPending[r.id];}
       },
       manualPrice(r){const q=this.manualQuotes[r.id];return q?.required_micro??((q?.estimate_micro??r.estimate_micro)+(this.run?.auto_verify?.estimate_micro||0));},
-      manualUnaffordable(r){const q=this.manualQuotes[r.id],price=this.manualPrice(r);return price>0&&((Number.isFinite(this.balance)&&this.balance<price)||(q?.affordable===false));},
+      manualUnaffordable(r){const q=this.manualQuotes[r.id];return this.manualPrice(r)>0&&q?.affordable===false;},
       manualLabel(r){const q=this.manualQuotes[r.id];return (this.manualPending[r.id]?'Starting…':this.manualUnaffordable(r)?'Top up':'Try')+' · '+this.usd(this.manualPrice(r));},
       ratingValue(r){return r.rating?.value || (r.report?'down':'');},
       openReport(r){if(this.isBatch&&!this.selectedVendor)this.selectedEntry=r.entry_index;this.reporting=r.id;this.reportDrafts[r.id] ||= {reason:r.report?.reason||'',comment:r.report?.comment||''};},
@@ -694,15 +695,15 @@
       },
       async tryVendor(r){
         if(this.busy||this.manualPending[r.id]||!r.can_try)return;
-        if(this.manualUnaffordable(r)){this.topUp();return;}
         const runId=this.run.id,team=this.runTeam;this.manualPending[r.id]=true;this.error='';
         try{
-          let q=this.manualQuotes[r.id];const displayed=this.manualPrice(r);
+          let q=this.manualQuotes[r.id];const displayed=this.manualPrice(r),askedTopUp=this.manualUnaffordable(r);
           if(!q||Date.parse(q.expires_at)<=Date.now()){
             q=await this.api('/arena/runs/'+runId+'/attempts/'+r.id+'/plan',{method:'POST'},team);
             if(this.run?.id!==runId||this.runTeam!==team)return;
             this.manualQuotes[r.id]=q;this.balance=q.balance_micro;
             if(this.manualPrice(r)>displayed){this.error='This service’s price changed. Review the updated price and click Try again.';return;}
+            if(askedTopUp&&q.affordable){this.error='Your credits now cover this. Click Try to run it.';return;}
           }
           if(!q.affordable){this.topUp();return;}
           await this.api('/arena/runs/'+runId+'/attempts/'+r.id+'/start',{method:'POST',body:JSON.stringify({quote_id:q.id})},team);

@@ -67,26 +67,24 @@ def test_burst_rolls_up_all_admissions_and_target_entries(telemetry):
 
 
 def test_target_examples_bound_distinct_identities_without_losing_totals(telemetry):
+    targets = tuple((i + 1, "example.read") for i in range(10))
+    for _ in range(100):
+        analytics.capture_quota_fail_open(targets)
+    analytics._emit_quota_summary(force=True)
+    assert quota_events()[0]["properties"]["targets_truncated"] is False
+
     for i in range(1000):
         analytics.capture_quota_fail_open(((i + 1, "example.read"),))
     for _ in range(10):
         analytics.capture_quota_fail_open(((1, "example.read"),))
     assert len(analytics._quota_window.examples) == 10
     analytics._emit_quota_summary(force=True)
-    props = quota_events()[0]["properties"]
+    props = quota_events()[1]["properties"]
     assert props["admissions"] == props["target_count"] == 1010
     assert props["target_examples"] == [
         {"org_id": i + 1, "endpoint_id": "example.read"} for i in range(10)
     ]
     assert props["targets_truncated"] is True
-
-
-def test_repeating_the_ten_examples_does_not_mark_them_truncated(telemetry):
-    targets = tuple((i + 1, "example.read") for i in range(10))
-    for _ in range(100):
-        analytics.capture_quota_fail_open(targets)
-    analytics._emit_quota_summary(force=True)
-    assert quota_events()[0]["properties"]["targets_truncated"] is False
 
 
 def test_later_window_has_only_new_counts_and_examples(telemetry):

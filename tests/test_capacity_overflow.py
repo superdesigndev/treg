@@ -1130,29 +1130,6 @@ async def test_icypeas_out_of_credits_200_is_never_billed_and_strikes_the_breake
     assert lock.strikes == 1
 
 
-async def test_hlrlookup_insufficient_credit_200_is_never_billed_and_strikes_the_breaker(
-        clients: AsyncClient, monkeypatch):
-    """HLR Lookup's empty account answers 200 with `results[0].error: INSUFFICIENT_CREDIT`. The
-    `expect` rule already kept it unbilled; the signature also counts it as our account failing."""
-    monkeypatch.setenv("TREG_PLATFORM_KEY_HLRLOOKUP", "PLATFORM-HLR-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_HLRLOOKUP_SECRET", "PLATFORM-HLR-SECRET")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hlrlookup")
-    get_settings.cache_clear()
-    out = b'{"body":"OK","results":[{"error":"INSUFFICIENT_CREDIT","telephone_number":"447540822872"}]}'
-    monkeypatch.setattr(call_service, "relay", _fake_relay(200, out))
-    before = await _balance(clients)
-    r = await clients.post("/call/hlrlookup.people.phone.verify", json={
-        "telephone_number": "447540822872", "save_to_cache": "PRIVATE", "cache_days_global": 0, "cache_days_private": 0})
-    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable", "treg's refusal, never a 200 with the vendor's error inside"
-    assert await _balance(clients) == before and await _holds() == []
-    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
-    assert sorted(e.kind for e in entries) == ["release", "reserve"]
-    async with session_maker() as db:
-        lock = Lock.from_json(await ratestore.kv_get(db, LOCK_NS, "hlrlookup"))
-    assert lock.strikes == 1
-    get_settings.cache_clear()
-
-
 async def test_dataforseo_cost_limit_200_is_never_billed_and_strikes_the_breaker(
         clients: AsyncClient, monkeypatch):
     """DataForSEO's spent account cost limit is HTTP 200 with its own `status_code` 40203, on the

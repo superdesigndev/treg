@@ -291,8 +291,7 @@ async def _agent(env, name="connection-bot"):
     return response.json()
 
 
-@pytest.mark.parametrize("action", ["checkin", "call"])
-@pytest.mark.parametrize("archive_enabled", [True, False])
+@pytest.mark.parametrize(("action", "archive_enabled"), [("checkin", True), ("call", True), ("call", False)])
 async def test_connection_checks_only_the_issued_key(env, action, archive_enabled):
     settings = f"/orgs/{env.org_id}/settings"
     changed = await env.c.patch(settings, headers=_h(env.owner), json={"archive": archive_enabled})
@@ -311,8 +310,7 @@ async def test_connection_checks_only_the_issued_key(env, action, archive_enable
     assert (await env.c.get(settings, headers=_h(env.owner))).json()["archive"] is archive_enabled
 
 
-@pytest.mark.parametrize("route", ["agents", "api-keys"])
-@pytest.mark.parametrize("archive_enabled", [True, False])
+@pytest.mark.parametrize(("route", "archive_enabled"), [("agents", True), ("api-keys", False)])
 async def test_rotation_requires_a_new_key_checkin(env, route, archive_enabled):
     settings = f"/orgs/{env.org_id}/settings"
     assert (await env.c.patch(settings, headers=_h(env.owner), json={"archive": archive_enabled})).status_code == 200

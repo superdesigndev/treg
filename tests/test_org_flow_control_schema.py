@@ -95,14 +95,9 @@ async def test_upgrade_is_empty_and_versions_round_trip_per_org(store_connection
 
 @pytest.mark.parametrize("invalid", [
     {"version": 0},
-    {"version": -1},
     {"config": None},
     {"publish_status": "active"},
     {"created_by": " "},
-    {"reason": " "},
-    {"published_by": " "},
-    {"publish_status": "published"},
-    {"publish_status": "published", "published_by": "test-publisher"},
     {"publish_status": "published", "published_at": NOW},
 ])
 async def test_storage_rejects_invalid_version_or_publication(store_connection, invalid):

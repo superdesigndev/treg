@@ -10,8 +10,6 @@
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
-    treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
-    treg-worker catalog repair-status --manifest <path>  # check the saved applied target list
     treg-worker spend rollup [--max-rows 50000]      # fold new ledger settles into per-key daily spend
     treg-worker usage rollup [--max-rows 500000]     # fold new audit rows into per-member daily call counts
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
@@ -51,6 +49,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import sys
 
 
@@ -131,9 +130,9 @@ async def _overflow_sync(args) -> int:
 
 RENEW_MAX_USD = 1.00
 """Per-route price cap for RENEWING a route that is enabled or was stamped before. The 2¢ default
-`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, the weekly cron
-skipped every stamped route priced above 2¢ (46 of them on 2026-09-07, all mapped and verified on
-2026-08-26) and they decayed off with no run ever able to bring them back."""
+`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, a scheduled run
+skips every stamped route priced above 2¢, and those decay off with no run ever able to bring them
+back."""
 VERIFY_BUDGET_USD = 15.00
 """What one verify run may spend in total (relay fee + direct comparison), whatever the caps say."""
 
@@ -487,36 +486,6 @@ async def _catalog_stats(args) -> int:
     return 0
 
 
-async def _catalog_requeue_async_stats(args) -> int:
-    from .infra.db import verify_db
-    from .application.catalog_stats import requeue_async_stats
-
-    await verify_db()
-    try:
-        result = await requeue_async_stats(apply=args.apply)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    print(json.dumps(result, sort_keys=True))
-    return 0
-
-
-async def _catalog_repair_status(args) -> int:
-    from pathlib import Path
-    from .infra.db import verify_db
-    from .application.catalog_stats import repair_status
-
-    try:
-        manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
-        await verify_db()
-        result = await repair_status(manifest)
-    except (OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    print(json.dumps(result, sort_keys=True))
-    return 0 if result["complete"] else 1
-
-
 async def _showcase_activity(args) -> int:
     from .infra.db import verify_db
     from .application.showcase import refresh_activity
@@ -855,30 +824,79 @@ def _positive_int(value: str) -> int:
     if n < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return n
+
+
+def _nonnegative_int(value: str) -> int:
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return n
+
+
+def _positive_seconds(value: str) -> float:
+    n = float(value)
+    if not (math.isfinite(n) and n > 0):
+        raise argparse.ArgumentTypeError("must be a finite number above 0")
+    return n
+
+
+IDEMPOTENCY_RUN_LOCK_KEY = 0x6964656D  # "idem"
+TRIM_CURSOR_NS, TRIM_CURSOR_KEY = "idempotency", "trim_after"
+TRIM_CURSOR_TTL_S = 3 * 24 * 3600
+
+
 async def _idempotency_prune(args) -> int:
+    """One prune pass, then one trim pass from where the last one stopped. A run that finds another
+    still going exits at once (`"stopped": "busy"`; PostgreSQL only). The trim's place is kept in
+    `Ephemeral` (namespace `idempotency`) after every page it commits; a lost one only means the
+    next pass starts from the front. A dry run never moves it."""
     from dataclasses import asdict
     import logging
 
-    from .infra.db import verify_db
+    from . import ratestore
+    from .infra.db import only_one_run, session_maker, verify_db
     from .application.call.idempotency import prune_expired_idempotency, trim_archived_answers
+
+    trim_after = getattr(args, "trim_after", None)
+    trim_max_seconds = getattr(args, "trim_max_seconds", None)
+    if trim_after is not None and trim_after < 0:
+        raise ValueError("--trim-after must be >= 0")
+    if trim_max_seconds is not None and not (math.isfinite(trim_max_seconds) and trim_max_seconds > 0):
+        raise ValueError("--trim-max-seconds must be a finite number above 0")
+
+    async def save_place(resume_after: int) -> None:
+        async with session_maker() as db:
+            await ratestore.kv_put(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY, {"after": resume_after},
+                                   ttl_s=TRIM_CURSOR_TTL_S)
+            await db.commit()
 
     await verify_db()
     logging.basicConfig(level=logging.INFO)
-    result = await prune_expired_idempotency(
-        batch_size=args.batch_size, pause_s=args.pause_seconds,
-        max_batches=args.max_batches, dry_run=args.dry_run,
-    )
-    out = asdict(result)
-    trim = None
-    if not getattr(args, "skip_trim", False):
-        # Live rows whose answer the archive holds byte for byte drop their own copy.
-        trim = await trim_archived_answers(
+    async with only_one_run(IDEMPOTENCY_RUN_LOCK_KEY) as alone:
+        if not alone:
+            print(json.dumps({"stopped": "busy"}, sort_keys=True))
+            return 0
+        result = await prune_expired_idempotency(
             batch_size=args.batch_size, pause_s=args.pause_seconds,
             max_batches=args.max_batches, dry_run=args.dry_run,
         )
-        out["trim"] = asdict(trim)
+        out = asdict(result)
+        if not getattr(args, "skip_trim", False):
+            # Live rows whose answer the archive holds byte for byte drop their own copy.
+            after = trim_after
+            if after is None:
+                async with session_maker() as db:
+                    after = int((await ratestore.kv_get(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY) or {})
+                                .get("after", 0))
+            trim = await trim_archived_answers(
+                batch_size=args.batch_size, pause_s=args.pause_seconds,
+                max_batches=args.max_batches, dry_run=args.dry_run,
+                after=after, max_seconds=trim_max_seconds,
+                on_progress=None if args.dry_run else save_place,
+            )
+            out["trim"] = asdict(trim)
     print(json.dumps(out, default=str, sort_keys=True))
-    return 0 if result.complete and (trim is None or trim.complete) else 1
+    return 0 if result.complete else 1
 
 
 async def _run_command(args) -> int:
@@ -973,11 +991,11 @@ def main(argv: list[str] | None = None) -> int:
     shr = shsub.add_parser("report", help="print the comparison report as JSON")
     shr.add_argument("--days", type=int, default=1)
     shr.set_defaults(fn=_shadow_report)
-    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_pairs and "
-                         "compare_max_per_day are set)")
+    cmp = sub.add_parser("compare", help="pairwise comparisons (off unless compare_capabilities, "
+                         "compare_max_per_day and compare_daily_usd are set)")
     cmpsub = cmp.add_subparsers(dest="cmd", required=True)
-    cmpc = cmpsub.add_parser("collect", help="ask the other vendor of a pair the input of sampled "
-                             "recent routed calls")
+    cmpc = cmpsub.add_parser("collect", help="ask a second vendor the input of sampled recent "
+                             "routed calls")
     cmpc.add_argument("--max-seconds", type=float, default=600.0)
     cmpc.set_defaults(fn=_compare_collect)
     reviews = sub.add_parser("reviews", help="agent reviews of call results")
@@ -1024,16 +1042,6 @@ def main(argv: list[str] | None = None) -> int:
     stats.add_argument("--bucket-timeout-seconds", type=float, default=10.0,
                        help="timeout for one endpoint/day replacement; failures stay queued for retry")
     stats.set_defaults(fn=_catalog_stats)
-    requeue = catalogsub.add_parser("requeue-async-stats",
-        help="preview existing mutable async day buckets; --apply queues one full repair")
-    requeue.add_argument("--apply", action="store_true",
-        help="reset target readiness and enqueue repairs (default: read-only preview)")
-    requeue.set_defaults(fn=_catalog_requeue_async_stats)
-    repair_status = catalogsub.add_parser("repair-status",
-        help="check coverage of the same database's saved applied repair manifest")
-    repair_status.add_argument("--manifest", required=True,
-        help="JSON output saved from requeue-async-stats --apply")
-    repair_status.set_defaults(fn=_catalog_repair_status)
     showcase = sub.add_parser("showcase", help="the /showcase leaderboard's read models")
     showcasesub = showcase.add_subparsers(dest="cmd", required=True)
     activity = showcasesub.add_parser("activity", help="add each approved app's new calls to its weekly activity rows")
@@ -1146,6 +1154,10 @@ def main(argv: list[str] | None = None) -> int:
     prune.add_argument("--max-batches", type=int, default=10000)
     prune.add_argument("--skip-trim", action="store_true",
                        help="only delete expired rows; keep live rows' copies of archived answers")
+    prune.add_argument("--trim-max-seconds", type=_positive_seconds, default=1500.0,
+                       help="stop the trim after this long; the next run resumes (default 1500)")
+    prune.add_argument("--trim-after", type=_nonnegative_int,
+                       help="start the trim after this id instead of the saved cursor")
     prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
     _need_server()

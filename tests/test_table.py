@@ -112,14 +112,6 @@ def test_a_strange_body_never_raises():
     assert to_table("text")["shape"] == "flat"
 
 
-def test_the_contract_of_a_routed_job_is_found_in_the_catalog():
-    fields, list_field = table_app._contract("treg.people.email.verify")
-    assert fields[:3] == ["valid", "status", "score"] and list_field is None
-    fields, list_field = table_app._contract("treg.people.search")
-    assert list_field == "people"
-    assert table_app._contract(EP) is None                        # not a routed job
-
-
 # ------------------------------------------------------------------------------------------------
 # The route, end to end
 
@@ -277,14 +269,6 @@ async def test_the_preview_of_a_hub_tool_is_its_manifest_fields(clients: AsyncCl
     ("aiark.people.search", {"first_name": "profile.first_name", "title": "profile.title",
                              "company": "company.summary.name", "linkedin_url": "link.linkedin",
                              "name": "profile.full_name", "location": "location.default"}),
-    ("lusha.people.search", {"title": "jobTitle.title", "company": "company.name",
-                             "linkedin_url": "socialLinks.linkedin", "location": "location.city"}),
-    ("wiza.people.search", {"title": "job_title", "company": "job_company_name", "location": "location_name"}),
-    ("crustdata.people.search", {"title": "basic_profile.current_title",
-                                 "location": "basic_profile.location.full_location"}),
-    ("icypeas.people.search", {"title": "lastJobTitle", "company": "lastCompanyName"}),
-    ("dropleads.people.search", {"name": "fullName", "company": "companyName", "linkedin_url": "linkedinUrl"}),
-    ("aviato.people.search", {"linkedin_url": "URLs.linkedin"}),
 ])
 def test_each_people_provider_fills_the_fixed_columns(provider, expect):
     from treg.domain.catalog import store as catalog_store

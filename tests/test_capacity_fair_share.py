@@ -471,10 +471,10 @@ class _HungStore(_SharedStore):
         return "unavailable" if await self._hang() else await super().release_slot(key, token)
 
 
-@pytest.mark.parametrize("period", [0.01, 0.05, 0.4])
-async def test_a_hanging_store_costs_one_wait_and_the_ceiling_returns_under_traffic(monkeypatch, period):
+async def test_a_hanging_store_costs_one_wait_and_the_ceiling_returns_under_traffic(monkeypatch):
     from treg.domain.capacity import fair_share as fair_share_module
 
+    period = 0.05                                           # one call every 50 ms, across the hang
     store = _HungStore(0.1)
     monkeypatch.setattr(kv, "configured", lambda: True)
     monkeypatch.setattr(kv, "store", lambda: store)

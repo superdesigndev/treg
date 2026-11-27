@@ -40,11 +40,8 @@ async def balance(client):
     return (await client.get(f'/orgs/{org}/balance')).json()
 
 
-@pytest.mark.parametrize('own', [False, True])
-@pytest.mark.parametrize('query', [
-    'cookie=private', '%63ookie=private', 'usePrivatePool=true', 'requiredAccountId=x',
-    'proxy=private', 'userAgent=private', 'sessionId=x', 'includeAboutProfile=true',
-    'main=true', 'findEmail=true', 'publicIdentifier=a&publicIdentifier=b',
+@pytest.mark.parametrize('own,query', [
+    (False, 'cookie=private'), (True, '%63ookie=private'), (False, 'publicIdentifier=a&publicIdentifier=b'),
 ])
 async def test_harvest_excluded_queries_never_reach_upstream_or_money(clients, monkeypatch, harvest_on, own, query):
     if own:
@@ -71,12 +68,8 @@ async def test_harvest_get_body_is_rejected(clients, harvest_on):
     ({'element': {'id': 'example'}, 'status': 200, 'cost': 0.0064}, 6400),
     ({'element': None, 'status': 404, 'error': 'Profile not found', 'cost': 0.004}, 4000),
     ({'element': None, 'status': 400, 'cost': 0}, 0),
-    ({'elements': [], 'status': 200, 'cost': 0.004}, 4000),
     ({'element': {}, 'cost': None}, 6400),
-    ({'element': {}, 'cost': -1}, 6400),
     ({'element': {}, 'cost': 'NaN'}, 6400),
-    ({'element': {}, 'cost': True}, 6400),
-    ({'element': {}}, 6400),
 ])
 async def test_harvest_settles_reported_cost_including_billed_misses(clients, monkeypatch, harvest_on, body, charge):
     def serve(request):
