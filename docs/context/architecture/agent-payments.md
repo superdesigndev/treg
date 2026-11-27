@@ -351,7 +351,10 @@ headers (`X-Treg-Payment` among them) and no receipt.
   or a replay could ask for a payment (the nonce is read from a token treg issued, expired or
   not). A recovery proof signed on terms that no longer buy the call (the price rose again, or its
   challenge expired) is offered only the paying rail's proof on the same recovery terms, never
-  ordinary terms that would run a call without claiming the recovery. A kept transfer has one recovery deadline, its receipt's week from when it was kept,
+  ordinary terms that would run a call without claiming the recovery. One whose credit no longer
+  covers the call is asked to pay on those recovery terms, and a payment under them claims the
+  recovery before its call (claimed already: nothing moved is refused `challenge_used`, a pushed
+  transfer is kept as credit with the same 409). A kept transfer has one recovery deadline, its receipt's week from when it was kept,
   stored with the receipt (and in every recovery token, `k<nonce>d<deadline>`) so a resent answer
   carries the same one; every recovery term expires by
   it whatever a challenge's lifetime is, and the spent mark, claimed after the transfer was kept

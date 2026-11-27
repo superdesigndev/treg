@@ -530,9 +530,9 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     # A kept transfer's recovery that already ran its call answers that first, before the price,
     # the credit or a replay could ask the wallet to pay.
-    recovery = (_issued_recovery(verified.terms, paid.offer.resource_url)
-                if verified.kind == "proof" else None)
-    if recovery is not None and await _recovery_spent(recovery[0]):
+    recovery = _issued_recovery(verified.terms, paid.offer.resource_url)
+    if (verified.kind == "proof" and recovery is not None
+            and await _recovery_spent(recovery[0])):
         raise _recovery_used(paid)
     # The terms the payer was offered, which treg's own token names: a price that rose since then
     # is not what the payer agreed to.
@@ -555,6 +555,14 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     if verified.deferrable and verified.expires_at > _now() + timedelta(seconds=max_life):
         verified = replace(verified, deferrable=False)
     agreed = agreed and verified.amount_micro >= paid.offer.amount_micro
+    if not agreed and not verified.moved and recovery is not None:
+        # A payment on a recovery's terms is asked again on those terms, never ordinary ones.
+        if recovery[1] < time.time():
+            raise _recovery_expired(paid.endpoint_id)
+        raise await challenge(_recovering(paid, Terms(0, 0, nonce=recovery[0], recovery=True,
+                                                      until=recovery[1])),
+                              reason="price_changed",
+                              message="the price of this call changed after this was signed")
     if not agreed and not verified.moved:
         raise await _price_changed(paid)   # nothing has moved: the payer signs the new terms
 
@@ -584,6 +592,12 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         if not verified.moved:
             raise await challenge(paid, reason="challenge_used",
                                   message="another payment already used this challenge's terms")
+        agreed, used = False, True
+    # A payment on a recovery's terms runs the call only as that recovery's one call.
+    if agreed and signed is not None and signed.recovery \
+            and not await _claim_recovery(signed.nonce):
+        if not verified.moved:
+            raise _recovery_used(paid)
         agreed, used = False, True
     # A transfer the payer already sent is kept on the terms it was sent under, whatever the call
     # costs now; it never draws credit, so it settles below.
@@ -736,6 +750,13 @@ async def _kept(paid: PaidOffer, rail: PaymentRail, paid_micro: int, reference: 
     }, headers)
 
 
+def _recovering(paid: PaidOffer, signed: Terms | None) -> PaidOffer:
+    """`paid` on the recovery terms `signed` carries, or as it is when they are not a recovery's."""
+    if signed is None or not signed.recovery:
+        return paid
+    return replace(paid, offer=_recovery_offer(paid, signed.nonce, signed.until))
+
+
 def _recovery_offer(paid: PaidOffer, nonce: str, until: int) -> Offer:
     """This request's offer on a kept transfer's recovery terms at today's price."""
     return replace(paid.offer, terms=_terms_token(
@@ -809,7 +830,9 @@ async def _admit_proof(paid: PaidOffer, verified: Verified,
             async with session_maker() as db:
                 credit = await ledger.balance_of(db, org_id)
         if org_id is None or credit < paid.quote_micro:
-            raise await credit_short(paid, org_id)
+            # A recovery whose credit falls short is asked to pay on the same recovery terms, so
+            # the payment that runs the call claims the recovery.
+            raise await credit_short(_recovering(paid, signed), org_id)
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
     if not await _claim_proof(verified):
