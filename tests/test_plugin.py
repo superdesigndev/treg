@@ -127,9 +127,8 @@ def test_no_unsubstituted_placeholder_reaches_the_plugin(variant):
     plugin, so shipping the literal would break every URL in the most-read page of the product."""
     text = ALL_SKILLS[variant].read_text(encoding="utf-8")
     assert "{BASE}" not in text
-    # The Codex skill rides an MCP connector and must not install anything (OpenAI's plugin review
-    # refuses a skill that downloads or runs code outside the package); every other copy installs the CLI.
-    assert ("https://treg.to/install.sh" in text) is (variant != "codex")
+    # The Codex connector and the portable Copilot/Hermes package supply MCP themselves.
+    assert ("https://treg.to/install.sh" in text) is (variant not in {"codex", "copilot"})
 
 
 def test_the_connector_points_at_production_over_https():
@@ -400,6 +399,7 @@ def test_hermes_reporting_is_opt_in_only_in_the_portable_package():
     assert "only when the user explicitly asks" in hermes
     for name in ("feedback", "review", "mark", "compare", "prior", "initialize", "hint"):
         assert f"`{name}`" in hermes
+    assert "treg.web.search" in skill and "This free lookup makes no provider call" in skill
     assert "feedback.md" not in hermes
     assert "Report problems and suggestions about treg as you meet them" in copilot
     assert "have the human run both commands" in skill and "Do not run these commands yourself" in skill

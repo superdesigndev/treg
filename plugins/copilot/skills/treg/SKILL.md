@@ -49,48 +49,11 @@ hold it:
   team. Never billed, with one exception: an X connection made through treg's own X
   app is billed per call, because X bills the app owner; the answer reports the price.
 
-## First: check where you stand
+## Check the connection
 
-How treg reached you decides the first step. Take the first case that holds; either the MCP tools
-or the CLI is enough, and having both is fine.
-
-1. **You can see treg's MCP tools** (`catalog_search`, `catalog_get`, `call`, `balance`,
-   `my_tools`): treg is connected. Use them and install nothing; every `treg` command on this page
-   maps onto a tool (see "Over MCP" below). A tool that answers "not authenticated" means the human
-   signs in through the app's MCP or connector settings (in Claude Code: `/mcp`, pick treg,
-   Authenticate).
-2. **`treg` runs in your terminal**: run `treg`. It prints the account, the active team and your
-   role, the balance, the team's own tools and the next commands to run; a blocker (not signed in,
-   no team, an empty balance) comes first in its `help` lines. Not signed in:
-
-   ```bash
-   treg login                            # browser sign-in; tell the human the short code it prints, to type on that page
-   treg login --email you@company.com    # an emailed 6-digit code
-   treg login --token <team-token>       # non-interactive, for agents and CI
-   treg login --ref <code>               # binary CLI only: an affiliate partner's code the human gave you
-   ```
-
-3. **Neither**: treg is not set up here. Run the installer only when the human asked you to set treg
-   up; otherwise give them these two ways and wait:
-
-   ```bash
-   curl -fsSL https://treg.to/install.sh | sh    # the CLI, plus this skill for every agent it detects
-   treg login
-   ```
-
-   or, in an app that takes MCP servers, add `https://treg.to/mcp/` and sign in when it asks. Given a team
-   token, `curl -fsSL https://treg.to/install.sh | sh -s -- --token <token>` does the install and sign-in at
-   once.
-
-   The installer names treg's other skills in one line without installing them. Do not stop to ask
-   about them before sign-in: sign in, make the first call, and only once it returns real data
-   tell the human in one sentence each what they do (`https://treg.to/.well-known/skills/index.json`), then
-   run `treg skill bootstrap --skills <name>,<name>` (or `--skills all`) for the ones they pick.
-
-Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
-`treg accept` takes one (or `treg org join <code>`, signed in as the invited email); `treg org use <slug>` switches teams. A new
-verified account gets $1.00 of credit once, on its first eligible team; aliases of one inbox (`+tag`,
-Gmail dots) share it.
+Use the connected `catalog_get` tool with `endpoint_id: treg.web.search` to show the human the
+inputs and price. This free lookup makes no provider call. If sign-in is needed, wait for the
+human to complete setup in the host.
 
 **Over MCP** (`https://treg.to/mcp/`), tools replace the CLI, and everything here maps onto them:
 

@@ -257,7 +257,18 @@ def workflow_description(skill: str) -> str:
 
 
 def portable_skill(body: str) -> str:
-    """Hermes and Copilot install the same package but have different reporting policies."""
+    """Both hosts supply MCP and run sign-in themselves. Only Hermes requires opt-in reporting."""
+    start = "## First: check where you stand"
+    stop = "**Over MCP**"
+    before, setup = body.split(start)
+    _, tools = setup.split(stop)
+    body = before + """## Check the connection
+
+Use the connected `catalog_get` tool with `endpoint_id: treg.web.search` to show the human the
+inputs and price. This free lookup makes no provider call. If sign-in is needed, wait for the
+human to complete setup in the host.
+
+""" + stop + tools
     replacements = {
         "the balance → `balance`; feedback →": (
             "the balance → `balance`.\n"

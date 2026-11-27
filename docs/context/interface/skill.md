@@ -100,7 +100,8 @@ Constraints the hosts impose, which the code cannot explain:
   MCP server untrusted so write-capable tools require approval. A same-name OAuth profile entry
   replaces the plugin server, so the setup guide preserves trust on that entry. Only the portable
   build adds Hermes's reporting policy. Feedback, reviews, marks, comparisons and the optional
-  review attached to a call require an explicit user request in Hermes.
+  review attached to a call require an explicit user request in Hermes. The portable skill tests
+  its existing MCP connection with a catalog lookup and omits the standalone CLI installer.
 - Copilot CLI looks for a repo marketplace in `.github/plugin/` before `.claude-plugin/`, so the
   same `treg@treg` installs `plugins/copilot/` there and `plugins/treg/` in Claude Code. The two
   files list the same workflow plugins. Copilot CLI marks direct installs (`owner/repo:path`, a local
