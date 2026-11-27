@@ -680,6 +680,19 @@ async def test_a_callers_own_credential_never_reaches_the_provider_on_tregs_key(
         get_settings.cache_clear()
 
 
+def test_the_apify_dataset_poll_takes_its_documented_view_options_on_tregs_key():
+    """On treg's key the dataset poll takes what it declares, Apify's view options in Apify's own
+    spellings (`desc=1`) among them; `signature` and `method` stay refused."""
+    ep = catalog_store.load().by_id["apify.web.scrape.job.results"]
+    views = call_resolve.QueryValues((("dataset_id", "QPg9EhVcdbiiLL2X5"), ("format", "csv"), ("omit", "a,b"),
+                                      ("desc", "1"), ("skipEmpty", "true"), ("feedTitle", "runs")))
+    call_resolve._enforce_platform_request(ep, b"", None, views)
+    assert call_resolve._query_refusal(ep, views) is None
+    for name in ("signature", "method"):
+        with pytest.raises(ResolutionFailed):
+            call_resolve._enforce_platform_request(ep, b"", None, call_resolve.QueryValues(((name, "x"),)))
+
+
 def _verify_on_tregs_key(monkeypatch) -> None:
     monkeypatch.setenv("TREG_PLATFORM_KEY_SCRUBBY", "PLATFORM-SCRUBBY-KEY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_DROPLEADS", "PLATFORM-DROPLEADS-KEY")

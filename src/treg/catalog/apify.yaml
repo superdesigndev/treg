@@ -249,6 +249,24 @@ endpoints:
         fields: {type: string, required: false, note: "comma-separated field allow-list — the fastest way to shrink an unwieldy scrape result", example: "adId,pageName,adText,snapshotUrl"}
         format: {type: string, required: false, note: "json (default) | jsonl | csv | xlsx | xml | rss", example: "json"}
         clean: {type: boolean, required: false, note: "true drops empty and hidden (#-prefixed) items", example: true}
+        outputFields: {type: string, required: false}
+        omit: {type: string, required: false, note: "comma-separated fields to leave out of each item"}
+        unwind: {type: string, required: false, note: "comma-separated fields whose arrays or objects are unwound into separate items"}
+        flatten: {type: string, required: false, note: "comma-separated fields whose nested objects are flattened"}
+        desc: {type: [boolean, integer], required: false, note: "true or 1 returns the items newest first"}
+        attachment: {type: [boolean, integer], required: false, note: "true or 1 answers as a file download"}
+        delimiter: {type: string, required: false, note: "the csv field delimiter"}
+        bom: {type: [boolean, integer], required: false, note: "true or 1 adds a UTF-8 byte order mark to csv"}
+        xmlRoot: {type: string, required: false, note: "the xml root element name"}
+        xmlRow: {type: string, required: false, note: "the xml element name of each item"}
+        skipHeaderRow: {type: [boolean, integer], required: false, note: "true or 1 leaves out the csv header row"}
+        skipHidden: {type: [boolean, integer], required: false, note: "true or 1 leaves out hidden (#-prefixed) fields"}
+        skipEmpty: {type: [boolean, integer], required: false, note: "true or 1 leaves out empty items"}
+        simplified: {type: [boolean, integer], required: false}
+        view: {type: string, required: false, note: "a view the dataset defines"}
+        skipFailedPages: {type: [boolean, integer], required: false}
+        feedTitle: {type: string, required: false, note: "the rss feed title"}
+        feedDescription: {type: string, required: false, note: "the rss feed description"}
       note: "results are already paid for at run time — re-reading a dataset is free and repeatable, so store the dataset id rather than re-running the actor. The response is the items ARRAY at the top level, not an envelope. CHAINED ID: the dataset_id in test_request is the defaultDatasetId of that same 2026-07-31 hello-world run and expires with it — harvest a fresh one from a run before re-verifying"
     price: {value: '0', currency: USD, unit: call, note: 'reading a dataset costs nothing; you paid when the run produced the items'}
     reserve: null
