@@ -365,6 +365,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/feedback.py` | architecture/feedback.md |
 | `src/treg/application/fernet_rotation.py` | architecture/auth-secrets.md |
 | `src/treg/application/find_index.py` | architecture/find.md |
+| `src/treg/application/follower_board.py` | interface/follower-analysis.md |
 | `src/treg/application/home.py` | interface/cli.md |
 | `src/treg/application/house_calls.py` | interface/seo.md |
 | `src/treg/application/hub/__init__.py` | architecture/hub.md |
@@ -404,7 +405,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/archive.py` | architecture/archive.md |
 | `src/treg/archive_bodies.py` | architecture/archive.md |
 | `src/treg/audit.py` | architecture/data-model.md, ops/deploy.md |
-| `src/treg/bootstrap.py` | architecture/agent-payments.md, architecture/archive.md, architecture/composition.md, architecture/find.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/policy-extensions.md, interface/enrich-arena.md, interface/web-arena.md |
+| `src/treg/bootstrap.py` | architecture/agent-payments.md, architecture/archive.md, architecture/composition.md, architecture/find.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/policy-extensions.md, interface/enrich-arena.md, interface/follower-analysis.md, interface/web-arena.md |
 | `src/treg/bootstrap_handlers.py` | architecture/composition.md, architecture/data-model.md, interface/api.md |
 | `src/treg/bootstrap_http.py` | architecture/composition.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/call_events.py` | architecture/call-events.md |
@@ -631,7 +632,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/views/account.py` | interface/cli.md |
 | `src/treg/routers/views/catalog.py` | interface/cli.md |
 | `src/treg/routers/views/toon.py` | interface/cli.md |
-| `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/seo.md, interface/skill.md |
+| `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/follower-analysis.md, interface/seo.md, interface/skill.md |
 | `src/treg/routers/web_arena.py` | interface/web-arena.md |
 | `src/treg/sandbox.py` | interface/api.md |
 | `src/treg/sandbox_identity.py` | architecture/proxy-model.md, interface/api.md |
@@ -652,6 +653,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/enrich-arena/bench.js` | interface/enrich-arena.md |
 | `src/treg/web/fable-gtm.html` | interface/seo.md |
 | `src/treg/web/feedback.md` | architecture/feedback.md |
+| `src/treg/web/follower-analysis.html` | interface/follower-analysis.md |
 | `src/treg/web/grokbot.html` | interface/seo.md |
 | `src/treg/web/gtag.js` | architecture/ads-conversions.md |
 | `src/treg/web/gtm-engineering.html` | interface/seo.md |
@@ -683,6 +685,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/media/astra/page.js` | interface/seo.md |
 | `src/treg/web/media/compare/compare.css` | interface/seo.md |
 | `src/treg/web/media/compare/signin.js` | interface/seo.md |
+| `src/treg/web/media/follower-analysis/examples.json` | interface/follower-analysis.md |
 | `src/treg/web/media/jev/signals.json` | interface/seo.md |
 | `src/treg/web/media/jev/triage.json` | interface/seo.md |
 | `src/treg/web/media/jev/xboost-seed.json` | interface/seo.md |
@@ -814,6 +817,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_find_bench.py` | architecture/find.md |
 | `tests/test_find_index.py` | architecture/find.md |
 | `tests/test_find_recall.py` | architecture/find.md |
+| `tests/test_follower_board.py` | interface/follower-analysis.md |
 | `tests/test_free_credit_video.py` | architecture/money.md |
 | `tests/test_hints.py` | architecture/feedback.md |
 | `tests/test_hub.py` | architecture/hub.md |
@@ -954,6 +958,7 @@ Regenerate via `scripts/build-map.py`.
 | `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `boot.js`, `SignedOutPage.vue`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
+| `interface/follower-analysis.md` | `follower-analysis.html`, `examples.json`, `follower_board.py`, `web.py`, `bootstrap.py`, `test_follower_board.py` |
 | `interface/onboarding.md` | `auth.py`, `__init__.py`, `demo.py`, `first_run.py`, `sitetrack.js`, `cli.py`, `auth.py`, `onboard.py`, `onboarding.js`, `onboardingComputed.js`, `GettingStartedPage.vue` |
 | `interface/seo.md` | `api.py`, `web.py`, `agent_pages.py`, `compare_pages.py`, `compare.py`, `og_images.py`, `compare.css`, `signin.js`, `robots.txt`, `catalog.css`, `usecase.css`, `index.html`, `App.vue`, `PublicNavigation.vue`, `boot.js`, `landing.html`, `product-theme.css`, `refinement.css`, `gateway.css`, `hero-opening.js`, `refinement.js`, `catalog-drum.js`, `gateway.js`, `gateway-loader.js`, `gateway-3d.js`, `gateway-model.js`, `gateway-intro.js`, `hero-particles.js`, `command-beam.js`, `SOURCES.md`, `landing.spec.ts`, `landing-software-gl.spec.ts`, `terms.html`, `usecase-seo.html`, `usecase-company.html`, `usecase-enrichment.html`, `usecase-social.html`, `usecase-ads.html`, `people-search.html`, `leads-signals.html`, `jobs-api.html`, `recruit.html`, `web-access.html`, `doomscroll.html`, `gtm-engineering.html`, `grokbot.html`, `fable-gtm.html`, `ugc.html`, `aeo.html`, `rea-growth.html`, `rea-growth.md`, `rea-marketing.html`, `social-search.html`, `start.html`, `jev.html`, `showcase.html`, `rankings.html`, `rankings.py`, `wall.json`, `jev_xboost.py`, `house_calls.py`, `xboost-seed.json`, `triage.json`, `signals.json`, `astra.html`, `page.css`, `page.js`, `signin-sso.js`, `SignInDialog.vue`, `llms.txt`, `indexnow_submit.py`, `support.html`, `og-card.html` |
 | `interface/shell.md` | `shell.py`, `cli.py` |

@@ -3998,7 +3998,7 @@ async def legal_css():
     return FileResponse(f, media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 
-def _static_page(name: str, request: Request) -> Response:
+def _static_page(name: str, request: Request, fill: dict[str, str] | None = None) -> Response:
     """A bundled HTML page with its placeholders filled: `{BASE}` so each page's canonical and
     og:url name the host actually serving it (a hardcoded treg.to would tell a self-hosted
     registry's crawler that the real page lives on someone else's domain), and `{ENDPOINTS}` /
@@ -4011,6 +4011,8 @@ def _static_page(name: str, request: Request) -> Response:
         raise HTTPException(status_code=404, detail=f"{name} not bundled")
     base = get_settings().public_url.rstrip("/")
     html = _strip_hosted(_fill_headline(page.read_text(encoding="utf-8"))).replace("{BASE}", base)
+    for old, new in (fill or {}).items():
+        html = html.replace(old, new)
     etag = '"' + hashlib.sha256(html.encode("utf-8")).hexdigest()[:32] + '"'
     headers = {"Cache-Control": "no-cache", "ETag": etag}
     # An edge that compresses the body weakens the tag (W/"..."), so compare the opaque part.
@@ -4321,12 +4323,88 @@ async def gtm_engineering_md():
 
 
 @app.get("/follower-analysis", include_in_schema=False)
-async def follower_analysis_page(request: Request):
-    """Follower leads: a signed-in visitor types an X handle and what they sell; the page reads the
-    newest followers and has Jev judge each one, every step an ordinary `/call/` billed to the
-    visitor's team. Signed out, the form shows the estimate and Scan opens sign-in. Served like
-    /jev: canonical, in the sitemap, no-cache."""
-    return _static_page("follower-analysis.html", request)
+async def follower_analysis_page(request: Request, db: AsyncSession = Depends(get_session)):
+    """Follower analysis: a signed-in visitor types an X handle; the page reads a sample of its
+    followers and has Jev sort each one, every step an ordinary `/call/` billed to the visitor's
+    team. Finished scans join a board every visitor sees. Served like /jev: canonical, in the
+    sitemap, no-cache. `?u=<handle>` is the link to one analysed account: the page opens it, and the
+    link preview names the account and its biggest groups."""
+    from ..application import follower_board
+
+    handle = (request.query_params.get("u") or "").lstrip("@")
+    fill = None
+    if re.fullmatch(r"[A-Za-z0-9_]{1,15}", handle):
+        row = next((r for r in await follower_board.board(db) if follower_board.key(r["handle"]) == handle.lower()), None)
+        if row is None:
+            row = next((r for r in _follower_examples() if follower_board.key(r["handle"]) == handle.lower()), None)
+        if row is not None:
+            title, desc = (_html.escape(t, quote=True) for t in follower_board.share_text(row))
+            url = "{BASE}/follower-analysis?u=" + quote(row["handle"])
+            base = get_settings().public_url.rstrip("/")
+            fill = {
+                '<meta property="og:title" content="See who follows you on X | treg"/>': f'<meta property="og:title" content="{title}"/>',
+                '<meta property="og:description" content="100 of your followers, picked at random and sorted one by one into the groups you choose."/>':
+                    f'<meta property="og:description" content="{desc}"/>',
+                f'<meta property="og:url" content="{base}/follower-analysis"/>': f'<meta property="og:url" content="{url.replace("{BASE}", base)}"/>',
+                "<title>Treg × Jev Follower API: Analyse Anyone's Followers</title>": f"<title>{title} | Treg × Jev</title>",
+            }
+    return _static_page("follower-analysis.html", request, fill)
+
+
+_FOLLOWER_SAVE_NS = "follower_board_save"
+
+
+@lru_cache(maxsize=1)
+def _follower_examples() -> list[dict]:
+    """The bundled default list (row summaries), shown before and beside the shared board."""
+    path = _MEDIA_DIR / "follower-analysis" / "examples.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
+@app.get("/follower-analysis/board.json", include_in_schema=False)
+async def follower_board_json(db: AsyncSession = Depends(get_session)):
+    """Every account analysed so far, newest first, as the rows of the page's table."""
+    from ..application import follower_board
+
+    return JSONResponse({"rows": await follower_board.board(db)}, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/follower-analysis/board/{handle}.json", include_in_schema=False)
+async def follower_board_entry(handle: str, db: AsyncSession = Depends(get_session)):
+    """One analysed account in full, for the report under its row."""
+    from ..application import follower_board
+
+    found = await follower_board.entry(db, handle)
+    if found is None:
+        raise HTTPException(status_code=404, detail="not analysed yet")
+    return JSONResponse(follower_board.public(found), headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/follower-analysis/board", include_in_schema=False)
+async def follower_board_save(
+    request: Request, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session),
+):
+    """A signed-in visitor's finished scan joins the board. The scan itself ran on their own team's
+    balance; this only stores the result, so a per-user and a global window bound the writes."""
+    from .. import ratestore
+    from ..application import follower_board
+
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="cross-site request")
+    user = await _user_from_session(treg_session, db) if treg_session else None
+    if user is None:
+        raise HTTPException(status_code=401, detail="sign in to save an analysis")
+    try:
+        result = follower_board.clean(await request.json())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    ok = await ratestore.rate_check(db, _FOLLOWER_SAVE_NS, [(f"u:{user.id}", 30), ("all", 600)], window_s=3600)
+    await db.commit()
+    if not ok:
+        raise HTTPException(status_code=429, detail="too many saves this hour")
+    stored = await follower_board.save(db, result, user.id)
+    await db.commit()
+    return JSONResponse({"kept": bool(stored.get("kept")), "at": stored.get("at")})
 
 
 @app.get("/jev", include_in_schema=False)

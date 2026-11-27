@@ -1342,6 +1342,32 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_board_json",
+    "path": "/follower-analysis/board.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "follower_board_entry",
+    "path": "/follower-analysis/board/{handle}.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "follower_board_save",
+    "path": "/follower-analysis/board"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_page",
     "path": "/jev"
   },
