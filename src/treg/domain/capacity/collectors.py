@@ -572,7 +572,7 @@ async def _getleadsio(c, key):
         return {
             "value": remaining,
             "unit": "credits",
-            "note": ("Promotional database-credit allocation; no published USD replacement price. "
+            "note": ("Plan credits: one credit is one returned record or match. "
                      "The separate Live Leads wallet is not included."),
         }
     windows = {name: w for name in ("daily", "monthly")
