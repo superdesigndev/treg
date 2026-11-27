@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.superdesigndev/treg",
   "title": "treg",
-  "description": "Live data for AI agents. Search the catalog, read the price, call the tool; keys stay server-side.",
+  "description": "Live data for AI agents. One token for pay-per-call APIs, generative models and your team's tools.",
   "repository": {
     "url": "https://github.com/superdesigndev/treg",
     "source": "github"
