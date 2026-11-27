@@ -582,11 +582,12 @@ def _on_tregs_key(monkeypatch, provider: str) -> None:
     get_settings.cache_clear()
 
 
-async def _test_request(clients: AsyncClient, endpoint: str, **query):
+async def _test_request(clients: AsyncClient, endpoint: str, *, headers=None, **query):
     ep = catalog_store.load().by_id[endpoint]
     sent = ep["test_request"]
     params = {**(sent.get("pathParams") or {}), **(sent.get("queryParams") or {}), **query}
-    return await clients.request(ep["method"], f"/call/{endpoint}", params=params, json=sent.get("body"))
+    return await clients.request(ep["method"], f"/call/{endpoint}", params=params, json=sent.get("body"),
+                                 headers=headers)
 
 
 @pytest.mark.parametrize("endpoint, out, mistake", _ACCOUNT_OUT)
@@ -644,5 +645,40 @@ async def test_a_callers_own_apify_token_never_reaches_apify_on_tregs_key(client
             assert r.status_code == 400 and r.json()["detail"]["error"] == "catalog_parameter_invalid", \
                 (endpoint, r.text)
         assert rows and relay.calls == 0 and await _balance(clients) == before and await _lock("apify") is None
+    finally:
+        get_settings.cache_clear()
+
+
+# A credential a provider reads beside the one treg injects: (provider, headers, query, the refused
+# parameter).
+_CALLER_CREDENTIAL = [
+    pytest.param("scrubby", {"Authorization": "Api-Key CALLER-KEY"}, {}, "headers.authorization",
+                 id="scrubby-authorization"),
+    pytest.param("openrouter", {"x-api-key": "CALLER-KEY"}, {}, "headers.x-api-key", id="openrouter-x-api-key"),
+]
+
+
+@pytest.mark.parametrize("provider, headers, query, refused", _CALLER_CREDENTIAL)
+async def test_a_callers_own_credential_never_reaches_the_provider_on_tregs_key(
+        clients: AsyncClient, monkeypatch, provider, headers, query, refused):
+    """The provider would answer for the caller's own account in the words that mean treg's (a 401,
+    an empty account), so on treg's key every row refuses that credential before any hold. A team's
+    own key still sends it as given."""
+    _on_tregs_key(monkeypatch, provider)
+    try:
+        relay = _counting(_fake_relay(200, b"{}"))
+        monkeypatch.setattr(call_service, "relay", relay)
+        before = await _balance(clients)
+        cat = catalog_store.load()
+        rows = [ep["id"] for ep in cat.endpoints
+                if ep["provider"] == provider and cat.platform_eligible(ep) and ep.get("test_request")]
+        for endpoint in rows:  # every row on treg's key, a new one included
+            r = await _test_request(clients, endpoint, headers=headers, **query)
+            assert r.status_code == 400 and r.json()["detail"]["parameter"] == refused, (endpoint, r.text)
+        assert rows and relay.calls == 0 and await _balance(clients) == before and await _lock(provider) is None
+
+        assert (await clients.post("/secrets", json={"name": provider, "value": "TEAM-OWN-KEY"})).status_code == 200
+        r = await _test_request(clients, rows[0], headers=headers, **query)
+        assert r.status_code == 200 and relay.calls == 1, r.text
     finally:
         get_settings.cache_clear()

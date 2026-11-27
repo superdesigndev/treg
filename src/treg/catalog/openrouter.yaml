@@ -28,6 +28,9 @@ defaults:
   provenance: {source: rate_card_api, source_url: 'https://openrouter.ai/api/v1/videos/models', checked: '2026-09-02',
                confidence: documented}
   settle: {usage: {path: response.usage.cost, unit: usd}}
+  # OpenRouter also reads an `x-api-key` header beside the injected Authorization. On treg's key
+  # only treg's key may reach it: a caller's own key would make its account's answer read as treg's.
+  platform_request: {headers.x-api-key: null}
 endpoints:
   # --- AI judgment ----------------------------------------------------------------------------
   # Jev (TypeSafe) through OpenRouter: typed judgments over evidence, no text generation. The

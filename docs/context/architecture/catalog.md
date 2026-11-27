@@ -478,7 +478,10 @@ cost:
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
   A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
   outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
-  shared credential, with the field named and its value never echoed.
+  shared credential, with the field named and its value never echoed. A `headers.*` pin of `null`
+  does the same for a header (it need not be declared): a second place the provider reads a
+  credential from, beside the one treg injects, is refused on the shared credential, so the
+  provider never answers for the caller's own account there.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.

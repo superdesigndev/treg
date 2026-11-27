@@ -173,8 +173,8 @@ archived, counted as a strike, eligible for overflow and otherwise the typed 503
 uses the shared balance signature. A row names what only treg's account causes (empty, unpaid,
 deactivated, unverified), never an answer a request can draw: where a provider gives a wrong token
 the same answer as a revoked one, the row stands only because no caller credential reaches the
-provider on treg's key (a query credential the provider also reads is refused before any hold,
-e.g. through the row's `platform_request`). Two guards against the next unrecorded vendor:
+provider on treg's key (a query or header credential the provider also reads is refused before
+any hold, e.g. through the row's `platform_request`). Two guards against the next unrecorded vendor:
 
 - `unrecorded`: a 4xx no row matched whose body still names credits, quota or balance (generic
   nouns plus each row's `tripwire` phrase; a row's regex never joins by itself, since alternations

@@ -2007,6 +2007,17 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             continue
         name = str(path).split(".", 1)[1].lower()
         supplied = _request_header_values(headers, name)
+        if expected is None:
+            if supplied:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"headers.{name}",
+                        "message": f"{ep['id']} does not take header {name} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
+            continue
         if supplied != [str(expected)]:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, rule="platform", detail={
