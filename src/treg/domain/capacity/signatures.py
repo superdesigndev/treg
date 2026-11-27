@@ -181,6 +181,10 @@ _TABLE: list[Signature] = [
     # ceiling set in its dashboard), 40210 insufficient funds (docs, appendix/errors). All three are
     # the whole account, so the lock is provider-wide; the probe lifts it on the first 2xx.
     Signature("dataforseo", 200, r'"status_code"\s*:\s*402(?:00|03|10)\b', "balance"),
+    # Serpstat answers every method as HTTP 200 JSON-RPC. An exhausted credit pool is
+    # {"id": "...", "error": {"code": 32012, "message": "Limits exceeded", "data": null}}.
+    # The code is account-wide, so the lock is provider-wide; a team's own key is unchanged.
+    Signature("serpstat", 200, r'"code"\s*:\s*32012\b', "balance"),
     # Apify: the account's monthly spend ceiling blocks every Actor run, a 403 {"error": {"type":
     # "platform-feature-disabled", "message": "You've reached your monthly usage limit of $N ..."}}.
     Signature("apify", 403, r"reached your monthly usage limit", "balance", tripwire=True),
