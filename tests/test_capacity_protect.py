@@ -10,15 +10,17 @@ import json
 import logging
 from datetime import datetime, timedelta
 
+import httpx
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import archive, audit, ratestore
 from treg.config import get_settings
+from treg.application.call import resolve as call_resolve
 from treg.application.call import service as call_service
 from treg.application.call import settle as call_settle
-from treg.application.call.types import UpstreamResponse
+from treg.application.call.types import ResolutionFailed, UpstreamResponse
 from treg.infra import org_traffic
 from treg.infra.db import session_maker
 from treg.domain.capacity import events as capacity_events
@@ -651,23 +653,28 @@ _CALLER_CREDENTIAL = [
 async def test_a_callers_own_credential_never_reaches_the_provider_on_tregs_key(
         clients: AsyncClient, monkeypatch, provider, headers, query, refused):
     """The provider would answer for the caller's own account in the words that mean treg's (a 401,
-    an empty account), so on treg's key every row refuses that credential before any hold. A team's
-    own key still sends it as given."""
+    an empty account), so on treg's key every row refuses that credential before any hold, a row
+    declaring its own platform_request included. A team's own key still sends it as given."""
+    cat = catalog_store.load()
+    rows = [ep for ep in cat.endpoints if ep["provider"] == provider and cat.platform_eligible(ep)]
+    for ep in rows:  # every row on treg's key, a new one included
+        with pytest.raises(ResolutionFailed) as refusal:
+            call_resolve._enforce_platform_request(ep, b"", httpx.Headers(headers),
+                                                   call_resolve.QueryValues(tuple(query.items())))
+        assert refusal.value.parameter == refused, ep["id"]
+
     _on_tregs_key(monkeypatch, provider)
     try:
         relay = _counting(_fake_relay(200, b"{}"))
         monkeypatch.setattr(call_service, "relay", relay)
         before = await _balance(clients)
-        cat = catalog_store.load()
-        rows = [ep["id"] for ep in cat.endpoints
-                if ep["provider"] == provider and cat.platform_eligible(ep) and ep.get("test_request")]
-        for endpoint in rows:  # every row on treg's key, a new one included
-            r = await _test_request(clients, endpoint, headers=headers, **query)
-            assert r.status_code == 400 and r.json()["detail"]["parameter"] == refused, (endpoint, r.text)
-        assert rows and relay.calls == 0 and await _balance(clients) == before and await _lock(provider) is None
+        endpoint = next(ep["id"] for ep in rows if ep.get("test_request"))
+        r = await _test_request(clients, endpoint, headers=headers, **query)
+        assert r.status_code == 400 and r.json()["detail"]["parameter"] == refused, r.text
+        assert relay.calls == 0 and await _balance(clients) == before and await _lock(provider) is None
 
         assert (await clients.post("/secrets", json={"name": provider, "value": "TEAM-OWN-KEY"})).status_code == 200
-        r = await _test_request(clients, rows[0], headers=headers, **query)
+        r = await _test_request(clients, endpoint, headers=headers, **query)
         assert r.status_code == 200 and relay.calls == 1, r.text
     finally:
         get_settings.cache_clear()
