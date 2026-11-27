@@ -393,15 +393,19 @@ signals are ones real upstreams honour, names and values case-insensitive, a com
 several, each value as sent:
 
 - query `method`: Meta's Graph API runs `GET ?method=post` or `?method=delete` as that method;
-- query `_method`: Rails, Laravel, Symfony, Spring and Express apps;
+- query `_method`: Laravel, Symfony, Spring and Express apps (Rails reads `_method` only from a
+  POST form body: see the limit below);
 - headers `X-HTTP-Method-Override` (Google's APIs, most web frameworks), `X-Method-Override` (a
-  common variant) and `X-HTTP-Method` (OData).
+  common variant) and `X-HTTP-Method` (OData), each also spelled with `_` for `-`, since Rack and
+  CGI servers fold both spellings into one key.
 
 A query value that names no rule's method (an RPC API's `method=photos.search`) refuses nothing.
+A value that does name one is refused even where the upstream means something else by it (a
+parameter that happens to be called `method`, such as a shipping method `method=post`).
 The refusal says which method the request asked for. Nothing relayed changes: the parameter and the
 header reach the upstream as sent. A `_method` field in a request body is not read here, because
 the body is read only after these gates (and only when small or metered); a team that denies a
-method on an upstream reading `_method` from POST bodies also denies POST there.
+method on an upstream reading `_method` from POST bodies (Rails, Laravel) also denies POST there.
 
 ### Call-time SSRF guard
 

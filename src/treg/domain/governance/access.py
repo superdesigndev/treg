@@ -80,10 +80,11 @@ def _require_tool_use(caller: Caller, tool: Tool) -> None:
 
 
 # Request parts an upstream may read as the method to run instead of the one the request was sent
-# with: Meta's Graph API runs `GET ?method=post` (or `delete`) as that method; Rails, Laravel,
-# Symfony, Spring and Express apps take `_method`; `X-HTTP-Method-Override` is the header Google's
-# APIs and most web frameworks honour, `X-Method-Override` a common variant, and `X-HTTP-Method`
-# the OData one.
+# with: Meta's Graph API runs `GET ?method=post` (or `delete`) as that method; Laravel, Symfony,
+# Spring and Express apps take a query `_method` (Rails reads `_method` only from a POST form
+# body); `X-HTTP-Method-Override` is the header Google's APIs and most web frameworks honour,
+# `X-Method-Override` a common variant, and `X-HTTP-Method` the OData one. Rack and CGI servers
+# fold `_` and `-` in a header name into one key, so either spelling counts.
 _OVERRIDE_PARAMS = frozenset({"method", "_method"})
 _OVERRIDE_HEADERS = frozenset({b"x-http-method-override", b"x-method-override", b"x-http-method"})
 
@@ -92,9 +93,11 @@ def method_overrides(
     headers: Iterable[tuple[bytes, bytes]], query: Iterable[tuple[str, str]],
 ) -> tuple[str, ...]:
     """Every method a request asks its upstream to run in place of the one it was sent with,
-    uppercased: each override header and query parameter, names and values case-insensitive, a
-    comma list read as several. Nothing here changes what is relayed."""
-    values = [value.decode("latin-1") for name, value in headers if name.lower() in _OVERRIDE_HEADERS]
+    uppercased: each override header and query parameter, names and values case-insensitive (a
+    header name with `_` for `-` included), a comma list read as several. Nothing here changes
+    what is relayed."""
+    values = [value.decode("latin-1") for name, value in headers
+              if name.lower().replace(b"_", b"-") in _OVERRIDE_HEADERS]
     values += [value for name, value in query if name.lower() in _OVERRIDE_PARAMS]
     return tuple(dict.fromkeys(
         part.strip().upper() for value in values for part in value.split(",") if part.strip()))

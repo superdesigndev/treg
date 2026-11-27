@@ -106,6 +106,7 @@ def test_deny_match(rule, host, path, method, denied):
     ((), (("method", "post"),), ("POST",)),                                  # Graph's GET ?method=post
     ((), (("Method", " Delete "), ("_method", "put")), ("DELETE", "PUT")),   # names and values, any case
     (((b"X-HTTP-Method-Override", b"post"),), (), ("POST",)),
+    (((b"X_HTTP_METHOD_OVERRIDE", b"post"),), (), ("POST",)),                # Rack/CGI fold `_` and `-`
     (((b"x-method-override", b"PATCH"), (b"X-HTTP-Method", b"MERGE")), (), ("PATCH", "MERGE")),
     (((b"x-http-method-override", b"GET, DELETE"),), (), ("GET", "DELETE")),  # a list is several
     (((b"x-http-method-override", b"POST"),), (("method", "post"),), ("POST",)),
