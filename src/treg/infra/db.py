@@ -316,8 +316,8 @@ async def only_one_run(key: int) -> AsyncIterator[bool]:
     """Hold the session-level advisory lock `key` for a job's run -> whether this run got it.
 
     PostgreSQL: the lock lives on one server session for the whole run, a connection of its own
-    opened outside every pool (idle between its two statements, so it pins no snapshot), so the
-    job's own work keeps every slot of a one-connection pool. It goes to the API URL, which never
+    opened outside every pool (idle between its two statements, so it pins no snapshot, and with
+    `idle_session_timeout` off), so the job's own work keeps every slot of a one-connection pool. It goes to the API URL, which never
     goes through a transaction pooler. SQLite has no such lock: always True, and only the scheduler
     keeps two runs apart."""
     bind = session_maker.kw["bind"]
@@ -327,6 +327,7 @@ async def only_one_run(key: int) -> AsyncIterator[bool]:
     engine = create_async_engine(bind.url, poolclass=NullPool)
     try:
         async with engine.connect() as connection:
+            await connection.execute(text("SET idle_session_timeout = 0"))
             got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
                                                  {"key": key})).scalar_one())
             await connection.commit()

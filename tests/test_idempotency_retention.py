@@ -664,6 +664,31 @@ async def test_a_second_prune_run_on_postgres_answers_busy_and_deletes_nothing(c
         assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1
 
 
+async def test_the_run_lock_outlives_an_idle_session_timeout(clients):
+    """A database-wide `idle_session_timeout` must not end the lock session while the run goes on."""
+    _postgres_only()
+    import asyncio
+
+    from sqlalchemy import text
+
+    from treg.infra.db import only_one_run
+
+    async with session_maker() as db:
+        name = await db.scalar(text("SELECT current_database()"))
+        await db.execute(text(f'ALTER DATABASE "{name}" SET idle_session_timeout = \'300ms\''))
+        await db.commit()
+    try:
+        async with only_one_run(0x69646C65) as first:
+            assert first
+            await asyncio.sleep(0.8)
+            async with only_one_run(0x69646C65) as second:
+                assert not second
+    finally:
+        async with session_maker() as db:
+            await db.execute(text(f'ALTER DATABASE "{name}" RESET idle_session_timeout'))
+            await db.commit()
+
+
 async def test_an_archive_key_locked_on_postgres_is_trimmed_by_the_next_pass(clients, platform_on):
     _postgres_only()
     from treg.models import ArchiveKey
