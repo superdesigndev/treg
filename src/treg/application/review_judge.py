@@ -66,15 +66,55 @@ async def _write_privacy(values: dict[int, float]) -> int:
     return written
 
 
-async def _write_codes(values: dict[int, tuple[str, str | None]], bases: dict[int, str]) -> int:
+async def _write_codes(values: dict[int, tuple[str, str | None]], bases: dict[int, str],
+                       version: str = review_codes.CODEBOOK_VERSION) -> int:
     now, written = utcnow_naive(), 0
     async with session_maker() as db:
         for review_id, (primary, secondary) in values.items():
-            written += await reviews.record_codes(db, review_id, primary, secondary,
-                                                  review_codes.CODEBOOK_VERSION, now,
+            written += await reviews.record_codes(db, review_id, primary, secondary, version, now,
                                                   basis=bases.get(review_id, reviews.REASON))
         await db.commit()
     return written
+
+
+async def _code_reasons(rows: list, *, question, codebook: dict[str, str], version: str,
+                        final: dict[int, str], deadline: float) -> dict:
+    """Code `rows` from their reasons under `codebook`: a blank reason is `NOREASON` without
+    asking, the rest go to Jev `review_judge_batch` per request until the deadline. `final` names
+    the rows whose codes are `reason_final`; any other is `reason`."""
+    out = {"pending": len(rows), "judged": 0, "no_reason": 0, "already_judged": 0, "failed_requests": 0,
+           "unreadable": 0, "tokens_in": 0}
+    blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
+    out["no_reason"] = await _write_codes(blank, final, version)
+    out["already_judged"] += len(blank) - out["no_reason"]
+    rows = [r for r in rows if r.id not in blank]
+    by_id = catalog_store.load().by_id
+    for batch in _batches(rows, get_settings().review_judge_batch):
+        if time.monotonic() >= deadline:
+            break
+        state = {"reviews": [{
+            "i": i, "usefulness": r.usefulness, "reason": r.reason.strip(), "endpoint": r.endpoint_id,
+            "capability": (by_id.get(r.endpoint_id) or {}).get("capability") or "",
+            "routed": r.routed_via is not None,
+        } for i, r in enumerate(batch)]}
+        reply = await _ask(state, {f"a{i}": question(i) for i in range(len(batch))})
+        if reply.answers is None:
+            out["failed_requests"] += 1
+            log.warning("review code judge abstained: %s", reply.error)
+            continue
+        out["tokens_in"] += reply.tokens_in or 0
+        answers = reply.answers if isinstance(reply.answers, dict) else {}
+        values = {}
+        for i, r in enumerate(batch):
+            codes = review_codes.codes_from(answers.get(f"a{i}"), codebook)
+            if codes is None:
+                out["unreadable"] += 1
+                continue
+            values[r.id] = codes
+        written = await _write_codes(values, final, version)
+        out["judged"] += written
+        out["already_judged"] += len(values) - written
+    return out
 
 
 async def judge_privacy(*, deadline: float) -> dict:
@@ -124,40 +164,9 @@ async def judge_codes(*, deadline: float) -> dict:
             .where(CallReview.created_at >= since, CallReview.usefulness.in_(NEGATIVE),
                    or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
             .order_by(CallReview.created_at.desc()))).all()
-    out = {"pending": len(rows), "judged": 0, "no_reason": 0, "already_judged": 0, "failed_requests": 0,
-           "unreadable": 0, "tokens_in": 0}
     final = {r.id: reviews.REASON_FINAL for r in rows if r.routed_via is not None or not (r.reason or "").strip()}
-    blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
-    out["no_reason"] = await _write_codes(blank, final)
-    out["already_judged"] += len(blank) - out["no_reason"]
-    rows = [r for r in rows if r.id not in blank]
-    by_id = catalog_store.load().by_id
-    for batch in _batches(rows, get_settings().review_judge_batch):
-        if time.monotonic() >= deadline:
-            break
-        state = {"reviews": [{
-            "i": i, "usefulness": r.usefulness, "reason": r.reason.strip(), "endpoint": r.endpoint_id,
-            "capability": (by_id.get(r.endpoint_id) or {}).get("capability") or "",
-            "routed": r.routed_via is not None,
-        } for i, r in enumerate(batch)]}
-        reply = await _ask(state, {f"a{i}": review_codes.code_question(i) for i in range(len(batch))})
-        if reply.answers is None:
-            out["failed_requests"] += 1
-            log.warning("review code judge abstained: %s", reply.error)
-            continue
-        out["tokens_in"] += reply.tokens_in or 0
-        answers = reply.answers if isinstance(reply.answers, dict) else {}
-        values = {}
-        for i, r in enumerate(batch):
-            codes = review_codes.codes_from(answers.get(f"a{i}"))
-            if codes is None:
-                out["unreadable"] += 1
-                continue
-            values[r.id] = codes
-        written = await _write_codes(values, final)
-        out["judged"] += written
-        out["already_judged"] += len(values) - written
-    return out
+    return await _code_reasons(rows, question=review_codes.code_question, codebook=review_codes.CODES,
+                               version=version, final=final, deadline=deadline)
 
 
 def _retry_at(now, attempts: int):

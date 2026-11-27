@@ -136,15 +136,15 @@ def person_p_from(answer: object) -> float | None:
     return probability(answer.get("noul")) if isinstance(answer, dict) else None
 
 
-def codes_from(answer: object) -> tuple[str, str | None] | None:
-    """`(primary, secondary)` from a Choice answer, or None when it is not one of the codes (a
-    choice that is a list or an object included). A probability that is not a number is ignored,
+def codes_from(answer: object, codebook: dict[str, str] = CODES) -> tuple[str, str | None] | None:
+    """`(primary, secondary)` from a Choice answer, or None when it is not one of `codebook`'s codes
+    (a choice that is a list or an object included). A probability that is not a number is ignored,
     never fatal."""
     primary = answer.get("choice") if isinstance(answer, dict) else None
-    if not isinstance(primary, str) or primary not in CODES:
+    if not isinstance(primary, str) or primary not in codebook:
         return None
     raw = answer.get("probabilities")
     probs = {k: p for k, v in (raw.items() if isinstance(raw, dict) else ())
-             if k in CODES and k != primary and (p := probability(v)) is not None}
+             if k in codebook and k != primary and (p := probability(v)) is not None}
     second = max(probs, key=probs.get, default=None)
     return primary, second if second is not None and probs[second] >= SECONDARY_MIN_P else None
