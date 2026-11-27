@@ -1072,15 +1072,21 @@ is the mark's lifetime in seconds, 0 = off, 10 at most.
   reaper's releases, a hub seller's `earned` credit, and the allowance hold returning to the
   balance (a close, a drain, a give-back, a fold that covers less than it set aside). One
   listener on every session's commit (registered once, at import) starts the delete in a task
-  of its own; a rolled-back credit clears nothing. The process that committed the credit also
+  of its own; a rolled-back credit clears nothing. SQLAlchemy fires the same events for a
+  SAVEPOINT (`topup` holds one open, so one commit fires twice): the listeners act only when
+  the outer transaction ends, since a released savepoint has committed nothing and a rolled
+  back one keeps the credits made before it. The process that committed the credit also
   stops asking the store about that team at once (`_suspects`), so a reserve that follows a
   release in the same request (a routed call's next child) never meets a mark whose delete is
   still on its way. `revoke` only lowers a balance and clears nothing. A refill moves money
   from the balance into the allowance hold: the team's money is the same, and the mark is about
   all of it, so a refill is not a credit.
 - **Bounded by its lifetime.** The mark expires after `money_empty_mark_ttl_s`. A refusal it
-  answers never rewrites it, so steady traffic cannot keep it alive: once per lifetime one call
-  takes the usual road, and the database decides again. The lifetime is the only bound in
+  answers never rewrites it, so steady traffic cannot keep it alive: when it ends, the next
+  call takes the usual road and the database decides again. That is per process, not once for
+  the team: a process asks the store only about a team it has seen refused, so each process's
+  first refusal of a team takes the usual road and writes the mark again (the same true
+  statement, with a new lifetime). The lifetime is the only bound in
   these cases, each worth at most that many seconds of refusals:
   - a clear that is lost: the store failed the delete, or the credit was committed by a
     process running with the setting at 0;

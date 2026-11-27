@@ -19,6 +19,7 @@ from treg.application.call.intake import CallMeta
 from treg.application.call.types import ReservationFailed
 from treg.config import Settings, get_settings
 from treg.domain import money as ledger
+from treg.infra import db as infra_db
 from treg.infra import empty_balance, kv, money_admission
 from treg.infra.db import session_maker
 from treg.models import CallRecord, Hold
@@ -262,6 +263,78 @@ async def test_a_credit_that_rolls_back_clears_nothing(money_db, store):
         await db.rollback()
     await _settle_clears()
     assert empty_balance._key(org_id) in store.texts and store.clears == before
+
+
+async def test_a_savepoint_release_clears_nothing_and_the_real_commit_clears(money_db, store):
+    """`topup` holds a SAVEPOINT open, and the session's commit releases it first: that release
+    fires the commit event and has committed nothing."""
+    org_id, caller = await _payer("mark-savepoint")
+    await _refused(org_id, caller, ref="first")
+    await _settle_clears()
+    key, before = empty_balance._key(org_id), store.clears
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, amount_micro=50_000, payment_ref="pi_savepoint")
+        await db.run_sync(lambda session: session.get_nested_transaction().commit())
+        await _settle_clears()
+        assert key in store.texts and store.clears == before
+        assert db.sync_session.info[empty_balance._SESSION_KEY] == {org_id}
+        await db.commit()
+    await _settle_clears()
+    assert key not in store.texts and store.clears == before + 1
+
+
+@pytest.mark.skipif(infra_db._is_sqlite, reason="needs a credit other sessions cannot see yet")
+async def test_a_refusal_between_a_savepoint_release_and_the_commit_is_cleared(money_db, store):
+    """A refusal the database decides between the savepoint's release and the COMMIT writes a
+    mark. The commit's clear must come after it, or a team that just paid is refused for the
+    mark's lifetime."""
+    org_id, caller = await _payer("mark-savepoint-gap")
+    await _refused(org_id, caller, ref="first")
+    key = empty_balance._key(org_id)
+    async with session_maker() as db:
+        await ledger.topup(db, org_id, amount_micro=50_000, payment_ref="pi_savepoint_gap")
+        await db.run_sync(lambda session: session.get_nested_transaction().commit())
+        await _settle_clears()
+        store.texts.clear()
+        await _refused(org_id, caller, ref="between")  # the top-up is not visible yet
+        assert key in store.texts
+        await db.commit()
+    await _settle_clears()
+    assert key not in store.texts
+    empty_balance.suspect(org_id)  # as a process that did not commit the top-up
+    with Work(store) as work:
+        await call_reserve._platform_reserve(_call(org_id, "paid", 2_000), caller,
+                                             call_ref="paid")
+    assert work.checkouts > 0
+
+
+async def test_a_savepoint_rollback_keeps_the_credit_made_before_it(money_db, store):
+    org_id, caller = await _payer("mark-nested-rollback")
+    await _refused(org_id, caller, ref="first")
+    async with session_maker() as db:
+        await ledger.grant(db, org_id, amount_micro=50_000, once=False)
+        nested = await db.begin_nested()
+        await nested.rollback()
+        await db.commit()
+    await _settle_clears()
+    assert empty_balance._key(org_id) not in store.texts
+    await call_reserve._platform_reserve(_call(org_id, "paid", 2_000), caller, call_ref="paid")
+
+
+async def test_a_full_rollback_with_a_savepoint_open_clears_nothing(money_db, store):
+    org_id, caller = await _payer("mark-full-rollback")
+    await _refused(org_id, caller, ref="first")
+    await _settle_clears()
+    before = store.clears
+    async with session_maker() as db:
+        await ledger.grant(db, org_id, amount_micro=50_000, once=False)
+        await db.begin_nested()
+        await db.rollback()
+        assert not db.sync_session.info.get(empty_balance._SESSION_KEY)
+        await db.commit()
+    await _settle_clears()
+    assert empty_balance._key(org_id) in store.texts and store.clears == before
+    await _refused(org_id, caller, ref="still-short")
 
 
 async def test_a_refusal_the_database_did_not_confirm_writes_no_mark(money_db, store, monkeypatch):

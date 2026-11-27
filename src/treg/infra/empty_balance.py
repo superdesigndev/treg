@@ -118,8 +118,13 @@ def _committed(session) -> None:
     """The credited teams' marks are deleted in the background, and this process stops asking
     the store about them at once: a reserve that follows the credit in the same request (a
     routed call's next child after a released one) must not meet a mark whose delete is still
-    on its way."""
+    on its way.
+
+    SQLAlchemy fires this for the release of a SAVEPOINT too, which commits nothing: the credit
+    is not visible to anyone until the outer transaction ends, so only that one clears."""
     try:
+        if session.in_nested_transaction():
+            return
         orgs = session.info.get(_SESSION_KEY)
         if not orgs:
             return
@@ -136,7 +141,11 @@ def _committed(session) -> None:
 
 
 def _rolled_back(session) -> None:
+    """A SAVEPOINT's rollback keeps the credits made before it in the same transaction, and one
+    it undoes is cleared for at the commit anyway: a clear too many costs one usual reserve."""
     try:
+        if session.in_nested_transaction():
+            return
         orgs = session.info.get(_SESSION_KEY)
         if orgs:
             orgs.clear()
