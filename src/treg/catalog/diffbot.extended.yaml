@@ -615,6 +615,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/introduction-to-natural-language-api
 
   - id: diffbot.x.account
+    echoes_credential: true  # the answer's token member is the account token
     kind: account
     tier: extended
     platform: web
