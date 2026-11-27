@@ -3616,6 +3616,63 @@ def test_a_contract_default_the_caller_did_not_send_is_not_an_ignored_filter():
         [c.endpoint["id"] for c in rank(quote)] == ["seranking.google.keywords.volume", "dataforseo.google.keywords.volume"]
 
 
+
+def test_keyword_volume_plan_uses_the_per_keyword_estimate():
+    """A catalog quote has no keyword list, and many callers restate language: en, the
+    contract default. SE Ranking still has to be priced at one keyword on the quote and
+    at len(keywords) on a real call, and a restated default must not rank the 50x dearer
+    flat child first. A non-default language still counts as a filter it cannot apply."""
+    from treg.domain.catalog.routing.plan import ignored_filters
+    cat = catalog_store.load()
+    contract = cat.contracts["google.keywords.volume"]
+    se_ep = cat.by_id["seranking.google.keywords.volume"]
+    dfs_ep = cat.by_id["dataforseo.google.keywords.volume"]
+    se_ad = cat.adapters[se_ep["id"]]
+    dfs_ad = cat.adapters[dfs_ep["id"]]
+    se_cv = cat.cost_view(se_ep.get("cost"), se_ep["provider"])
+    dfs_cv = cat.cost_view(dfs_ep.get("cost"), dfs_ep["provider"])
+    assert cost_at(se_cv, {}, se_ad) == 1_790
+    assert cost_at(dfs_cv, {}, dfs_ad) == 90_000
+    keywords = ["coffee", "tea", "water", "milk", "bread", "rice", "sugar", "salt", "oil", "egg", "flour", "butter"]
+    assert cost_at(se_cv, {"keywords": keywords}, se_ad) == 21_480
+
+    restated, _ = canonical_identity(contract, {"keywords": keywords, "language": "en"})
+    assert ignored_filters(se_ad, contract, restated, given={"keywords", "language"}) == ()
+    other, _ = canonical_identity(contract, {"keywords": keywords, "language": "de"})
+    assert ignored_filters(se_ad, contract, other, given={"keywords", "language"}) == ("language",)
+
+    def cand(body, given):
+        ident, _ = canonical_identity(contract, body)
+        out = []
+        for ep, ad, cv in ((se_ep, se_ad, se_cv), (dfs_ep, dfs_ad, dfs_cv)):
+            price = cost_at(cv, ident, ad)
+            ign = ignored_filters(ad, contract, ident, given)
+            out.append(Candidate(endpoint=ep, adapter=ad, variant=ad.accepts[0], tier="platform",
+                                 price_micro=price, hit_rate=None, ok_rate=None, p50_ms=None,
+                                 last_ok_days=None, ignored=ign))
+        return out
+
+    # The quote path prices children with an empty request; one keyword is the lookup default.
+    quote_empty = []
+    for ep, ad, cv in ((se_ep, se_ad, se_cv), (dfs_ep, dfs_ad, dfs_cv)):
+        price = cost_at(cv, {}, ad)
+        quote_empty.append(Candidate(endpoint=ep, adapter=ad, variant=ad.accepts[0], tier="platform",
+                                     price_micro=price, hit_rate=None, ok_rate=None, p50_ms=None,
+                                     last_ok_days=None))
+    twelve = cand({"keywords": keywords, "country": "us", "language": "en"},
+                  given={"keywords", "country", "language"})
+    german = cand({"keywords": keywords, "language": "de"}, given={"keywords", "language"})
+    large = cand({"keywords": [f"k{i}" for i in range(51)]}, given={"keywords"})
+    assert [c.endpoint["id"] for c in rank(quote_empty)] == [
+        "seranking.google.keywords.volume", "dataforseo.google.keywords.volume"]
+    assert [c.endpoint["id"] for c in rank(twelve, given={"keywords", "country", "language"})] == [
+        "seranking.google.keywords.volume", "dataforseo.google.keywords.volume"]
+    assert [c.endpoint["id"] for c in rank(german, given={"keywords", "language"})] == [
+        "dataforseo.google.keywords.volume", "seranking.google.keywords.volume"]
+    assert [c.endpoint["id"] for c in rank(large, given={"keywords"})] == [
+        "dataforseo.google.keywords.volume", "seranking.google.keywords.volume"]
+
+
 async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
     clients: AsyncClient, enrichment_on, monkeypatch,
 ):
