@@ -32,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation
+from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation, review_endpoint
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -314,6 +314,8 @@ def _capture_hint(request: Request, context, kind: str, variant: int | None = No
         "kind": kind, "call_id": context.call_ref, "client": _client_of(request),
         "endpoint_id": catalog_endpoint(context),
         **({"variant": variant} if variant is not None else {}),
+        **({"budget": context.review_budget, "credited_endpoint": review_endpoint(context)}
+           if kind == "review" else {}),
     }, groups={"team": slug} if slug else None)
 
 
