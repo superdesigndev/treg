@@ -9,7 +9,7 @@ source:
   openapi: https://filtrat.io/openapi.json
   curated: '2026-10-29'
 pricing_url: https://filtrat.io/v1/credits/rate-card
-limits: "Per key: 600 verifications a minute on treg's partner account (other keys: 200 a minute), answered with 429 and Retry-After: 60 above that; at most 10 verifications in progress (503 SERVER_BUSY with Retry-After: 5 past that). A verification answers within 175 seconds."
+limits: "Per key: 900 verifications a minute on treg's partner account (other keys: 200 a minute), answered with 429 and Retry-After: 60 above that; at most 10 verifications in progress (503 SERVER_BUSY with Retry-After: 5 past that). A verification answers within 175 seconds."
 cache: forbidden
 endpoints:
   - id: filtrat.people.email.verify

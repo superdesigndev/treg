@@ -1,5 +1,5 @@
 # ContactOut v1. Starter rates are the account owner's commercial terms, not public plan estimates.
-# Deferred: sync/async LinkedIn batches, batch email verification, hashed email and campaigns.
+# Deferred: the v1 LinkedIn batches and campaigns.
 # Work/personal splits use real documented parameters; no invented upstream endpoints.
 # Logo supplied by the account owner.
 provider: contactout
@@ -1109,7 +1109,220 @@ endpoints:
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
+- id: contactout.people.email.verify.batch
+  added: '2026-11-27'
+  domain: contacts
+  capability: people.job.start
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/email/verify/batch
+  name: Verify up to 100 email addresses in one job
+  summary: Start a bulk email verification job for 1 to 100 addresses; read each address's verdict with contactout.people.email.verify.batch.get.
+  input:
+    bodyType: json
+    body:
+      emails:
+        type: array
+        items: {type: string}
+        required: true
+        minItems: 1
+        maxItems: 100
+        example: [support@contactout.com]
+      callback_url: {type: string, required: false, note: "an https URL ContactOut posts the finished results to"}
+    note: Answers QUEUED with a job_id; poll contactout.people.email.verify.batch.get until status
+      is DONE. Each verdict is valid, invalid, accept_all, unknown or disposable.
+  untestable: Starting a job spends verifier credits; the examples are fixtures with reserved fake addresses.
+  example_response: examples/contactout.people.email.verify.batch.json
+  terminal_example_response: examples/contactout.people.email.verify.batch.result.json
+  price:
+    value: '0.01'
+    currency: USD
+    per: 1
+    unit: result
+    note: One verifier credit per email whose verdict is valid, invalid or accept_all, billed
+      when the job finishes. Unknown and disposable verdicts, a failed job and every poll are
+      free; the hold is one credit per email sent.
+  provenance:
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-11-27'
+    confidence: documented
+  expect:
+    any:
+    - {path: response.job_id, op: present}
+    - {path: response.data.result, op: present}
+  reserve: {entities: {from: body.emails, max: 100}}
+  settle: {plugin: contactout.verdicts_billed}
+  async:
+    id_from: job_id
+    poll: {endpoint: contactout.people.email.verify.batch.get, param: {in: pathParams, name: job_uuid}}
+    status: {path: data.status, success: [DONE], failure: [FAILED]}
+    result: {path: data.result}
+    interval: 5
+    max_age: 3600
+  docs_url: https://api.contactout.com/
+- id: contactout.people.email.verify.batch.get
+  added: '2026-11-27'
+  kind: utility
+  domain: contacts
+  capability: people.job.results
+  platform: people
+  scope: any_account
+  method: GET
+  path: /v1/email/verify/batch/{job_uuid}
+  name: Get a bulk email verification job's verdicts
+  summary: Read a bulk email verification job's status and, once DONE, the verdict for each address.
+  resource_ownership:
+    requires: {kind: 'poll:contactout.people.email.verify.batch.get', param: job_uuid}
+  input:
+    pathParams:
+      job_uuid: {type: string, required: true, note: "the job_id contactout.people.email.verify.batch returned"}
+    note: data.result maps each address to its verdict once data.status is DONE. An unknown job
+      answers 404.
+  untestable: Requires a job id created by the same account.
+  price: {value: '0', currency: USD, unit: call, note: "Free."}
+  expect: {path: response.data.status, op: present}
+  docs_url: https://api.contactout.com/
+- id: contactout.people.audience.email-hash
+  added: '2026-11-25'
+  domain: contacts
+  capability: people.audience.email_hash
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/identifiers
+  name: Get hashed personal emails for a batch of LinkedIn profiles
+  summary: SHA-256 hashes of the personal emails of 5 to 100 LinkedIn profiles, for ad platform audience uploads
+  input:
+    bodyType: json
+    body:
+      profiles:
+        type: array
+        items: {type: string}
+        required: true
+        note: 5 to 100 unique LinkedIn profile URLs (linkedin.com/in/ or linkedin.com/pub/).
+          Fewer than 5 is refused with a 400.
+        example:
+        - https://www.linkedin.com/in/satyanadella
+        - https://www.linkedin.com/in/williamhgates
+        - https://www.linkedin.com/in/reidhoffman
+        - https://www.linkedin.com/in/jeffweiner08
+        - https://www.linkedin.com/in/sundarpichai
+    note: Returns matches.emails, one SHA-256 hex hash per personal email found across
+      the whole batch, in no particular order, so a hash cannot be tied back to one profile.
+      ContactOut trims each email before hashing and does not say it lowercases it. Work
+      emails are not included. matches_found counts the profiles with at least one hash;
+      unmatched lists the rest. A batch with no hashes answers 404.
+  untestable: Requires real LinkedIn profiles and returns hashes of their private addresses;
+    no automated verification request is stored under the catalog PII rule. The example is a
+    structural fixture hashed from reserved fake addresses.
+  example_response: examples/contactout.people.audience.email-hash.json
+  price:
+    value: '0.25'
+    currency: USD
+    per: 1
+    unit: result
+    note: One personal email credit ($0.25 on the account owner's Starter rate) per profile
+      that returns at least one hash, not per hash. A profile with no hash is free; the hold
+      is one credit per profile sent.
+  provenance:
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-11-25'
+    confidence: documented
+  expect: {path: response.status_code, op: equals, value: 200}
+  reserve: {entities: {from: body.profiles, max: 100}}
+  settle: {plugin: contactout.profiles_matched}
+  miss: {status: [404], means: "No profile in the batch has a hashed personal email; free"}
+  docs_url: https://api.contactout.com/
+- id: contactout.people.contact.batch
+  added: '2026-11-27'
+  domain: contacts
+  capability: people.enrich.bulk
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v2/people/linkedin/batch
+  name: Get contact details for up to 100 LinkedIn profiles
+  summary: Start a bulk contact job for 1 to 100 LinkedIn profiles; read each profile's work emails, personal emails and phones with contactout.people.contact.batch.get.
+  input:
+    bodyType: json
+    body:
+      profiles:
+        type: array
+        items: {type: string}
+        required: true
+        minItems: 1
+        maxItems: 100
+        note: LinkedIn profile URLs (linkedin.com/in/).
+        example: [https://www.linkedin.com/in/satyanadella]
+      email_type:
+        type: string
+        required: false
+        enum: [personal, work, 'personal,work', none]
+        default: personal,work
+        note: The email types to return; none returns no emails and charges for none.
+      include_phone: {type: boolean, required: false, default: false, note: "true also returns phone numbers"}
+      callback_url: {type: string, required: false, note: "an https URL ContactOut posts the finished results to"}
+    note: Answers QUEUED with a job_id; poll contactout.people.contact.batch.get until status is
+      DONE. Each profile in data.result carries emails, personal_emails, work_emails and, with
+      include_phone, phones.
+  untestable: A real answer is a named person's private contact details; the examples are fixtures
+    with reserved fake addresses.
+  example_response: examples/contactout.people.contact.batch.json
+  terminal_example_response: examples/contactout.people.contact.batch.result.json
+  price:
+    rates: {work_email: '0.15', personal_email: '0.25', phone: '0.25'}
+    currency: USD
+    note: Per profile, as a single lookup bills it, once the job finishes - $0.15 when it returns
+      a work email, $0.25 when it returns a personal email and $0.25 when it returns a phone, each
+      only for a type the request asks for. A profile with nothing found, a failed job and every
+      poll are free; the hold is every type asked for on every profile sent.
+  provenance:
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-11-27'
+    confidence: documented
+  expect:
+    any:
+    - {path: response.job_id, op: present}
+    - {path: response.data.result, op: present}
+  reserve: {plugin: contactout.contacts_held, max: '65'}
+  settle: {plugin: contactout.contacts_found}
+  async:
+    id_from: job_id
+    poll: {endpoint: contactout.people.contact.batch.get, param: {in: pathParams, name: job_id}}
+    status: {path: data.status, success: [DONE], failure: [FAILED]}
+    result: {path: data.result}
+    interval: 5
+    max_age: 3600
+  docs_url: https://api.contactout.com/
+- id: contactout.people.contact.batch.get
+  added: '2026-11-27'
+  kind: utility
+  domain: contacts
+  capability: people.job.results
+  platform: people
+  scope: any_account
+  method: GET
+  path: /v2/people/linkedin/batch/{job_id}
+  name: Get a bulk contact job's results
+  summary: Read a bulk contact job's status and, once DONE, each profile's work emails, personal emails and phones.
+  resource_ownership:
+    requires: {kind: 'poll:contactout.people.contact.batch.get', param: job_id}
+  input:
+    pathParams:
+      job_id: {type: string, required: true, note: "the job_id contactout.people.contact.batch returned"}
+    note: data.result maps each profile URL to its emails, personal_emails, work_emails and phones
+      once data.status is DONE. An unknown job answers 404.
+  untestable: Requires a job id created by the same account.
+  price: {value: '0', currency: USD, unit: call, note: "Free."}
+  expect: {path: response.data.status, op: present}
+  docs_url: https://api.contactout.com/
 proposed_capabilities:
+  people.enrich.bulk: Start or inspect a batch of person enrichments
+  people.job.results: "Collect the finished rows of a contact-data job"
   people.email.personal.availability: Check personal email availability for a LinkedIn
     profile
   people.email.work.availability: Check work email availability for a LinkedIn profile

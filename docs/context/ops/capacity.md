@@ -70,10 +70,15 @@ anonymous upstream 429 is relayed without marking treg's account. Removing the p
 working.
 
 A provider can have several treg-owned accounts (`TREG_PLATFORM_ACCOUNTS`,
-`architecture/proxy-model.md`). Smoothing buckets, fair-share places and call-path locks are per
-account (a further account's keys are suffixed `#<label>`), and the provider is out only when every
-account is. Policies, the sweep and balance collectors read only the primary, so a further
-account's balance is not observed and its lock lifts at expiry or by its own probe.
+`architecture/proxy-model.md`). Smoothing buckets, fair-share places, call-path locks, policies,
+snapshots and sweep readings are per account (a further account's keys are suffixed `#<label>`,
+e.g. `apollo#b`), and the provider is out only when every account is. An account the sweep reads
+empty gets no calls while another can serve, so no caller is spent probing it; the next sweep that
+reads it refilled returns it to rotation. A reading below the provider's `_DRAIN_BELOW` mark (in
+its own unit) is `low`: the account still serves, but calls go to the provider's other accounts
+while any is not low, so an account leaves the rotation before it runs dry. Size a mark to outlast
+the gap between two sweeps at the provider's busiest burn. With every account out, a call is
+refused or probes the primary as before.
 
 Provider-specific facts (meter quirks, rate sources, exhaustion bodies) live on the provider's
 collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog file, not here.
@@ -93,17 +98,21 @@ collector, its `_KNOWN` / `_RATE_LIMITS` entry, its signature row or its catalog
 - **`collectors.py`** returns `{value, unit, note}` and is shared with `scripts/provider_balances.py`.
   `provider_balance()` never raises (a failure is a row) and reads the key *setting*, not
   `platform_key_for`: the serving allow-list is a kill switch, and a provider just switched off is
-  exactly one whose last balance we still want.
+  exactly one whose last balance we still want. A further account (`apollo#b`) is read with its own
+  credentials only (`account_credential`), the second half of a pair included: a collector that
+  needs another setting takes it through `cred`, never from Settings.
 - **`policy.py`** - `CapacityPolicy` defaults per account (`_KNOWN`). The population is every
-  `platform_key_*` slot plus `overflow:orthogonal` / `overflow:monid` (aggregators are prepaid
-  accounts too). `ensure_policies` inserts missing rows only (a hand-edited row is never
-  overwritten) and returns the providers still `unknown`, which a person must classify; code never
-  guesses. `latest_state()` is the pure rule: no, failed or old (`STALE_AFTER`) observation is
-  `stale` and never refuses a call; `remaining < EMPTY_BELOW` on an exact observation (a spent float
-  pool can read a few millionths, never zero) is `exhausted` until `resets_at` or the next sweep.
-- **`sweep.py`** - `run_sweep(db)` collects all providers in parallel with the DB idle, writes one
-  `CapacitySnapshot` per provider, publishes each `LatestState` to ratestore as
-  `capacity:state:<provider>` and commits once. The key is the Settings slot spelling
+  `platform_key_*` slot, each further account of one, plus `overflow:orthogonal` /
+  `overflow:monid` (aggregators are prepaid accounts too). `ensure_policies` inserts missing rows only (a hand-edited row is never
+  overwritten; a stored `rate_limit` still equal to a default listed in `_PREVIOUS_RATE_LIMITS`
+  was seeded, not edited, and moves to the current default) and returns the providers still `unknown`, which a person must classify; code never
+  guesses. A further account's row takes its provider's classification. `latest_state()` is the
+  pure rule: no, failed or old (`STALE_AFTER`) observation is `stale` and never refuses a call;
+  `remaining < EMPTY_BELOW` on an exact observation (a spent float pool can read a few millionths,
+  never zero) is `exhausted` until `resets_at` or the next sweep; below `_DRAIN_BELOW` it is `low`.
+- **`sweep.py`** - `run_sweep(db)` collects every account in parallel with the DB idle, writes one
+  `CapacitySnapshot` per account, publishes each `LatestState` to ratestore as
+  `capacity:state:<account>` and commits once; `--only apollo` also sweeps `apollo#b`. The key is the Settings slot spelling
   (`fiber_ai`); `state_key()` maps a catalog id (`fiber-ai`) onto it, so readers find the state
   under either spelling. A note that looks like a credential is withheld before it is stored. A
   failed HTTP balance route is stored as its status code only (`_failure_note`: httpx messages
@@ -161,7 +170,13 @@ parsed by format, never by provider; a 429 no row matched is a burst when the wa
 and a quota when longer. Exhaustion can arrive as any status, including a 2xx: the call path reads
 a platform 2xx through the table too, so such an answer is released rather than settled, never
 archived, counted as a strike, eligible for overflow and otherwise the typed 503. Bare HTTP 402
-uses the shared balance signature. Two guards against the next unrecorded vendor:
+uses the shared balance signature. A row names what only treg's account causes (empty, unpaid,
+deactivated, unverified), never an answer a request can draw: where a provider gives a wrong token
+the same answer as a revoked one, the row stands only because no caller credential reaches the
+provider on treg's key (a query or header credential the provider also reads is refused before
+any hold, e.g. through the row's `platform_request`). A phrase the provider's answer may echo from
+the request (a moderation error quoting the caller's input) is anchored to the provider's own
+field. Two guards against the next unrecorded vendor:
 
 - `unrecorded`: a 4xx no row matched whose body still names credits, quota or balance (generic
   nouns plus each row's `tripwire` phrase; a row's regex never joins by itself, since alternations

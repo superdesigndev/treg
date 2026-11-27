@@ -12,6 +12,10 @@ pricing_url: https://www.getleads.io/pricing/
 proposed_capabilities:
   people.organization_contacts: Find contacts at an organization by domain or role
   companies.acquisitions.feed: Browse recent company acquisition announcements
+  places.search.count: Count the local businesses a places search would return
+  places.categories: "Turn words like 'dog friendly' into the intent categories a place search takes"
+  places.areas: "Find the covered city or neighborhood id for a place name"
+  companies.search.filters: "List the accepted values for a company-search filter"
 endpoints:
   - id: getleadsio.people.enrich.from_email
     capability: people.enrich
@@ -21,6 +25,7 @@ endpoints:
     method: POST
     path: /api/v1/enrich/from-email
     strict_body: true
+    expect: {json_path: results.0.success, equals: true}
     name: Enrich one person from a work email
     summary: Enrich one person from a known work email address.
     input:
@@ -33,20 +38,20 @@ endpoints:
           maxItems: 1
           example: [{email: nobody-treg-20260916@example.invalid}]
           note: Each item needs an email string.
-      note: Exactly one item is accepted. One credit is charged when that result has success=true.
+      note: Exactly one item is accepted. A charge is made only when that result has success=true.
     test_request:
       body: {items: [{email: nobody-treg-20260916@example.invalid}]}
-    cost: &one_credit_success
+    cost:
       type: per_success
-      value: 1
-      currency: credit
+      value: 0.000855
+      currency: USD
       per: 1
       unit: item
-      source: observed
-      source_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-email
-      checked: '2026-09-16'
-      confidence: verified
-      note: One credit for each result whose success field is true. Live balance moved by one for one such result. A reserved .invalid email also returned success=true and was billed; treat that as an upstream data-quality observation, not a validity guarantee.
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a work email to a person. Charged only when the result has success=true; a miss is free.
     docs_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-email
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -60,6 +65,7 @@ endpoints:
     method: POST
     path: /api/v1/enrich/from-linkedin
     strict_body: true
+    expect: {json_path: results.0.success, equals: true}
     name: Enrich one person from a LinkedIn URL
     summary: Enrich one person from a public LinkedIn profile URL.
     input:
@@ -73,12 +79,20 @@ endpoints:
           example: [{linkedin_url: https://www.linkedin.com/in/example}]
           note: Each item needs linkedin_url.
         limit_per_item: {type: integer, required: false, default: 1, min: 1, max: 10}
-      note: Exactly one item is accepted. One credit is charged when that result has success=true.
+      note: Exactly one item is accepted. A charge is made only when that result has success=true.
     test_request:
       body: {items: [{linkedin_url: https://www.linkedin.com/in/treg-nonexistent-20260916}], limit_per_item: 1}
     cost:
-      <<: *one_credit_success
-      source_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-linkedin
+      type: per_success
+      value: 0.000855
+      currency: USD
+      per: 1
+      unit: item
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a LinkedIn URL to a person. Charged only when the result has success=true; a miss is free.
     docs_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-linkedin
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -92,6 +106,7 @@ endpoints:
     method: POST
     path: /api/v1/enrich/from-person
     strict_body: true
+    expect: {json_path: results.0.success, equals: true}
     name: Enrich one person from name and company
     summary: Enrich one person from a name plus a company name or email domain.
     input:
@@ -104,25 +119,67 @@ endpoints:
           maxItems: 1
           example: [{first_name: Jane, last_name: Doe, email_domain: example.com}]
           note: Each item needs first_name and last_name plus company_name or email_domain.
-      note: Exactly one item is accepted. One credit is charged when that result has success=true.
+      note: Exactly one item is accepted. A charge is made only when that result has success=true.
     test_request:
       body: {items: [{first_name: Treg, last_name: Nonexistent, email_domain: treg-nonexistent-20260916.invalid}]}
     cost:
-      <<: *one_credit_success
-      source_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-person
+      type: per_success
+      value: 0.009
+      currency: USD
+      per: 1
+      unit: item
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a name and company to a person. Charged only when the result has success=true; a miss is free.
     docs_url: https://www.getleads.io/docs/#json-batch--post-apiv1enrichfrom-person
     verified: '2026-09-16'
     added: '2026-09-16'
     example_response: examples/getleadsio.people.enrich.from_person.json
 
+  - id: getleadsio.people.enrich.from_personal_email
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /api/v1/contacts/lookup/personal-email
+    strict_query: true
+    expect: {json_path: success, equals: true}
+    name: Find the person behind a personal email
+    summary: Find one person's profile, employer and work email from a personal email address.
+    input:
+      queryParams:
+        email: {type: string, required: true, example: jane.doe.example@gmail.com, note: "A personal address (Gmail, Outlook and similar). For a work address use getleadsio.people.enrich.from_email."}
+      note: Returns one contact or success=false.
+    test_request:
+      queryParams: {email: nobody-treg-20261127@example.invalid}
+    cost:
+      type: per_success
+      value: 0.01
+      currency: USD
+      per: 1
+      unit: call
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a reverse personal email lookup. Charged only when success is true; a miss is free.
+    docs_url: https://www.getleads.io/docs/#get-apiv1contactslookuppersonal-email
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.people.enrich.from_personal_email.json
+
   - id: getleadsio.people.phone.lookup
-    capability: people.phone.find
+    capability: people.enrich
     platform: people
     domain: contacts
     scope: any_account
     method: GET
     path: /api/v1/contacts/lookup/phone
     strict_query: true
+    expect: {json_path: success, equals: true}
     name: Look up one contact by phone
     summary: Find one contact record from a phone number.
     input:
@@ -133,15 +190,15 @@ endpoints:
       queryParams: {phone: '+1 202-555-0100'}
     cost:
       type: per_success
-      value: 1
-      currency: credit
+      value: 0.002
+      currency: USD
       per: 1
       unit: call
-      source: observed
-      source_url: https://www.getleads.io/docs/#get-apiv1contactslookupphone
-      checked: '2026-09-16'
-      confidence: verified
-      note: One credit when success is true; a live synthetic-number miss returned success=false and used zero credits. Platform access is a $0 limited treg trial, not the vendor's database-credit price.
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a reverse mobile lookup. Charged only when the result has success=true; a miss is free.
     docs_url: https://www.getleads.io/docs/#get-apiv1contactslookupphone
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -162,20 +219,22 @@ endpoints:
         job_titles: {type: array, items: {type: string}, required: false, example: [Engineer]}
         limit_per_item: {type: integer, required: false, default: 100, min: 1, max: 5000}
         offset: {type: integer, required: false, default: 0, min: 0}
-      note: Provide email_domain or linkedin_company_url, not both. Continue with next_offset while has_more is true. One credit per returned record.
+      note: Provide email_domain or linkedin_company_url, not both. Continue with next_offset while has_more is true. Charged per returned record.
     test_request:
       body: {email_domain: treg-nonexistent-20260916.invalid, limit_per_item: 1, offset: 0}
-    cost: &one_credit_record
+    cost:
       type: per_result
-      value: 1
-      currency: credit
+      value: 0.000855
+      currency: USD
       per: 1
       unit: record
-      source: observed
-      source_url: https://www.getleads.io/docs/#post-apiv1contactslookupcolleagues
-      checked: '2026-09-16'
-      confidence: verified
-      note: One credit per returned record. A live zero-row miss reported query_credits_used=0 and did not move the balance.
+      reserve: {rows: {param: body.limit_per_item, default: {value: 100, source: docs}, max: 5000}}
+      settle: {count: {path: contacts}}
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for company to employees, per returned record; an empty page is free.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactslookupcolleagues
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -197,12 +256,22 @@ endpoints:
         linkedin_company_url: {type: string, required: false, example: https://www.linkedin.com/company/stripe/}
         limit: {type: integer, required: false, default: 5000, min: 1, max: 5000}
         offset: {type: integer, required: false, default: 0, min: 0}
-      note: Provide exactly one company identifier. Continue with next_offset while has_more is true. Results have VALID email status. One credit per returned record.
+      note: Provide exactly one company identifier. Continue with next_offset while has_more is true. Results have VALID email status. Charged per returned record.
     test_request:
       body: {domain: treg-nonexistent-20260916.invalid, limit: 1, offset: 0}
     cost:
-      <<: *one_credit_record
-      source_url: https://www.getleads.io/docs/#post-apiv1contactslookupdecision-makers
+      type: per_result
+      value: 0.000855
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: body.limit, default: {value: 5000, source: docs}, max: 5000}}
+      settle: {count: {path: contacts}}
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for company to decision makers, per returned record; an empty page is free.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactslookupdecision-makers
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -229,13 +298,22 @@ endpoints:
         max_per_company: {type: integer, required: false, min: 1, max: 50}
         columns: {type: array, items: {type: string}, required: false}
         where_sql: {type: string, required: false, maxLength: 4000, note: Advanced predicate over the provider's internal columns. Use dedicated filters when possible.}
-      note: Paginate with next_offset while has_more is true. Offset walks are reliable only below 50,000 matches. Run getleadsio.people.search.count first. One credit per returned record.
+      note: Paginate with next_offset while has_more is true. Offset walks are reliable only below 50,000 matches. Run getleadsio.people.search.count first. Charged per returned record.
     test_request:
       body: {filters: {domains: [treg-nonexistent-20260916.invalid], email_status: [VALID]}, limit: 1, offset: 0}
     cost:
-      <<: *one_credit_record
-      source_url: https://www.getleads.io/docs/#post-apiv1contactssearch
-      note: One credit per returned record. Live one-row pages each reported and consumed one credit; a zero-row page reported and consumed zero.
+      type: per_result
+      value: 0.000855
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: body.limit, default: {value: 1000, source: docs}, max: 5000}}
+      settle: {count: {path: contacts}}
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for contact search, per returned record; an empty page is free.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactssearch
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -263,7 +341,7 @@ endpoints:
       currency: USD
       per: 1
       unit: call
-      note: Live request reported credits_used=0 and did not reduce plan credits.
+      note: Counts and filter values are free on the GetLeads.io rate card.
     docs_url: https://www.getleads.io/docs/#post-apiv1contactssearchcount
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -311,13 +389,22 @@ endpoints:
         since: {type: string, required: false, note: YYYY-MM-DD}
         min_confidence: {type: number, required: false, default: 0.5, min: 0, max: 1, example: 0.5}
         region: {type: string, required: false}
-      note: Each request fetches feeds live and can take 15-45 seconds. One credit per returned record.
+      note: Each request fetches feeds live and can take 15-45 seconds. Charged per returned record.
     test_request:
       queryParams: {limit: 1, min_confidence: 0.5}
     cost:
-      <<: *one_credit_record
-      source_url: https://www.getleads.io/docs/#get-apiv1fundingsignals
-      note: One credit per returned record; a live limit=1 request returned one record and reported queryCreditsUsed=1.
+      type: per_result
+      value: 0.000855
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: queryParams.limit, default: {value: 50, source: docs}, max: 200}}
+      settle: {count: {path: data}}
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a returned record, per returned record; an empty page is free. The rate card does not list signal feeds; this is the per-record contact rate.
     docs_url: https://www.getleads.io/docs/#get-apiv1fundingsignals
     verified: '2026-09-16'
     added: '2026-09-16'
@@ -341,14 +428,212 @@ endpoints:
         target: {type: string, required: false}
         has_amount: {type: boolean, required: false}
         min_amount: {type: number, required: false, min: 0}
-      note: Each request fetches feeds live. One credit per returned record.
+      note: Each request fetches feeds live. Charged per returned record.
     test_request:
       queryParams: {limit: 1, min_confidence: 0.5}
     cost:
-      <<: *one_credit_record
-      source_url: https://www.getleads.io/docs/#get-apiv1acquisitionssignals
-      note: One credit per returned record; a live zero-record response reported queryCreditsUsed=0.
+      type: per_result
+      value: 0.000855
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: queryParams.limit, default: {value: 50, source: docs}, max: 200}}
+      settle: {count: {path: data}}
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for a returned record, per returned record; an empty page is free. The rate card does not list signal feeds; this is the per-record contact rate.
     docs_url: https://www.getleads.io/docs/#get-apiv1acquisitionssignals
     verified: '2026-09-16'
     added: '2026-09-16'
     example_response: examples/getleadsio.companies.acquisitions.feed.json
+
+  - id: getleadsio.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /api/v1/companies/lookup
+    strict_query: true
+    expect: {json_path: found, equals: true}
+    name: Look up one company
+    summary: Get one company's name, industry, size, revenue range, headquarters and LinkedIn page from its domain or name.
+    input:
+      queryParams:
+        domain: {type: string, required: false, example: stripe.com}
+        company_name: {type: string, required: false, example: Stripe}
+      note: Send exactly one of domain or company_name. A miss returns found=false.
+    test_request:
+      queryParams: {domain: treg-nonexistent-20261127.invalid}
+    cost:
+      type: per_success
+      value: 0.0009
+      currency: USD
+      per: 1
+      unit: call
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for company enrichment. Charged only when found is true; a miss is free.
+    docs_url: https://www.getleads.io/docs/#get-apiv1companieslookup
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.companies.enrich.json
+
+  - id: getleadsio.companies.search
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /api/v1/companies/search
+    name: Search the company database
+    summary: Search companies by domain, industry, size, revenue, location and other firmographic filters.
+    input:
+      body:
+        filters:
+          type: object
+          required: true
+          example: {domains: [stripe.com]}
+          note: Firmographic filters documented by GetLeads.io. List the accepted filter columns with getleadsio.companies.search.columns.
+        limit: {type: integer, required: false, default: 1000, min: 1, max: 5000}
+        offset: {type: integer, required: false, default: 0, min: 0}
+      note: Paginate with next_offset while has_more is true. Run getleadsio.companies.search.count first. Charged per returned company.
+    test_request:
+      body: {filters: {domains: [treg-nonexistent-20261127.invalid]}, limit: 1, offset: 0}
+    cost:
+      type: per_result
+      value: 0.0009
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: body.limit, default: {value: 1000, source: docs}, max: 5000}}
+      settle: {count: {path: companies}}
+      source: vendor_email
+      source_url: https://www.getleads.io/pricing/
+      checked: '2026-11-27'
+      confidence: documented
+      note: GetLeads.io rate card price for company enrichment, per returned company; an empty page is free.
+    docs_url: https://www.getleads.io/docs/#post-apiv1companiessearch
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.companies.search.json
+
+  - id: getleadsio.companies.search.count
+    capability: companies.search.count
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /api/v1/companies/search/count
+    name: Count matching companies for free
+    summary: Count the companies a search would return without returning or charging for rows.
+    input:
+      body:
+        filters: {type: object, required: true, example: {domains: [stripe.com]}}
+      note: Takes the same filters as getleadsio.companies.search.
+    test_request:
+      body: {filters: {domains: [stripe.com]}}
+    cost: *free_cost
+    docs_url: https://www.getleads.io/docs/#post-apiv1companiessearchcount
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.companies.search.count.json
+
+  - id: getleadsio.companies.search.columns
+    capability: companies.search.filters
+    platform: companies
+    domain: companies
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /api/v1/companies/columns
+    name: List company search columns
+    summary: List the company columns, which ones can be filtered, and how each filter matches.
+    input:
+      note: No parameters.
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    docs_url: https://www.getleads.io/docs/#get-apiv1companiescolumns
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.companies.search.columns.json
+
+  - id: getleadsio.places.search.count
+    capability: places.search.count
+    platform: places
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/v1/places/search/count
+    name: Count US Google Maps businesses for free
+    summary: Count the US Google Maps businesses that match a category, place, rating or contact filter.
+    input:
+      body:
+        categories: {type: array, items: {type: string}, required: false, example: [Coffee shop], note: Exact names from getleadsio.places.categories.}
+        category_contains: {type: string, required: false}
+        business_name: {type: string, required: false}
+        states: {type: array, items: {type: string}, required: false, example: [FL]}
+        cities: {type: array, items: {type: string}, required: false, note: Names from getleadsio.places.cities.}
+        zips: {type: array, items: {type: string}, required: false}
+        rating_min: {type: number, required: false, min: 0, max: 5}
+        review_count_min: {type: integer, required: false, min: 0}
+        has_email: {type: boolean, required: false}
+      note: An empty body answers 400. The answer is total_matching.
+    test_request:
+      body: {categories: [Coffee shop], states: [FL]}
+    cost: *free_cost
+    docs_url: https://www.getleads.io/docs/#post-apiv1placessearchcount
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.places.search.count.json
+
+  - id: getleadsio.places.categories
+    capability: places.categories
+    platform: places
+    domain: search
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /api/v1/places/categories
+    strict_query: true
+    name: Search US Google Maps categories
+    summary: Find the exact Google Maps category names that the places count accepts.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: coffee, note: Whole-word match.}
+        page: {type: integer, required: false, default: 1, min: 1, note: "1,000 names per page."}
+    test_request:
+      queryParams: {q: coffee}
+    cost: *free_cost
+    docs_url: https://www.getleads.io/docs/#get-apiv1placescategories
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.places.categories.json
+
+  - id: getleadsio.places.cities
+    capability: places.areas
+    platform: places
+    domain: search
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /api/v1/places/cities
+    strict_query: true
+    name: List US cities with Google Maps businesses
+    summary: List the city names in one US state that the places count accepts.
+    input:
+      queryParams:
+        state: {type: string, required: true, example: FL, note: Two-letter code or full name.}
+        q: {type: string, required: false, example: Miami}
+        page: {type: integer, required: false, default: 1, min: 1}
+    test_request:
+      queryParams: {state: FL, q: Miami}
+    cost: *free_cost
+    docs_url: https://www.getleads.io/docs/#get-apiv1placescities
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/getleadsio.places.cities.json

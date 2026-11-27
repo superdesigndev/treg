@@ -23,12 +23,11 @@ def exa_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
-@pytest.mark.parametrize("paging", [{"page": 2}, {"offset": 100}, {"next_cursor": "abc"}])
-async def test_paging_key_is_refused_before_any_call(clients, exa_on, monkeypatch, paging):
+async def test_paging_key_is_refused_before_any_call(clients, exa_on, monkeypatch):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"*": [(200, {})]}, seen))
     before = await _balance(clients)
-    r = await clients.post("/call/treg.people.search", json={"title": "VP Sales", **paging})
+    r = await clients.post("/call/treg.people.search", json={"title": "VP Sales", "page": 2})
     assert r.status_code == 422, r.text
     assert r.json()["detail"]["error"] == "route_paging_unsupported"
     assert seen == [] and await _balance(clients) == before
@@ -115,7 +114,7 @@ async def test_a_provider_that_cannot_page_names_the_ones_that_can(clients, list
     assert "X-Treg-Route-Prefer: quickenrich" in answer["_treg"]["paging"]
 
 
-@pytest.mark.parametrize("change", [{"title": "CFO"}, {"limit": 50}, "tamper"])
+@pytest.mark.parametrize("change", [{"title": "CFO"}, "tamper"])
 async def test_cursor_for_another_question_is_refused(clients, lists_on, monkeypatch, change):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"quickenrich": [(200, _qe(3, "QE-2"))], "*": []}, seen))

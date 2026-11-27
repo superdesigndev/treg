@@ -53,7 +53,7 @@ _CLASS_OF_STATUS = {
 
 CALLER_SIDE = frozenset({
     "caller_auth", "caller_balance_or_cap", "caller_policy", "caller_provider_account",
-    "payment_required"})
+    "caller_disconnected", "payment_required"})
 _UPSTREAM_ANSWERS = frozenset({"route_caller_fault", "route_not_found"})
 
 

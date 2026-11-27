@@ -8,6 +8,7 @@ import sys
 import types
 from dataclasses import dataclass, field
 
+import httpx
 import pytest
 
 from treg.application.call import cost
@@ -40,7 +41,7 @@ def row(input_schema: dict | None = None, **keys) -> dict:
 
 
 def call(ep: dict, body: dict | None = None, query: list | None = None, *, status=200, answer=b"{}",
-         headers=None, routed=False):
+         headers=None, routed=False, cached_hit=False, cached_headers=None):
     request = settlement.request_evidence(query or [], json.dumps(body).encode() if body else b"")
     hold, unit, credit, terms = cost.price(ep, Rates(), request)
     basis = cost.basis(Rates(), ep, hold, terminal=False)
@@ -50,7 +51,8 @@ def call(ep: dict, body: dict | None = None, query: list | None = None, *, statu
                          cost_terms=terms, call_id="c", deferred=[] if routed else None,
                          cost_type=(ep.get("cost") or {}).get("type") or "")
     raw = answer if isinstance(answer, bytes) else json.dumps(answer).encode()
-    return hold, decide_settle(mk, status, raw, headers=headers)
+    return hold, decide_settle(mk, status, raw, headers=headers, cached_hit=cached_hit,
+                               cached_headers=cached_headers)
 
 
 # -- paths and predicates ------------------------------------------------------------------------
@@ -511,3 +513,240 @@ def test_treg_s_key_refuses_a_row_whose_credit_or_meter_rate_is_unknown(keys, ra
     assert (refused.value.kind, refused.value.blame, refused.value.status_code) == \
         ("catalog_price_invalid", "treg", 503)
     assert refused.value.detail["endpoint_id"] == "demo.x" and refused.value.detail["rate"] == rate
+
+
+# -- treg's-key bounds and an absent reported figure ---------------------------------------------
+
+def test_platform_max_bounds_treg_key_only_and_must_sit_below_max():
+    rows = {"param": "body.n", "default": {"value": 3, "source": "docs"}, "max": 1000, "platform_max": 100}
+    ep = row({"body": {"n": {"type": "integer"}}}, reserve={"rows": rows})
+    for n in (None, 1, 100):
+        cost.require_rows(ep, settlement.request_evidence([], json.dumps({"n": n}).encode()))
+    over = settlement.request_evidence([], json.dumps({"n": 101}).encode())
+    cost.require_request(ep, over)                                      # every tier: up to max
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_rows(ep, over)                                     # treg's key: up to platform_max
+    assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "body.n"
+    assert ep["reserve"]["rows"]["platform_max"] == 100
+    for bad in ({**rows, "platform_max": 1000}, {**rows, "platform_max": 2},
+                {"default": {"value": 3, "source": "legacy"}, "max": 10, "platform_max": 5}):
+        with pytest.raises(ValueError):
+            row(reserve={"rows": bad})
+
+
+QUERY_ROWS = {"param": "query.limit", "default": {"value": 30, "source": "docs"}, "max": 1000, "platform_max": 100}
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"limit": 1000}', b'{"limit": 5, "location": "US"}', b'{"limit": null}',
+    b"limit=1000", b"location=US&limit=5", b"limit[]=5",
+])
+def test_treg_key_refuses_a_query_rows_parameter_sent_in_the_body(raw):
+    ep = row({"queryParams": {"limit": {"type": "integer"}, "location": {"type": "string"}}},
+             reserve={"rows": QUERY_ROWS})
+    request = settlement.request_evidence([("limit", "5")], raw)
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_rows(ep, request, raw)
+    assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "body.limit"
+    assert "query parameter limit" in exc.value.detail["message"]
+
+
+@pytest.mark.parametrize("raw", [
+    b"", b"{}", b'{"location": "US", "active_only": true}', b'{"filters": {"limit": 1000}}',
+    b'[{"limit": 1000}]', b"location=US", b"not a form", "limit=5".encode("utf-16"),
+])
+def test_a_body_without_the_query_rows_name_passes(raw):
+    ep = row({"queryParams": {"limit": {"type": "integer"}}}, reserve={"rows": QUERY_ROWS})
+    cost.require_rows(ep, settlement.request_evidence([("limit", "5")], raw), raw)
+    cost.require_rows(ep, settlement.request_evidence([], raw), raw)
+
+
+def test_a_body_rows_parameter_may_be_sent_in_the_body():
+    rows = {"param": "body.limit", "default": {"value": 3, "source": "docs"}, "max": 1000, "platform_max": 100}
+    ep = row({"body": {"limit": {"type": "integer"}}}, reserve={"rows": rows})
+    cost.require_rows(ep, settlement.request_evidence([], b'{"limit": 5}'), b'{"limit": 5}')
+
+
+def test_treg_key_refuses_a_plugin_request_priced_above_the_max(monkeypatch):
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.hold = lambda request: request.body["n"]
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = row(price={"value": "1", "currency": "credit"}, reserve={"plugin": "demo.hold", "max": "5"})
+    cost.require_plugin_max(ep, Rates(), settlement.request_evidence([], b'{"n": 5}'))
+    with pytest.raises(ResolutionFailed) as exc:
+        cost.require_plugin_max(ep, Rates(), settlement.request_evidence([], b'{"n": 6}'))
+    assert exc.value.status_code == 400 and exc.value.detail["error"] == "catalog_parameter_invalid"
+    cost.require_plugin_max(row(), Rates(), settlement.request_evidence([], b"{}"))  # no plugin: no check
+
+
+@pytest.mark.parametrize("reported,answer,headers,actual", [
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {}, {}, 0),
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {}, {"x-cost": "3"}, 60000),
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {}, {"x-cost": "bad"}, 20000),  # unreadable: the hold
+    ({"header": "x-cost", "unit": "credit"}, {}, {}, 20000),            # without missing: the hold
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {}, None, 0),
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {"used": None}, None, 0),
+])
+def test_reported_missing_zero_settles_an_absent_figure_at_zero(reported, answer, headers, actual):
+    ep = row(settle={"reported": reported}, reserve={"rows": {"param": "body.n", "default": {"value": 1, "source": "docs"}, "max": 5}},
+             input_schema={"body": {"n": {"type": "integer"}}})
+    _, decision = call(ep, answer=answer, headers=headers)
+    assert decision.actual_micro == actual
+
+
+@pytest.mark.parametrize("reported,answer,actual", [
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {"items": [1]}, 20000),  # unknown: the hold
+    ({"header": "x-cost", "unit": "credit", "missing": 0}, {"items": []}, 0),       # a free miss stays free
+    ({"header": "x-cost", "unit": "credit"}, {"items": [1]}, 20000),
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {"used": 3}, 60000),  # the body is stored
+    ({"path": "response.used", "unit": "credit", "missing": 0}, {}, 0),
+])
+def test_an_archive_hit_has_no_header_figure_so_missing_zero_does_not_apply(reported, answer, actual):
+    ep = row(settle={"reported": reported}, miss={"when": {"path": "response.items", "op": "empty"}})
+    served = {"x-cost": "3", "x-treg-cache": "hit"}  # whatever headers a hit carries, none is the vendor's
+    assert call(ep, answer=answer, headers=served, cached_hit=True)[1].actual_micro == actual
+    rejected = call(ep, status=400, answer=answer, headers=served, cached_hit=True)[1]
+    assert rejected.billable is ("path" in reported and "used" in answer)
+    assert call(ep, status=400, answer=answer, headers=served)[1].billable is ("used" in answer or "header" in reported)
+
+
+@pytest.mark.parametrize("stored,actual", [
+    ({"x-cost": "3"}, 60000),          # the stored figure, read as the live answer read it
+    ({"x-cost": None}, 0),             # stored as absent: missing: 0 applies, as it did live
+    ({"x-cost": "bad"}, 20000),        # unreadable: the outcome, then the hold
+    ({"x-other": "3"}, 20000),         # stored for another header: unknown, the hold
+    (None, 20000),                     # nothing stored: unknown, the hold
+])
+def test_an_archive_hit_settles_from_the_header_stored_with_its_answer(stored, actual):
+    ep = row(settle={"reported": {"header": "X-Cost", "unit": "credit", "missing": 0}})
+    live = httpx.Headers({"x-cost": "9"})
+    hit = call(ep, answer={"items": [1]}, headers=live, cached_hit=True, cached_headers=stored)[1]
+    assert hit.actual_micro == actual
+    assert call(ep, answer={"items": [1]}, headers=live, cached_headers={"x-cost": "3"})[1].actual_micro \
+        == 180000                       # a live answer reads its own header, never a stored one
+
+
+# -- a spend cap the caller names, a fixed base, and a bill near the hold ------------------------
+
+CAP = {"queryParams": {"cap": {"type": "number"}}}
+
+
+def capped(**keys) -> dict:
+    keys.setdefault("price", {"value": "0.001", "base": "0.0005"})
+    keys.setdefault("reserve", {"money": {"param": "query.cap", "max": "1"}})
+    keys.setdefault("settle", {"count": {"path": "response"}})
+    return row(CAP, **keys)
+
+
+def test_a_bare_top_level_array_is_counted():
+    ep = row(price={"value": "0.001"}, reserve={"rows": {"param": "body.n", "default": {"value": 5, "source": "docs"},
+                                                        "max": 5}},
+             settle={"count": {"path": "response"}})
+    assert call(ep, answer=[{"a": 1}, {"a": 2}])[1].actual_micro == 2000
+    assert call(ep, answer=[])[1].actual_micro == 0
+    assert call(ep, answer={"items": [1]})[1].actual_micro == 5000      # not a list: the hold
+
+
+def test_a_money_hold_is_the_request_s_spend_cap():
+    ep = capped()
+    assert call(ep, query=[("cap", "0.05")])[0] == 50000
+    assert call(ep, query=[("cap", "0.0500001")])[0] == 50001             # rounded up
+    for bad in ([], [("cap", "0")], [("cap", "1.5")], [("cap", "1e-2")], [("cap", "0.1"), ("cap", "0.2")]):
+        assert call(ep, query=bad)[0] == 1000000                          # unreadable: the row's max
+    assert ep["cost"]["type"] == "per_result" and ep["cost"]["call_fee"] == 0.0005
+
+
+def test_a_base_is_billed_on_top_of_the_counted_units_and_on_a_charged_miss():
+    ep = capped(miss={"when": {"path": "response", "op": "empty"}}, bill={"miss": "charged"})
+    free = capped(miss={"when": {"path": "response", "op": "empty"}})
+    assert call(ep, query=[("cap", "0.05")], answer=[1, 2, 3])[1].actual_micro == 3500
+    assert call(ep, query=[("cap", "0.05")], answer=[])[1].actual_micro == 500
+    assert call(free, query=[("cap", "0.05")], answer=[])[1].actual_micro == 0
+    assert call(ep, query=[("cap", "0.05")], answer=b"")[1].actual_micro == 50000   # no evidence: the hold
+    units = capped(miss={"when": {"path": "response", "op": "empty"}}, bill={"miss": 1})
+    assert call(units, query=[("cap", "0.05")], answer=[])[1].actual_micro == 1500  # a fixed-unit miss carries the base
+
+
+def test_a_bill_within_the_declared_units_of_the_hold_is_the_hold():
+    ep = capped(settle={"count": {"path": "response"}, "hold_within_units": 2})
+    query = [("cap", "0.01")]                                             # hold 10,000
+    assert call(ep, query=query, answer=[1] * 7)[1].actual_micro == 7500
+    assert call(ep, query=query, answer=[1] * 8)[1].actual_micro == 10000  # 8,500 + 2 units reaches it
+    assert call(ep, query=query, answer=[1] * 30)[1].actual_micro == 10000  # never above the hold
+    assert call(capped(settle={"count": {"path": "response"}, "hold_within_units": 20}),
+                query=query, answer=[])[1].actual_micro == 500             # no row: the base, not the hold
+    plain = capped()
+    assert call(plain, query=query, answer=[1] * 8)[1].actual_micro == 8500
+    with pytest.raises(ValueError, match="hold_within_units belongs beside"):
+        row(settle={"reported": {"path": "response.cost", "unit": "usd"}, "hold_within_units": 2})
+
+
+def test_a_settle_plugin_may_bill_the_base_more_than_once(monkeypatch):
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.runs = lambda request, answer: {"units": len(answer.body), "base": request.body["runs"]}
+    module.bad = lambda request, answer: {"units": 1}
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = capped(settle={"plugin": "demo.runs", "hold_within_units": 2}, bill={"miss": "charged"})
+    query = [("cap", "0.01")]
+    assert call(ep, {"runs": 3}, query=query, answer=[1, 2])[1].actual_micro == 3500
+    assert call(ep, {"runs": 16}, query=query, answer=[])[1].actual_micro == 8000
+    assert call(ep, {"runs": 17}, query=query, answer=[])[1].actual_micro == 8500    # no row: never the hold
+    assert call(ep, {"runs": 16}, query=query, answer=[1])[1].actual_micro == 10000  # 8,500 + 2 units
+    bad = capped(settle={"plugin": "demo.bad"})
+    assert call(bad, {"runs": 1}, query=query, answer=[1])[1].actual_micro == 10000  # not a quantity
+    with pytest.raises(ValueError, match="price.base needs a unit price"):
+        row(price={"rates": {"r": "1"}, "base": "1", "currency": "USD"},
+            reserve={"plugin": "demo.runs", "max": "1"})
+
+
+def test_treg_key_refuses_a_money_row_without_a_spend_cap_from_its_floor_to_its_max():
+    ep = capped(settle={"count": {"path": "response"}, "hold_within_units": 2})
+    assert cost.money_floor_micro(ep, Rates()) == 3500                   # the base and three units
+    assert cost.money_floor_micro(capped(), Rates()) == 1
+    cost.require_money(ep, Rates(), settlement.request_evidence([("cap", "0.0035")], b""))
+    for bad in ([], [("cap", "0.0034")], [("cap", "2")], [("cap", "-1")]):
+        with pytest.raises(ResolutionFailed) as exc:
+            cost.require_money(ep, Rates(), settlement.request_evidence(bad, b""))
+        assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "query.cap"
+
+
+def test_a_platform_check_refuses_with_its_reason_and_fails_closed(monkeypatch):
+    from treg.application.call import resolve as call_resolution
+    from treg.application.call.types import ResolutionFailed
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.check = lambda request: None if request.body.get("ok") and request.query.get("q") == "1" \
+        else {"message": "only ok", "parameter": "body.ok"}
+    module.boom = lambda request: 1 / 0
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = {"id": "demo.x", "provider": "demo", "method": "POST", "platform_check": {"plugin": "demo.check"}}
+    query = call_resolution.QueryValues((("q", "1"),))
+    call_resolution._enforce_platform_check(ep, b'{"ok": true}', query)
+    with pytest.raises(ResolutionFailed) as exc:
+        call_resolution._enforce_platform_check(ep, b'{"ok": false}', query)
+    assert exc.value.status_code == 400 and exc.value.detail["parameter"] == "body.ok"
+    assert exc.value.detail["message"] == "only ok"
+    with pytest.raises(ResolutionFailed):                                   # a body that is not an object
+        call_resolution._enforce_platform_check(ep, b'[1]', query)
+    with pytest.raises(ResolutionFailed) as exc:                            # a raising check never serves
+        call_resolution._enforce_platform_check({**ep, "platform_check": {"plugin": "demo.boom"}},
+                                                b'{"ok": true}', query)
+    assert "ok" not in exc.value.detail["message"]
+    call_resolution._enforce_platform_check({**ep, "platform_check": None}, b'[1]', query)
+    with pytest.raises(ValueError, match="plugin"):
+        row(platform_check={"plugin": "nodot"})
+
+
+def test_platform_query_declared_takes_only_the_declared_names():
+    from treg.application.call import resolve as call_resolution
+    from treg.application.call.types import ResolutionFailed
+    ep = {"id": "demo.poll", "provider": "demo", "platform_query": "declared",
+          "input": {"pathParams": {"id": {"type": "string"}}, "queryParams": {"wait": {"type": "integer"}}}}
+    call_resolution._enforce_platform_query(ep, call_resolution.QueryValues((("id", "1"), ("wait", "5"))))
+    for name in ("token", "token[]", "Wait"):
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_query(ep, call_resolution.QueryValues(((name, "x"),)))
+        assert exc.value.detail["parameter"] == "queryParams" and "x" not in exc.value.detail["message"]
+    call_resolution._enforce_platform_query({**ep, "platform_query": None},
+                                            call_resolution.QueryValues((("token", "x"),)))
+    with pytest.raises(ValueError):
+        row(platform_query="all")

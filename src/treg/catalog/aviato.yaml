@@ -559,6 +559,67 @@ endpoints:
       note: "8 credits on a hit, as for a work email; a personal miss answered 200 with no emails and was not charged."
     docs_url: https://docs.data.aviato.co/api-reference/person/get-email
 
+  - id: aviato.people.audience.email-hash
+    domain: contacts
+    capability: people.audience.email_hash
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/ad-email-hashes
+    name: "Get a person's email hashes for ad platforms"
+    summary: "A person's emails as ready-to-upload hashes for LinkedIn, Meta, Google and 23 more ad platforms, from a LinkedIn URL or another identifier"
+    input:
+      queryParams:
+        platforms: {type: string, required: false, default: all, note: "comma-separated: google, meta, linkedin, x, reddit, microsoft, vibe, tiktok, snapchat, pinterest, amazon, nextdoor, criteo, taboola, liveramp, yahoo, spotify, viant, mntn, zeta, adobe, roku, quora, adroll, stackadapt, uid2, or all. Aliases: facebook and instagram mean meta, twitter means x, bing means microsoft", example: "linkedin,meta,google"}
+        linkedinURL: {type: string, required: false, note: "public profile URL (linkedin.com/in/)", example: "https://www.linkedin.com/in/satyanadella"}
+        id: {type: string, required: false, note: "Aviato person id"}
+        linkedinID: {type: string, required: false}
+        linkedinEntityId: {type: string, required: false}
+        twitterID: {type: string, required: false}
+        crunchbaseID: {type: string, required: false}
+        angelListID: {type: string, required: false}
+        signalNfxID: {type: string, required: false}
+        polyworkID: {type: string, required: false}
+        email: {type: string, required: false}
+      note: "supply one person identifier. Returns hashedEmails: one list of hashes per requested platform, each already normalized and hashed the way that platform's audience upload wants it (SHA-256 lowercase hex; adroll MD5, stackadapt SHA-1, uid2 base64). The emails themselves are never returned. One charge per lookup that returns at least one hash, however many platforms; a lookup with no hashes is free."
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", platforms: "linkedin,meta,google"}
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/aviato.people.audience.email-hash.json
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "5 credits per lookup that returns at least one hash, however many platforms are asked for. A lookup with no hashes is free."}
+    provenance: {source: observed, checked: '2026-11-25', confidence: verified}
+    miss:
+      means: "Aviato knows no email for this person, so every platform list is empty; free"
+      when:
+        - {any: [{path: response.hashedEmails.google, op: empty}, {path: response.hashedEmails.google, op: absent}]}
+        - {any: [{path: response.hashedEmails.meta, op: empty}, {path: response.hashedEmails.meta, op: absent}]}
+        - {any: [{path: response.hashedEmails.linkedin, op: empty}, {path: response.hashedEmails.linkedin, op: absent}]}
+        - {any: [{path: response.hashedEmails.x, op: empty}, {path: response.hashedEmails.x, op: absent}]}
+        - {any: [{path: response.hashedEmails.reddit, op: empty}, {path: response.hashedEmails.reddit, op: absent}]}
+        - {any: [{path: response.hashedEmails.microsoft, op: empty}, {path: response.hashedEmails.microsoft, op: absent}]}
+        - {any: [{path: response.hashedEmails.vibe, op: empty}, {path: response.hashedEmails.vibe, op: absent}]}
+        - {any: [{path: response.hashedEmails.tiktok, op: empty}, {path: response.hashedEmails.tiktok, op: absent}]}
+        - {any: [{path: response.hashedEmails.snapchat, op: empty}, {path: response.hashedEmails.snapchat, op: absent}]}
+        - {any: [{path: response.hashedEmails.pinterest, op: empty}, {path: response.hashedEmails.pinterest, op: absent}]}
+        - {any: [{path: response.hashedEmails.amazon, op: empty}, {path: response.hashedEmails.amazon, op: absent}]}
+        - {any: [{path: response.hashedEmails.nextdoor, op: empty}, {path: response.hashedEmails.nextdoor, op: absent}]}
+        - {any: [{path: response.hashedEmails.criteo, op: empty}, {path: response.hashedEmails.criteo, op: absent}]}
+        - {any: [{path: response.hashedEmails.taboola, op: empty}, {path: response.hashedEmails.taboola, op: absent}]}
+        - {any: [{path: response.hashedEmails.liveramp, op: empty}, {path: response.hashedEmails.liveramp, op: absent}]}
+        - {any: [{path: response.hashedEmails.yahoo, op: empty}, {path: response.hashedEmails.yahoo, op: absent}]}
+        - {any: [{path: response.hashedEmails.spotify, op: empty}, {path: response.hashedEmails.spotify, op: absent}]}
+        - {any: [{path: response.hashedEmails.viant, op: empty}, {path: response.hashedEmails.viant, op: absent}]}
+        - {any: [{path: response.hashedEmails.mntn, op: empty}, {path: response.hashedEmails.mntn, op: absent}]}
+        - {any: [{path: response.hashedEmails.zeta, op: empty}, {path: response.hashedEmails.zeta, op: absent}]}
+        - {any: [{path: response.hashedEmails.adobe, op: empty}, {path: response.hashedEmails.adobe, op: absent}]}
+        - {any: [{path: response.hashedEmails.roku, op: empty}, {path: response.hashedEmails.roku, op: absent}]}
+        - {any: [{path: response.hashedEmails.quora, op: empty}, {path: response.hashedEmails.quora, op: absent}]}
+        - {any: [{path: response.hashedEmails.adroll, op: empty}, {path: response.hashedEmails.adroll, op: absent}]}
+        - {any: [{path: response.hashedEmails.stackadapt, op: empty}, {path: response.hashedEmails.stackadapt, op: absent}]}
+        - {any: [{path: response.hashedEmails.uid2, op: empty}, {path: response.hashedEmails.uid2, op: absent}]}
+    docs_url: https://docs.data.aviato.co/api-reference/person/get-ad-platform-email-hashes
+
   - id: aviato.people.phone.find
     domain: contacts
     capability: people.phone.find

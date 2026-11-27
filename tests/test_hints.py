@@ -41,6 +41,7 @@ def test_sampling_boundaries_stability_and_salt(monkeypatch, kind, field):
 async def test_header_before_stream_without_changing_response(
     clients, monkeypatch, catalog, status, headers, sample, expected,
 ):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.routers import call
     from treg.application.call.types import UpstreamResponse
 
@@ -120,11 +121,13 @@ async def test_review_budget_caps_a_team_per_hour_and_every_invitation_is_an_eve
     assert [p['kind'] for p, _ in sent] == ['review', 'review']
     assert all(p['client'] == 'claude-code' and p['endpoint_id'] == 'example.search' and p['call_id']
                for p, _ in sent)
+    assert all(p['budget'] == 'main' and p['credited_endpoint'] == 'example.search' for p, _ in sent)
     assert all(kw['groups']['team'] for _, kw in sent)
     assert not [a for a, _ in events if a[1] == 'mcp_hint_attached']
 
 
 async def test_budget_is_per_team(clients, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import invite
     from treg.infra import kv
 
@@ -158,6 +161,7 @@ async def test_unavailable_store_withholds_the_review_but_not_the_answer(clients
 
 
 async def test_slow_counter_does_not_hold_the_response_for_the_money_timeout(clients, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.infra import kv
 
     stopped = asyncio.Event()
@@ -290,6 +294,7 @@ async def test_mark_hint_rides_a_real_routed_call(clients, enrichment_on, monkey
 
 async def test_a_client_that_does_not_say_never_gets_a_mark_and_spends_no_budget(clients, monkeypatch):
     """Released CLIs drop a mark in silence: they get the feedback hint instead."""
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import invite
 
     _platform_call(monkeypatch)
@@ -300,12 +305,13 @@ async def test_a_client_that_does_not_say_never_gets_a_mark_and_spends_no_budget
     assert shown == 'mark'
     only_review = await clients.get('/call/example.search', headers={'X-Treg-Hints': 'review'})
     assert only_review.headers.get('X-Treg-Hint') is None
-    assert invite.accepted_kinds(None) == invite.LEGACY_KINDS
+    assert invite.accepted_kinds(None, "claude-code") == invite.LEGACY_KINDS
     assert invite.accepted_kinds(' Review , MARK ,') == frozenset({'review', 'mark'})
 
 
 @pytest.mark.parametrize('kind', ['review', 'feedback'])
 async def test_review_and_feedback_carry_server_words(clients, monkeypatch, kind):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     _platform_call(monkeypatch)
     for field, value in {'review_sample_rate': int(kind == 'review'), 'mark_hint_rate': 0,
                          'feedback_hint_rate': 1}.items():
@@ -329,6 +335,7 @@ async def test_review_and_feedback_carry_server_words(clients, monkeypatch, kind
 
 
 async def test_review_is_invited_on_a_real_routed_call(clients, enrichment_on, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import service as call_service
     from test_routing import ROUTED, _relay_by_provider
 
@@ -371,3 +378,28 @@ async def test_an_upstream_cannot_speak_as_a_treg_invitation(clients, monkeypatc
         assert name not in response.headers
     assert response.headers['X-Upstream-Own'] == 'kept'
     assert not [a for a, _ in events if a[1] == 'hint_attached']
+
+
+async def test_an_unnamed_caller_is_never_asked_for_a_review_and_spends_no_budget(clients, monkeypatch):
+    """A script calling the API with no `X-Treg-Client` and no `X-Treg-Hints` has no agent reading
+    the hint: it gets no review invitation, and the team's budget stays for its agents' calls. A
+    caller that declares it shows reviews is still asked."""
+    from treg.application.call import invite
+
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
+    monkeypatch.setattr(get_settings(), 'review_budget_per_hour', 1)
+    assert invite.accepted_kinds(None) == invite.UNNAMED_KINDS
+    assert invite.accepted_kinds(None, 'claude-code') == invite.LEGACY_KINDS
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+    named = await clients.get('/call/example.search', headers={'X-Treg-Client': 'claude-code'})
+    assert named.headers.get('X-Treg-Hint') == 'review'
+    declared = await clients.get('/call/example.search', headers={'X-Treg-Hints': 'review'})
+    assert declared.headers.get('X-Treg-Hint') is None  # the budget of one went to the named call
+
+
+async def test_an_unnamed_caller_still_gets_the_feedback_hint(clients, monkeypatch):
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(get_settings(), 'review_sample_rate', 1)
+    monkeypatch.setattr(get_settings(), 'feedback_hint_rate', 1)
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'feedback'

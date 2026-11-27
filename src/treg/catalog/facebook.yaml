@@ -24,6 +24,8 @@ source:
 
 limits: "per-app and per-page business-use-case limits"
 pricing_url: https://developers.facebook.com/docs/graph-api/overview/rate-limiting
+defaults:
+  echoes_credential: true  # Graph writes the request's access_token into paging.next and paging.previous
 endpoints:
   - id: facebook.facebook.page.posts
     added: '2026-07-28'

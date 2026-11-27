@@ -47,6 +47,7 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "trial_allowance_reached": ("caller", "caller_balance_or_cap"),
     "platform_cap_unavailable": ("treg", "treg_capacity"),
     "money_admission_timeout": ("treg", "treg_capacity"),
+    "money_statement_timeout": ("treg", "treg_capacity"),
     "catalog_price_invalid": ("treg", "treg_error"),
     "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
     "tag_budget_unavailable": ("treg", "treg_capacity"),
@@ -97,6 +98,9 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "method_mismatch": ("caller", "caller_input"),
     "db_pool": ("treg", "treg_capacity"),
     "unexpected_exception": ("treg", "treg_error"),
+    # The caller closed its connection before treg had read the request body: nothing was sent
+    # upstream and no hold exists yet; the 499 reaches no one.
+    "client_disconnected": ("caller", "caller_disconnected"),
     "org_concurrency_limit": ("caller", "treg_policy"),
     "org_rate_limit": ("caller", "treg_policy"),
     "org_traffic_paused": ("caller", "treg_policy"),
@@ -367,6 +371,8 @@ class CallContext:
     tool_name: str | None = None
     endpoint_id: str | None = None
     replay_of: str | None = None
+    # Which review budget a review invitation took (`invite.invitation`): "main" or "extra".
+    review_budget: str | None = None
     provider: str | None = None
     credential_tier: str | None = None
     refused_by: str | None = None

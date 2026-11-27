@@ -105,6 +105,10 @@ _TABLE: list[Signature] = [
     # CoinGecko: a lapsed paid plan is a 401 "API subscription deactivated. Please reactivate your
     # account via ..."; a wrong key is a 401 without this phrase.
     Signature("coingecko", 401, r"api subscription deactivated", "balance", tripwire=True),
+    # Marketstack: a deactivated account is a 401 naming `inactive_user` ("Permission denied - User
+    # not active"); a wrong key is `invalid_access_key`, and on treg's key the injected `access_key`
+    # replaces any the caller sends.
+    Signature("marketstack", 401, r"inactive_user", "balance", tripwire=True),
     # Dropcontact: an empty credit pool is a 403 {"error": true, "reason": "You submitted 1 valid
     # items but only have 0 credits left"}. A batch larger than a non-zero balance is not empty.
     Signature("dropcontact", 403, r"only have 0 credits left", "balance", tripwire=True),
@@ -114,6 +118,13 @@ _TABLE: list[Signature] = [
     # OrbiSearch: a balance below one call's price is a 403 {"detail": "Insufficient credits: 0
     # available, 0.2 needed"}.
     Signature("orbisearch", 403, r"insufficient credits: [\d.]+ available", "balance"),
+    # Scrubby: an empty credit pool is a 403 {"detail": "Insufficient credits."}.
+    Signature("scrubby", 403, r"insufficient credits", "balance"),
+    # OpenRouter: an account with an unpaid balance is a 403 whose top-level message says it "has an
+    # overdue balance". Its other 403s carry the caller's own text (a moderated model's
+    # `metadata.flagged_input`, a provider's `metadata.raw`), so only that message is read.
+    Signature("openrouter", 403, r'^\s*\{\s*"error"\s*:\s*\{[^{}]*"message"\s*:\s*"[^"]*overdue balance',
+              "balance"),
     Signature("predictleads", 402, r"exceeded the monthly request limit", "quota", tripwire=True),
     # PDL meters operations separately: person_identify can run out while enrich still works.
     Signature("pdl", 402, r"hit your account maximum for", "quota", tripwire=True),
@@ -176,14 +187,29 @@ _TABLE: list[Signature] = [
     # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
     # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
     Signature("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
+    # MiniMax answers HTTP 200 with its own code in `base_resp`: 1008 is an empty account balance on
+    # every model; 2013 (invalid parameters) is the caller's.
+    Signature("minimax", 200, r'"base_resp"\s*:\s*\{[^{}]*"status_code"\s*:\s*1008\b', "balance"),
+    # DataForSEO: an account pending verification answers every endpoint with a 403 whose envelope
+    # `status_code` is 40104 ("Please verify your account before using the API") until a person
+    # verifies it in DataForSEO's dashboard.
+    Signature("dataforseo", 403, r'"status_code"\s*:\s*40104\b', "balance"),
     # DataForSEO answers HTTP 200 and puts its own code in `status_code`, on the envelope or on a
     # task: 40200 payment required, 40203 the account's cost limit (a daily or per-minute money
     # ceiling set in its dashboard), 40210 insufficient funds (docs, appendix/errors). All three are
     # the whole account, so the lock is provider-wide; the probe lifts it on the first 2xx.
     Signature("dataforseo", 200, r'"status_code"\s*:\s*402(?:00|03|10)\b', "balance"),
+    # Serpstat answers every method as HTTP 200 JSON-RPC. An exhausted credit pool is
+    # {"id": "...", "error": {"code": 32012, "message": "Limits exceeded", "data": null}}.
+    # The code is account-wide, so the lock is provider-wide; a team's own key is unchanged.
+    Signature("serpstat", 200, r'"code"\s*:\s*32012\b', "balance"),
     # Apify: the account's monthly spend ceiling blocks every Actor run, a 403 {"error": {"type":
     # "platform-feature-disabled", "message": "You've reached your monthly usage limit of $N ..."}}.
     Signature("apify", 403, r"reached your monthly usage limit", "balance", tripwire=True),
+    # Apify: a revoked or expired token is a 401 {"error": {"type": "user-or-token-not-found"}}, the
+    # same answer a wrong token gets. Apify also reads a `token` query parameter, and every Apify row
+    # refuses one on treg's key, so only treg's token can reach Apify there.
+    Signature("apify", 401, r'"type"\s*:\s*"user-or-token-not-found"', "balance"),
     # Tomba: a route's spent allowance is a 429 "You have reached your usage limit", with no Retry-After.
     Signature("tomba", 429, r"reached your usage limit", "quota", tripwire=True),
     # Fish Audio: too many requests in flight is a 429 "exceeded your current concurrency limit", no Retry-After.

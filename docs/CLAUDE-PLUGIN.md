@@ -17,6 +17,16 @@ ship the whole repository. Never edit a generated `SKILL.md`; change `src/treg/w
 run `uv run python scripts/build_plugin.py` (`--check` is also a test). Bump `version` in
 `pyproject.toml` and every manifest together (`test_plugin_version_tracks_the_package`).
 
+## The Claude plugin directory
+
+Anthropic's directory gets its own folder, `plugins/treg-claude/`, which no marketplace lists. It
+declares the directory connector `https://treg.to/mcp/v2` (the same URL as the connector listing)
+and ships `CLAUDE_DIRECTORY_SKILL` from `scripts/build_plugin.py`: only the six connector tools, a
+budget the human agrees before paid calls, approval before write calls, and no CLI, installer,
+media generation or instructions fetched from treg.to. The directory reads one fixed path per
+submission, so a change of folder is a new submission. `claude plugin validate plugins/treg-claude`
+runs part of the directory's checks; its policy review runs only after submission.
+
 ## Listing runbook
 
 Self-serve listings first, review queues last.
@@ -28,7 +38,7 @@ Self-serve listings first, review queues last.
 ```bash
 clawhub skill publish "$PWD/skills/treg" \
   --slug treg --name "treg" --version <version> --changelog "..." \
-  --topics "api,seo,serp,backlinks,enrichment,scraping,agent-tools,web-search" \
+  --topics "api,seo,enrichment,scraping,image-generation" \
   --source-repo superdesigndev/treg --source-commit "$(git rev-parse HEAD)" \
   --source-ref main --source-path skills/treg \
   --dry-run                       # drop --dry-run to publish for real
@@ -43,7 +53,8 @@ clawhub scan --slug treg --version <version> --update    # completes publication
 - **Pass an absolute path.** Paths resolve against `--workdir` + `--dir` (default `skills`), so a
   relative `./skills/treg` looks for `skills/skills/treg`.
 - Fill the `--source-*` flags: they are the only provenance signal on the listing.
-- `--categories` takes slugs the public API does not enumerate; use free-form `--topics`.
+- `--categories` takes slugs the public API does not enumerate; use free-form `--topics`. ClawHub
+  accepts at most five topics and refuses the whole publish (HTTP 400) past that.
 - Moderation is what hides a skill (only `isMalwareBlocked` hard-blocks). The `clawscan` rating is
   an advisory on the listing and does not change visibility.
 - ClawHub forces MIT-0 on every skill. Licensing the `SKILL.md` prose permissively is deliberate;

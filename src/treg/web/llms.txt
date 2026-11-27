@@ -89,7 +89,10 @@ tool is `GET {BASE}/call/<id>?key=value` with the header `X-Treg-Token: <token>`
 tools is `{BASE}/call/<tool-name>/<path>`, or its upstream URL behind the prefix:
 `{BASE}/call/https://api.stripe.com/v1/charges`. A team token (an agent token or a dashboard API
 key) carries its team; with a personal sign-in token, also send `X-Treg-Org: <team-slug>`. Method,
-path, query and body reach the provider unchanged, and its answer comes back verbatim.
+path, query and body reach the provider unchanged, and its answer comes back verbatim, save one
+thing in a Meta (Graph API) answer: the token treg injected reads `access_token=***` in its
+`paging.next` and `paging.previous` links, so ask for the next page through treg with its cursor,
+never by following such a link.
 A client already written against a provider can keep its paths: `{BASE}/call/<provider>/<path>`,
 with the path relative to the provider's base URL (`{BASE}/call/dataforseo/serp/google/organic/live/advanced`
 for `https://api.dataforseo.com/v3/serp/...`), runs the catalog tool on that path exactly as its id
@@ -141,6 +144,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   profile (`social_url`) and the `phone_number`. On an email find where you sent a domain, also read `_treg.domain_match` —
   a LinkedIn-only provider often returns a former employer. `X-Treg-Route-Domain-Match: strict`
   keeps asking providers past an off-domain hit, each attempt at its own price.
+- For an ad audience upload, `X-Treg-Route-Ad-Hashes: true` on `treg.people.email.find` adds the
+  hit's email as LinkedIn, Meta and Google hashes in `_treg.ad_hashes`, at no extra charge.
 - Never ask for a provider key or paste one into code. Register it with treg once, and every agent
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.

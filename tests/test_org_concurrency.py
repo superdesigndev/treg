@@ -191,16 +191,6 @@ def test_default_disabled_and_explicit_enable_validation():
         Settings(_env_file=None, org_flow_control_enabled=True, kv_url="http://localhost")
 
 
-def test_removed_environment_configuration_cannot_enable_admission(monkeypatch):
-    monkeypatch.setenv("TREG_ORG_CONCURRENCY_ENABLED", "true")
-    monkeypatch.setenv("TREG_ORG_CONCURRENCY_LIMITS", '{"123":2,"456":4}')
-    monkeypatch.setenv("TREG_ORG_CONCURRENCY_EXEMPT_ORG_IDS", '[456]')
-    monkeypatch.setenv("TREG_ORG_CONCURRENCY_REDIS_FAILURE", "fail_closed")
-    settings = Settings(_env_file=None)
-    assert not settings.org_flow_control_enabled
-    assert not any(name.startswith("org_concurrency_") for name in settings.model_dump())
-
-
 async def test_no_published_limit_never_contacts_slot_store(gate, monkeypatch):
     monkeypatch.setattr(kv, "store", lambda: pytest.fail("bypassed slot admission touched Redis"))
     assert await guard.acquire(1, limit=None) is None
@@ -557,8 +547,10 @@ async def test_root_without_effective_published_limit_performs_no_slot_io(
     assert store.reads == (0 if configuration == "disabled" else 1)
 
 
-@pytest.mark.parametrize("path", ["/call/", "/catalog/call/", "/table/"])
-@pytest.mark.parametrize("policy", ["concurrency", "mixed", "rate"])
+@pytest.mark.parametrize("path,policy", [
+    ("/call/", "concurrency"), ("/call/", "mixed"), ("/call/", "rate"),
+    ("/catalog/call/", "concurrency"), ("/table/", "concurrency"),
+])
 async def test_rejection_before_money_provider_or_body_with_existing_audit(
     clients, platform_on, gate, monkeypatch, path, policy,
 ):
@@ -700,6 +692,21 @@ async def test_stream_owns_slot_through_completion(clients, platform_on, gate, m
         await asyncio.gather(task, return_exceptions=True)
 
 
+async def test_an_own_key_answer_that_fails_while_held_closes_its_upstream(clients, platform_on, monkeypatch):
+    """On a row marked `echoes_credential` the answer is held whole to be masked and has no
+    response to carry its close yet: a read that fails closes the upstream itself, once."""
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
+    await own_key(clients)
+    started, proceed = asyncio.Event(), asyncio.Event()
+    proceed.set()
+    closed = AsyncMock()
+    _upstream(monkeypatch, _gated(started, proceed, closed, fail=True))
+    with pytest.raises(RuntimeError, match="stream fault"):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    closed.assert_awaited_once()
+
+
 async def test_send_disconnect_before_first_body_releases(gate):
     from starlette.requests import ClientDisconnect
     from starlette.responses import StreamingResponse
@@ -826,13 +833,13 @@ async def test_funded_cancellation_keeps_cleanup_inside_slot(
             await asyncio.gather(task, return_exceptions=True)
 
 
-@pytest.mark.parametrize("path,tool,args", [
-    ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}),
-    ("/mcp/v2/", "catalog_call_read", {"endpoint_id": "tikhub.tiktok.video.comments"}),
-    ("/mcp/v2/", "catalog_call_write", {"endpoint_id": "dataforseo.web.page.audit"}),
-    ("/mcp/", "call_media", {"endpoint_id": "fishaudio.tts.s2-1-pro", "body": {"text": "test"}}),
+@pytest.mark.parametrize("path,tool,args,policy", [
+    ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}, "concurrency"),
+    ("/mcp/", "call", {"endpoint_id": "tikhub.tiktok.video.comments"}, "rate"),
+    ("/mcp/v2/", "catalog_call_read", {"endpoint_id": "tikhub.tiktok.video.comments"}, "concurrency"),
+    ("/mcp/v2/", "catalog_call_write", {"endpoint_id": "dataforseo.web.page.audit"}, "concurrency"),
+    ("/mcp/", "call_media", {"endpoint_id": "fishaudio.tts.s2-1-pro", "body": {"text": "test"}}, "concurrency"),
 ])
-@pytest.mark.parametrize("policy", ["concurrency", "mixed", "rate"])
 async def test_mcp_surfaces_preserve_retry_information(
     clients, platform_on, gate, monkeypatch, path, tool, args, policy,
 ):

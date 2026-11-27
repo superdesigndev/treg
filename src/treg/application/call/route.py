@@ -23,6 +23,9 @@ verdict, reported in `_treg.verification`; the find's answer is not altered. A c
 after the routed async wait keeps `pending: true`, its `call_id`, and the child's `async` poll
 descriptor (`task_id` + poll endpoint) so the caller can resume; `cost_micro` is then the hold.
 
+`X-Treg-Route-Ad-Hashes` adds a hit's email as ad-platform upload hashes in `_treg.ad_hashes`,
+computed here at no charge; the find's answer is not altered.
+
 When the caller sent a domain and the hit carries an email, `_treg.domain_match` (and
 `X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
@@ -102,6 +105,7 @@ from ...domain.catalog import params
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
+from ...domain.catalog.routing import ad_hashes
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import health as health_rules
 from ...domain.catalog.routing import quality as route_quality
@@ -113,7 +117,6 @@ from ...domain.catalog.routing.plan import (
     sampled_provider_allowed, unscoped,
 )
 from ... import oauth_providers
-from ... import sandbox as demo_sandbox
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import allowance as allowance_runtime
@@ -232,6 +235,7 @@ QUALITY_HEADER = "x-treg-route-quality"
 UPGRADE_HEADER = "x-treg-route-upgrade"
 COMPLETE_HEADER = "x-treg-route-complete"
 DOMAIN_MATCH_HEADER = "x-treg-route-domain-match"
+AD_HASHES_HEADER = "x-treg-route-ad-hashes"
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding", b"idempotency-key",
                               b"x-treg-route-waterfall", b"x-treg-route-max-cost", b"x-treg-route-prefer",
                               b"x-treg-route-exclude", b"x-treg-route-min-results",
@@ -239,7 +243,7 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
                               b"x-treg-route-verify", b"x-treg-route-confirm",
                               b"x-treg-route-decisive", b"x-treg-route-quality",
                               b"x-treg-route-upgrade", b"x-treg-route-complete",
-                              b"x-treg-route-domain-match", b"host",
+                              b"x-treg-route-domain-match", b"x-treg-route-ad-hashes", b"host",
                               # the child's answer is parsed here: the relay then asks for identity
                               b"accept-encoding"})
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
@@ -251,7 +255,8 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_vide
                               "member_spend_cap_reached", "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
-_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable",
+_TEAM_BUSY = frozenset({"money_admission_timeout", "money_statement_timeout",
+                        "platform_cap_unavailable", "tag_budget_unavailable",
                         "member_spend_cap_unavailable"})
 
 
@@ -259,6 +264,15 @@ MAX_TEAM_BUSY_TRIES = 2  # candidates asked while the team's own money queue or 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
 ROUTED_ASYNC_WAIT_SECONDS = 60
+
+
+def _platform_header_refusal(exc: CallFailure) -> str | None:
+    """The header (`headers.<name>`) a child's treg-key request guard refused, or None: a
+    `platform_request` header pin is about one provider, never about the job."""
+    if (exc.kind == "catalog_parameter_invalid" and exc.rule == "platform"
+            and (exc.parameter or "").startswith("headers.")):
+        return exc.parameter
+    return None
 
 
 def _over_ceiling(held: int | None, remaining: int) -> str:
@@ -323,6 +337,17 @@ def _other_subject(contract, identity: dict, core: dict) -> str | None:
 
 
 _DOMAIN_IDENTITY_KEYS = ("domain", "company_domain", "website")
+
+
+def _ad_hashes(output: dict | None, field_name: str, outcome: str) -> dict:
+    """`_treg.ad_hashes`: the hit's email hashed per ad platform, computed here at no charge; the
+    child's answer is not altered. A miss, or a hit with no address in `field_name`, says why."""
+    if outcome not in ("hit", "weak"):
+        return {"hashed": False, "reason": "no_hit"}
+    found = ad_hashes.hashes((output or {}).get(field_name))
+    if found is None:
+        return {"hashed": False, "reason": "no_email"}
+    return {"hashed": True, **found}
 
 
 def _email_domain_match(identity: dict, output: dict | None) -> bool | None:
@@ -463,6 +488,7 @@ class RouteOptions:
     upgrade: str | None = None  # re-ask by this identity key when the hit carries it (`X-Treg-Route-Upgrade`)
     complete: bool = False   # only a full answer about the subject asked counts (`X-Treg-Route-Complete`, see `_complete_check`)
     domain_strict: bool = False  # an off-domain email hit is weak (`X-Treg-Route-Domain-Match: strict`)
+    ad_hashes: bool = False  # add the hit's email as ad-platform hashes (`X-Treg-Route-Ad-Hashes`)
 
     @classmethod
     def from_headers(cls, get, default_max_cost_micro: int | None = None) -> "RouteOptions":
@@ -490,6 +516,7 @@ class RouteOptions:
         up = str(get(UPGRADE_HEADER) or "").strip()
         cp = str(get(COMPLETE_HEADER) or "").strip().lower()
         dm = str(get(DOMAIN_MATCH_HEADER) or "").strip().lower()
+        ah = str(get(AD_HASHES_HEADER) or "").strip().lower()
         if dm not in ("", "off", "false", "0", "no", "strict", "true", "1", "yes", "on"):
             raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="type",
                                    detail=f"{DOMAIN_MATCH_HEADER} must be strict (or true, 1, yes, on) or off (or false, 0, no), "
@@ -499,7 +526,8 @@ class RouteOptions:
                    min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"),
                    verify=vf in ("1", "true", "yes", "on"), confirm=cf in ("1", "true", "yes", "on"),
                    decisive=dc in ("1", "true", "yes", "on"), quality=ql in ("1", "true", "yes", "on"),
-                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm in ("strict", "true", "1", "yes", "on"))
+                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"), domain_strict=dm in ("strict", "true", "1", "yes", "on"),
+                   ad_hashes=ah in ("1", "true", "yes", "on"))
 
 
 class _Bytes:
@@ -867,7 +895,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
             # demo policy only where it is the reason given: a provider not enabled here is capacity
             demo = (get_settings().platform_provider_enabled(e["provider"]) and caller.org is not None
-                    and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo))
+                    and caller.org.public_demo)
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}",
                             **({"policy": True} if demo else {})})  # treg's demo policy, not capacity
             continue
@@ -1158,7 +1186,7 @@ async def _async_cost(parent: CallContext, child_ref: str, fallback: int = 0) ->
     if org_id is None:
         return fallback
     views = await async_task_app.views_for(
-        org_id, [child_ref], pinned_tags=getattr(parent.meta, "tags", None))
+        org_id, [child_ref], pinned_tags=getattr(parent.meta, "tags", None), answers=False)
     view = views.get(child_ref) or {}
     settled = view.get("settled_micro")
     return int(settled) if settled is not None else fallback
@@ -1374,6 +1402,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         if contract and contract.advice_domain_mismatch else
                         f"{DOMAIN_MATCH_HEADER} works only on {', '.join(matchable)}. ")
                        + "Nothing was charged."})
+    if options.ad_hashes and (contract is None or not contract.ad_hashes):
+        # Refused before anything is planned or held: an agent must not believe hashes will come back.
+        hashable = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.ad_hashes)
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, rule="unsupported", detail={
+            "error": "route_ad_hashes_unsupported", "endpoint_id": ep["id"],
+            "message": f"{AD_HASHES_HEADER} works only on {', '.join(hashable)}. Nothing was charged."})
     if options.upgrade and (contract is None or (options.upgrade,) not in contract.identity
                             or options.upgrade not in contract.output):
         # Refused before anything is planned or held: the caller would believe a second lookup ran.
@@ -1433,6 +1467,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
+    header_refusals: list[CallFailure] = []  # a parent header one provider refuses on treg's key
     team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
@@ -1548,6 +1583,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if exc.kind == "provider_capacity":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "treg's account is used up"))
+                continue
+            if (header := _platform_header_refusal(exc)) is not None:
+                # A header the parent carries that this provider refuses on treg's key (a key it
+                # would read beside treg's): this provider only, not the job.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, f"treg's key does not take {header} here"))
+                header_refusals.append(exc)
                 continue
             if exc.kind == "provider_rate_limited":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
@@ -1920,6 +1962,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, 403, 0, audit_client)
             raise admission.routed_refusal(ep["id"], admission_refusals, [t.view() for t in tried])
+        if header_refusals and all(t.outcome == "skipped" for t in tried):
+            # Nothing ran, and dropping that header would let a provider serve: say so.
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, header_refusals[0].status_code, 0, audit_client)
+            raise header_refusals[0]
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
@@ -2053,6 +2100,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     if winner_outcome in ("hit", "weak") else None)
     if (domain_match is False and plan.contract.advice_domain_mismatch and not advice_locked):
         advice = plan.contract.advice_domain_mismatch
+    ad_hashes_note = (_ad_hashes(output, plan.contract.ad_hashes, winner_outcome)
+                      if options.ad_hashes else None)
     confirmation = ({"field": plan.contract.confirm, "confirmed": confirmed_by is not None, "confirmed_by": confirmed_by}
                     if options.confirm and winner_outcome in ("hit", "weak") else None)
     decision = ({"decided": decided_by is not None, "decided_by": decided_by,
@@ -2103,6 +2152,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
                           **({"incomplete": True} if incomplete else {}),
                           **({"verification": verification} if verification is not None else {}),
+                          **({"ad_hashes": ad_hashes_note} if ad_hashes_note is not None else {}),
                           **({"confirmation": confirmation} if confirmation is not None else {}),
                           **({"decision": decision} if decision is not None else {}),
                           **({"upgrade": upgrade} if upgrade is not None else {}),
@@ -2112,6 +2162,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
+               **({"merged_from": merged_from} if merged_from else {}),
                hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)

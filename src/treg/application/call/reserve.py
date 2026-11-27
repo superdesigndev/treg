@@ -1,5 +1,6 @@
 """Reservation and spend-cap helpers for metered calls."""
 
+import contextvars
 import functools
 import json
 import logging
@@ -11,6 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import event, func
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -24,7 +26,7 @@ from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
 from ...infra.db import session_maker
-from ...infra import money_admission
+from ...infra import empty_balance, money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
@@ -35,6 +37,13 @@ from . import idempotency
 from .intake import CallMeta, _NO_META
 from .resolve import MarketplaceCall
 from .types import ReservationFailed
+
+
+# A keyless wallet's request (docs/context/architecture/agent-payments.md): its reservations
+# take no allowance, so the wallet's credit is its team's balance alone, which the payment path
+# reads to decide whether a payment draws credit or settles.
+keyless_payer: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "treg_keyless_payer", default=False)
 
 
 @asynccontextmanager
@@ -142,6 +151,12 @@ async def _trial_calls_today(caller: Caller, provider: str, paid_endpoint_ids: l
         raise ReservationFailed("trial_allowance_unavailable", status_code=429, detail=(
             f"cannot verify today's {provider} trial usage right now — retry shortly, or use "
             "your own key: treg connections connect")) from exc
+
+
+async def _committed_today(org_id: int) -> int:
+    """The day's committed spend (`allowance.committed_today`), read on its own session."""
+    async with session_maker() as db:
+        return await money_allowance.committed_today(db, org_id)
 
 
 async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncSession) -> None:
@@ -550,6 +565,84 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
     return wallet, alt
 
 
+# What a 402 for the balance tells a client to wait before asking again: waiting adds no money,
+# but a loop that retries at once is the load this header is there to slow.
+INSUFFICIENT_BALANCE_RETRY_AFTER_S = 5
+_FAST_LOG_EVERY_S = 60.0
+_fast_refusals: list = [0.0, 0, set()]
+_fast_log = get_logger("treg.empty_balance")
+
+
+def _insufficient_balance(mk: MarketplaceCall, auto_on: bool, prefs: dict | None, *,
+                          required_micro: int, balance_micro: int) -> ReservationFailed:
+    wallet, alt = wallet_and_alternative(mk)
+    # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
+    # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
+    # otherwise the natural reading of "add funds" is that auto top-up is broken.
+    if auto_on:
+        cap = prefs["monthly_cap_micro"]
+        monthly = f" and ${ledger.usd(cap):g}/month" if cap else ""
+        auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
+                     f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
+                     f"{prefs['per_hour']} times per hour{monthly}. Raise the amount or the "
+                     f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
+    else:
+        auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
+    return ReservationFailed("insufficient_balance", status_code=402, detail={
+        "error": "insufficient_balance",
+        "message": (f"{mk.endpoint_id} would cost ~${ledger.usd(required_micro):g} on {wallet} "
+                    f"and this team's balance is ${ledger.usd(balance_micro):g}.\n"
+                    f"  add funds:      {get_settings().public_url}/app#billing\n"
+                    f"{auto_line}\n"
+                    + alt),
+        "balance_micro": balance_micro,
+        "estimated_cost_micro": required_micro,
+        "topup_url": "/app#billing",
+        "autotopup_enabled": auto_on,
+        "provider": mk.provider,
+        "endpoint_id": mk.endpoint_id,
+    }, retry_after_s=max(INSUFFICIENT_BALANCE_RETRY_AFTER_S, empty_balance.ttl_s()))
+
+
+async def _empty_mark(mk: MarketplaceCall, caller: Caller, meta: CallMeta,
+                      charged: int) -> empty_balance.Read:
+    """The team's balance-empty mark when it answers this call, else none and the call reserves
+    as it always did. It answers only a call the balance refusal is the first answer for: no
+    tag (a tag's own limits come first and must not show the team's figures), no member spend
+    limit, no daily spend limit on the team, no trial pool, no purchased-credit-only endpoint,
+    not a keyless wallet's request; and only for the amount the mark stands for or more."""
+    if (charged <= 0 or empty_balance.ttl_s() <= 0 or meta.tags or keyless_payer.get()
+            or budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None
+            or budget_policy._effective_daily_cap(caller.org) > 0
+            or mk.provider in catalog_store.load().trial_pools
+            or _purchased_only(mk.endpoint_id)):
+        return empty_balance.Read(None)
+    found = await empty_balance.read(caller.org_id)
+    if found.mark is not None and charged < found.mark.required_micro:
+        return empty_balance.Read(None)
+    return found
+
+
+def _note_fast_refusal(org_id: int) -> None:
+    """One `empty_balance_fast_refusals` line a minute in this process: the calls the mark
+    answered and how many teams sent them. Diagnostics never fail a call."""
+    try:
+        now = time.monotonic()
+        since, calls, orgs = _fast_refusals
+        if calls and now - since >= _FAST_LOG_EVERY_S:
+            _fast_log.info("empty_balance_fast_refusals %s", json.dumps(
+                {"calls": calls, "orgs": len(orgs), "window_s": round(now - since, 1)},
+                separators=(",", ":")))
+            calls, orgs = 0, set()
+        if not calls:
+            since = now
+        if len(orgs) < _SKIP_TEAMS_MAX:
+            orgs.add(org_id)
+        _fast_refusals[:] = [since, calls + 1, orgs]
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False,
                             allow_allowance: bool = False, mark_in_flight: bool = False,
@@ -573,9 +666,9 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     balance row. Whenever the allowance cannot serve it, the call takes its own hold below.
     `mark_in_flight` (a call holding an Idempotency-Key claim) first marks the call as running in
     the shared store, the one sign of it a stale claim can read; unmarked, it keeps its hold.
-    A hold the balance cannot cover is tried once more (`retry_short`) when the team's
-    allowance counter held money and gave it back to the balance
-    (`allowance_runtime.give_back_for_exact_path`).
+    A hold the balance cannot cover is tried once more (`retry_short`) when the balance covers
+    it after all, the team's allowance counter given back to it as needed
+    (`allowance_runtime.onto_balance`).
 
     The hold is the estimate, or the row's declared worst case when that is higher: a settle that
     reads the provider's figure may exceed the estimate, and calls in flight together all passed
@@ -603,7 +696,17 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
     mk.allowance_epoch, mk.allowance_marked = None, False
-    listed = retry_short and allowance_runtime.listed(caller.org_id)
+    # Before the allowance, the money queue and the database: a team just refused for at least
+    # this much, with nothing credited since, is refused the same way from the mark alone.
+    marked = (await _empty_mark(mk, caller, meta, charged) if retry_short
+              else empty_balance.Read(None))
+    if marked.mark is not None:
+        empty_balance.suspect(caller.org_id)
+        _note_fast_refusal(caller.org_id)
+        raise _insufficient_balance(mk, auto_on, prefs, required_micro=charged,
+                                    balance_micro=marked.mark.balance_micro)
+    listed = (retry_short and not keyless_payer.get()
+              and allowance_runtime.listed(caller.org_id))
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
     # Marked before the take: from the take on, the mark is all a stale claim can see of the call.
     if skip is None and mark_in_flight and not await idempotency.mark_in_flight(call_ref):
@@ -625,7 +728,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             await _schedule_autotopup_after(caller.org_id)
         if epoch:
             return
-        skip = "take_refused"
+        skip = ("refill_admission_busy" if allowance_runtime.take_met_busy_refill()
+                else "take_refused")
         if mark_in_flight:
             await idempotency.clear_in_flight(call_ref)
     # A listed team's call is counted once, when its reserve is decided (`_note_allowance_skip`);
@@ -652,7 +756,8 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 with timing.phase("preflight"), money_stage(db, "preflight"):
                     await _enforce_tag_budgets(caller, meta, db, add_micro=held)
                     member_id = await _enforce_member_spend_cap(caller, charged, db)
-                    await _enforce_platform_daily_cap(caller, held, db)
+                    # What the hold will take, margin applied, as the day's committed spend counts it.
+                    await _enforce_platform_daily_cap(caller, charged, db)
                     await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
                 try:
                     with timing.phase("ledger"):
@@ -697,43 +802,65 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             "provider": mk.provider,
             "endpoint_id": mk.endpoint_id,
         }) from exc
-    except ledger.InsufficientBalance as exc:
-        if refused_org is not None:
-            billing.maybe_schedule_autotopup(refused_org)
-        if retry_short and await allowance_runtime.give_back_for_exact_path(
-                caller.org_id, exc.required_micro - exc.balance_micro):
+    except ReservationFailed as exc:
+        # The day's committed spend counts all of the allowance hold, what its counter still
+        # offers included: give that back and run every check again.
+        # A counter another request has just given back leaves nothing to give, and the day's
+        # figure is then lower than the refusal read: read it again before refusing.
+        cap = exc.detail if exc.kind == "platform_daily_cap_reached" else None
+        if retry_short and isinstance(cap, dict) and allowance_runtime.listed(caller.org_id) and (
+                await allowance_runtime.give_back_for_exact_path(
+                    caller.org_id,
+                    cap["spent_today_micro"] + cap["estimated_cost_micro"] - cap["daily_cap_micro"])
+                or await _committed_today(caller.org_id) + cap["estimated_cost_micro"]
+                <= cap["daily_cap_micro"]):
             noted = True
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless,
                 mark_in_flight=mark_in_flight, retry_short=False,
                 skip_reason=note, skip_as_direct=as_direct)
-        wallet, alt = wallet_and_alternative(mk)
-        # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
-        # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
-        # otherwise the natural reading of "add funds" is that auto top-up is broken.
-        if auto_on:
-            cap = prefs["monthly_cap_micro"]
-            monthly = f" and ${ledger.usd(cap):g}/month" if cap else ""
-            auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
-                         f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
-                         f"{prefs['per_hour']} times per hour{monthly}. Raise the amount or the "
-                         f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
-        else:
-            auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
-        raise ReservationFailed("insufficient_balance", status_code=402, detail={
-            "error": "insufficient_balance",
-            "message": (f"{mk.endpoint_id} would cost ~${ledger.usd(exc.required_micro):g} on {wallet} "
-                        f"and this team's balance is ${ledger.usd(exc.balance_micro):g}.\n"
-                        f"  add funds:      {get_settings().public_url}/app#billing\n"
-                        f"{auto_line}\n"
-                        + alt),
-            "balance_micro": exc.balance_micro,
-            "estimated_cost_micro": exc.required_micro,
-            "topup_url": "/app#billing",
-            "autotopup_enabled": auto_on,
-            "provider": mk.provider,
-            "endpoint_id": mk.endpoint_id,
-        }) from exc
+        raise
+    except ledger.InsufficientBalance as exc:
+        if refused_org is not None:
+            billing.maybe_schedule_autotopup(refused_org)
+        # The team's counter may hold what the balance is short of, or another request may just
+        # have given it back: `onto_balance` puts it on the balance, or says it is not there.
+        onto = (await allowance_runtime.onto_balance_or_short(caller.org_id, exc.required_micro)
+                if retry_short else allowance_runtime.Onto(False))
+        if onto.moved:
+            noted = True
+            return await _platform_reserve(
+                mk, caller, meta, call_ref, allow_holdless=allow_holdless,
+                mark_in_flight=mark_in_flight, retry_short=False,
+                skip_reason=note, skip_as_direct=as_direct)
+        empty_balance.suspect(caller.org_id)
+        # A store that did not answer this call's read is not asked to write: one wait, not two.
+        if onto.short and marked.answered and empty_balance.ttl_s() > 0:
+            await empty_balance.remember(caller.org_id, exc.required_micro, exc.balance_micro)
+            # A credit that committed between the confirmation and the write cleared nothing:
+            # read the team's money once more, and take the mark back if it now reaches.
+            if not await allowance_runtime.still_short(caller.org_id, exc.required_micro):
+                await empty_balance.clear([caller.org_id])
+        raise _insufficient_balance(mk, auto_on, prefs, required_micro=exc.required_micro,
+                                    balance_micro=exc.balance_micro) from exc
+    except DBAPIError as exc:
+        # The money session's statement_timeout cancelled a statement (57014): the transaction
+        # rolled back before its commit, so nothing is held and the provider was not reached.
+        if committed or getattr(exc.orig, "sqlstate", None) != "57014":
+            raise
+        retry_base_s = get_settings().money_admission_retry_after_s
+        retry_after_s = random.randint(retry_base_s, 2 * retry_base_s)
+        try:
+            logging.getLogger("treg.money_admission").warning(
+                "money_statement_timeout operation=reserve org_id=%s retry_after_s=%s",
+                caller.org_id, retry_after_s)
+        except Exception:  # noqa: BLE001 - diagnostics cannot change the refusal
+            pass
+        raise ReservationFailed("money_statement_timeout", status_code=503, detail={
+            "error": "money_statement_timeout",
+            "message": ("the team's money writes are slow right now; retry shortly. Nothing was "
+                        "reserved or charged."),
+        }, retry_after_s=retry_after_s) from exc
     finally:
         if not noted:
             _note_allowance_skip(caller.org_id, note, mk.reserved_micro if committed else 0,

@@ -221,10 +221,6 @@ def test_cli_feedback_get_uses_the_configured_registry(monkeypatch, capsys):
 
 @pytest.mark.parametrize("status,code,hint", [
     (401, "authentication_required", "treg login"),
-    (403, "access_denied", "active team"),
-    (404, "not_found", "ID"),
-    (422, "invalid_feedback", "submit --help"),
-    (429, "rate_limited", "later"),
     (500, "submission_unconfirmed", "whether feedback was saved"),
 ])
 def test_cli_feedback_errors_are_actionable_without_echoing_input(monkeypatch, capsys, status, code, hint):

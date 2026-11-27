@@ -12,7 +12,7 @@ source:
   openapi: https://filtrat.io/openapi.json
   curated: '2026-11-10'
 pricing_url: https://filtrat.io/v1/credits/rate-card
-limits: "On treg's finder key: 110 searches a minute (a request over that waits up to 10 s, then 429 with Retry-After) and at most 20 in progress (503 SERVER_BUSY with Retry-After past that). Every search answers within 15 seconds; one still running then answers not_found, free. Other keys: 200 a minute. Company pages have their own allowance on the same key: 600 a minute and 20 in progress; a page read stops after 10 seconds and answers not_found, free."
+limits: "On treg's finder key: 250 searches a minute (a request over that waits up to 10 s, then 429 with Retry-After) and at most 40 in progress (503 SERVER_BUSY with Retry-After past that). Every search answers within 15 seconds; one still running then answers not_found, free. Other keys: 200 a minute. Company pages have their own allowance on the same key: 600 a minute and 20 in progress; a page read stops after 10 seconds and answers not_found, free."
 cache: forbidden
 endpoints:
   - id: filtrat-finder.people.email.find

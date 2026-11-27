@@ -148,14 +148,12 @@ async def test_skip_direct_local_admission_does_not_consume_allowance(
         assert all(row.cost_micro == 0 for row in (await db.execute(select(OverflowSpend))).scalars())
 
 
-@pytest.mark.parametrize("skip_direct", [False, True])
 @pytest.mark.parametrize("unavailable", [False, True])
-async def test_direct_or_overflow_holds_follow_exhaustion_and_unavailability(
-    clients, monkeypatch, overflow_on, skip_direct, unavailable,
+async def test_overflow_holds_follow_exhaustion_and_unavailability(
+    clients, monkeypatch, overflow_on, unavailable,
 ):
-    if skip_direct:
-        await _route(price_micro=3000)
-        await _exhausted()
+    await _route(price_micro=3000)
+    await _exhausted()
     attempts, used = _enable(monkeypatch, {EP: 0}, unavailable=unavailable)
     refusal = AssertionError("quota refusal cannot make a provider call")
     outbound = AsyncMock(side_effect=_fake_relay(200) if unavailable else refusal)
@@ -176,7 +174,7 @@ async def test_direct_or_overflow_holds_follow_exhaustion_and_unavailability(
     assert before - await _balance(clients) == charged
     if unavailable:
         assert charged > 0
-        (overflow_outbound if skip_direct else outbound).assert_awaited_once()
+        overflow_outbound.assert_awaited_once()
         async with session_maker() as db:
             assert (await db.execute(select(Hold))).scalars().all() == []
     else:

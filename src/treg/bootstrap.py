@@ -17,6 +17,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
@@ -190,6 +191,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/skills/web-access/SKILL.md', ('GET',), 'web_access_skill_md'),
     ('/skills/recruit/SKILL.md', ('GET',), 'recruit_skill_md'),
     ('/skills/doomscroll/SKILL.md', ('GET',), 'doomscroll_skill_md'),
+    ('/skills/follower-analysis/SKILL.md', ('GET',), 'follower_analysis_skill_md'),
     ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
     ('/skills/rea-growth/SKILL.md', ('GET',), 'rea_growth_skill_md'),
     ('/skills/rea-marketing/SKILL.md', ('GET',), 'rea_marketing_skill_md'),
@@ -265,6 +267,10 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/doomscroll', ('GET',), 'doomscroll_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
     ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
+    ('/follower-analysis', ('GET',), 'follower_analysis_page'),
+    ('/follower-analysis/board.json', ('GET',), 'follower_board_json'),
+    ('/follower-analysis/board/{handle}.json', ('GET',), 'follower_board_entry'),
+    ('/follower-analysis/board', ('POST',), 'follower_board_save'),
     ('/jev', ('GET',), 'jev_page'),
     ('/jev/xboost.json', ('GET',), 'jev_xboost_json'),
     ('/jev/xboost/judge', ('POST',), 'jev_xboost_judge'),
@@ -284,6 +290,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/.well-known/skills/web-access/SKILL.md', ('GET',), 'well_known_web_access_md'),
     ('/.well-known/skills/recruit/SKILL.md', ('GET',), 'well_known_recruit_md'),
     ('/.well-known/skills/doomscroll/SKILL.md', ('GET',), 'well_known_doomscroll_md'),
+    ('/.well-known/skills/follower-analysis/SKILL.md', ('GET',), 'well_known_follower_analysis_md'),
     ('/connect-demo', ('GET',), 'connect_demo_page'),
     ('/connect-demo/callback', ('GET',), 'connect_demo_callback'),
     ('/help', ('GET',), 'support_page'),
@@ -305,9 +312,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/onboard/skip', ('POST',), 'onboard_skip'),
     ('/onboard/reset', ('POST',), 'onboard_reset'),
     ('/onboard/team', ('POST',), 'onboard_team'),
-    ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
-    ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
-    ('/demo/sandbox/skill', ('GET',), 'demo_sandbox_skill'),
     ('/onboard/seed-tool', ('POST',), 'onboard_seed_tool'),
     ('/onboard/accept-teammate', ('POST',), 'onboard_accept_teammate'),
     ('/invites/{invite_id}/accept', ('POST',), 'accept_my_invite'),
@@ -1001,6 +1005,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     if get_settings().local_dev:
         app.add_middleware(_DevTitleMiddleware)
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
+    app.add_exception_handler(DBAPIError, api_module._db_id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     for busy in DB_BUSY_ERRORS:
         app.add_exception_handler(busy, bootstrap_handlers._pool_saturated)

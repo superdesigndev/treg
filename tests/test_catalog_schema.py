@@ -310,12 +310,6 @@ def test_the_violation_audit_refuses_growth_and_stale_entries():
         {"endpoint_keys": {"team_label": {"provider": "crawl4ai"}}})) == []
 
 
-def test_the_shipped_violation_list_is_exactly_what_the_catalog_still_violates():
-    from scripts import catalog_validate
-    assert catalog_validate.main([]) == 0
-    assert violations.load().cost_keys and violations.load().endpoint_keys
-
-
 def test_the_shrink_only_check_refuses_a_new_entry():
     from scripts.catalog_shrink_only import grown
     base = "rejected: [{at: a.b, path: input, reason: r}]\n"

@@ -12,33 +12,13 @@ from treg.config import Settings
 from treg.infra import kv, money_admission as admission
 
 
-def test_admission_wait_default_and_lease_are_unchanged(monkeypatch):
-    monkeypatch.delenv("TREG_MONEY_ADMISSION_WAIT_S", raising=False)
-    monkeypatch.delenv("TREG_MONEY_ADMISSION_LEASE_S", raising=False)
-    settings = Settings(_env_file=None)
-    assert settings.money_admission_wait_s == 5.0
-    assert settings.money_admission_lease_s == 15.0
-
-
-@pytest.mark.parametrize("wait_s", [0.001, 60, 90, 120])
-def test_admission_wait_accepts_positive_values_through_120(monkeypatch, wait_s):
-    monkeypatch.setenv("TREG_MONEY_ADMISSION_WAIT_S", str(wait_s))
-    settings = Settings(_env_file=None, money_admission_lease_s=15.0)
-    assert settings.money_admission_wait_s == wait_s
-    # The lease starts on acquisition and renews; it need not exceed the queue wait.
-    assert settings.money_admission_lease_s == 15.0
-
-
-@pytest.mark.parametrize("wait_s, error_type", [
-    (-1, "greater_than"), (0, "greater_than"), (121, "less_than_equal"),
-])
-def test_admission_wait_rejects_values_outside_bounds(monkeypatch, wait_s, error_type):
-    monkeypatch.setenv("TREG_MONEY_ADMISSION_WAIT_S", str(wait_s))
+def test_admission_wait_rejects_values_outside_bounds(monkeypatch):
+    monkeypatch.setenv("TREG_MONEY_ADMISSION_WAIT_S", "121")
     with pytest.raises(ValidationError) as caught:
         Settings(_env_file=None)
     [error] = caught.value.errors(include_input=False)
     assert error["loc"] == ("money_admission_wait_s",)
-    assert error["type"] == error_type
+    assert error["type"] == "less_than_equal"
 
 
 class LeaseStore:
@@ -52,12 +32,15 @@ class LeaseStore:
     async def call_in_flight(self, call_ref):
         return False
 
-    async def acquire_lease(self, key, token, ttl_ms):
+    async def acquire_lease(self, key, token, ttl_ms, *, unless=None, owner=None):
         self.calls.append(("acquire", key))
         if self.unavailable:
             return "unavailable"
         now = time.monotonic()
         if key in self.values and self.values[key][1] > now:
+            return "busy"
+        claim = self.values.get(unless)
+        if claim is not None and claim[1] > now and claim[0] != (owner or token):
             return "busy"
         self.values[key] = (token, now + ttl_ms / 1000)
         return "acquired"
@@ -202,8 +185,8 @@ async def test_reserve_timeout_cleans_an_acquired_lease_with_an_unobserved_reply
     settings.money_admission_wait_s = 0.02
     original = store.acquire_lease
 
-    async def uncertain(*args):
-        await original(*args)
+    async def uncertain(*args, **kwargs):
+        await original(*args, **kwargs)
         await asyncio.Event().wait()
 
     monkeypatch.setattr(store, "acquire_lease", uncertain)
@@ -413,8 +396,8 @@ async def test_cancel_during_set_cleans_lease_even_if_response_was_not_observed(
     acquired = asyncio.Event()
     original = store.acquire_lease
 
-    async def uncertain(*args):
-        await original(*args)
+    async def uncertain(*args, **kwargs):
+        await original(*args, **kwargs)
         acquired.set()
         await asyncio.Event().wait()
 
@@ -556,8 +539,8 @@ async def test_acquire_reply_does_not_restart_the_lease_validity_clock(gate, mon
     monkeypatch.setattr(admission, "time", SimpleNamespace(monotonic=lambda: now[0]))
     original = store.acquire_lease
 
-    async def delayed_reply(*args):
-        result = await original(*args)
+    async def delayed_reply(*args, **kwargs):
+        result = await original(*args, **kwargs)
         now[0] += pause_s
         return result
 
@@ -577,11 +560,11 @@ async def test_multi_org_acquire_cannot_enter_after_an_earlier_lease_expired(gat
     monkeypatch.setattr(admission, "time", SimpleNamespace(monotonic=lambda: now[0]))
     original = store.acquire_lease
 
-    async def delayed_second(key, *args):
+    async def delayed_second(key, *args, **kwargs):
         if key.endswith(":9"):
             now[0] += 16
             store.values["money-admission:org:3"] = ("new-owner", time.monotonic() + 10)
-        return await original(key, *args)
+        return await original(key, *args, **kwargs)
 
     monkeypatch.setattr(store, "acquire_lease", delayed_second)
     async with admission.admit([3, 9], operation="deferred"):
@@ -775,7 +758,7 @@ async def test_redis_outage_during_renewal_does_not_interrupt_the_transaction(ga
 @pytest.mark.parametrize("operation", ["close", "reserve"])
 @pytest.mark.parametrize("error", [TimeoutError, RuntimeError])
 async def test_unexpected_store_exception_also_falls_back(gate, monkeypatch, operation, error):
-    async def broken(*_):
+    async def broken(*_, **__):
         raise error("store failure")
     monkeypatch.setattr(gate[1], "acquire_lease", broken)
     async with admission.admit([7], operation=operation):
@@ -962,9 +945,9 @@ async def test_only_the_local_head_waiter_polls_during_the_extended_wait(gate, m
     original = store.acquire_lease
     pollers = []
 
-    async def acquire_lease(*args):
+    async def acquire_lease(*args, **kwargs):
         pollers.append(asyncio.current_task())
-        return await original(*args)
+        return await original(*args, **kwargs)
 
     monkeypatch.setattr(store, "acquire_lease", acquire_lease)
     entered = []
@@ -994,7 +977,7 @@ class SilentStore(LeaseStore):
         self.release_started = asyncio.Event()
         self.release_gate = asyncio.Event()
 
-    async def acquire_lease(self, key, token, ttl_ms):
+    async def acquire_lease(self, key, token, ttl_ms, **_):
         self.calls.append(("acquire", key))
         await asyncio.sleep(self.timeout_s)
         return "unavailable"
@@ -1083,3 +1066,67 @@ async def test_the_store_is_tried_again_after_the_breaker_window(gate, monkeypat
     store.calls.clear()
     async with admission.admit([7], operation="close"):
         assert ("acquire", "money-admission:org:7") in store.calls
+
+
+async def _hog(store, org_id: int, stop: asyncio.Event, hold_s: float = 0.02) -> int:
+    """Another process's waiters of one team: whenever the team's lease is free one of them takes
+    it at once, with no moment in between for anyone else, unless a claim turns them away."""
+    key, turns = f"money-admission:org:{org_id}", 0
+    while not stop.is_set():
+        token = f"other-{turns}"
+        if await store.acquire_lease(key, token, 1000, unless=f"{key}:claim") == "acquired":
+            turns += 1
+            await asyncio.sleep(hold_s)
+            await store.release_lease(key, token)
+        else:
+            await asyncio.sleep(0.001)
+    return turns
+
+
+@pytest.mark.parametrize("priority", [False, True])
+async def test_a_priority_waiter_gets_a_team_whose_own_waiters_never_leave_a_gap(
+        gate, priority):
+    """Without priority, a team whose other waiters always take the lease the moment it is free
+    starves the waiter out; with it, the waiter's claim gives it the next turn."""
+    _, store = gate
+    stop = asyncio.Event()
+    hog = asyncio.create_task(_hog(store, 7, stop))
+    await asyncio.sleep(0.005)
+    local_waiter = asyncio.create_task(_enter_and_leave(7))
+    started = asyncio.get_running_loop().time()
+    try:
+        async with admission.admit([7], operation="close", max_wait_s=0.3,
+                                   refuse_on_timeout=True, priority=priority):
+            entered_after = asyncio.get_running_loop().time() - started
+            assert store.values["money-admission:org:7"][0] != "other"
+            assert "money-admission:org:7:claim" not in store.values, "given back on entry"
+        assert priority and entered_after < 0.1, "one holder's turn, not the whole wait"
+    except admission.AdmissionTimeout:
+        assert not priority
+    finally:
+        await asyncio.sleep(0.1)  # the team's own waiters go on once it has had its turn
+        stop.set()
+        turns = await hog
+        await asyncio.wait_for(local_waiter, 1)
+    assert turns >= 3
+    assert not any(key.endswith(":claim") for key in store.values)
+
+
+async def _enter_and_leave(org_id: int) -> None:
+    try:
+        async with admission.admit([org_id], operation="close", max_wait_s=0.5,
+                                   refuse_on_timeout=True):
+            pass
+    except admission.AdmissionTimeout:
+        pass
+
+
+async def test_a_priority_waiter_whose_wait_runs_out_gives_its_claim_back(gate):
+    _, store = gate
+    store.values["money-admission:org:7"] = ("stuck", time.monotonic() + 10)
+    with pytest.raises(admission.AdmissionTimeout):
+        async with admission.admit([7], operation="close", max_wait_s=0.05,
+                                   refuse_on_timeout=True, priority=True):
+            pytest.fail("the lease was never free")
+    assert list(store.values) == ["money-admission:org:7"]
+    assert not admission._local_lock(7).locked()

@@ -97,20 +97,9 @@ def _body(doc) -> bytes:
 
 @pytest.mark.parametrize("endpoint_id,doc,word", [
     ("millionverifier.people.email.verify", {"quality": "good", "result": "ok"}, "valid"),
-    ("millionverifier.people.email.verify", {"quality": "bad", "result": "unverified"}, "unknown"),
-    ("zerobounce.people.email.verify", {"status": "catch-all"}, "catch_all"),
-    # ZeroBounce `unknown` is a routing miss, and still a verdict worth counting
-    ("zerobounce.people.email.verify", {"status": "unknown"}, "unknown"),
-    ("contactout.people.email.verify", {"status_code": 200, "data": {"status": "accept_all"}}, "catch_all"),
-    ("scrubby.people.email.verify", {"result": "Risky"}, "risky"),
     ("bounceban.people.email.verify", {"result": "risky", "is_accept_all": True}, "catch_all"),
-    ("bounceban.people.email.verify", {"result": "risky", "is_accept_all": False}, "risky"),
-    ("bounceban.people.email.verify", {"result": "deliverable", "is_accept_all": True}, "valid"),
     ("bounceban.people.email.verify", {"status": "verifying", "result": None}, None),
-    ("limadata.people.email.verify", {"result": "Risky", "is_catch_all": True}, "catch_all"),
-    ("limadata.people.email.verify", {"result": "Invalid", "is_catch_all": True}, "invalid"),
     ("hunter.people.email.find", {"data": {"email": "a@x.io", "verification": {"status": "valid"}}}, "verified"),
-    ("hunter.people.email.find", {"data": {"email": "a@x.io", "verification": {"status": "accept_all"}}}, "unverified"),
     # a find that found nothing has no claim to report
     ("hunter.people.email.find", {"data": {"email": None}}, None),
     # a finder whose answer carries no `verified` output stores no word

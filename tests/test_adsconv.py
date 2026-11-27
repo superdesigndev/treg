@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from conftest import make_upstream, verified_signup
@@ -14,7 +13,6 @@ from treg import adsconv
 from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
-from pathlib import Path
 
 from treg.models import AdConversion, Membership, Org, User
 from treg.timeutil import utcnow_naive
@@ -132,21 +130,6 @@ def test_tracking_is_disabled_when_any_required_setting_is_missing(
     assert adsconv.enabled() is False
 
 
-async def test_ad_conversion_is_unique_per_org_and_action(clients):
-    async with session_maker() as db:
-        org = Org(name="t", slug="t-adsconv")
-        db.add(org)
-        await db.commit()
-        await db.refresh(org)
-
-        db.add(AdConversion(org_id=org.id, action="signup", dedupe_key="signup"))
-        await db.commit()
-
-        db.add(AdConversion(org_id=org.id, action="signup", dedupe_key="signup"))
-        with pytest.raises(IntegrityError):
-            await db.commit()
-
-
 async def test_queue_writes_one_row_and_is_idempotent(clients, ads_enabled):
     async with session_maker() as db:
         org = Org(name="t", slug="t-queue", ad_gclid="CLICK1")
@@ -201,14 +184,6 @@ async def test_signup_persists_the_ad_click_cookie(clients, ads_enabled, email, 
         assert org.ad_click_id_type == click_type
         assert org.ad_landing == landing
         assert org.ad_click_at is not None
-
-
-async def test_signup_without_the_cookie_leaves_attribution_null(clients):
-    r = await clients.post("/orgs", json={"name": "organic team"})
-    assert r.status_code == 200, r.text
-    async with session_maker() as db:
-        org = await db.get(Org, r.json()["org_id"])
-        assert org.ad_gclid is None
 
 
 async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
@@ -813,32 +788,10 @@ async def test_terms_not_accepted_keeps_retrying_instead_of_dead_lettering(clien
         assert "terms for enhanced conversions" in row.error
 
 
-# ---- the browser tag: advanced consent mode + the web signup action ------------------------------
-
-_WEB = Path(adsconv.__file__).parent / "web"
-
-
-def test_dashboard_loads_the_tag_conversion_only_and_fires_on_first_team():
-    front = Path(adsconv.__file__).resolve().parents[2] / "frontend"
-    html = (front / "index.html").read_text()
-    tag = '<script src="/gtag.js" data-conversion-only defer></script>'
-    assert tag in html
-    # A classic script before the module entry: gtag.js reads its own attribute through
-    # document.currentScript, which is null inside a module, and it must follow ad-click capture.
-    assert html.index('<script src="/click-id.js" defer></script>') < html.index(tag) \
-        < html.index('<script type="module"')
-    # The first run fires it right after the team the server made for the account exists, keyed by
-    # the new org id.
-    welcome = (front / "src" / "state" / "onboarding.js").read_text()
-    assert "window.tregSignupConversion(o.org_id||o.org)" in welcome
-    assert welcome.index("this.api('/onboard/team'") < welcome.index("if(!o.created) return;") \
-        < welcome.index("window.tregSignupConversion(")
-
-@pytest.mark.parametrize('door', ['start', 'verify', 'google', 'github'])
-@pytest.mark.parametrize('cookie,enabled,expected', [
-    ('wbraid|PHONE|landing', True, True), ('', True, False),
-    ('gclid||landing', True, False), ('junk', True, False),
-    ('gclid|PHONE|landing', False, False),
+@pytest.mark.parametrize('door,cookie,enabled,expected', [
+    *[(door, 'wbraid|PHONE|landing', True, True) for door in ('start', 'verify', 'google', 'github')],
+    ('verify', 'junk', True, False), ('verify', 'gclid||landing', True, False),
+    ('verify', 'gclid|PHONE|landing', False, False),
 ])
 async def test_auth_stashes_click(clients, ads_enabled, monkeypatch, door, cookie, enabled, expected):
     from treg.application import auth

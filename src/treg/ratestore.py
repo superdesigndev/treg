@@ -8,7 +8,7 @@ persists and is shared.
 
 Two shapes live here:
   * **key/value with TTL** (`kv_put`/`kv_get`/`kv_pop`/`kv_take`) — the OTP code + its attempt counter.
-  * **sliding-window rate limit** (`rate_check`) — the OTP-start + sandbox throttles; each key's row
+  * **sliding-window rate limit** (`rate_check`): the OTP-start and other throttles; each key's row
     holds a list of recent hit timestamps (wall-clock epoch seconds, so they're comparable across
     processes — the old code used `time.monotonic()`, which is per-process and can't be shared).
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...models import CapacityPolicy, CapacitySnapshot
 from ...timeutil import utcnow_naive
-from .collectors import NO_BALANCE_API, all_platform_providers
+from .collectors import NO_BALANCE_API, all_platform_providers, extra_accounts, split_account
 
 AGGREGATORS = ("orthogonal", "monid")
 """The overflow aggregators — prepaid accounts of ours that run dry like any vendor's."""
@@ -25,6 +25,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "forager": ("monthly_quota", "quota_reset", "api"),
     "millionphones": ("credits", "subscription", "api"),
     "descovo": ("monthly_quota", "quota_reset", "api"),
+    "upcell": ("credits", "manual", "api"),
     "hirebase": ("monthly_quota", "quota_reset", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
@@ -128,10 +129,10 @@ _QUOTAS: dict[str, dict] = {
 _RATE_LIMITS: dict[str, dict] = {
     "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
     "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
-    # treg's partner key is limited to 600 verifications a minute (429 with Retry-After: 60 above that).
-    "filtrat": {"limit": 600, "window_s": 60, "source": "docs"},
-    # treg's finder key (its own Filtrat account) is limited to 110 searches a minute.
-    "filtrat-finder": {"limit": 110, "window_s": 60, "source": "docs"},
+    # treg's partner key is limited to 900 verifications a minute (429 with Retry-After: 60 above that).
+    "filtrat": {"limit": 900, "window_s": 60, "source": "docs"},
+    # treg's finder key (its own Filtrat account) is limited to 250 searches a minute.
+    "filtrat-finder": {"limit": 250, "window_s": 60, "source": "docs"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
@@ -239,7 +240,17 @@ _RATE_LIMITS: dict[str, dict] = {
     "crustdata": {"limit": 30, "window_s": 60, "source": "headers"},
     # The shared account's upgraded level: 100 RPS, honored only on the enterprise node (base_url).
     "tikhub": {"limit": 100, "window_s": 1, "source": "policy"},
+    # GetLeads.io documents 100 requests a minute per account, shared by its keys; a batch of
+    # items is one request. Change this and the GetLeads.io line in `_CONCURRENCY` together when
+    # the account's allowance changes.
     "getleadsio": {"limit": 100, "window_s": 60, "source": "docs"},
+}
+# Defaults `_RATE_LIMITS` used to carry. A stored policy still holding one of these exactly was
+# seeded from it, so `ensure_policies` moves it to the current default; any other value is an
+# operator's choice and stays.
+_PREVIOUS_RATE_LIMITS: dict[str, tuple[dict, ...]] = {
+    "filtrat": ({"limit": 600, "window_s": 60, "source": "docs"},),
+    "filtrat-finder": ({"limit": 110, "window_s": 60, "source": "docs"},),
 }
 # An endpoint whose upstream allowance differs from its provider's has its own bucket here. It
 # replaces the provider entry for that endpoint and does not draw from the provider's bucket.
@@ -270,9 +281,11 @@ _CONCURRENCY: dict[str, int] = {
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
     # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
-    # then 503 SERVER_BUSY), and 20 finder searches on treg's finder key.
+    # then 503 SERVER_BUSY), and 40 finder searches on treg's finder key.
     "filtrat": 10,
-    "filtrat-finder": 20,
+    "filtrat-finder": 40,
+    # GetLeads.io publishes no concurrency cap for the account. Add "getleadsio": N here once one
+    # is agreed; its request rate is the GetLeads.io line in `_RATE_LIMITS`.
 }
 # An endpoint family whose in-progress allowance differs from its provider's has its own places
 # here, shared by every endpoint listed. They replace the provider's places for those endpoints and
@@ -284,8 +297,10 @@ _ENDPOINT_CONCURRENCY: dict[str, dict] = {
 
 
 def policy_population(configured_keys: set[str] | None = None) -> list[str]:
-    """Every account a policy must exist for: each platform-key slot plus each aggregator."""
-    return sorted(set(all_platform_providers()) | {f"overflow:{a}" for a in AGGREGATORS})
+    """Every account a policy must exist for: each platform-key slot, each further account of one
+    (`apollo#b`), and each aggregator."""
+    return sorted(set(all_platform_providers()) | set(extra_accounts())
+                  | {f"overflow:{a}" for a in AGGREGATORS})
 
 
 # tikhub is out of overflow scope (429s, auto top-up works, Monid re-shapes
@@ -294,23 +309,31 @@ _NO_OVERFLOW = frozenset({"tikhub", "scrapecreators"})
 
 
 def default_policy(provider: str, *, has_key: bool) -> CapacityPolicy:
-    ctype, funding, source = _KNOWN.get(provider, ("unknown", "unknown", "none"))
-    if provider in NO_BALANCE_API and source == "api":
+    base = split_account(provider)[0]
+    ctype, funding, source = _KNOWN.get(base, ("unknown", "unknown", "none"))
+    if base in NO_BALANCE_API and source == "api":
         source = "manual"
     return CapacityPolicy(
         provider=provider, capacity_type=ctype, funding_mode=funding, source=source,
         auto_funding_enabled=funding == "auto_recharge", enabled=has_key,
-        overflow_allowed=provider not in _NO_OVERFLOW,
-        quota=_QUOTAS.get(provider), rate_limit=_RATE_LIMITS.get(provider),
+        overflow_allowed=base not in _NO_OVERFLOW,
+        quota=_QUOTAS.get(base), rate_limit=_RATE_LIMITS.get(base),
     )
 
 
 async def ensure_policies(db: AsyncSession, *, has_key) -> list[str]:
     """Insert a policy row for every account that lacks one; never overwrite a hand-edited row.
+    A row whose rate limit is still a default this file shipped before (`_PREVIOUS_RATE_LIMITS`)
+    was seeded, not edited, so it moves to today's default.
     Returns the providers whose imported policy is still `unknown` — the list a person must classify.
     `has_key(provider) -> bool` says whether the env carries a credential for the slot."""
     from sqlalchemy import select
-    existing = {row.provider for row in (await db.execute(select(CapacityPolicy))).scalars()}
+    rows = list((await db.execute(select(CapacityPolicy))).scalars())
+    for row in rows:
+        base = split_account(row.provider)[0]
+        if row.rate_limit is not None and row.rate_limit in _PREVIOUS_RATE_LIMITS.get(base, ()):
+            row.rate_limit = _RATE_LIMITS.get(base)
+    existing = {row.provider for row in rows}
     unknown: list[str] = []
     for provider in policy_population():
         if provider in existing:
@@ -369,6 +392,10 @@ STALE_AFTER = timedelta(hours=6)
 # `<= 0` never fires. No route bills that little, in credits or in USD.
 EMPTY_BELOW = 0.01
 
+_DRAIN_BELOW: dict[str, float] = {
+    "apollo": 5000,
+}
+
 
 def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
                  now: datetime | None = None) -> LatestState:
@@ -397,5 +424,6 @@ def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
         return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at,
                            snap.confidence, exhausted_until=until, health="exhausted",
                            note=snap.note, rate_limit=rl)
+    low = snap.remaining < _DRAIN_BELOW.get(split_account(policy.provider)[0], EMPTY_BELOW)
     return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at,
-                       snap.confidence, health="ok", note=snap.note, rate_limit=rl)
+                       snap.confidence, health="low" if low else "ok", note=snap.note, rate_limit=rl)

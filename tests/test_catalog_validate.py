@@ -414,20 +414,6 @@ def test_platform_async_object_reads_cannot_silently_omit_ownership_metadata():
     assert missing == []
 
 
-def test_untracked_extended_async_consumers_are_explicitly_byok_only():
-    catalog = catalog_store.load()
-    ids = {
-        "akta.x.request-status",
-        "tikhub.x.youtube-web-v2-get-video-captions-result",
-        "dataforseo.x.serp-ai-summary",
-        "dataforseo.x.serp-screenshot",
-    }
-    for endpoint_id in ids:
-        endpoint = catalog.by_id[endpoint_id]
-        assert endpoint["platform_blocked"]
-        assert not catalog.platform_eligible(endpoint)
-
-
 def _valid_table():
     return {
         "type": "per_success",
@@ -794,8 +780,9 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'body.mode': 'sync'}, True),
     ({'body.mode': 'async'}, False),        # outside the declared enum
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
-    ({'body.realtime': None}, False),       # absence applies to query parameters only
-    ({'headers.x-key': None}, False),
+    ({'body.realtime': None}, True),        # a declared body field may be absent-only too
+    ({'body.missing': None}, False),        # an absent-only body field is a declared one
+    ({'headers.x-key': None}, True),        # null: the header must be absent, declared or not
     ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
     ({'pathParams.model': 'stable'}, True),
     ({'queryParams.memory': [1024, 2048]}, True),
@@ -931,7 +918,8 @@ def test_contactout_person_routes_cannot_recapture_pii():
     safe = {"contactout.people.count", "contactout.people.email.verify",
             "contactout.companies.search", "contactout.companies.enrich"}
     structural = {"contactout.people.contact.work", "contactout.people.contact.phone",
-                  "contactout.people.contact.personal"}
+                  "contactout.people.contact.personal", "contactout.people.audience.email-hash",
+                  "contactout.people.email.verify.batch", "contactout.people.contact.batch"}
     for ep in endpoints:
         if ep["id"] in safe:
             continue
@@ -941,12 +929,12 @@ def test_contactout_person_routes_cannot_recapture_pii():
         if ep["id"] in structural:
             assert ep["example_response"] == "examples/" + example.name
             payload = example.read_text()
-            assert "example.invalid" in payload or "+10000000000" in payload
+            if ep.get("terminal_example_response"):
+                payload += (path.parent / ep["terminal_example_response"]).read_text()
+            assert any(fake in payload for fake in ("example.invalid", "+10000000000", "routing-fixture"))
         else:
             assert "example_response" not in ep
             assert not example.exists()
-    work = next(ep for ep in endpoints if ep["id"] == "contactout.people.enrich.work_email")
-    assert work["cost"]["value"] == 0.17
 
 
 @pytest.mark.parametrize('display,valid', [
@@ -1238,24 +1226,40 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
     assert errors == []
 
 
-def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
-    """The catalog's YAML reading uses libyaml's C parser when it is installed; every shipped catalog
-    file must parse to the same document as with the pure-Python SafeLoader, timestamps kept as
-    strings."""
-    import yaml
-    from treg.domain.catalog import store
-    from treg.domain.catalog.schema import files
+def test_echoes_credential_is_accepted_in_provider_defaults_and_on_one_endpoint(
+    tmp_path, monkeypatch, capsys,
+):
+    """Graph's files set `echoes_credential` in `defaults:`; a provider can also set it on one
+    row, and a row's `false` opts out of the default."""
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {web: Web}\ncapabilities: {web.read: Read a page}\n")
+    (tmp_path / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    row = ("  - id: {provider}.web.{name}\n    capability: web.read\n    platform: web\n"
+           "    method: GET\n    path: /{name}\n    summary: Read a page\n    added: '2026-11-27'\n"
+           "    cost: {{type: free, value: 0, currency: USD, unit: call}}\n")
+    (tmp_path / "facebook.yaml").write_text(
+        "provider: facebook\nsource: {docs: https://example.com/docs}\n"
+        "defaults:\n  echoes_credential: true\nendpoints:\n"
+        + row.format(provider="facebook", name="page")
+        + row.format(provider="facebook", name="raw") + "    echoes_credential: false\n")
+    (tmp_path / "tikhub.yaml").write_text(
+        "provider: tikhub\nsource: {docs: https://example.com/docs}\nendpoints:\n"
+        + row.format(provider="tikhub", name="page") + "    echoes_credential: true\n"
+        + row.format(provider="tikhub", name="plain"))
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
 
-    class Pure(yaml.SafeLoader):
-        pass
-    Pure.yaml_implicit_resolvers = files._Loader.yaml_implicit_resolvers
-    if not getattr(yaml, "__with_libyaml__", False):
-        pytest.skip("libyaml not installed")
-    assert issubclass(files._Loader, yaml.CSafeLoader)
-    for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
-        text = path.read_text(encoding="utf-8")
-        assert yaml.load(text, Loader=files._Loader) == yaml.load(text, Loader=Pure), path.name
-    assert yaml.load("checked: 2026-09-01", Loader=files._Loader) == {"checked": "2026-09-01"}
+    assert validator.main(["facebook", "tikhub"]) == 0
+    assert "0 error(s)" in capsys.readouterr().out
+    rows = catalog_store.load(directory=tmp_path).by_id
+    assert {endpoint: row["echoes_credential"] for endpoint, row in rows.items()} == {
+        "facebook.web.page": True, "facebook.web.raw": False, "tikhub.web.page": True,
+        "tikhub.web.plain": False}
+
+
+def test_the_catalog_loader_keeps_dates_as_strings(tmp_path):
+    from treg.domain.catalog.schema import files
+    (tmp_path / "row.yaml").write_text("checked: 2026-09-01\n")
+    assert files.read_yaml(tmp_path / "row.yaml") == {"checked": "2026-09-01"}
 
 
 def _per_result_cost(**extra):
@@ -1413,8 +1417,7 @@ def test_bills_miss_is_true_and_only_on_a_per_success_or_per_result_price():
     validator.check_cost(base | {"type": "per_result", "bills_miss": True}, "catalog:test", ok, [])
     assert ok == []
     for bad in (base | {"bills_miss": False}, base | {"bills_miss": "yes"},
-                base | {"type": "per_call", "bills_miss": True},
-                base | {"type": "quota_rows", "bills_miss": True}):
+                base | {"type": "per_call", "bills_miss": True}):
         errors: list[str] = []
         validator.check_cost(bad, "catalog:test", errors, [])
         assert any("bills_miss" in e for e in errors), bad
@@ -1450,13 +1453,12 @@ def _v2_cost_errors(endpoint_id: str, **keys) -> list[str]:
 GEMINI = "google-ai.image-gen.gemini-3-1-flash-image"
 
 
-def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
-    assert _v2_cost_errors(GEMINI) == [] and _v2_cost_errors("findymail.search.domain") == []
-
-
 @pytest.mark.parametrize("endpoint_id,keys,message", [
     ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
      "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "0", "currency": "USD", "unit": "call"},
+                                 "settle": {"reported": {"path": "response.cost", "unit": "usd"}}},
+     "a free price never settles from a reported charge"),
     ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
      "price.currency unit (unit page) has no fx.yaml rate"),
     ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},
@@ -1524,9 +1526,7 @@ def test_row_text_passes_a_row_that_says_what_the_tool_does(row):
     ({"summary": "Search posts; results May lag"}, "summary says 'May' (may): a hedge"),
     ({"summary": "Search posts", "note": "It no\n  longer returns views."},
      "note says 'no\\n  longer' (no longer): argues with an earlier text"),
-    ({"summary": "Search posts", "note": "Billed per_call so a miss is paid."}, "note says 'per_call so' (per_call so)"),
     ({"summary": "Search posts. Live 2026-09-08 it returned ten."}, "summary says '2026-09-08'"),
-    ({"summary": "Search posts", "note": "Across 40 calls the answer was stale."}, "note says '40 calls'"),
     ({"summary": "Search posts", "input": {"queryParams": {"q": {"type": "string", "note": "often a hashtag"}}}},
      "input.queryParams.q.note says 'often'"),
     ({"summary": "Search posts", "input": {"body": {"type": "object", "properties": {

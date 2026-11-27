@@ -22,7 +22,7 @@ from typing import cast
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, defer
 from sqlmodel import select
@@ -162,6 +162,17 @@ async def _id_out_of_range(request: Request, exc: OverflowError) -> JSONResponse
     return JSONResponse({"detail": "identifier out of range"}, status_code=404)
 
 
+async def _db_id_out_of_range(request: Request, exc: DBAPIError) -> JSONResponse:
+    # asyncpg refuses a parameter past Postgres's 32-bit `integer` while binding it, and SQLAlchemy
+    # wraps that OverflowError in a DBAPIError. Any other database error stays a 500.
+    cause: BaseException | None = exc.orig
+    while cause is not None and not isinstance(cause, OverflowError):
+        cause = cause.__cause__
+    if cause is None:
+        raise exc
+    return await _id_out_of_range(request, cause)
+
+
 _app_version_cache: tuple[float, str] | None = None  # (index.html mtime, content hash)
 
 
@@ -265,7 +276,7 @@ async def create_tool_request(
     """Open: file a "the catalog doesn't have X" report. No auth on purpose — the filer is most
     often an agent that just got zero search results and holds no token, and a signup wall here
     costs exactly the demand signal the catalog team wants. Per-IP rate limiting (ratestore) is
-    the abuse valve, same shape as POST /demo/sandbox; field caps bound the row.
+    the abuse valve; field caps bound the row.
 
     Identity is attribution, never authorization: when the caller happens to be signed in (token
     or same-origin session), the row records who asked so they can be told when it lands — a
@@ -348,7 +359,6 @@ router.routes.extend(auth_routes.grants_router.routes)
 router.routes.extend(org_routes.org_entry_router.routes)
 router.routes.extend(org_routes.invite_entry_router.routes)
 router.routes.extend(onboard_routes.onboard_entry_router.routes)
-router.routes.extend(onboard_routes.sandbox_router.routes)
 router.routes.extend(onboard_routes.onboard_teammate_router.routes)
 router.routes.extend(org_routes.invite_management_router.routes)
 router.routes.extend(org_routes.member_list_router.routes)
@@ -721,9 +731,10 @@ async def get_call_result(
 
     A 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered
     platform call, or an own-key call whose answer fit the size cap while recording was on. The
-    audit row keeps the identities of the provider's bytes; a metered answer is returned as its
-    caller received it: where treg removes the provider's reported charge, without it unless this
-    request sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
+    audit row keeps the identities of the stored bytes; an answer is returned with treg's own
+    credentials for its provider masked, and a metered one as its caller received it: where treg
+    removes the provider's reported charge, without it unless this request sends
+    `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
     relayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
     with a `note` saying which. A routed call's answer is its children's: its row lists them in
     `children`, each readable here by its call ref. The request shape is the vendor-facing one
@@ -780,11 +791,11 @@ async def get_call_result(
     if not found["stored"]:
         out["note"] = ("hash-only: the provider's licence or the size cap did not allow keeping "
                        "the bytes")
-    elif (row.cost_charged_micro is not None and 200 <= row.status_code < 300
-          and (text := (found.get("response") or {}).get("body_text")) is not None):
-        # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
-        out["response"]["body_text"] = call_service.answer_for_caller(
-            row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
+    elif (text := (found.get("response") or {}).get("body_text")) is not None:
+        out["response"]["body_text"] = call_service.stored_answer_for_caller(
+            row.provider, row.endpoint_id, text.encode("utf-8"), request.headers,
+            metered=row.cost_charged_micro is not None and 200 <= row.status_code < 300,
+        ).decode("utf-8")
     return out
 
 

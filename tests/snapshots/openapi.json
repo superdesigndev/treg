@@ -6750,7 +6750,7 @@
     },
     "/calls/{call_id}/result": {
       "get": {
-        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nA 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered\nplatform call, or an own-key call whose answer fit the size cap while recording was on. The\naudit row keeps the identities of the provider's bytes; a metered answer is returned as its\ncaller received it: where treg removes the provider's reported charge, without it unless this\nrequest sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are\nrelayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.",
+        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nA 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered\nplatform call, or an own-key call whose answer fit the size cap while recording was on. The\naudit row keeps the identities of the stored bytes; an answer is returned with treg's own\ncredentials for its provider masked, and a metered one as its caller received it: where treg\nremoves the provider's reported charge, without it unless this request sends\n`X-Treg-Keep-Reported-Charge: true`. Own-tool calls are\nrelayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.",
         "operationId": "get_call_result_calls__call_id__result_get",
         "parameters": [
           {
@@ -7978,153 +7978,6 @@
           }
         },
         "summary": "Connection Resources"
-      }
-    },
-    "/demo/sandbox": {
-      "post": {
-        "description": "The landing sandbox is closed: no new sandbox is minted.",
-        "operationId": "demo_sandbox_mint_demo_sandbox_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Mint Demo Sandbox Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Demo Sandbox Mint"
-      }
-    },
-    "/demo/sandbox/live": {
-      "get": {
-        "description": "Live-wire facts for an EXISTING sandbox (the browser reuses one via localStorage, so it may\npredate the mint response carrying them): is the wire on, and who am I in the feed.",
-        "operationId": "demo_sandbox_live_demo_sandbox_live_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-treg-token",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Token",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-treg-org",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Org",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Live Demo Sandbox Live Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Demo Sandbox Live"
-      }
-    },
-    "/demo/sandbox/skill": {
-      "get": {
-        "description": "Export whatever the visitor built in their sandbox as a shareable **skill** (treg.json manifest\n+ SKILL.md + install commands). Sandbox-only — the payoff that shows what skills are.",
-        "operationId": "demo_sandbox_skill_demo_sandbox_skill_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-treg-token",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Token",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-treg-org",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "X-Treg-Org",
-              "type": "string"
-            }
-          },
-          {
-            "in": "cookie",
-            "name": "treg_session",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Treg Session",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Demo Sandbox Skill Demo Sandbox Skill Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Demo Sandbox Skill"
       }
     },
     "/feedback": {
@@ -9878,7 +9731,7 @@
     },
     "/onboard/demo": {
       "post": {
-        "description": "Seed a sandbox team owned by the caller — fake teammates (one per role) + a working `echo`\ntool + sample activity — so a brand-new user can feel the product immediately. Idempotent\n(reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI.",
+        "description": "Seed a demo team owned by the caller: fake teammates (one per role) + a working `echo`\ntool + sample activity, so a brand-new user can feel the product immediately. Idempotent\n(reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI.",
         "operationId": "onboard_demo_onboard_demo_post",
         "parameters": [
           {

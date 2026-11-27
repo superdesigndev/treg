@@ -26,6 +26,31 @@ def path_of(endpoint: dict | None) -> str | None:
     return f"response.{path}" if path else None
 
 
+def header_of(endpoint: dict | None) -> str | None:
+    """The response header a v2 row settles the provider's reported charge from, lowercased;
+    None when the row reads none (a path, no `settle.reported`, or today's spelling)."""
+    if not endpoint or not is_v2(endpoint):
+        return None
+    header = ((endpoint.get("settle") or {}).get("reported") or {}).get("header")
+    return header.lower() if header else None
+
+
+def settle_headers(endpoint: dict | None, headers) -> dict[str, str | None] | None:
+    """What of an answer's response `headers` its settlement reads, to keep beside the stored
+    answer: {header: raw value}, the value None when the answer carries none; None when the row
+    reads no header."""
+    name = header_of(endpoint)
+    if name is None:
+        return None
+    value = None
+    for key, item in (headers.items() if hasattr(headers, "items") else headers or ()):
+        key = key.decode("latin-1") if isinstance(key, bytes) else str(key)
+        if key.lower() == name:
+            value = item.decode("latin-1") if isinstance(item, bytes) else str(item)
+            break
+    return {name: value}
+
+
 def without(path: str | None, body: bytes) -> bytes:
     """`body` without the member `path` names, every other byte as it was; `body` itself when
     there is nothing to remove: no path, a path that does not end in a member name, an answer that

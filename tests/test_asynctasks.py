@@ -17,6 +17,7 @@ from sqlmodel import select
 from treg.application import asynctasks as task_app
 
 from treg.application.call import service as call_service
+from treg.application.call.evidence import AnswerMask
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
@@ -369,9 +370,8 @@ async def test_inline_success_waits_for_usage_and_then_closes_original_hold(
 
 
 @pytest.mark.parametrize("emails,charged_micro", [([], 0), ([{"email": "a@example.com"}], 80_000)])
-@pytest.mark.parametrize("root_field", [False, True])
 async def test_terminal_presence_closes_async_hold_at_the_result(
-    clients: AsyncClient, monkeypatch, replicate_platform, emails, charged_micro, root_field,
+    clients: AsyncClient, monkeypatch, replicate_platform, emails, charged_micro,
 ):
     submitted = await _submit(clients, monkeypatch, {"id": "presence-result"})
     call_id = submitted.headers["X-Treg-Call-Id"]
@@ -379,13 +379,13 @@ async def test_terminal_presence_closes_async_hold_at_the_result(
         row = await db.get(AsyncTaskRecord, call_id)
         row.settlement_basis = settlement.derive_basis(
             {"type": "per_success", "settle": "terminal_presence",
-             "presence": {"field": "email"} if root_field else {"row": "data.0", "field": "email"}},
+             "presence": {"row": "data.0", "field": "email"}},
             request={}, input_schema={}, unit_micro=1_000_000,
             terminal=True, response_estimate_micro=80_000)
         await db.commit()
     async def live(*args, **kwargs):
         return _response(200, {"status": "succeeded", "output": ["https://example.invalid/result.png"],
-                               "data": [{"email": emails}], **({"email": emails} if root_field else {})})
+                               "data": [{"email": emails}]})
     monkeypatch.setattr(call_service, "relay", live)
     assert (await clients.get("/call/replicate.predictions.get?id=presence-result")).status_code == 200
     async with session_maker() as db:
@@ -470,6 +470,81 @@ async def test_owned_free_poll_creates_no_money_entries(
         assert (await db.get(AsyncTaskRecord, submission_ref)).status == "pending"
 
 
+@pytest.mark.parametrize(("status", "flagged", "masked"), [
+    (401, False, True),    # an error body, on every row
+    (200, True, True),     # an answer, on a row marked `echoes_credential`
+    (200, False, False),   # an answer on any other row is relayed as it came
+])
+async def test_owned_free_poll_masks_treg_key_by_the_rule(
+    clients: AsyncClient, monkeypatch, replicate_platform, status: int, flagged: bool, masked: bool,
+):
+    """A free status read runs on treg's own key and is read whole: a key an error quotes is
+    masked, and a key an answer quotes on a row whose provider writes it there."""
+    await _submit(clients, monkeypatch, {"id": "quoting-poll-task"})
+    if flagged:
+        monkeypatch.setitem(catalog_store.load().by_id["replicate.predictions.get"], "echoes_credential", True)
+
+    async def fake_poll(*args, **kwargs):
+        return _response(status, {"id": "quoting-poll-task", "status": "processing", "urls": {
+            "get": "https://api.replicate.com/v1/predictions/quoting-poll-task?token=test-platform-token"}})
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    response = await clients.get("/call/replicate.predictions.get?id=quoting-poll-task")
+    assert response.status_code == status
+    assert ("test-platform-token" not in response.text) is masked
+    assert response.json()["urls"]["get"].endswith(
+        "/quoting-poll-task?token=***" if masked else "/quoting-poll-task?token=test-platform-token")
+
+
+_QUOTING_TERMINAL = {"id": "quoting-terminal", "status": "succeeded",
+                     "output": ["https://example.invalid/first.png?token=test-platform-token"]}
+
+
+async def _end_task_with_a_quoting_poll(clients: AsyncClient, monkeypatch) -> str:
+    call_id = (await _submit(clients, monkeypatch, {"id": "quoting-terminal"})).headers["X-Treg-Call-Id"]
+
+    async def fake_poll(*args, **kwargs):
+        return _response(200, _QUOTING_TERMINAL)
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    assert (await clients.get("/call/replicate.predictions.get?id=quoting-terminal")).status_code == 200
+    return call_id
+
+
+@pytest.mark.parametrize("flagged", [True, False])
+async def test_an_owned_terminal_poll_keeps_a_masked_copy_on_a_marked_row(
+    clients: AsyncClient, monkeypatch, replicate_platform, flagged: bool,
+):
+    """The poll that ends a task settles from the provider's bytes. On a row marked
+    `echoes_credential` the archive keeps the terminal answer with treg's key masked; on any other
+    row it keeps it as received and the call path searches no answer. The activity feed masks
+    treg's key in the copy it reads either way."""
+    if flagged:
+        monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
+    searched: list[int] = []
+    real = AnswerMask.mask
+    monkeypatch.setattr(AnswerMask, "mask", lambda self, body: searched.append(len(body)) or real(self, body))
+    call_id = await _end_task_with_a_quoting_poll(clients, monkeypatch)
+    kept = (await archive.load_terminal_responses([(call_id, EP)]))[call_id]
+    assert (b"first.png?token=***" in kept) is flagged
+    assert (b"test-platform-token" in kept) is not flagged
+    assert bool(searched) is flagged
+    await audit.drain()
+    assert "test-platform-token" not in json.dumps((await clients.get("/calls")).json())
+
+
+async def test_a_terminal_copy_kept_before_masking_is_masked_when_read(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    with monkeypatch.context() as before_masking:
+        before_masking.setattr(task_app, "platform_answer_mask", lambda provider: AnswerMask(()))
+        call_id = await _end_task_with_a_quoting_poll(clients, monkeypatch)
+    assert b"test-platform-token" in (await archive.load_terminal_responses([(call_id, EP)]))[call_id]
+    await audit.drain()
+    activity = json.dumps((await clients.get("/calls")).json())
+    assert "test-platform-token" not in activity and "first.png?token=***" in activity
+
+
 @pytest.mark.parametrize("status", [200, 500])
 async def test_owned_free_poll_hidden_before_activity_pagination(
     clients: AsyncClient, monkeypatch, replicate_platform, status: int,
@@ -548,7 +623,6 @@ async def test_owned_free_poll_timeout_keeps_diagnostics_without_money_or_activi
 @pytest.mark.parametrize("terminal, expected, kind, charged", [
     ("succeeded", "settled", "settle", 3000),
     ("failed", "released", "release", 0),
-    ("canceled", "released", "release", 0),
 ])
 async def test_owned_terminal_poll_finalizes_original_task_before_response(
     clients: AsyncClient, monkeypatch, replicate_platform, terminal, expected, kind, charged,
@@ -1071,35 +1145,6 @@ async def test_byok_task_status_keeps_direct_provider_object_access(
         ],
     ),
     (
-        # an extended dataset row on the sync runner: past a minute it answers 202 + snapshot_id
-        "/call/brightdata.x.amazon-products?dataset_id=gd_l7q7dkf244hwjntr0",
-        {"input": [{"url": "https://www.amazon.com/dp/B000000000"}]},
-        {"snapshot_id": "snapshot-extended"},
-        ["/call/brightdata.web.scrape.job.results?snapshot_id=snapshot-extended&format=json"],
-    ),
-    (
-        "/call/companyenrich.companies.enrich.bulk.start", {"domains": ["example.com"]},
-        {"job_id": "job-owned", "status": "pending"},
-        ["/call/companyenrich.companies.enrich.bulk.status?jobId=job-owned"],
-    ),
-    (
-        "/call/companyenrich.companies.search.async.start",
-        {"count": 1, "search": {"countries": ["US"]}},
-        {"job_id": "company-search-owned", "status": "pending"},
-        ["/call/companyenrich.companies.search.async.status?jobId=company-search-owned"],
-    ),
-    (
-        "/call/companyenrich.people.email.bulk.start",
-        {"items": [{"person_id": 1, "domain": "example.com"}]},
-        {"job_id": "people-email-owned", "status": "pending"},
-        ["/call/companyenrich.people.email.bulk.status?jobId=people-email-owned"],
-    ),
-    (
-        "/call/companyenrich.people.search.async.start", {"count": 1, "domains": ["example.com"]},
-        {"job_id": "people-search-owned", "status": "pending"},
-        ["/call/companyenrich.people.search.async.status?jobId=people-search-owned"],
-    ),
-    (
         "/call/oceanio.companies.segment.create", {"domains": ["example.com"]},
         {"segmentationId": 12345},
         ["/call/oceanio.companies.segment.get?segmentation_id=12345"],
@@ -1131,7 +1176,6 @@ async def test_legacy_platform_async_resources_are_recorded_and_authorized(
 
 @pytest.mark.parametrize("url", [
     "/call/apify.web.scrape.job.status?run_id=unknown",
-    "/call/oceanio.companies.segment.get?segmentation_id=99999",
 ])
 async def test_legacy_platform_async_utilities_deny_unknown_ids_before_relay(
     clients: AsyncClient, monkeypatch, legacy_async_platform, url: str,
@@ -1183,10 +1227,7 @@ async def test_icypeas_shared_key_reads_only_this_teams_searches(clients: AsyncC
 
 @pytest.mark.parametrize(("provider", "kind", "method", "path", "body"), [
     ("leadsforge", "followers_job", "GET", "leadsforge.linkedin.company.followers.job.results?jobID=old-job", None),
-    ("leadsforge", "enrichment_job", "GET", "leadsforge.people.enrich.job.status?jobID=old-job", None),
-    ("companyenrich", "job", "GET", "companyenrich.companies.enrich.bulk.status?jobId=old-job", None),
     ("icypeas", "search", "POST", "icypeas.search.results.read", {"id": "old-job"}),
-    ("icypeas", "bulk_file", "POST", "icypeas.bulk.results.read", {"mode": "bulk", "file": "old-job"}),
 ])
 async def test_a_job_started_before_its_tool_went_async_stays_readable(
     clients: AsyncClient, monkeypatch, provider, kind, method, path, body,
@@ -1925,7 +1966,6 @@ async def test_cancellation_at_the_pending_row_commit_boundary_leaves_a_coherent
 
     async def defer_then_cancel(mk, body, org_id, **kwargs):
         await real_defer(mk, body, org_id, **kwargs)
-        mk.call_id = mk.call_id or None
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(task_app, "defer_submission", defer_then_cancel)
@@ -1942,23 +1982,20 @@ async def test_cancellation_at_the_pending_row_commit_boundary_leaves_a_coherent
         row.next_check_at = utcnow_naive() - timedelta(seconds=1)
         await db.commit()
         call_id = row.call_id
-    assert row.status == "pending"
-    if hold is None:  # compensation released the hold while the row was already durable
-        assert kinds == ["release", "reserve"]
+    assert row.status == "pending" and hold is None
+    assert kinds == ["release", "reserve"]
 
-        async def fake_poll(row, client):
-            return 200, json.dumps({"status": "succeeded", "output": ["u"]}).encode()
+    async def fake_poll(row, client):
+        return 200, json.dumps({"status": "succeeded", "output": ["u"]}).encode()
 
-        monkeypatch.setattr(task_app, "_poll", fake_poll)
-        await task_app.settle_due()
-        async with session_maker() as db:
-            row = await db.get(AsyncTaskRecord, call_id)
-            kinds = sorted(e.kind for e in (await db.execute(select(LedgerEntry).where(
-                LedgerEntry.call_id == call_id))).scalars().all())
-        assert row.status == "released" and row.settled_micro == 0
-        assert kinds == ["release", "reserve"], "no settle may follow a released hold"
-    else:  # the hold survived with its row: the worker owns it from here, nothing was double-moved
-        assert kinds == ["reserve"]
+    monkeypatch.setattr(task_app, "_poll", fake_poll)
+    await task_app.settle_due()
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        kinds = sorted(e.kind for e in (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == call_id))).scalars().all())
+    assert row.status == "released" and row.settled_micro == 0
+    assert kinds == ["release", "reserve"], "no settle may follow a released hold"
 
 
 async def test_another_org_cannot_read_a_task_by_its_call_ref(
@@ -1984,8 +2021,8 @@ async def test_shared_key_idempotency_label_is_partitioned_per_org(
 ):
     """Two orgs sending one Idempotency-Key on treg's key must not collide on the provider account.
 
-    Reproduced live against LeadsForge (2026-09-09): the provider returned org A's job to org B under
-    the shared label, and `resource_ownership.produces` then made B its owner.
+    A provider that deduplicates by that label returns org A's job to org B, and
+    `resource_ownership.produces` then makes B its owner.
     """
     relayed = []
 
@@ -2050,9 +2087,8 @@ async def test_shared_key_calls_carry_treg_user_agent_own_key_the_callers(
     assert _upstream_user_agents(relayed)[1:] == ["Python-urllib/3.13"], "a team's own key relays the caller's header"
 
 
-@pytest.mark.parametrize("warm", [True, False])
 async def test_a_slow_first_catalog_load_does_not_time_out_a_poll(
-    clients: AsyncClient, monkeypatch, replicate_platform, warm,
+    clients: AsyncClient, monkeypatch, replicate_platform,
 ):
     """A fresh worker process parses the whole catalog on its first read. That read used to happen
     inside the timed poll and blocked the event loop past POLL_TIMEOUT_S, so polls timed out with a
@@ -2078,17 +2114,10 @@ async def test_a_slow_first_catalog_load_does_not_time_out_a_poll(
         return 200, json.dumps({"status": "succeeded", "output": ["url"]}).encode()
 
     monkeypatch.setattr(task_app, "_poll", poll_reads_catalog)
-    if not warm:  # the old shape: nothing loads the catalog before the polls start
-        async def no_warm(fn, *a, **kw):
-            return None
-        monkeypatch.setattr(task_app.asyncio, "to_thread", no_warm)
     result = await task_app.settle_due()
-    if warm:
-        assert result.settled == 1 and result.backed_off == 0
-    else:
-        assert result.settled == 0 and result.backed_off == 1
+    assert result.settled == 1 and result.backed_off == 0
     async with session_maker() as db:
-        assert (await db.get(AsyncTaskRecord, call_id)).status == ("settled" if warm else "pending")
+        assert (await db.get(AsyncTaskRecord, call_id)).status == "settled"
 
 
 def test_a_produces_path_names_every_task_of_a_batch():

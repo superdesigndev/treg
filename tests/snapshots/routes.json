@@ -955,6 +955,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_analysis_skill_md",
+    "path": "/skills/follower-analysis/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "doomscroll_skill_md",
     "path": "/skills/doomscroll/SKILL.md"
   },
@@ -1324,6 +1333,41 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_analysis_page",
+    "path": "/follower-analysis"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "follower_board_json",
+    "path": "/follower-analysis/board.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "follower_board_entry",
+    "path": "/follower-analysis/board/{handle}.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "follower_board_save",
+    "path": "/follower-analysis/board"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_page",
     "path": "/jev"
   },
@@ -1580,6 +1624,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "well_known_follower_analysis_md",
+    "path": "/.well-known/skills/follower-analysis/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "connect_demo_page",
     "path": "/connect-demo"
   },
@@ -1777,32 +1830,6 @@
     ],
     "name": "onboard_team",
     "path": "/onboard/team"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
-    "name": "demo_sandbox_mint",
-    "path": "/demo/sandbox"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_live",
-    "path": "/demo/sandbox/live"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "demo_sandbox_skill",
-    "path": "/demo/sandbox/skill"
   },
   {
     "kind": "APIRoute",

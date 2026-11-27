@@ -513,8 +513,8 @@ def async_view(desc) -> dict | None:
 
 def compare_view(e: dict, body: dict, limit: int | None, pinned: Callable[[str | None], str | None]) -> dict:
     """The other ways to do this job. A routed id gets its plan and, on request (`limit`), the
-    providers it does not route to; any other id gets the job's providers, itself first, then the
-    measured ones by success rate and price, then the unmeasured, `limit` rows at most."""
+    providers it does not route to; any other id gets the job's providers, itself first, then
+    the alternatives in the server's order, up to `limit`."""
     routing = body.get("routing") or {}
     if routing.get("plan"):
         plan = [{"id": c["endpoint_id"], "price": plan_price(c),
@@ -535,7 +535,9 @@ def compare_view(e: dict, body: dict, limit: int | None, pinned: Callable[[str |
     if not sibs:
         return {"compare": f"no other provider does {e['capability']}"} if e.get("capability") else {}
     pin = pinned(e.get("capability"))
-    others = sorted((s for s in sibs if not pin or s["provider"] == pin), key=compare_rank)
+    others = [s for s in sibs if not pin or s["provider"] == pin]
+    if not body.get("siblings_ranked"):
+        others.sort(key=compare_rank)  # Older servers send the rows in ID order.
     # The routed id rides second, under any limit: it is the other way to do this job.
     routed = [s for s in others if s.get("kind") == "routed"]
     rows = [e, *routed, *(s for s in others if s.get("kind") != "routed")][:max(limit or 10, 1 + len(routed))]

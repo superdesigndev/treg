@@ -56,10 +56,33 @@ Everything else in this file is guidance; these are the contract, and they win o
    binding with `location: "json"` explicitly parses and reserializes the top-level JSON object; it
    is not byte-faithful and must never be used with an upstream that signs or hashes the raw body.
    Never add upstream-specific modeling.
-   One more rewrite, on 4xx/5xx only: every spelling of an injected credential the provider echoes
-   back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
-   row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
-   call one that cannot be scanned is replaced whole, never relayed as a prefix.
+   One more rewrite: every spelling of an injected credential the provider echoes back in an error
+   body is masked (`***`) before the caller, an idempotent replay or the evidence row sees it, on
+   every row, owned free polls included. The error body is read whole (gzip/deflate decoded) up to
+   8 MiB; on a credentialed call one that cannot be scanned is replaced whole, never relayed as a
+   prefix. Any other answer (a status below 400) is masked the same way only on a catalog row
+   marked `echoes_credential` (a provider that writes the credential into successful answers:
+   Meta's Graph rows, whose paging links carry `access_token`), before the caller, an idempotent
+   replay, a task record or the archive sees it, and only where the application holds it whole: a
+   metered answer or an owned free poll, both read whole already (a marked row's free answer on
+   treg's key is read whole too, never streamed unread); an own-key 2xx, read whole up to
+   `archive_max_body_bytes`, asked for identity when the archive records the row, otherwise with
+   the request keeping only the caller's gzip and deflate and up to the larger of that and 2 MiB
+   when it names a task; and an archive hit, also masked with treg's own credentials for its
+   provider. Only spellings of 8 or more characters that are not all digits, never a whole-body
+   replacement. Relayed exactly as without this rewrite: every answer of a row not so marked, and
+   on a marked row an own-key 1xx or 3xx answer, one past that bound (it streams on, never cut), a
+   spooled answer, one treg cannot decode whole (br, zstd, a multi-member gzip, or one past 8 MiB
+   decoded) and one whose credentials cannot be rendered. So on a row not so marked, an answer
+   that quotes a credential reaches the caller as received, is stored as received on a call on
+   treg's key, and is served so on other teams' hits; marking the row is the remedy. Stored copies
+   are masked with treg's own credentials for the provider off the call path: the archive refresh
+   worker stores a refreshed answer masked on every row, terminal task evidence is stored masked
+   on a marked row and as received on any other, and `GET /calls/{id}/result`, Activity, the review
+   judge and the staff archive panel mask every row's stored copy when they read it. Error bodies
+   aside, on a row not so marked the call path renders no spelling and searches no answer. A
+   recording on a team's own credential is stored as received, since an answer holding a spelling
+   of it is never recorded.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
    (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
@@ -96,7 +119,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
    Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
-   list with no ownership rule) stream in full.
+   list with no ownership rule) stream in full, save on a row marked `echoes_credential`.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential
@@ -104,9 +127,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
-   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
-   through the same road and reads the answer with the descriptor; it never changes what `/call/`
-   returns (docs/context/architecture/tasks.md).
+   byte save the credential masking above on a marked row; one too large streams untouched and is
+   not recorded. `/tasks/{call_id}` polls that task through the same road and reads the answer
+   with the descriptor; it never changes what `/call/` returns (docs/context/architecture/tasks.md).
 5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
    revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
    bonus, in proportion), never another payment's block and never below the unheld balance.
@@ -188,8 +211,9 @@ agents then built against a constitution that was wrong.
   idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
-  Redis org/endpoint quota admission counters, the shared provider rate window's members, and a
-  sampled routed call's short-lived pairwise-comparison marker). Extend the
+  Redis org/endpoint quota admission counters, the shared provider rate window's members, a
+  sampled routed call's short-lived pairwise-comparison marker, and the short-lived per-team
+  balance-empty mark a confirmed balance refusal leaves in the shared store). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
@@ -247,7 +271,8 @@ isolation boundary. Read the fragment before touching any of them.
 ## Development
 
 ```bash
-uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
+uv run --frozen python -m pytest -q tests/test_x.py   # while working: the files you touch
+uv run --with pytest-xdist pytest -n auto -q   # once, before opening the PR (SQLite)
 uv run --frozen python -m pytest -q            # serial: debugging one test, or order
 uv run treg --help                             # the CLI from this checkout
 uv run python -m treg                          # the server
@@ -258,9 +283,16 @@ scripts/dev-local.sh up                        # live dev stack on :18790 with i
 TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
-xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
+While working, run the test files your change touches, in seconds; run the whole suite once,
+before opening the PR. CI runs the whole suite on Postgres on every push, so a whole local run
+after each edit only repeats it, slower.
+
+xdist is pulled via `--with`, not the lockfile, as in CI. Every test process gets its own
 database (a sqlite file per pid; under `TREG_TEST_DB_URL`, a Postgres database per xdist worker),
-so parallel runs and side-by-side runs never share one.
+so parallel runs and side-by-side runs never share one. CI runs the whole suite on Postgres, where
+production runs, and only a few local-development files on SQLite: a test must pass on both, and
+Postgres enforces what SQLite lets by (foreign keys, 32-bit integers, no dev sign-in code; seed
+teams with `conftest.seed_teams`, read sign-in codes with `conftest.email_code`).
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.

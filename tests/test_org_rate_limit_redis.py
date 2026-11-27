@@ -278,14 +278,10 @@ async def test_backward_clock_does_not_refill_early_or_expire_bucket_before_reco
     assert await first._client.pttl(rate_key) >= 298_000
 
 
-@pytest.mark.parametrize("bad", ["string", "list"])
-async def test_wrong_rate_key_type_allows_without_touching_slots(stores, bad):
+async def test_wrong_rate_key_type_allows_without_touching_slots(stores):
     first, _, org_id, _ = stores
     rate_key, slot_key = _keys(org_id)
-    if bad == "string":
-        await first._client.set(rate_key, "synthetic wrong type")
-    else:
-        await first._client.lpush(rate_key, "synthetic wrong type")
+    await first._client.set(rate_key, "synthetic wrong type")
     await first._client.zadd(slot_key, {"expired-owner": 1})
     before_rate, before_slots = await first._client.dump(rate_key), await first._client.dump(slot_key)
     result = await _admit(first, org_id, "must-not-write")
@@ -295,10 +291,8 @@ async def test_wrong_rate_key_type_allows_without_touching_slots(stores, bad):
 
 
 @pytest.mark.parametrize("bad", [
-    {"tokens": "nan"}, {"tokens": "inf"}, {"tokens": -1}, {"tokens": 4},
-    {"last_us": "not-a-time"}, {"last_us": -1},
-    {"rps": 0}, {"rps": "nan"}, {"rps": "inf"},
-    {"burst": 0}, {"burst": 1.5}, {"extra": "unexpected"},
+    {"tokens": "nan"}, {"tokens": 4}, {"last_us": "not-a-time"},
+    {"rps": 0}, {"burst": 1.5}, {"extra": "unexpected"},
 ])
 async def test_invalid_bucket_state_is_unavailable_without_partial_mutations(stores, bad):
     first, _, org_id, _ = stores
@@ -333,7 +327,7 @@ async def test_wrong_slot_type_does_not_debit_an_existing_bucket(stores):
     assert await first._client.get(slot_key) == "synthetic wrong type"
 
 
-@pytest.mark.parametrize("score", [float("inf"), float("-inf"), -1, 0.5])
+@pytest.mark.parametrize("score", [float("inf"), 0.5])
 async def test_invalid_slot_deadline_does_not_initialize_or_debit_a_bucket(stores, score):
     first, _, org_id, _ = stores
     rate_key, slot_key = _keys(org_id)

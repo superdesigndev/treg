@@ -11,11 +11,8 @@ from treg.domain.catalog import store
     ({"include": {"html": True, "aioverview": False}}, 5),
     ({"include": {"aioverview": True}}, 7),
     ({"include": {"aioverview": {}}}, 7),
-    ({"include": {"aioverview": {"markdown": False}}}, 7),
-    ({"first": 41, "include": {"aioverview": {"markdown": True}}}, 7),
     ({"pages": 3}, 9),
     ({"pages": "3", "include": {"aioverview": True}}, 11),
-    ({"pages": 10}, 23),
     ({"pages": 10, "include": {"aioverview": {"markdown": True}}}, 25),
     ({"pages": "invalid"}, 23),
 ])

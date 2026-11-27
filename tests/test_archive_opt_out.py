@@ -353,13 +353,6 @@ async def test_the_worker_command_erases_one_opted_out_team(clients: AsyncClient
     await archive.drain()
     org_id = await _org_id(clients)
     monkeypatch.setattr(worker, "_need_server", lambda: None)
-    # The command's startup check refuses a Postgres database without TREG_SECRET_KEY, which the
-    # CI Postgres job does not set; the check is the server's, not this command's, to test.
-    import treg.infra.db as infra_db
-
-    async def verified():
-        return None
-    monkeypatch.setattr(infra_db, "verify_db", verified)
     import argparse
     assert await worker._admin_erase_archive(argparse.Namespace(org=org_id)) == 1   # still in
     assert "still in the archive" in capsys.readouterr().out
@@ -395,11 +388,6 @@ async def test_a_dry_run_counts_what_would_go_and_deletes_nothing(
     from treg import worker
     import argparse
     import json
-    import treg.infra.db as infra_db
-
-    async def verified():
-        return None
-    monkeypatch.setattr(infra_db, "verify_db", verified)
     assert await worker._admin_erase_archive(argparse.Namespace(org=org_id, dry_run=True)) == 0
     assert json.loads(capsys.readouterr().out) == expected
     keys, _ = await _rows()

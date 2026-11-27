@@ -13,6 +13,7 @@ sources:
   - src/treg/config.py
   - src/treg/infra/object_store.py
   - src/treg/alembic/versions/0032_archive_body_storage.py
+  - src/treg/alembic/versions/0138_archivesnapshot_reported_headers.py
   - tests/test_archive_r2.py
   - tests/fake_object_store.py
   - scripts/smoke_archive_r2.py
@@ -103,17 +104,20 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
-  `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`, never on a
+  row marked `echoes_credential`) and `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 
 Image/video entries carry effective `cache: forbidden`, and lookup and refresh re-check the
 current policy, so old stored responses are never replayed. Async terminal evidence is the
 deliberate exception: the winning finalizer stores the terminal provider JSON under
-`treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence. It is never
-cache or learning evidence, the worker never follows result URLs in it and never stores generated
-media bytes. `load_terminal_responses` reads it back for Activity.
+`treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence, with treg's
+own credentials for the provider masked on a row marked `echoes_credential` and as received on any
+other (settlement reads the provider's bytes first). It is never cache or learning evidence, the
+worker never follows result URLs in it and never stores generated media bytes.
+`load_terminal_responses` reads it back for Activity, which masks treg's credentials in it on
+read, on every row.
 
 ## The cache key
 
@@ -122,8 +126,35 @@ the uppercased method, the catalog endpoint id, sorted query pairs, the canonica
 (raw hash for non-JSON), only `Accept` and `Accept-Language` from the caller, and the sharing
 scope when the answer is not public. The URL is rebuilt as the vendor sees it, before credential
 injection, so a credential cannot enter the key or the stored request shape from the request
-side. A vendor that echoes the credential in a 2xx body would have it stored on a platform-key
-call; judge `cache` per provider with that in mind.
+side. From the answer side, on a row marked `echoes_credential` a platform-key answer that quotes
+treg's credential is stored as the caller receives it, masked (`evidence.AnswerMask`), by the call
+path's recorder; the refresh worker (`_refresh_call`, with `platform_answer_mask`) masks treg's
+credentials in every row's refreshed answer, so on a marked row a refreshed version hashes like a
+live one. A hit on a marked row is masked again with the call's credentials and treg's for the
+provider, and `GET /calls/{id}/result` masks treg's on every row, which covers a copy kept before
+([proxy-model](proxy-model.md), "Answers that quote a credential"). On a row not so marked, a 2xx
+that quotes a credential is relayed as received, stored as received on a call on treg's key, and
+served so on other teams' hits; marking the row `echoes_credential` is the remedy.
+
+### The stored request body
+
+The key row keeps the request shape (`req_method`, `req_url`, `req_headers`, `req_body`) for the
+readers below; a lookup never reads it, because the key hash is taken from the caller's own body.
+A body within `archive_max_request_body_bytes` is kept as sent. A larger one is kept as a marker
+holding only its sha256 and its size (`archive._request_body_to_keep`): inline media in a request
+is large and rarely asked twice. `archive.stored_request_body` is the one reader of the column
+and tells the three cases apart (kept, no body, omitted); a body that itself starts with the
+marker's prefix is stored as a marker too, so a stored value with that prefix is never a caller's
+bytes. For an omitted body:
+
+- a hit answers as for any other key;
+- the refresh worker skips the key (`refresh_once`, `_refresh_call`): it cannot re-ask the question;
+- `resolve_result` returns `request.body_text: null` with `request.body_omitted: {sha256,
+  size_bytes}`, so the absence is never read as a request without a body;
+- arena and shadow evidence (`application/arena_insights._evidence`) leaves the call out, as it
+  does a call whose key is gone.
+
+Rows written before the limit keep their bytes and read as before.
 
 ## Own-key answers
 
@@ -135,7 +166,11 @@ never as a prefix. The relay asks for identity encoding (`force_identity`) and a
 compresses anyway is not recorded (`_identity_encoded`). A caller body the path never read cannot
 key the question: no lookup, no recording. **An answer that quotes the team's own credential back
 is never recorded** (`_echoes_own_credential`, failing closed when the renderings cannot be
-built). The same guard, provenance and sharing apply to a metered call riding treg's
+built); on a row marked `echoes_credential` the caller receives it masked. Masking does not
+depend on the archive: on such a row an own-key answer is read the same bounded way when nothing
+will be recorded, while every other row's answer then streams as it comes
+([proxy-model](proxy-model.md), "Answers that quote a credential").
+The same guard, provenance and sharing apply to a metered call riding treg's
 pay-per-use OAuth app (`billed_oauth`): the token is the team's.
 
 **A hit on an own key is free**: nothing is reserved or settled (non-negotiable 1), and
@@ -224,7 +259,8 @@ passes and deletes nothing. It reports keys, snapshots, marks and distinct bodie
 count is an upper bound, because a shared body stays.
 
 Endpoint running totals subtract what each DELETE returned, so two erasers subtract once, and
-move in endpoint order, the order `archive.flush_stats` locks the same rows in, so the two cannot
+move in endpoint order, the order `archive.flush_stats` visits the same rows in (it holds at most
+one of them at a time, and gives up on a held one after a short lock timeout), so the two cannot
 deadlock. The worker prints the running totals to stderr after every committed batch. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
 upload only after one `head` confirms the object still exists. Accepted race (documented in the
@@ -256,6 +292,18 @@ charge and marks roll back together. Only a storable question is marked. `lookup
 `repeat_for_org`; the settle scales the raw amount (floor division) before the ledger applies the
 margin. `tool_called` carries `cache_price` (`full` | `repeat` | `free`). 100 restores "a hit
 bills like a live call"; 0 makes repeats free.
+
+A hit is settled from the stored answer. A `settle.reported` path reads the stored body as it
+would live. The body carries no provider header, so for a v2 row whose `settle.reported` reads a
+header, `record()` keeps that one header's raw value on the snapshot (`reported_headers`,
+`{name: value}`, the value null when the provider sent none; NULL for a row that reads no header),
+on a caller's answer and on a refresh alike, and `lookup` hands it to the settle with the served
+snapshot. The hit then settles as the live answer did ([money](money.md)): a stored figure is the
+charge, a stored absence is 0 under `missing: 0`. A snapshot with nothing stored for the row's
+current header (every row older than migration 0138, or one recorded while the row read no
+header) leaves the figure unknown: `missing: 0` does not make it free, and it settles by the
+outcome and `bill`, then the hold. The stored value feeds settlement only; the answer the caller
+receives on a hit carries no provider header.
 
 The mark is keyed by `(org_id, key_hash)` and nothing else, so writing one takes no number from
 a sequence: a counter that can run out would make every first-time settle roll back, and a routed
@@ -363,7 +411,8 @@ bookkeeping table can drift, and 10 per pass. Refresh spend is treg's own, attac
 absent from the ledger.
 
 The call replays the stored request shape including the keying headers (`req_headers`; without
-them the recording lands under a different key), with injection from the one authoritative
+them the recording lands under a different key), never a key whose request body was not kept
+("The stored request body"), with injection from the one authoritative
 builder `oauth_providers.platform_bindings` (outside `api.py`, which this worker must not import),
 a path binding filling its placeholder in the stored URL, and records through the same `_store`.
 
@@ -474,9 +523,26 @@ never waits for archive work. Per-process counters reset on restart and are not 
 kept_bytes, newest_fetch), changed only by atomic column arithmetic, never read-modify-write. The
 row is shared by every team, so a recording adds its counts to an in-process delta after its own
 commit (`_count_stats`; a dropped or retried recording counts nothing), and `flush_stats` lands
-them as one statement per endpoint, in endpoint order so two processes cannot deadlock, under the
-archive's write semaphore. A failed or interrupted flush keeps its deltas; a process that dies
-between flushes loses that window, which is fine because nothing serves or bills from the totals.
+them as one statement per endpoint, each in its own short transaction, in endpoint order, under
+the archive's write semaphore. A flush never holds one endpoint's row while it waits for the
+next, so a busy row costs the others nothing. On PostgreSQL each statement runs under a short
+`lock_timeout`; an endpoint whose row another writer (a flush in another process, the pruner,
+erasure) still holds past it keeps its delta, merged with newer ones, for the next flush, and the
+flush moves on. Such a late delta still adds its counts, but `newest_fetch`, and the
+provider and policy seen with it, only move forward (a `CASE` in the same `UPDATE`). Any other failure, or an interrupted flush, puts back the deltas that have not
+committed and raises; a cancellation first waits for the endpoint transaction in flight to
+finish, so the ones already committed are not counted again. That wait is bounded
+(`_STATS_CANCEL_WAIT_S`), because `lock_timeout` does not cover a stalled connection or
+COMMIT: past it the transaction is abandoned, its connection invalidated, and its delta
+dropped, so it is counted at most once. `drain()` (shutdown, and `refresh_once`
+mid-life) retries endpoints left busy within a budget of a few seconds that bounds the whole
+pass: the wait for a write slot, each endpoint's lock wait (cut to what is left) and the start of
+each endpoint all fit in it, and so does waiting for the timer's flush, which drain() takes
+over; a flush still finishing past the budget puts its deltas back and re-arms the timer
+itself. It then logs
+how many deltas did not land and re-arms the timer, which shutdown cancels. Across endpoints the
+totals are not one snapshot, which is fine for a staff report; a process that dies between
+flushes loses that window, which is fine because nothing serves or bills from the totals.
 The pruner, erasure and row retention subtract directly. Arithmetic commutes only while the row exists, so the
 first recording of an endpoint creates it zeroed inside its own transaction (`_ensure_stat_row`),
 and a process skips that check only after one of its recordings committed with the row.
@@ -595,4 +661,5 @@ versions in one columns-only query (`body IS NOT NULL`), never loading bodies.
 
 Balances. Archive code never imports the ledger or billing and never changes a balance; its one
 write on the money path is the `ArchiveKeyOrg` mark inside the settle transaction. Nor the
-upstream response: what it serves is byte for byte what the vendor sent.
+upstream response: what it serves is byte for byte what the vendor sent, save a credential the
+answer quoted, which it stores masked.

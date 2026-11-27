@@ -266,11 +266,15 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, head
     if defaults and "bill" in defaults:
         keys.pop("bill", None)
         bill = defaults["bill"]
+    price = keys["price"] if "price" in keys else (defaults or {}).get("price")
+    free = isinstance(price, dict) and price.get("value") is not None and Decimal(str(price["value"])) == 0
     for key in (*COST_KEYS, *OUTCOME_KEYS):
         if key not in (defaults or {}) or key == "bill":
             continue
         if key not in keys:
-            if key == "settle":
+            if key == "settle" and free and (defaults[key] or {}).get("reported") is not None:
+                keys[key] = None
+            elif key == "settle":
                 # like `bill`, a settle default translates the provider's branch the batch deletes
                 continue
             keys[key] = None
@@ -311,8 +315,6 @@ def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple
     if found := [k for k in PROVIDER_KEYS if k in cost]:
         raise Refused(f"cost.{found[0]} is a single-provider key: a plugin or its batch")
     kind = cost.get("type")
-    if kind == "quota_rows":
-        raise Refused("quota_rows has no v2 rewrite yet")
     settle_word = cost.get("settle")
     if isinstance(settle_word, str) and settle_word in PLUGIN_SETTLES:
         raise Refused(f"cost.settle: {settle_word} is a plugin or a batch decision")

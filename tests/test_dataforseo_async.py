@@ -10,12 +10,12 @@ from httpx import AsyncClient
 from sqlmodel import select
 from test_asynctasks import _response
 
-from treg import archive
+from treg import archive, audit
 from treg.application.call import service as call_service
 from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
-from treg.models import AsyncResourceRecord, AsyncTaskRecord
+from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallRecord
 from conftest import verified_signup
 
 POST = "dataforseo.x.business-data-google-reviews-task-post"
@@ -65,7 +65,8 @@ async def test_a_task_post_is_owned_polled_and_settled_at_the_submission_charge(
 ):
     answers = [
         _response(200, _envelope([_task(TASK_A, 20100, 0.00375), _task(TASK_B, 20100, 0.00375)])),
-        _response(200, _envelope([_task(TASK_B, 40602, 0)])),
+        # A finished task's answer repeats the submission's price; DataForSEO does not charge it again.
+        _response(200, _envelope([_task(TASK_B, 20000, 0.00375, result=[{"items": []}])])),
         _response(200, _envelope([_task(TASK_A, 20000, 0, result=[{"items": []}])])),
     ]
 
@@ -91,6 +92,11 @@ async def test_a_task_post_is_owned_polled_and_settled_at_the_submission_charge(
     # The second task of the batch is the team's too, and reading it costs nothing.
     second = await clients.get(f"/call/{GET}", params={"id": TASK_B})
     assert second.status_code == 200
+    await audit.drain()
+    async with session_maker() as db:
+        read = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == second.headers["X-Treg-Call-Id"]))).scalar_one()
+    assert read.cost_charged_micro == 0
 
     # The owner's own poll sees the tracked task finish and settles the hold at what DataForSEO
     # reported for the submission, not at the catalog estimate.

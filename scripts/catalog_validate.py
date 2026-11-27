@@ -88,7 +88,7 @@ from treg.domain.catalog.schema import violations  # noqa: E402
 from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
 from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
 
-COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
+COST_TYPES = {"per_call", "per_result", "per_success", "free"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
 # and convert via fx.yaml's `credit_rates_usd` / `unit_rates_usd` (see catalog_store.cost_view).
 CURRENCIES = {"USD", "CNY", "credit", "unit"}
@@ -450,8 +450,12 @@ def check_platform_request(rule: object, input_schema: object, where: str,
     fields = _input_fields(input_schema)
     for path, value in rule.items():
         if value is None:
-            if not isinstance(path, str) or not path.startswith("queryParams.") or path == "queryParams.":
-                fail(errors, where, "platform_request null (must be absent) applies to a query parameter only")
+            if (not isinstance(path, str) or not path.startswith(("queryParams.", "headers.", "body."))
+                    or path in ("queryParams.", "headers.", "body.")):
+                fail(errors, where, "platform_request null (must be absent) applies to a query parameter, "
+                                    "a header or a body field only")
+            elif path.startswith("body.") and fields.get(path) is None:
+                fail(errors, where, "platform_request null on a body field names a declared body field")
             continue
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
@@ -533,8 +537,6 @@ UNDECLARED_RESERVE = frozenset({
     "seranking.google.keywords.volume",
     "seranking.web.backlinks.summary",
     "seranking.web.url.metrics",
-    "serpstat.google.domain.overview",
-    "serpstat.google.keywords.volume",
 })
 
 
@@ -1257,29 +1259,6 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                 fail(errors, where, "cost.display.grouped requires positive integer cost.per")
         if cost.get("type") == "free" or ("table" in cost and not display.get("maximum")):
             fail(errors, where, "cost.display requires a scalar paid price unless it labels a table maximum")
-    if "sumble" in cost:
-        rule = cost["sumble"]
-        modes = {"single": set(), "results": {"reserve_results"},
-                 "lookup": {"records", "block_size", "max_records"},
-                 "compose": {"records", "base", "attribute", "metric", "free_attributes",
-                             "safe_attributes", "max_records", "default_limit", "max_limit"}}
-        mode = rule.get("mode") if isinstance(rule, dict) else None
-        if mode not in modes or set(rule) != {"mode"} | modes.get(mode, set()):
-            fail(errors, where, "cost.sumble must declare exactly the fields for a supported mode")
-        else:
-            for key in modes[mode] - {"records", "free_attributes", "safe_attributes"}:
-                if type(rule[key]) is not int or rule[key] <= 0:
-                    fail(errors, where, f"cost.sumble.{key} must be a positive integer")
-            for key in {"free_attributes", "safe_attributes"} & modes[mode]:
-                if not isinstance(rule[key], list) or any(not isinstance(v, str) for v in rule[key]):
-                    fail(errors, where, f"cost.sumble.{key} must be a string list")
-            if "records" in rule and (not isinstance(rule["records"], str)
-                                      or not re.fullmatch(r"[a-z_]+", rule["records"])):
-                fail(errors, where, "cost.sumble.records must name a body array")
-        if mode == "lookup" and isinstance(rule, dict) and rule.get("block_size") != cost.get("per"):
-            fail(errors, where, "cost.sumble.block_size must equal cost.per")
-        if cost.get("currency") != "credit" or cost.get("value") != 1:
-            fail(errors, where, "cost.sumble requires a one-credit base price")
     if "contactout" in cost:
         rule = cost["contactout"]
         jobs = {"contact", "person", "email", "linkedin", "search", "decision",
@@ -1585,7 +1564,7 @@ def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
     if (adapters.get(ep.get("id")) or {}).get("miss"):
         fail(errors, where, "a v2 row's miss is its own `miss` rule: remove the adapter's miss "
                             "from adapters.yaml")
-    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
+    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss", "platform_check")
              if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
     for name in names:
         try:
@@ -1637,6 +1616,9 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                                               rule.unit):
             fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
                                 f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.reported is not None and _v2_price_is_free(ep.get("price")):
+        fail(errors, where, "a free price never settles from a reported charge: opt out of the "
+                            "provider's settle with `settle: null`")
     if settle is not None and settle.worst_case is not None and price is not None:
         bound = price.value if price.value is not None else (price.fallback.value if price.fallback else None)
         if bound is not None and settle.worst_case < bound:
@@ -1652,6 +1634,13 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
         for path in sources:
             if not parse_path(path).many and fields.get(_v2_field(path, inp)) is None:
                 fail(errors, where, f"reserve.entities.from '{path}' must name a declared input field")
+    if reserve is not None and reserve.money is not None:
+        spec = fields.get(_v2_field(reserve.money.param, inp))
+        if spec is None or spec.get("type") not in ("number", "string"):
+            fail(errors, where, f"reserve.money.param '{reserve.money.param}' must name a declared "
+                                "number or string input field")
+        if price is None:
+            fail(errors, where, "reserve.money needs a price beside it")
     if price is None or price.table is None:
         return
     view = schema.served(row, inp)["cost"]

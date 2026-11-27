@@ -8,6 +8,7 @@ sources:
   - src/treg/domain/catalog/results.py
   - src/treg/domain/catalog/rankings.py
   - src/treg/domain/catalog/routing/__init__.py
+  - src/treg/domain/catalog/routing/ad_hashes.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
@@ -307,7 +308,7 @@ what follows about reading `cost` holds for it; how it bills is
 
 ```yaml
 cost:
-  type: per_result        # per_call | per_result | per_success | free | quota_rows
+  type: per_result        # per_call | per_result | per_success | free
   value: 2.00             # non-null unless confidence: unknown
   currency: USD           # USD | CNY | credit | unit
   per: 1000               # the quantity `value` covers (default 1)
@@ -465,6 +466,11 @@ cost:
   (`resolve._spool_evidence_paths`), so evidence cannot drift from price. A fixed price needs an
   `expect` rule so a refused generation is not billed; the validator refuses the field beside
   `async`, `resource_ownership` or `managed_resource`, which need the whole body.
+- **`echoes_credential: true`**: the provider writes the credential treg injected into a successful
+  answer (Meta's Graph rows set it in their provider `defaults:`). Only such a row's answers are held
+  whole and masked on the call path; the loader serves `False` when absent
+  ([catalog schema](catalog-schema.md#a-row-whose-answers-quote-the-credential),
+  [proxy-model](proxy-model.md#answers-that-quote-a-credential)).
 - **`platform_request`** pins exact body, header, query or path values needed only on the shared
   credential. Each pin is a value its field declares, written as the declared type: a value only
   treg's key needs is pinned here and left out of the declaration, which every tier is held to. A
@@ -475,6 +481,17 @@ cost:
   is read as the pinned value's type, so a run option such as a spend cap can bound one call's cost.
   A `queryParams.*` pin of `null` means the parameter must be absent (it need not be declared), so a
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
+  A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
+  outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
+  shared credential, with the field named and its value never echoed. A `headers.*` pin of `null`
+  does the same for a header (it need not be declared): a second place the provider reads a
+  credential from, beside the one treg injects, is refused on the shared credential, so the
+  provider never answers for the caller's own account there.
+- **`platform_check`** names a plugin that checks the whole request on the shared credential when
+  pins cannot say the rule (a v2 row only; [catalog-schema](catalog-schema.md)).
+- **`platform_query: declared`** (a v2 row only): on the shared credential the query and path carry
+  only the names the row's `input` declares, so a parameter the provider also reads, in any spelling
+  its parser takes (Apify's `token`), never reaches it; a team's own key sends its query as given.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.
@@ -831,6 +848,12 @@ price when the deployment can relay it (`routers.catalog._overflow_disclosure`: 
 `overflow_price_unit`, `overflow_via`; MCP `catalog_get` lifts them) - the price a free endpoint can
 bill when treg's own account is out.
 
+Endpoint detail ranks siblings available on treg's key and approved hub tools together, followed by
+catalog siblings that require another credential. Within each group, the sort uses the Wilson
+reliability band, then lower p50 latency, lower advertised USD price, and ascending endpoint ID.
+Reviews are displayed separately from the ranking. The HTTP detail's `siblings_ranked` flag lets
+the CLI use that order while still sorting responses from older servers.
+
 ### Observations: folded off the request path, cached per process
 
 - `stats.EndpointObservationReader` is the domain port; bootstrap wraps
@@ -858,8 +881,7 @@ bill when treg's own account is out.
   writes; the worker owns transactions. Async endpoints with result adapters publish only when
   every applicable day is `terminal_reconciled` and no correction is older than `STALE_AFTER_S`;
   one untrustworthy day suppresses the endpoint's whole observation, because dropping the day would
-  bias its rate. Async hit rates use terminal evidence only. `catalog_stats.requeue_async_stats` and
-  `repair_status` are the explicit, manifest-driven requeue and its completion check.
+  bias its rate. Async hit rates use terminal evidence only.
 - Merging days weights each day's latency sample by the calls it stands for (`Tally.merge`), or the
   window's p95 would be the quiet days'. `stats.Tally` is the one shape for a day, a window and the
   live aggregate; `tests/test_catalog_stats_refresh.py` holds fold and SQL equal.
@@ -1010,6 +1032,11 @@ hands back the nested call's own), so the archived answer can be read later by e
   international form is `not_international`, because HLR reads national digits as a country code),
   and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
   422 before planning.
+- `ad_hashes` (opt-in via `X-Treg-Route-Ad-Hashes`) names the output field holding an email. After
+  a hit, `route._ad_hashes` adds `_treg.ad_hashes`: `domain/catalog/routing/ad_hashes.hashes` gives
+  the SHA-256 of the address as LinkedIn, Meta and Google each normalize it. No call and no charge;
+  `output` is not altered; a miss or a hit without an address says `hashed: false` with `no_hit` or
+  `no_email`. The header on a contract without `ad_hashes` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
@@ -1267,6 +1294,9 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
+    A child inherits the parent's headers, so a header one provider refuses on treg's key (a
+    `platform_request` header pin, `route._platform_header_refusal`) skips that candidate the same
+    way; when every candidate was skipped so, the caller gets that header's 400.
   - Before planning, each identity field is read (`invalid_identity`, 422, even when another
     complete variant was sent): one of `format: url` must parse as an HTTP URL with a dotted host and
     no userinfo (a scheme-less one gets `https://`), and a stand-in key (`q`) must be a string. A

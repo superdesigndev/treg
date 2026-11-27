@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream, verified_signup
+from conftest import make_upstream, verified_signup, seed_teams
 
 from treg.api import app
 from treg.config import get_settings
@@ -315,6 +315,7 @@ async def test_admin_calls_reads_new_rows_after_a_cursor_by_provider(c):
     """A live poller reads only what is new: `since_id` returns rows after it oldest first, with
     the provider, charge and timing; `provider` alone is refused so the read stays a key range."""
     from treg.models import CallRecord
+    await seed_teams(1, 2)
     async with session_maker() as s:
         for i, (prov, ok) in enumerate((("crawl4ai", 200), ("firecrawl", 200), ("crawl4ai", 502), ("crawl4ai", 200))):
             s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name=f"{prov}.web.scrape", method="POST",
@@ -339,6 +340,7 @@ async def test_admin_share_counts_requests_per_job_and_answers_per_provider(c):
     answered; a direct call credits its own provider; a failed attempt, a 200 its adapter judged
     empty, an attempt the job moved on from, and any attempt of a failed job credit nobody."""
     from treg.models import CallRecord
+    await seed_teams(1, 2)
     async with session_maker() as s:
         def add(ep, prov, status, ref):
             s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name=ep, method="POST", path="/call/x",
@@ -370,6 +372,7 @@ async def test_admin_share_counts_teams_so_one_heavy_team_is_one_vote(c):
     """`teams`: one team with nine direct crawl4ai answers and one team with one routed tinyfish
     answer are one vote each: team-weighted 50/50, while volume says 90/10."""
     from treg.models import CallRecord
+    await seed_teams(1, 2)
     async with session_maker() as s:
         for i in range(9):
             s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="crawl4ai.web.scrape", method="POST",

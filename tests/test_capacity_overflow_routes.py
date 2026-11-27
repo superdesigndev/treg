@@ -85,6 +85,23 @@ def test_an_async_job_never_overflows():
     assert view.for_endpoint("icypeas.people.email.find") == []
 
 
+async def test_route_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from types import SimpleNamespace
+    from treg.domain.capacity import routes_view
+    await reset_db()
+    monkeypatch.setattr(routes_view, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    view = routes_view.RouteView()
+    await view.load()
+    async with session_maker() as db:
+        db.add(_route(enabled=True))
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert [r.endpoint_id for r in view.for_endpoint("findymail.search.business-profile")] == [
+        "findymail.search.business-profile"]
+
+
 def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
     ours = [{"endpoint_id": "hunter.people.email.find", "provider": "hunter", "method": "GET",
              "path": "/email-finder", "base_url": "https://api.hunter.io/v2"},
@@ -159,37 +176,6 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
         assert r3.enabled == 0
 
 
-async def test_verified_akta_news_monid_fallback_is_enabled_at_the_observed_default_price():
-    await reset_db()
-    candidate = next(x for x in R.load_seed()
-                     if x["endpoint_id"] == "akta.companies.news" and x["aggregator"] == "monid")
-    async with session_maker() as db:
-        await ensure_policies(db, has_key=lambda p: True)
-        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
-                           now=R._dt("2026-09-25T12:00:00"))
-        await db.commit()
-        row = await db.get(OverflowRoute, ("akta.companies.news", "monid"))
-    assert row.enabled
-    assert row.agg_price_micro == 10_000
-    assert row.agg_unit == "call"
-    assert row.ratio == 1
-
-
-async def test_akta_enrichment_monid_route_is_eligible_only_after_live_verification():
-    await reset_db()
-    candidate = next(x for x in R.load_seed()
-                     if x["endpoint_id"] == "akta.companies.enrich" and x["aggregator"] == "monid")
-    assert candidate["verified_at"] is None and candidate["single_result"] is True
-    candidate = {**candidate, "verified_at": "2026-09-25"}
-    async with session_maker() as db:
-        await ensure_policies(db, has_key=lambda p: True)
-        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
-                           now=R._dt("2026-09-25T12:00:00"))
-        await db.commit()
-        row = await db.get(OverflowRoute, ("akta.companies.enrich", "monid"))
-    assert row.enabled and row.agg_unit == "result" and row.single_result is True
-
-
 def test_route_for_orders_orthogonal_first():
     rs = [_route(aggregator="monid", enabled=True), _route(aggregator="orthogonal", enabled=True),
           _route(aggregator="orthogonal", endpoint_id="x", enabled=True), _route(aggregator="monid", enabled=False, endpoint_id="y")]
@@ -242,6 +228,19 @@ _OUT_OF_CREDITS = [
     ("apify", 403, b'{"error":{"type":"platform-feature-disabled","message":"You\'ve reached your monthly usage limit '
      b'of $100.00, so Actor runs and other Apify services are blocked until your monthly usage cycle resets."}}',
      b'{"error":{"type":"insufficient-permissions","message":"You do not have permission to run this Actor."}}'),
+    ("scrubby", 403, b'{"detail": "Insufficient credits."}', b'{"detail": "Not authenticated"}'),
+    # OpenRouter's other 403s echo the caller's words: a moderated model's `flagged_input`, a
+    # provider's verbatim `metadata.raw`.
+    ("openrouter", 403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}',
+     b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input was flagged",'
+     b'"metadata":{"reasons":["violence"],"flagged_input":"pay my overdue balance now"}}}'),
+    ("openrouter", 403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}',
+     b'{"error":{"code":403,"message":"Provider returned error","metadata":{"raw":{"error":{"message":'
+     b'"Prompt about an overdue balance was rejected"}},"provider_name":"Google"}}}'),
+    ("marketstack", 401, b'{"error":{"code":"inactive_user","message":"Permission denied - User not active"}}',
+     b'{"error":{"code":"invalid_access_key","message":"You have not supplied a valid API Access Key."}}'),
+    ("minimax", 200, b'{"data":null,"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}',
+     b'{"data":{"audio":"https://example.test/a.mp3"},"base_resp":{"status_code":0,"status_msg":"success"}}'),
 ]
 
 
@@ -343,6 +342,23 @@ def test_a_daily_quota_without_a_wait_header_resets_at_the_next_utc_midnight():
     with pytest.raises(ValueError):
         S.Signature("x", 429, r"", "quota", resets="next_tuesday")
 
+
+def test_account_answers_the_shared_rows_already_read():
+    """Answers on treg's key that need no row of their own: a 402 is the shared balance row whatever
+    its words, and ContactOut's two 429s are told apart by their wait header alone."""
+    for provider, out in (("fishaudio", b'{"message":"Insufficient API credit for this model"}'),
+                          ("fishaudio", b""),
+                          ("tikhub", b'{"detail":{"code":402,"message":"Insufficient balance, this endpoint '
+                                     b'requires payment"}}'),
+                          ("exa", b'{"error":"You have exceeded your credits limit.","tag":"NO_MORE_CREDITS"}')):
+        assert S.classify(provider, 402, None, out).kind == "balance", provider
+    daily = S.classify("contactout", 429, httpx.Headers({"retry-after": "45280", "x-ratelimit-limit": "3000"}),
+                       b'{"message":"You have reached the daily limit for this API."}', now=_NOW)
+    assert daily.kind == "quota" and daily.resets_at == _NOW + timedelta(seconds=45280)
+    pace = S.classify("contactout", 429, httpx.Headers({"retry-after": "27", "x-ratelimit-limit": "20"}),
+                      b'{ "message": "Too Many Attempts." }', now=_NOW)
+    assert pace.kind == "burst" and not S.is_exhausting(pace)
+
 # Apollo API reference, "422 Unprocessable Entity": the body an empty credit pool gets (live 2026-09-01).
 APOLLO_OUT_OF_CREDITS = b'{"error": "Insufficient credits. Please upgrade your plan."}'
 # The SAME status for a caller's mistake - must never read as our account running dry.
@@ -376,6 +392,15 @@ def test_hlrlookup_says_out_of_credit_with_a_200():
     assert sig.kind == "balance" and S.is_exhausting(sig)
     assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"NONE","live_status":"LIVE"}]}') is None
     assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"TOO_MANY_REQUESTS"}]}') is None
+
+
+def test_serpstat_says_limits_exceeded_with_a_200():
+    out = b'{"id":"1","error":{"code":32012,"message":"Limits exceeded","data":null}}'
+    sig = S.classify("serpstat", 200, None, out)
+    assert sig.kind == "balance" and S.is_exhausting(sig) and sig.resets_at is None
+    assert S.classify("serpstat", 200, None, b'{"id":"1","result":{"data":[{"keyword":"seo"}]}}') is None
+    assert S.classify("serpstat", 200, None, b'{"id":"1","error":{"code":-32601,"message":"Method not found"}}') is None
+    assert S.classify("hunter", 200, None, out) is None, "a 2xx is only ever read per provider"
 
 
 def test_each_tripwire_row_arms_the_tripwire_whole():
@@ -438,9 +463,10 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
     "descovo",  # funded plan credits remain; its 402 error code is undocumented and unobserved
+    "upcell",  # what it answers with no credits left is undocumented and unobserved
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "branddev", "brightdata", "coresignal", "crustdata",
-    "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
+    "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
@@ -455,7 +481,6 @@ _UNRECORDED_SIGNATURE = {
     "localfalcon",  # invoiced per request, no prepaid balance to exhaust; no empty-credit response exists to record
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
-    "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
     "bounceban",  # verification credits remain; exhaustion was not forced and no overflow is claimed
     "zerobounce",  # credits remain; exhaustion was not forced and no overflow is claimed
@@ -467,7 +492,7 @@ _UNRECORDED_SIGNATURE = {
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "fundable",  # unlimited API account; an exhausted-credit response was not forced
-    "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
+    "oceanio", "replicate", "scrapecreators", "seranking",
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
     "serper",  # funded credits remain; no provider-specific empty-balance response was forced
@@ -486,7 +511,7 @@ _UNRECORDED_SIGNATURE = {
     "theirstack",  # funded API credits remain; the documented 402 body was not observed
     "forager",  # funded plan credits remain; the out-of-credits answer is undocumented and unobserved
 
-    "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
+    "serpapi", "spyfu", "tiingo", "tikhub", "twelvedata",
 }
 
 

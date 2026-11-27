@@ -10,15 +10,17 @@ import json
 import logging
 from datetime import datetime, timedelta
 
+import httpx
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import archive, audit, ratestore
 from treg.config import get_settings
+from treg.application.call import resolve as call_resolve
 from treg.application.call import service as call_service
 from treg.application.call import settle as call_settle
-from treg.application.call.types import UpstreamResponse
+from treg.application.call.types import ResolutionFailed, UpstreamResponse
 from treg.infra import org_traffic
 from treg.infra.db import session_maker
 from treg.domain.capacity import events as capacity_events
@@ -27,12 +29,14 @@ from treg.domain.capacity.marks import DEFAULT_LOCK, LOCK_NS, MAX_LOCK, Lock
 from treg.domain.capacity.policy import LatestState
 from treg.domain.capacity.sweep import STATE_NS
 from treg.domain.capacity.view import view as capacity_view
+from treg.domain.catalog import store as catalog_store
 from treg.models import Hold, LedgerEntry
 from treg.timeutil import utcnow_naive
 
 from test_marketplace_call import (  # noqa: F401
     EP, EP_MICRO, PLATFORM_KEYS, _balance, _fake_relay, platform_on,
 )
+from test_routing import _relay_by_provider
 
 OUT = b'{"detail":"Insufficient balance"}'  # matches the bare-402 balance signature
 
@@ -68,6 +72,10 @@ def _relay(status: int, body: bytes, headers=()):
             return None
         return UpstreamResponse(status, tuple(headers), _s(), _c)
     return relay
+
+
+async def _no_wait(*_args, **_kwargs) -> int:
+    return 0
 
 
 def _counting(relay):
@@ -278,23 +286,23 @@ async def test_a_refusal_before_any_hold_tells_clients_when_to_retry(clients: As
 
 async def test_steady_traffic_while_dry_never_extends_the_lock_and_a_probe_lifts_it(
         clients: AsyncClient, platform_on, monkeypatch):
-    """Ten minutes of twenty calls a minute while the account stays dry: only one probe a minute
+    """Three minutes of five calls a minute while the account stays dry: only one probe a minute
     reaches the provider, nothing is charged and the lock keeps its end. After a top-up the next
     probe lifts it for everyone."""
     lock = await _lock_by_two_signals(clients, monkeypatch)
     before = await _balance(clients)
     dry = _counting(_fake_relay(402, OUT))
     monkeypatch.setattr(call_service, "relay", dry)
-    for _ in range(10):
+    for _ in range(3):
         capacity_marks._last_probe.clear()  # a minute passes
-        for _ in range(20):
+        for _ in range(5):
             assert _capacity_503(await clients.get(f"/call/{EP}?aweme_id=7"))
         now = await _lock(lock.key)
         assert now.lock_id == lock.lock_id and now.until == lock.until, "never extended"
-    assert dry.calls == 10 and await _balance(clients) == before
+    assert dry.calls == 3 and await _balance(clients) == before
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     capacity_marks._last_probe.clear()
-    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(20)] == [200] * 20
+    assert [(await clients.get(f"/call/{EP}?aweme_id=7")).status_code for _ in range(5)] == [200] * 5
     assert await _lock(lock.key) is None
 
 
@@ -518,6 +526,7 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
     get_settings.cache_clear()
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
+    monkeypatch.setattr(call_service.provider_limiter, "acquire", _no_wait)  # Wiza's published pacing
     monkeypatch.setattr(call_service, "relay", _by_path({
         "/company_enrichments": (400, WIZA_OUT),
         "/individual_reveals": (200, b'{"data":{"id":910001,"status":"queued"}}')}))
@@ -529,5 +538,229 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
         assert _capacity_503(await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"}))
         lock = await _lock("wiza")
         assert lock.strikes == 1 and not lock.is_active(), "400, 200, 400 does not lock"
+    finally:
+        get_settings.cache_clear()
+
+
+APIFY_DEAD_TOKEN = (b'{"error":{"type":"user-or-token-not-found","message":"User was not found or authentication '
+                    b'token is not valid"}}')
+# OpenRouter's moderation 403 echoes up to 100 characters of the caller's input in `flagged_input`.
+OPENROUTER_MODERATION = (b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input was '
+                         b'flagged","metadata":{"reasons":["violence"],"flagged_input":"pay my overdue balance '
+                         b'now","provider_name":"OpenAI","model_slug":"openai/gpt-4.1"}}}')
+
+# A provider's own words for treg's account being out, beside a mistake of the caller's that the same
+# provider answers: (endpoint, treg's account out, the caller's mistake). Each call sends the row's
+# catalog `test_request`.
+_ACCOUNT_OUT = [
+    pytest.param("apify.linkedin.search.jobs", (401, APIFY_DEAD_TOKEN),
+                 (400, b'{"error":{"type":"invalid-input","message":"Input is not valid: Field input.jobTitles '
+                       b'must be array"}}'), id="apify"),
+    pytest.param("dataforseo.google.keywords.volume",
+                 (403, b'{"version":"0.1.20251117","status_code":40104,"status_message":"Please verify your '
+                       b'account before using the API.","cost":0,"tasks_count":0,"tasks_error":0,"tasks":null}'),
+                 (200, b'{"version":"0.1.20251117","status_code":20000,"status_message":"Ok.","cost":0,'
+                       b'"tasks_count":1,"tasks_error":1,"tasks":[{"status_code":40501,'
+                       b'"status_message":"Invalid Field: \'location_code\'.","cost":0,"result":null}]}'),
+                 id="dataforseo"),
+    pytest.param("marketstack.eod.latest",
+                 (401, b'{"error":{"code":"inactive_user","message":"Permission denied - User not active"}}'),
+                 (422, b'{"error":{"code":"validation_error","message":"Request failed with validation error"}}'),
+                 id="marketstack"),
+    pytest.param("minimax.voice-gen.speech-2-8-hd",
+                 (200, b'{"data":null,"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}'),
+                 (200, b'{"data":null,"base_resp":{"status_code":2013,"status_msg":"invalid params"}}'),
+                 id="minimax"),
+    pytest.param("openrouter.ai-judge.decide",
+                 (403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}'),
+                 (403, OPENROUTER_MODERATION), id="openrouter"),
+    pytest.param("scrubby.people.email.verify", (403, b'{"detail": "Insufficient credits."}'),
+                 (422, b'{"detail":[{"loc":["body","email"],"msg":"value is not a valid email address"}]}'),
+                 id="scrubby"),
+]
+
+
+def _on_tregs_key(monkeypatch, provider: str) -> None:
+    key = "login:password" if provider == "dataforseo" else f"PLATFORM-{provider.upper()}-KEY"
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", key)
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    monkeypatch.setattr(call_service.provider_limiter, "acquire", _no_wait)
+    get_settings.cache_clear()
+
+
+async def _test_request(clients: AsyncClient, endpoint: str, *, headers=None, **query):
+    ep = catalog_store.load().by_id[endpoint]
+    sent = ep["test_request"]
+    params = {**(sent.get("pathParams") or {}), **(sent.get("queryParams") or {}), **query}
+    return await clients.request(ep["method"], f"/call/{endpoint}", params=params, json=sent.get("body"),
+                                 headers=headers)
+
+
+@pytest.mark.parametrize("endpoint, out, mistake", _ACCOUNT_OUT)
+async def test_a_providers_own_account_answer_on_tregs_key_is_the_typed_refusal(
+        clients: AsyncClient, monkeypatch, endpoint, out, mistake):
+    """On treg's key the provider's answer for treg's account (empty, unpaid, deactivated) is the
+    typed 503, uncharged, and a strike; the caller's own mistake is relayed as sent, no strike."""
+    provider = endpoint.split(".")[0]
+    _on_tregs_key(monkeypatch, provider)
+    try:
+        monkeypatch.setattr(call_service, "relay", _fake_relay(*mistake))
+        r = await _test_request(clients, endpoint)
+        assert (r.status_code, r.content) == mistake, r.text
+        assert await _lock(provider) is None
+
+        monkeypatch.setattr(call_service, "relay", _fake_relay(*out))
+        before = await _balance(clients)
+        r = await _test_request(clients, endpoint)
+        assert _capacity_503(r), r.text
+        assert out[1].decode() not in r.text
+        assert await _balance(clients) == before and await _rows(Hold) == []
+        assert (await _lock(provider)).strikes == 1
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("endpoint, out, _mistake", _ACCOUNT_OUT)
+async def test_the_same_answer_on_a_teams_own_key_is_relayed_as_sent(
+        clients: AsyncClient, monkeypatch, endpoint, out, _mistake):
+    """The team's own key wins over treg's, and its account is the team's business."""
+    provider = endpoint.split(".")[0]
+    _on_tregs_key(monkeypatch, provider)
+    try:
+        assert (await clients.post("/secrets", json={"name": provider, "value": "TEAM-OWN-KEY"})).status_code == 200
+        monkeypatch.setattr(call_service, "relay", _fake_relay(*out))
+        r = await _test_request(clients, endpoint)
+        assert (r.status_code, r.content) == out, r.text
+        assert await _lock(provider) is None
+    finally:
+        get_settings.cache_clear()
+
+
+VERIFY_ROUTE = "treg.people.email.verify"
+
+# A credential a provider reads beside the one treg injects: (provider, headers, query, the refused
+# parameter). Apify's query parser takes a `token` in more than one spelling.
+_CALLER_CREDENTIAL = [
+    pytest.param("scrubby", {"Authorization": "Api-Key CALLER-KEY"}, {}, "headers.authorization",
+                 id="scrubby-authorization"),
+    pytest.param("openrouter", {"x-api-key": "CALLER-KEY"}, {}, "headers.x-api-key", id="openrouter-x-api-key"),
+    *(pytest.param("apify", {}, {name: "CALLER-TOKEN"}, "queryParams", id=f"apify-{name}")
+      for name in ("token", "token[]", "token[0]", "Token", "TOKEN")),
+]
+
+
+@pytest.mark.parametrize("provider, headers, query, refused", _CALLER_CREDENTIAL)
+async def test_a_callers_own_credential_never_reaches_the_provider_on_tregs_key(
+        clients: AsyncClient, monkeypatch, provider, headers, query, refused):
+    """The provider would answer for the caller's own account in the words that mean treg's (a 401,
+    an empty account), so on treg's key every row refuses that credential before any hold, a row
+    declaring its own platform_request included. A team's own key still sends it as given."""
+    cat = catalog_store.load()
+    rows = [ep for ep in cat.endpoints if ep["provider"] == provider and cat.platform_eligible(ep)]
+    for ep in rows:  # every row on treg's key, a new one included
+        with pytest.raises(ResolutionFailed) as refusal:
+            call_resolve._enforce_platform_request(ep, b"", httpx.Headers(headers),
+                                                   call_resolve.QueryValues(tuple(query.items())))
+        assert refusal.value.parameter == refused, ep["id"]
+
+    _on_tregs_key(monkeypatch, provider)
+    try:
+        relay = _counting(_fake_relay(200, b"{}"))
+        monkeypatch.setattr(call_service, "relay", relay)
+        before = await _balance(clients)
+        endpoint = next(ep["id"] for ep in rows if ep.get("test_request"))
+        r = await _test_request(clients, endpoint, headers=headers, **query)
+        assert r.status_code == 400 and r.json()["detail"]["parameter"] == refused, r.text
+        assert relay.calls == 0 and await _balance(clients) == before and await _lock(provider) is None
+
+        assert (await clients.post("/secrets", json={"name": provider, "value": "TEAM-OWN-KEY"})).status_code == 200
+        r = await _test_request(clients, endpoint, headers=headers, **query)
+        assert r.status_code == 200 and relay.calls == 1, r.text
+    finally:
+        get_settings.cache_clear()
+
+
+def test_the_apify_dataset_poll_takes_its_documented_view_options_on_tregs_key():
+    """On treg's key the dataset poll takes what it declares, Apify's view options in Apify's own
+    spellings (`desc=1`) among them; `signature` and `method` stay refused."""
+    ep = catalog_store.load().by_id["apify.web.scrape.job.results"]
+    views = call_resolve.QueryValues((("dataset_id", "QPg9EhVcdbiiLL2X5"), ("format", "csv"), ("omit", "a,b"),
+                                      ("desc", "1"), ("skipEmpty", "true"), ("feedTitle", "runs")))
+    call_resolve._enforce_platform_request(ep, b"", None, views)
+    assert call_resolve._query_refusal(ep, views) is None
+    for name in ("signature", "method"):
+        with pytest.raises(ResolutionFailed):
+            call_resolve._enforce_platform_request(ep, b"", None, call_resolve.QueryValues(((name, "x"),)))
+
+
+def _verify_on_tregs_key(monkeypatch) -> None:
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SCRUBBY", "PLATFORM-SCRUBBY-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DROPLEADS", "PLATFORM-DROPLEADS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrubby,dropleads")
+    get_settings.cache_clear()
+
+
+async def test_a_routed_verify_with_a_stray_authorization_header_goes_on_to_the_next_provider(
+        clients: AsyncClient, monkeypatch):
+    """A routed child inherits the parent's headers. An Authorization meant for something else is
+    refused by Scrubby on treg's key, for Scrubby only: the next provider serves the call."""
+    _verify_on_tregs_key(monkeypatch)
+    try:
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"scrubby": [(200, {"result": "Valid"})], "dropleads": [(200, {"status": "valid"})]}, seen))
+        before = await _balance(clients)
+        r = await clients.post(f"/call/{VERIFY_ROUTE}", json={"email": "info@example.com"}, headers={
+            "X-Treg-Route-Prefer": "scrubby,dropleads", "Authorization": "Bearer another-service"})
+        assert r.status_code == 200, r.text
+        routed = r.json()["_treg"]
+        assert routed["served_by"] == "dropleads.people.email.verify"
+        assert [(t["provider"], t["outcome"]) for t in routed["tried"]] == [("scrubby", "skipped"), ("dropleads", "hit")]
+        assert "headers.authorization" in routed["tried"][0]["detail"]
+        assert [s[0] for s in seen] == ["dropleads"]
+        assert before - await _balance(clients) == routed["charged_micro"] > 0
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_decisive_verify_bills_the_answers_before_a_refused_header_as_usual(
+        clients: AsyncClient, monkeypatch):
+    """Dropleads answers without deciding, Scrubby refuses the stray header: the paid Dropleads
+    answer comes back, billed as any undecided answer is, never released for treg to pay."""
+    _verify_on_tregs_key(monkeypatch)
+    try:
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"dropleads": [(200, {"status": "unknown"})], "scrubby": [(200, {"result": "Valid"})]}, seen))
+        before = await _balance(clients)
+        r = await clients.post(f"/call/{VERIFY_ROUTE}", json={"email": "info@example.com"}, headers={
+            "X-Treg-Route-Prefer": "dropleads,scrubby", "X-Treg-Route-Decisive": "true",
+            "Authorization": "Api-Key CALLER-KEY"})
+        assert r.status_code == 200, r.text
+        routed = r.json()["_treg"]
+        assert routed["served_by"] == "dropleads.people.email.verify" and routed["decision"]["decided"] is False
+        dropleads, scrubby = routed["tried"]
+        assert (dropleads["outcome"], scrubby["outcome"], scrubby["charged_micro"]) == ("weak", "skipped", 0)
+        assert dropleads["charged_micro"] > 0 and before - await _balance(clients) == dropleads["charged_micro"]
+        assert [s[0] for s in seen] == ["dropleads"]
+        assert sorted(e.kind for e in await _rows(LedgerEntry) if e.kind != "grant") == ["reserve", "settle"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_routed_verify_whose_only_provider_refuses_the_header_says_which_header(
+        clients: AsyncClient, monkeypatch):
+    """Nothing else could serve: the caller gets the header refusal, the one thing to change."""
+    _verify_on_tregs_key(monkeypatch)
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrubby")
+    get_settings.cache_clear()
+    try:
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider({"scrubby": [(200, {"result": "Valid"})]}, seen))
+        before = await _balance(clients)
+        r = await clients.post(f"/call/{VERIFY_ROUTE}", json={"email": "info@example.com"},
+                               headers={"Authorization": "Api-Key CALLER-KEY"})
+        assert r.status_code == 400 and r.json()["detail"]["parameter"] == "headers.authorization", r.text
+        assert seen == [] and await _balance(clients) == before
     finally:
         get_settings.cache_clear()

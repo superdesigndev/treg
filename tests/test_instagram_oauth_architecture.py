@@ -12,6 +12,7 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
+from conftest import auth_digest
 from treg import crypto
 from treg import oauth_providers
 from treg.application import connect as connect_use_cases
@@ -31,15 +32,6 @@ def instagram_apps(monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
-
-
-def test_legacy_instagram_grants_keep_the_facebook_page_profile():
-    assert oauth_providers.INSTAGRAM.authorization_method_name("") == "facebook-page"
-    profile = oauth_providers.INSTAGRAM.profile_for_authorization("")
-    parsed = urlsplit(profile.base_url)
-    assert parsed.scheme == "https"
-    assert parsed.hostname == "graph.facebook.com"
-    assert profile.call_token_field == "page_access_token"
 
 
 def test_legacy_grant_inference_uses_provider_metadata(monkeypatch):
@@ -234,7 +226,7 @@ async def test_catalog_call_explicitly_selects_each_instagram_authorization(
     )
     assert direct.status_code == 200, direct.text
     assert direct.json()["raw_path"] == "/v25.0/17841400000000000/conversations"
-    assert direct.json()["auth"] == "Bearer IG-LONG-TOKEN"
+    assert direct.json()["auth_sha256"] == auth_digest("Bearer IG-LONG-TOKEN")
 
     page_call = await clients.get(
         "/call/instagram.x.user-messages",

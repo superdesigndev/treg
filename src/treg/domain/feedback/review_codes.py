@@ -1,9 +1,13 @@
-"""What Jev is asked about a review's reason: whether it names a person, and what it blames.
+"""What Jev is asked about a review's reason: whether it names a person, what it blames, and what
+it praises.
 
 The privacy question gates public quotes (`verdicts.quotable`); the codebook question attributes a
-`partly` or `not_useful` review to one of a fixed set of codes, which the vendor report cards
-aggregate per endpoint. Codes are stored as strings with `CODEBOOK_VERSION`: adding or redefining a
-code bumps the version, and only reviews judged under an older version are judged again.
+`partly` or `not_useful` review to one of a fixed set of codes, and the praise question a `useful`
+review to one of `PRAISE_CODES`, which the vendor report cards aggregate per endpoint. Codes are
+stored as strings with their codebook's version (`CODEBOOK_VERSION`, `PRAISE_CODEBOOK_VERSION`):
+adding or redefining a code bumps that version, and only reviews judged under an older version of
+the same codebook are judged again. A review's usefulness never changes, so it says which codebook
+its codes are from.
 """
 from __future__ import annotations
 
@@ -61,6 +65,62 @@ RULES = (
     "charged for a miss."
 )
 
+PRAISE_CODEBOOK_VERSION = "2026-11-27.2"
+
+# What a `useful` review praises. Most codes pair with a negative one, so a report card can tell a
+# praise and a complaint about the same thing apart: ACCURATE with ACCURACY and RISKY, FRESH with
+# STALE, RELEVANT with WRONG and PARAM, COMPLETE with PARTIAL and COVER, STRUCTURED with FORMAT,
+# ACCESS with BLOCK and JS, CHEAP with PRICE. HONEST, FAST and GENERIC have no pair. Generated media
+# has no code of its own: following the prompt is RELEVANT and a faithful, artifact-free output is
+# ACCURATE, the axes its complaints are coded on (PARAM, ACCURACY).
+PRAISE_CODES = {
+    "ACCURATE": "The values are right and can be trusted: they matched another source, the official site or "
+                "a later check; a decisive verification verdict (valid, invalid, deliverable) with a high "
+                "score and no catch-all doubt; a phone or email that verified. For generated media: faithful "
+                "output that kept the reference identity, realistic, sharp, with no artifacts.",
+    "FRESH": "The data is current: today's or recent posts, current title and employer, live counts, newest "
+             "results first, recent dates.",
+    "RELEVANT": "On target for the request as written: the right person, company, page or product; results on "
+                "topic for the query; the filters, operators and parameters (site:, location, language, date, "
+                "sort, limit) were respected. For generated media: it followed the prompt and settings "
+                "(aspect ratio, duration, voice, style, what to leave out).",
+    "COMPLETE": "Everything asked for came back: all the fields, the full profile, page, text or transcript, "
+                "every item of a batch (all of it in one call included), history or pagination to get the "
+                "rest; or it found what another provider had missed.",
+    "STRUCTURED": "The response's own format is easy to use: structured fields, parsed rows, a consistent "
+                  "schema, explicit flags or status fields, markdown instead of raw HTML. Only the shape of "
+                  "the response: how clearly the content itself is written or argued is not STRUCTURED.",
+    "ACCESS": "It got past an obstacle the reason names: anti-bot, a captcha, a login wall, JavaScript "
+              "rendering or a rate limit that blocked another attempt. Content that is simply public, or a "
+              "find another provider missed, is not ACCESS.",
+    "CHEAP": "The praise is about cost: low price, unbilled or uncharged, many results for one charge, within "
+             "the cost cap.",
+    "HONEST": "An honest miss or a clear negative: it said plainly that nothing was found (often without a "
+              "charge) instead of guessing, or flagged its own uncertainty, so the agent could move on. Only "
+              "a miss or an uncertainty flag: never a description of what was returned or generated.",
+    "FAST": "The praise is about speed, said in words: fast, quick, low latency, returned in seconds. "
+            "Getting everything in one call is not speed: that is COMPLETE, or CHEAP when the reason is "
+            "about cost.",
+    "GENERIC": "Useful, but the reason names no quality at all: 'worked', 'good', 'returned the data', or it "
+               "only describes what the agent did with the result. A reason that names any quality is that "
+               "quality's code, not GENERIC.",
+}
+
+PRAISE_RULES = (
+    "Code what the agent praises about the vendor's result, not what the agent did with it. Prefer the most "
+    "specific praise; GENERIC only when the reason names none. A caveat in a useful review (a few fields "
+    "missing, some noise) is not the praise: code what made it useful. 'Found the right person / page' = "
+    "RELEVANT; 'its values agreed with a second source / verified valid' = ACCURATE. 'Returned in full' = "
+    "COMPLETE. 'Clean miss, no charge' = HONEST first, CHEAP second. A reason that only lists the fields that "
+    "came back = COMPLETE when it says all or full, else GENERIC. Generated media (image, video, audio, "
+    "music, voice) is coded on the output: following the prompt = RELEVANT, faithful or high-quality output = "
+    "ACCURATE, never HONEST. GENERIC never takes a second code."
+)
+
+# Codes that stand alone, never a second code nor with one: GENERIC with a named quality likely
+# beside it is that quality (`codes_from`).
+NO_SECONDARY = {"GENERIC"}
+
 # Below this a second code is noise, not a second problem.
 SECONDARY_MIN_P = 0.25
 
@@ -88,6 +148,16 @@ def code_question(i: int) -> dict:
                         f"Which code names the main problem its `reason` describes? `routed` says whether treg "
                         f"picked the vendor. {RULES} {_EVIDENCE}",
         "criteria": dict(CODES),
+    }
+
+
+def praise_question(i: int) -> dict:
+    return {
+        "type": "choice",
+        "instructions": f"`reviews[{i}]` is an agent's review of one vendor result it rated `useful`. Which "
+                        f"code names the main thing its `reason` praises? `routed` says whether treg picked "
+                        f"the vendor. {PRAISE_RULES} {_EVIDENCE}",
+        "criteria": dict(PRAISE_CODES),
     }
 
 
@@ -136,15 +206,20 @@ def person_p_from(answer: object) -> float | None:
     return probability(answer.get("noul")) if isinstance(answer, dict) else None
 
 
-def codes_from(answer: object) -> tuple[str, str | None] | None:
-    """`(primary, secondary)` from a Choice answer, or None when it is not one of the codes (a
-    choice that is a list or an object included). A probability that is not a number is ignored,
+def codes_from(answer: object, codebook: dict[str, str] = CODES) -> tuple[str, str | None] | None:
+    """`(primary, secondary)` from a Choice answer, or None when it is not one of `codebook`'s codes
+    (a choice that is a list or an object included). A probability that is not a number is ignored,
     never fatal."""
     primary = answer.get("choice") if isinstance(answer, dict) else None
-    if not isinstance(primary, str) or primary not in CODES:
+    if not isinstance(primary, str) or primary not in codebook:
         return None
     raw = answer.get("probabilities")
     probs = {k: p for k, v in (raw.items() if isinstance(raw, dict) else ())
-             if k in CODES and k != primary and (p := probability(v)) is not None}
+             if k in codebook and k != primary and k not in NO_SECONDARY
+             and (p := probability(v)) is not None}
     second = max(probs, key=probs.get, default=None)
-    return primary, second if second is not None and probs[second] >= SECONDARY_MIN_P else None
+    if second is None or probs[second] < SECONDARY_MIN_P:
+        return primary, None
+    if primary in NO_SECONDARY:  # "nothing specific" with a specific quality likely beside it
+        return second, None
+    return primary, second

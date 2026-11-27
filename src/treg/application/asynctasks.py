@@ -29,6 +29,7 @@ from ..models import AsyncResourceRecord, AsyncTaskRecord, CallTask, Hold, Org, 
 from ..timeutil import utcnow_naive
 from . import call_events as call_event_app
 from .call import cost as call_cost, keyslots
+from .call.evidence import AnswerMask, platform_answer_mask
 from .call.resolve import _host_of
 from .call.types import ResolutionFailed, UpstreamRequest
 
@@ -232,14 +233,15 @@ async def observe_owned_poll(call_id: str, status_code: int, body: bytes, *,
 
 
 async def views_for(
-    org_id: int, call_ids: list[str], *, pinned_tags: dict | None = None,
+    org_id: int, call_ids: list[str], *, pinned_tags: dict | None = None, answers: bool = True,
 ) -> dict[str, dict]:
     """The task's own account of each metered async call, keyed by call id, for activity displays.
 
     The audit row froze the reserve as "charged" at submission; this is where the display learns
     what actually happened (settled amount, refund, 24-hour fallback) and what the caller bought.
     Terminal JSON comes from the archive; a settled task whose recording was shed still reports its
-    money truthfully, only without a link.
+    money truthfully, only without a link. With `answers=False` only money and status are read: no
+    terminal answer is loaded or masked, and no link is derived.
     """
     if not call_ids:
         return {}
@@ -252,8 +254,10 @@ async def views_for(
     if not rows:
         return {}
     documents = await archive.load_terminal_responses(
-        [(row.call_id, row.endpoint_id) for row in rows if row.status == asynctasks.SETTLED])
+        [(row.call_id, row.endpoint_id) for row in rows
+         if row.status == asynctasks.SETTLED]) if answers else {}
     views: dict[str, dict] = {}
+    masks: dict[str, AnswerMask] = {}
     for row in rows:
         view = {
             "status": row.status, "task_id": row.task_id,
@@ -266,6 +270,9 @@ async def views_for(
         }
         body = documents.get(row.call_id)
         if body is not None:
+            if row.provider not in masks:
+                masks[row.provider] = platform_answer_mask(row.provider)
+            body = masks[row.provider].answer(body)
             try:
                 found = asynctasks.artifact(row.descriptor, json.loads(body))
             except ValueError:
@@ -611,6 +618,8 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
         # Only the winning finalizer records evidence; a late poll cannot replace the result
         # whose usage was charged. Archive failure cannot undo the committed money transaction.
         try:
+            if (catalog_store.load().by_id.get(snapshot.endpoint_id) or {}).get("echoes_credential"):
+                body = platform_answer_mask(snapshot.provider).answer(body)
             await archive.store_terminal_response(
                 snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status_code, body)
         except Exception:

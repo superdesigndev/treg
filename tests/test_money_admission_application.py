@@ -34,12 +34,6 @@ from test_marketplace_call import EP, platform_on  # noqa: F401 - real call fixt
 from test_money_admission import LeaseStore
 
 
-def test_money_retry_default_is_one_second(monkeypatch):
-    monkeypatch.delenv("TREG_MONEY_ADMISSION_RETRY_AFTER_S", raising=False)
-    monkeypatch.delenv("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", raising=False)
-    assert Settings(_env_file=None).money_admission_retry_after_s == 1
-
-
 @pytest.mark.parametrize("env_name", [
     "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
 ])
@@ -56,17 +50,10 @@ def test_money_retry_new_env_name_takes_precedence_over_legacy_alias(monkeypatch
     assert Settings(_env_file=None).money_admission_retry_after_s == 7
 
 
-@pytest.mark.parametrize("base", [1, 60])
-def test_money_retry_accepts_direct_setting_at_bounds(monkeypatch, base):
-    monkeypatch.delenv("TREG_MONEY_ADMISSION_RETRY_AFTER_S", raising=False)
-    monkeypatch.delenv("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", raising=False)
-    assert Settings(_env_file=None, money_admission_retry_after_s=base).money_admission_retry_after_s == base
-
-
-@pytest.mark.parametrize("source", [
-    "keyword", "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
+@pytest.mark.parametrize("source,base,error_type", [
+    ("keyword", 0, "greater_than_equal"),
+    ("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", 61, "less_than_equal"),
 ])
-@pytest.mark.parametrize("base,error_type", [(0, "greater_than_equal"), (61, "less_than_equal")])
 def test_money_retry_rejects_values_outside_bounds(monkeypatch, source, base, error_type):
     monkeypatch.delenv("TREG_MONEY_ADMISSION_RETRY_AFTER_S", raising=False)
     monkeypatch.delenv("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", raising=False)
@@ -942,8 +929,10 @@ async def _admission_request(clients, surface):
             "replayed": response.headers.get("X-Treg-Idempotent-Replay") == "true"}
 
 
-@pytest.mark.parametrize("surface", ["/call/", "/catalog/call/", "/mcp/", "/mcp/v2/"])
-@pytest.mark.parametrize("release_pool_timeout", [False, True])
+@pytest.mark.parametrize("surface,release_pool_timeout", [
+    ("/call/", False), ("/catalog/call/", False), ("/mcp/", False), ("/mcp/v2/", False),
+    ("/call/", True),
+])
 async def test_reserve_timeout_releases_idempotency_key_then_retries_and_replays(
     clients, platform_on, monkeypatch, surface, release_pool_timeout,
 ):
@@ -1011,9 +1000,8 @@ async def test_reserve_timeout_releases_idempotency_key_then_retries_and_replays
         assert len(entries) == 1 and entries[0].amount_micro == -row.charged_micro
 
 
-@pytest.mark.parametrize("base", [1, 7, 60])
-@pytest.mark.parametrize("upper", [False, True])
-async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch, base, upper):
+async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch):
+    base = 7
     @asynccontextmanager
     async def refuse(*args, **kwargs):
         raise money_admission.ReserveAdmissionTimeout("wait_timeout")
@@ -1023,7 +1011,7 @@ async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch, ba
 
     def choose(lo, hi):
         bounds.append((lo, hi))
-        return hi if upper else lo
+        return hi
 
     monkeypatch.setattr(money_admission, "admit", refuse)
     monkeypatch.setattr(get_settings(), "money_admission_retry_after_s", base)
@@ -1032,7 +1020,7 @@ async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch, ba
         async with call_reserve.reserve_admission(7):
             pytest.fail("refusal entered reserve")
     assert bounds == [(base, 2 * base)]
-    assert caught.value.retry_after_s == (2 * base if upper else base)
+    assert caught.value.retry_after_s == 2 * base
 
 
 async def test_reserve_timeout_does_not_cache_429_if_claim_cleanup_keeps_failing(

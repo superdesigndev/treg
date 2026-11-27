@@ -17,6 +17,7 @@ sources:
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
   - src/treg/domain/plugins/anyapi.py
+  - src/treg/domain/plugins/apify.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
@@ -25,6 +26,7 @@ sources:
   - tests/test_catalog_params.py
   - tests/test_catalog_v2_codemod.py
   - tests/plugins/test_anyapi.py
+  - tests/plugins/test_apify.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -113,8 +115,9 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
   (omitted when a condition is not one equality; its floor `table_min` is served either way),
-  `reserve.rows` with its parameter back in
-  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
+  `reserve.rows` (its `platform_max` included) with its parameter back in
+  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `price.base` as `call_fee`
+  (the per-call fee routing's ranking adds), `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
   reads a v2 row unchanged; billing never reads it
@@ -188,10 +191,11 @@ rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
-declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
-USD, and the request
-paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
-declared input fields; an equality-only table also meets today's table checks (enum and range, a
+declared `usd: null`, which keeps the row off treg's key; a settle may not), a free price inherits
+no `settle.reported` (it opts out with `settle: null`, as today's spelling refuses
+`reported_charge` beside `type: free`), usage `terms` are in USD, and the request
+paths of `reserve.rows.param`, `reserve.entities.from`, `reserve.money.param` (a number or
+string field) and `price.table` (`when` and `times`) name declared input fields; an equality-only table also meets today's table checks (enum and range, a
 bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
 field without a default: an equality on an absent field does not hold, so a later row or the
 fallback prices that request. A
@@ -215,6 +219,21 @@ in at most one of the provider's two files. Per top-level key: a row's value win
 `credential`, `base_url`, `hosts` or `null`, and never repeats a header key of today's spelling
 (`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
 files.
+
+## A row whose answers quote the credential
+
+`echoes_credential: true` is a provider fact on the endpoint row (`RowBase`, both spellings): the
+provider writes the credential treg injected into a successful answer, as Meta's Graph API writes
+the request's `access_token` into `paging.next` and `paging.previous`. Set it in the provider's
+`defaults:` when every row of the provider does so (each Graph file: `facebook`, `instagram`,
+`meta-ads`, `meta-ad-library`), or on one endpoint; under a default a row's `false` or `null` opts
+out. The loader serves a plain boolean on every row it reads from a provider file (`True` only for
+a literal `true`, else `False`); a routed `treg.*` row carries none. On the call path only a
+marked row's answers are held whole and searched for the credential, and its free answer on
+treg's key is never streamed unread; every other row's answer is relayed as it comes
+([proxy-model](proxy-model.md#answers-that-quote-a-credential)).
+Mark a row only on evidence that its provider quotes the credential in a 2xx, since holding an
+answer delays its first byte to its last.
 
 ## Summary and note
 
@@ -279,6 +298,12 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
   (`miss: {plugin: <module>.<function>}`) when its row moves to v2. Any outcome plugin (`expect`,
   `error`, `miss`, `not_found`) may be called without the request, since stats and routing judge an
   answer alone.
+- `platform_check: {plugin: <module>.<function>}` is a request check treg's key runs before any
+  hold (`resolve._enforce_platform_check`): the plugin reads the query and the body (a strict JSON
+  object) and returns None to serve the call, or `{message, parameter?, expected?}`, refused with 400
+  `catalog_parameter_invalid`. Unlike the other hooks it fails closed: a check that raises refuses
+  the call. A team's own key never runs it. It holds a request shape the row's words cannot say
+  (Apify's run options, Sumble's account-independent selections), so the core names no provider.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.

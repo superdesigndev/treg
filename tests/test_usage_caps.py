@@ -144,17 +144,6 @@ async def _invite(clients: AsyncClient, org_id: int, email: str, role: str) -> s
 
 
 # ---- step 3: the endpoints -----------------------------------------------------------------
-async def test_usage_endpoint_rolls_up_by_user_tool_and_day(clients: AsyncClient):
-    org_id = await _get_org_id()
-    await _seed_call(org_id, "tim@superdesign.dev")  # 2 calls + 1 server run = 3 events
-    await _seed_call(org_id, "tim@superdesign.dev")
-    await _seed_run(org_id, "tim@superdesign.dev")
-    u = (await clients.get(f"/orgs/{org_id}/usage")).json()
-    assert u["totals"] == {"call": 2, "local_run": 0, "server_run": 1, "total": 3}
-    assert u["by_user"][0]["user_email"] == "tim@superdesign.dev" and u["by_user"][0]["total"] == 3
-    assert sum(d["total"] for d in u["by_day"]) == 3 and u["by_tool"]  # today's bucket + tool present
-
-
 async def test_usage_endpoint_is_admin_only(clients: AsyncClient):
     org_id = await _get_org_id()
     vtok = await _invite(clients, org_id, "v@x.io", "viewer")

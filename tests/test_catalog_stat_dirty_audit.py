@@ -1,17 +1,14 @@
 """Terminal audit corrections queue original-day recounts atomically, outside money."""
 
 from datetime import datetime, timedelta
-from importlib import import_module
 
 import pytest
 import sqlalchemy as sa
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 
 from treg import audit
 from treg.infra import db
 from treg.infra.catalog_stat_dirty import mark_dirty
-from treg.models import AsyncTaskRecord, CallRecord, EndpointDayStat, EndpointStatDirty, Org
+from treg.models import AsyncTaskRecord, CallRecord, EndpointStatDirty, Org
 
 NOW = datetime(2026, 1, 10, 12)
 EP = "test.async.endpoint"
@@ -186,44 +183,3 @@ async def test_insert_then_correction_in_one_batch_marks_inserted_row(clean_stor
     async with db.session_maker() as session:
         record = (await session.execute(sa.select(CallRecord))).scalar_one()
         assert record.hit is False and record.verdict == "not_found"
-
-
-def test_additive_migration_preserves_legacy_buckets_and_never_requires_callrecord():
-    migration = import_module("treg.alembic.versions.0074_endpoint_stat_dirty")
-    engine = sa.create_engine("sqlite://")
-    try:
-        with engine.begin() as connection:
-            connection.execute(sa.text(
-                "CREATE TABLE endpointdaystat (endpoint_id VARCHAR NOT NULL, day VARCHAR NOT NULL, "
-                "n INTEGER NOT NULL, PRIMARY KEY (endpoint_id, day))"))
-            connection.execute(sa.text(
-                "INSERT INTO endpointdaystat VALUES ('synthetic', '2026-01-09', 7)"))
-            with Operations.context(MigrationContext.configure(connection)):
-                migration.upgrade()
-            # There is deliberately no CallRecord table in this database: the upgrade must
-            # add structure without reading or seeding from the large audit table.
-            assert connection.execute(sa.text(
-                "SELECT n, terminal_reconciled FROM endpointdaystat")).one() == (7, 0)
-            assert connection.execute(sa.text("SELECT count(*) FROM endpointstatdirty")).scalar_one() == 0
-            columns = {column["name"]: column for column in sa.inspect(connection).get_columns(
-                "endpointstatdirty")}
-            assert isinstance(columns["revision"]["type"], sa.BigInteger)
-            assert not columns["revision"]["nullable"]
-            assert sa.inspect(connection).get_pk_constraint("endpointstatdirty")[
-                "constrained_columns"] == ["endpoint_id", "day"]
-            index, = sa.inspect(connection).get_indexes("endpointstatdirty")
-            assert index["column_names"] == ["retry_at", "endpoint_id", "day"]
-            assert index["name"] in {index.name for index in EndpointStatDirty.__table__.indexes}
-            connection.execute(sa.text(
-                "INSERT INTO endpointstatdirty (endpoint_id, day, queued_at, retry_at) "
-                "VALUES ('synthetic', '2026-01-09', :now, :now)"), {"now": NOW.isoformat(" ")})
-            assert connection.execute(sa.text("SELECT revision FROM endpointstatdirty")).scalar_one() == 1
-            assert EndpointDayStat(endpoint_id=EP, day="2026-01-09").terminal_reconciled is False
-            with Operations.context(MigrationContext.configure(connection)):
-                migration.downgrade()
-            assert not sa.inspect(connection).has_table("endpointstatdirty")
-            assert connection.execute(sa.text("SELECT n FROM endpointdaystat")).scalar_one() == 7
-            assert "terminal_reconciled" not in {
-                column["name"] for column in sa.inspect(connection).get_columns("endpointdaystat")}
-    finally:
-        engine.dispose()

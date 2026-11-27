@@ -36,6 +36,19 @@ _LEASE_RETRY_BUDGET_S = 2.5
 _LOCAL_MAX_KEYS = 10_000
 _FLOW_CONTROL_MAX_BYTES = 32768
 ROUTE_RULES_KEY = "treg:route-rules:v1"
+# `take_first`: one use of the first window with room, in order, in one round trip. Each key
+# counts like `take` (INCR, the window starting at its first use); a key with limit 0 is skipped.
+_TAKE_FIRST = """
+for i = 1, #KEYS do
+    local limit = tonumber(ARGV[i])
+    if limit > 0 then
+        local n = redis.call('INCR', KEYS[i])
+        redis.call('EXPIRE', KEYS[i], ARGV[#KEYS + 1], 'NX')
+        if n <= limit then return i end
+    end
+end
+return 0
+"""
 _READ_ORG_FLOW_CONTROL = """
 local kind = redis.call('TYPE', KEYS[1]).ok
 if kind == 'none' then return false end
@@ -87,6 +100,19 @@ FlowControlReadResult = str | None | FlowControlReadFailure
 _RENEW_LEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
     return redis.call('pexpire', KEYS[1], ARGV[2])
+end
+return 0
+"""
+# SET NX PX unless another owner holds the claim `KEYS[2]`: a waiter with priority claims the
+# lease's next turn, and only the claim's owner `ARGV[3]` may then take the lease, under a
+# token of its own (`ARGV[1]`) so a late release of one lease cannot delete the next.
+_ACQUIRE_LEASE_UNLESS_CLAIMED = """
+local claim = redis.call('get', KEYS[2])
+if claim and claim ~= ARGV[3] then
+    return 0
+end
+if redis.call('set', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then
+    return 1
 end
 return 0
 """
@@ -429,6 +455,11 @@ class Store(Protocol):
         True while the window holds `limit` or fewer uses, False past it OR when the store cannot
         answer: a budget that cannot be checked is spent, never free."""
 
+    async def take_first(self, budgets: list[tuple[str, int]], ttl_s: int) -> int | None:
+        """`take` on each `(key, limit)` in order until one has room, as one store operation
+        under one timeout: the 0-based index of the budget used, None when every one is spent
+        OR the store cannot answer (spent, never free, as for `take`)."""
+
     async def ping(self) -> bool: ...
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
@@ -437,7 +468,11 @@ class Store(Protocol):
     async def read_route_rules(self) -> FlowControlReadResult:
         """The published route rule set, read like a flow-control snapshot."""
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult: ...
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None,
+                            owner: str | None = None) -> AcquireResult:
+        """`unless` names a claim key: while a token other than `owner` (default `token`) holds
+        it the lease is `busy` even when free, so the claim's holder takes the next turn."""
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
                           deadline: float | None = None) -> RenewResult: ...
@@ -603,6 +638,7 @@ class LocalStore:
 
     async def clear_flag(self, key: str) -> None:
         self._values.pop(key, None)
+        self._texts.pop(key, None)
 
     async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -654,6 +690,12 @@ class LocalStore:
         self._windows[key] = (expires, count)
         return count <= limit
 
+    async def take_first(self, budgets: list[tuple[str, int]], ttl_s: int) -> int | None:
+        for i, (key, limit) in enumerate(budgets):
+            if limit > 0 and await self.take(key, limit, ttl_s):
+                return i
+        return None
+
     def _evict(self, now: float) -> None:
         live = {k: v for k, v in self._windows.items() if v[0] > now}
         if len(live) >= _LOCAL_MAX_KEYS:
@@ -670,7 +712,9 @@ class LocalStore:
     async def read_route_rules(self) -> FlowControlReadResult:
         return FlowControlReadFailure.UNAVAILABLE
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None,
+                            owner: str | None = None) -> AcquireResult:
         return "unavailable"  # Local counters cannot promise cross-process exclusion.
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
@@ -781,6 +825,20 @@ class RedisStore:
         except Exception as exc:  # noqa: BLE001 — a store fault is a spent budget, never a call fault
             _note_fault(exc)
             return False
+
+    async def take_first(self, budgets: list[tuple[str, int]], ttl_s: int) -> int | None:
+        if not budgets:
+            return None
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                used = await self._client.eval(
+                    _TAKE_FIRST, len(budgets), *(key for key, _ in budgets),
+                    *(max(0, int(limit)) for _, limit in budgets), ttl_s)
+            used = int(used)
+            return used - 1 if 1 <= used <= len(budgets) else None
+        except Exception as exc:  # noqa: BLE001 — a store fault is a spent budget, never a call fault
+            _note_fault(exc)
+            return None
 
     async def set_flag(self, key: str, ttl_s: int) -> bool:
         try:
@@ -1089,17 +1147,27 @@ class RedisStore:
             _note_fault(exc)
             return False
 
-    async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
+    async def acquire_lease(self, key: str, token: str, ttl_ms: int, *,
+                            unless: str | None = None,
+                            owner: str | None = None) -> AcquireResult:
         """A short-lived admission lease, never the authority for a money write.
 
         Unavailable is deliberately distinct from contention. Lease callers aggregate faults;
         unlike optional invitation budgets, an outage must not discard a pending settlement.
+        With `unless`, the lease is busy while a token other than `owner` (default `token`)
+        holds that claim key (one script, so a claim set between the check and the SET cannot
+        be missed).
         """
         started = _clock()
         outcome = "cancelled"
         try:
             async with asyncio.timeout(_LEASE_ATTEMPT_TIMEOUT_S):
-                acquired = await self._client.set(key, token, nx=True, px=ttl_ms)
+                if unless is None:
+                    acquired = await self._client.set(key, token, nx=True, px=ttl_ms)
+                else:
+                    acquired = await self._client.eval(
+                        _ACQUIRE_LEASE_UNLESS_CLAIMED, 2, key, unless, token, ttl_ms,
+                        owner or token)
             outcome = "acquired" if acquired else "busy"
             return outcome
         except Exception as exc:  # noqa: BLE001 - cancellation still propagates to the owning scope

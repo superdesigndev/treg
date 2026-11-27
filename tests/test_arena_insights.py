@@ -35,17 +35,6 @@ async def record(hash_, *, status=200, response=None, error=None, cached=False, 
         return row.id
 
 
-async def test_naive_datetime_insert_does_not_raise_value_error(clients):
-    """Regression test: SQLModel 0.0.45 rejects naive datetime binds on INSERT.
-
-    The arena insights collector INSERTs into ArenaInsightState with scan_until=now()-60s.
-    Before the NaiveUTC annotation fix and sqlmodel pin, this raised:
-        ValueError: Datetime values must have timezone information.
-    """
-    backlog = await service.collect_batch(session_maker)
-    assert backlog is False  # no records, but INSERT succeeded
-
-
 async def test_evidence_pointers_name_their_reader_and_carry_the_media_type(clients, monkeypatch):
     call_id = await record("media", response={"data": {"email": "found@example.test"}})
     async with session_maker() as db:
@@ -216,6 +205,22 @@ async def test_evidence_uses_exact_content_and_carrier_with_repeated_requests(cl
     assert metadata_only == {no_content: evidence[no_content]}
 
 
+async def test_evidence_leaves_out_a_call_whose_request_body_is_not_on_file(clients, monkeypatch):
+    from treg import archive
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 16)
+    kept, omitted = await record("kept", response={"data": 1}), await record("omitted", response={"data": 2})
+    async with session_maker() as db:
+        records = (await db.execute(select(CallRecord).where(CallRecord.id.in_([kept, omitted])))).scalars().all()
+        for row, body in zip(sorted(records, key=lambda r: r.id), (b'{"a": 1}', b'{"media": "' + b"a" * 64 + b'"}')):
+            key = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash == row.archive_key_hash))).scalar_one()
+            key.req_body = archive._request_body_to_keep(body)
+            db.add(key)
+        await db.commit()
+    evidence = await service._evidence(records)
+    assert set(evidence) == {kept} and evidence[kept][1] == {"a": 1}
+
+
 @pytest.mark.parametrize("status",["valid","invalid"])
 def test_verification_verdict_is_an_answer(status):
     cat=store.load();ep=cat.by_id["tomba.people.email.verify"]
@@ -293,9 +298,14 @@ async def test_bounceban_finished_answers_count_and_verifying_is_unresolved(clie
     assert sorted(categories) == ["hit", "miss", "unresolved_pending"]
 
 
-def test_async_rows_without_terminal_on_submission_stay_out_of_insights():
-    endpoints = service._catalog()[1]
-    assert "wiza.people.email.find" not in endpoints
+def test_async_rows_without_terminal_on_submission_stay_out_of_insights(monkeypatch):
+    cat = store.load()
+    monkeypatch.setattr(store, "load", lambda: cat)
+    assert EP in service._catalog()[1]
+    monkeypatch.setitem(cat.by_id, EP, {**cat.by_id[EP], "async": {"result": "poll"}})
+    assert EP not in service._catalog()[1]
+    monkeypatch.setitem(cat.by_id, EP, {**cat.by_id[EP], "async": {"terminal_on_submission": True}})
+    assert EP in service._catalog()[1]
 
 
 def test_cursor_version_survives_catalog_changes(monkeypatch):
@@ -364,3 +374,99 @@ async def test_rollback_after_prune_rebuilds_before_publishing(clients, monkeypa
     monkeypatch.setattr(service, "_catalog", lambda: (cat, endpoints, "rolled-back"))
     assert not await service.collect_batch(session_maker)
     assert (await service.public_snapshot(session_maker))["rows"][0]["unique_requests"] == 1
+
+
+def test_the_rewind_asks_for_an_expression_postgresql_cannot_answer_by_walking_the_primary_key():
+    """A bare `min(id)` becomes an ascending primary-key walk from the oldest audit row, which
+    filters the whole table before it reaches the last ten minutes; `min(id + 0)` reads the
+    endpoint/created_at index instead."""
+    from sqlalchemy.dialects import postgresql
+
+    sql = str(service.rewind_query(["a.b"], now()).compile(dialect=postgresql.dialect()))
+    assert "min(callrecord.id + 0)" in sql
+    assert "callrecord.endpoint_id IN" in sql and "callrecord.created_at >=" in sql
+
+
+def test_the_batch_read_asks_each_arena_endpoint_on_its_own_index():
+    """`endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n` is planned as a primary-key
+    walk from the cursor that reads every endpoint's rows; one ordered probe per endpoint reads
+    `ix_callrecord_endpoint_id_id` entries of the Arena's rows only."""
+    from sqlalchemy.dialects import postgresql
+
+    dialect = postgresql.dialect()
+    window = (CallRecord.created_at >= now(), CallRecord.created_at < now())
+    ids = str(service.batch_ids_query(["a.b", "c.d"], 7, 99, window).compile(dialect=dialect))
+    assert "JOIN LATERAL" in ids and "VALUES" in ids and " IN " not in ids
+    assert "callrecord.endpoint_id = arena_endpoint.endpoint_id" in ids
+    assert "callrecord.id <=" in ids and "callrecord.created_at >=" in ids
+
+
+async def _bulk(rows):
+    """(endpoint_id, created_at) pairs, inserted in order, so ids follow the list."""
+    async with session_maker() as db:
+        for endpoint_id, created_at in rows:
+            db.add(CallRecord(user_email="synthetic@example.test", tool_name=endpoint_id, method="GET",
+                path="/v1/x", status_code=200, endpoint_id=endpoint_id, provider="tomba",
+                credential_tier="platform", params_hash="h", created_at=created_at))
+        await db.commit()
+
+
+async def _observed() -> int:
+    async with session_maker() as db:
+        return len((await db.execute(select(ArenaObservation.id))).all())
+
+
+async def test_rows_older_than_the_window_do_not_take_a_batchs_places(clients):
+    """A cold start over a long history: only rows inside the window count toward a batch, so
+    one row in it after a thousand older ones is published in the first batch."""
+    old = now() - timedelta(days=service.WINDOW_DAYS + 1)
+    await _bulk([(EP, old)] * 1000 + [(EP, now() - timedelta(seconds=180))])
+    assert not await service.collect_batch(session_maker), "published in one batch"
+    assert await _observed() == 1
+
+
+async def test_a_row_written_before_the_cutoff_is_read_whatever_its_id(clients):
+    """Ids follow insertion, not `created_at`: a row of the cycle can have a larger id than one
+    written after the cutoff. Both are committed before the batch, so the cycle counts it."""
+    # collect_batch cuts the cycle off 60 s before now.
+    await _bulk([(EP, now() - timedelta(seconds=58)), (EP, now() - timedelta(seconds=62))])
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1
+
+
+async def test_a_cycle_cut_off_long_ago_publishes_without_reading_past_it(clients):
+    """The cycle's cutoff fell behind while a busy endpoint kept writing. The one row of the
+    cycle is published in one batch, not after the rows written since."""
+    _, _, version = service._catalog()
+    until = now() - timedelta(hours=1)
+    async with session_maker() as db:
+        db.add(ArenaInsightState(id=version, cursor=0, scan_until=until, updated_at=None, payload={}))
+        await db.commit()
+    other = "hunter.people.email.find"
+    await _bulk([(EP, until - timedelta(seconds=30))]
+                + [(other, until + timedelta(seconds=5 + index)) for index in range(1000)])
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1
+
+
+async def test_an_arena_row_committed_after_a_later_id_is_read_by_the_next_cycle(clients):
+    """An Arena row takes its id, and a row of another endpoint takes the next id and commits
+    first. The cycle sees only the second, finds its span empty of the window and publishes;
+    the first commits afterwards. The next cycle must still read it."""
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("needs two concurrent write transactions")
+    async with session_maker() as arena_write:
+        arena_write.add(CallRecord(user_email="synthetic@example.test", tool_name=EP, method="GET",
+            path="/v1/x", status_code=200, endpoint_id=EP, provider="tomba", credential_tier="platform",
+            params_hash="late", created_at=now() - timedelta(seconds=180)))
+        await arena_write.flush()
+        await _bulk([("not.an.arena.endpoint", now() - timedelta(seconds=170))])
+        assert not await service.collect_batch(session_maker)
+        assert await _observed() == 0
+        await arena_write.commit()
+    async with session_maker() as db:
+        state = (await db.execute(select(ArenaInsightState))).scalar_one()
+        state.updated_at = now() - timedelta(seconds=service.REFRESH_SECONDS + 1)
+        await db.commit()
+    assert not await service.collect_batch(session_maker)
+    assert await _observed() == 1

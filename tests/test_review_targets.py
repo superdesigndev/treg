@@ -87,6 +87,7 @@ async def test_off_or_before_the_first_read_every_endpoint_gets_the_base_rate(cl
 
 async def test_a_short_endpoint_is_invited_and_a_full_one_falls_back_to_base(clients, targeting,
                                                                               monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     _platform_call(monkeypatch)
     monkeypatch.setattr(targeting, 'review_sample_rate', 0)
     monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
@@ -102,6 +103,7 @@ async def test_a_short_endpoint_is_invited_and_a_full_one_falls_back_to_base(cli
 
 async def test_a_team_that_filled_an_endpoint_gets_no_invitation_there(clients, targeting,
                                                                         monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     _platform_call(monkeypatch)
     monkeypatch.setattr(targeting, 'review_sample_rate', 1.0)
     monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
@@ -121,6 +123,78 @@ async def test_a_team_that_filled_an_endpoint_gets_no_invitation_there(clients, 
     response = await clients.get('/call/example.search')
     assert response.status_code == 200
     assert response.headers.get('X-Treg-Hint') is None
+
+
+async def test_a_spent_budget_still_asks_about_a_short_endpoint_from_the_extra_one(
+        clients, targeting, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)  # below the boost of 1.0
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_budget_per_hour', 1)
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 1)
+    await review_targets.warm()  # example.search holds no reviews: short of its target
+
+    async def hint():
+        response = await clients.get('/call/example.search')
+        assert response.status_code == 200
+        return response.headers.get('X-Treg-Hint')
+
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append(args))
+    assert await hint() == 'review'  # the team budget
+    assert await hint() == 'review'  # spent: the extra one, for a short endpoint
+    assert await hint() is None      # both spent
+    assert [a[2]['budget'] for a in events if a[1] == 'hint_attached'] == ['main', 'extra']
+
+
+async def test_the_extra_budget_is_not_spent_on_a_full_endpoint_or_when_off(clients, targeting,
+                                                                            monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)  # below the boost of 1.0
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_budget_per_hour', 1)
+    await review_targets.warm()
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'review'
+    # Off (the default): a spent budget asks nothing more, even about a short endpoint.
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 5)
+    await add_reviews(clients, 'example.search', teams=10, each=10)  # at its target
+    await review_targets.warm()
+    assert not review_targets.boosted('example.search')
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+    assert review_targets.boosted('unreviewed.search')
+
+
+async def test_both_budgets_are_one_store_operation(clients, targeting, monkeypatch):
+    from treg.infra import kv
+    clients.headers["X-Treg-Client"] = "claude-code"
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 3)
+    await review_targets.warm()  # example.search is short: boosted
+    real = kv.store()
+    seen = []
+
+    class Counting:
+        async def take(self, *args):
+            seen.append('take')
+            return await real.take(*args)
+
+        async def take_first(self, budgets, ttl_s):
+            seen.append(('take_first', [limit for _, limit in budgets]))
+            return await real.take_first(budgets, ttl_s)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(kv, '_store', Counting())
+    response = await clients.get('/call/example.search')
+    assert response.headers.get('X-Treg-Hint') == 'review'
+    assert seen == [('take_first', [targeting.review_budget_per_hour, 3])]
 
 
 async def test_invited_is_recomputed_with_the_targeted_rate(clients, targeting, monkeypatch):
@@ -166,6 +240,7 @@ async def test_a_routed_review_recomputes_invited_with_the_credited_child(client
 
 async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, enrichment_on,
                                                                       targeting, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import service as call_service
     from test_routing import ROUTED, _relay_by_provider
 
@@ -174,11 +249,16 @@ async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, e
     monkeypatch.setattr(targeting, 'review_sample_rate', 0)
     monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
     await review_targets.warm()
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append(args))
     ask = {'full_name': 'Patrick Collison', 'domain': 'stripe.com'}
     first = await clients.post(f'/call/{ROUTED}', json=ask)
     assert first.status_code == 200, first.text
     assert first.headers.get('X-Treg-Hint') == 'review'
     child = first.json()['_treg']['served_by']  # one hit, no confirm: also the credited child
+    sent, = [a[2] for a in events if a[1] == 'hint_attached']
+    assert (sent['endpoint_id'], sent['credited_endpoint']) == (ROUTED, child)
     await add_reviews(clients, child, teams=10, each=10)
     await review_targets.warm()
     second = await clients.post(f'/call/{ROUTED}', json=ask | {'full_name': 'John Collison'})
@@ -190,6 +270,7 @@ async def test_a_confirmed_find_targets_and_credits_the_confirmer(clients, verif
                                                                    monkeypatch):
     """Tomba's hit is returned and Hunter confirms it: the review is credited to Hunter, so the
     invitation targets Hunter too, and once Hunter is full the next call is not boosted."""
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from treg.application.call import service as call_service
     from test_route_confirm import ON, _hunter
     from test_route_verify import ASK, FIND, TOMBA_HIT, _relay
@@ -240,6 +321,7 @@ async def test_an_async_find_credits_and_targets_the_find_not_its_poll(clients, 
                                                                        targeting, monkeypatch):
     """Dropcontact submits a job (people.email.find) and is polled (jobs.get): the review is about
     the find, so both the review and the invitation go to the find, and a full find stops the boost."""
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
     from test_dropcontact_routing import _relay as dropcontact_relay
 
     dropcontact_relay(monkeypatch, {'success': True, 'data': [{

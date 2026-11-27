@@ -51,7 +51,7 @@ class Org(SQLModel, table=True):
     # ponytail: one alias only; a second rename overwrites it. An alias table if that ever bites.
     previous_slug: str | None = Field(default=None, index=True)
     suspended: bool = Field(default=False)  # a suspended org's members are locked out (403)
-    demo: bool = Field(default=False)  # a sandbox team seeded by onboarding — labeled + one-click removable
+    demo: bool = Field(default=False)  # a demo team seeded by onboarding: labeled and one-click removable
     # A team whose token is published (e.g. on the landing page): non-admin members are locked to
     # /call + reads, and may never act as a user (see identity.access.require_member /
     # require_identity).
@@ -1215,7 +1215,7 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
@@ -1237,7 +1237,7 @@ class Hold(SQLModel, table=True):
     """
 
     id: str = Field(primary_key=True)  # == call_id
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
@@ -1431,10 +1431,11 @@ class TagSpend(SQLModel, table=True):
     and errs toward refusing, which is the right direction for money.
     """
 
-    __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),)
+    __table_args__ = (Index("ix_tagspend_org_dim_val_created_amount", "org_id", "dim", "val",
+                            "created_at", postgresql_include=["amount_micro", "settled"]),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id")
+    org_id: int
     dim: str  # the tag key, e.g. "customer"
     val: str  # the tag value, e.g. "cust_8123"
     # The hold this belongs to (== call_id). Kept after settle so a row can be traced back to its call.
@@ -1779,7 +1780,7 @@ class IdempotentCall(SQLModel, table=True):
     # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit.
     # The response cache cannot outlive its caller: once a membership is revoked nobody can replay
     # its key, so the membership foreign key cascades instead of blocking token revocation.
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(index=True)
     membership_id: int = Field(foreign_key="membership.id", ondelete="CASCADE", index=True)
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
@@ -1981,8 +1982,8 @@ class CallReview(SQLModel, table=True):
     reason: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
     # Jev's judgements of `reason` (`application.review_judge`), each written once and on its own:
-    # the probability it names or identifies a person (gates public quotes), and for a `partly` or
-    # `not_useful` review the codebook codes for what it blames.
+    # the probability it names or identifies a person (gates public quotes), and the codebook
+    # codes for what a `partly` or `not_useful` review blames or a `useful` one praises.
     person_p: float | None = Field(default=None)
     privacy_judged_at: NaiveUTC | None = Field(default=None)
     primary_code: str | None = Field(default=None)
@@ -1992,6 +1993,7 @@ class CallReview(SQLModel, table=True):
     # What the codes were judged from (`application.review_judge`): NULL or "reason" (an upgrade with
     # the call's answer may follow), "answer", or "reason_final" (no answer can be shown). An answer
     # not readable yet is tried again from `answer_retry_at`, backing off with `answer_attempts`.
+    # A `useful` review, never upgraded, keeps there its back-off while Jev cannot code its reason.
     code_basis: str | None = Field(default=None)
     answer_retry_at: NaiveUTC | None = Field(default=None)
     answer_attempts: int | None = Field(default=None)
@@ -2037,7 +2039,7 @@ class CallMark(SQLModel, table=True):
 class CallComparison(SQLModel, table=True):
     """Two vendors' answers to one routed call's input, and the team's agent's blinded verdict.
 
-    A is the answer the team was served; B is the other vendor of a configured pair, asked later by
+    A is the answer the team was served; B is another vendor of the capability, chosen per call and asked later by
     `treg-worker compare collect` on treg's key (application/compare.py). `first` is which of the
     two is shown as answer 1. Bodies are stored truncated; `input` is the capability input,
     truncated. Written only by `domain/feedback/comparisons.py`.
@@ -2074,14 +2076,26 @@ class CallComparison(SQLModel, table=True):
     client: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
     decided_at: NaiveUTC | None = Field(default=None)
+    # Jev's blind verdict (`application.compare_judge`), apart from the agent's `choice`: a | b |
+    # tie | both_bad, or split when its two orders disagreed. `jev_orders` is its verdict with A
+    # shown first, then with B first; a pair not judged yet backs off with `jev_retry_at`.
+    jev_choice: str | None = Field(default=None)
+    jev_orders: str | None = Field(default=None)
+    jev_version: str | None = Field(default=None)
+    jev_judged_at: NaiveUTC | None = Field(default=None)
+    jev_retry_at: NaiveUTC | None = Field(default=None)
+    jev_attempts: int | None = Field(default=None)
 
 
 class CompareAttemptDay(SQLModel, table=True):
-    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`): the daily
-    limit's count. Not a team's row, so deleting a team gives no quota back."""
+    """Second-vendor calls the comparison worker claimed on one UTC day (`YYYYMMDD`) and B's catalog
+    prices of those claims: the daily limits' counts. Not a team's row, so deleting a team gives no
+    quota and no spend back."""
 
     day: str = Field(primary_key=True)
     attempts: int = Field(default=0)
+    spent_micro: int = Field(default=0, sa_column=Column("spent_micro", BigInteger, nullable=False,
+                                                        server_default="0"))
 
 
 class Media(SQLModel, table=True):
@@ -2360,7 +2374,8 @@ class ArchiveKey(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
     # The pre-injection request shape, stored so the refresh worker can re-ask the exact question.
     # Credentials cannot appear here: injection happens inside the relay, after this shape is
-    # fixed. Declared LAST to match the migration's ALTER TABLE append position.
+    # fixed. Declared LAST to match the migration's ALTER TABLE append position. `req_body` is
+    # read only through `archive.stored_request_body`: a large body is a marker, not the bytes.
     req_method: str = Field(default="")
     req_url: str = Field(default="")
     req_body: bytes | None = Field(default=None)
@@ -2435,6 +2450,11 @@ class ArchiveSnapshot(SQLModel, table=True):
     # Provenance for the admin views - what confines the answer is the KEY's scope, not this
     # column. Declared LAST (migration 0039).
     origin_org_id: int | None = Field(default=None)
+    # The response headers this answer's settlement reads (a v2 row's `settle.reported.header`),
+    # as {name: raw value}; {} when the provider sent none. NULL when nothing was recorded: the
+    # row reads no header, or the snapshot predates the column. A hit settles from it. Declared
+    # LAST (migration 0138).
+    reported_headers: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class ArchiveKeyOrg(SQLModel, table=True):
@@ -2637,6 +2657,9 @@ class ArenaInsightState(SQLModel, table=True):
     """Persistent collection cursor and public aggregate, never raw request/response content."""
     id: str = Field(primary_key=True)
     cursor: int = 0
+    # Where the next cycle starts when the rewind finds no recent row: the cycle's starting
+    # cursor, moved up only to rows it collected. None (rows from before it existed): `cursor`.
+    resume_cursor: int | None = None
     scan_until: NaiveUTC
     updated_at: NaiveUTC | None = None
     payload: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))

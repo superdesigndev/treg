@@ -4,12 +4,12 @@ import json
 import httpx
 import pytest
 
-from treg.application.call import resolve as resolution, service, settle
+from treg.application.call import service
 from treg.config import get_settings
-from treg.domain.catalog import store
+from treg.domain import money
 from treg.domain.capacity import collectors
-from treg.domain.capacity.policy import default_policy
-from test_marketplace_call import _balance, _entries, _mk, platform_on  # noqa: F401
+from treg.infra.db import session_maker
+from test_marketplace_call import _balance, _entries, _fake_relay, platform_on  # noqa: F401
 
 
 @pytest.fixture
@@ -19,33 +19,23 @@ def sumble_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
-@pytest.mark.parametrize('endpoint,body,credits', [
-    ('organizations', {'organizations': [{'url':'stripe.com'}]*2, 'select': {'attributes':['id','name','industry','employee_count']}}, 6),
-    ('organizations', {'organizations': [{'id':330446}], 'select': {'entities':[{'type':'technology','term':'python','metrics':['job_post_count','people_count']}]}}, 3),
-    ('jobs', {'filter':{'organization_ids':[330446]}, 'limit':2, 'select':{'attributes':['title','location','posted_date']}}, 6),
-    ('teams', {'teams':[1,2], 'select':{'attributes':['jobs_count','breadcrumbs']}}, 6),
-    ('technologies.lookup', {'technologies':['kubernetes']*101}, 2),
-    ('technologies.lookup', {'technologies':['kubernetes']*100}, 1),
-    ('technologies.lookup', {'technologies':['kubernetes']}, 1),
-    ('organizations.techs', {}, 100),
-])
-def test_estimates_follow_composable_and_rounded_credit_rules(endpoint, body, credits):
-    cat=store.load()
-    ep=cat.by_id['sumble.'+endpoint]
-    cost=cat.cost_view(ep['cost'], 'sumble')
-    assert resolution._marketplace_pricing('sumble',ep['id'],cost,resolution.QueryValues(()),json.dumps(body).encode()) == (credits*10000,10000)
-
-
-@pytest.mark.parametrize('credits,expected', [(3,30000),(0,0),(101,1010000),(-1,None),(True,None),('3',None),(1.5,None),(None,None)])
-def test_reported_usage_uses_frozen_rate(credits, expected):
-    mk=_mk('sumble',endpoint_id='sumble.organizations',unit_micro=10000,reported_charge_unit_micro=10000)
-    assert settle._observed_cost_micro(mk,json.dumps({'credits_used':credits}).encode()) == expected
-
-
-def test_brief_reported_usage_is_credits_not_briefs():
-    # A brief is 50 credits per success, so its unit is the whole brief; usage is still in credits.
-    mk=_mk('sumble',endpoint_id='sumble.organizations.intelligence_brief',unit_micro=500000,reported_charge_unit_micro=10000)
-    assert settle._observed_cost_micro(mk,json.dumps({'credits_used':50}).encode()) == 500000
+async def test_platform_settles_the_reported_credits_and_holds_a_request_at_its_max(clients, sumble_on, monkeypatch):
+    # 400 organizations x (1 base + 2 paid attributes) is the 1,200-credit row max: held, then settled
+    # at the credits Sumble reports. One more organization is refused before any hold.
+    body = {'organizations': [{'url': 'stripe.com'}] * 400, 'select': {'attributes': ['id', 'industry', 'employee_count']}}
+    monkeypatch.setattr(service, 'relay', _fake_relay(200, json.dumps({'credits_used': 7, 'organizations': []}).encode()))
+    org_id = (await clients.get('/orgs')).json()[0]['org_id']
+    async with session_maker() as db:
+        await money.grant(db, org_id, amount_micro=20_000_000, kind='promotional', once=False)
+        await db.commit()
+    before = await _balance(clients)
+    r = await clients.post('/call/sumble.organizations', json=body)
+    assert r.status_code == 200, r.text
+    reserves = [e for e in await _entries(clients) if e['kind'] == 'reserve']
+    assert [-e['amount_micro'] for e in reserves] == [money.with_margin(1200 * 10_000)]
+    assert before - await _balance(clients) == money.with_margin(7 * 10_000)
+    r = await clients.post('/call/sumble.organizations', json={**body, 'organizations': [{'url': 'stripe.com'}] * 401})
+    assert r.status_code == 400, r.text
 
 
 @pytest.mark.parametrize('endpoint,body', [
@@ -63,6 +53,12 @@ def test_brief_reported_usage_is_credits_not_briefs():
     ('technologies.lookup',{'technologies':['python'], 'request_id':'another-team'}),
     ('technologies.lookup',{'technologies':[]}),
     ('jobs',{'filter':{'organization_ids':[1]}, 'select':{'attributes':[]}, 'limit':True}),
+    ('jobs',{'filter':{'organization_ids':[1]}, 'select':{'attributes':[]}, 'order_by_column':'jobs_count'}),
+    ('organizations',{'organizations':[{'id':1}], 'select':{'attributes':[]}, 'include_closed':True}),
+    ('organizations',{'organizations':[{'id':1}], 'select':{'attributes':[]}, 'order_by_column':'industry'}),
+    ('technologies.lookup',{'technologies':['python']*1001}),
+    ('jobs',{'jobs':[{'job_id':1}]*200, 'select':{'attributes':['description','location','posted_date','organization','technologies','teams']}}),
+    ('teams',{'filter':{'organization_ids':[1]}, 'limit':200, 'select':{'attributes':['organization','breadcrumbs']}}),
 ])
 async def test_platform_rejects_unsafe_variants_before_spend(clients,sumble_on,monkeypatch,endpoint,body):
     async def forbidden(*args,**kwargs):raise AssertionError('guard must precede relay')
@@ -92,9 +88,7 @@ async def test_byok_full_surface_keeps_original_request_and_no_meter(clients,sum
 
 
 @pytest.mark.parametrize('remaining,expected',[(9900,9900),(0,0),(None,None),(-1,None),(True,None),('10',None)])
-async def test_capacity_probe_and_subscription_policy(remaining,expected):
+async def test_capacity_probe(remaining,expected):
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,json={'credits_used':0,'credits_remaining':remaining}))) as c:
         row=await collectors._sumble(c,'test')
     assert row['value']==expected
-    policy=default_policy('sumble',has_key=True)
-    assert policy.capacity_type=='monthly_quota'

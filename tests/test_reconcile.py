@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from conftest import make_upstream, verified_signup
+from conftest import make_upstream, verified_signup, seed_teams
 
 from treg import reconcile
 from treg.api import app
@@ -48,6 +48,7 @@ async def c(monkeypatch):
 
 async def _calls(rows: list[dict]) -> None:
     """Seed marketplace telemetry rows. Defaults are a platform-tier dataforseo call."""
+    await seed_teams(*{r.get("org_id", 1) for r in rows})
     async with session_maker() as db:
         for i, r in enumerate(rows):
             db.add(CallRecord(
@@ -64,6 +65,7 @@ async def _calls(rows: list[dict]) -> None:
 
 async def _settles(rows: list[dict]) -> None:
     """Seed settle ledger entries. `amount` is the POSITIVE charge; the column is signed negative."""
+    await seed_teams(*{r.get("org_id", 1) for r in rows})
     async with session_maker() as db:
         for i, r in enumerate(rows):
             db.add(LedgerEntry(

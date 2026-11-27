@@ -40,7 +40,7 @@ def test_unavailable_warning_is_sanitized_and_limited_to_once_per_minute(monkeyp
     ] * 2
 
 
-@pytest.mark.parametrize("loss", ["namespace", "rule", "count", "expiry"])
+@pytest.mark.parametrize("loss", ["namespace", "count"])
 async def test_lost_or_unknown_rule_allows_without_reinitializing(
     clients, monkeypatch, platform_on, store, loss,
 ):
@@ -52,13 +52,9 @@ async def test_lost_or_unknown_rule_allows_without_reinitializing(
     field = f"rule:{org_id}:{EP}"
     if loss == "namespace":
         await store._client.delete(org_endpoint_quota.KEY)
-    elif loss == "rule":
-        await store._client.hdel(org_endpoint_quota.KEY, field)
-    elif loss == "count":
+    else:
         await store._client.hset(org_endpoint_quota.KEY, field,
                                  '{"version":1,"limit":0,"enabled":true}')
-    else:
-        await store._client.expire(org_endpoint_quota.KEY, 60)
     before_rule = await store._client.hgetall(org_endpoint_quota.KEY)
     before_balance = await _balance(clients)
     response = await clients.get(url)

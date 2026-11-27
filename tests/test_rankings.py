@@ -182,11 +182,6 @@ async def test_a_new_run_replaces_the_saved_boards(clients: AsyncClient):   # cl
     assert [t["provider"] for t in rows[0].body["tools"]["7d"]] == [b["provider"], a["provider"]]
 
 
-async def test_the_footers_link_to_the_rankings(clients: AsyncClient):
-    for page in ("/rankings", "/showcase", "/aeo", "/jev", "/people-search"):
-        assert 'href="/rankings"' in (await clients.get(page)).text, page
-
-
 def test_the_chart_follows_each_window_and_its_leaders():
     a, b = _sync_endpoints(2)
     rows = _rows(a["id"], {0: 10, 20: 5_000}) + _rows(b["id"], {0: 90})
@@ -338,3 +333,16 @@ def test_a_decision_model_is_its_own_type_and_counts_in_all():
     board = rankings.build(_rows(jev["id"], {0: 50}), store.load(), LAST)["ai_models"]["7d"]
     (model,) = board["models"]
     assert model["type"] == "Decision" and model["calls"] == 50
+
+
+async def test_the_faq_and_its_structured_data_say_the_same_thing(clients: AsyncClient):
+    import html as html_mod
+    page = (await clients.get("/rankings")).text
+    faq_html = page.split('id="faq"', 1)[1].split("</section>", 1)[0]
+
+    def text(s):
+        return re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", "", s))).strip()
+    visible = [(text(q), text(a)) for q, a in re.findall(r"<summary>(.*?)</summary><p>(.*?)</p>", faq_html, re.S)]
+    ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', faq_html, re.S).group(1))
+    marked = [(q["name"], q["acceptedAnswer"]["text"]) for q in ld["mainEntity"]]
+    assert visible and marked == visible

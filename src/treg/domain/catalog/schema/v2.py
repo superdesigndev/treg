@@ -54,9 +54,11 @@ class PriceDisplay(Model):
 
 
 class Price(Model):
-    """Absent: unpriced, never billable on treg's key."""
+    """Absent: unpriced, never billable on treg's key. `base` is a fixed amount every charged
+    answer bills on top of its units, and the hold carries once."""
 
     value: Money | None = None
+    base: Money | None = None
     table: list[TableRow] | None = Field(default=None, min_length=1)
     rates: dict[str, Money] | None = Field(default=None, min_length=1)
     fallback: Fallback | None = None
@@ -76,6 +78,8 @@ class Price(Model):
             raise ValueError("an unknown price (value: null) needs a note saying why")
         if self.currency == "unit" and not self.unit:
             raise ValueError("currency: unit names its meter in unit")
+        if self.base is not None and self.rates is not None:
+            raise ValueError("price.base needs a unit price; price.rates has none")
         return self
 
 
@@ -99,9 +103,12 @@ class RowsDefault(Model):
 
 
 class Rows(Model):
+    """`max` binds every tier; `platform_max`, when set, is the smaller bound treg's key serves."""
+
     param: RequestPath | None = None
     default: RowsDefault | None = None
     max: int = Field(ge=1)
+    platform_max: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _shape(self) -> Rows:
@@ -109,6 +116,13 @@ class Rows(Model):
             raise ValueError("rows without param is only a frozen legacy hold (default.source: legacy)")
         if self.default is not None and self.default.value > self.max:
             raise ValueError("rows.default.value exceeds rows.max")
+        if self.platform_max is not None:
+            if self.param is None:
+                raise ValueError("rows.platform_max needs a param to bound")
+            if self.platform_max >= self.max:
+                raise ValueError("rows.platform_max must be below rows.max; otherwise write max alone")
+            if self.default is not None and self.default.value > self.platform_max:
+                raise ValueError("rows.default.value exceeds rows.platform_max")
         return self
 
 
@@ -117,17 +131,32 @@ class Entities(Model):
     max: int = Field(default=10_000, ge=1)
 
 
+class ReserveMoney(Model):
+    """A hold the caller names in USD: a request parameter whose value is a spend cap the provider
+    enforces, above 0 and at most `max`."""
+
+    param: RequestPath
+    max: Money
+
+    @model_validator(mode="after")
+    def _shape(self) -> ReserveMoney:
+        if self.max <= 0:
+            raise ValueError("reserve.money.max must be above 0")
+        return self
+
+
 class Reserve(Model):
     """Absent: one unit, the flat price or the matched table row."""
 
     rows: Rows | None = None
     entities: Entities | None = None
     plugin: PluginName | None = None
+    money: ReserveMoney | None = None
     max: Money | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Reserve:
-        _one_of(self, ("rows", "entities", "plugin"))
+        _one_of(self, ("rows", "entities", "plugin", "money"))
         if (self.plugin is None) != (self.max is None):
             raise ValueError("reserve.plugin needs max beside it, and max belongs only to a plugin")
         return self
@@ -138,10 +167,14 @@ class Count(Model):
 
 
 class Reported(Model):
+    """`missing: 0` settles an answer whose figure is absent at 0; without it, an absent figure
+    falls to the outcome rules and the hold."""
+
     path: ResponsePath | None = None
     header: str | None = Field(default=None, min_length=1)
     unit: str = Field(min_length=1)
     scale: int | float = 1
+    missing: Literal[0] | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Reported:
@@ -178,19 +211,24 @@ class Usage(Model):
 
 class Settle(Model):
     """Absent: the hold. `worst_case`, beside a reported or usage settle, is the most one call can
-    settle at, in the price's currency: the hold is never below it."""
+    settle at, in the price's currency: the hold is never below it. `hold_within_units`, beside a
+    count or plugin settle, bills the hold when the bill comes within that many units of it and the
+    answer counts at least one unit."""
 
     count: Count | None = None
     reported: Reported | None = None
     usage: Usage | None = None
     plugin: PluginName | None = None
     worst_case: Money | None = None
+    hold_within_units: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _shape(self) -> Settle:
         _one_of(self, ("count", "reported", "usage", "plugin"))
         if self.worst_case is not None and self.reported is None and self.usage is None:
             raise ValueError("settle.worst_case belongs beside settle.reported or settle.usage")
+        if self.hold_within_units is not None and self.count is None and self.plugin is None:
+            raise ValueError("settle.hold_within_units belongs beside settle.count or settle.plugin")
         return self
 
 
@@ -211,6 +249,13 @@ class OutcomeRule(Model):
     def _shape(self) -> OutcomeRule:
         _one_of(self, ("when", "plugin"))
         return self
+
+
+class PlatformCheck(Model):
+    """A request check treg's key runs before any hold: the plugin reads the request and returns
+    None to serve it, or the reason it is refused."""
+
+    plugin: PluginName
 
 
 ClientErrors = Annotated[list[Annotated[int, Field(ge=400, le=499)]], Field(min_length=1)]
@@ -260,6 +305,8 @@ class V2Row(RowBase):
     settle: Settle | None = field(kind="P")
     bill: Bill | None = field(kind="P")
     ceiling_param: CeilingParam | None = field(kind="P")
+    platform_check: PlatformCheck | None = field(kind="A")
+    platform_query: Literal["declared"] | None = field(kind="A")
     async_: dict[str, Json] | None = field(alias="async", kind="P")
 
     @model_validator(mode="after")
@@ -280,6 +327,8 @@ class V2Row(RowBase):
                                  "settle, if any, that is a plugin")
             if self.bill is not None and isinstance(self.bill.miss, int):
                 raise ValueError("bill.miss in units needs a unit price; price.rates has none")
+            if self.settle is not None and self.settle.hold_within_units is not None:
+                raise ValueError("settle.hold_within_units needs a unit price; price.rates has none")
         return self
 
 
@@ -358,7 +407,7 @@ def _reserve_view(reserve: dict, input_schema: dict) -> dict:
     if "rows" in reserve:
         rows = reserve["rows"]
         view = {"param": _legacy_location(rows["param"], input_schema)} if rows.get("param") else {}
-        return {"rows": {**view, **{k: rows[k] for k in ("default", "max") if k in rows}}}
+        return {"rows": {**view, **{k: rows[k] for k in ("default", "max", "platform_max") if k in rows}}}
     return {"entities": {}} if "entities" in reserve else {}
 
 
@@ -373,6 +422,8 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
     out: dict = {"type": cost_type(price, row.get("reserve"), row.get("settle"), row["bill"])}
     if price.get("value") is not None:
         out["value"] = _number(price["value"])
+    if price.get("base") is not None:
+        out["call_fee"] = _number(price["base"])
     if price.get("rates") is not None:
         out["fallback"] = {"value": _number(reserve["max"]),
                            "note": "the most one call is held at; its plugin's quantities are priced by the rates"}

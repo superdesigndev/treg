@@ -22,31 +22,46 @@ def add(db: AsyncSession, **values) -> CallComparison:
     return row
 
 
-async def take_attempt(db: AsyncSession, day: str, limit: int) -> bool:
-    """Count one second-vendor call against the UTC day's `limit` with one conditional update
-    (the day's first with an insert that yields to a concurrent one); False, nothing counted, at
-    the limit. Correct without a prior row lock, on SQLite too."""
-    if limit < 1:
-        return False
+async def take_attempt(db: AsyncSession, day: str, limit: int, *, price_micro: int = 0,
+                       spend_limit_micro: int | None = None) -> str:
+    """Count one second-vendor call and its price against the UTC day's call `limit` and spend
+    limit with one conditional update (the day's first with an insert that yields to a concurrent
+    one): `taken`, or `at_limit` / `over_spend` with nothing counted. Correct without a prior row
+    lock, on SQLite too. The day's row is no team's, so deleting a team gives nothing back."""
+    if limit < 1 or (spend_limit_micro is not None and price_micro > spend_limit_micro):
+        return "at_limit" if limit < 1 else "over_spend"
 
     async def bump() -> bool:
-        done = await db.execute(update(CompareAttemptDay).where(
-            CompareAttemptDay.day == day, CompareAttemptDay.attempts < limit,
-        ).values(attempts=CompareAttemptDay.attempts + 1).execution_options(synchronize_session=False))
+        fits = [CompareAttemptDay.day == day, CompareAttemptDay.attempts < limit]
+        if spend_limit_micro is not None:
+            fits.append(CompareAttemptDay.spent_micro + price_micro <= spend_limit_micro)
+        done = await db.execute(update(CompareAttemptDay).where(*fits).values(
+            attempts=CompareAttemptDay.attempts + 1,
+            spent_micro=CompareAttemptDay.spent_micro + price_micro,
+        ).execution_options(synchronize_session=False))
         return done.rowcount == 1
 
     if await bump():
-        return True
+        return "taken"
     dialect = (await db.connection()).dialect.name
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
-    created = await db.execute(insert(CompareAttemptDay).values(day=day, attempts=1)
+    created = await db.execute(insert(CompareAttemptDay).values(day=day, attempts=1, spent_micro=price_micro)
                                .on_conflict_do_nothing(index_elements=["day"]))
-    return created.rowcount == 1 or await bump()
+    if created.rowcount == 1 or await bump():
+        return "taken"
+    row = (await db.execute(select(CompareAttemptDay.attempts).where(CompareAttemptDay.day == day))).scalar()
+    return "at_limit" if (row or 0) >= limit else "over_spend"
 
 
 async def attempts(db: AsyncSession, day: str) -> int:
     row = await db.get(CompareAttemptDay, day)
     return row.attempts if row is not None else 0
+
+
+async def spent(db: AsyncSession, day: str) -> int:
+    """B's catalog prices of the UTC day's claims, failed and pending ones included."""
+    row = await db.get(CompareAttemptDay, day)
+    return row.spent_micro if row is not None else 0
 
 
 async def finish(db: AsyncSession, call_ref: str, **values) -> bool:
@@ -92,6 +107,39 @@ async def counted(db: AsyncSession, org_id: int, capability: str, pair: tuple[st
     ))).scalar() or 0)
 
 
+async def tallies(db: AsyncSession, capabilities: list[str], since: datetime) -> dict[tuple[str, str, str], int]:
+    """Every team's comparisons since `since` that are not failed, by (capability, A, B): what a
+    run spreads its calls by. One grouped read through `created_at`."""
+    rows = (await db.execute(select(
+        CallComparison.capability, CallComparison.a_provider, CallComparison.b_provider, func.count(),
+    ).where(CallComparison.created_at >= since, CallComparison.status != FAILED,
+            CallComparison.capability.in_(capabilities))
+        .group_by(CallComparison.capability, CallComparison.a_provider, CallComparison.b_provider))).all()
+    return {(c, a, b): int(n) for c, a, b, n in rows}
+
+
+async def failure_streaks(db: AsyncSession, capabilities: list[str], since: datetime,
+                          ) -> dict[tuple[str, str], int]:
+    """How many of each B's latest answers since `since` failed in a row, by (capability, B):
+    a settled comparison (ready or decided) ends the streak. One read through `created_at`."""
+    rows = (await db.execute(select(
+        CallComparison.capability, CallComparison.b_provider, CallComparison.status,
+    ).where(CallComparison.created_at >= since, CallComparison.capability.in_(capabilities),
+            CallComparison.status != PENDING)
+        .order_by(CallComparison.created_at.desc(), CallComparison.id.desc()))).all()
+    streaks: dict[tuple[str, str], int] = {}
+    ended: set[tuple[str, str]] = set()
+    for capability, b, status in rows:
+        key = (capability, b)
+        if key in ended:
+            continue
+        if status == FAILED:
+            streaks[key] = streaks.get(key, 0) + 1
+        else:
+            ended.add(key)
+    return streaks
+
+
 def shown(row: CallComparison) -> tuple[str, str]:
     """(answer 1, answer 2) in the order the agent sees them."""
     return (row.a_body, row.b_body) if row.first == "a" else (row.b_body, row.a_body)
@@ -121,3 +169,30 @@ def shown_choice(row: CallComparison) -> str | None:
     if row.choice in ("a", "b"):
         return "1" if row.choice == row.first else "2"
     return row.choice
+
+
+async def record_jev(db: AsyncSession, comparison_id: int, *, choice: str, orders: str, version: str,
+                     at: datetime) -> bool:
+    """Jev's blind verdict, written only over none or an older rubric version, and never into the
+    agent's `choice` or `status`; any back-off ends."""
+    result = await db.execute(update(CallComparison).where(
+        CallComparison.id == comparison_id,
+        or_(CallComparison.jev_version.is_(None), CallComparison.jev_version < version),
+    ).values(jev_choice=choice, jev_orders=orders, jev_version=version, jev_judged_at=at,
+             jev_retry_at=None, jev_attempts=None).execution_options(synchronize_session=False))
+    return result.rowcount == 1
+
+
+async def record_jev_retry(db: AsyncSession, comparison_id: int, version: str, seen: int | None,
+                           retry_at: datetime, *, count: bool = True) -> bool:
+    """Jev could not judge the pair now: not asked again before `retry_at`, and with `count` one
+    more failed try. Only while it is still unjudged under `version` and holds the `seen` tries
+    this run read, so two runs failing together count once."""
+    seen_now = (CallComparison.jev_attempts.is_(None) if seen is None
+                else CallComparison.jev_attempts == seen)
+    result = await db.execute(update(CallComparison).where(
+        CallComparison.id == comparison_id,
+        or_(CallComparison.jev_version.is_(None), CallComparison.jev_version < version), seen_now,
+    ).values(jev_attempts=(seen or 0) + 1 if count else seen, jev_retry_at=retry_at)
+        .execution_options(synchronize_session=False))
+    return result.rowcount == 1

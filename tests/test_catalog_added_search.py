@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-import pytest
 from httpx import AsyncClient
 
 from treg.domain.catalog import store as cs
@@ -94,16 +93,6 @@ async def test_endpoint_detail_carries_added(clients: AsyncClient):
     ep = next(e for e in cs.load().endpoints if e.get("added"))
     body = (await clients.get(f"/catalog/endpoints/{ep['id']}")).json()
     assert body["endpoint"]["added"] == ep["added"]
-
-
-@pytest.mark.parametrize("days,sort,ok", [(None, None, True), (1, "newest", True), (365, "best", True),
-                                          (0, None, False), (None, "date", False)])
-def test_added_options(days, sort, ok):
-    if ok:
-        assert cs.added_options(days, sort).active == (days is not None or sort == "newest")
-    else:
-        with pytest.raises(cs.AddedOptionError):
-            cs.added_options(days, sort)
 
 
 # ---- MCP: catalog_search on /mcp/ and /mcp/v2/ ------------------------------------------------

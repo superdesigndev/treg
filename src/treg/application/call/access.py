@@ -167,7 +167,7 @@ def _platform_access_estimate(endpoint: dict, service: str, cost: dict) -> int:
         )
         return estimate
     # Match the RUN IT example: empty body would fall through to the page-size default (20) and
-    # print a 20× hold next to a 1-target/1-limit example (Moz quota_rows and similar).
+    # print a 20× hold next to a 1-target/1-limit example.
     return _platform_estimate_micro(cost, query, body)
 
 
