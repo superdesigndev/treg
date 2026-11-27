@@ -317,7 +317,7 @@ async def test_a_focused_agent_page_still_reaches_every_category(clients: AsyncC
                 assert f"/use-cases#{slug})" in md, (agent, category)
 
 
-def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch):
+async def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch, clients: AsyncClient):
     """`treg mcp install` detects Hermes but only prints a manual hint (the light CLI writes no YAML);
     the page shows the full block. Both must name the same MCP URL and the same config shape, and
     the page must use Hermes's registered tool names (mcp__<server>__<tool>, double underscores)."""
@@ -332,6 +332,14 @@ def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch):
     spec = agent_pages.AGENTS["hermes"]
     block = spec["guide"][0]["html"]
     assert "mcp_servers:" in block and f'url: "{out["mcp_url"]}"' in block and "Bearer" in block
+    assert "trust: untrusted" in block and "trust: untrusted" in how
+    oauth = (f"hermes mcp add treg --url {out['mcp_url']} --auth oauth\n"
+             "hermes config set mcp_servers.treg.trust untrusted")
+    for url in ("/agents/hermes", "/agents/hermes.md"):
+        page = await clients.get(url)
+        assert page.status_code == 200
+        assert oauth in page.text and "trust: untrusted" in page.text
+        assert "treg.web.search" in page.text
     steps = " ".join(spec["install_steps"])
     assert re.findall(r"mcp__treg__\w+", steps) and not re.findall(r"mcp_treg_\w+", steps)
 

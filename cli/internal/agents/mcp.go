@@ -96,7 +96,7 @@ var manualAgents = []struct {
 	how     string
 }{
 	{"Hermes", func() bool { return exists(filepath.Join(home(), ".hermes")) },
-		"add to ~/.hermes/config.yaml under mcp_servers: a `url` + `headers: " +
+		"add to ~/.hermes/config.yaml under mcp_servers: a `url`, `trust: untrusted` and `headers: " +
 			"{Authorization: \"Bearer <token>\"}` entry."},
 	{"DeepSeek Harness", func() bool { return exists(filepath.Join(home(), ".dsh")) || onPath("dsh") },
 		"dsh has no MCP config file to write - a server is a row in a PROFILE's config " +

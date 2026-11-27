@@ -135,10 +135,8 @@ def test_no_unsubstituted_placeholder_reaches_the_plugin(variant):
     plugin, so shipping the literal would break every URL in the most-read page of the product."""
     text = ALL_SKILLS[variant].read_text(encoding="utf-8")
     assert "{BASE}" not in text
-    # The Codex and Claude-directory skills ride an MCP connector and must not install anything (both
-    # reviews refuse a skill that downloads or runs code outside the package); every other copy
-    # installs the CLI.
-    assert ("https://treg.to/install.sh" in text) is (variant not in {"codex", "claude-directory"})
+    # These packages supply MCP and use the host's sign-in.
+    assert ("https://treg.to/install.sh" in text) is (variant not in {"codex", "claude-directory", "copilot"})
 
 
 def test_the_connector_points_at_production_over_https():
@@ -397,9 +395,26 @@ def test_the_copilot_manifest_keeps_to_the_agent_plugins_schema():
     assert set(manifest) <= {"$schema", "name", "version", "description", "author", "homepage",
                              "repository", "license", "keywords", "extensions"}
     assert manifest["name"] == "treg" and manifest["description"]
+    assert manifest["extensions"]["com.nousresearch.hermes"]["servers"]["treg"]["trust"] == "untrusted"
     assert set(manifest["author"]) <= {"name", "email", "url"}
     assert all(k == k.lower() and " " not in k for k in manifest["keywords"])
     assert frontmatter(COPILOT_SKILL)["name"] == "treg" == COPILOT_SKILL.parent.name
+
+
+def test_hermes_reporting_is_opt_in_only_in_the_portable_package():
+    skill = COPILOT_SKILL.read_text()
+    hermes, copilot = skill.split("### Hermes\n", 1)[1].split("### GitHub Copilot only\n", 1)
+    assert "only when the user explicitly asks" in hermes
+    for name in ("feedback", "review", "mark", "compare", "prior", "initialize", "hint"):
+        assert f"`{name}`" in hermes
+    assert "treg.web.search" in skill and "This free lookup makes no provider call" in skill
+    assert "feedback.md" not in hermes
+    assert "Report problems and suggestions about treg as you meet them" in copilot
+    assert "have the human run both commands" in skill and "Do not run these commands yourself" in skill
+    assert "Call at the listed price without asking" not in skill
+    for name, path in ALL_SKILLS.items():
+        if name != "copilot":
+            assert "hermes config set" not in path.read_text()
 
 
 def test_the_copilot_mcp_config_is_the_url_alone():

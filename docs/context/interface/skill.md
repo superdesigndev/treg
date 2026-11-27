@@ -98,6 +98,12 @@ Constraints the hosts impose, which the code cannot explain:
 - The Copilot plugin has its own root because Agent Plugins 1.0.0 fixes the MCP config at the
   plugin root's `mcp.json` in a closed schema (`$schema`, `type: "streamable-http"`) that no manifest
   field can point elsewhere, while Cursor reads `plugins/treg/mcp.json` in its own documented shape.
+- Hermes reads that same portable plugin. Its namespaced manifest extension declares the `treg`
+  MCP server untrusted so write-capable tools require approval. A same-name OAuth profile entry
+  replaces the plugin server, so the setup guide preserves trust on that entry. Only the portable
+  build adds Hermes's reporting policy. Feedback, reviews, marks, comparisons and the optional
+  review attached to a call require an explicit user request in Hermes. The portable skill tests
+  its existing MCP connection with a catalog lookup and omits the standalone CLI installer.
 - Copilot CLI looks for a repo marketplace in `.github/plugin/` before `.claude-plugin/`, so the
   same `treg@treg` installs `plugins/copilot/` there and `plugins/treg/` in Claude Code. The two
   files list the same workflow plugins. Copilot CLI marks direct installs (`owner/repo:path`, a local

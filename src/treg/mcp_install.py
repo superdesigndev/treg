@@ -75,7 +75,7 @@ MCP_AGENTS: dict[str, dict] = {
 # user exactly how instead of writing a config we haven't runtime-verified.
 MANUAL_AGENTS: dict[str, dict] = {
     "hermes": {"display": "Hermes", "marker": lambda: (HOME / ".hermes").exists(),
-               "how": "add to ~/.hermes/config.yaml under mcp_servers: a `url` + `headers: "
+               "how": "add to ~/.hermes/config.yaml under mcp_servers: a `url`, `trust: untrusted` and `headers: "
                       "{Authorization: \"Bearer <token>\"}` entry."},
     "dsh": {"display": "DeepSeek Harness", "marker": lambda: (HOME / ".dsh").exists()
             or bool(shutil.which("dsh")),

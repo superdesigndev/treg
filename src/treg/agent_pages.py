@@ -803,25 +803,32 @@ AGENTS["hermes"] = {
         "ads. Add one block to ~/.hermes/config.yaml; calls run on treg.to's keys at the provider's "
         "rate with $0.000 markup, and your own keys are never metered."),
     "install_steps": [
-        "Get your team token from the treg.to dashboard, or run <code>treg login</code>.",
-        "Add treg.to under <code>mcp_servers</code> in <code>~/.hermes/config.yaml</code> (the block "
-        "is below). <code>treg mcp install</code> detects Hermes and prints manual configuration "
-        "instructions rather than writing the file.",
+        "In your terminal before starting Hermes, run both OAuth commands below and finish the "
+        "browser sign-in. The second command keeps approval prompts on the new profile entry.",
+        "If you already use a scoped team token, use the YAML block below instead.",
         "In Hermes, run <code>/reload-mcp</code>. The tools appear as "
         "<code>mcp__treg__catalog_search</code>, <code>mcp__treg__catalog_get</code> and "
         "<code>mcp__treg__call</code>.",
-        "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
+        "For a free check, ask Hermes to use <code>catalog_get</code> on <code>treg.web.search</code> "
+        "and show its inputs and pricing. Stop after the lookup.",
     ],
     "install_image": None,
     "focus": ("Buying signals", "Data enrichment"),
     "roles": ("GTM engineers", "founders", "SDRs", "market researchers", "recruiters"),
     "guide": [
         {"id": "config", "seclab": "The config",
-         "h2": "The block for ~/.hermes/config.yaml",
+         "h2": "Connect with OAuth or a team token",
          "html": (
+             "<p>For OAuth, run both commands in your terminal before starting a Hermes session.</p>"
+             "<pre><code>hermes mcp add treg --url https://treg.to/mcp/ --auth oauth\n"
+             "hermes config set mcp_servers.treg.trust untrusted</code></pre>"
+             "<p>A profile entry overrides the plugin's settings. Keeping the server untrusted makes "
+             "Hermes ask before a write-capable tool can publish or spend team credit.</p>"
+             "<p>For a scoped team token, add this block to <code>~/.hermes/config.yaml</code>:</p>"
              "<pre><code>mcp_servers:\n"
              "  treg:\n"
              "    url: \"https://treg.to/mcp/\"\n"
+             "    trust: untrusted\n"
              "    headers:\n"
              "      Authorization: \"Bearer &lt;your team token&gt;\"\n"
              "    tools:\n"
