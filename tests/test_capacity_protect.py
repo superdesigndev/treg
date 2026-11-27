@@ -27,6 +27,7 @@ from treg.domain.capacity.marks import DEFAULT_LOCK, LOCK_NS, MAX_LOCK, Lock
 from treg.domain.capacity.policy import LatestState
 from treg.domain.capacity.sweep import STATE_NS
 from treg.domain.capacity.view import view as capacity_view
+from treg.domain.catalog import store as catalog_store
 from treg.models import Hold, LedgerEntry
 from treg.timeutil import utcnow_naive
 
@@ -534,5 +535,114 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
         assert _capacity_503(await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"}))
         lock = await _lock("wiza")
         assert lock.strikes == 1 and not lock.is_active(), "400, 200, 400 does not lock"
+    finally:
+        get_settings.cache_clear()
+
+
+APIFY_DEAD_TOKEN = (b'{"error":{"type":"user-or-token-not-found","message":"User was not found or authentication '
+                    b'token is not valid"}}')
+
+# A provider's own words for treg's account being out, beside a mistake of the caller's that the same
+# provider answers: (endpoint, treg's account out, the caller's mistake). Each call sends the row's
+# catalog `test_request`.
+_ACCOUNT_OUT = [
+    pytest.param("apify.linkedin.search.jobs", (401, APIFY_DEAD_TOKEN),
+                 (400, b'{"error":{"type":"invalid-input","message":"Input is not valid: Field input.jobTitles '
+                       b'must be array"}}'), id="apify"),
+    pytest.param("dataforseo.google.keywords.volume",
+                 (403, b'{"version":"0.1.20251117","status_code":40104,"status_message":"Please verify your '
+                       b'account before using the API.","cost":0,"tasks_count":0,"tasks_error":0,"tasks":null}'),
+                 (200, b'{"version":"0.1.20251117","status_code":20000,"status_message":"Ok.","cost":0,'
+                       b'"tasks_count":1,"tasks_error":1,"tasks":[{"status_code":40501,'
+                       b'"status_message":"Invalid Field: \'location_code\'.","cost":0,"result":null}]}'),
+                 id="dataforseo"),
+    pytest.param("marketstack.eod.latest",
+                 (401, b'{"error":{"code":"inactive_user","message":"Permission denied - User not active"}}'),
+                 (422, b'{"error":{"code":"validation_error","message":"Request failed with validation error"}}'),
+                 id="marketstack"),
+    pytest.param("minimax.voice-gen.speech-2-8-hd",
+                 (200, b'{"data":null,"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}'),
+                 (200, b'{"data":null,"base_resp":{"status_code":2013,"status_msg":"invalid params"}}'),
+                 id="minimax"),
+    pytest.param("openrouter.ai-judge.decide",
+                 (403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}'),
+                 (403, b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input '
+                       b'was flagged"}}'), id="openrouter"),
+    pytest.param("scrubby.people.email.verify", (403, b'{"detail": "Insufficient credits."}'),
+                 (422, b'{"detail":[{"loc":["body","email"],"msg":"value is not a valid email address"}]}'),
+                 id="scrubby"),
+]
+
+
+def _on_tregs_key(monkeypatch, provider: str) -> None:
+    key = "login:password" if provider == "dataforseo" else f"PLATFORM-{provider.upper()}-KEY"
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", key)
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", provider)
+    monkeypatch.setattr(call_service.provider_limiter, "acquire", _no_wait)
+    get_settings.cache_clear()
+
+
+async def _test_request(clients: AsyncClient, endpoint: str, **query):
+    ep = catalog_store.load().by_id[endpoint]
+    sent = ep["test_request"]
+    params = {**(sent.get("pathParams") or {}), **(sent.get("queryParams") or {}), **query}
+    return await clients.request(ep["method"], f"/call/{endpoint}", params=params, json=sent.get("body"))
+
+
+@pytest.mark.parametrize("endpoint, out, mistake", _ACCOUNT_OUT)
+async def test_a_providers_own_account_answer_on_tregs_key_is_the_typed_refusal(
+        clients: AsyncClient, monkeypatch, endpoint, out, mistake):
+    """On treg's key the provider's answer for treg's account (empty, unpaid, deactivated) is the
+    typed 503, uncharged, and a strike; the caller's own mistake is relayed as sent, no strike."""
+    provider = endpoint.split(".")[0]
+    _on_tregs_key(monkeypatch, provider)
+    try:
+        monkeypatch.setattr(call_service, "relay", _fake_relay(*mistake))
+        r = await _test_request(clients, endpoint)
+        assert (r.status_code, r.content) == mistake, r.text
+        assert await _lock(provider) is None
+
+        monkeypatch.setattr(call_service, "relay", _fake_relay(*out))
+        before = await _balance(clients)
+        r = await _test_request(clients, endpoint)
+        assert _capacity_503(r), r.text
+        assert out[1].decode() not in r.text
+        assert await _balance(clients) == before and await _rows(Hold) == []
+        assert (await _lock(provider)).strikes == 1
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("endpoint, out, _mistake", _ACCOUNT_OUT)
+async def test_the_same_answer_on_a_teams_own_key_is_relayed_as_sent(
+        clients: AsyncClient, monkeypatch, endpoint, out, _mistake):
+    """The team's own key wins over treg's, and its account is the team's business."""
+    provider = endpoint.split(".")[0]
+    _on_tregs_key(monkeypatch, provider)
+    try:
+        assert (await clients.post("/secrets", json={"name": provider, "value": "TEAM-OWN-KEY"})).status_code == 200
+        monkeypatch.setattr(call_service, "relay", _fake_relay(*out))
+        r = await _test_request(clients, endpoint)
+        assert (r.status_code, r.content) == out, r.text
+        assert await _lock(provider) is None
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_callers_own_apify_token_never_reaches_apify_on_tregs_key(clients: AsyncClient, monkeypatch):
+    """Apify also reads a `token` query parameter. Refusing one on treg's key, before any hold, is
+    what lets a 401 there mean treg's token: a caller's own wrong token gets the same answer."""
+    _on_tregs_key(monkeypatch, "apify")
+    try:
+        relay = _counting(_fake_relay(401, APIFY_DEAD_TOKEN))
+        monkeypatch.setattr(call_service, "relay", relay)
+        before = await _balance(clients)
+        cat = catalog_store.load()
+        rows = [ep["id"] for ep in cat.endpoints if ep["provider"] == "apify" and cat.platform_eligible(ep)]
+        for endpoint in rows:  # every row on treg's key, the free run polls and a new row included
+            r = await _test_request(clients, endpoint, token="CALLER-TOKEN")
+            assert r.status_code == 400 and r.json()["detail"]["error"] == "catalog_parameter_invalid", \
+                (endpoint, r.text)
+        assert rows and relay.calls == 0 and await _balance(clients) == before and await _lock("apify") is None
     finally:
         get_settings.cache_clear()

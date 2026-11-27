@@ -45,6 +45,10 @@ defaults:
   settle: {count: {path: response}, hold_within_units: 2}
   error: {when: {path: response.error, op: present}, means: an Apify error envelope in place of the dataset}
   bill: {miss: charged, error: charged}
+  # Apify also reads a `token` query parameter beside the Authorization header. On treg's key only
+  # treg's token may reach it: a caller's own token would make its 401 or spent limit read as
+  # treg's account. The paid run rows already take only their run options.
+  platform_request: {queryParams.token: null}
 endpoints:
   - id: apify.meta-ads.library.search
     capability: meta-ads.library.search
