@@ -79,12 +79,16 @@ DIRECTORY_PLUGIN_DIR = ROOT / "plugins" / "treg-claude"
 DIRECTORY_MANIFEST = DIRECTORY_PLUGIN_DIR / ".claude-plugin" / "plugin.json"
 DIRECTORY_SKILL = DIRECTORY_PLUGIN_DIR / "skills" / "treg" / "SKILL.md"
 
+# ClawHub publishes a skill folder, the marketplace build of the served page.
+CLAWHUB_SKILL = ROOT / "plugins" / "clawhub" / "skills" / "treg" / "SKILL.md"
+STORE_VARIANTS = {"clawhub", "copilot"}
+
 # Every generated SKILL.md, and every manifest a public directory reads. Tests that apply to the
 # product as a whole (version, positioning) parametrise over these rather than being
 # written against whichever plugin happened to exist first.
 ALL_SKILLS = {"codex": SKILL, "skills": BARE_SKILL, "plugin": PLUGIN_SKILL, "dsh": DSH_SKILL,
               "minimax": MINIMAX_SKILL, "copilot": COPILOT_SKILL,
-              "claude-directory": DIRECTORY_SKILL}
+              "claude-directory": DIRECTORY_SKILL, "clawhub": CLAWHUB_SKILL}
 ALL_MANIFESTS = {"codex": MANIFEST, "claude": CLAUDE_MANIFEST, "cursor": CURSOR_MANIFEST,
                  "dsh": DSH_MANIFEST, "minimax": MINIMAX_MANIFEST, "copilot": COPILOT_MANIFEST,
                  "claude-directory": DIRECTORY_MANIFEST}
@@ -135,8 +139,9 @@ def test_no_unsubstituted_placeholder_reaches_the_plugin(variant):
     plugin, so shipping the literal would break every URL in the most-read page of the product."""
     text = ALL_SKILLS[variant].read_text(encoding="utf-8")
     assert "{BASE}" not in text
-    # These packages supply MCP and use the host's sign-in.
-    assert ("https://treg.to/install.sh" in text) is (variant not in {"codex", "claude-directory", "copilot"})
+    # The connector packages and the marketplace builds never run an installer.
+    assert ("https://treg.to/install.sh" in text) is (
+        variant not in {"codex", "claude-directory", *STORE_VARIANTS})
 
 
 def test_the_connector_points_at_production_over_https():
@@ -401,17 +406,30 @@ def test_the_copilot_manifest_keeps_to_the_agent_plugins_schema():
     assert frontmatter(COPILOT_SKILL)["name"] == "treg" == COPILOT_SKILL.parent.name
 
 
-def test_hermes_reporting_is_opt_in_only_in_the_portable_package():
+@pytest.mark.parametrize("variant", sorted(ALL_SKILLS))
+def test_marketplace_builds_swap_the_marked_parts_and_nothing_else(variant):
+    """A marketplace build connects without an installer or a token in a command, agrees one budget
+    per task, and reports to treg only when the user asks. Every other copy keeps the served text."""
+    text = ALL_SKILLS[variant].read_text(encoding="utf-8")
+    assert "<!--store:" not in text and "<!--/store:" not in text
+    description = frontmatter(ALL_SKILLS[variant])["description"]
+    if variant in STORE_VARIANTS:
+        assert "--token" not in text and "| sh" not in text
+        assert "Call at the listed price without asking" not in text
+        assert "Agree a budget before the first paid call of a task" in text
+        assert "Send reports to treg only when the user asks you to" in text
+        assert "Report problems and suggestions about treg as you meet them" not in text
+        assert description.endswith("Prefer a tool the user already has for the same service.")
+    elif variant not in {"codex", "claude-directory"}:
+        assert "Call at the listed price without asking" in text
+        assert "Report problems and suggestions about treg as you meet them" in text
+        assert "Prefer a tool the user already has" not in description
+
+
+def test_only_the_hermes_package_carries_the_hermes_setup():
     skill = COPILOT_SKILL.read_text()
-    hermes, copilot = skill.split("### Hermes\n", 1)[1].split("### GitHub Copilot only\n", 1)
-    assert "only when the user explicitly asks" in hermes
-    for name in ("feedback", "review", "mark", "compare", "prior", "initialize", "hint"):
-        assert f"`{name}`" in hermes
     assert "treg.web.search" in skill and "This free lookup makes no provider call" in skill
-    assert "feedback.md" not in hermes
-    assert "Report problems and suggestions about treg as you meet them" in copilot
     assert "have the human run both commands" in skill and "Do not run these commands yourself" in skill
-    assert "Call at the listed price without asking" not in skill
     for name, path in ALL_SKILLS.items():
         if name != "copilot":
             assert "hermes config set" not in path.read_text()

@@ -17,6 +17,9 @@ async def test_skill_md_served_and_templated(clients):
     body = r.text
     assert body.startswith("---") and "name: treg" in body  # loadable skill frontmatter
     assert "{BASE}" not in body                                        # fully templated
+    # A marketplace build swaps the parts marked `<!--store:NAME-->`; the served page keeps them.
+    assert "<!--store:" not in body and "<!--/store:" not in body
+    assert "Call at the listed price without asking" in body
 
 
 async def test_well_known_skills_index_advertises_the_skill(clients):
