@@ -243,7 +243,7 @@ endpoints:
       source_url: https://piapi.ai/docs/gpt-image/gpt-image-api
       checked: 2026-11-26
       confidence: verified
-      note: "Every task settles at the points PiAPI reports consumed on the completed task (data.meta.usage.consume), priced in fx.yaml; the rate converts points to millions of points. The table is the hold: the points one 1024x1024 image consumes per quality. Upstream is token-metered at OpenAI's $3.75 / $22.50 per 1M input / output tokens, passed through at cost; Flare and Sunburst meter identically."
+      note: "Every task settles at the points PiAPI reports consumed on the completed task (data.meta.usage.consume), priced in fx.yaml; the rate converts points to millions of points. The table is the hold: the points one 1024x1024 image consumes per quality. A long prompt adds input tokens, can settle above its hold, and the caller pays the difference. Upstream is token-metered at OpenAI's $3.75 / $22.50 per 1M input / output tokens, passed through at cost; Flare and Sunburst meter identically."
     verified: 2026-09-14
     added: '2026-09-14'
     example_response: examples/piapi.image-gen.gpt-image-2-5.json
