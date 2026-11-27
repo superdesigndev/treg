@@ -692,6 +692,21 @@ async def test_stream_owns_slot_through_completion(clients, platform_on, gate, m
         await asyncio.gather(task, return_exceptions=True)
 
 
+async def test_an_own_key_answer_that_fails_while_held_closes_its_upstream(clients, platform_on, monkeypatch):
+    """On a row marked `echoes_credential` the answer is held whole to be masked and has no
+    response to carry its close yet: a read that fails closes the upstream itself, once."""
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
+    await own_key(clients)
+    started, proceed = asyncio.Event(), asyncio.Event()
+    proceed.set()
+    closed = AsyncMock()
+    _upstream(monkeypatch, _gated(started, proceed, closed, fail=True))
+    with pytest.raises(RuntimeError, match="stream fault"):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    closed.assert_awaited_once()
+
+
 async def test_send_disconnect_before_first_body_releases(gate):
     from starlette.requests import ClientDisconnect
     from starlette.responses import StreamingResponse

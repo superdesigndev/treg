@@ -110,7 +110,10 @@ Bare `treg` and `treg catalog …` print TOON from CLI 0.28 on (earlier releases
 `key: value` lines, and tables as `name[N]{field,…}:` with one row per line. The `call` line and the
 `help[N]` commands print exactly as you type them; `param_examples` shows each parameter's own
 example, not a request to send; `--json` prints the server's JSON instead. `treg call` itself prints
-the provider's answer as it came; `treg --json call` wraps it (see "Scripting many calls" below).
+the provider's answer as it came, save one thing in a Meta (Graph API) answer: the token treg
+injected reads `access_token=***` in its `paging.next` and `paging.previous` links, so ask for the
+next page through treg with its cursor, never by following such a link. `treg --json call` wraps
+it (see "Scripting many calls" below).
 
 
 **For a common job, call the routed tool, not a provider you remember.** Scraping a page

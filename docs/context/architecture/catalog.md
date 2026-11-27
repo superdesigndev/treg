@@ -466,6 +466,11 @@ cost:
   (`resolve._spool_evidence_paths`), so evidence cannot drift from price. A fixed price needs an
   `expect` rule so a refused generation is not billed; the validator refuses the field beside
   `async`, `resource_ownership` or `managed_resource`, which need the whole body.
+- **`echoes_credential: true`**: the provider writes the credential treg injected into a successful
+  answer (Meta's Graph rows set it in their provider `defaults:`). Only such a row's answers are held
+  whole and masked on the call path; the loader serves `False` when absent
+  ([catalog schema](catalog-schema.md#a-row-whose-answers-quote-the-credential),
+  [proxy-model](proxy-model.md#answers-that-quote-a-credential)).
 - **`platform_request`** pins exact body, header, query or path values needed only on the shared
   credential. Each pin is a value its field declares, written as the declared type: a value only
   treg's key needs is pinned here and left out of the declaration, which every tier is held to. A

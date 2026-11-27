@@ -104,17 +104,20 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
-  `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`, never on a
+  row marked `echoes_credential`) and `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 
 Image/video entries carry effective `cache: forbidden`, and lookup and refresh re-check the
 current policy, so old stored responses are never replayed. Async terminal evidence is the
 deliberate exception: the winning finalizer stores the terminal provider JSON under
-`treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence. It is never
-cache or learning evidence, the worker never follows result URLs in it and never stores generated
-media bytes. `load_terminal_responses` reads it back for Activity.
+`treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence, with treg's
+own credentials for the provider masked on a row marked `echoes_credential` and as received on any
+other (settlement reads the provider's bytes first). It is never cache or learning evidence, the
+worker never follows result URLs in it and never stores generated media bytes.
+`load_terminal_responses` reads it back for Activity, which masks treg's credentials in it on
+read, on every row.
 
 ## The cache key
 
@@ -123,8 +126,15 @@ the uppercased method, the catalog endpoint id, sorted query pairs, the canonica
 (raw hash for non-JSON), only `Accept` and `Accept-Language` from the caller, and the sharing
 scope when the answer is not public. The URL is rebuilt as the vendor sees it, before credential
 injection, so a credential cannot enter the key or the stored request shape from the request
-side. A vendor that echoes the credential in a 2xx body would have it stored on a platform-key
-call; judge `cache` per provider with that in mind.
+side. From the answer side, on a row marked `echoes_credential` a platform-key answer that quotes
+treg's credential is stored as the caller receives it, masked (`evidence.AnswerMask`), by the call
+path's recorder; the refresh worker (`_refresh_call`, with `platform_answer_mask`) masks treg's
+credentials in every row's refreshed answer, so on a marked row a refreshed version hashes like a
+live one. A hit on a marked row is masked again with the call's credentials and treg's for the
+provider, and `GET /calls/{id}/result` masks treg's on every row, which covers a copy kept before
+([proxy-model](proxy-model.md), "Answers that quote a credential"). On a row not so marked, a 2xx
+that quotes a credential is relayed as received, stored as received on a call on treg's key, and
+served so on other teams' hits; marking the row `echoes_credential` is the remedy.
 
 ### The stored request body
 
@@ -156,7 +166,11 @@ never as a prefix. The relay asks for identity encoding (`force_identity`) and a
 compresses anyway is not recorded (`_identity_encoded`). A caller body the path never read cannot
 key the question: no lookup, no recording. **An answer that quotes the team's own credential back
 is never recorded** (`_echoes_own_credential`, failing closed when the renderings cannot be
-built). The same guard, provenance and sharing apply to a metered call riding treg's
+built); on a row marked `echoes_credential` the caller receives it masked. Masking does not
+depend on the archive: on such a row an own-key answer is read the same bounded way when nothing
+will be recorded, while every other row's answer then streams as it comes
+([proxy-model](proxy-model.md), "Answers that quote a credential").
+The same guard, provenance and sharing apply to a metered call riding treg's
 pay-per-use OAuth app (`billed_oauth`): the token is the team's.
 
 **A hit on an own key is free**: nothing is reserved or settled (non-negotiable 1), and
@@ -647,4 +661,5 @@ versions in one columns-only query (`body IS NOT NULL`), never loading bodies.
 
 Balances. Archive code never imports the ledger or billing and never changes a balance; its one
 write on the money path is the `ArchiveKeyOrg` mark inside the settle transaction. Nor the
-upstream response: what it serves is byte for byte what the vendor sent.
+upstream response: what it serves is byte for byte what the vendor sent, save a credential the
+answer quoted, which it stores masked.

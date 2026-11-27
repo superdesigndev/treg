@@ -94,6 +94,10 @@ domain edges. This fragment records only what the contracts and tests cannot say
   this domain.
 - Domain contracts exist only for packages that exist; do not add placeholder domains to make a
   future boundary look active.
+- `treg.archive` has no contract of its own, and the call application imports it. Its refresh
+  worker reaches back into `application.call.evidence` inside `archive._refresh_call`, beside the
+  models and database it already loads there, so a refreshed answer is masked with the call path's
+  own spellings rather than a second copy of them.
 
 ## Guards in tests
 

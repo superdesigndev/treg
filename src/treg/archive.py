@@ -2114,6 +2114,7 @@ async def _refresh_call(client, key) -> bool:
     settings exactly as the relay does it."""
     try:
         from . import oauth_providers
+        from .application.call.evidence import platform_answer_mask
         from .infra.upstream import pathsegment
 
         provider = oauth_providers.get(key.provider)
@@ -2144,6 +2145,7 @@ async def _refresh_call(client, key) -> bool:
         if not (200 <= resp.status_code < 300):
             _log.warning("archive refresh got %s for %s", resp.status_code, key.endpoint_id)
             return False
+        body = platform_answer_mask(key.provider).answer(body)
         record(method=key.req_method or "GET", endpoint_id=key.endpoint_id,
                provider=key.provider, url=key.req_url, caller_body=request_body or b"",
                headers=dict(key.req_headers or {}), status_code=resp.status_code,

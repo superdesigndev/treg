@@ -46,6 +46,26 @@ async def test_an_older_version_that_kept_the_bytes_is_read(clients):
     assert answer.state == "read" and answer.found["response"]["body_text"] == PEOPLE
 
 
+async def test_an_answer_quoting_treg_key_reaches_the_judge_masked(clients, monkeypatch):
+    """A copy kept before the archive masked answers may still quote treg's key; the judge is a
+    model outside treg, so it reads the answer masked like every other reader of the archive."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APOLLO", "PLATFORM-APOLLO-KEY-9f2c71d0")
+    get_settings.cache_clear()
+    try:
+        review = await _reviewed(clients)
+        async with session_maker() as db:
+            (await db.execute(select(CallRecord))).scalar_one().provider = "apollo"
+            await db.commit()
+        quoting = json.dumps({"people": [], "next": "https://api.apollo.io/v1/people?api_key=PLATFORM-APOLLO-KEY-9f2c71d0"})
+        await _key((1, quoting.encode(), "db"))
+        answer = await review_answers.answer_of(review)
+        assert answer.state == "read"
+        assert "PLATFORM-APOLLO-KEY" not in answer.found["response"]["body_text"]
+        assert "api_key=***" in answer.found["response"]["body_text"]
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_no_bytes_now_is_tried_again_not_final(clients):
     # Kept as a hash only, or not written yet (the archive records after the answer): neither ends
     # the upgrade at once; the judge backs off and keeps the reason codes after its last try.

@@ -919,6 +919,20 @@ def _qs(url: str):
     return parse_qsl(urlsplit(url).query)
 
 
+async def test_a_refreshed_answer_quoting_the_platform_key_is_stored_masked(
+        clients: AsyncClient, serve):
+    """The refresh re-asks on treg's key, off the call path, and keeps the answer with treg's own
+    credentials masked, whether or not the row is marked `echoes_credential`."""
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
+    await archive.drain()
+    await _age_key(days=1)
+    quoting = b'{"fresh": true, "next": "https:\\/\\/api.tikhub.io\\/x?cursor=2&token=PLATFORM-TIKHUB-KEY"}'
+    assert await archive.refresh_once(_FakeUpstream(quoting)) == 1
+    _, snaps = await _rows()
+    assert snaps[-1].origin == "refresh"
+    assert snaps[-1].content_hash == archive.content_hash(quoting.replace(b"PLATFORM-TIKHUB-KEY", b"***"))
+
+
 async def test_refresh_skips_undemanded_and_fresh_keys(clients: AsyncClient, serve):
     await clients.get(f"/call/{EP}?aweme_id=7")
     await archive.drain()
@@ -1050,6 +1064,13 @@ async def _make_org_and_token(name: str, email: str) -> str:
     return token
 
 
+def _as_stored(caller_text: str) -> str:
+    """The caller's answer as every reader of the stored copy shows it: treg's own key masked.
+    The echo upstream quotes the key it received, and TikHub's row, not marked
+    `echoes_credential`, is relayed as it comes."""
+    return caller_text.replace("Bearer PLATFORM-TIKHUB-KEY", "***")
+
+
 async def test_a_recorded_call_links_to_its_stored_answer(clients: AsyncClient, shadow):
     r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
     assert r1.status_code == 200, r1.text
@@ -1062,7 +1083,7 @@ async def test_a_recorded_call_links_to_its_stored_answer(clients: AsyncClient, 
     d = got.json()
     assert d["stored"] is True and d["note"] is None and d["cached"] is False
     assert d["endpoint_id"] == EP
-    assert d["response"]["body_text"] == r1.text            # the exact bytes the caller got
+    assert d["response"]["body_text"] == _as_stored(r1.text)  # the bytes the caller got
     # The X-Treg-Call-Id the call returned reaches the same record as the audit row id.
     by_ref = await clients.get(f"/calls/{r1.headers['X-Treg-Call-Id']}/result")
     assert by_ref.status_code == 200 and by_ref.json()["id"] == row["id"]
@@ -1089,7 +1110,7 @@ async def test_an_mcp_agent_recovers_a_paid_answer_it_never_received(clients: As
         refused = await _call_tool(c, "call_result", {"call_id": "../orgs"}, token=token)
     assert latest["endpoint_id"] == EP and latest["has_result"] is True
     assert latest["cost_charged_micro"] == int(r1.headers["X-Treg-Cost-Micro"])
-    assert got["result"]["response"]["body_text"] == r1.text
+    assert got["result"]["response"]["body_text"] == _as_stored(r1.text)
     assert "error" in refused
 
 
@@ -1105,7 +1126,7 @@ async def test_a_served_hit_links_to_the_same_answer(clients: AsyncClient, serve
     a = (await clients.get(f"/calls/{hit['id']}/result")).json()
     b = (await clients.get(f"/calls/{live['id']}/result")).json()
     assert a["stored"] and b["stored"] and a["cached"] is True
-    assert a["response"]["body_text"] == b["response"]["body_text"] == r1.text
+    assert a["response"]["body_text"] == b["response"]["body_text"] == _as_stored(r1.text)
     assert a["response"]["version"] == b["response"]["version"]   # a hit is not a new version
 
 

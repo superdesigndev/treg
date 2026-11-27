@@ -7,8 +7,10 @@ import json
 import logging
 import re
 import zlib
+from types import SimpleNamespace
 from urllib.parse import quote, quote_plus, unquote
 
+from ... import oauth_providers
 from ...infra import credential_cipher
 from ...config import get_settings
 from ...infra.upstream import injectors
@@ -155,7 +157,7 @@ def _safe_secret_renderings(tool: Tool, secrets: dict[int, Secret]) -> list[str]
     try:
         return _secret_renderings(tool, secrets)
     except Exception as exc:  # noqa: BLE001 — malformed/encrypted credentials must fail closed
-        logging.getLogger("treg").warning("could not render credentials for error masking: %s", exc)
+        logging.getLogger("treg").warning("could not render credentials for masking: %s", exc)
         return None
 
 
@@ -296,6 +298,10 @@ UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
                           b'"message":"upstream error response could not be scanned for credentials"}')
 
 
+# The content codings `_decompress_for_scan` reads, so the only ones a body to be searched may use.
+READABLE_ENCODINGS = frozenset({"gzip", "x-gzip", "deflate"})
+
+
 def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
     """The identity bytes of `raw`, or None when they cannot be had whole within `_ERROR_SCAN_MAX`.
 
@@ -305,7 +311,7 @@ def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
     enc = content_encoding.strip().lower()
     if enc in ("", "identity"):
         return raw
-    if enc not in ("gzip", "x-gzip", "deflate"):
+    if enc not in READABLE_ENCODINGS:
         return None
     # 32+MAX_WBITS auto-detects a gzip or zlib header; raw deflate is the other "deflate" in the wild.
     for wbits in (32 + zlib.MAX_WBITS, -zlib.MAX_WBITS):
@@ -340,6 +346,110 @@ def _redact_caller_response(body: bytes, secrets: list[str]) -> tuple[bytes, boo
     if masked == text:
         return body, False
     return masked.encode("utf-8", "surrogateescape"), True
+
+
+# An answer is data the caller asked for, so a spelling shorter than this (the decoded half of a
+# Basic credential, a numeric login), or one made of digits only (an id inside a JSON number), is
+# too likely to be an ordinary value to rewrite in one.
+_ANSWER_SPELLING_MIN = 8
+# What splits a spelling into the runs that percent-encoding, JSON escaping and `\/` never change.
+_SPELLING_BREAKS = re.compile(rb"%[0-9A-Fa-f]{2}|[^A-Za-z0-9._~-]")
+
+
+def _first_spellings(needles: list[bytes]) -> list[bytes]:
+    """The spellings no shorter one is part of. When none of these occurs, no spelling does."""
+    first: list[bytes] = []
+    for needle in sorted(needles, key=len):
+        if not any(part in needle for part in first):
+            first.append(needle)
+    return first
+
+
+def _probe(needle: bytes) -> bytes:
+    """What `needle` is searched by: its longest run that quoting and escaping leave alone (the
+    last of equal ones, the password of `login:password`), which every spelling of the same value
+    shares; the needle itself when no run is that long."""
+    runs = [run for run in _SPELLING_BREAKS.split(needle) if run]
+    run = max(reversed(runs), key=len, default=b"")
+    return run if len(run) >= _ANSWER_SPELLING_MIN else needle
+
+
+class AnswerMask:
+    """Masks the spellings of a call's injected credentials in an answer that is not an error.
+
+    Meta's Graph API, for one, writes the request's `access_token` into the `paging.next` and
+    `paging.previous` links of a successful page. A bytes search with no decode of the body, no
+    regex over it and never a whole-body replacement. Each spelling is found through its probe
+    (`_probe`); when no probe occurs no spelling does, which is the path almost every answer takes,
+    and an answer quoting one is rewritten with only the spellings that can occur in it. Built once
+    per call; the last answer is remembered, so the archive's copy and the caller's are searched
+    once. A credential that cannot be rendered gives an empty mask: the relay could inject it, so
+    the warning names a binding `_secret_renderings` has not learnt to spell.
+    """
+
+    def __init__(self, spellings) -> None:
+        needles = {s.encode("utf-8", "replace") for s in spellings or ()
+                   if len(s) >= _ANSWER_SPELLING_MIN and not s.isdigit()}
+        self._needles = sorted(needles, key=len, reverse=True)  # longest first (`_secret_renderings`)
+        self._probe = {needle: _probe(needle) for needle in self._needles}
+        self._probes = _first_spellings(list(set(self._probe.values())))
+        self._last: tuple[bytes, bytes] | None = None
+
+    def __bool__(self) -> bool:
+        return bool(self._needles)
+
+    def mask(self, body: bytes) -> bytes:
+        """Identity bytes with every spelling replaced by `***`; `body` itself when none occurs."""
+        found = [probe for probe in self._probes if probe in body]
+        if not found:
+            return body
+        for needle in self._needles:
+            if any(probe in self._probe[needle] for probe in found):
+                body = body.replace(needle, b"***")
+        return body
+
+    def answer(self, body: bytes, content_encoding: str = "") -> bytes:
+        """`body` masked. Returns `body` itself when nothing was masked, still in its original
+        encoding; a masked answer is identity-encoded, so the caller must drop `Content-Encoding`
+        and recompute `Content-Length`. A gzip/deflate answer is decoded (bounded) only to be
+        searched; one that cannot be decoded is returned as it came."""
+        last = self._last
+        if last is not None and (last[0] is body or last[1] is body):
+            return last[1]
+        out = body
+        if body and self._needles:
+            plain = _decompress_for_scan(body, content_encoding)
+            if plain is not None and (masked := self.mask(plain)) is not plain:
+                out = masked
+        self._last = (body, out)
+        return out
+
+
+def answer_mask(tool: Tool, secrets: dict[int, Secret], *, provider: str | None = None) -> AnswerMask:
+    """The mask for what `tool` injects; with `provider`, treg's own credentials for it too."""
+    spellings = list(_safe_secret_renderings(tool, secrets) or ())
+    return AnswerMask(spellings + (_platform_spellings(provider) if provider else []))
+
+
+def platform_answer_mask(provider: str | None) -> AnswerMask:
+    """treg's own credentials for `provider`, every account's: for an answer kept or read outside
+    the call that fetched it (an archive refresh, terminal task evidence, `GET /calls/{id}/result`)."""
+    return AnswerMask(_platform_spellings(provider) if provider else ())
+
+
+def _platform_spellings(provider: str) -> list[str]:
+    entry = oauth_providers.get(provider)
+    if entry is None:
+        return []
+    tool = SimpleNamespace(bindings=oauth_providers.platform_bindings(entry))
+    return list(_safe_secret_renderings(tool, {}) or ())
+
+
+def redact_answer(
+    body: bytes, tool: Tool, secrets: dict[int, Secret], *, content_encoding: str = "",
+) -> bytes:
+    """`body` masked with what `tool` injects (`AnswerMask.answer`), for a single answer."""
+    return answer_mask(tool, secrets).answer(body, content_encoding)
 
 
 def redact_error_response(

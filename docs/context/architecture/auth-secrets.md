@@ -126,8 +126,8 @@ Fernet token and still opens locally, so the two formats coexist until every row
   path ends its transaction before opening or sealing (AGENTS.md, non-negotiable 3): a bundle
   import seals all its credentials before its single write transaction.
 - **Once per call.** A call opens each credential once, after its database phase ends
-  (`open_for_call` in a per-call `call_scope`); injection (`relay`), error masking (`evidence`)
-  and refresh read that copy. The health run scopes the same way per run.
+  (`open_for_call` in a per-call `call_scope`); injection (`relay`), masking of error bodies and
+  answers (`evidence`) and refresh read that copy. The health run scopes the same way per run.
 - **Listing never opens.** `Secret.refreshable` is recorded with every oauth write, so connection
   lists and expiry state read a column instead of opening every credential. A null on a Fernet row
   written before the column opens locally; the re-encryption job fills it.

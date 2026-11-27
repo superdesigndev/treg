@@ -17,6 +17,7 @@ from sqlmodel import select
 from treg.application import asynctasks as task_app
 
 from treg.application.call import service as call_service
+from treg.application.call.evidence import AnswerMask
 from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
@@ -467,6 +468,81 @@ async def test_owned_free_poll_creates_no_money_entries(
         assert await db.get(Hold, poll_ref) is None
         assert await db.get(Hold, submission_ref) is not None
         assert (await db.get(AsyncTaskRecord, submission_ref)).status == "pending"
+
+
+@pytest.mark.parametrize(("status", "flagged", "masked"), [
+    (401, False, True),    # an error body, on every row
+    (200, True, True),     # an answer, on a row marked `echoes_credential`
+    (200, False, False),   # an answer on any other row is relayed as it came
+])
+async def test_owned_free_poll_masks_treg_key_by_the_rule(
+    clients: AsyncClient, monkeypatch, replicate_platform, status: int, flagged: bool, masked: bool,
+):
+    """A free status read runs on treg's own key and is read whole: a key an error quotes is
+    masked, and a key an answer quotes on a row whose provider writes it there."""
+    await _submit(clients, monkeypatch, {"id": "quoting-poll-task"})
+    if flagged:
+        monkeypatch.setitem(catalog_store.load().by_id["replicate.predictions.get"], "echoes_credential", True)
+
+    async def fake_poll(*args, **kwargs):
+        return _response(status, {"id": "quoting-poll-task", "status": "processing", "urls": {
+            "get": "https://api.replicate.com/v1/predictions/quoting-poll-task?token=test-platform-token"}})
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    response = await clients.get("/call/replicate.predictions.get?id=quoting-poll-task")
+    assert response.status_code == status
+    assert ("test-platform-token" not in response.text) is masked
+    assert response.json()["urls"]["get"].endswith(
+        "/quoting-poll-task?token=***" if masked else "/quoting-poll-task?token=test-platform-token")
+
+
+_QUOTING_TERMINAL = {"id": "quoting-terminal", "status": "succeeded",
+                     "output": ["https://example.invalid/first.png?token=test-platform-token"]}
+
+
+async def _end_task_with_a_quoting_poll(clients: AsyncClient, monkeypatch) -> str:
+    call_id = (await _submit(clients, monkeypatch, {"id": "quoting-terminal"})).headers["X-Treg-Call-Id"]
+
+    async def fake_poll(*args, **kwargs):
+        return _response(200, _QUOTING_TERMINAL)
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    assert (await clients.get("/call/replicate.predictions.get?id=quoting-terminal")).status_code == 200
+    return call_id
+
+
+@pytest.mark.parametrize("flagged", [True, False])
+async def test_an_owned_terminal_poll_keeps_a_masked_copy_on_a_marked_row(
+    clients: AsyncClient, monkeypatch, replicate_platform, flagged: bool,
+):
+    """The poll that ends a task settles from the provider's bytes. On a row marked
+    `echoes_credential` the archive keeps the terminal answer with treg's key masked; on any other
+    row it keeps it as received and the call path searches no answer. The activity feed masks
+    treg's key in the copy it reads either way."""
+    if flagged:
+        monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
+    searched: list[int] = []
+    real = AnswerMask.mask
+    monkeypatch.setattr(AnswerMask, "mask", lambda self, body: searched.append(len(body)) or real(self, body))
+    call_id = await _end_task_with_a_quoting_poll(clients, monkeypatch)
+    kept = (await archive.load_terminal_responses([(call_id, EP)]))[call_id]
+    assert (b"first.png?token=***" in kept) is flagged
+    assert (b"test-platform-token" in kept) is not flagged
+    assert bool(searched) is flagged
+    await audit.drain()
+    assert "test-platform-token" not in json.dumps((await clients.get("/calls")).json())
+
+
+async def test_a_terminal_copy_kept_before_masking_is_masked_when_read(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    with monkeypatch.context() as before_masking:
+        before_masking.setattr(task_app, "platform_answer_mask", lambda provider: AnswerMask(()))
+        call_id = await _end_task_with_a_quoting_poll(clients, monkeypatch)
+    assert b"test-platform-token" in (await archive.load_terminal_responses([(call_id, EP)]))[call_id]
+    await audit.drain()
+    activity = json.dumps((await clients.get("/calls")).json())
+    assert "test-platform-token" not in activity and "first.png?token=***" in activity
 
 
 @pytest.mark.parametrize("status", [200, 500])

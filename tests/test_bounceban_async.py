@@ -12,6 +12,7 @@ from treg import archive, audit, cli
 from treg.application import asynctasks as async_task_app
 from treg.application.call import async_bridge
 from treg.application.call import route as call_route
+from treg.application.call.evidence import AnswerMask
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
@@ -210,6 +211,24 @@ async def test_routed_verifying_is_waited_for_not_a_miss(
     row = await _row(task.call_id)
     assert row.hit is True and row.verdict == "invalid"
     assert row.cost_charged_micro == task.settled_micro
+
+
+async def test_a_routed_async_child_on_an_unmarked_row_searches_no_answer(
+    clients, monkeypatch, bounceban_on, fast_polls,
+):
+    """BounceBan's rows are not marked `echoes_credential`: waiting for the child's task, keeping its
+    terminal answer and reading its cost search no answer for a credential."""
+    searched: list[int] = []
+    real = AnswerMask.mask
+    monkeypatch.setattr(AnswerMask, "mask", lambda self, body: searched.append(len(body)) or real(self, body))
+    monkeypatch.setattr(call_service, "relay", Upstream(VERIFYING, [VERIFYING, _finished("undeliverable")]))
+    result = await clients.post(
+        "/call/treg.people.email.verify",
+        headers={"X-Treg-Route-Prefer": "bounceban"}, json={"email": EMAIL})
+    assert result.status_code == 200, result.text
+    [task] = await _tasks()
+    assert task.status == "settled" and task.settled_micro > 0
+    assert searched == []
 
 
 async def test_routed_verifying_past_the_wait_is_pending_and_the_worker_finishes_it(
