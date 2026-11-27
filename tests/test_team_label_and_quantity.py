@@ -221,6 +221,8 @@ async def test_an_ordinary_call_cancelled_mid_relay_is_still_refunded(clients: A
     with pytest.raises(asyncio.CancelledError):
         await clients.post(f"/call/{EP}?label={call_resolution.team_label(org_id)}", json={"credits": 1000, "ref": "p8"})
     assert (await _team(clients))[1] == before
+
+
 async def test_tool_details_tell_a_signed_in_team_its_own_values(clients: AsyncClient, budget_row, monkeypatch):
     """catalog detail adds `your_values` for a row's team_label and caller_email fields when the
     reader is a signed-in team, and nothing for an anonymous reader."""
