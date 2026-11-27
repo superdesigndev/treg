@@ -925,6 +925,8 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .pl-tool-b{display:flex;flex-direction:column;gap:4px;min-width:0}
 .pl-tool-b b{font-size:14px;font-weight:500;line-height:1.4}
 .pl-tool.quiet{box-shadow:none}
+.pv-model{align-self:flex-start;margin-top:3px;width:14px;height:14px;flex-basis:14px;border-radius:4px}
+.pv-model img{width:9px;height:9px}
 .pl-tool.quiet b{font-weight:400;color:var(--muted)}
 .pv-cmp{color:var(--ink);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--ink) 30%,transparent);text-underline-offset:3px}
 .pv-shelf{margin:0 0 30px}
