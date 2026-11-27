@@ -109,14 +109,18 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
     if ("review" in accepts and (platform or routed)
             and review_targets.sampled(context.call_ref, review_endpoint(context), org_id)):
         settings = get_settings()
-        if await kv.store().take(budget_key(org_id), settings.review_budget_per_hour, BUDGET_WINDOW_S):
-            return "review"
-        # The first budget is spent (a busy team spends it within minutes): a call on an endpoint
-        # short of reviews, or new to this team, may still be asked, from a budget of its own.
+        budgets = [(budget_key(org_id), settings.review_budget_per_hour)]
+        # Once the first budget is spent (a busy team spends it within minutes), a call on an
+        # endpoint short of reviews (or new to this team) may still be asked, from a budget of
+        # its own. Both are tried in one store operation, so a slow store delays the response
+        # once, not twice.
         if (settings.review_target_budget_per_hour > 0
-                and review_targets.boosted(review_endpoint(context), org_id)
-                and await kv.store().take(target_budget_key(org_id),
-                                          settings.review_target_budget_per_hour, BUDGET_WINDOW_S)):
+                and review_targets.boosted(review_endpoint(context), org_id)):
+            budgets.append((target_budget_key(org_id), settings.review_target_budget_per_hour))
+        if len(budgets) == 1:
+            if await kv.store().take(*budgets[0], BUDGET_WINDOW_S):
+                return "review"
+        elif await kv.store().take_first(budgets, BUDGET_WINDOW_S) is not None:
             return "review"
     # A mark asks for later work, only once the agent knows; capped per team like a review.
     if ("mark" in accepts and _markable(catalog_endpoint(context))

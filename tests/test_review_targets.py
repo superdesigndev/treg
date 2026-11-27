@@ -164,6 +164,35 @@ async def test_the_extra_budget_is_not_spent_on_a_full_endpoint_or_when_off(clie
     assert review_targets.boosted('unreviewed.search')
 
 
+async def test_both_budgets_are_one_store_operation(clients, targeting, monkeypatch):
+    from treg.infra import kv
+    clients.headers["X-Treg-Client"] = "claude-code"
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 3)
+    await review_targets.warm()  # example.search is short: boosted
+    real = kv.store()
+    seen = []
+
+    class Counting:
+        async def take(self, *args):
+            seen.append('take')
+            return await real.take(*args)
+
+        async def take_first(self, budgets, ttl_s):
+            seen.append(('take_first', [limit for _, limit in budgets]))
+            return await real.take_first(budgets, ttl_s)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(kv, '_store', Counting())
+    response = await clients.get('/call/example.search')
+    assert response.headers.get('X-Treg-Hint') == 'review'
+    assert seen == [('take_first', [targeting.review_budget_per_hour, 3])]
+
+
 async def test_invited_is_recomputed_with_the_targeted_rate(clients, targeting, monkeypatch):
     monkeypatch.setattr(targeting, 'review_sample_rate', 0)
     await review_targets.warm()

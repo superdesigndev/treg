@@ -36,6 +36,19 @@ _LEASE_RETRY_BUDGET_S = 2.5
 _LOCAL_MAX_KEYS = 10_000
 _FLOW_CONTROL_MAX_BYTES = 32768
 ROUTE_RULES_KEY = "treg:route-rules:v1"
+# `take_first`: one use of the first window with room, in order, in one round trip. Each key
+# counts like `take` (INCR, the window starting at its first use); a key with limit 0 is skipped.
+_TAKE_FIRST = """
+for i = 1, #KEYS do
+    local limit = tonumber(ARGV[i])
+    if limit > 0 then
+        local n = redis.call('INCR', KEYS[i])
+        redis.call('EXPIRE', KEYS[i], ARGV[#KEYS + 1], 'NX')
+        if n <= limit then return i end
+    end
+end
+return 0
+"""
 _READ_ORG_FLOW_CONTROL = """
 local kind = redis.call('TYPE', KEYS[1]).ok
 if kind == 'none' then return false end
@@ -442,6 +455,11 @@ class Store(Protocol):
         True while the window holds `limit` or fewer uses, False past it OR when the store cannot
         answer: a budget that cannot be checked is spent, never free."""
 
+    async def take_first(self, budgets: list[tuple[str, int]], ttl_s: int) -> int | None:
+        """`take` on each `(key, limit)` in order until one has room, as one store operation
+        under one timeout: the 0-based index of the budget used, None when every one is spent
+        OR the store cannot answer (spent, never free, as for `take`)."""
+
     async def ping(self) -> bool: ...
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
@@ -671,6 +689,12 @@ class LocalStore:
         self._windows[key] = (expires, count)
         return count <= limit
 
+    async def take_first(self, budgets: list[tuple[str, int]], ttl_s: int) -> int | None:
+        for i, (key, limit) in enumerate(budgets):
+            if limit > 0 and await self.take(key, limit, ttl_s):
+                return i
+        return None
+
     def _evict(self, now: float) -> None:
         live = {k: v for k, v in self._windows.items() if v[0] > now}
         if len(live) >= _LOCAL_MAX_KEYS:
@@ -800,6 +824,20 @@ class RedisStore:
         except Exception as exc:  # noqa: BLE001 — a store fault is a spent budget, never a call fault
             _note_fault(exc)
             return False
+
+    async def take_first(self, budgets: list[tuple[str, int]], ttl_s: int) -> int | None:
+        if not budgets:
+            return None
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                used = await self._client.eval(
+                    _TAKE_FIRST, len(budgets), *(key for key, _ in budgets),
+                    *(max(0, int(limit)) for _, limit in budgets), ttl_s)
+            used = int(used)
+            return used - 1 if 1 <= used <= len(budgets) else None
+        except Exception as exc:  # noqa: BLE001 — a store fault is a spent budget, never a call fault
+            _note_fault(exc)
+            return None
 
     async def set_flag(self, key: str, ttl_s: int) -> bool:
         try:

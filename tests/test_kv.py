@@ -65,6 +65,29 @@ async def test_local_window_counts_then_expires(monkeypatch):
     assert await store.take('k', 2, 60)
 
 
+async def test_take_first_uses_the_first_budget_with_room_and_skips_a_zero_one():
+    store = kv.LocalStore()
+    budgets = [('first', 1), ('second', 1)]
+    assert [await store.take_first(budgets, 60) for _ in range(3)] == [0, 1, None]
+    assert await store.take_first([('off', 0), ('third', 1)], 60) == 1
+    assert 'off' not in store._windows  # a zero budget is never counted
+
+
+async def test_take_first_waits_for_a_slow_redis_once():
+    entered = asyncio.Event()
+
+    async def blocked(*args, **kwargs):
+        entered.set()
+        await asyncio.Event().wait()
+
+    store = kv.RedisStore.__new__(kv.RedisStore)
+    store._client = SimpleNamespace(eval=blocked)
+    started = time.monotonic()
+    assert await store.take_first([('a', 5), ('b', 5)], 60) is None  # spent, never free
+    assert entered.is_set()
+    assert time.monotonic() - started < kv._OPTIONAL_TIMEOUT_S * 1.9  # one deadline for both
+
+
 async def test_local_store_is_bounded(monkeypatch):
     monkeypatch.setattr(kv, '_LOCAL_MAX_KEYS', 4)
     clock = [0.0]
@@ -263,4 +286,19 @@ async def test_real_redis_marks_are_set_and_cleared_in_one_batch_a_lost_one_incl
         assert await store.call_in_flight(f'{base}-a') is False
         assert await store.call_in_flight(f'{base}-lost') is False
     finally:
+        await store.aclose()
+
+
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_take_first():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    base = f'treg-test:first:{time.time_ns()}'
+    budgets = [(f'{base}:a', 1), (f'{base}:b', 1)]
+    try:
+        assert [await store.take_first(budgets, 5) for _ in range(3)] == [0, 1, None]
+        assert 0 < await store._client.ttl(f'{base}:b') <= 5
+        assert await store.take_first([(f'{base}:off', 0)], 5) is None
+        assert not await store._client.exists(f'{base}:off')
+    finally:
+        await store._client.delete(f'{base}:a', f'{base}:b')
         await store.aclose()
