@@ -3660,6 +3660,8 @@ async def sitemap_xml():
             add(f"/workflows/{w}", copy_day, "0.7")
         hub = _WEB_DIR / "gtm-engineering.html"
         add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
+        ads_hub = _WEB_DIR / "ai-ads.html"
+        add("/ai-ads", _iso_day(ads_hub.stat().st_mtime) if ads_hub.exists() else "", "0.8")
         add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
         from . import compare  # imports this module; a top-level import would be circular
         for path, day in compare.sitemap_paths():
@@ -4322,6 +4324,28 @@ async def gtm_engineering_md():
     return resp
 
 
+@app.get("/ai-ads", include_in_schema=False)
+async def ai_ads_page(request: Request):
+    """The AI ads playbook: eleven steps for a marketer in Claude Code, from competitor ad research
+    to a paused campaign, each a prompt with what came back, what to check and what to do next.
+    Hand-written on the /gtm-engineering layout, so it loads sitetrack.js. Hosted only, like that
+    page: its runs and credit describe treg.to itself."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    return _static_page("ai-ads.html", request)
+
+
+@app.get("/ai-ads.md", include_in_schema=False)
+async def ai_ads_md():
+    """The ads playbook as Markdown. Hand-kept beside the HTML; `tests/test_ai_ads_page.py` fails if
+    a step heading on one is missing from the other. `noindex`: the HTML page is the indexed copy."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    resp = _serve_md("ai-ads.md")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
 @app.get("/follower-analysis", include_in_schema=False)
 async def follower_analysis_page(request: Request, db: AsyncSession = Depends(get_session)):
     """Follower analysis: a signed-in visitor types an X handle; the page reads a sample of its
@@ -4493,6 +4517,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/ai-ads", "The AI Ads Playbook", "2026-11-27",
+     "Eleven steps from competitor ad research to a paused campaign: a prompt in each, run in Claude Code."),
     ("/doomscroll", "Let Your Agent Doomscroll for You", "2026-11-19",
      "Name a topic and a time window; your agent reads six platforms and hands back the posts worth seeing."),
     ("/aigc", "AI Video Generation for Your Agent", "2026-11-11",
