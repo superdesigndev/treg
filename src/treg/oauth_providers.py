@@ -1440,6 +1440,22 @@ GREENHOUSE = OAuthProvider(
     docs_url="https://docs.greenhouse.io/job-board.html",
 )
 
+# Keyless: the public API answers every GET without authentication, so there is nothing to
+# connect or probe. Rows are `platform_auth: anonymous`; anonymous callers read the feed with
+# a 12-hour delay and never see contact details — every lead carries the original post's URL.
+OPENRADAR = OAuthProvider(
+    service="openradar",
+    display_name="OpenRadar",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Jobs data",
+    summary="Search a live feed of job posts and freelance gigs from Telegram channels, ATS job boards and freelance platforms, benchmark posted pay, and download the citable market research dataset.",
+    base_url="https://openradar.fun",
+    docs_url="https://openradar.fun/openapi.json",
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -4612,7 +4628,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, OPENRADAR, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

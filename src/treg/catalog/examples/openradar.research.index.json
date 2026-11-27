@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "updatedAt": "2026-11-18T20:09:31.064Z",
+  "base": {
+    "from": "2026-11-09",
+    "to": "2026-12-07",
+    "provisional": true,
+    "days": 19
+  },
+  "panel": {
+    "job": [
+      "hh.ru"
+    ],
+    "gig": [
+      "kwork.ru"
+    ]
+  },
+  "jobs": {
+    "points": [
+      {
+        "date": "2026-10-30",
+        "count": 256
+      }
+    ],
+    "base": 249.3,
+    "latest": {
+      "date": "2026-11-17",
+      "count": 401,
+      "avg7": 288.3,
+      "index": 115.7
+    },
+    "weekChange": 12.9
+  }
+}
