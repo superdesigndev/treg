@@ -1,0 +1,342 @@
+provider: dealport
+source:
+  docs: https://app.dealport.com/llms.txt
+  llms: https://app.dealport.com/llms.txt
+  openapi: https://app.dealport.com/openapi/v1.json
+  rate_card: https://app.dealport.com/api/v1/balance
+  curated: '2026-11-26'
+pricing_url: https://dealport.com/pricing
+
+proposed_capabilities:
+  companies.match: "Match company names and domains to canonical business records"
+  companies.record.detail: "Get a source-cited company or commercial property record by ID"
+  companies.buildings.search: "Search commercial and multifamily buildings by location, unit count, loan maturity or property signals"
+
+defaults:
+  provenance:
+    source: docs
+    source_url: https://dealport.com/pricing
+    checked: '2026-11-26'
+    confidence: documented
+  docs_url: https://app.dealport.com/llms.txt
+
+endpoints:
+  - id: dealport.companies.search.count
+    added: '2026-11-26'
+    capability: companies.search.count
+    platform: companies
+    domain: companies
+    kind: utility
+    scope: any_account
+    method: POST
+    path: /companies/preview
+    name: Preview company market size
+    summary: Count US private companies matching industry, geography, size, ownership or operating filters and preview five sample companies.
+    input:
+      bodyType: json
+      body:
+        state: {type: string, required: false, minLength: 2, maxLength: 2, example: OH, note: "Two-letter US state code"}
+        q: {type: string, required: false, minLength: 2, note: "Company name prefix"}
+        domain: {type: string, required: false, example: acme.com, note: "Company website domain"}
+        naics:
+          type: array
+          required: false
+          items: {type: string}
+          note: "Two- to six-digit NAICS codes"
+        counties:
+          type: array
+          required: false
+          items: {type: string}
+          note: "County names within state"
+        cities:
+          type: array
+          required: false
+          items: {type: string}
+          note: "City names"
+        markets:
+          type: array
+          required: false
+          items:
+            type: object
+            properties:
+              state: {type: string, required: true, minLength: 2, maxLength: 2}
+              counties:
+                type: array
+                required: false
+                items: {type: string}
+          note: "Multi-state or state-and-county market slices"
+        min_revenue: {type: number, required: false, min: 0, note: "Minimum annual revenue in USD"}
+        max_revenue: {type: number, required: false, min: 0, note: "Maximum annual revenue in USD"}
+        filed_revenue_only: {type: boolean, required: false, note: "Restrict to revenue stated on primary public filings"}
+        min_employees: {type: integer, required: false, min: 0}
+        max_employees: {type: integer, required: false, min: 0}
+        size_unknown: {type: boolean, required: false, note: "Include companies without filed headcount or revenue"}
+        independent: {type: boolean, required: false, note: "Exclude subsidiaries, PE-backed platforms and public companies"}
+        owner_businesses: {type: integer, required: false, min: 2, max: 25, note: "Minimum businesses linked to the same human owner"}
+        owner_operated: {type: boolean, required: false, note: "Require an identified individual owner-operator"}
+        owner_contact: {type: boolean, required: false, note: "Require a verified owner phone or email on file"}
+        licensed: {type: boolean, required: false, note: "Require an active state trade or professional license"}
+        medicare: {type: boolean, required: false, note: "Require CMS Medicare enrollment"}
+        care_types:
+          type: array
+          required: false
+          items: {type: string}
+          note: "Healthcare or home-care service categories"
+        adviser: {type: boolean, required: false, note: "Require SEC or state RIA registration"}
+        wealth_adviser: {type: boolean, required: false, note: "Restrict to wealth management advisers"}
+        online_store: {type: boolean, required: false, note: "Require an active ecommerce storefront"}
+        sells:
+          type: array
+          required: false
+          items: {type: string}
+          note: "Storefront product categories"
+        store_words:
+          type: array
+          required: false
+          items: {type: string}
+          note: "Keywords matched against storefront catalog titles"
+        min_reviews: {type: integer, required: false, min: 0}
+        order: {type: string, required: false, enum: [reviews, products, match]}
+      note: "Send at least one geography, name, domain, NAICS or storefront filter; combine state with cities, counties, NAICS or size bounds to avoid 422 search_too_broad timeouts."
+    test_request:
+      body: {state: OH, cities: [Columbus], naics: ['238220']}
+    price: {value: '0', currency: USD, unit: call}
+
+  - id: dealport.companies.search
+    added: '2026-11-26'
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /companies
+    name: Search US private companies
+    summary: Search 28M+ US private companies by NAICS, geography, revenue, headcount, ownership, licensing or storefront filters.
+    input:
+      queryParams:
+        state: {type: string, required: false, minLength: 2, maxLength: 2, example: OH, note: "Two-letter US state code"}
+        q: {type: string, required: false, minLength: 2, note: "Company name prefix"}
+        domain: {type: string, required: false, example: acme.com, note: "Company website domain"}
+        naics: {type: string, required: false, example: '238220', note: "Comma-separated two- to six-digit NAICS codes"}
+        counties: {type: string, required: false, note: "Comma-separated county names within state"}
+        cities: {type: string, required: false, note: "Comma-separated city names"}
+        markets: {type: string, required: false, note: "Semicolon-separated ST:County1,County2 slices"}
+        min_revenue: {type: number, required: false, min: 0, note: "Minimum annual revenue in USD"}
+        max_revenue: {type: number, required: false, min: 0, note: "Maximum annual revenue in USD"}
+        filed_revenue_only: {type: boolean, required: false, note: "Restrict to revenue stated on primary public filings"}
+        min_employees: {type: integer, required: false, min: 0}
+        max_employees: {type: integer, required: false, min: 0}
+        size_unknown: {type: boolean, required: false, note: "Include companies without filed headcount or revenue"}
+        independent: {type: boolean, required: false, note: "Exclude subsidiaries, PE-backed platforms and public companies"}
+        owner_businesses: {type: integer, required: false, min: 2, max: 25, note: "Minimum businesses linked to the same human owner"}
+        owner_operated: {type: boolean, required: false}
+        owner_contact: {type: boolean, required: false}
+        licensed: {type: boolean, required: false}
+        medicare: {type: boolean, required: false}
+        care_types: {type: string, required: false, note: "Comma-separated care categories"}
+        adviser: {type: boolean, required: false}
+        wealth_adviser: {type: boolean, required: false}
+        online_store: {type: boolean, required: false}
+        sells: {type: string, required: false, note: "Comma-separated storefront categories"}
+        store_words: {type: string, required: false, note: "Storefront catalog search words"}
+        min_reviews: {type: integer, required: false, min: 0}
+        order: {type: string, required: false, enum: [reviews, products, match]}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 50}
+        cursor: {type: string, required: false, note: "Numeric offset returned in next_cursor"}
+      note: "Send at least one geography, name, domain or storefront filter; combine state with cities, counties, NAICS or size bounds to avoid 422 search_too_broad timeouts."
+    test_request:
+      queryParams: {state: OH, cities: Columbus, naics: '238220', limit: 1}
+    reserve: {rows: {param: query.limit, default: {value: 25, source: docs}, max: 50}}
+    price:
+      value: '0.01'
+      currency: USD
+      per: 1
+      unit: record
+      note: "One cent per company returned; a company read on the same account within 30 days is free, and an empty page is free."
+    provenance: {source: observed, source_url: https://dealport.com/pricing, checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.credits_charged, unit: usd, scale: 0.01}}
+    miss: {when: {path: response.data, op: empty}}
+
+  - id: dealport.companies.match
+    added: '2026-11-26'
+    capability: companies.match
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /companies/match
+    name: Match a list of companies
+    summary: Match up to 250 company names and domains against Dealport's US registry and return canonical IDs and cached owner metadata.
+    input:
+      bodyType: json
+      body:
+        items:
+          type: array
+          required: false
+          minItems: 1
+          maxItems: 250
+          items:
+            type: object
+            properties:
+              name: {type: string, required: false}
+              domain: {type: string, required: false}
+              city: {type: string, required: false}
+              state: {type: string, required: false, minLength: 2, maxLength: 2}
+              external_id: {type: string, required: false}
+          note: "Structured rows to match by domain or name plus city and state"
+        csv: {type: string, required: false, note: "RFC 4180 CSV text with up to 250 rows and name, domain, city or state columns"}
+      note: "Provide either items or csv."
+    test_request:
+      body:
+        items:
+          - {name: "HOMAGE, LLC", domain: homage.com, state: OH}
+    price: {value: '0', currency: USD, unit: call}
+    miss:
+      when: {path: response.data.matched_count, op: equals, value: 0}
+      means: "None of the supplied rows matched a Dealport company record."
+
+  - id: dealport.companies.record.detail
+    added: '2026-11-26'
+    capability: companies.record.detail
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /records/{id}
+    name: Get a company or building record
+    summary: Open one company record by Dealport UUID or one NYC commercial building record by 10-digit BBL, with public-filing citations and people.
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "Dealport company UUID or 10-digit NYC BBL"}
+    test_request:
+      pathParams: {id: '06da54d4-aaa4-48ad-9d8e-efe01190d8e2'}
+    price:
+      value: '0.01'
+      currency: USD
+      per: 1
+      unit: record
+      note: "One cent per record; reading the same record on the same account within 30 days is free, and 404 is free."
+    provenance: {source: observed, source_url: https://dealport.com/pricing, checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.cost_usd, unit: usd}}
+    miss:
+      status: [404]
+      when: {path: response.error, op: equals, value: not_found}
+      means: "No company or NYC building record has this ID."
+
+  - id: dealport.companies.buildings.search
+    added: '2026-11-26'
+    capability: companies.buildings.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /buildings
+    name: Search NYC commercial and multifamily buildings
+    summary: Search NYC multifamily and mixed-use buildings by borough, unit count, owner or address text, loan maturity, lender type or property signal.
+    input:
+      queryParams:
+        borough: {type: string, required: true, enum: [MN, BK, QN, BX, SI], note: "NYC borough code"}
+        min_units: {type: integer, required: false, default: 10, min: 1, note: "Minimum residential unit count"}
+        q: {type: string, required: false, note: "Address or owner-of-record search text"}
+        loan_due_by: {type: integer, required: false, min: 2020, max: 2060, note: "Estimated mortgage maturity year ceiling"}
+        loan_holder: {type: string, required: false, enum: [agency, cmbs, bank]}
+        signal: {type: string, required: false, enum: [rent_stabilized, dob_penalties, housing_court, tax_lien, ll97]}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 50}
+        cursor: {type: string, required: false, note: "Numeric offset returned in next_cursor"}
+    test_request:
+      queryParams: {borough: MN, min_units: 50, limit: 1}
+    reserve: {rows: {param: query.limit, default: {value: 25, source: docs}, max: 50}}
+    price:
+      value: '0.01'
+      currency: USD
+      per: 1
+      unit: record
+      note: "One cent per building returned; a building read on the same account within 30 days is free, and an empty page is free."
+    provenance: {source: observed, source_url: https://dealport.com/pricing, checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.credits_charged, unit: usd, scale: 0.01}}
+    miss: {when: {path: response.data, op: empty}}
+
+  - id: dealport.web.extract.batch
+    added: '2026-11-26'
+    capability: web.extract.batch
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /pages
+    name: Fetch company website pages as Markdown
+    summary: Fetch clean Markdown from homepage, about, services and capabilities pages for up to ten companies by domain or Dealport company ID.
+    input:
+      bodyType: json
+      body:
+        domains:
+          type: array
+          required: false
+          minItems: 1
+          maxItems: 10
+          items: {type: string}
+          note: "Company domains to read"
+        company_ids:
+          type: array
+          required: false
+          minItems: 1
+          maxItems: 10
+          items: {type: string}
+          note: "Dealport company UUIDs to read"
+        paths:
+          type: array
+          required: false
+          minItems: 1
+          maxItems: 5
+          items: {type: string}
+          note: "Relative URL paths starting with /; defaults to /, /about, /services and /capabilities"
+        force_refresh: {type: boolean, required: false, default: false, note: "Bypass the 30-day page cache and fetch live"}
+      note: "Provide domains or company_ids (up to 10 companies combined per call)."
+    test_request:
+      body:
+        domains: [dealport.com]
+        paths: [/]
+    reserve: {entities: {from: [body.domains, body.company_ids], max: 10}}
+    price:
+      value: '0.01'
+      currency: USD
+      per: 1
+      unit: domain
+      note: "One cent per company fetched live; pages served from the 30-day cache or unreachable websites are free."
+    provenance: {source: observed, source_url: https://dealport.com/pricing, checked: '2026-11-26', confidence: verified}
+    settle: {reported: {path: response.cost_usd, unit: usd}}
+    miss:
+      when:
+        - {path: response.data.live_fetched_count, op: equals, value: 0}
+        - {path: response.data.cached_count, op: equals, value: 0}
+      means: "None of the requested companies had a reachable website."
+
+  - id: dealport.people.contact.get
+    added: '2026-11-26'
+    capability: people.contact.get
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /owners
+    name: Find verified human owner contact
+    summary: Resolve the human principal behind a US private company and find a verified direct phone number or email address.
+    input:
+      bodyType: json
+      body:
+        company_id: {type: string, required: true, note: "Dealport company UUID"}
+        person: {type: string, required: false, note: "Specific human owner or principal name to target"}
+    test_request:
+      body: {company_id: '285921a0-032e-42c0-b6f8-dd3707238a52'}
+    price:
+      value: '0.09'
+      currency: USD
+      per: 1
+      unit: call
+      note: "Charged only when a verified human owner phone or email is newly found; misses, contacts already on the record, and 30-day repeats are free."
+    settle: {reported: {path: response.cost_usd, unit: usd}}
+    miss:
+      when:
+        - {path: response.phone, op: absent}
+        - {path: response.email, op: absent}
+      means: "No verified human owner phone or email was found for this company."
