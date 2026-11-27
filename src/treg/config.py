@@ -186,6 +186,11 @@ class Settings(BaseSettings):
     review_target_window_days: int = Field(default=14, ge=1)
     review_target_team_cap: int = Field(default=10, ge=1)
     review_target_new_team_rate: float = Field(default=0, ge=0, le=1)
+    # A second hourly budget a team's invitations draw on only once `review_budget_per_hour` is
+    # spent, and only for a boosted call (`review_targets.boosted`: an endpoint short of its target,
+    # or a team new to it). Busy teams spend the first budget within minutes on well-reviewed
+    # endpoints; this asks them about the short ones on top. 0 = off.
+    review_target_budget_per_hour: int = Field(default=0, ge=0)
     # The share of team-MCP credentials whose `call` tool shows `prior` (a review of the caller's
     # previous call, sent along with the next one). 0 = nobody, the tool as before.
     mcp_prior_review_rate: float = Field(default=0, ge=0, le=1)

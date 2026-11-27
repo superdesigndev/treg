@@ -27,6 +27,7 @@ sources:
   - src/treg/config.py
   - src/treg/routers/call.py
   - src/treg/application/call/invite.py
+  - src/treg/application/review_targets.py
   - src/treg/infra/kv.py
   - src/treg/application/feedback.py
   - src/treg/routers/feedback.py
@@ -207,7 +208,13 @@ so for them `hint_attached` counts an invitation the agent never saw.
   endpoints where its review still counts; a team holding none is invited at least at
   `review_target_new_team_rate` (0 = no floor), because a ranking needs many teams per endpoint.
   Both act on the snapshot, so a team can receive a few more invitations in the minutes before
-  the next refresh. `invited`
+  the next refresh. A busy team spends its budget within minutes of each hour on whatever it
+  calls most, which leaves short endpoints uninvited however high their rate. So once
+  `review-budget:<org_id>` is spent, a sampled call whose rate is boosted above the base
+  (`review_targets.boosted`: its endpoint is short of the target, or the team is new to it at a
+  floor above the base) may draw on a second budget, `review-target-budget:<org_id>` with
+  `review_target_budget_per_hour` (0 = off). It only adds invitations, never moves the first
+  budget's. `invited`
   on a review recomputes with the snapshot of its moment, so near an endpoint's target it can
   disagree with the invitation sent; `hint_attached` is the exact record.
 - **Mark**: a successful, non-replayed, non-cached catalog call on any credential tier, a routed
