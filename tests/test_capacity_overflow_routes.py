@@ -229,8 +229,14 @@ _OUT_OF_CREDITS = [
      b'of $100.00, so Actor runs and other Apify services are blocked until your monthly usage cycle resets."}}',
      b'{"error":{"type":"insufficient-permissions","message":"You do not have permission to run this Actor."}}'),
     ("scrubby", 403, b'{"detail": "Insufficient credits."}', b'{"detail": "Not authenticated"}'),
+    # OpenRouter's other 403s echo the caller's words: a moderated model's `flagged_input`, a
+    # provider's verbatim `metadata.raw`.
     ("openrouter", 403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}',
-     b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input was flagged"}}'),
+     b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input was flagged",'
+     b'"metadata":{"reasons":["violence"],"flagged_input":"pay my overdue balance now"}}}'),
+    ("openrouter", 403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}',
+     b'{"error":{"code":403,"message":"Provider returned error","metadata":{"raw":{"error":{"message":'
+     b'"Prompt about an overdue balance was rejected"}},"provider_name":"Google"}}}'),
     ("marketstack", 401, b'{"error":{"code":"inactive_user","message":"Permission denied - User not active"}}',
      b'{"error":{"code":"invalid_access_key","message":"You have not supplied a valid API Access Key."}}'),
     ("minimax", 200, b'{"data":null,"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}',

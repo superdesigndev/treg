@@ -120,9 +120,11 @@ _TABLE: list[Signature] = [
     Signature("orbisearch", 403, r"insufficient credits: [\d.]+ available", "balance"),
     # Scrubby: an empty credit pool is a 403 {"detail": "Insufficient credits."}.
     Signature("scrubby", 403, r"insufficient credits", "balance"),
-    # OpenRouter: an account with an unpaid balance is a 403 saying it "has an overdue balance". Its
-    # other 403, a flagged input on a moderated model, is the caller's.
-    Signature("openrouter", 403, r"overdue balance", "balance", tripwire=True),
+    # OpenRouter: an account with an unpaid balance is a 403 whose top-level message says it "has an
+    # overdue balance". Its other 403s carry the caller's own text (a moderated model's
+    # `metadata.flagged_input`, a provider's `metadata.raw`), so only that message is read.
+    Signature("openrouter", 403, r'^\s*\{\s*"error"\s*:\s*\{[^{}]*"message"\s*:\s*"[^"]*overdue balance',
+              "balance"),
     Signature("predictleads", 402, r"exceeded the monthly request limit", "quota", tripwire=True),
     # PDL meters operations separately: person_identify can run out while enrich still works.
     Signature("pdl", 402, r"hit your account maximum for", "quota", tripwire=True),

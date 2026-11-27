@@ -541,6 +541,10 @@ async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(client
 
 APIFY_DEAD_TOKEN = (b'{"error":{"type":"user-or-token-not-found","message":"User was not found or authentication '
                     b'token is not valid"}}')
+# OpenRouter's moderation 403 echoes up to 100 characters of the caller's input in `flagged_input`.
+OPENROUTER_MODERATION = (b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input was '
+                         b'flagged","metadata":{"reasons":["violence"],"flagged_input":"pay my overdue balance '
+                         b'now","provider_name":"OpenAI","model_slug":"openai/gpt-4.1"}}}')
 
 # A provider's own words for treg's account being out, beside a mistake of the caller's that the same
 # provider answers: (endpoint, treg's account out, the caller's mistake). Each call sends the row's
@@ -566,8 +570,7 @@ _ACCOUNT_OUT = [
                  id="minimax"),
     pytest.param("openrouter.ai-judge.decide",
                  (403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}'),
-                 (403, b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input '
-                       b'was flagged"}}'), id="openrouter"),
+                 (403, OPENROUTER_MODERATION), id="openrouter"),
     pytest.param("scrubby.people.email.verify", (403, b'{"detail": "Insufficient credits."}'),
                  (422, b'{"detail":[{"loc":["body","email"],"msg":"value is not a valid email address"}]}'),
                  id="scrubby"),
