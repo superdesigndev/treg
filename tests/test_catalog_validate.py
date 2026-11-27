@@ -918,7 +918,8 @@ def test_contactout_person_routes_cannot_recapture_pii():
     safe = {"contactout.people.count", "contactout.people.email.verify",
             "contactout.companies.search", "contactout.companies.enrich"}
     structural = {"contactout.people.contact.work", "contactout.people.contact.phone",
-                  "contactout.people.contact.personal", "contactout.people.audience.email-hash"}
+                  "contactout.people.contact.personal", "contactout.people.audience.email-hash",
+                  "contactout.people.email.verify.batch", "contactout.people.contact.batch"}
     for ep in endpoints:
         if ep["id"] in safe:
             continue
@@ -928,6 +929,8 @@ def test_contactout_person_routes_cannot_recapture_pii():
         if ep["id"] in structural:
             assert ep["example_response"] == "examples/" + example.name
             payload = example.read_text()
+            if ep.get("terminal_example_response"):
+                payload += (path.parent / ep["terminal_example_response"]).read_text()
             assert any(fake in payload for fake in ("example.invalid", "+10000000000", "routing-fixture"))
         else:
             assert "example_response" not in ep
