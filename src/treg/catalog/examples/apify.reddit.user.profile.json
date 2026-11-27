@@ -1,0 +1,22 @@
+[
+  {
+    "source_input": "spez",
+    "scraped_at": "2026-10-30T15:54:26+00:00",
+    "kind": "profile",
+    "username": "spez",
+    "profile_id": "t5_3k30p",
+    "url": "https://www.reddit.com/user/spez/",
+    "display_name": "spez",
+    "description": "Reddit CEO",
+    "created_at": "2005-06-06T04:00:00.000000+0000",
+    "icon_url": "https://styles.redditmedia.com/t5_3k30p/styles/profileIcon_uj015iwx9s7g1.png?width=64&height=64&frame=1&auto=webp&crop=64:64,smart&s=0af32bd27feadee648af9434f5d8ffa782225a45",
+    "banner_url": "https://b.thumbs.redditmedia.com/KWeEpVxXOGLoloMbM0IxGt9EiKPXizpwFgcSeWqtpZM.png",
+    "verification_status": "PROFILE_VERIFIED",
+    "is_nsfw": false,
+    "_meta": {
+      "author": "https://apify.com/herus13",
+      "status": "ok",
+      "message": null
+    }
+  }
+]
