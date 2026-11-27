@@ -162,7 +162,9 @@ compresses anyway is not recorded (`_identity_encoded`). A caller body the path 
 key the question: no lookup, no recording. **An answer that quotes the team's own credential back
 is never recorded** (`_echoes_own_credential`, failing closed when the renderings cannot be
 built); the caller receives it masked. Masking does not depend on the archive: an own-key catalog
-answer carrying a credential is read the same bounded way when nothing will be recorded.
+answer carrying a credential is read the same bounded way when nothing will be recorded, if it is
+JSON or text; media, an event stream or an answer of no stated type then streams as it comes
+([proxy-model](proxy-model.md), "Answers that quote a credential").
 The same guard, provenance and sharing apply to a metered call riding treg's
 pay-per-use OAuth app (`billed_oauth`): the token is the team's.
 

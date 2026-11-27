@@ -569,6 +569,23 @@ def _redact_error_body(
     return _with_body(response, redacted), redacted
 
 
+_HELD_MEDIA_TYPES = frozenset({"application/json", "application/x-www-form-urlencoded"})
+
+
+def _held_to_mask(response: UpstreamResponse) -> bool:
+    """Whether an own-key answer the archive does not read is held whole to be masked: JSON or
+    text (`application/json`, a `+json` type, `text/*` save `text/event-stream`, a form body) in a
+    coding the mask can decode. Media, an event stream and an answer of no stated type stream as
+    they come, their first byte never waiting for the last."""
+    encoding = _response_header(response, "content-encoding").strip().lower()
+    if encoding not in ("", "identity") and encoding not in READABLE_ENCODINGS:
+        return False
+    media = _response_header(response, "content-type").split(";", 1)[0].strip().lower()
+    if media == "text/event-stream":
+        return False
+    return media in _HELD_MEDIA_TYPES or media.endswith("+json") or media.startswith("text/")
+
+
 def _mask_answer(
     response: UpstreamResponse, body: bytes, masks: AnswerMask,
 ) -> tuple[UpstreamResponse, bytes]:
@@ -1882,7 +1899,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         scope=cache_scopes[0], response_headers=response.raw_headers)
                 if whole is not None:
                     response, task_answer = _mask_answer(response, whole, answer_masks)
-            elif served is None and own_key_masked and 200 <= response.status < 300:
+            elif (served is None and own_key_masked and 200 <= response.status < 300
+                  and _held_to_mask(response)):
                 response, whole = await _read_whole_if_small(response, max(
                     get_settings().archive_max_body_bytes,
                     _TASK_ANSWER_MAX if _names_task(mk, call_ref) else 0))

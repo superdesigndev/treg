@@ -12,6 +12,7 @@ replay and the archive alike, and is otherwise relayed byte for byte.
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
 import time
@@ -31,6 +32,7 @@ from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import ArchiveKey, ArchiveSnapshot
+from treg.routers import call as call_routes
 
 EP = "tikhub.tiktok.video.comments"
 PLATFORM_KEY = "PLATFORM-TIKHUB-KEY-abc123"
@@ -448,6 +450,47 @@ def _meta_page(request: httpx.Request) -> bytes:
         "next": f"https://graph.facebook.com/v21.0/ads_archive?access_token={token}&limit=25&after=QVFIUmNh"}})
 
 
+class _SlowStream(httpx.AsyncByteStream):
+    """A vendor body that sends its chunks `delay` apart and notes when the last one went."""
+
+    def __init__(self, chunks: list[bytes], delay: float) -> None:
+        self.chunks, self.delay, self.marks = chunks, delay, {}
+
+    async def __aiter__(self):
+        for i, chunk in enumerate(self.chunks):
+            if i:
+                await asyncio.sleep(self.delay)
+            yield chunk
+        self.marks["last"] = time.monotonic()
+
+
+def _slow_vendor(monkeypatch, stream: _SlowStream, headers: dict) -> None:
+    monkeypatch.setattr(A.app.state, "http", AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=stream, headers=headers))))
+
+
+def _timed_delivery(monkeypatch) -> dict:
+    """When the answer's headers can go out (the call returns) and when its first chunk is handed
+    on to the caller."""
+    marks: dict[str, float] = {}
+    real = call_routes.execute_call
+
+    async def timed(context, client):
+        out = await real(context, client)
+        marks["headers"] = time.monotonic()
+        body = out.body_stream
+
+        async def marked():
+            async for chunk in body:
+                marks.setdefault("first_chunk", time.monotonic())
+                yield chunk
+        out.body_stream = marked()
+        return out
+
+    monkeypatch.setattr(call_routes, "execute_call", timed)
+    return marks
+
+
 @pytest.fixture
 def archive_on(platform_on, monkeypatch):
     monkeypatch.setattr(get_settings(), "archive_mode", "serve")
@@ -584,6 +627,51 @@ class TestAnswersAreMaskedToo:
         seen = _vendor(monkeypatch, _meta_page)
         await clients.get(f"/call/{META_EP}", params=META_QUERY, headers={"accept-encoding": "br"})
         assert seen[0].headers["accept-encoding"] == "identity"
+
+    @pytest.mark.parametrize("content_type", [
+        "application/json; charset=UTF-8", "application/problem+json", "text/javascript",
+        "TEXT/PLAIN", "application/x-www-form-urlencoded",
+    ])
+    async def test_a_json_or_text_answer_quoting_the_token_is_masked(
+        self, clients: AsyncClient, monkeypatch, content_type,
+    ):
+        """JSON and text are held whole to be masked when the archive does not read them; media
+        type and parameters are read case-insensitively (some Graph versions say text/javascript)."""
+        assert (await clients.post(
+            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
+        _vendor(monkeypatch, _meta_page, content_type=content_type)
+        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+        assert r.status_code == 200
+        assert META_TOKEN not in r.text and "access_token=***" in r.text
+
+    async def test_a_json_answer_is_held_until_its_last_byte(self, clients: AsyncClient, monkeypatch):
+        assert (await clients.post(
+            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
+        stream = _SlowStream([b'{"data":[', b'{"id":"1"}', b"]}"], delay=0.1)
+        _slow_vendor(monkeypatch, stream, {"content-type": "application/json"})
+        marks = _timed_delivery(monkeypatch)
+        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+        assert r.status_code == 200 and r.json() == {"data": [{"id": "1"}]}
+        assert marks["headers"] >= stream.marks["last"]
+
+    @pytest.mark.parametrize("content_type", [
+        "audio/mpeg", "text/event-stream", "application/octet-stream", "image/png", None,
+    ])
+    async def test_media_and_event_streams_stream_as_they_come(
+        self, clients: AsyncClient, monkeypatch, content_type,
+    ):
+        """Not JSON or text, or of no stated type: the answer streams untouched exactly as before,
+        its headers and first chunk handed on before the provider has sent the rest."""
+        assert (await clients.post(
+            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
+        chunks = [b"ID3\x04first-frame", b"second-frame", b"last-frame"]
+        stream = _SlowStream(chunks, delay=0.2)
+        _slow_vendor(monkeypatch, stream, {"content-type": content_type} if content_type else {})
+        marks = _timed_delivery(monkeypatch)
+        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+        assert r.status_code == 200 and r.content == b"".join(chunks)
+        assert marks["headers"] < stream.marks["last"]
+        assert marks["first_chunk"] < stream.marks["last"]
 
     async def test_an_own_key_page_past_the_hold_streams_as_it_came(
         self, clients: AsyncClient, monkeypatch,

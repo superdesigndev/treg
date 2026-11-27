@@ -62,17 +62,21 @@ Everything else in this file is guidance; these are the contract, and they win o
    that cannot be scanned is replaced whole, never relayed as a prefix. Any other answer is masked
    where the application holds it whole: a metered or owned free-poll answer; an own-key catalog
    2xx carrying an injected credential, read whole up to `archive_max_body_bytes` (the larger of
-   that and 2 MiB when it names a task) whatever the archive does, its `Accept-Encoding` kept to
-   the gzip and deflate treg can decode (identity where the archive records it); and an archive
-   hit, also masked with treg's own credentials for its provider. Only spellings of 8 or more
-   characters that are not all digits, never a whole-body replacement. A platform-key answer the
-   archive records or refreshes, and terminal task evidence, are stored masked with treg's own
+   that and 2 MiB when it names a task) when the archive reads it to record it (asked for
+   identity), while on a row the archive does not record the request keeps only the caller's gzip
+   and deflate and the answer is read whole only when it is JSON or text (`application/json`, a
+   `+json` type, `text/*` save `text/event-stream`, `application/x-www-form-urlencoded`; the media
+   type read case-insensitively, without its parameters) in a coding treg can decode; and an
+   archive hit, also masked with treg's own credentials for its provider. Only spellings of 8 or
+   more characters that are not all digits, never a whole-body replacement. A platform-key answer
+   the archive records or refreshes, and terminal task evidence, are stored masked with treg's own
    credentials; a recording on a team's own credential is stored as received, since an answer
    holding a spelling of it is never recorded. `GET /calls/{id}/result`, Activity, the review
-   judge and the staff archive panel mask a copy kept before. An own-tool answer, an own-key 1xx
-   or 3xx answer or one past that bound, a free answer that streams in full (below), a spooled
-   answer, one in an encoding treg cannot decode and one whose credentials cannot be rendered are
-   relayed untouched.
+   judge and the staff archive panel mask a copy kept before. Relayed untouched: an own-tool
+   answer; an own-key 1xx or 3xx answer, one past that bound, or one the archive does not record
+   that is not JSON or text (media, `application/octet-stream`, an event stream, no stated type),
+   which streams as it comes; a free answer that streams in full (below); a spooled answer; one in
+   an encoding treg cannot decode; and one whose credentials cannot be rendered.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
    (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
