@@ -1241,6 +1241,55 @@ async def test_a_failed_fallback_write_does_not_advertise_a_result(clients: Asyn
         archive._pending.clear()
         monkeypatch.setattr(archive, "_pending_bytes", 0)
 
+async def test_the_fallback_write_runs_after_the_provider_slots_are_free(
+        clients: AsyncClient, shadow, monkeypatch):
+    """Archive backpressure must not hold upstream concurrency: the on-request fallback write
+    starts only once the call has released its in-flight (and fair-share) slots."""
+    from treg.infra.upstream.inflight import inflight
+
+    release = await _fill_archive_queue(monkeypatch)
+    seen = []
+    real_store = archive._store
+
+    async def watch(**kw):
+        seen.append(sum(inflight._active.values()))
+        return await real_store(**kw)
+
+    monkeypatch.setattr(archive, "_store", watch)
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r.status_code == 200, r.text
+        assert seen == [0], seen
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+
+
+async def test_a_cancelled_result_reader_does_not_cancel_the_recording(monkeypatch):
+    """`await_pending` shields the shared recording: cancelling one reader leaves the write running."""
+    import asyncio as aio
+
+    gate = aio.Event()
+
+    async def store():
+        await gate.wait()
+        return "stored"
+
+    task = aio.create_task(store())
+    monkeypatch.setitem(archive._pending_by_key, "k", task)
+    reader = aio.create_task(archive.await_pending("k"))
+    await aio.sleep(0)
+    reader.cancel()
+    with pytest.raises(aio.CancelledError):
+        await reader
+    assert not task.cancelled()
+    gate.set()
+    assert await task == "stored"
+
+
 async def test_a_result_is_scoped_to_the_team(clients: AsyncClient, shadow):
     assert (await clients.get(f"/call/{EP}?aweme_id=7&count=5")).status_code == 200
     await archive.drain()
@@ -2703,7 +2752,6 @@ async def test_a_direct_call_the_route_cannot_pick_names_no_routed_tool(clients:
                                                                         monkeypatch):
     """An endpoint of the job the route does not pick is only listed beside it; naming the route
     would send the agent away from the provider it chose."""
-    from treg.domain.catalog import store as catalog_store
     route = catalog_store.load().by_id["treg.tiktok.video.comments"]
     monkeypatch.setitem(route, "routed_children",
                         [c for c in route.get("routed_children") or [] if c != EP])

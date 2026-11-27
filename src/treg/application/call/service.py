@@ -1548,6 +1548,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         share_slot = NO_SLOT
         inflight_slot = None
         rl = None
+        archive_deferred = None
         try:
             platform_tier = mk is not None and mk.tier == "platform"
             raw_headers = tuple(request.headers.raw)
@@ -1804,7 +1805,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     body_observation = archive.archive_bodies.StorageReport(
                         call_ref=call_ref, emit=lambda props: analytics.capture(
                             audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
-                    archive_key_hash, archive_content_hash = await archive.record_now(
+                    archive_deferred = body_observation
+                    archive_key_hash, archive_content_hash = archive.record(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
                                             list(request.query_params.multi_items()),
@@ -1814,7 +1816,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation,
                         origin_org_id=caller.org_id if own_credential else None,
-                        scope=cache_scopes[0], response_headers=response.raw_headers)
+                        scope=cache_scopes[0], response_headers=response.raw_headers,
+                        defer_shed=True)
             elif (served is None and own_key_archivable and 200 <= response.status < 300
                   and _identity_encoded(response)):
                 # An own-key answer: read whole when it fits the archive's cap (bounded, before
@@ -1831,7 +1834,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     body_observation = archive.archive_bodies.StorageReport(
                         call_ref=call_ref, emit=lambda props: analytics.capture(
                             audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
-                    archive_key_hash, archive_content_hash = await archive.record_now(
+                    archive_deferred = body_observation
+                    archive_key_hash, archive_content_hash = archive.record(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
                                             list(request.query_params.multi_items()),
@@ -1840,7 +1844,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation, origin_org_id=caller.org_id,
-                        scope=cache_scopes[0], response_headers=response.raw_headers)
+                        scope=cache_scopes[0], response_headers=response.raw_headers,
+                        defer_shed=True)
             elif response.status >= 400:
                 # A provider can echo the injected credential anywhere in an error body, so the
                 # caller receives only a body scanned whole (bounded). One too large to scan streams
@@ -1866,6 +1871,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             share_slot.release()
             if inflight_slot is not None:
                 inflight_slot.release()
+        if archive_deferred is not None:
+            # A caller-facing answer the archive queue would have shed is written on the request
+            # (archive.md), only after the provider slots above are free: archive backpressure
+            # must not hold upstream concurrency other teams are waiting for.
+            archive_key_hash, archive_content_hash = await archive.persist_deferred(
+                archive_deferred, archive_key_hash, archive_content_hash)
     except asyncio.CancelledError:
         await _finish_cancelled_call(request, mk, call_ref, response, sent=sent)
         raise

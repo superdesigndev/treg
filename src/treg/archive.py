@@ -469,18 +469,19 @@ def record(
 _STORE_FAIL = frozenset({"record_failed", "record_timeout", "cancelled"})
 
 
-async def record_now(**kwargs) -> tuple[str | None, str | None]:
-    """Record a caller-facing answer; if the off-request queue would shed it, write it here.
+async def persist_deferred(observation, key_hash: str, body_hash: str
+                           ) -> tuple[str | None, str | None]:
+    """Write a caller-facing answer that `record(..., defer_shed=True)` left on `observation`.
 
-    Hashes are omitted when that fallback write fails, so the call row does not advertise a
-    result GET /calls/{id}/result cannot resolve. Off-request callers keep using record().
+    The HTTP call path calls this after it has released its provider slots, so archive
+    backpressure never holds upstream concurrency. Returns the hashes unchanged when nothing
+    was deferred; omits them when the fallback write fails, so the call row does not
+    advertise a result GET /calls/{id}/result cannot resolve.
     """
-    observation = kwargs.get("observation") or archive_bodies.StorageReport()
-    kwargs["observation"] = observation
-    kh, ch = record(**kwargs, defer_shed=True)
     args = getattr(observation, "persist_args", None)
     if args is None:
-        return kh, ch
+        return key_hash, body_hash
+    observation.persist_args = None
     try:
         await _store(**args)
     except asyncio.CancelledError:
@@ -489,14 +490,18 @@ async def record_now(**kwargs) -> tuple[str | None, str | None]:
         return None, None
     if getattr(observation, "drop_reason", None) in _STORE_FAIL:
         return None, None
-    return kh, ch
+    return key_hash, body_hash
 
 
 async def await_pending(key_hash: str) -> None:
-    """Wait for an in-process recording of this question, if one is still running."""
+    """Wait for an in-process recording of this question, if one is still running.
+
+    The recording is shielded: cancelling a result reader must not abort the write
+    other readers, and the call row, depend on.
+    """
     task = _pending_by_key.get(key_hash)
     if task is not None:
-        await asyncio.gather(task, return_exceptions=True)
+        await asyncio.gather(asyncio.shield(task), return_exceptions=True)
 
 
 def _task_done(task: asyncio.Task, body_len: int) -> None:

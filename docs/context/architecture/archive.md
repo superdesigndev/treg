@@ -390,12 +390,15 @@ body), and failures logged at ERROR so a lost recording clears `FaultCaptureHand
 before `analytics.drain()` and removes the tasks it gathered itself (the busy-spin this avoids is
 pinned in `tests/test_audit.py`). A recorder crash cannot fail a call.
 
-The HTTP call path records through `record_now`. If the in-process queue would shed a
-caller-facing answer, that write runs on the request instead of being dropped, so
-`GET /calls/{id}/result` can resolve it; hashes are omitted from the call row if that
-write fails. The fallback may delay the response under archive overload, but it does not
-fail the call. Refresh and other off-request recordings still shed. The result route waits
-for an in-flight recording of the same key before resolving.
+The HTTP call path records with `record(..., defer_shed=True)`. If the in-process queue would
+shed a caller-facing answer, the write is left on the observation and `persist_deferred` runs it
+on the request instead of dropping it, so `GET /calls/{id}/result` can resolve it; hashes are
+omitted from the call row if that write fails. It runs only after the call has released its
+provider slots (fair share and in-flight), so archive overload never holds upstream concurrency.
+The fallback may delay the response under archive overload, but it does not fail the call.
+Refresh and other off-request recordings still shed. The result route waits for an in-flight
+recording of the same key before resolving; that wait is shielded, so a cancelled reader never
+cancels the write.
 
 Every write (`_store_locked`, `_touch_write`, `prune_once`, `refresh_once`) uses
 `background_session_maker` (`tests/test_db_pool_isolation.py`). At most two recordings touch the
@@ -417,7 +420,7 @@ hashes depend on.
 
 ## The call-archive link
 
-`record()` / `record_now()` return `(key_hash, content_hash)`, which the call service writes onto `CallRecord`
+`record()` returns `(key_hash, content_hash)`, which the call service writes onto `CallRecord`
 (`archive_key_hash`, `archive_content_hash`) when the write was scheduled or the on-request fallback landed. `archive.resolve_result` walks row, key, newest
 snapshot with that content hash, `body_of` carrier, and returns the pre-injection request shape
 plus the answer; a hash-only version reports `stored: false`, and a key or answer no longer on
