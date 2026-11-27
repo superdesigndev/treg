@@ -110,10 +110,6 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
             and review_targets.sampled(context.call_ref, review_endpoint(context), org_id)):
         settings = get_settings()
         budgets = [(budget_key(org_id), settings.review_budget_per_hour)]
-        # Once the first budget is spent (a busy team spends it within minutes), a call on an
-        # endpoint short of reviews (or new to this team) may still be asked, from a budget of
-        # its own. Both are tried in one store operation, so a slow store delays the response
-        # once, not twice.
         if (settings.review_target_budget_per_hour > 0
                 and review_targets.boosted(review_endpoint(context), org_id)):
             budgets.append((target_budget_key(org_id), settings.review_target_budget_per_hour))
