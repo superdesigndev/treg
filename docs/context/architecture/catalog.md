@@ -308,7 +308,7 @@ what follows about reading `cost` holds for it; how it bills is
 
 ```yaml
 cost:
-  type: per_result        # per_call | per_result | per_success | free | quota_rows
+  type: per_result        # per_call | per_result | per_success | free
   value: 2.00             # non-null unless confidence: unknown
   currency: USD           # USD | CNY | credit | unit
   per: 1000               # the quantity `value` covers (default 1)

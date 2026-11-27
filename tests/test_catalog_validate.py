@@ -1384,8 +1384,7 @@ def test_bills_miss_is_true_and_only_on_a_per_success_or_per_result_price():
     validator.check_cost(base | {"type": "per_result", "bills_miss": True}, "catalog:test", ok, [])
     assert ok == []
     for bad in (base | {"bills_miss": False}, base | {"bills_miss": "yes"},
-                base | {"type": "per_call", "bills_miss": True},
-                base | {"type": "quota_rows", "bills_miss": True}):
+                base | {"type": "per_call", "bills_miss": True}):
         errors: list[str] = []
         validator.check_cost(bad, "catalog:test", errors, [])
         assert any("bills_miss" in e for e in errors), bad

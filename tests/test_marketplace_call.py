@@ -1582,7 +1582,7 @@ def test_platform_estimate_counts_input_entities_not_a_page():
     assert est({"type": "per_result", "unit": "call", "usd": 0.002}, {}, b'{"domain":"x.com","roles":["ceo","cto"]}') == 2_000
     # row-priced routes keep the page semantics
     assert est({"type": "per_result", "unit": "row", "usd": 0.0001}, {}) == 0.0001 * call_resolution._PLATFORM_PAGE_DEFAULT * 1_000_000
-    assert est({"type": "quota_rows", "unit": "quota_row", "usd": 0.006667}, {}, b'{"target":"x.com","limit":1}') == 6_667
+    assert est({"type": "per_result", "unit": "quota_row", "usd": 0.006667}, {}, b'{"target":"x.com","limit":1}') == 6_667
 
 
 def test_cloro_state_targeting_rider_is_reserved():
