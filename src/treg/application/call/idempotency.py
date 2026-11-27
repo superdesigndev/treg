@@ -638,10 +638,12 @@ class IdempotencyPruneResult:
     batches: int
     complete: bool
     page_timeouts: int = 0
+    stopped: str = ""
 
 
 _PAGE_TIMEOUT_S = 60
 _DELETE_TIMEOUT_S = 15
+_PRUNE_ORDER_SLACK_S = 2 * 3600
 
 
 async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0.25,
@@ -653,6 +655,13 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
     history to find one expired row. The primary-key cursor bounds each page without a migration.
     Concurrent caller cleanup is harmless: the DELETE repeats the eligibility predicate.
     Pending claims and responses valid at the start of the sweep cannot be removed.
+
+    A row's `expires_at` is its claim time plus the fixed window and is never moved, and ids follow
+    claim order, so expiry follows the id. The walk stops at the first page whose every row expires
+    at least `_PRUNE_ORDER_SLACK_S` after the cutoff (`stopped="unexpired"`): no later row can have
+    expired yet. The slack covers clock skew between hosts; a row out of order by more is deleted
+    by a later run. `stopped` is otherwise `"end"` (past `upper_id`), `"max_batches"` or
+    `"timeouts"`; `complete` means `"end"` or `"unexpired"` with no page skipped.
 
     **Timeout resilience.** After a large first prune (or any mass delete), dead tuple bloat can
     make even a bounded page SELECT slow: the executor must skip invisible rows to find N visible
@@ -689,9 +698,10 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
             IdempotentCall.expires_at < cutoff,
             IdempotentCall.id <= upper_id,
         )
+    unexpired_from = cutoff + timedelta(seconds=_PRUNE_ORDER_SLACK_S)
     cursor = eligible = deleted = batches = page_timeouts = 0
     consecutive_timeouts = 0
-    complete = False
+    stopped = "max_batches"
     while batches < max_batches:
         rows = None
         try:
@@ -713,17 +723,18 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
                 cursor += batch_size
                 batches += 1
                 if cursor >= upper_id:
-                    complete = True
+                    stopped = "end"
                     break
                 if consecutive_timeouts >= 3:
                     log.error("idempotency prune: %d consecutive page timeouts, stopping", consecutive_timeouts)
+                    stopped = "timeouts"
                     break
                 await asyncio.sleep(pause_s)
                 continue
             raise
         consecutive_timeouts = 0
         if not rows:
-            complete = True
+            stopped = "end"
             break
         ids = [row.id for row in rows if row.status == "done" and row.expires_at < cutoff]
         eligible += len(ids)
@@ -737,17 +748,21 @@ async def prune_expired_idempotency(*, batch_size: int = 200, pause_s: float = 0
                 deleted += len(removed)
         cursor = rows[-1].id
         batches += 1
-        complete = len(rows) < batch_size or cursor == upper_id
+        if len(rows) < batch_size or cursor == upper_id:
+            stopped = "end"
+        elif all(row.expires_at >= unexpired_from for row in rows):
+            stopped = "unexpired"
         if batches % 50 == 0:
             log.info(
                 "idempotency prune: batches=%d deleted=%d cursor=%d timeouts=%d",
                 batches, deleted, cursor, page_timeouts)
-        if complete:
+        if stopped != "max_batches":
             break
         await asyncio.sleep(pause_s)
 
+    complete = stopped in ("end", "unexpired") and page_timeouts == 0
     return IdempotencyPruneResult(
-        cutoff, upper_id, eligible, deleted, batches, complete and page_timeouts == 0, page_timeouts,
+        cutoff, upper_id, eligible, deleted, batches, complete, page_timeouts, stopped,
     )
 
 
