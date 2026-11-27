@@ -125,6 +125,74 @@ async def test_a_team_that_filled_an_endpoint_gets_no_invitation_there(clients, 
     assert response.headers.get('X-Treg-Hint') is None
 
 
+async def test_a_spent_budget_still_asks_about_a_short_endpoint_from_the_extra_one(
+        clients, targeting, monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"  # an agent runtime: an unnamed caller is never asked
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)  # below the boost of 1.0
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_budget_per_hour', 1)
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 1)
+    await review_targets.warm()  # example.search holds no reviews: short of its target
+
+    async def hint():
+        response = await clients.get('/call/example.search')
+        assert response.status_code == 200
+        return response.headers.get('X-Treg-Hint')
+
+    assert await hint() == 'review'  # the team budget
+    assert await hint() == 'review'  # spent: the extra one, for a short endpoint
+    assert await hint() is None      # both spent
+
+
+async def test_the_extra_budget_is_not_spent_on_a_full_endpoint_or_when_off(clients, targeting,
+                                                                            monkeypatch):
+    clients.headers["X-Treg-Client"] = "claude-code"
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)  # below the boost of 1.0
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_budget_per_hour', 1)
+    await review_targets.warm()
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') == 'review'
+    # Off (the default): a spent budget asks nothing more, even about a short endpoint.
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 5)
+    await add_reviews(clients, 'example.search', teams=10, each=10)  # at its target
+    await review_targets.warm()
+    assert not review_targets.boosted('example.search')
+    assert (await clients.get('/call/example.search')).headers.get('X-Treg-Hint') is None
+    assert review_targets.boosted('unreviewed.search')
+
+
+async def test_both_budgets_are_one_store_operation(clients, targeting, monkeypatch):
+    from treg.infra import kv
+    clients.headers["X-Treg-Client"] = "claude-code"
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(targeting, 'review_sample_rate', 0.5)
+    monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
+    monkeypatch.setattr(targeting, 'review_target_budget_per_hour', 3)
+    await review_targets.warm()  # example.search is short: boosted
+    real = kv.store()
+    seen = []
+
+    class Counting:
+        async def take(self, *args):
+            seen.append('take')
+            return await real.take(*args)
+
+        async def take_first(self, budgets, ttl_s):
+            seen.append(('take_first', [limit for _, limit in budgets]))
+            return await real.take_first(budgets, ttl_s)
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+    monkeypatch.setattr(kv, '_store', Counting())
+    response = await clients.get('/call/example.search')
+    assert response.headers.get('X-Treg-Hint') == 'review'
+    assert seen == [('take_first', [targeting.review_budget_per_hour, 3])]
+
+
 async def test_invited_is_recomputed_with_the_targeted_rate(clients, targeting, monkeypatch):
     monkeypatch.setattr(targeting, 'review_sample_rate', 0)
     await review_targets.warm()
