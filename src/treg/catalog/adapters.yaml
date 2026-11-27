@@ -1250,6 +1250,12 @@ adapters:
           employees: data.company_size, founded: data.company_founded,
           location: data.company_location, linkedin_url: data.company_linkedin}
     miss: "data.company_name == null"
+  mobiusengine-jobs.companies.enrich:
+    accepts: [[domain], [linkedin_url], [name]]
+    in: {domain: pathParams.key, linkedin_url: pathParams.key, name: pathParams.key}
+    out: {name: name, domain: domain, website: website, industry: industry,
+          employees: "coalesce(headcount, size)", founded: founded, location: headquarters,
+          linkedin_url: linkedin_url}
   limadata.companies.enrich:
     accepts: [[domain], [linkedin_url]]
     in: {domain: body.domain, linkedin_url: body.linkedin_url}
@@ -4102,6 +4108,15 @@ adapters:
   # ---- jobs.salary.benchmark --------------------------------------------------------------------
   # Both over a 90-day window of posted pay. JobsPipe stops at the country (USD); Hirebase also
   # takes a city or region and answers in the place's currency.
+  mobiusengine-jobs.jobs.salary.benchmark:
+    accepts: [[title]]
+    in: {title: queryParams.title}
+    in_expr:
+      queryParams.countries: "upper(country)"
+      queryParams.locations: location
+    out: {p10: "salaries[0].annual.p10", p25: "salaries[0].annual.p25", p50: "salaries[0].annual.median",
+          p75: "salaries[0].annual.p75", p90: "salaries[0].annual.p90", currency: "salaries[0].currency",
+          count: "salaries[0].jobs_with_pay"}
   jobspipe.jobs.salary.benchmark:
     accepts: [[title]]
     in: {title: body.title}
