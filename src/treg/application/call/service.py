@@ -57,7 +57,9 @@ from .evidence import (
     _ERROR_SCAN_MAX,
     UNSCANNABLE_ERROR_BODY,
     _safe_secret_renderings,
-    redact_answer,
+    AnswerMask,
+    answer_mask,
+    platform_answer_mask,
     redact_error_response,
 )
 from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
@@ -526,6 +528,15 @@ def answer_for_caller(endpoint_id: str | None, body: bytes, headers) -> bytes:
         reported_charge.path_of(catalog_store.load().by_id.get(endpoint_id or "")), body)
 
 
+def stored_answer_for_caller(provider: str | None, endpoint_id: str | None, body: bytes, headers, *,
+                             metered: bool) -> bytes:
+    """An archived answer as `GET /calls/{id}/result` shows it: treg's own credentials for the
+    provider masked (`evidence.platform_answer_mask`, which also covers a copy kept before the
+    archive masked them), then `answer_for_caller` for a metered 2xx."""
+    body = platform_answer_mask(provider).answer(body)
+    return answer_for_caller(endpoint_id, body, headers) if metered else body
+
+
 def _without_reported_charge(
     request: _ApplicationRequest, mk: MarketplaceCall, response: UpstreamResponse, body: bytes,
 ) -> tuple[UpstreamResponse, bytes]:
@@ -556,12 +567,11 @@ def _redact_error_body(
 
 
 def _mask_answer(
-    response: UpstreamResponse, body: bytes, tool, secrets: dict,
+    response: UpstreamResponse, body: bytes, masks: AnswerMask,
 ) -> tuple[UpstreamResponse, bytes]:
-    """`response` carrying `body` with injected credentials masked (`evidence.redact_answer`); both
+    """`response` carrying `body` with injected credentials masked (`evidence.AnswerMask`); both
     unchanged, bytes and encoding, when the answer quotes none."""
-    masked = redact_answer(body, tool, secrets,
-                           content_encoding=_response_header(response, "content-encoding"))
+    masked = masks.answer(body, _response_header(response, "content-encoding"))
     if masked is body:
         return response, body
     return _with_body(response, masked), masked
@@ -1617,6 +1627,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             own_key_archivable = (
                 own_key_cacheable and archive.recording()
                 and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id)))
+            # After the OAuth refresh above, so a replaced token is the one masked.
+            answer_masks = answer_mask(tool, secrets)
+            own_key_masked = (
+                mk is not None and not mk.metered and mk.tier in ("tool", "credential")
+                and not mk.free_owned_poll and bool(answer_masks))
             # Whose question this is (archive.sharing): the org's own credential - an API key or
             # an OAuth token, metered or not - confines the answer to the org, or to the
             # connection on an `own_account` endpoint, by keying it. The tags are the scopes this
@@ -1652,7 +1667,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         (time.monotonic() - lookup_started) * 1000, 3)
             if served is not None:
                 await _admit_org_endpoint(request, mk.endpoint_id)
-                body = served["body"]
+                answer_masks = answer_mask(tool, secrets, provider=mk.provider)
+                body = answer_masks.answer(served["body"])
                 served_hit = True
                 served_repeat = bool(served.get("repeat_for_org"))
                 served_headers = served.get("reported_headers")
@@ -1737,7 +1753,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         # Identity encoding wherever the body will be READ: the settle's cost
                         # evidence, and the archive's recording of an own-key answer.
                         force_identity=mk is not None and (
-                            mk.metered or mk.free_owned_poll or own_key_archivable),
+                            mk.metered or mk.free_owned_poll or own_key_archivable
+                            or own_key_masked),
                         **relay_options,
                     )
                 finally:
@@ -1827,8 +1844,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         caller_body=caller_body,
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
                         status_code=response.status, media_type=_ct,
-                        body=redact_answer(body, tool, secrets, content_encoding=_response_header(
-                            response, "content-encoding")),
+                        body=answer_masks.answer(body, _response_header(response, "content-encoding")),
                         observation=body_observation,
                         origin_org_id=caller.org_id if own_credential else None,
                         scope=cache_scopes[0], response_headers=response.raw_headers)
@@ -1859,7 +1875,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         observation=body_observation, origin_org_id=caller.org_id,
                         scope=cache_scopes[0], response_headers=response.raw_headers)
                 if whole is not None:
-                    response, task_answer = _mask_answer(response, whole, tool, secrets)
+                    response, task_answer = _mask_answer(response, whole, answer_masks)
+            elif served is None and own_key_masked and 200 <= response.status < 300:
+                response, whole = await _read_whole_if_small(response, max(
+                    get_settings().archive_max_body_bytes,
+                    _TASK_ANSWER_MAX if _names_task(mk, call_ref) else 0))
+                if whole is not None:
+                    response, task_answer = _mask_answer(response, whole, answer_masks)
+                    task_answer_read = True
             elif response.status >= 400:
                 # A provider can echo the injected credential anywhere in an error body, so the
                 # caller receives only a body scanned whole (bounded). One too large to scan streams
@@ -1876,7 +1899,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     and not mk.free_owned_poll and 200 <= response.status < 300):
                 response, task_answer = await _read_whole_if_small(response, _TASK_ANSWER_MAX)
                 if task_answer is not None:
-                    response, task_answer = _mask_answer(response, task_answer, tool, secrets)
+                    response, task_answer = _mask_answer(response, task_answer, answer_masks)
         except GatewayFailed:
             raise
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
@@ -2151,9 +2174,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if response.status >= 400 and spooled_bytes is None:
             response, body = _redact_error_body(response, body, tool, secrets)
         elif spooled_bytes is None and not streaming_free_result:
-            response, body = _mask_answer(response, body, tool, secrets)
+            response, body = _mask_answer(response, body, answer_masks)
         # From here `body` is the answer as the caller receives it: the replay store and the task
-        # record hold those bytes. `answer` stays the provider's, for the outcome headers below.
+        # record hold those bytes. `answer` is that answer before the reported-charge strip, for
+        # the outcome headers below.
         answer = body
         if spooled_bytes is None and not streaming_free_result:
             response, body = _without_reported_charge(request, mk, response, body)
@@ -2220,8 +2244,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
            error_request=err_request, error_response=err_response,
            provider_error=(body, response.raw_headers) if response.status >= 400 else None)
     if free_poll:
-        response, body = (_redact_error_body if response.status >= 400 else _mask_answer)(
-            response, body, tool, secrets)
+        response, body = (_redact_error_body(response, body, tool, secrets)
+                          if response.status >= 400 else _mask_answer(response, body, answer_masks))
     if idem_key:
         # An own-key call is not charged by treg, but a provider that forbids retaining responses
         # may still bill its owner. Keep a body-free receipt so the same key cannot repeat it.

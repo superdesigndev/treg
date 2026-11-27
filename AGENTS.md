@@ -60,10 +60,15 @@ Everything else in this file is guidance; these are the contract, and they win o
    is masked (`***`) before the caller, an idempotent replay, the archive or the evidence row sees
    it. A 4xx/5xx body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed call one
    that cannot be scanned is replaced whole, never relayed as a prefix. Any other answer is masked
-   where the application already holds it whole (a metered or owned free-poll answer, an archive
-   hit or refresh, an own-key answer read for the archive or for its task): exact spellings of 8
-   characters or more only, never a whole-body replacement. An answer that streams or is spooled
-   is relayed untouched.
+   where the application holds it whole: a metered or owned free-poll answer; an own-key catalog
+   answer carrying an injected credential, read whole up to `archive_max_body_bytes` (and asked for
+   identity encoding) whatever the archive does; and an archive hit, also masked with treg's own
+   credentials for its provider. Only spellings of 8 or more characters that are not all digits,
+   never a whole-body replacement. What the archive keeps (a recorded or refreshed answer, terminal
+   task evidence) is stored masked with treg's own credentials, and `GET /calls/{id}/result` and
+   Activity mask a copy kept before. An own-tool answer, an own-key answer past that bound, a free
+   answer that streams in full (below), a spooled answer and one in an encoding it cannot decode
+   are relayed untouched.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
    (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after

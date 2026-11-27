@@ -135,8 +135,14 @@ def _gated(body_started, proceed, closed, *, fail=False, headers=()):
 
 
 async def own_key(clients):
-    """A team's own key is never metered, so its answer streams instead of being buffered to settle."""
+    """A team's own key is never metered, so nothing is buffered to settle. Its answer is read whole
+    up to `archive_max_body_bytes` to be masked; `streams_past_the_hold` makes it stream instead."""
     assert (await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})).status_code < 300
+
+
+def streams_past_the_hold(monkeypatch):
+    """`_gated`'s first chunk passes the own-key hold, so the answer streams from there."""
+    monkeypatch.setattr(get_settings(), "archive_max_body_bytes", 4)
 
 
 async def _never_ending_body():
@@ -658,6 +664,7 @@ async def test_stream_owns_slot_through_completion(clients, platform_on, gate, m
         clients, gate, limit=None if policy == "rate" else 1,
         rate={"rps": 1, "burst": 2} if policy != "concurrency" else None)
     await own_key(clients)
+    streams_past_the_hold(monkeypatch)
     started, proceed = asyncio.Event(), asyncio.Event()
     closed = AsyncMock()
     _upstream(monkeypatch, _gated(started, proceed, closed, fail=ending == "stream_error"))
@@ -690,6 +697,19 @@ async def test_stream_owns_slot_through_completion(clients, platform_on, gate, m
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_an_own_key_answer_that_fails_while_held_closes_its_upstream(clients, platform_on, monkeypatch):
+    """Held whole to be masked, the answer has no response to carry its close yet: a read that
+    fails closes the upstream itself, once."""
+    await own_key(clients)
+    started, proceed = asyncio.Event(), asyncio.Event()
+    proceed.set()
+    closed = AsyncMock()
+    _upstream(monkeypatch, _gated(started, proceed, closed, fail=True))
+    with pytest.raises(RuntimeError, match="stream fault"):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    closed.assert_awaited_once()
 
 
 async def test_send_disconnect_before_first_body_releases(gate):

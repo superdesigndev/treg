@@ -112,9 +112,10 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
 Image/video entries carry effective `cache: forbidden`, and lookup and refresh re-check the
 current policy, so old stored responses are never replayed. Async terminal evidence is the
 deliberate exception: the winning finalizer stores the terminal provider JSON under
-`treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence. It is never
+`treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence, with treg's
+own credentials for the provider masked (settlement reads the provider's bytes first). It is never
 cache or learning evidence, the worker never follows result URLs in it and never stores generated
-media bytes. `load_terminal_responses` reads it back for Activity.
+media bytes. `load_terminal_responses` reads it back for Activity, which masks it again on read.
 
 ## The cache key
 
@@ -124,9 +125,11 @@ the uppercased method, the catalog endpoint id, sorted query pairs, the canonica
 scope when the answer is not public. The URL is rebuilt as the vendor sees it, before credential
 injection, so a credential cannot enter the key or the stored request shape from the request
 side. From the answer side, a platform-key answer that quotes treg's credential is stored as the
-caller receives it, masked (`evidence.redact_answer`): by the call path's recorder and by the
-refresh worker (`_refresh_call`) alike, so a refreshed version hashes like a live one
-([proxy-model](proxy-model.md), "Answers that quote a credential").
+caller receives it, masked (`evidence.AnswerMask`): by the call path's recorder and by the
+refresh worker (`_refresh_call`, with `platform_answer_mask`) alike, so a refreshed version hashes
+like a live one. A hit, and `GET /calls/{id}/result`, are masked again with treg's credentials for
+the provider, which covers a copy kept before ([proxy-model](proxy-model.md), "Answers that quote
+a credential").
 
 ### The stored request body
 
@@ -158,7 +161,9 @@ never as a prefix. The relay asks for identity encoding (`force_identity`) and a
 compresses anyway is not recorded (`_identity_encoded`). A caller body the path never read cannot
 key the question: no lookup, no recording. **An answer that quotes the team's own credential back
 is never recorded** (`_echoes_own_credential`, failing closed when the renderings cannot be
-built); the caller receives it masked. The same guard, provenance and sharing apply to a metered call riding treg's
+built); the caller receives it masked. Masking does not depend on the archive: an own-key catalog
+answer carrying a credential is read the same bounded way when nothing will be recorded.
+The same guard, provenance and sharing apply to a metered call riding treg's
 pay-per-use OAuth app (`billed_oauth`): the token is the team's.
 
 **A hit on an own key is free**: nothing is reserved or settled (non-negotiable 1), and

@@ -106,7 +106,8 @@ Inside `relay()`:
 3. **`Accept-Encoding`** becomes `identity` when the caller sent none (the body is relayed raw with
    `aiter_raw`, and httpx would otherwise add its own `gzip`). With `force_identity` it is
    overridden to `identity` wherever the application will read the body: metered settlement, an
-   owned free poll, and an archivable own-key answer.
+   owned free poll, an archivable own-key answer, and an own-key catalog answer held to be masked
+   ([below](#answers-that-quote-a-credential)).
 4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
    query.
 5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
@@ -208,37 +209,55 @@ access and retention: [data-model](data-model.md#audit-writer-auditpy).
 ### Answers that quote a credential
 
 A provider can echo the injected credential in a successful answer too: Meta's Graph API writes
-the request's `access_token` into `paging.next` and `paging.previous`. `evidence.redact_answer`
-masks the same spellings in every answer (any status below 400) the application already holds
-whole, before the caller, an idempotent replay, a task record or the archive sees it:
+the request's `access_token` into `paging.next` and `paging.previous`. `evidence.AnswerMask`
+masks the same spellings in every answer (any status below 400) the application holds whole,
+before the caller, an idempotent replay, a task record or the archive sees it. `_execute_call`
+builds one per call (`answer_mask`), after the OAuth refresh, and uses it at every point below:
 
 - a metered answer and an owned free poll: `service._mask_answer` at the hand-off, after
   settlement, capacity signals, classification and the audit row have read the provider's bytes
-  (a free poll's error body takes `_redact_error_body` at the same point);
-- an archive hit, at the same hand-off, and what the archive keeps: the call path records the
-  masked answer, and the refresh worker masks before it records (`archive._refresh_call`), so
-  `GET /calls/{id}/result` reads masked bytes;
-- an own-key answer read whole for the archive (`archive_max_body_bytes`) or for its task
-  (`_TASK_ANSWER_MAX`).
+  (a free poll's error body takes `_redact_error_body` at the same point). The archive's copy of a
+  metered answer is the same masked bytes: the mask remembers its last answer, so the body is
+  searched once per call;
+- an own-key catalog answer (tier `tool` or `credential`) carrying an injected credential
+  (`own_key_masked`): read whole up to `archive_max_body_bytes` (or `_TASK_ANSWER_MAX` when it
+  names a task) and asked for identity encoding (`force_identity`) whatever the archive does with
+  it, so archive mode, licence, row kind or a team's opt-out never decide whether it is masked.
+  The archive's own recording is gated exactly as before, and an answer quoting the team's own
+  credential is still never recorded;
+- an archive hit, masked where it is materialized with the call's spellings and treg's own for
+  the provider (`answer_mask(..., provider=)`): a hit can be a public answer treg's key fetched,
+  served to an own-key caller, or a copy kept before the archive masked answers.
 
-`mask_answer` is a bytes search with no decode and no regex. It first searches only the spellings
-no shorter one is part of (`_first_spellings`: once `<key>` is absent, `Bearer <key>` is too), so
-an answer without a credential costs one pass per such spelling and comes back as the same object;
-an answer quoting one is rewritten with only the spellings that can occur in it, longest first.
-There is no normalized re-check and no whole-body replacement: the answer is what the caller came
-for. For the same reason only spellings of at least 8 characters (`_ANSWER_SPELLING_MIN`) are
-searched: the decoded halves of a Basic credential can be a 4-digit login, an ordinary number in
-an answer, while the whole credential, `Basic <it>` and `login:password` are long enough to mask.
-A gzip/deflate answer is decoded (bounded) only to be searched, and a masked one is re-sent
-identity-encoded; one that cannot be decoded, or whose credentials cannot be rendered, is relayed
-as it came, with the rendering warning logged.
+What the archive keeps is masked with treg's own credentials for the provider, every account's
+(`platform_answer_mask`): the call path records the masked answer, the refresh worker masks before
+it records (`archive._refresh_call`), and terminal task evidence is stored masked
+(`asynctasks._finish_terminal`, whose settlement still reads the provider's bytes). Two readers
+mask on the way out as well, which covers copies kept before this: `GET /calls/{id}/result`
+(`service.stored_answer_for_caller`, then the reported-charge strip for a metered row) and the
+activity feed's task view (`asynctasks.views_for`). An idempotent replay stored before then is
+returned as stored until it expires.
 
-Not masked, because no one holds it whole: an answer that streams (an own-key answer the archive
-does not read, whether recording is off, the row may not be stored, the team opted out, it is
-compressed or it is larger than `archive_max_body_bytes`, unless it names a task; an own-tool
-answer; a streamed free fetch) and a spooled answer. Meta's Graph read rows are own-key data rows
-with no `cache:` judgment, so their answers are held whole, and masked, while the archive records
-and the default policy stores them.
+The search is bytes only, with no decode of the body and no regex over it. Each spelling is found
+through its probe (`_probe`): its longest run of the characters percent-encoding, JSON escaping
+and `\/` leave alone (the last of equal runs, so the password of `login:password`), or the whole
+spelling when no run reaches 8 characters. The spellings of one value share a probe, probes that
+contain a shorter probe are not searched (`_first_spellings`), and when no probe occurs no
+spelling can, so an answer without a credential costs one pass per probe and comes back as the
+same object; an answer quoting one is rewritten with the spellings whose probe it contains,
+longest first. There is no normalized re-check and no whole-body replacement: the answer is what
+the caller came for. For the same reason a spelling shorter than 8 characters or made of digits
+only (`_ANSWER_SPELLING_MIN`) is not used: the decoded half of a Basic credential can be a 4-digit
+login, and a numeric credential inside a JSON number would break the document, while the whole
+credential, `Basic <it>` and `login:password` are masked. A gzip/deflate answer is decoded
+(bounded) only to be searched, and a masked one is re-sent identity-encoded; one that cannot be
+decoded, or whose credentials cannot be rendered, is relayed as it came, with the rendering
+warning logged.
+
+Not masked, because no one holds it whole: an own-tool answer (no catalog row), an own-key answer
+larger than the hold (it streams on, untouched and never cut, from the first byte past it), a
+streamed free fetch and a spooled answer. Meta's Graph read rows are own-key catalog rows, so
+their answers are held and masked on every archive setting.
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
 sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,

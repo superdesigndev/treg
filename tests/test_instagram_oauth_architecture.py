@@ -12,6 +12,7 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
+from conftest import auth_digest
 from treg import crypto
 from treg import oauth_providers
 from treg.application import connect as connect_use_cases
@@ -225,7 +226,7 @@ async def test_catalog_call_explicitly_selects_each_instagram_authorization(
     )
     assert direct.status_code == 200, direct.text
     assert direct.json()["raw_path"] == "/v25.0/17841400000000000/conversations"
-    assert direct.json()["auth"] == "Bearer IG-LONG-TOKEN"
+    assert direct.json()["auth_sha256"] == auth_digest("Bearer IG-LONG-TOKEN")
 
     page_call = await clients.get(
         "/call/instagram.x.user-messages",

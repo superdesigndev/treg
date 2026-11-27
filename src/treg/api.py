@@ -731,9 +731,10 @@ async def get_call_result(
 
     A 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered
     platform call, or an own-key call whose answer fit the size cap while recording was on. The
-    audit row keeps the identities of the provider's bytes; a metered answer is returned as its
-    caller received it: where treg removes the provider's reported charge, without it unless this
-    request sends `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
+    audit row keeps the identities of the stored bytes; an answer is returned with treg's own
+    credentials for its provider masked, and a metered one as its caller received it: where treg
+    removes the provider's reported charge, without it unless this request sends
+    `X-Treg-Keep-Reported-Charge: true`. Own-tool calls are
     relayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
     with a `note` saying which. A routed call's answer is its children's: its row lists them in
     `children`, each readable here by its call ref. The request shape is the vendor-facing one
@@ -790,11 +791,11 @@ async def get_call_result(
     if not found["stored"]:
         out["note"] = ("hash-only: the provider's licence or the size cap did not allow keeping "
                        "the bytes")
-    elif (row.cost_charged_micro is not None and 200 <= row.status_code < 300
-          and (text := (found.get("response") or {}).get("body_text")) is not None):
-        # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
-        out["response"]["body_text"] = call_service.answer_for_caller(
-            row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
+    elif (text := (found.get("response") or {}).get("body_text")) is not None:
+        out["response"]["body_text"] = call_service.stored_answer_for_caller(
+            row.provider, row.endpoint_id, text.encode("utf-8"), request.headers,
+            metered=row.cost_charged_micro is not None and 200 <= row.status_code < 300,
+        ).decode("utf-8")
     return out
 
 

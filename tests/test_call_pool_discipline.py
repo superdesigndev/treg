@@ -25,6 +25,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from conftest import auth_digest
 from treg import api as A
 from treg.application import catalog_stats
 from treg.application.call import service as call_service
@@ -84,7 +85,7 @@ async def test_an_own_key_call_holds_no_db_connection_while_upstream_is_called(
     seen: list[int] = []
     monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen, connections_held_here))
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 200 and r.json()["auth"] == "Bearer MKKEY"
+    assert r.status_code == 200 and r.json()["auth_sha256"] == auth_digest("Bearer MKKEY")
     assert seen == [0], f"pooled connections held during the upstream round trip: {seen}"
 
 

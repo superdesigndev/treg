@@ -16,7 +16,8 @@ from treg import mcp
 from treg.config import get_settings
 from treg.infra import org_traffic as traffic
 from test_marketplace_call import EP, platform_on  # noqa: F401
-from test_org_concurrency import _configure_org, _gated, _upstream, gate, own_key  # noqa: F401
+from test_org_concurrency import (  # noqa: F401
+    _configure_org, _gated, _upstream, gate, own_key, streams_past_the_hold)
 from test_routing import enrichment_on  # noqa: F401
 
 
@@ -352,10 +353,13 @@ async def test_stream_lifetime_across_windows(
     clients, platform_on, counter, caller_key_id, monkeypatch, ending, caplog,
 ):
     await own_key(clients)
+    streams_past_the_hold(monkeypatch)
     entered, proceed = asyncio.Event(), asyncio.Event()
     closed = AsyncMock()
+    # Declared past the hold, the body is not read before headers: it starts as the stream does.
     _upstream(monkeypatch, _gated(entered, proceed, closed, fail=ending == "error", headers=(
-        (b"x-treg-call-id", b"untrusted-upstream-id"), (b"x-treg-idempotent-replay", b"true"))))
+        (b"x-treg-call-id", b"untrusted-upstream-id"), (b"x-treg-idempotent-replay", b"true"),
+        (b"content-length", str(len(b'{"part":"last"}')).encode()))))
     task = asyncio.create_task(clients.get(f"/call/{EP}?aweme_id=7"))
     try:
         await asyncio.wait_for(entered.wait(), 2)

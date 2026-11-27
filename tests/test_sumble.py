@@ -4,6 +4,7 @@ import json
 import httpx
 import pytest
 
+from conftest import auth_digest
 from treg.application.call import service
 from treg.config import get_settings
 from treg.domain import money
@@ -81,7 +82,7 @@ async def test_byok_full_surface_keeps_original_request_and_no_meter(clients,sum
     for endpoint,body in [('people',{'request_id':'my-job'}),('organizations',{'filter':{'query':'account_score GT 1'},'select':{'attributes':['account_status','sumble_score']}}),('signals.search',{})]:
         r=await clients.post('/call/sumble.'+endpoint,json=body)
         assert r.status_code==200,r.text
-        assert r.json()['auth']=='Bearer OWN-SUMBLE'
+        assert r.json()['auth_sha256']==auth_digest('Bearer OWN-SUMBLE')
         assert json.loads(r.json()['body']) == body
         assert await _balance(clients)==before
     assert not [e for e in await _entries(clients) if e['kind'] in ('reserve','settle','release')]

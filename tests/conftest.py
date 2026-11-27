@@ -240,6 +240,11 @@ def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
         store._client.eval = paused
 
 
+def auth_digest(value: str) -> str:
+    """The echo upstream's `auth_sha256` for an `Authorization` value: which credential it got."""
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
     up = FastAPI()
 
@@ -355,6 +360,7 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
         if request.headers.get("authorization") == "Bearer IG-LONG-TOKEN":
             return {
                 "auth": request.headers["authorization"],
+                "auth_sha256": auth_digest(request.headers["authorization"]),
                 "raw_path": request.scope.get("raw_path", b"").decode(),
                 "data": [{"id": "IG-DIRECT-CONVERSATION-1", "ig_user_id": page_id}],
             }
@@ -489,8 +495,11 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
     @up.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     async def echo(request: Request) -> dict:
         body = (await request.body()).decode()
+        auth = request.headers.get("authorization")
         return {
-            "auth": request.headers.get("authorization"),
+            "auth": auth,
+            # treg masks an injected credential the answer quotes; this says which one arrived.
+            "auth_sha256": auth_digest(auth) if auth else None,
             "headers": {k.lower(): v for k, v in request.headers.items()},
             "query": dict(request.query_params),
             "query_multi": request.query_params.multi_items(),  # preserves duplicate keys

@@ -22,6 +22,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from conftest import verified_signup
 from treg import api as A, archive, audit, oauth_providers
 from treg.application.call import evidence as call_evidence
 from treg.application.call import service as call_service
@@ -520,13 +521,29 @@ class TestAnswersAreMaskedToo:
         assert r.status_code == 200
         assert r.content == body and r.headers["content-length"] == str(len(body))
 
+    @pytest.mark.parametrize("condition", [
+        "archive_records", "archive_off", "default_forbidden", "row_forbidden", "row_utility",
+        "team_opted_out",
+    ])
     async def test_a_meta_paging_link_carrying_the_teams_token_is_masked(
-        self, clients: AsyncClient, monkeypatch,
+        self, clients: AsyncClient, monkeypatch, condition,
     ):
         """The team's own Meta token, which treg injects as `access_token=`: Graph writes it into
-        `paging.next`. Held whole because the archive records own-key answers, so it is masked,
-        and an answer quoting the team's own credential is still never recorded."""
-        monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+        `paging.next`. An own-key catalog answer carrying a credential is held whole to be masked
+        whatever the archive does with it, and one quoting the team's own credential is never
+        recorded."""
+        monkeypatch.setattr(get_settings(), "archive_mode", "off" if condition == "archive_off" else "shadow")
+        entry = catalog_store.load().by_id[META_EP]
+        if condition == "default_forbidden":
+            monkeypatch.setattr(get_settings(), "archive_default_policy", "forbidden")
+        if condition == "row_forbidden":
+            monkeypatch.setitem(entry, "cache", "forbidden")
+        if condition == "row_utility":
+            monkeypatch.setitem(entry, "kind", "utility")
+        if condition == "team_opted_out":
+            org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+            r = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+            assert r.status_code == 200, r.text
         r = await clients.post("/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})
         assert r.status_code == 200, r.text
         seen = _vendor(monkeypatch, _meta_page)
@@ -539,6 +556,59 @@ class TestAnswersAreMaskedToo:
         await archive.drain()
         async with session_maker() as s:
             assert (await s.execute(select(ArchiveKey))).scalars().all() == []
+
+    async def test_an_own_key_page_past_the_hold_streams_as_it_came(
+        self, clients: AsyncClient, monkeypatch,
+    ):
+        """The stated limit: an own-key answer larger than `archive_max_body_bytes` is not held,
+        so it streams whole and untouched, never cut."""
+        monkeypatch.setattr(get_settings(), "archive_max_body_bytes", 64)
+        assert (await clients.post(
+            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
+        seen = _vendor(monkeypatch, _meta_page)
+        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+        assert r.status_code == 200 and r.content == _meta_page(seen[0])
+
+
+async def test_a_hit_on_a_copy_kept_before_masking_is_masked_and_so_is_its_result(
+    clients: AsyncClient, archive_on, monkeypatch,
+):
+    """A snapshot recorded before the archive masked answers still holds treg's key: the hit and
+    `GET /calls/{id}/result` mask it all the same."""
+    _vendor(monkeypatch, _page_with_next_link)
+    with monkeypatch.context() as before_masking:
+        before_masking.setattr(call_evidence.AnswerMask, "answer", lambda self, body, encoding="": body)
+        old = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert PLATFORM_KEY in old.text
+    await archive.drain()
+    hit = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert hit.headers["X-Treg-Cache"] == "hit"
+    assert PLATFORM_KEY not in hit.text and hit.json()["next"].endswith("&token=***")
+    await audit.drain()
+    rows = (await clients.get("/calls")).json()
+    assert len(rows) == 2
+    for row in rows:
+        result = (await clients.get(f"/calls/{row['id']}/result")).json()
+        assert result["stored"] is True and PLATFORM_KEY not in json.dumps(result)
+
+
+async def test_an_own_key_hit_on_a_public_copy_kept_before_masking_is_masked(
+    clients: AsyncClient, archive_on, monkeypatch,
+):
+    """An own-key caller may be answered from treg's public copy, which may predate masking: its
+    hit is masked with treg's own credentials for the provider too."""
+    stranger = {"X-Treg-Token": (await verified_signup(
+        clients, json={"email": "stranger@example.com"})).json()["token"]}
+    _vendor(monkeypatch, _page_with_next_link)
+    with monkeypatch.context() as before_masking:
+        before_masking.setattr(call_evidence.AnswerMask, "answer", lambda self, body, encoding="": body)
+        first = await clients.get(f"/call/{EP}?aweme_id=7", headers=stranger)
+    assert first.status_code == 200 and PLATFORM_KEY in first.text
+    await archive.drain()
+    assert (await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-TEAM-KEY"})).status_code == 200
+    hit = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert hit.headers.get("X-Treg-Cache") == "hit"
+    assert PLATFORM_KEY not in hit.text and hit.json()["next"].endswith("&token=***")
 
 
 def test_a_short_half_of_a_basic_credential_leaves_the_answer_data_alone(monkeypatch):
@@ -559,28 +629,76 @@ def test_a_short_half_of_a_basic_credential_leaves_the_answer_data_alone(monkeyp
         get_settings.cache_clear()
 
 
+def test_a_numeric_credential_leaves_json_numbers_alone(monkeypatch):
+    """A credential made of digits only would turn `"id":20251127` into `"id":***`, which is no
+    longer JSON; such a spelling is not used on answers."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "20251127")
+    get_settings.cache_clear()
+    try:
+        tool = SimpleNamespace(bindings=oauth_providers.platform_bindings(oauth_providers.get("tikhub")))
+        body = b'{"items":[{"id":20251127,"views":120251127}]}'
+        assert call_evidence.redact_answer(body, tool, {}) is body
+        assert call_evidence.redact_answer(b'{"sent":"Bearer 20251127"}', tool, {}) == b'{"sent":"***"}'
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_the_archive_copy_and_the_callers_are_searched_once(
+    clients: AsyncClient, archive_on, monkeypatch,
+):
+    searched = []
+    real = call_evidence.AnswerMask.mask
+
+    def counting(self, body):
+        searched.append(len(body))
+        return real(self, body)
+
+    monkeypatch.setattr(call_evidence.AnswerMask, "mask", counting)
+    _vendor(monkeypatch, _page_with_next_link)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and r.json()["next"].endswith("&token=***")
+    await archive.drain()
+    async with session_maker() as s:
+        snaps = (await s.execute(select(ArchiveSnapshot))).scalars().all()
+    assert [snap.content_hash for snap in snaps] == [archive.content_hash(r.content)]
+    assert len(searched) == 1
+
+
 class TestMaskingAnAnswerIsCheap:
-    """`redact_answer` runs on the event loop for every answer held whole, up to the 8 MiB
-    settlement buffer: a bytes search, never a decode or a regex over the body."""
+    """The answer mask runs on the event loop for every answer held whole, up to the 8 MiB
+    settlement buffer: a bytes search through each spelling's probe, never a decode or a regex
+    over the body. Its cost grows with the credentials searched for, so it is measured per shape
+    (a plain key; a DataForSEO Basic credential and the decoded halves it is also masked as) and
+    per number of treg's accounts, rendering included, as the call path pays it once."""
 
     MIB = 1024 * 1024
 
-    ACCOUNTS = {"b": "tikhub-b-9F2c71d0e4Aa", "c": "tikhub-c-31bE07f5d9Cc", "d": "tikhub-d-c84D1a6e20Ee"}
+    @staticmethod
+    def _shape(shape: str, i: int) -> tuple[str, str]:
+        if shape == "key":
+            return "tikhub", f"tikhub-{i}-9F2c71d0e4Aa3mX8vB2nC7"
+        import base64
+        return "dataforseo", base64.b64encode(f"ops+{i}@example-team.com:{i:02d}9f2c71d0e4aa3b".encode()).decode()
 
     @pytest.fixture
-    def four_accounts(self, monkeypatch):
-        monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", PLATFORM_KEY)
-        monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps({"tikhub": {
-            label: {"platform_key_tikhub": key} for label, key in self.ACCOUNTS.items()}}))
+    def accounts(self, monkeypatch, request):
+        shape, count = request.param
+        provider, _ = self._shape(shape, 0)
+        values = [self._shape(shape, i)[1] for i in range(count)]
+        setting = f"platform_key_{provider}"
+        monkeypatch.setenv(f"TREG_{setting.upper()}", values[0])
+        monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps({provider: {
+            f"a{i}": {setting: value} for i, value in enumerate(values[1:], 1)}}) if count > 1 else "")
         get_settings.cache_clear()
-        yield SimpleNamespace(bindings=oauth_providers.platform_bindings(oauth_providers.get("tikhub")))
+        yield SimpleNamespace(bindings=oauth_providers.platform_bindings(oauth_providers.get(provider))), values
         get_settings.cache_clear()
 
     def _page(self) -> bytes:
-        row = json.dumps({"id": "7301", "text": "Buy now " * 12,
-                          "url": "https://www.tiktok.com/@shop/video/7301?is_from_webapp=1"})
-        rows = ",".join([row] * (8 * self.MIB // (len(row) + 1) + 1))
-        return f'{{"comments":[{rows}]}}'.encode()[: 8 * self.MIB]
+        row = json.dumps({"type": "organic", "domain": "www.example.com", "title": "Café résumé",
+                          "url": "https://www.example.com/a/b?c=d", "description": "Lorem ipsum " * 12},
+                         ensure_ascii=False).encode()
+        rows = b",".join([row] * (8 * self.MIB // (len(row) + 1) + 1))
+        return (b'{"tasks":[{"result":[{"items":[' + rows + b"]}]}]}")[: 8 * self.MIB]
 
     @staticmethod
     def _best_of(runs: int, work) -> float:
@@ -591,17 +709,21 @@ class TestMaskingAnAnswerIsCheap:
             best = min(best, time.perf_counter() - started)
         return best
 
-    def test_an_8_mib_answer_is_searched_in_milliseconds(self, four_accounts):
+    @pytest.mark.parametrize("accounts", [("key", 1), ("key", 4), ("basic", 1), ("basic", 4)],
+                             indirect=True, ids=["key-1", "key-4", "basic-1", "basic-4"])
+    def test_an_8_mib_answer_is_searched_in_milliseconds(self, accounts):
+        tool, values = accounts
         body = self._page()
         assert len(body) == 8 * self.MIB
-        assert call_evidence.redact_answer(body, four_accounts, {}) is body
-        clean = self._best_of(3, lambda: call_evidence.redact_answer(body, four_accounts, {}))
-        key = self.ACCOUNTS["c"].encode()
-        quoting = body[:-64] + key + body[-64 + len(key):]
-        masked = call_evidence.redact_answer(quoting, four_accounts, {})
+        assert call_evidence.redact_answer(body, tool, {}) is body
+        clean = self._best_of(3, lambda: call_evidence.redact_answer(body, tool, {}))
+        key = values[-1].encode()
+        quoting = body[:-400] + key + body[-400 + len(key):]
+        masked = call_evidence.redact_answer(quoting, tool, {})
         assert key not in masked and masked.count(b"***") == 1
-        echo = self._best_of(3, lambda: call_evidence.redact_answer(quoting, four_accounts, {}))
-        # Generous ceilings for a slow CI runner; a decode with a normalised re-check of the same
-        # body (what the error path does) takes several times longer than either.
-        assert clean < 0.05, f"{clean * 1000:.1f} ms for an 8 MiB answer without a credential"
-        assert echo < 0.25, f"{echo * 1000:.1f} ms for an 8 MiB answer quoting one"
+        echo = self._best_of(3, lambda: call_evidence.redact_answer(quoting, tool, {}))
+        # Generous ceilings for a slow CI runner (this checkout measures about a tenth of them); a
+        # decode with a normalised re-check of the same body, as the error path does, costs more.
+        per_account = 0.04 if len(values) == 1 else 0.03
+        assert clean < per_account * len(values), f"{clean * 1000:.1f} ms without a credential"
+        assert echo < per_account * len(values) + 0.1, f"{echo * 1000:.1f} ms quoting one"

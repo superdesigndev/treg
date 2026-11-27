@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.routing import Mount
 
-from conftest import mcp_text_result
+from conftest import auth_digest, mcp_text_result
 from treg import mcp
 from treg.domain.identity import mcp_oauth
 from treg.routers import auth as auth_routes
@@ -460,7 +460,7 @@ async def test_team_and_directory_catalog_call_results_match_except_attribution(
         k: v for k, v in directory.items() if k != "call_id"
     }
     assert team["status"] == 200
-    assert team["body"]["auth"] == "Bearer PAIRED-KEY"
+    assert team["body"]["auth_sha256"] == auth_digest("Bearer PAIRED-KEY")
     assert team["body"]["headers"]["x-paired-test"] == "same"
     rows = (await clients.get("/calls")).json()
     assert {row["client"] for row in rows} == {"mcp", "claude-connector"}
@@ -548,7 +548,7 @@ async def test_v2_catalog_call_uses_shared_credentials_headers_errors_and_audit(
     await audit.drain()
 
     assert result["status"] == 200
-    assert result["body"]["auth"] == "Bearer DIRECTORY-KEY"
+    assert result["body"]["auth_sha256"] == auth_digest("Bearer DIRECTORY-KEY")
     assert result["body"]["headers"]["x-test-header"] == "kept"
     assert result["body"]["headers"].get("x-treg-token") != "blocked"
     assert "cost_usd" not in result or result["cost_usd"] is None

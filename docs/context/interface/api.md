@@ -326,7 +326,9 @@ calls, streamed free fetches and spooled answers are relayed as before. The bill
 An idempotent replay hands back what the first call received, whatever the retry sends. A routed
 child is an ordinary call (it inherits the header), so `raw` carries its answer as received.
 `GET /calls/{id}/result` returns a metered answer by the same rule, read from the request's own
-header. Mechanism: [proxy-model](../architecture/proxy-model.md), "The provider's reported charge".
+header, and every stored answer with treg's own credentials for its provider masked. Mechanism:
+[proxy-model](../architecture/proxy-model.md), "The provider's reported charge" and "Answers that
+quote a credential".
 
 ### Caller tags, budgets and isolation
 

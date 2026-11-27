@@ -873,7 +873,9 @@ async def _read_whole_if_small(
     to `limit` (the archive's own body cap, 2 MB by default) before sending headers costs an
     own-key call the same bounded buffering a metered call already pays; an answer that does not
     fit streams on from the first byte past the limit and is NOT recorded — never a prefix. A
-    declared Content-Length above the limit skips the read entirely."""
+    declared Content-Length above the limit skips the read entirely. An upstream that fails during
+    the read is closed here, since no response carries it on; a cancelled read is left to the
+    caller's cancellation cleanup, which closes it."""
     declared = next((v for k, v in response.raw_headers if k.lower() == b"content-length"), None)
     if declared is not None:
         try:
@@ -885,15 +887,19 @@ async def _read_whole_if_small(
     consumed: list[bytes] = []
     size = 0
     complete = False
-    while size <= limit:
-        try:
-            chunk = await iterator.__anext__()
-        except StopAsyncIteration:
-            complete = True
-            break
-        raw = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8", "replace")
-        consumed.append(raw)
-        size += len(raw)
+    try:
+        while size <= limit:
+            try:
+                chunk = await iterator.__anext__()
+            except StopAsyncIteration:
+                complete = True
+                break
+            raw = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8", "replace")
+            consumed.append(raw)
+            size += len(raw)
+    except Exception:
+        await response.close()
+        raise
     if complete:
         body = b"".join(consumed)
 

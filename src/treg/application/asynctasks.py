@@ -29,6 +29,7 @@ from ..models import AsyncResourceRecord, AsyncTaskRecord, CallTask, Hold, Org, 
 from ..timeutil import utcnow_naive
 from . import call_events as call_event_app
 from .call import cost as call_cost, keyslots
+from .call.evidence import AnswerMask, platform_answer_mask
 from .call.resolve import _host_of
 from .call.types import ResolutionFailed, UpstreamRequest
 
@@ -254,6 +255,7 @@ async def views_for(
     documents = await archive.load_terminal_responses(
         [(row.call_id, row.endpoint_id) for row in rows if row.status == asynctasks.SETTLED])
     views: dict[str, dict] = {}
+    masks: dict[str, AnswerMask] = {}
     for row in rows:
         view = {
             "status": row.status, "task_id": row.task_id,
@@ -266,6 +268,9 @@ async def views_for(
         }
         body = documents.get(row.call_id)
         if body is not None:
+            if row.provider not in masks:
+                masks[row.provider] = platform_answer_mask(row.provider)
+            body = masks[row.provider].answer(body)
             try:
                 found = asynctasks.artifact(row.descriptor, json.loads(body))
             except ValueError:
@@ -612,7 +617,8 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
         # whose usage was charged. Archive failure cannot undo the committed money transaction.
         try:
             await archive.store_terminal_response(
-                snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status_code, body)
+                snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status_code,
+                platform_answer_mask(snapshot.provider).answer(body))
         except Exception:
             log.exception("could not archive terminal evidence for %s", snapshot.call_id)
     return result

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 import pytest
 from httpx import AsyncClient
 
+from conftest import auth_digest
 from treg import api as A, audit, oauth_providers
 from treg.infra import org_traffic
 from treg.domain import money as ledger
@@ -401,7 +402,8 @@ async def test_tier2_org_credential_no_tool(clients: AsyncClient):
     r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["auth"] == "Bearer MKKEY"                 # injected the provider's way
+    assert d["auth_sha256"] == auth_digest("Bearer MKKEY")  # injected the provider's way
+    assert d["auth"] == "***"                           # and masked in the answer that quotes it
     assert d["raw_path"] == EP_PATH                     # endpoint id resolved to the real path
     assert d["query"] == {"aweme_id": "7", "count": "5"}
     tools = (await clients.get("/tools")).json()
@@ -417,7 +419,7 @@ async def test_tier1_registered_tool_wins(clients: AsyncClient):
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})  # tier-2 bait
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
-    assert r.json()["auth"] == "Bearer OWN"
+    assert r.json()["auth_sha256"] == auth_digest("Bearer OWN")
     assert (await _telemetry(clients))["tool_name"] == "our-tikhub"
 
 
@@ -433,7 +435,7 @@ async def test_catalog_only_route_cannot_be_shadowed_by_same_named_team_tool(cli
 
     assert legacy.status_code == 200 and legacy.json()["auth"] == "Bearer OWN"
     assert directory.status_code == 200
-    assert directory.json()["auth"] == "Bearer CATALOG"
+    assert directory.json()["auth_sha256"] == auth_digest("Bearer CATALOG")
     assert directory.json()["raw_path"] == EP_PATH
 
 
@@ -660,7 +662,7 @@ async def test_tier1_shadows_tier4(clients: AsyncClient, platform_on):
     await clients.post("/tools", json={"name": "our-tikhub", "base_url": "https://api.tikhub.io", "secret_id": sid})
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 200 and r.json()["auth"] == "Bearer OWN"
+    assert r.status_code == 200 and r.json()["auth_sha256"] == auth_digest("Bearer OWN")
     assert await _balance(clients) == before
     assert (await _telemetry(clients))["credential_tier"] == "tool"
 
@@ -843,11 +845,17 @@ def test_fiber_ai_people_search_does_not_add_the_interpretation_fee():
     assert (estimate, unit) == (5 * credit, credit)
 
 
-async def test_unmetered_call_keeps_the_callers_encoding(clients: AsyncClient):
-    """Tier 2 (org's own key) still streams and must keep the relay contract: the caller's own
-    compression choice travels upstream untouched."""
+async def test_unmetered_call_keeps_the_callers_encoding_unless_its_answer_is_held(clients: AsyncClient):
+    """Tier 2 (org's own key) carries an injected credential, so its answer is read whole to be
+    masked and asked for identity; a team's own tool streams, and the caller's own compression
+    choice travels upstream untouched."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"accept-encoding": "gzip, br"})
+    assert r.status_code == 200, r.text
+    assert r.json()["headers"]["accept-encoding"] == "identity"
+    sid = (await clients.post("/secrets", json={"name": "own", "value": "OWN"})).json()["id"]
+    await clients.post("/tools", json={"name": "own-tool", "base_url": "http://upstream", "secret_id": sid})
+    r = await clients.get("/call/own-tool/x", headers={"accept-encoding": "gzip, br"})
     assert r.status_code == 200, r.text
     assert r.json()["headers"]["accept-encoding"] == "gzip, br"
 
@@ -1122,7 +1130,7 @@ async def test_openmart_byok_keeps_upstream_limits_and_is_unmetered(clients, ope
     response = await clients.post("/call/openmart.businesses.search", json=body)
     assert response.status_code == 200, response.text
     echoed = response.json()
-    assert echoed["auth"] == "Bearer OWN-OPENMART"
+    assert echoed["auth_sha256"] == auth_digest("Bearer OWN-OPENMART")
     assert json.loads(echoed["body"]) == body
     assert await _balance(clients) == before
     assert not [e for e in await _entries(clients) if e["kind"] in ("reserve", "settle", "release")]
@@ -1138,7 +1146,7 @@ async def test_openmart_byok_lookup_preserves_the_documented_get_array_body(
         content=json.dumps(ids), headers={"content-type": "application/json"},
     )
     assert response.status_code == 200, response.text
-    assert response.json()["auth"] == "Bearer OWN-OPENMART"
+    assert response.json()["auth_sha256"] == auth_digest("Bearer OWN-OPENMART")
     assert json.loads(response.json()["body"]) == ids
 
 
@@ -1682,7 +1690,7 @@ async def test_an_unmetered_call_is_not_stored(clients: AsyncClient):
 
     await clients.post("/secrets", json={"name": "tikhub", "value": "OWNKEY"})
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "own-key-call"})
-    assert r.status_code == 200 and r.json()["auth"] == "Bearer OWNKEY"
+    assert r.status_code == 200 and r.json()["auth_sha256"] == auth_digest("Bearer OWNKEY")
     async with session_maker() as db:
         row = (await db.execute(select(IdempotentCall).where(
             IdempotentCall.key == "own-key-call"))).scalar_one_or_none()
