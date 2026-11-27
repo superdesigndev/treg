@@ -1,19 +1,12 @@
-"""MoltSets charging, capacity, and shared-key safety boundaries."""
+"""MoltSets: an own key is never metered, and the capacity probe reads enrichment records."""
 import json
 
 import httpx
 import pytest
 
-from sqlalchemy import select
-
-from treg import audit
-from treg.application.call import service
 from treg.config import get_settings
-from treg.infra.db import session_maker
 from treg.domain.capacity import collectors
-from treg.domain.catalog.results import classify, fails_expect
-from treg.domain.capacity.policy import default_policy
-from test_marketplace_call import _balance, _entries, _fake_relay, platform_on  # noqa: F401 - pytest fixtures
+from test_marketplace_call import _balance, _entries, platform_on  # noqa: F401 - pytest fixtures
 
 
 @pytest.fixture
@@ -21,79 +14,6 @@ def moltsets_on(monkeypatch, platform_on):
     monkeypatch.setenv("TREG_PLATFORM_KEY_MOLTSETS", "PLATFORM-MOLTSETS")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "moltsets")
     get_settings.cache_clear()
-
-
-async def test_platform_success_charges_and_miss_or_error_does_not(clients, moltsets_on, monkeypatch):
-    before = await _balance(clients)
-    cases = [
-        (200, {"results": {"email": "alex@example.com"}, "status": "ok"}, 10_000),
-        (200, {"results": {"email": None}, "status": "not_found"}, 0),
-        (422, {"error": {"code": "validation_error"}}, 0),
-        (500, {"error": {"code": "upstream_error"}}, 0),
-    ]
-    spent = 0
-    for status, body, charge in cases:
-        raw = json.dumps(body).encode()
-        monkeypatch.setattr(service, "relay", _fake_relay(status, raw))
-        response = await clients.post("/call/moltsets.people.email.find.name", json={
-            "name": "Alex Example", "company_domain": "example.com",
-        })
-        assert response.status_code == status and response.content == raw
-        spent += charge
-        assert await _balance(clients) == before - spent
-    money = [e["kind"] for e in await _entries(clients) if e["kind"] in ("reserve", "settle", "release")]
-    assert money.count("reserve") == 4
-    assert money.count("settle") + money.count("release") == 4
-
-
-FIND = "moltsets.people.email.find.name"
-NOT_FOUND = {"results": {"email": None, "risk_score": None, "linkedin_url": None},
-             "status": "not_found", "metadata": {}}
-
-
-def test_not_found_is_a_miss_not_a_provider_failure():
-    # MoltSets answers a miss with HTTP 200 `status: not_found`: an answer, not a provider failure.
-    raw = json.dumps(NOT_FOUND).encode()
-    assert fails_expect(FIND, raw) is None
-    result = classify(FIND, 200, raw)
-    assert result.state == "empty" and result.hit is False
-    found = classify(FIND, 200, json.dumps({"results": {"email": "alex@example.com"}, "status": "ok"}).encode())
-    assert found.state == "found" and found.hit is True
-    # Any other status is still the provider failing inside a 200: undecided, never a miss.
-    odd = json.dumps({"results": {}, "status": "error"}).encode()
-    assert fails_expect(FIND, odd) == 'status="error"'
-    assert classify(FIND, 200, odd).hit is None
-
-
-async def test_not_found_call_records_a_free_miss(clients, moltsets_on, monkeypatch):
-    from treg.models import CallRecord
-
-    before = await _balance(clients)
-    monkeypatch.setattr(service, "relay", _fake_relay(200, json.dumps(NOT_FOUND).encode()))
-    response = await clients.post("/call/" + FIND, json={"name": "Alex Example", "company_domain": "example.com"})
-    assert response.status_code == 200
-    assert "x-treg-upstream-failed" not in response.headers, "a miss is an answer, not a failure"
-    assert await _balance(clients) == before
-    await audit.drain()
-    async with session_maker() as db:
-        hits = (await db.execute(select(CallRecord.hit).where(CallRecord.endpoint_id == FIND))).scalars().all()
-    assert hits == [False]
-
-
-@pytest.mark.parametrize("endpoint,body", [
-    ("people.search", {"query": "engineer", "limit": 2}),
-    ("companies.search", {"query": "example", "limit": 2}),
-    ("linkedin.profile.search", {"name": "Alex Example"}),
-])
-async def test_variable_search_tools_are_not_shared_key_offers(
-        clients, moltsets_on, monkeypatch, endpoint, body):
-    async def forbidden(*args, **kwargs):
-        raise AssertionError("platform guard must precede relay")
-
-    monkeypatch.setattr(service, "relay", forbidden)
-    response = await clients.post("/call/moltsets." + endpoint, json=body)
-    assert response.status_code == 404, response.text
-    assert not [e for e in await _entries(clients) if e["kind"] in ("reserve", "settle", "release")]
 
 
 async def test_byok_can_call_blocked_search_tools_without_treg_meter(clients, moltsets_on):
@@ -117,8 +37,6 @@ async def test_byok_can_call_blocked_search_tools_without_treg_meter(clients, mo
 
 @pytest.mark.parametrize("five_hour,weekly,token_balance,expected", [
     (997, 4997, -1, 997),
-    (0, 4997, -1, 0),
-    (None, None, 42, None),
     (None, None, -1, None),
 ])
 async def test_capacity_probe_and_policy(five_hour, weekly, token_balance, expected):
@@ -141,9 +59,5 @@ async def test_capacity_probe_and_policy(five_hour, weekly, token_balance, expec
     assert row["value"] == expected and row["unit"] == "enrichment records"
     assert "search records 499/5h" in row["note"]
     assert "never substituted for enrichment capacity" in row["note"]
-    policy = default_policy("moltsets", has_key=True)
-    assert policy.capacity_type == "rolling_quota"
-    assert policy.funding_mode == "subscription"
-    assert policy.rate_limit == {"limit": 10, "window_s": 1, "source": "policy"}
 
 

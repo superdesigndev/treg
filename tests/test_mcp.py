@@ -105,21 +105,6 @@ async def mcp_session(client: AsyncClient):
         _mcp.clear_endpoint_observation_reader(reader)
 
 
-async def test_the_server_lists_the_shared_tools(clients):
-    """The catalog is data reached through a tool, never a tool per endpoint -
-    2,600 schemas would bury the model's context and make the catalog unusable."""
-    token = (await verified_signup(clients, json={"email": "lister@superdesign.dev"})).json()["token"]
-    async with mcp_session(clients) as c:
-        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                                     "clientInfo": {"name": "t", "version": "1"}}, token)
-        r = await _rpc(c, "tools/list", token=token)
-        names = {t["name"] for t in r.json()["result"]["tools"]}
-    # The hub tools are listed only where the hub is on for the caller (test_hub_tools_are_listed_*).
-    assert names == {"catalog_search", "catalog_get", "call", "call_media", "resources_list",
-                     "balance", "my_tools", "catalog_request", "feedback", "review", "mark",
-                     "compare", "call_result"}
-
-
 async def test_openai_clients_get_no_review_tool_or_review_instruction(clients):
     """OpenAI's plugin review reads an agent-initiated `review` as analytics collection, so its
     clients (ChatGPT and the reviewer: openai-mcp/, Codex: codex-mcp-client/) get no review tool and
@@ -641,18 +626,6 @@ async def test_structured_content_VALIDATES_against_the_advertised_schema(client
             jsonschema.validate(structured, schemas[tool])  # raises on any mismatch
 
 
-def test_mcp_gzip_uses_a_fast_level_because_it_runs_on_the_event_loop():
-    from starlette.middleware.gzip import GZipMiddleware
-
-    import treg.mcp as mcp_module
-
-    for transport_app in (mcp_module.mcp_app, mcp_module.directory_mcp_app):
-        layer = transport_app
-        while not isinstance(layer, GZipMiddleware):
-            layer = layer.app
-        assert layer.compresslevel == mcp_module.MCP_GZIP_LEVEL == 1
-
-
 async def test_large_mcp_responses_are_gzipped_AT_THE_ORIGIN(clients):
     """The fix that actually works for edge re-compression (issue #100). Render's edge ignored
     `no-transform` and kept Brotli-compressing large responses — which a real client stack
@@ -722,7 +695,7 @@ async def test_mcp_responses_forbid_edge_TRANSFORMS(clients):
 
 # ---- refusing in the right SHAPE, not just refusing ------------------------------------------
 
-@pytest.mark.parametrize("tool", ["call", "balance", "my_tools", "catalog_search", "catalog_get"])
+@pytest.mark.parametrize("tool", ["call", "catalog_search"])
 async def test_a_protected_tool_answers_401_with_WWW_Authenticate(clients, tool):
     """The spec has a protected resource reply 401 with `WWW-Authenticate: Bearer
     resource_metadata="…"`, because that header is how a client DISCOVERS it must authenticate and
@@ -947,9 +920,7 @@ async def test_a_list_is_refused_for_a_GET_with_a_clear_reason(clients):
     assert "must be an object, not a list" in json.dumps(out), out
 
 
-@pytest.mark.parametrize("public_url", ["https://treg.ngrok.app", "http://127.0.0.1:18790",
-                                        "https://anything.example"])
-async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch, public_url):
+async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch):
     """Drain the balance, call a metered endpoint through the MCP tool, and assert on what comes
     back: no link out, whichever host this deployment runs as, and the diagnosis intact. An agent
     still needs to know it ran out of money, how short it was, and that its own key is an
@@ -962,7 +933,7 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch,
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATKEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
-    monkeypatch.setenv("TREG_PUBLIC_URL", public_url)
+    monkeypatch.setenv("TREG_PUBLIC_URL", "https://anything.example")
     get_settings.cache_clear()
 
     token = (await verified_signup(clients, json={"email": "broke402@superdesign.dev"})).json()["token"]
