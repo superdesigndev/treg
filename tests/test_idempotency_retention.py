@@ -369,19 +369,110 @@ async def test_a_trim_with_only_young_rows_left_stops_without_reading_them(clien
     assert (result.stopped, result.complete, result.examined, result.resume_after) == ("young", True, 0, 0)
 
 
-async def test_the_trim_stops_at_its_time_budget_and_keeps_its_place(clients, platform_on):
+async def _linked_answers(clients, prefix: str, count: int) -> list[int]:
     ids = []
-    for n in range(3):
-        row_id = await _seed_answer(clients, f"budget-{n}", body=b'{"n":%d}' % n)
-        await _link(row_id, call_ref=f"call-budget-{n}", archived=b'{"n":%d}' % n)
+    for n in range(count):
+        body = b'{"%s":%d}' % (prefix.encode(), n)
+        row_id = await _seed_answer(clients, f"{prefix}-{n}", body=body)
+        await _link(row_id, call_ref=f"call-{prefix}-{n}", archived=body)
         ids.append(row_id)
-    ticks = iter([0.0, 5.0, 11.0, 99.0])
-    result = await idempotency.trim_archived_answers(pause_s=0, batch_size=1, max_seconds=10,
-                                                     clock=lambda: next(ticks))
+    return ids
+
+
+class _Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _advance_on_trim_update(clock: _Clock, seconds: float):
+    """Move `clock` on after every trim UPDATE: a page whose updates are slow."""
+    def after(conn, cursor, statement, params, context, executemany):
+        if statement.lstrip().upper().startswith("UPDATE IDEMPOTENTCALL"):
+            clock.now += seconds
+    engine = session_maker.kw["bind"].sync_engine
+    event.listen(engine, "after_cursor_execute", after)
+    return lambda: event.remove(engine, "after_cursor_execute", after)
+
+
+async def test_the_trim_stops_at_its_time_budget_between_pages_and_keeps_its_place(clients, platform_on):
+    ids = await _linked_answers(clients, "budget", 3)
+    clock = _Clock()
+    stop = _advance_on_trim_update(clock, 6)
+    try:
+        result = await idempotency.trim_archived_answers(pause_s=0, batch_size=1, max_seconds=10, clock=clock)
+    finally:
+        stop()
     assert (result.stopped, result.complete, result.batches, result.trimmed) == ("budget", False, 2, 2)
     assert result.resume_after == ids[1]
     rest = await idempotency.trim_archived_answers(pause_s=0, after=result.resume_after)
     assert (rest.trimmed, rest.resume_after) == (1, ids[2])
+
+
+async def test_the_time_budget_stops_inside_a_slow_page_and_resumes_at_the_first_row_left(clients, platform_on):
+    ids = await _linked_answers(clients, "slow-page", 3)
+    clock = _Clock()
+    stop = _advance_on_trim_update(clock, 7)
+    try:
+        result = await idempotency.trim_archived_answers(pause_s=0, max_seconds=10, clock=clock)
+    finally:
+        stop()
+    assert (result.stopped, result.trimmed, result.resume_after) == ("budget", 2, ids[1])
+    async with session_maker() as db:
+        assert (await db.get(IdempotentCall, ids[2])).response_body is not None   # committed up to the stop
+    rest = await idempotency.trim_archived_answers(pause_s=0, after=result.resume_after)
+    assert (rest.trimmed, rest.resume_after) == (1, ids[2])
+
+
+async def test_a_renewed_pending_claim_neither_ends_the_trim_nor_is_passed_over(clients, platform_on):
+    pending = await _seed_answer(clients, "renewed-claim", status="pending")   # its lease just renewed created_at
+    old = await _linked_answers(clients, "after-claim", 1)
+    for _ in range(2):
+        result = await idempotency.trim_archived_answers(pause_s=0, batch_size=1)
+        assert result.resume_after < pending
+    async with session_maker() as db:
+        assert (await db.get(IdempotentCall, old[0])).response_body is None
+    assert result.trimmed == 0 and result.stopped == "end"   # the second pass had nothing left to drop
+
+
+async def test_a_row_whose_archive_key_was_held_is_tried_again_from_the_saved_place(clients, platform_on, monkeypatch):
+    from treg import archive
+
+    ids = await _linked_answers(clients, "held-key", 2)
+    real = archive.lock_keys_for_share
+
+    async def first_key_held(session, key_hashes):
+        return (await real(session, key_hashes)) - {"key-call-held-key-0"}
+    monkeypatch.setattr(archive, "lock_keys_for_share", first_key_held)
+    first = await idempotency.trim_archived_answers(pause_s=0)
+    assert (first.trimmed, first.resume_after) == (1, 0)
+    monkeypatch.setattr(archive, "lock_keys_for_share", real)
+    again = await idempotency.trim_archived_answers(pause_s=0, after=first.resume_after)
+    assert (again.trimmed, again.resume_after) == (1, ids[1])
+
+
+async def test_each_committed_page_reports_its_place_before_a_later_page_fails(clients, platform_on):
+    ids = await _linked_answers(clients, "progress", 2)
+    opened = 0
+
+    def failing_on_third_session():
+        nonlocal opened
+        opened += 1
+        if opened == 3:  # the cutoff read, page one, then page two
+            raise RuntimeError("page two is unreadable")
+        return session_maker()
+    saved: list[int] = []
+
+    async def save(after: int) -> None:
+        saved.append(after)
+    with pytest.raises(RuntimeError):
+        await idempotency.trim_archived_answers(pause_s=0, batch_size=1, on_progress=save,
+                                                make_session=failing_on_third_session)
+    assert saved == [ids[0]]
+    async with session_maker() as db:
+        assert (await db.get(IdempotentCall, ids[0])).response_body is None
 
 
 async def test_a_cursor_past_the_table_starts_the_trim_from_the_front(clients, platform_on):
@@ -492,3 +583,16 @@ async def test_a_second_prune_run_on_postgres_answers_busy_and_deletes_nothing(c
         assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1
 
 
+async def test_an_archive_key_locked_on_postgres_is_trimmed_by_the_next_pass(clients, platform_on):
+    _postgres_only()
+    from treg.models import ArchiveKey
+
+    ids = await _linked_answers(clients, "pg-held", 1)
+    async with session_maker() as holder:
+        await holder.execute(select(ArchiveKey).where(ArchiveKey.key_hash == "key-call-pg-held-0")
+                             .with_for_update())
+        first = await idempotency.trim_archived_answers(pause_s=0)
+        await holder.rollback()
+    assert (first.trimmed, first.resume_after) == (0, 0)
+    again = await idempotency.trim_archived_answers(pause_s=0, after=first.resume_after)
+    assert (again.trimmed, again.resume_after) == (1, ids[0])
