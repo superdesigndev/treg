@@ -6,7 +6,7 @@ black/white. Wordmark is set in the site's `--mono` stack (SF Mono, 700).
 
 | File | Size | Use |
 |---|---|---|
-| `avatar-dark-400.png` | 400×400 | **Profile picture** (white ▚ on black) |
+| `avatar-dark-400.png` | 400×400 | **Profile picture and directory icon** (white ▚ on edge-to-edge black) |
 | `avatar-light-400.png` | 400×400 | Profile picture, light |
 | `avatar-dark.png` / `avatar-light.png` | 512×512 | Same, higher-res |
 | `avatar-dark.svg` / `avatar-light.svg` | vector | Source; re-render at any size |
@@ -44,6 +44,10 @@ for x,y in ((111,111),(260.5,260.5)):
     d.rounded_rectangle([x*k,y*k,(x+140.5)*k-1,(y+140.5)*k-1], radius=int(20*k), fill='white')
 img.save('out.png')"
 ```
+
+For the 400×400 dark directory icon, render `avatar-dark.svg` on an opaque
+black canvas. This keeps the outer corners black when a listing displays the
+icon as a square. Copy that export to `src/treg/web/media/brand/logo-400.png`.
 
 ## Used beyond X
 

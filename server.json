@@ -9,6 +9,13 @@
   },
   "version": "0.33.0",
   "websiteUrl": "https://treg.to",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/superdesigndev/treg/4b4d16db49f4138552022771994600f4daf21a2b/src/treg/web/media/brand/logo-400.png",
+      "mimeType": "image/png",
+      "sizes": ["400x400"]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",

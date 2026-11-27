@@ -6,6 +6,7 @@ mount so directories, partners and press can hot-link a stable URL:
 | URL | What |
 |---|---|
 | `/media/brand/logo.png` | 512×512 square mark, white ▚ on black (= `avatar-dark.png`). The Organization JSON-LD `logo`. |
+| `/media/brand/logo-400.png` | 400×400 directory icon, white ▚ on edge-to-edge black (= `avatar-dark-400.png`). |
 | `/media/brand/logotype.png` | 1400×440 wordmark, white on transparent (= `wordmark-white.png`). For dark surfaces. |
 | `/media/brand/wordmark-black.png` | Same wordmark, black on transparent. For light surfaces. |
 | `/media/brand/mark-{black,white}.svg` | The mark alone, transparent, vector. |
