@@ -758,18 +758,16 @@ adapters:
           linkedin_url: person.linkedin_url, location: "join(person.city, person.country)"}
     miss: "person == null"
   # GetLeads.io takes an `items` list and answers one result per item; treg sends one item.
-  # Its documented field names and its REST keys differ (company_name / co_name), so both are read.
+  # Enrich answers name the employer and place differently from search rows.
   getleadsio.people.enrich.from_email:
     accepts: [[email]]
     test_identity: {email: nobody-treg-20260916@example.invalid}
     in_expr: {body.items: "list(obj('email', email))"}
     out: {full_name: "coalesce(results[0].data.full_name, join(results[0].data.first_name, results[0].data.last_name))",
           first_name: "results[0].data.first_name", last_name: "results[0].data.last_name",
-          title: "coalesce(results[0].data.current_title, results[0].data.job_title)",
-          company: "coalesce(results[0].data.company_name, results[0].data.co_name, results[0].data.current_employer)",
-          company_domain: "coalesce(results[0].data.company_domain, results[0].data.org_domain)",
-          linkedin_url: "results[0].data.linkedin_url",
-          location: "place(results[0].data.contact_city, results[0].data.contact_state, results[0].data.contact_country)"}
+          title: "results[0].data.current_title", company: "results[0].data.current_company_name",
+          company_domain: "results[0].data.org_domain", linkedin_url: "results[0].data.linkedin_url",
+          location: "place(results[0].data.location_city, results[0].data.location_state, results[0].data.location_country)"}
     miss: "coalesce(results[0].success, false) == false"
   getleadsio.people.enrich.from_linkedin:
     accepts: [[linkedin_url]]
@@ -778,11 +776,9 @@ adapters:
     const: {body.limit_per_item: 1}
     out: {full_name: "coalesce(results[0].data.full_name, join(results[0].data.first_name, results[0].data.last_name))",
           first_name: "results[0].data.first_name", last_name: "results[0].data.last_name",
-          title: "coalesce(results[0].data.current_title, results[0].data.job_title)",
-          company: "coalesce(results[0].data.company_name, results[0].data.co_name, results[0].data.current_employer)",
-          company_domain: "coalesce(results[0].data.company_domain, results[0].data.org_domain)",
-          linkedin_url: "results[0].data.linkedin_url",
-          location: "place(results[0].data.contact_city, results[0].data.contact_state, results[0].data.contact_country)"}
+          title: "results[0].data.current_title", company: "results[0].data.current_company_name",
+          company_domain: "results[0].data.org_domain", linkedin_url: "results[0].data.linkedin_url",
+          location: "place(results[0].data.location_city, results[0].data.location_state, results[0].data.location_country)"}
     miss: "coalesce(results[0].success, false) == false"
   getleadsio.people.enrich.from_person:
     accepts: [[first_name, last_name, domain]]
@@ -790,11 +786,9 @@ adapters:
     in_expr: {body.items: "list(obj('first_name', first_name, 'last_name', last_name, 'email_domain', domain))"}
     out: {full_name: "coalesce(results[0].data.full_name, join(results[0].data.first_name, results[0].data.last_name))",
           first_name: "results[0].data.first_name", last_name: "results[0].data.last_name",
-          title: "coalesce(results[0].data.current_title, results[0].data.job_title)",
-          company: "coalesce(results[0].data.company_name, results[0].data.co_name, results[0].data.current_employer)",
-          company_domain: "coalesce(results[0].data.company_domain, results[0].data.org_domain)",
-          linkedin_url: "results[0].data.linkedin_url",
-          location: "place(results[0].data.contact_city, results[0].data.contact_state, results[0].data.contact_country)"}
+          title: "results[0].data.current_title", company: "results[0].data.current_company_name",
+          company_domain: "results[0].data.org_domain", linkedin_url: "results[0].data.linkedin_url",
+          location: "place(results[0].data.location_city, results[0].data.location_state, results[0].data.location_country)"}
     miss: "coalesce(results[0].success, false) == false"
   prospeo.people.enrich:
     accepts: [[email], [linkedin_url], [full_name, domain], [first_name, last_name, domain]]
@@ -1084,12 +1078,11 @@ adapters:
     test_identity: {company_domain: treg-nonexistent-20260916.invalid}
     out: {people: contacts, count: total_available}
     miss: "contacts == []"
-    row: {name: "coalesce(full_name, join(first_name, last_name))",
-          title: "coalesce(current_title, job_title)",
-          company: "coalesce(company_name, co_name, current_employer)",
-          company_domain: "coalesce(company_domain, org_domain)",
-          location: "place(contact_city, contact_state, contact_country)",
-          profile_url: linkedin_url, email: "coalesce(email, work_email)", email_status: email_status}
+    row: {name: "coalesce(full_name, join(first_name, last_name))", title: current_title,
+          company: company_name, company_domain: company_domain,
+          location: "coalesce(contact_location, place(contact_city, contact_state, contact_country))",
+          profile_url: linkedin_url, email: work_email, email_status: email_status,
+          summary: linkedin_headline}
   prospeo.people.search:
     accepts: [[q], [title, company_domain], [company_domain], [title]]
     in: {q: body.filters.person_name_or_job_title,
