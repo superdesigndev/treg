@@ -1804,7 +1804,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     body_observation = archive.archive_bodies.StorageReport(
                         call_ref=call_ref, emit=lambda props: analytics.capture(
                             audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
-                    archive_key_hash, archive_content_hash = archive.record(
+                    archive_key_hash, archive_content_hash = await archive.record_now(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
                                             list(request.query_params.multi_items()),
@@ -1831,7 +1831,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     body_observation = archive.archive_bodies.StorageReport(
                         call_ref=call_ref, emit=lambda props: analytics.capture(
                             audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
-                    archive_key_hash, archive_content_hash = archive.record(
+                    archive_key_hash, archive_content_hash = await archive.record_now(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
                                             list(request.query_params.multi_items()),

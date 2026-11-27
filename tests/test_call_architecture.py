@@ -38,7 +38,7 @@ _DATAPLANE_DERIVED_WRITES = {
     # Body objects preserve the paid response. Upload completes before the archive DB transaction
     # starts, and only its verified content hash can be published on the snapshot.
     "archive_body_object": (
-        (service._execute_call, "archive.record"),
+        (service._execute_call, "archive.record_now"),
         (archive._store, "archive_bodies.prepare"),
         (archive_bodies.prepare, "_store.put"),
     ),
@@ -280,7 +280,7 @@ _DERIVED_WRITE_FILES = {
         "fair_share.acquire",
         "rate_observe.observe",
         "rate_observe.release",
-        "archive.record",
+        "archive.record_now",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
         "async_task_app.remember_relayed_task",
@@ -366,7 +366,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/asynctasks.py", "_finish_balance", "money_admission.admit"),
     ("application/hub/runner.py", "_reserve_price", "reserve_admission"),
     ("application/hub/runner.py", "_close_price", "money_admission.admit"),
-    ("application/call/service.py", "_execute_call", "archive.record"),
+    ("application/call/service.py", "_execute_call", "archive.record_now"),
     ("archive.py", "_store", "archive_bodies.prepare"),
     ("archive_bodies.py", "prepare", "_store.put"),
     ("application/billing.py", "maybe_schedule_autotopup", "loop.create_task"),

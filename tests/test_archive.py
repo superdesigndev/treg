@@ -1164,6 +1164,83 @@ async def test_a_hash_only_answer_says_so(clients: AsyncClient, shadow, monkeypa
     assert d["request"]["method"] == "GET"            # the question is still on file
 
 
+async def _fill_archive_queue(monkeypatch):
+    """Hold the pending budget with tasks that never call `_store`, so a later persist can.
+
+    `record()` sheds when the next body would exceed the cap. Dummy tasks stay blocked
+    until the caller sets the returned event; they do not complete just because `_store`
+    itself is unpatched.
+    """
+    import asyncio as aio
+
+    release = aio.Event()
+
+    async def linger():
+        await release.wait()
+
+    monkeypatch.setattr(archive, "_pending_bytes", 0)
+    archive._pending.clear()
+    for n in (400, 400):
+        task = aio.create_task(linger())
+        archive._pending.add(task)
+        archive._pending_bytes += n
+    assert archive._pending_bytes == 800
+    monkeypatch.setattr(archive, "_MAX_PENDING_BYTES", 800)
+    return release
+
+
+async def test_a_shed_recording_is_still_retrievable_on_result(clients: AsyncClient, shadow,
+                                                                monkeypatch):
+    """A caller-facing metered 2xx whose in-process archive queue is full must still land on
+    GET /calls/{id}/result. Hashes without a key make has_result look true and the route reports
+    expired, which is the defect: the identities are computed even when the write is shed."""
+    release = await _fill_archive_queue(monkeypatch)
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r.status_code == 200, r.text
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        assert row["has_result"] is True
+        got = (await clients.get(f"/calls/{row['id']}/result")).json()
+        assert got["stored"] is True, got
+        assert got["note"] is None, got
+        assert got["response"]["body_text"] == r.text
+        async with session_maker() as s:
+            keys = (await s.execute(select(ArchiveKey))).scalars().all()
+        assert keys, "the shed caller answer must still write an ArchiveKey"
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+
+
+async def test_a_failed_fallback_write_does_not_advertise_a_result(clients: AsyncClient, shadow,
+                                                                   monkeypatch):
+    """If the on-request fallback cannot land, the call row must not claim has_result."""
+    release = await _fill_archive_queue(monkeypatch)
+
+    async def boom(**kw):
+        raise RuntimeError("store failed")
+
+    monkeypatch.setattr(archive, "_store", boom)
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r.status_code == 200, r.text
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        assert row["has_result"] is False
+        got = (await clients.get(f"/calls/{row['id']}/result")).json()
+        assert got["stored"] is False
+        assert "expired" not in (got["note"] or "")
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+
 async def test_a_result_is_scoped_to_the_team(clients: AsyncClient, shadow):
     assert (await clients.get(f"/call/{EP}?aweme_id=7&count=5")).status_code == 200
     await archive.drain()

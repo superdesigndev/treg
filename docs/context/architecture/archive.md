@@ -390,6 +390,13 @@ body), and failures logged at ERROR so a lost recording clears `FaultCaptureHand
 before `analytics.drain()` and removes the tasks it gathered itself (the busy-spin this avoids is
 pinned in `tests/test_audit.py`). A recorder crash cannot fail a call.
 
+The HTTP call path records through `record_now`. If the in-process queue would shed a
+caller-facing answer, that write runs on the request instead of being dropped, so
+`GET /calls/{id}/result` can resolve it; hashes are omitted from the call row if that
+write fails. The fallback may delay the response under archive overload, but it does not
+fail the call. Refresh and other off-request recordings still shed. The result route waits
+for an in-flight recording of the same key before resolving.
+
 Every write (`_store_locked`, `_touch_write`, `prune_once`, `refresh_once`) uses
 `background_session_maker` (`tests/test_db_pool_isolation.py`). At most two recordings touch the
 database at once (`_MAX_CONCURRENT_WRITES`, paid per process); the 30 s bound covers wait plus
@@ -410,8 +417,8 @@ hashes depend on.
 
 ## The call-archive link
 
-`record()` returns `(key_hash, content_hash)`, which the call service writes onto `CallRecord`
-(`archive_key_hash`, `archive_content_hash`). `archive.resolve_result` walks row, key, newest
+`record()` / `record_now()` return `(key_hash, content_hash)`, which the call service writes onto `CallRecord`
+(`archive_key_hash`, `archive_content_hash`) when the write was scheduled or the on-request fallback landed. `archive.resolve_result` walks row, key, newest
 snapshot with that content hash, `body_of` carrier, and returns the pre-injection request shape
 plus the answer; a hash-only version reports `stored: false`, and a key or answer no longer on
 file (erasure, row retention) returns None, which the route reports as `expired`. `GET /calls/{id}/result` exposes it

@@ -294,6 +294,9 @@ def content_hash(body: bytes) -> str:
 # retried pass) stay at WARNING — the line is whether data was actually lost.
 _log = logging.getLogger("treg.archive")
 _pending: set[asyncio.Task] = set()
+# In-flight recordings by question, so GET /calls/{id}/result can wait for a write this
+# process has already scheduled but not yet committed.
+_pending_by_key: dict[str, asyncio.Task] = {}
 _MAX_PENDING = 512
 # Memory bound: each pending task holds its body bytes in a closure, so the task cap alone allows
 # gigabytes in the worst case. This cap sheds recordings when total pending body bytes exceeds the
@@ -386,6 +389,7 @@ def record(
     origin_org_id: int | None = None,
     scope: str = "",
     response_headers=None,
+    defer_shed: bool = False,
 ) -> tuple[str, str]:
     """Schedule one observation of a catalog answer. Returns immediately; the write runs
     off-request on its own session. Call sites gate on `recording()` and 2xx — this function
@@ -429,29 +433,70 @@ def record(
         # A distinct rejected upload preserves its body in DB in either R2 write mode.
 
     body_len = len(body)
-    # Shed on EITHER count OR bytes — whichever bound bites first. The bytes bound prevents OOM
-    # when a few large bodies queue while the semaphore is full; the count bound is the legacy
-    # backstop for many small bodies (archive_max_body_bytes is 2 MB, so 512 × 2 MB = 1 GB).
-    if len(_pending) >= _MAX_PENDING or _pending_bytes + body_len > _MAX_PENDING_BYTES:
-        observation.finish(reason="db_queue_full" if len(_pending) >= _MAX_PENDING else "db_bytes_full")
-        return kh, ch
-    _pending_bytes += body_len
-    task = asyncio.create_task(_store(
+    store_kwargs = dict(
         method=method, endpoint_id=endpoint_id, provider=provider, url=url,
         caller_body=caller_body, headers=headers, status_code=status_code,
         media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
         observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope,
-            reported_headers=reported))
+        reported_headers=reported)
+    # Shed on EITHER count OR bytes — whichever bound bites first. The bytes bound prevents OOM
+    # when a few large bodies queue while the semaphore is full; the count bound is the legacy
+    # backstop for many small bodies (archive_max_body_bytes is 2 MB, so 512 x 2 MB = 1 GB).
+    if len(_pending) >= _MAX_PENDING or _pending_bytes + body_len > _MAX_PENDING_BYTES:
+        if defer_shed:
+            # The HTTP call path writes this on the request instead of dropping a paid answer.
+            observation.persist_args = store_kwargs
+            return kh, ch
+        observation.finish(reason="db_queue_full" if len(_pending) >= _MAX_PENDING else "db_bytes_full")
+        return kh, ch
+    _pending_bytes += body_len
+    task = asyncio.create_task(_store(**store_kwargs))
     _pending.add(task)
+    _pending_by_key[kh] = task
     # Release bytes AND task when done. NOT redundant with drain()'s own removal: on a running
-    # server drain() never fires, and this callback is the only exit from `_pending` — without it
+    # server drain() never fires, and this callback is the only exit from _pending — without it
     # the set fills to _MAX_PENDING and record() sheds every recording from then on.
     def done(task):
         _task_done(task, body_len)
+        if _pending_by_key.get(kh) is task:
+            del _pending_by_key[kh]
         if task.cancelled():
             observation.finish(reason="cancelled")
     task.add_done_callback(done)
     return kh, ch
+
+
+_STORE_FAIL = frozenset({"record_failed", "record_timeout", "cancelled"})
+
+
+async def record_now(**kwargs) -> tuple[str | None, str | None]:
+    """Record a caller-facing answer; if the off-request queue would shed it, write it here.
+
+    Hashes are omitted when that fallback write fails, so the call row does not advertise a
+    result GET /calls/{id}/result cannot resolve. Off-request callers keep using record().
+    """
+    observation = kwargs.get("observation") or archive_bodies.StorageReport()
+    kwargs["observation"] = observation
+    kh, ch = record(**kwargs, defer_shed=True)
+    args = getattr(observation, "persist_args", None)
+    if args is None:
+        return kh, ch
+    try:
+        await _store(**args)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - recording never fails the call
+        return None, None
+    if getattr(observation, "drop_reason", None) in _STORE_FAIL:
+        return None, None
+    return kh, ch
+
+
+async def await_pending(key_hash: str) -> None:
+    """Wait for an in-process recording of this question, if one is still running."""
+    task = _pending_by_key.get(key_hash)
+    if task is not None:
+        await asyncio.gather(task, return_exceptions=True)
 
 
 def _task_done(task: asyncio.Task, body_len: int) -> None:
