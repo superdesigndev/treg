@@ -527,6 +527,13 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
         # A concurrent send of the same kept credential may have recorded it since the check.
         if (resent := await _resent_kept(paid, rail, credential)) is not None:
             raise resent from exc
+        # A refused credential on a recovery's terms (its challenge expired, say) keeps that
+        # recovery: spent, past its deadline, or offered its proof again, never ordinary terms.
+        if (recovery := _issued_recovery(rail.offered_terms(credential),
+                                         paid.offer.resource_url)) is not None:
+            if await _recovery_spent(recovery[0]):
+                raise _recovery_used(paid) from exc
+            raise await _recovery_again(paid, rail, *recovery) from exc
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
     # A kept transfer's recovery that already ran its call answers that first, before the price,
     # the credit or a replay could ask the wallet to pay.

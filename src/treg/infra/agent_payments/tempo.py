@@ -110,6 +110,9 @@ class MppTempoRail:
         url = offer.path + (f"?{offer.query}" if offer.query else "")
         return Request(method=offer.method, url=f"https://payment.invalid{url}")
 
+    def offered_terms(self, credential: str) -> str:
+        return _offered_terms(credential)
+
     def proves(self, offer: Offer) -> bool:
         # Clients refuse to sign a proof whose realm is not the hostname they called (mppx throws
         # instead of choosing another challenge), so a request to any other host gets none.
@@ -246,6 +249,23 @@ class MppTempoRail:
         if head_time > payment.expires_at + EXPIRY_GRACE:
             return Lookup("absent", reason="expired_unsettled")
         return Lookup("pending", reason="not_yet_mined")
+
+
+def _parsed(credential: str):
+    from mpp import Credential
+
+    try:
+        return Credential.from_authorization(credential)
+    except Exception as exc:
+        raise PaymentRejected("malformed_credential", "the Payment credential cannot be parsed") from exc
+
+
+def _offered_terms(credential: str) -> str:
+    try:
+        terms = (_echoed_meta(_parsed(credential)) or {}).get("terms", "")
+    except PaymentRejected:
+        return ""
+    return terms if isinstance(terms, str) else ""
 
 
 def _terms(offer: Offer) -> dict[str, str] | None:

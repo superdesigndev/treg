@@ -103,6 +103,19 @@ class X402Rail:
             required["extensions"] = {EXTENSION_KEY: extension}
         return [("PAYMENT-REQUIRED", encode_payment_required(required))]
 
+    def offered_terms(self, credential: str) -> str:
+        from mpp.x402 import X402FormatError, decode_payment_signature, siwx
+
+        try:
+            if credential.startswith(SIWX_MARK):
+                terms = siwx.decode(credential[len(SIWX_MARK):])["nonce"]
+            else:
+                terms = decode_payment_signature(credential)["accepted"]["extra"][TERMS_KEY]
+        except (X402FormatError, siwx.InvalidProofError, ValueError, KeyError, TypeError,
+                AttributeError):
+            return ""
+        return terms if isinstance(terms, str) else ""
+
     async def _verify_proof(self, value: str, offer: Offer) -> Verified:
         from mpp.x402 import siwx
 

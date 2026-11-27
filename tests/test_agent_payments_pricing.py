@@ -613,6 +613,49 @@ async def test_a_recovery_short_of_credit_pays_as_that_recovery(
     assert len(calls) == 1
 
 
+async def test_a_refused_recovery_proof_keeps_its_recovery(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """A recovery proof its rail refuses (its challenge expired) still names its recovery: before
+    the recovery ran it is offered that recovery's proof again, after it the final 409, never
+    ordinary terms that would run the call a second time."""
+    from mpp import Credential
+    from treg.infra.agent_payments import PaymentRejected
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "fd" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert kept.status_code == 402, kept.text
+    proof = await _mpp_proof(kept, account)
+    rail = next(r for r in agent_payments._rails if r.protocol == "mpp")
+    verify = rail.verify
+
+    async def expired(*args, **kwargs):
+        raise PaymentRejected("payment_expired", "the challenge expired")
+
+    monkeypatch.setattr(rail, "verify", expired)
+    offered = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+    assert offered.status_code == 402, offered.text
+    assert {c.request["amount"] for c in _mpp_challenges(offered)} == {"0"}
+    assert "payment-required" not in offered.headers
+    monkeypatch.setattr(rail, "verify", verify)
+    run = await wallet.get(f"/call/{EP}?aweme_id=7",
+                           headers={"Authorization": await _mpp_proof(offered, account)})
+    assert run.status_code == 200, run.text
+    monkeypatch.setattr(rail, "verify", expired)
+    retried = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+    assert retried.status_code == 409, retried.text
+    assert retried.json()["detail"]["reason"] == "challenge_used"
+    assert "www-authenticate" not in retried.headers
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("switch", [False, True], ids=["switch-off", "switch-on"])
 async def test_a_challenge_issued_with_the_configured_realm_still_pays(
         wallet: AsyncClient, payments_on, chain, monkeypatch, switch):

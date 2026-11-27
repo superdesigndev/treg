@@ -122,6 +122,11 @@ class PaymentRail(Protocol):
 
     async def settle(self, verified: Verified, offer: Offer) -> Settlement: ...
 
+    # The terms token a credential echoes, read without verifying it ("" when it carries none or
+    # cannot be read): treg authenticates the token itself, so a refused credential still names
+    # the terms it was offered.
+    def offered_terms(self, credential: str) -> str: ...
+
     async def find(self, payment: Unconfirmed) -> Lookup: ...
 
 
