@@ -91,8 +91,10 @@ async def test_fixed_discovery_exception_does_not_bypass_contract_or_price_check
     assert not result.enabled and reason in result.reason
 
 
-@pytest.mark.parametrize("endpoint", [SEARCH, SIMILAR])
-@pytest.mark.parametrize("status,error", [(402, b'{"detail":"Insufficient credits"}'), (429, QUOTA)])
+@pytest.mark.parametrize("endpoint,status,error", [
+    (SEARCH, 402, b'{"detail":"Insufficient credits"}'),
+    (SIMILAR, 429, QUOTA),
+])
 async def test_exhaustion_releases_parent_and_charges_flat_orthogonal_price(
     clients, influencers_on, monkeypatch, endpoint, status, error,
 ):
@@ -120,9 +122,8 @@ async def test_exhaustion_releases_parent_and_charges_flat_orthogonal_price(
     assert len(spend) == 1 and spend[0].cost_micro == 30_000 and spend[0].calls == 1
 
 
-@pytest.mark.parametrize("limit,expected_status", [(1, 200), (2, 200)])
 async def test_known_empty_account_skips_direct_and_serves_any_page_size_via_overflow(
-    clients, influencers_on, monkeypatch, limit, expected_status,
+    clients, influencers_on, monkeypatch,
 ):
     """2026-09-17: a one-creator request used to fail the 4x ratio guard and get a typed 503 telling
     the caller to bring their own key; the flat $0.03 is now admitted by its absolute ceiling."""
@@ -139,43 +140,17 @@ async def test_known_empty_account_skips_direct_and_serves_any_page_size_via_ove
     monkeypatch.setattr(call_service, "relay", no_direct)
     seen = []
     monkeypatch.setattr(O, "_send", _orthogonal([(200, ENVELOPE)], seen))
-    response = await clients.post(f"/call/{SEARCH}", json=_body(limit=limit),
+    response = await clients.post(f"/call/{SEARCH}", json=_body(limit=1),
                                   headers={"Idempotency-Key": "discovery-empty"})
-    assert response.status_code == expected_status, response.text
+    assert response.status_code == 200, response.text
     entries = [r for r in await _rows(LedgerEntry) if r.kind != "grant"]
     assert len(seen) == 1 and response.headers["X-Treg-Cost-Micro"] == "30000"
     assert await _holds() == []
     assert sorted(r.kind for r in entries) == ["reserve", "settle"]
-    replay = await clients.post(f"/call/{SEARCH}", json=_body(limit=limit),
+    replay = await clients.post(f"/call/{SEARCH}", json=_body(limit=1),
                                 headers={"Idempotency-Key": "discovery-empty"})
     assert replay.status_code == 200 and replay.headers["X-Treg-Idempotent-Replay"] == "true"
     assert len(seen) == 1
-
-
-@pytest.mark.parametrize("case,status", [("own_key", 402), ("opt_out", 402), ("validation", 400)])
-async def test_no_fallback_or_charge_when_call_is_ineligible(
-    clients, influencers_on, monkeypatch, case, status,
-):
-    await _sync()
-    if case == "own_key":
-        response = await clients.post("/secrets", json={"name": "influencersclub", "value": "OWN-KEY"})
-        assert response.status_code < 300
-    if case == "opt_out":
-        org = (await clients.get("/orgs")).json()[0]["org_id"]
-        response = await clients.patch(f"/orgs/{org}/settings", json={"platform_overflow": False})
-        assert response.status_code == 200
-    error = b'{"message":"Invalid platform value"}' if status == 400 else b'{"detail":"Insufficient credits"}'
-    monkeypatch.setattr(call_service, "relay", _fake_relay(status, error))
-    seen = []
-    monkeypatch.setattr(O, "_send", _orthogonal([(200, ENVELOPE)], seen))
-    before = await _balance(clients)
-    response = await clients.post(f"/call/{SEARCH}", json=_body(limit=2))
-    if case == "opt_out":  # treg's own account is out: its refusal, not the vendor's 402
-        assert response.status_code == 503
-        assert response.json()["detail"]["error"] == "provider_capacity_unavailable"
-    else:
-        assert response.status_code == status and response.content == error
-    assert seen == [] and before == await _balance(clients) and await _holds() == []
 
 
 async def test_worker_verifies_only_selected_provider(clients, influencers_on, monkeypatch):

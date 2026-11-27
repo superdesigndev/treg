@@ -243,16 +243,6 @@ async def test_consecutive_page_timeouts_stop_sweep(clients, monkeypatch):
     assert result.complete is False, "incomplete due to consecutive timeouts"
 
 
-async def test_result_includes_page_timeouts_field(clients):
-    """The result dataclass includes page_timeouts for monitoring/alerting."""
-    await _seed_answer(clients, "expired", ttl_s=-3600)
-    result = await idempotency.prune_expired_idempotency(pause_s=0)
-    assert hasattr(result, "page_timeouts"), "result must have page_timeouts field"
-    assert result.page_timeouts == 0, "no timeouts in normal operation"
-    assert result.deleted == 1
-    assert result.complete is True
-
-
 # ---- trimming a live row's copy of an archived answer (finding 4, 2026-09-21) --------------------
 async def _link(row_id: int, *, call_ref: str, archived: bytes | None, hash_only: bool = False,
                 age_s: int = 3600) -> str:

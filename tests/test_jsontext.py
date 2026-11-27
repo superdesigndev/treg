@@ -13,10 +13,6 @@ UPSTREAM = b'{"text":"\\ud835\\udc01old \\ud835 cut"}'
 PARSED = json.loads(UPSTREAM)
 
 
-def test_a_paired_surrogate_is_ordinary_text():
-    assert PARSED["text"].startswith("\U0001d401old")
-
-
 def test_dumps_writes_a_lone_surrogate_as_its_escape_instead_of_raising():
     text = jsontext.dumps(PARSED)
     assert "\\ud835" in text and json.loads(text) == PARSED

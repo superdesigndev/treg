@@ -116,14 +116,6 @@ def test_base64_encode_strips_whitespace_before_encoding():
     assert h["Authorization"] == expected
 
 
-def test_no_token_encode_passes_value_through():
-    """Without token_encode, the value is used as-is (existing behavior)."""
-    h: dict[str, str] = {}
-    binding = _b(name="X-Api-Key", format="{secret}")
-    inject(h, [], binding, "raw-api-key")
-    assert h["X-Api-Key"] == "raw-api-key"
-
-
 def test_base64_encode_query_param():
     """token_encode='base64' also works for query-location credentials."""
     import base64

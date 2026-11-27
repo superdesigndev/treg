@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import os
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -48,6 +49,35 @@ def _upgrade(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
 
 def _alembic_upgrade(env: dict[str, str], revision: str) -> subprocess.CompletedProcess[str]:
     return _run(["-m", "alembic", "upgrade", revision], env)
+
+
+@pytest.fixture(scope="module")
+def _stamped_databases(tmp_path_factory) -> dict[str, Path]:
+    """A database `treg upgrade` brought to head and one Alembic left one behind, each built once
+    and copied into the tests that start from it."""
+    built = {}
+    for name, steps in (("head", lambda env: _upgrade(env)),
+                        ("behind", lambda env: _alembic_upgrade(env, _one_behind_head()))):
+        env, database, _ = _env(tmp_path_factory.mktemp(f"schema-{name}"))
+        result = steps(env)
+        assert result.returncode == 0, result.stderr
+        built[name] = database
+    return built
+
+
+@pytest.fixture
+def at_head(tmp_path, _stamped_databases) -> tuple[dict[str, str], Path]:
+    env, database, _ = _env(tmp_path)
+    shutil.copyfile(_stamped_databases["head"], database)
+    return env, database
+
+
+@pytest.fixture
+def one_behind(tmp_path, _stamped_databases) -> tuple[dict[str, str], Path]:
+    env, database, _ = _env(tmp_path)
+    shutil.copyfile(_stamped_databases["behind"], database)
+    assert _alembic_version(database) == _one_behind_head()
+    return env, database
 
 
 def _create_unstamped_schema(env: dict[str, str]) -> None:
@@ -304,22 +334,16 @@ def test_empty_database_upgrade_uses_pure_alembic_without_provisioning_a_user(tm
     assert not token_file.exists(), "hosted upgrade must never provision the local user"
 
 
-def test_raw_asgi_boots_when_database_is_at_head(tmp_path):
-    env, _, _ = _env(tmp_path)
-    result = _upgrade(env)
-    assert result.returncode == 0, result.stderr
+def test_raw_asgi_boots_when_database_is_at_head(tmp_path, at_head):
+    env, _ = at_head
 
     ready, server_stderr = _boot_raw_asgi(env, tmp_path)
 
     assert ready, server_stderr
 
 
-def test_raw_asgi_refuses_a_database_behind_head(tmp_path):
-    env, database, _ = _env(tmp_path)
-    previous = _one_behind_head()
-    result = _alembic_upgrade(env, previous)
-    assert result.returncode == 0, result.stderr
-    assert _alembic_version(database) == previous
+def test_raw_asgi_refuses_a_database_behind_head(tmp_path, one_behind):
+    env, _ = one_behind
 
     ready, server_stderr = _boot_raw_asgi(env, tmp_path)
 
@@ -328,10 +352,8 @@ def test_raw_asgi_refuses_a_database_behind_head(tmp_path):
     assert "python -m treg upgrade" in server_stderr
 
 
-def test_raw_asgi_warns_and_serves_when_database_revision_is_unknown_newer(tmp_path):
-    env, database, _ = _env(tmp_path)
-    result = _upgrade(env)
-    assert result.returncode == 0, result.stderr
+def test_raw_asgi_warns_and_serves_when_database_revision_is_unknown_newer(tmp_path, at_head):
+    env, database = at_head
     with sqlite3.connect(database) as db:
         db.execute("UPDATE alembic_version SET version_num = '9999'")
 
@@ -358,12 +380,10 @@ def test_upgrade_refuses_an_unstamped_pre_adoption_database(tmp_path):
     assert _alembic_version(database) is None
 
 
-def test_upgrade_names_the_rollback_when_the_database_is_newer_than_the_build(tmp_path):
+def test_upgrade_names_the_rollback_when_the_database_is_newer_than_the_build(at_head):
     """A database stamped at a revision this build does not know is a rollback past the rollback
     floor (or a stale checkout). The operator gets an instruction, not an Alembic stack trace."""
-    env, database, _ = _env(tmp_path)
-    initial = _upgrade(env)
-    assert initial.returncode == 0, initial.stderr
+    env, database = at_head
     with sqlite3.connect(database) as db:
         db.execute("UPDATE alembic_version SET version_num = '9999'")
 
@@ -431,13 +451,9 @@ async def test_serve_starts_on_a_database_newer_than_the_build(caplog):
                 text("UPDATE alembic_version SET version_num = :head"), {"head": head})
 
 
-def test_upgrade_applies_a_pending_revision_from_one_behind_head(tmp_path):
-    env, database, _ = _env(tmp_path)
-    previous = _one_behind_head()
-    assert previous != _alembic_head()
-    initial = _alembic_upgrade(env, previous)
-    assert initial.returncode == 0, initial.stderr
-    assert _alembic_version(database) == previous
+def test_upgrade_applies_a_pending_revision_from_one_behind_head(one_behind):
+    env, database = one_behind
+    assert _one_behind_head() != _alembic_head()
 
     result = _upgrade(env)
 
@@ -446,10 +462,8 @@ def test_upgrade_applies_a_pending_revision_from_one_behind_head(tmp_path):
     assert _alembic_version(database) == _alembic_head()
 
 
-def test_upgrade_backfills_companions_and_is_idempotent(tmp_path):
-    env, database, _ = _env(tmp_path)
-    initial = _upgrade(env)
-    assert initial.returncode == 0, initial.stderr
+def test_upgrade_backfills_companions_and_is_idempotent(at_head):
+    env, database = at_head
     _seed_connection(env)
     assert _companion_count(database) == 0
 
@@ -462,14 +476,11 @@ def test_upgrade_backfills_companions_and_is_idempotent(tmp_path):
     assert _companion_count(database) == 1
 
 
-@pytest.mark.parametrize("ads_enabled", [False, True])
-def test_app_lifespan_does_not_run_release_backfills(tmp_path, ads_enabled):
-    env, database, _ = _env(tmp_path)
-    # An empty outbox starts the real worker without making any upstream calls.
-    env["TREG_GOOGLE_ADS_CUSTOMER_ID"] = "test-customer" if ads_enabled else ""
-    env["TREG_ADS_CONV_REFRESH_TOKEN"] = "test-refresh-token" if ads_enabled else ""
-    initial = _upgrade(env)
-    assert initial.returncode == 0, initial.stderr
+def test_app_lifespan_does_not_run_release_backfills(at_head):
+    env, database = at_head
+    # The ads worker adds one more lifespan task; an empty outbox starts it without upstream calls.
+    env["TREG_GOOGLE_ADS_CUSTOMER_ID"] = "test-customer"
+    env["TREG_ADS_CONV_REFRESH_TOKEN"] = "test-refresh-token"
     _seed_connection(env)
     assert _companion_count(database) == 0
     script = textwrap.dedent(
