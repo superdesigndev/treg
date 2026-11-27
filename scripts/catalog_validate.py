@@ -1564,7 +1564,7 @@ def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
     if (adapters.get(ep.get("id")) or {}).get("miss"):
         fail(errors, where, "a v2 row's miss is its own `miss` rule: remove the adapter's miss "
                             "from adapters.yaml")
-    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
+    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss", "platform_check")
              if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
     for name in names:
         try:

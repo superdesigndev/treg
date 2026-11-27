@@ -543,7 +543,8 @@ to rotation ([capacity](../ops/capacity.md)).
 
 ## Platform capacity: refuse before reserve
 
-Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
+Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`, and a row's
+`platform_check` plugin, `_enforce_platform_check`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
 table price row must equal its value, or be absent when its declared default is that value, as the
@@ -551,8 +552,9 @@ table prices an absent field; duplicate JSON keys are rejected so validation and
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
 run), outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads, and refusal of a credential the caller could send
-in a second place the provider reads (Apify's run rows take only their run options and its run
-polls only their declared query options; elsewhere a `headers.*` null pin). Own keys are
+in a second place the provider reads (Apify's run rows take only their run options, through their
+`platform_check`, and its run polls only their declared query options, `platform_query: declared`;
+elsewhere a `headers.*` null pin). Own keys are
 unaffected: the provider, not treg, bears that account's exposure. A routed child refused for a
 header is skipped for that provider only ([catalog](catalog.md), routed endpoints).
 

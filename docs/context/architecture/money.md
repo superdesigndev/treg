@@ -2090,8 +2090,8 @@ call requires `maxTotalChargeUsd` (above 0, at most $1), the spend cap Apify enf
 does not bind actors whose own input sets the row count. Only the run options `maxTotalChargeUsd`,
 `maxItems`, `memory` and `timeout` are accepted, each once and in plain ASCII, because a dataset-view
 option (`limit`, `offset`, `format`, `unwind`) would make the returned rows disagree with the events
-billed (`_enforce_apify_run_options`, which reads the cap's ceiling from `reserve.money.max` and its
-floor from `money_floor_micro`). The hold is the cap (`reserve.money` on `query.maxTotalChargeUsd`):
+billed (`platform_check: {plugin: apify.run_options}`; the cap's ceiling and floor are
+`reserve.money`'s own check, `require_money`, with the floor from `money_floor_micro`). The hold is the cap (`reserve.money` on `query.maxTotalChargeUsd`):
 Apify's cap bounds every event a run bills, the flat per-run charge (`price.base`) included, so no
 bill passes the caller's own cap. The bill counts the bare dataset array the run-sync
 call answers (`settle.count` on `response`) at the row price, plus the base; LinkedIn job search
@@ -2105,8 +2105,8 @@ never the hold. The cap must cover the base plus three rows.
 `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run that times
 out, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases although Apify may have
 billed up to the cap; so does an answer over the evidence limit, and so does a caller who disconnects
-mid-run. The $1 ceiling bounds each loss. `timeout` is required and at most
-`min(90, call_timeout_s - 30)` seconds (`_apify_max_timeout`), because a run still going when Apify's synchronous wait, treg's upstream
+mid-run. The $1 ceiling bounds each loss. `timeout` is required and at most 90 seconds
+(`apify.MAX_TIMEOUT`; a test keeps `call_timeout_s` at least 30 s above it), because a run still going when Apify's synchronous wait, treg's upstream
 read timeout or an MCP client's timeout ends leaves an unbilled failed call while the run keeps
 billing. That failure body names the run, so **treg's Apify account must keep general resource
 access Restricted**: with public access anyone could read the unbilled run's dataset by id.

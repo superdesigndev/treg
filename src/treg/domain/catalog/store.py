@@ -759,6 +759,8 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # keys its usage terms read (application/call/settle.py `_spool_response`).
         "spooled_response": raw.get("spooled_response") is True,
         "platform_request": raw.get("platform_request") or None,
+        **({"platform_check": raw["platform_check"]} if raw.get("platform_check") else {}),
+        **({"platform_query": raw["platform_query"]} if raw.get("platform_query") else {}),
         # Request fields that must carry the calling team's own label on treg's shared key, so
         # objects a provider keeps per label (monitors, schedules, feeds) stay one team's.
         "team_label": raw.get("team_label") or None,

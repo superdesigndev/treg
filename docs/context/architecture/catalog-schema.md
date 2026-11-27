@@ -283,6 +283,12 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
   (`miss: {plugin: <module>.<function>}`) when its row moves to v2. Any outcome plugin (`expect`,
   `error`, `miss`, `not_found`) may be called without the request, since stats and routing judge an
   answer alone.
+- `platform_check: {plugin: <module>.<function>}` is a request check treg's key runs before any
+  hold (`resolve._enforce_platform_check`): the plugin reads the query and the body (a strict JSON
+  object) and returns None to serve the call, or `{message, parameter?, expected?}`, refused with 400
+  `catalog_parameter_invalid`. Unlike the other hooks it fails closed: a check that raises refuses
+  the call. A team's own key never runs it. It holds a request shape the row's words cannot say
+  (Apify's run options, Sumble's account-independent selections), so the core names no provider.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.
