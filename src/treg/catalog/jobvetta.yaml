@@ -1,0 +1,103 @@
+provider: jobvetta
+source:
+  docs: https://www.jobvetta.com/api
+  llms: https://www.jobvetta.com/llms.txt
+  openapi: https://www.jobvetta.com/openapi.json
+  curated: '2026-11-27'
+limits: "Free keys: 25 requests per UTC day, up to 25 jobs per call, offset 0 to 100. Paid plans: Builder ($9/mo, 100/day, 2,000/mo, up to 50 jobs/call, offset 0 to 1,000), Starter ($29/mo, 150/day, 3,000/mo), Growth ($79/mo, 600/day, 15,000/mo, up to 100 jobs/call, offset 0 to 9,999), Scale ($199/mo, 3,000/day, 75,000/mo). Exhausted daily allowance returns HTTP 429 with Retry-After until midnight UTC. Every data response carries X-RateLimit-Limit and X-RateLimit-Remaining."
+pricing_url: https://www.jobvetta.com/api#pricing
+defaults:
+  cache: forbidden
+  bill: {miss: charged}
+  provenance: {source: observed, source_url: 'https://www.jobvetta.com/api#pricing', checked: '2026-11-27', confidence: verified}
+  docs_url: https://www.jobvetta.com/api
+
+endpoints:
+  - id: jobvetta.companies.jobs.search
+    added: '2026-11-27'
+    capability: companies.jobs.search
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /jobs
+    name: "Search job postings"
+    summary: "Search open job postings from official employer career pages by keyword, place, company, remote eligibility and posting age, returning job_id, title, company, location, work model, employment type, salary and URL."
+    note: "Free keys return up to 25 jobs per call (offset 0 to 100); Builder and Starter return up to 50; Growth and Scale return up to 100 (offset 0 to 9,999). Requesting a limit above the plan ceiling clamps to the plan limit; an offset above the plan ceiling returns HTTP 400."
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "Role, skill, technology or employer keyword (Unicode supported)", example: "data engineer"}
+        location: {type: string, required: false, note: "City, state/province or country name", example: "New York"}
+        company_query: {type: string, required: false, note: "Filter to an employer name", example: "Datadog"}
+        remote: {type: boolean, required: false, note: "When true, return only employer-designated remote roles", example: false}
+        days: {type: integer, required: false, min: 1, max: 365, note: "Restrict to jobs first published within the last N days", example: 7}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "Jobs per page, clamped to the key's plan ceiling (25 free, 50 Builder/Starter, 100 Growth/Scale)", example: 5}
+        offset: {type: integer, required: false, default: 0, min: 0, max: 9999, note: "Results to skip (max 100 free, 1,000 Builder, 2,500 Starter, 9,999 Growth/Scale)", example: 0}
+    test_request:
+      queryParams: {q: "software engineer", location: "United States", days: 7, limit: 1}
+    price: {value: '0.0045', currency: USD, per: 1, unit: call, note: "Entry-level Builder plan rate; empty pages also count against the daily quota."}
+    miss: {when: {path: response.jobs, op: empty}}
+
+  - id: jobvetta.companies.jobs.detail
+    added: '2026-11-27'
+    capability: companies.jobs.detail
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/{job_id}
+    name: "Get job posting details"
+    summary: "Retrieve one active job posting by job_id, returning verbatim description, responsibilities, minimum and preferred qualifications, required skills, benefits, experience level, education tier and published salary bounds."
+    note: "Pass a job_id from jobvetta.companies.jobs.search, or 'latest' to fetch a live sample posting. Unstated attributes are null rather than inferred. Direct employer apply_url is included on Starter ($29/mo) and higher plans."
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "A job_id returned by GET /jobs, or 'latest' for a live sample", example: "latest"}
+    test_request:
+      pathParams: {job_id: "6b0735197a3f0cb7ae9ec7ab_loc0"}
+    price: {value: '0.0045', currency: USD, per: 1, unit: call, note: "Entry-level Builder plan rate; a 404 for a closed or unknown job_id also counts against the daily quota."}
+    miss: {status: [404], means: "no active job posting matches this job_id"}
+
+  - id: jobvetta.companies.jobs
+    added: '2026-11-27'
+    capability: companies.jobs
+    platform: companies
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /companies/{company}/jobs
+    name: "List a company's open jobs"
+    summary: "List active job openings at a specific employer from its career portal, with optional keyword and location filters."
+    input:
+      pathParams:
+        company: {type: string, required: true, note: "Hiring company name", example: "Cisco Systems"}
+      queryParams:
+        q: {type: string, required: false, note: "Optional role or skill keyword filter", example: "engineer"}
+        location: {type: string, required: false, note: "Optional city, state or country filter", example: "United States"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "Jobs per page, clamped to the key's plan ceiling", example: 5}
+        offset: {type: integer, required: false, default: 0, min: 0, max: 9999, note: "Results to skip within the key's plan ceiling", example: 0}
+    test_request:
+      pathParams: {company: "Cisco Systems"}
+      queryParams: {limit: 1}
+    price: {value: '0.0045', currency: USD, per: 1, unit: call, note: "Entry-level Builder plan rate; empty pages also count against the daily quota."}
+    miss: {when: {path: response.jobs, op: empty}}
+
+  - id: jobvetta.jobs.salary.benchmark
+    added: '2026-11-27'
+    capability: jobs.salary.benchmark
+    platform: jobs
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/salary-estimate
+    name: "Benchmark job salaries"
+    summary: "Compute annualized salary_min, salary_p25, salary_median, salary_p75 and salary_max percentiles across active employer job postings disclosing pay for a role and location."
+    note: "Only employer-disclosed compensation is included in the sample; currency and sample counts (total_matching_jobs, sampled_jobs, disclosed_salary_count) are returned alongside percentiles."
+    input:
+      queryParams:
+        q: {type: string, required: false, default: "software engineer", note: "Job title or skill keyword", example: "software engineer"}
+        location: {type: string, required: false, default: "United States", note: "City, state or country", example: "United States"}
+        days: {type: integer, required: false, default: 30, min: 1, max: 365, note: "Lookback window in days", example: 30}
+    test_request:
+      queryParams: {q: "software engineer", location: "United States", days: 30}
+    price: {value: '0.0045', currency: USD, per: 1, unit: call, note: "Entry-level Builder plan rate; empty cohorts also count against the daily quota."}
+    miss: {when: {path: response.disclosed_salary_count, op: equals, value: 0}}

@@ -2683,6 +2683,34 @@ JOBSPIPE = OAuthProvider(
 )
 
 
+JOBVETTA = OAuthProvider(
+    service="jobvetta",
+    display_name="Jobvetta",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Jobvetta API key (jvk_...)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.jobvetta.com/dashboard#/api",
+    setup_action_label="Get your Jobvetta API key",
+    setup_steps=(
+        "Sign in at jobvetta.com/dashboard#/api (free accounts include 25 requests per UTC day, no card required).",
+        "Copy your API key (starts with jvk_).",
+    ),
+    setup_note="Data endpoints consume one request from your daily quota per call; GET /v1/usage is free.",
+    auth_uri="",
+    token_uri="",
+    scopes={},
+    client_id_setting="",
+    client_secret_setting="",
+    category="Jobs data",
+    summary="Search 6.5M+ open job postings from 238,000+ employer career pages across 242 countries, read full structured job records, list company openings and benchmark salaries.",
+    base_url="https://api.jobvetta.com/v1",
+    docs_url="https://www.jobvetta.com/api",
+    probe_path="/usage",  # free; an invalid key gets 401
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -4624,7 +4652,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, JOBVETTA, AVIATO,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
