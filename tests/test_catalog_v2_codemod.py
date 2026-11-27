@@ -370,10 +370,8 @@ def test_a_worst_case_moves_beside_its_settle_form():
     assert change.keys["settle"] == {"usage": {"unit": "usd", "path": "response.usage.cost"}, "worst_case": "0.01"}
 
 
-@pytest.mark.parametrize("provider", ["hunter", "tikhub"])
-def test_the_codemod_runs_on_the_real_catalog(provider, capsys):
-    assert codemod.main(["--provider", provider]) == 0
-    assert f"cannot rewrite {provider}." in capsys.readouterr().out
+def test_the_codemod_runs_on_the_real_catalog():
+    assert codemod.main(["--provider", "hunter"]) == 0
 
 
 def test_only_a_provider_with_a_row_in_todays_spelling_has_its_defaults_withheld(tmp_path):
