@@ -75,6 +75,23 @@ async def test_import_creates_one_policy_per_account_and_flags_unknowns_without_
         assert await ensure_policies(db, has_key=lambda p: False) == []
 
 
+async def test_import_moves_a_seeded_rate_limit_to_the_new_default_but_keeps_an_edited_one():
+    await reset_db()
+    async with session_maker() as db:
+        db.add(CapacityPolicy(provider="filtrat", capacity_type="credits", funding_mode="manual",
+                              source="api", rate_limit={"limit": 600, "window_s": 60, "source": "docs"}))
+        db.add(CapacityPolicy(provider="filtrat-finder", capacity_type="credits", funding_mode="manual",
+                              source="api", rate_limit={"limit": 50, "window_s": 60, "source": "policy"}))
+        await db.commit()
+    async with session_maker() as db:
+        await ensure_policies(db, has_key=lambda p: True)
+        await db.commit()
+    async with session_maker() as db:
+        rows = {r.provider: r for r in (await db.execute(select(CapacityPolicy))).scalars()}
+    assert rows["filtrat"].rate_limit == default_policy("filtrat", has_key=True).rate_limit
+    assert rows["filtrat-finder"].rate_limit == {"limit": 50, "window_s": 60, "source": "policy"}
+
+
 def test_snapshot_never_carries_a_credential():
     snap = snapshot_from("x", {"value": 5, "unit": "credits", "note": "plan pro, key SECRET-LOOKING-VALUE-abc"})
     assert "sk_live" not in snap.note and snap.remaining == 5.0 and snap.error == ""

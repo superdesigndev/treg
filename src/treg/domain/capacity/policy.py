@@ -241,6 +241,13 @@ _RATE_LIMITS: dict[str, dict] = {
     "tikhub": {"limit": 100, "window_s": 1, "source": "policy"},
     "getleadsio": {"limit": 100, "window_s": 60, "source": "docs"},
 }
+# Defaults `_RATE_LIMITS` used to carry. A stored policy still holding one of these exactly was
+# seeded from it, so `ensure_policies` moves it to the current default; any other value is an
+# operator's choice and stays.
+_PREVIOUS_RATE_LIMITS: dict[str, tuple[dict, ...]] = {
+    "filtrat": ({"limit": 600, "window_s": 60, "source": "docs"},),
+    "filtrat-finder": ({"limit": 110, "window_s": 60, "source": "docs"},),
+}
 # An endpoint whose upstream allowance differs from its provider's has its own bucket here. It
 # replaces the provider entry for that endpoint and does not draw from the provider's bucket.
 _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
@@ -310,10 +317,17 @@ def default_policy(provider: str, *, has_key: bool) -> CapacityPolicy:
 
 async def ensure_policies(db: AsyncSession, *, has_key) -> list[str]:
     """Insert a policy row for every account that lacks one; never overwrite a hand-edited row.
+    A row whose rate limit is still a default this file shipped before (`_PREVIOUS_RATE_LIMITS`)
+    was seeded, not edited, so it moves to today's default.
     Returns the providers whose imported policy is still `unknown` — the list a person must classify.
     `has_key(provider) -> bool` says whether the env carries a credential for the slot."""
     from sqlalchemy import select
-    existing = {row.provider for row in (await db.execute(select(CapacityPolicy))).scalars()}
+    rows = list((await db.execute(select(CapacityPolicy))).scalars())
+    for row in rows:
+        base = split_account(row.provider)[0]
+        if row.rate_limit is not None and row.rate_limit in _PREVIOUS_RATE_LIMITS.get(base, ()):
+            row.rate_limit = _RATE_LIMITS.get(base)
+    existing = {row.provider for row in rows}
     unknown: list[str] = []
     for provider in policy_population():
         if provider in existing:
