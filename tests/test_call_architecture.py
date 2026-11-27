@@ -17,7 +17,7 @@ from treg.application.call import authorize, idempotency, overflow, reserve, rou
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
-from treg.infra import provider_concurrency, provider_rate
+from treg.infra import empty_balance, provider_concurrency, provider_rate
 
 
 _SRC = Path(__file__).parents[1] / "src" / "treg"
@@ -196,6 +196,15 @@ _DATAPLANE_DERIVED_WRITES = {
         (service._execute_call, "compare_app.mark_eligible"),
         (compare_app.mark_eligible, "store.set_text"),
     ),
+    # A refusal for the balance that the database confirmed leaves a self-expiring per-team
+    # mark in the shared store (one bounded write, no database), which answers the team's next
+    # refusals before the money queue; every balance increase clears it once it is committed.
+    "empty_balance_mark": (
+        (reserve._platform_reserve, "empty_balance.remember"),
+        (empty_balance.remember, "set_text"),
+        (money._add_balance, "empty_balance.credited"),
+        (empty_balance.clear, "clear_flag"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
     "org_endpoint_quota",
@@ -222,6 +231,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "allowance_call_charge",
     "comparison_marker",
     "allowance_in_flight_mark",
+    "empty_balance_mark",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -239,7 +249,9 @@ _DERIVED_WRITE_FILES = {
         "ledger.reap_stale_holds", "allowance_runtime.take",
         "allowance_runtime.give_back_for_exact_path",
         "idempotency.mark_in_flight", "idempotency.clear_in_flight",
+        "empty_balance.remember",
     },
+    _SRC / "infra" / "empty_balance.py": {"set_text", "clear_flag"},
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
         "allowance.refill_allowance_in_transaction", "allowance.close_allowance_in_transaction",
@@ -294,7 +306,9 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "governance" / "publicdemo.py": {
         "ratestore.sweep", "ratestore.rate_check",
     },
-    _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release", "MemberSpend"},
+    _SRC / "domain" / "money" / "__init__.py": {
+        "reap_stale_holds", "release", "MemberSpend", "empty_balance.credited",
+    },
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_execute_call", "compare_app.mark_eligible"),
@@ -432,6 +446,12 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("domain/money/__init__.py", "reap_stale_holds", "release"),
     ("domain/money/__init__.py", "reserve_in_transaction", "reap_stale_holds"),
     ("application/call/reserve.py", "_enforce_member_spend_cap", "ledger.reap_stale_holds"),
+    # the balance-empty mark: written by a confirmed balance refusal, cleared once a
+    # transaction that raised a balance is committed
+    ("application/call/reserve.py", "_platform_reserve", "empty_balance.remember"),
+    ("infra/empty_balance.py", "remember", "set_text"),
+    ("infra/empty_balance.py", "clear", "clear_flag"),
+    ("domain/money/__init__.py", "_add_balance", "empty_balance.credited"),
 }
 
 

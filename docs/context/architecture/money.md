@@ -38,6 +38,8 @@ sources:
   - src/treg/application/call/async_bridge.py
   - src/treg/application/call/route.py
   - src/treg/application/call/reserve.py
+  - src/treg/infra/empty_balance.py
+  - tests/test_empty_balance_mark.py
   - src/treg/application/call/settle.py
   - src/treg/application/call/cost.py
   - tests/test_catalog_v2_runtime.py
@@ -1015,6 +1017,71 @@ Serializing the whole session can lower hot-org throughput, and Redis round trip
 Default off; `money_admission_org_ids` selects an opt-in subset (all orgs when empty and enabled).
 Rollout and measurement: [deployment controls](../ops/deploy.md#optional-money-admission). Timing
 details live in `infra/money_admission.py` and its tests.
+
+### The balance-empty mark
+
+A team with no money that keeps calling is refused with 402 `insufficient_balance` each time, and
+each of those refusals costs what a paid reserve costs: the allowance take and its refill, the
+team's money admission lease, a money session with the preflight reads, the refused reserve, and
+the read that asks whether the allowance counter holds the difference. The mark lets the next
+refusals skip all of it. Off by default: `money_empty_mark_ttl_s` (`TREG_MONEY_EMPTY_MARK_TTL_S`)
+is the mark's lifetime in seconds, 0 = off.
+
+- **What it stands for.** `infra/empty_balance.py` keeps one self-expiring text per team in the
+  shared key-value store: "a reserve of N micro-USD was refused, and the database alone showed
+  the team's money, wherever it sits, below N". `_platform_reserve` writes it
+  (`empty_balance.remember`) only from the balance refusal the database decided, and only when
+  `allowance_runtime.onto_balance_or_short` answers `short`: `allowance.credit_bound` (the
+  balance plus the allowance hold, less the queued charges) is below N, or the team has no
+  allowance to ask. A refusal that proves no shortfall (the counter may hold the money behind a
+  busy lease, the store did not answer, the give-back failed) writes no mark. The mark also
+  carries the balance that refusal showed, for the body.
+- **What it answers.** `_empty_mark` reads it before the allowance take, the admission lease and
+  any session. A call that would reserve N or more is refused from the mark alone; a call that
+  would reserve less reserves as it always did, since the team may still afford it. It answers
+  only a call for which the balance refusal is the first answer the usual road would give: no
+  tag (a tag's own limits come first, and its refusal must not show the team's figures), no
+  member spend limit, no trial pool, no purchased-credit-only endpoint, not a keyless wallet's
+  request, not a $0 reservation. A team with a daily spend limit is answered only for exactly N,
+  the amount that passed the limit when the mark was written. A call that needs none of treg's
+  money (the team's own credential, a free endpoint, a free archive hit) never reaches
+  `_platform_reserve`, so the mark cannot refuse it. Routed children and overflow rungs reserve
+  through the same function and are refused with the same failure kind as before.
+- **The answer is the same.** `_insufficient_balance` builds the 402 on both roads: same body
+  fields, `estimated_cost_micro` this call's own, `balance_micro` the figure the mark's refusal
+  showed (a few seconds old at most). Both roads carry `Retry-After`: the mark's lifetime, never
+  less than `INSUFFICIENT_BALANCE_RETRY_AFTER_S`, whether the mark is on or off. The call
+  record is written as before (`refused_by: balance`), so Activity and the refusal counts do not
+  change; only the money work is skipped. A refusal from the mark does not ask for an auto
+  top-up; the one refusal per lifetime that reaches the database does.
+- **Every credit clears it.** Every increase of `org.balance_micro` goes through
+  `domain/money._add_balance`, which calls `empty_balance.credited` for a positive move: grant,
+  top-up (auto top-up included), release of a hold, the refund of a settle, the stale-hold
+  reaper's releases, a hub seller's `earned` credit, and the allowance hold returning to the
+  balance (a close, a drain, a give-back, a fold that covers less than it set aside). The clear
+  runs in a task of its own after that transaction commits; a rolled-back credit clears nothing.
+  `revoke` only lowers a balance and clears nothing. A refill moves money from the balance into
+  the allowance hold: the team's money is the same, and the mark is about all of it, so a refill
+  is not a credit.
+- **Bounded without the clear.** The mark expires after `money_empty_mark_ttl_s`. A refusal it
+  answers never rewrites it, so steady traffic cannot keep it alive: once per lifetime one call
+  takes the usual road, and the database decides again. A clear that is lost (the store failed,
+  or a refusal wrote the mark just after a credit committed) therefore costs at most that many
+  seconds of refusals after money arrives.
+- **Fail open.** A store that is slow, down or answers with an error reads as no mark (the
+  store's optional-work time limit applies), and a failed write or clear is ignored: every call
+  then takes the usual road, as with the mark off. Nothing is counted or remembered about the
+  failure, so there is no state to leave.
+- **Cost to a team that has money.** None on the call road: a process asks the store about a
+  team only for a minute after it last saw that team refused for its balance
+  (`empty_balance.suspect`), so the first refusal in each process takes the usual road. Each
+  committed balance increase adds one background delete in the store, after the commit and
+  outside the admission lease.
+- One `empty_balance_fast_refusals` log line a minute per process counts the calls the mark
+  answered and the teams that sent them.
+
+Without a shared store (`TREG_KV_URL` unset) the mark lives in each process, so a credit handled
+by one process clears it there and the other processes wait out the lifetime.
 
 ## Signup credit eligibility
 
