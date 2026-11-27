@@ -894,6 +894,23 @@ async def _descovo(c, key):
     return {"value": credits, "unit": "credits", "note": f"resets {data.get('resetsOn') or '?'}"}
 
 
+async def _upcell(c, key):
+    # Free: POST /v1/enrich/usageStats never charges. creditBalance is a decimal string, and it
+    # moves some time after a call, not with it.
+    r = await c.post("https://app.upcell.io/v1/enrich/usageStats", headers={"Authorization": key},
+                     json={"start_date": "2026-01-01"})
+    r.raise_for_status()
+    d = r.json()
+    raw = d.get("creditBalance") if isinstance(d, dict) else None
+    try:
+        credits = _finite(float(raw)) if isinstance(raw, str) else _finite(raw)
+    except ValueError:
+        credits = None
+    if credits is None:
+        raise ValueError("Upcell returned no credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
 async def _millionphones(c, key):
     # Free: GET /v1/credits never charges and reports what is left to spend now.
     d = await _get(c, "https://millionphones.com/v1/credits", headers={"x-api-key": key})
@@ -1208,6 +1225,7 @@ BALANCE_ROUTES = {
     "forager": _forager,
     "millionphones": _millionphones,
     "descovo": _descovo,
+    "upcell": _upcell,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,

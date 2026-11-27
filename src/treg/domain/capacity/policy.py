@@ -25,6 +25,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "forager": ("monthly_quota", "quota_reset", "api"),
     "millionphones": ("credits", "subscription", "api"),
     "descovo": ("monthly_quota", "quota_reset", "api"),
+    "upcell": ("credits", "manual", "api"),
     "hirebase": ("monthly_quota", "quota_reset", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
