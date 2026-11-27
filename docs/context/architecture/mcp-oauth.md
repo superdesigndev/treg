@@ -279,14 +279,17 @@ otherwise refused with 405 `Allow: POST`, since the stateless transport has no s
 stream. Protected-resource metadata is also served at the trailing-slash paths RFC 9728 derives from
 `/mcp/` and `/mcp/v2/`, since some clients do not follow redirects during discovery.
 
-Two cases. **No credential**: the plain challenge. **A dead access token** (a bearer whose unverified
-`typ` claims to be treg's access token but fails `read_access_token`): 401 with
-`error="invalid_token"` (RFC 6750 §3.1), the code an OAuth client runs its refresh grant on. Access-token
-validation is stateless (HMAC + expiry), so the transport can afford it. Anything needing the
-database (a per-org or identity token) passes through for the tool to validate: its holder has no
-refresh grant to run, and judging it here would be a second authentication implementation. The
-transport's DNS-rebinding host check (421) and Origin check (403) sit behind this middleware, so auth
-never masks them.
+Three cases. **No credential**: the plain challenge. **A dead access token** (a bearer whose
+unverified `typ` claims to be treg's access token but fails `read_access_token`): 401 with
+`error="invalid_token"` (RFC 6750 §3.1), the code an OAuth client runs its refresh grant on.
+**A dead identity token** (the static header `treg mcp install` writes, whose unverified `aud` or
+legacy shape identifies it but `read_identity_claims` rejects it): same 401. Before this, dead
+identity tokens passed through and returned errors inside a 200, so OAuth clients never knew to
+refresh — the "MCP connector keeps stale token" bug (#1658). Both validations are stateless (HMAC +
+expiry), so the transport can afford them. Anything needing the database (token version, suspended
+user) passes through for the tool to validate: that failure cannot be refreshed away, and judging it
+here would be a second authentication implementation. The transport's DNS-rebinding host check (421)
+and Origin check (403) sit behind this middleware, so auth never masks them.
 
 Both surfaces accept an active managed key as a bearer; tools pass it to the API, so disable and
 revoke apply on the next tool call. Static tool schemas may be listed before a non-OAuth bearer is

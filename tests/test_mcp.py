@@ -1035,6 +1035,51 @@ async def test_a_wrong_audience_access_token_gets_401_invalid_token(clients):
     assert 'error="invalid_token"' in r.headers.get("www-authenticate", "")
 
 
+async def test_an_EXPIRED_identity_token_gets_401_invalid_token(clients):
+    """RFC 6750 §3.1 extended to identity tokens. A static header from `treg mcp install` that
+    expired or was rotated used to pass through the transport and return an error inside a 200,
+    so OAuth clients never knew to refresh — the "MCP connector keeps stale token" bug (#1658).
+    Now identity tokens get the same 401 treatment as OAuth access tokens."""
+    from treg.domain.identity import session as identity_session
+    dead = identity_session.make_identity(user_id=7, token_version=0, ttl=-60)  # born expired
+    async with mcp_session(clients) as c:
+        r = await c.post("http://localhost/mcp/", json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "balance", "arguments": {}}},
+            headers={**MCP_HEADERS, "Authorization": f"Bearer {dead}"})
+    assert r.status_code == 401, r.text
+    challenge = r.headers.get("www-authenticate", "")
+    assert 'error="invalid_token"' in challenge, challenge
+    assert "resource_metadata=" in challenge
+    assert r.json()["error"] == "invalid_token"
+
+
+async def test_an_INVALID_signature_identity_token_gets_401_invalid_token(clients, monkeypatch):
+    """A token signed with the wrong key (session-secret rotation, or forged) must also 401.
+    This is the other half of #1658: a user's saved header survives `treg login` and secret
+    rotation, so the connector keeps sending it even though the CLI has recovered."""
+    from treg.domain.identity import session as identity_session
+    good = identity_session.make_identity(user_id=7, token_version=0)
+    # Mangle the signature portion to make it invalid
+    parts = good.split(".")
+    bad = parts[0] + ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    async with mcp_session(clients) as c:
+        r = await c.post("http://localhost/mcp/", json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "balance", "arguments": {}}},
+            headers={**MCP_HEADERS, "Authorization": f"Bearer {bad}"})
+    assert r.status_code == 401, r.text
+    assert 'error="invalid_token"' in r.headers.get("www-authenticate", "")
+
+
+async def test_a_valid_identity_token_still_passes_through(clients):
+    """Regression test: valid identity tokens must still work after the 401 changes."""
+    token = (await verified_signup(clients, json={"email": "idtoken@superdesign.dev"})).json()["token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=token)
+    assert "balance_usd" in out, out
+
+
 async def test_the_same_key_through_MCP_bills_once(clients, monkeypatch):
     """End to end on the agent path: an agent retries with the same key, the provider is reached
     once, and the balance moves once."""

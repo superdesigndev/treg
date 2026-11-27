@@ -2810,7 +2810,17 @@ class RequireAuthForProtectedTools:
             [s for s in mcp_oauth.BASE_SCOPES if s in wanted] + markers))
 
     def _token_verdict(self, scope) -> str | None:
-        """None = a credential to pass on. "missing" = none. "invalid" = a DEAD access token."""
+        """None = a credential to pass on. "missing" = none. "invalid" = a DEAD token.
+
+        Checks both OAuth access tokens and identity tokens (the static headers `treg mcp install`
+        writes). A dead identity token used to pass through and return an error inside a 200, which
+        clients never acted on — so a user who ran `codex mcp login treg` got a working OAuth grant
+        but the connector kept sending the old dead header. Now both token types get 401 when
+        statelessly invalid (bad signature, expired), so clients can try their refresh path.
+
+        Token-version mismatches still pass through: they require a database lookup, and refreshing
+        cannot fix them anyway.
+        """
         token = ""
         for k, v in scope.get("headers", []):
             if k.lower() == b"authorization" and v.strip():
@@ -2820,10 +2830,14 @@ class RequireAuthForProtectedTools:
         if not token:
             return "missing"
         from .domain.identity import mcp_oauth
+        from .domain.identity import session as identity_session
         if mcp_oauth.looks_like_access_token(token) and \
                 mcp_oauth.read_access_token_any(token, self.resource_version) is None:
             return "invalid"
-        return None             # a live access token, or a per-org token the tool validates itself
+        if identity_session.looks_like_identity_token(token) and \
+                identity_session.read_identity_claims(token) is None:
+            return "invalid"
+        return None             # a live token, or a database-backed key the tool validates itself
 
     async def _challenge(self, scope, receive, send, *, invalid: bool = False) -> None:
         from .domain.identity import mcp_oauth
