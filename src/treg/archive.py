@@ -474,8 +474,11 @@ async def persist_deferred(observation, key_hash: str, body_hash: str
     """Write a caller-facing answer that `record(..., defer_shed=True)` left on `observation`.
 
     The HTTP call path calls this after it has released its provider slots, so archive
-    backpressure never holds upstream concurrency. Returns the hashes unchanged when nothing
-    was deferred; omits them when the fallback write fails, so the call row does not
+    backpressure never holds upstream concurrency. The whole write is bounded by
+    `_STORE_TIMEOUT_S`, including semaphore waits that sit outside `_store`'s inner
+    timeout, so a backlog cannot delay the already-completed response for minutes.
+    Returns the hashes unchanged when nothing was deferred; omits them when the
+    fallback write fails or the deadline expires, so the call row does not
     advertise a result GET /calls/{id}/result cannot resolve.
     """
     args = getattr(observation, "persist_args", None)
@@ -483,9 +486,13 @@ async def persist_deferred(observation, key_hash: str, body_hash: str
         return key_hash, body_hash
     observation.persist_args = None
     try:
-        await _store(**args)
+        async with asyncio.timeout(_STORE_TIMEOUT_S):
+            await _store(**args)
     except asyncio.CancelledError:
         raise
+    except TimeoutError:
+        _log.error("archive fallback deadline exceeded for %s", args.get("endpoint_id"))
+        return None, None
     except Exception:  # noqa: BLE001 - recording never fails the call
         return None, None
     if getattr(observation, "drop_reason", None) in _STORE_FAIL:

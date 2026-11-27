@@ -393,9 +393,12 @@ pinned in `tests/test_audit.py`). A recorder crash cannot fail a call.
 The HTTP call path records with `record(..., defer_shed=True)`. If the in-process queue would
 shed a caller-facing answer, the write is left on the observation and `persist_deferred` runs it
 on the request instead of dropping it, so `GET /calls/{id}/result` can resolve it; hashes are
-omitted from the call row if that write fails. It runs only after the call has released its
-provider slots (fair share and in-flight), so archive overload never holds upstream concurrency.
-The fallback may delay the response under archive overload, but it does not fail the call.
+omitted from the call row if that write fails or its deadline expires. It runs only after the
+call has released its provider slots (fair share and in-flight), so archive overload never holds
+upstream concurrency. The entire fallback is bounded by the same 30 s recording deadline,
+including semaphore waits `_store`'s inner timeout does not cover, so a backlog cannot delay the
+already-completed response for minutes. The fallback may delay the response under archive
+overload, but it does not fail the call.
 Refresh and other off-request recordings still shed. The result route waits for an in-flight
 recording of the same key before resolving; that wait is shielded, so a cancelled reader never
 cancels the write.

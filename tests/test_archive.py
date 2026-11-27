@@ -1268,6 +1268,39 @@ async def test_the_fallback_write_runs_after_the_provider_slots_are_free(
         monkeypatch.setattr(archive, "_pending_bytes", 0)
 
 
+async def test_the_fallback_write_is_bounded_by_the_store_deadline(monkeypatch):
+    """`_store`'s inner timeout does not cover compare_sem_wait or observe_sem_wait.
+    The on-request fallback must still give up and omit hashes when the whole write
+    exceeds `_STORE_TIMEOUT_S`, rather than delaying the caller for as long as the
+    archive backlog holds the write semaphore."""
+    import asyncio as aio
+    import time
+
+    observation = archive.archive_bodies.StorageReport()
+    sem = archive._get_sem()
+    held = archive._MAX_CONCURRENT_WRITES
+    for _ in range(held):
+        await sem.acquire()
+    monkeypatch.setattr(archive, "_STORE_TIMEOUT_S", 0.05)
+    observation.persist_args = dict(
+        method="GET", endpoint_id="treg.test.ep", provider="tikhub",
+        url="https://example.com/x", caller_body=b"", headers={}, status_code=200,
+        media_type="application/json", body=b'{"ok":true}', origin="caller",
+        key_hash="k", body_hash="c", observation=observation,
+        plan=archive.archive_bodies.WritePlan("db"),
+    )
+    try:
+        started = time.monotonic()
+        hashes = await aio.wait_for(
+            archive.persist_deferred(observation, "k", "c"), timeout=1.0)
+        elapsed = time.monotonic() - started
+        assert hashes == (None, None)
+        assert elapsed < 0.5, elapsed
+    finally:
+        for _ in range(held):
+            sem.release()
+
+
 async def test_a_cancelled_result_reader_does_not_cancel_the_recording(monkeypatch):
     """`await_pending` shields the shared recording: cancelling one reader leaves the write running."""
     import asyncio as aio
