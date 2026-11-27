@@ -4610,6 +4610,40 @@ HIREBASE = OAuthProvider(
 )
 
 
+DEALPORT = OAuthProvider(
+    service="dealport",
+    display_name="Dealport",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="dp_live_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.dealport.com/connect?tab=keys",
+    setup_action_label="Get your Dealport API key",
+    setup_steps=(
+        "Create a Dealport account at app.dealport.com. New accounts start with a $5.00 free balance.",
+        "Open Connect -> API keys and create an API key.",
+        "Copy the key (dp_live_...) and paste it here.",
+    ),
+    setup_note=(
+        "Pay as you go from your USD balance: market sizing, list matching, 30-day repeat reads "
+        "and misses are free; company and building records are $0.01; verified human owner "
+        "contacts are $0.09 on a hit."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search and size 28M+ US private companies and commercial buildings, open source-cited "
+        "records, fetch company web pages, and resolve verified human owner contacts."
+    ),
+    base_url="https://app.dealport.com/api/v1",
+    docs_url="https://app.dealport.com/llms.txt",
+    probe_path="/balance",  # free; a bad key gets HTTP 401 {"error": "unauthorized", ...}
+)
+
+
 # Lever's Postings API serves every published posting without a key. The API key Lever documents
 # applies only to the application POST, which is not listed.
 LEVER = OAuthProvider(
@@ -4646,7 +4680,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, DEALPORT, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
