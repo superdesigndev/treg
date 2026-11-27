@@ -1839,8 +1839,8 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
             _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
         problem = "maxItems as a positive integer"
     elif cap < floor:
-        # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
-        # empty answer in full.
+        # Settlement bills the whole cap within two rows of it, so a smaller cap would bill a
+        # one-row answer in full.
         problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
                    "(the call fee plus three rows)")
     if problem:

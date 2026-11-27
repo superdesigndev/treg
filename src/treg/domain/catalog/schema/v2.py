@@ -212,7 +212,8 @@ class Usage(Model):
 class Settle(Model):
     """Absent: the hold. `worst_case`, beside a reported or usage settle, is the most one call can
     settle at, in the price's currency: the hold is never below it. `hold_within_units`, beside a
-    count or plugin settle, bills the hold when the bill comes within that many units of it."""
+    count or plugin settle, bills the hold when the bill comes within that many units of it and the
+    answer counts at least one unit."""
 
     count: Count | None = None
     reported: Reported | None = None

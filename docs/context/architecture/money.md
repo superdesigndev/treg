@@ -1659,8 +1659,9 @@ row.
   estimate, and are held up to a declared `settle.worst_case`; or the hold when there is no `settle` or no evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
   list (an empty one counts 0). With `settle.hold_within_units: N` beside a count or plugin, a
-  bill that comes within N units (at the unit price) of the hold, or passes it, is the hold: a
-  provider that stops a run at the caller's cap may bill an event it never returned. An answer that
+  bill that comes within N units (at the unit price) of the hold, or passes it, is the hold when
+  the answer counts at least one unit: a provider that stops a run at the caller's cap may bill an
+  event it never returned. An answer that counts none bills what it reads, the base alone. An answer that
   would be billed is released when it carries a capacity signature.
 - **The frozen basis** keeps the vocabulary both spellings share, so either settles through the
   same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
@@ -1998,8 +1999,8 @@ bills the base once per job title x location (`settle.plugin: apify.job_starts`)
 bills the base (`bill.miss: charged`), and an Apify error envelope in a 2xx settles at the hold
 (`bill.error: charged`, no count). Within two rows of the hold the cap was reached and the hold is
 the bill (`settle.hold_within_units: 2`: a run stops when its next event would pass the cap and may
-have billed an event it never pushed). The cap must cover the base plus three rows, or an empty
-answer would bill in full.
+have billed an event it never pushed). An empty answer pushed no row, so it bills its starts and
+never the hold. The cap must cover the base plus three rows.
 
 `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run that times
 out, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases although Apify may have
