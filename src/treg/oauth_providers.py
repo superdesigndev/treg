@@ -4561,6 +4561,23 @@ SMARTRECRUITERS = OAuthProvider(
 )
 
 
+GROKBOTZONE = OAuthProvider(
+    service="grokbotzone",
+    display_name="GrokBot Zone",
+    auth_kind="public",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Search and read an index of public Grok bot templates: categories, listings, trending bots and one bot's detail. Free, no key.",
+    # A static, read-only JSON catalog served from a Cloudflare Worker. There is no account, no key
+    # and no charge: every route answers 200 to an anonymous GET, so there is nothing to connect
+    # and nothing to verify.
+    base_url="https://grokbot.zone",
+    docs_url="https://grokbot.zone/api/",
+)
+
+
 HIREBASE = OAuthProvider(
     service="hirebase",
     display_name="Hirebase",
@@ -4613,6 +4630,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
+        GROKBOTZONE,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

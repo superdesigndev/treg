@@ -1,0 +1,13 @@
+{
+  "id": "grok-bot-helpers-bots-that-build-or-manage-bots-BrViAOWzDSiAjBLqUnBgA",
+  "name": "SSH to Grok via Tailscale",
+  "author": "Altman Sam",
+  "description": "Installs Tailscale on Grok Bot's computer so you can SSH in with `ssh box@grok-bot` over your tailnet.",
+  "category": {
+    "slug": "grok-bot-helpers-bots-that-build-or-manage-bots",
+    "label": "Grok Bot Helpers (Bots That Build or Manage Bots)"
+  },
+  "code": "BrViAOWzDSiAjBLqUnBgA",
+  "link": "https://x.ai/bot/BrViAOWzDSiAjBLqUnBgA",
+  "asOf": "2026-10-28"
+}

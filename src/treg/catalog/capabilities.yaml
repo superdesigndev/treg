@@ -159,6 +159,7 @@ platforms:
   research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
+  grok: {label: "Grok bots", category: "Research & public data", summary: "An index of public Grok bot templates: categories, listings, trending bots and each bot's detail."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
@@ -1313,6 +1314,14 @@ capabilities:
 
 # Short titles people scan on a platform shelf, only where a compared job's description runs long.
 # The description above stays whole: agents read it, and search ranks on it.
+  grok.bots.index: "The API's own map: asOf date, bot count and every read route"
+  grok.bots.categories: "Every bot category with its slug, label and bot count"
+  grok.bots.list: "The bots listed in one category"
+  grok.bots.trending: "The most-opened and most-viewed bots over a recent window"
+  grok.bots.recent: "The categories in refresh order, with their bot counts"
+  grok.bots.detail: "One bot's full listing, including the code to paste into Grok"
+  grok.bots.codes: "The code of every listed bot, for checking one against the index"
+
 capability_titles:
   people.enrich: "Enrich a person's profile"
   people.email.find: "Find a person's work email"
@@ -1357,3 +1366,10 @@ capability_titles:
   video-gen.result.retrieve: "Download a finished video"
   tripadvisor.search.general: "Search places, hotels and restaurants"
   stocks.quote.live: "Current quote for a ticker"
+  grok.bots.index: "Map the Grok bot API"
+  grok.bots.categories: "List Grok bot categories"
+  grok.bots.list: "List the bots in a category"
+  grok.bots.trending: "Get the trending Grok bots"
+  grok.bots.recent: "Get recently refreshed bot categories"
+  grok.bots.detail: "Get one Grok bot"
+  grok.bots.codes: "Get every listed Grok bot code"
