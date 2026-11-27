@@ -4,6 +4,7 @@ A team's own-credential answers (every key under its `org:` or `conn:` scope, wi
 shape those keys carry) and the `ArchiveKeyOrg` marks that tie the team to questions it paid for
 are the team's to have removed. Platform-key answers are public questions by construction and
 are not the team's data; nothing there names the team once its marks are gone.
+The team's stored Head-to-Head comparisons are also erased.
 
 Erasure is an explicit act, never a side effect of the opt-out switch: deleting the team runs it,
 and `treg-worker admin erase-archive --org <id>` runs it on request. Both require the team to be
@@ -30,13 +31,16 @@ from collections.abc import Callable
 from sqlalchemy import select, text
 
 from .. import archive_bodies
+from ..domain.feedback import comparisons
 from ..domain.governance.teams import (
     archive_bodies_only_under, archive_mark_count, archive_mark_hashes, archive_snapshots_under,
     erase_archive_keys, erase_archive_rows, private_archive_key_ids, sole_public_archive_key_ids,
     still_sole_public,
 )
+from ..infra import kv
 from ..infra.db import session_maker
 from ..models import Org
+from . import compare
 
 _log = logging.getLogger("treg.archive.erasure")
 
@@ -112,7 +116,9 @@ async def erase_org(org_id: int, *, include_sole_public: bool = False,
     async with session_factory() as db:
         await _bounded(db)
         await erase_archive_rows(db, org_id, [])      # the marks alone, when no key was left
+        await comparisons.delete_for_org(db, org_id)
         await db.commit()
+    await kv.store().clear_flag(compare.ready_key(org_id))
     if include_sole_public:
         result["objects"] += public_objects
     _log.info("archive erasure for org %s: %s", org_id, result)
@@ -205,7 +211,7 @@ async def _opted_out(org_id: int, session_factory) -> bool:
 
 async def count_org(org_id: int, *, include_sole_public: bool = False,
                     session_factory=session_maker) -> dict:
-    """What `erase_org` would remove, read in the same bounded passes, deleting nothing.
+    """Preview the archive key, snapshot, body and mark totals in the same bounded passes.
 
     `bodies` counts the distinct content hashes under the team's keys: an upper bound on the
     objects the erasure deletes, since a body another key's snapshot shares stays."""

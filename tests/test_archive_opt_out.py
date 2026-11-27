@@ -6,16 +6,20 @@ Runs in the sqlite suite and in CI's serial Postgres job like test_archive.py.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
 from conftest import verified_signup, accept_with_code
 from treg import archive, archive_bodies, audit, bootstrap
-from treg.application import archive_erasure
+from treg.application import archive_erasure, compare
 from treg.application.call import service as call_service
+from treg.domain.feedback import comparisons
+from treg.infra import kv
 from treg.infra.db import session_maker
-from treg.models import ArchiveEndpointStat, ArchiveKeyOrg, ArchiveSnapshot, Org
+from treg.models import ArchiveEndpointStat, ArchiveKeyOrg, ArchiveSnapshot, CallComparison, Org
 from tests.fake_object_store import MemoryObjectStore
 from tests.test_archive import (  # noqa: F401 - fixtures
     EP, OWN, PLAT, _own_key, _rows, _spend_entries, _vendor_says, own_key_serve, platform_on, serve,
@@ -50,6 +54,43 @@ async def _record_own_answer(org_id: int, body: bytes, question: str = "aweme_id
         url=f"https://api.tikhub.io/x?{question}", caller_body=b"", headers={},
         status_code=200, media_type="application/json", body=body,
         origin_org_id=org_id, scope=f"org:{org_id}")
+
+
+@pytest.mark.parametrize("redis_down", [False, True])
+async def test_erasure_removes_only_the_teams_comparisons(clients, monkeypatch, redis_down):
+    org_id = await _org_id(clients)
+    other = await clients.post("/orgs", json={"name": "Other comparison team"})
+    assert other.status_code == 200, other.text
+    other_id = other.json()["org_id"]
+    key, other_key = compare.ready_key(org_id), compare.ready_key(other_id)
+    store = kv.LocalStore()
+    monkeypatch.setattr(kv, "_store", store)
+    for ready_key in (key, other_key):
+        await store.set_flag(ready_key, compare.READY_TTL_S)
+    pairs = [(org_id, comparisons.PENDING), (org_id, comparisons.READY),
+             (org_id, comparisons.FAILED), (org_id, comparisons.DECIDED),
+             (other_id, comparisons.READY)]
+    async with session_maker() as db:
+        for team, status in pairs:
+            comparisons.add(db, org_id=team, user_email="reviewer@example.test", call_ref=f"{team}-{status}",
+                            capability="web.search", a_endpoint="vendor-a.web.search",
+                            a_provider="vendor-a", b_provider="vendor-b", status=status)
+        await db.commit()
+    await _opt_out(clients, org_id)
+
+    if redis_down:
+        redis = kv.RedisStore("redis://localhost")
+        remove = AsyncMock(side_effect=ConnectionError("Redis unavailable"))
+        monkeypatch.setattr(redis._client, "delete", remove)
+        monkeypatch.setattr(kv, "_store", redis)
+        await archive_erasure.erase_org(org_id)
+        remove.assert_awaited_once_with(key)
+    else:
+        await archive_erasure.erase_org(org_id)
+        assert not await store.has_flag(key)
+    assert await store.has_flag(other_key)
+    async with session_maker() as db:
+        assert (await db.execute(select(CallComparison.org_id))).scalars().all() == [other_id]
 
 
 # ---------------------------------------------------------------------------------------------

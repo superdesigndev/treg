@@ -105,6 +105,10 @@ admin service's grants and release; downgrading revision 0030 deletes all handli
 
 ## Call reviews
 
+`POST /reviews`, `POST /marks` and `POST /comparisons` store `X-Treg-Client` as the same runtime
+slug as `/call/`: lowercase letters, digits and hyphens, with the version suffix stripped and
+the length capped. The slug records attribution.
+
 `CallReview` stores one rating per `call_id`; reviews never create feedback reports.
 `application.feedback.submit_review` looks up the reference only in the caller's team audit records,
 narrowed to its pin (a foreign reference is 404, never an oracle). A missing audit record is a
@@ -235,8 +239,8 @@ so for them `hint_attached` counts an invitation the agent never saw.
   `hint_attached` records the `variant`. The binary CLI prints the text and the team `/mcp/`
   renders it, so copy changes need no release; the frozen Python CLI ignores the kind.
 - **Compare**: any successful, non-replayed, non-cached call by a team with a comparison waiting
-  (the `compare-ready:<org_id>` flag the worker run sets; see "Pairwise comparisons"), from a client
-  that lists `compare` in `X-Treg-Hints` and is not pinned to tags, at most
+  (the `compare-ready:<org_id>` flag the worker run sets; see "Pairwise comparisons"), from a caller
+  eligible to use the comparison API whose client lists `compare` in `X-Treg-Hints`, at most
   `compare_budget_per_hour` a team per hour (`compare-hint-budget:<org_id>`); past that the call falls
   through to review. It precedes review. The team `/mcp/` and the binary CLI send `compare`;
   `/mcp/v2/` and the Python CLI never receive it. Both show the pair itself, since an agent judges
@@ -423,10 +427,10 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    (one conditional `UPDATE ... SET attempts = attempts + 1, spent_micro = spent_micro + price
    WHERE attempts < limit AND spent_micro + price <= spend limit`, the day's first row inserted on
    conflict do nothing; at the call limit nothing is written and the run stops, over the spend
-   nothing is written and the call is skipped as `day_spend_cap`), then the team and pair cap
-   read again (on Postgres the day row's lock, taken by that update, orders concurrent
-   claims), then the comparison row as `pending` (its unique `call_ref` stops a second run,
-   concurrent or later). A crash after the claim leaves `pending`: it still counts and is never
+   nothing is written and the call is skipped as `day_spend_cap`). The claim rechecks the archive
+   setting and the pair cap, then inserts the `pending` row. The transaction orders the claim
+   against an opt-out update so erasure can find the row. The unique `call_ref` stops a second run.
+   A crash after the claim leaves `pending`: it still counts and is never
    resent. The day's counts are no team's row, so deleting a team gives no quota and no spend back.
 11. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
     (`platform_bindings`): the request the router's first child call on treg's key sends for the
@@ -457,7 +461,8 @@ its vendors' prices and capacity, and put a vendor that must never be asked in `
 call is settled. A `ready` row holds both outputs and the input, blinded: identifier keys removed at
 any depth (`_treg`, `next_cursor`, `cursor`, `provider`, `served_by`, `endpoint_id`, and `source`
 when it names a vendor), and either vendor's id, endpoint id or API host inside text replaced by
-`[vendor]`, the text kept. Each answer is cut to `compare_max_answer_bytes` and the input to 2 KB,
+`[vendor]`. A dot delimits a vendor identifier in a hostname, including on sibling subdomains.
+Each answer is cut to `compare_max_answer_bytes` and the input to 2 KB,
 `truncated` saying which; `first` (which answer is shown as 1) is random. The team's
 `compare-ready:<org_id>` flag is then set for three days in the shared store, so `TREG_KV_URL` must
 be set for markers and invitations to reach across processes.
@@ -491,10 +496,16 @@ truncated_parts?}`, no vendor; 204 when there is none, after clearing the flag a
 more (a row stored meanwhile sets it again). `POST /comparisons {comparison_id, choice:
 1|2|tie|both_bad, reason?}` maps 1/2 back to a/b through `first`, sets `decided` with one
 conditional update (a second verdict returns 200 with the first), and settles the flag the same
-way when nothing is left. Another team's or a failed row is a 404; a caller pinned to tags reads
-and answers none. The team `/mcp/` `compare` tool (scope `treg:read`, like `call_result`, since it
+way when nothing is left. Another team's or a failed row is a 404. A caller whose team opted out
+of the archive or whose membership has a tool, project or tag scope receives no invitation,
+204 on read and 404 on submission. The check uses the resolved caller's team and membership.
+The team `/mcp/` `compare` tool (scope `treg:read`, like `call_result`, since it
 shows the team's past inputs and answers; hidden from OpenAI's clients like `review`) fetches the
 next pair with an instruction line, or submits with `comparison_id` and `choice`.
+
+**Erasure.** Explicit archive erasure deletes the team's comparison rows through
+`comparisons.delete_for_org` and clears the ready flag on a best-effort basis after the database
+commit.
 
 **The invitation carries the pair.** When `/call/` answers a team `/mcp/` call with
 `X-Treg-Hint: compare`, the MCP reads `GET /comparisons/next` and puts the pair in the call result
