@@ -125,7 +125,17 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
   tool id. `/mcp/v2/` never registers them. See [hub](hub.md).
 - `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
   `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
-  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
+  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`. It
+  reads the full answer by default and requests a page when `offset` or `max_chars` is supplied
+  or the hosted chat budget applies. Oversized pages are shortened to the longest prefix that
+  fits the JSON envelope, with a character offset for resuming the read.
+- Team calls use `BoundedCallResponse` before the in-process HTTP client collects the body.
+  `budget_for` selects the hosted chat limits for ChatGPT's `openai-mcp/` User-Agent or Claude.ai's
+  `Claude-User/` User-Agent, origin or `claude-ai` client name. Other clients use the standard
+  budget. Both profiles return the same compact JSON in the text block and `structuredContent`
+  for text results. For native raster images and audio, media comes first. Standard clients
+  also receive a text receipt, while hosted chat clients receive the receipt in
+  `structuredContent` and a single media block.
 - `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`, so V2 never renders the invitation
   `/call/` decided on (`_SurfacePolicy.invites`); `/call/` still decides and records it
   ([feedback](feedback.md)). Only the team surface lists `compare` in `X-Treg-Hints`, so `/call/`
@@ -134,7 +144,10 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,
   by User-Agent) are not offered `review`, `mark` or `compare`: `_OpenAIClientGate` drops them from `tools/list` and the
   instructions, and their call results carry no invitation, because that review reads
-  agent-initiated rating as analytics collection.
+  agent-initiated rating as analytics collection. For `openai/codex#38287` the gate also removes
+  `outputSchema` from `call` and `call_media` and omits `structuredContent` on results with an image
+  or audio block. The receipt remains in the text block. ChatGPT keeps its output schema and
+  structured receipt.
 
 **Annotations.** `call` is destructive, open-world and non-idempotent: treg relays to somebody else's
 API and cannot know whether that endpoint charges, writes or deletes; claiming otherwise would be a
@@ -149,6 +162,9 @@ carrying the caller's address as `_bearer` resolved it (`client_ip.py`, never cl
 `catalog_search` reads the catalog in-process, so it logs its own `SearchMiss` (`source="mcp"` or
 `"claude-connector"`) and runs the [discovery experiment](find.md) with the caller's
 `Context`; the anonymous HTTP route is not part of that experiment.
+
+The [MCP output limits and archived-text pages](../interface/api.md) apply to the team
+surface. `/mcp/v2/` retains its frozen tool and response contract for directory review.
 
 **Provider authorization remediation.** Provider OAuth stays a human browser action. A catalog-call
 preflight can return a structured 428 body naming the missing grant, capability, scopes, CLI command

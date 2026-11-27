@@ -17,7 +17,7 @@ import re
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import cast
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -722,6 +722,8 @@ _ROUTED_CHILD_WINDOW = timedelta(hours=1)
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
     call_id: str, request: Request, caller: Caller = Depends(require_member),
+    offset: Annotated[int | None, Query(ge=0)] = None,
+    limit: Annotated[int | None, Query(ge=1, le=2_097_152)] = None,
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """What one of this team's calls asked and what came back — the archive's copy.
@@ -795,6 +797,19 @@ async def get_call_result(
         # The archive keeps the provider's bytes; a metered answer is shown as its caller got it.
         out["response"]["body_text"] = call_service.answer_for_caller(
             row.endpoint_id, text.encode("utf-8"), request.headers).decode("utf-8")
+    if (offset is not None or limit is not None) and out["response"]:
+        start = offset or 0
+        page_limit = limit if limit is not None else 65_536
+        response = out["response"]
+        text = response.get("body_text")
+        if text is not None:
+            end = start + page_limit
+            response.update(body_text=text[start:end], offset=start, total_chars=len(text),
+                            next_offset=end if end < len(text) else None)
+        if start > 0:
+            out["request"] = None
+        elif (sent := (out.get("request") or {}).get("body_text")) and len(sent) > 4096:
+            out["request"].update(body_text=sent[:4096], truncated=True)
     return out
 
 
