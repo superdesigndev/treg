@@ -613,5 +613,97 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  - id: apify.telegram.channel.similar
+    added: '2026-11-27'
+    capability: telegram.channel.similar
+    platform: telegram
+    scope: any_account
+    method: POST
+    path: /acts/akula.marketing~telegram-get-recommended-channels/run-sync-get-dataset-items
+    name: "Find similar Telegram channels with Akula Marketing"
+    summary: "Find Telegram's recommendations for a public channel, with titles, usernames and subscriber counts"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, example: 0.02, note: "Run spend cap in USD. Required on treg's key and at most 1."}
+        timeout: {type: integer, required: false, example: 90, note: "Run timeout in seconds. Send 90 on treg's key."}
+      body:
+        username: {type: string, required: true, example: "CryptoRankNews", note: "One public Telegram channel username or t.me link."}
+      bodyType: json
+      note: "One dataset row contains the seed username and its recommended_channels array. Apify bills the dataset row, not each recommended channel in that array."
+    platform_check: null
+    platform_query: declared
+    platform_request: {queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.02, timeout: 90}
+      body: {username: "CryptoRankNews"}
+    price: {value: '0.006', currency: USD, unit: result, note: "One charge per dataset row at the entry-level Apify rate. Paid Apify plans have lower rates."}
+    provenance: {source: observed, source_url: 'https://api.apify.com/v2/acts/akula.marketing~telegram-get-recommended-channels', checked: '2026-11-27', confidence: verified}
+    miss: {when: {any: [{path: response, op: empty}, {path: response.0.recommended_channels, op: empty}]}}
+    docs_url: https://apify.com/akula.marketing/telegram-get-recommended-channels/api/openapi
+
+  - id: apify.telegram.channel.info
+    added: '2026-11-27'
+    capability: telegram.channel.info
+    platform: telegram
+    scope: any_account
+    method: POST
+    path: /acts/akula.marketing~telegram-get-username-info/run-sync-get-dataset-items
+    name: "Look up Telegram channel profiles with Akula Marketing"
+    summary: "Look up public Telegram channel titles, descriptions, avatars and subscriber counts by username"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, example: 0.02, note: "Run spend cap in USD. Required on treg's key and at most 1."}
+        memory: {type: integer, required: false, example: 1024, note: "Memory in MB. Send 1024 on treg's key to fix the start fee."}
+        timeout: {type: integer, required: false, example: 90, note: "Run timeout in seconds. Send 90 on treg's key."}
+      body:
+        usernames: {type: array, items: {type: string}, required: true, example: ["CryptoRankNews"], note: "Public Telegram channel usernames or t.me links. Duplicate inputs are checked once."}
+        loadAdditionalData: {type: boolean, required: false, example: false, note: "Send false on treg's key for the public profile lookup."}
+      bodyType: json
+    platform_check: null
+    platform_query: declared
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90, body.loadAdditionalData: false}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.02, memory: 1024, timeout: 90}
+      body: {usernames: ["CryptoRankNews"], loadAdditionalData: false}
+    price: {value: '0.001', base: '0.00005', currency: USD, unit: result, note: "Entry-level Apify price per returned username, including a missing username row, plus one start event at 1024 MB."}
+    provenance: {source: observed, source_url: 'https://api.apify.com/v2/acts/akula.marketing~telegram-get-username-info', checked: '2026-11-27', confidence: verified}
+    miss: {when: {path: 'response[exists=True]', op: absent}}
+    docs_url: https://apify.com/akula.marketing/telegram-get-username-info/api/openapi
+
+  - id: apify.telegram.channel.posts
+    added: '2026-11-27'
+    capability: telegram.channel.posts
+    platform: telegram
+    scope: any_account
+    method: POST
+    path: /acts/akula.marketing~telegram-get-channel-content-media/run-sync-get-dataset-items
+    name: "List recent Telegram channel posts with Akula Marketing"
+    summary: "Read recent posts, dates, links, views and reactions from public Telegram channel previews"
+    input:
+      queryParams:
+        maxTotalChargeUsd: {type: number, required: false, example: 0.02, note: "Run spend cap in USD. Required on treg's key and at most 1."}
+        memory: {type: integer, required: false, example: 1024, note: "Memory in MB. Send 1024 on treg's key to fix the start fee."}
+        timeout: {type: integer, required: false, example: 90, note: "Run timeout in seconds. Send 90 on treg's key."}
+      body:
+        channels: {type: array, items: {type: string}, required: true, example: ["CryptoRankNews"], note: "Up to 25 public Telegram channel usernames or t.me links."}
+        maxPostsPerChannel: {type: integer, required: false, example: 10, note: "Maximum posts per channel, defaults to 100."}
+        daysRange: {type: integer, required: false, example: 30, note: "Only fetch posts from the last N days, defaults to 30."}
+        loadAdditionalData: {type: boolean, required: false, example: false, note: "Send false on treg's key. Exact counts use a separately priced mode with your own key."}
+        downloadMedia: {type: boolean, required: false, example: false, note: "Send false on treg's key. Downloading media switches to the separately priced full-data mode."}
+        monitoringMode: {type: boolean, required: false, example: false, note: "Send false on treg's key. Monitoring saves a checkpoint in the Apify account and uses your own key."}
+      bodyType: json
+      note: "Public preview view and reaction counts can be rounded. The public preview mode requires an accessible channel preview."
+    platform_check: null
+    platform_query: declared
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90, body.loadAdditionalData: false, body.downloadMedia: false, body.monitoringMode: false}
+    test_request:
+      queryParams: {maxTotalChargeUsd: 0.02, memory: 1024, timeout: 90}
+      body: {channels: ["CryptoRankNews"], maxPostsPerChannel: 1, daysRange: 90, loadAdditionalData: false, downloadMedia: false, monitoringMode: false}
+    price: {value: '0.00019', base: '0.00005', currency: USD, unit: result, note: "Entry-level Apify public preview price per post plus one start event at 1024 MB. No posts incur only the start fee."}
+    provenance: {source: observed, source_url: 'https://api.apify.com/v2/acts/akula.marketing~telegram-get-channel-content-media', checked: '2026-11-27', confidence: verified}
+    settle: {count: {path: 'response.*.postId'}, hold_within_units: 2}
+    miss: {when: {path: response, op: empty}}
+    docs_url: https://apify.com/akula.marketing/telegram-get-channel-content-media/api/openapi
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
