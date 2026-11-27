@@ -65,7 +65,7 @@ RULES = (
     "charged for a miss."
 )
 
-PRAISE_CODEBOOK_VERSION = "2026-11-27.1"
+PRAISE_CODEBOOK_VERSION = "2026-11-27.2"
 
 # What a `useful` review praises. Most codes pair with a negative one, so a report card can tell a
 # praise and a complaint about the same thing apart: ACCURATE with ACCURACY and RISKY, FRESH with
@@ -85,19 +85,25 @@ PRAISE_CODES = {
                 "sort, limit) were respected. For generated media: it followed the prompt and settings "
                 "(aspect ratio, duration, voice, style, what to leave out).",
     "COMPLETE": "Everything asked for came back: all the fields, the full profile, page, text or transcript, "
-                "every item of a batch, history or pagination to get the rest.",
-    "STRUCTURED": "The response is clean and easy to use: structured fields, parsed rows, consistent schema, "
-                  "readable markdown, explicit flags or status fields.",
-    "ACCESS": "It reached content that is hard to get: a page behind anti-bot, a login wall or JavaScript "
-              "rendering, a source other tools failed on, or it worked where an earlier attempt was blocked "
-              "or rate limited.",
+                "every item of a batch (all of it in one call included), history or pagination to get the "
+                "rest; or it found what another provider had missed.",
+    "STRUCTURED": "The response's own format is easy to use: structured fields, parsed rows, a consistent "
+                  "schema, explicit flags or status fields, markdown instead of raw HTML. Only the shape of "
+                  "the response: how clearly the content itself is written or argued is not STRUCTURED.",
+    "ACCESS": "It got past an obstacle the reason names: anti-bot, a captcha, a login wall, JavaScript "
+              "rendering or a rate limit that blocked another attempt. Content that is simply public, or a "
+              "find another provider missed, is not ACCESS.",
     "CHEAP": "The praise is about cost: low price, unbilled or uncharged, many results for one charge, within "
              "the cost cap.",
     "HONEST": "An honest miss or a clear negative: it said plainly that nothing was found (often without a "
-              "charge) instead of guessing, or flagged its own uncertainty, so the agent could move on.",
-    "FAST": "The praise is about speed: fast, quick, returned in seconds, one call instead of several.",
-    "GENERIC": "Useful, but the reason names no specific quality: 'worked', 'good', 'returned the data', or "
-               "it only describes what the agent did with the result.",
+              "charge) instead of guessing, or flagged its own uncertainty, so the agent could move on. Only "
+              "a miss or an uncertainty flag: never a description of what was returned or generated.",
+    "FAST": "The praise is about speed, said in words: fast, quick, low latency, returned in seconds. "
+            "Getting everything in one call is not speed: that is COMPLETE, or CHEAP when the reason is "
+            "about cost.",
+    "GENERIC": "Useful, but the reason names no quality at all: 'worked', 'good', 'returned the data', or it "
+               "only describes what the agent did with the result. A reason that names any quality is that "
+               "quality's code, not GENERIC.",
 }
 
 PRAISE_RULES = (
@@ -106,8 +112,14 @@ PRAISE_RULES = (
     "missing, some noise) is not the praise: code what made it useful. 'Found the right person / page' = "
     "RELEVANT; 'its values agreed with a second source / verified valid' = ACCURATE. 'Returned in full' = "
     "COMPLETE. 'Clean miss, no charge' = HONEST first, CHEAP second. A reason that only lists the fields that "
-    "came back = COMPLETE when it says all or full, else GENERIC."
+    "came back = COMPLETE when it says all or full, else GENERIC. Generated media (image, video, audio, "
+    "music, voice) is coded on the output: following the prompt = RELEVANT, faithful or high-quality output = "
+    "ACCURATE, never HONEST. GENERIC never takes a second code."
 )
+
+# Codes that stand alone, never a second code nor with one: GENERIC with a named quality likely
+# beside it is that quality (`codes_from`).
+NO_SECONDARY = {"GENERIC"}
 
 # Below this a second code is noise, not a second problem.
 SECONDARY_MIN_P = 0.25
@@ -203,6 +215,11 @@ def codes_from(answer: object, codebook: dict[str, str] = CODES) -> tuple[str, s
         return None
     raw = answer.get("probabilities")
     probs = {k: p for k, v in (raw.items() if isinstance(raw, dict) else ())
-             if k in codebook and k != primary and (p := probability(v)) is not None}
+             if k in codebook and k != primary and k not in NO_SECONDARY
+             and (p := probability(v)) is not None}
     second = max(probs, key=probs.get, default=None)
-    return primary, second if second is not None and probs[second] >= SECONDARY_MIN_P else None
+    if second is None or probs[second] < SECONDARY_MIN_P:
+        return primary, None
+    if primary in NO_SECONDARY:  # "nothing specific" with a specific quality likely beside it
+        return second, None
+    return primary, second

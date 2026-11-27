@@ -590,3 +590,26 @@ async def test_a_failed_praise_request_waits_an_hour_without_counting_a_try(clie
     row = (await _all())["j-0"]
     assert not row.answer_attempts and row.answer_retry_at is not None
     assert (await review_judge.judge_praise(deadline=float("inf")))["selected"] == 0
+
+
+def test_generic_never_carries_a_second_code():
+    P = review_codes.PRAISE_CODES
+    # A named quality likely beside GENERIC is the code itself.
+    assert review_codes.codes_from(
+        {"choice": "GENERIC", "probabilities": {"GENERIC": 0.5, "RELEVANT": 0.4}}, P) == ("RELEVANT", None)
+    # Below the second-code bar it stays GENERIC, alone.
+    assert review_codes.codes_from(
+        {"choice": "GENERIC", "probabilities": {"GENERIC": 0.9, "COMPLETE": 0.1}}, P) == ("GENERIC", None)
+    # Nor is it ever the second code beside a specific one.
+    assert review_codes.codes_from(
+        {"choice": "COMPLETE", "probabilities": {"COMPLETE": 0.5, "GENERIC": 0.4, "FAST": 0.3}}, P) == ("COMPLETE", "FAST")
+
+
+def test_the_praise_question_draws_the_boundaries_jev_crossed():
+    q = review_codes.praise_question(0)
+    text, c = q["instructions"], q["criteria"]
+    assert "one call" in c["FAST"] and "COMPLETE" in c["FAST"]        # one call is not speed
+    assert "not STRUCTURED" in c["STRUCTURED"]                         # clear writing is not format
+    assert "never a description" in c["HONEST"] and "never HONEST" in text  # generated output
+    assert "not ACCESS" in c["ACCESS"] and "rate limit" in c["ACCESS"]  # an obstacle overcome
+    assert "never takes a second code" in text
