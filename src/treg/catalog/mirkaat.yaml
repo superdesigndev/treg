@@ -1,0 +1,143 @@
+provider: mirkaat
+source:
+  docs: https://app.mirkaat.com/developers
+  openapi: https://app.mirkaat.com/api/v1/openapi.json
+  curated: 2026-11-27
+limits: "120 calls a minute per key, 30 of them POST /posts"
+pricing_url: https://www.mirkaat.com/pricing
+proposed_capabilities:
+  social.post.create: "Post or schedule one post to several social networks at once"
+  social.post.list: "List your scheduled or sent posts across networks"
+  social.post.detail: "Get a post's status and each network's link or error"
+  social.post.cancel: "Cancel a scheduled post"
+  social.brand.list: "List your brands and the networks each can post to"
+  social.account.list: "List your connected social accounts"
+defaults:
+  provenance: {source: docs, source_url: 'https://www.mirkaat.com/pricing', checked: '2026-11-27', confidence: documented}
+endpoints:
+  - id: mirkaat.social.post.create
+    added: '2026-11-27'
+    capability: social.post.create
+    platform: social
+    scope: own_account
+    kind: action
+    method: POST
+    path: /posts
+    name: "Post or schedule to up to 8 networks"
+    summary: "Post now, schedule, queue, or save a draft for Instagram, TikTok, LinkedIn, X, Threads, Facebook, Pinterest and YouTube in one call, after the same checks as the Mirkaat composer"
+    note: "Send dry_run: true first: it answers 200 with ok and every problem (not connected, a failed check, no posts left) and posts nothing. A brand set to need client approval only takes draft: true. Send an Idempotency-Key header so a retry never posts twice."
+    input:
+      body:
+        networks: {type: array, items: {type: string}, required: true, note: "any of instagram, tiktok, threads, facebook, x, pinterest, youtube, linkedin", example: ["linkedin", "x"]}
+        text: {type: string, required: false, note: "the text for every network", example: "We just shipped our API."}
+        text_per_network: {type: object, required: false, note: "own text for some networks, keyed by network", example: {x: "Shorter for X"}}
+        media: {type: array, items: {type: object}, required: false, note: "public https URLs as {url, type?}: up to 20 photos, or 1 video, or 1 PDF (LinkedIn)", example: [{url: "https://example.com/photo.jpg"}]}
+        brand: {type: string, required: false, note: "brand id from /brands; optional when the workspace has 1 brand"}
+        scheduled_at: {type: string, required: false, note: "ISO 8601 with a time zone, at least 1 minute ahead; leave out to post now", example: "2026-12-05T09:00:00+07:00"}
+        queue: {type: boolean, required: false, note: "the brand's next free posting slot instead of a time"}
+        draft: {type: boolean, required: false, note: "save it in Mirkaat Drafts for a person to finish"}
+        dry_run: {type: boolean, required: false, note: "run every check and the plan count, post nothing", example: true}
+        options: {type: object, required: false, note: "per network choices, e.g. {youtube: {format: short, title: ...}, pinterest: {board_id: ...}}; see the docs"}
+    test_request:
+      body: {networks: ["linkedin"], text: "Checking the Mirkaat API from treg.", dry_run: true}
+    price: {value: '0', currency: USD, unit: call, note: "included in the Mirkaat plan; each network posted to counts as 1 of the plan's monthly posts"}
+    docs_url: https://app.mirkaat.com/developers#create
+
+  - id: mirkaat.social.post.list
+    added: '2026-11-27'
+    capability: social.post.list
+    platform: social
+    scope: own_account
+    method: GET
+    path: /posts
+    name: "List scheduled or sent posts"
+    summary: "List your scheduled posts, soonest first, or sent posts, newest first, with each network's result"
+    input:
+      queryParams:
+        status: {type: string, required: false, enum: [scheduled, sent], default: scheduled, example: "scheduled"}
+        brand: {type: string, required: false, note: "only this brand's posts"}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 50, example: 1}
+    test_request:
+      queryParams: {status: "scheduled", limit: 1}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#list
+
+  - id: mirkaat.social.post.detail
+    added: '2026-11-27'
+    capability: social.post.detail
+    platform: social
+    scope: own_account
+    method: GET
+    path: /posts/{id}
+    name: "Get a post"
+    summary: "Get one post's status (scheduled, publishing, published, partly_failed, failed) and each network's link or error"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "the id POST /posts returned", example: "sp_8f2k1c"}
+    miss: {status: [404], means: "no such post in this workspace"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#get
+
+  - id: mirkaat.social.post.cancel
+    added: '2026-11-27'
+    capability: social.post.cancel
+    platform: social
+    scope: own_account
+    kind: action
+    method: DELETE
+    path: /posts/{id}
+    name: "Cancel a scheduled post"
+    summary: "Take a scheduled post off the calendar before it goes out"
+    note: "A post that already went out answers 409: delete it on the network itself."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "sp_8f2k1c"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#cancel
+
+  - id: mirkaat.social.brand.list
+    added: '2026-11-27'
+    capability: social.brand.list
+    platform: social
+    scope: own_account
+    method: GET
+    path: /brands
+    name: "List brands"
+    summary: "List your brands with the networks each can post to now, its time zone and queue times"
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#brands
+
+  - id: mirkaat.social.account.list
+    added: '2026-11-27'
+    capability: social.account.list
+    platform: social
+    scope: own_account
+    method: GET
+    path: /accounts
+    name: "List connected accounts"
+    summary: "List your connected social accounts: network, username and brand"
+    input:
+      queryParams:
+        brand: {type: string, required: false, note: "only this brand's accounts"}
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#brands
+
+  - id: mirkaat.pinterest.user.boards
+    added: '2026-11-27'
+    capability: pinterest.user.boards
+    platform: pinterest
+    scope: own_account
+    method: GET
+    path: /accounts/{id}/boards
+    name: "List your Pinterest boards"
+    summary: "List a connected Pinterest account's boards, for options.pinterest.board_id when posting"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "a Pinterest account id from /accounts"}
+    miss: {status: [404], means: "no such account in this workspace"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#brands

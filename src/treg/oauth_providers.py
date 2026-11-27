@@ -2284,6 +2284,31 @@ JUSTONEAPI = OAuthProvider(
     probe_path="/api/tiktok/get-user-detail/v1?uniqueId=tiktok",
 )
 
+MIRKAAT = OAuthProvider(
+    service="mirkaat",
+    display_name="Mirkaat",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="mk_live_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.mirkaat.com/settings/api",
+    setup_action_label="Get your Mirkaat API key",
+    setup_steps=(
+        "Sign in to Mirkaat (or start the free trial) and connect your social accounts.",
+        "Open Settings, then API, and make a key. Copy it: it is shown once.",
+    ),
+    setup_note="Posting is included in your Mirkaat plan and counts in its monthly posts; checking a key is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Write once, post everywhere: schedule posts to Instagram, TikTok, LinkedIn, X, Threads, Facebook, Pinterest and YouTube in one call.",
+    base_url="https://app.mirkaat.com/api/v1",
+    docs_url="https://app.mirkaat.com/developers",
+    probe_path="/me",  # free; an invalid key gets a 401 here
+)
+
 SCRAPECREATORS = OAuthProvider(
     service="scrapecreators",
     display_name="ScrapeCreators",
@@ -4619,7 +4644,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, MIRKAAT,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
