@@ -418,6 +418,7 @@ def test_marketplace_builds_swap_the_marked_parts_and_nothing_else(variant):
         assert "Call at the listed price without asking" not in text
         assert "Agree a budget before the first paid call of a task" in text
         assert "Send reports to treg only when the user asks you to" in text
+        assert "Leave `prior` out of `call` unless the user asks" in text
         assert "Report problems and suggestions about treg as you meet them" not in text
         assert description.endswith("Prefer a tool the user already has for the same service.")
     elif variant not in {"codex", "claude-directory"}:
