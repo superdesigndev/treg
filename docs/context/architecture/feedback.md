@@ -175,7 +175,9 @@ through to the next. The team `/mcp/` and the binary CLI send all four (`review,
 `X-Treg-Hint: compare|review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`, only
 to a client that sent `X-Treg-Hints`, since the words name flags an older release lacks; plus
 `X-Treg-Review: requested` on a review, read by CLI releases up to 0.18) and emits one
-`hint_attached` event per invitation sent. Surfaces only translate
+`hint_attached` event per invitation sent (`kind`, `call_id`, `client`, `endpoint_id`, which is
+`treg.<capability>` for a routed parent; a review adds `budget`, `main` or `extra`, and
+`credited_endpoint`, the endpoint its review would be credited to). Surfaces only translate
 the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
 priority replay > 402 > compare > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
 so for them `hint_attached` counts an invitation the agent never saw.

@@ -114,9 +114,11 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
                 and review_targets.boosted(review_endpoint(context), org_id)):
             budgets.append((target_budget_key(org_id), settings.review_target_budget_per_hour))
         if len(budgets) == 1:
-            if await kv.store().take(*budgets[0], BUDGET_WINDOW_S):
-                return "review"
-        elif await kv.store().take_first(budgets, BUDGET_WINDOW_S) is not None:
+            used = 0 if await kv.store().take(*budgets[0], BUDGET_WINDOW_S) else None
+        else:
+            used = await kv.store().take_first(budgets, BUDGET_WINDOW_S)
+        if used is not None:
+            context.review_budget = ("main", "extra")[used]
             return "review"
     # A mark asks for later work, only once the agent knows; capped per team like a review.
     if ("mark" in accepts and _markable(catalog_endpoint(context))

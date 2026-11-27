@@ -140,9 +140,13 @@ async def test_a_spent_budget_still_asks_about_a_short_endpoint_from_the_extra_o
         assert response.status_code == 200
         return response.headers.get('X-Treg-Hint')
 
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append(args))
     assert await hint() == 'review'  # the team budget
     assert await hint() == 'review'  # spent: the extra one, for a short endpoint
     assert await hint() is None      # both spent
+    assert [a[2]['budget'] for a in events if a[1] == 'hint_attached'] == ['main', 'extra']
 
 
 async def test_the_extra_budget_is_not_spent_on_a_full_endpoint_or_when_off(clients, targeting,
@@ -245,11 +249,16 @@ async def test_a_real_routed_call_is_targeted_by_its_successful_child(clients, e
     monkeypatch.setattr(targeting, 'review_sample_rate', 0)
     monkeypatch.setattr(targeting, 'feedback_hint_rate', 0)
     await review_targets.warm()
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda *args, **kw: events.append(args))
     ask = {'full_name': 'Patrick Collison', 'domain': 'stripe.com'}
     first = await clients.post(f'/call/{ROUTED}', json=ask)
     assert first.status_code == 200, first.text
     assert first.headers.get('X-Treg-Hint') == 'review'
     child = first.json()['_treg']['served_by']  # one hit, no confirm: also the credited child
+    sent, = [a[2] for a in events if a[1] == 'hint_attached']
+    assert (sent['endpoint_id'], sent['credited_endpoint']) == (ROUTED, child)
     await add_reviews(clients, child, teams=10, each=10)
     await review_targets.warm()
     second = await clients.post(f'/call/{ROUTED}', json=ask | {'full_name': 'John Collison'})

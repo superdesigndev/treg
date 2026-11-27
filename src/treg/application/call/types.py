@@ -371,6 +371,8 @@ class CallContext:
     tool_name: str | None = None
     endpoint_id: str | None = None
     replay_of: str | None = None
+    # Which review budget a review invitation took (`invite.invitation`): "main" or "extra".
+    review_budget: str | None = None
     provider: str | None = None
     credential_tier: str | None = None
     refused_by: str | None = None

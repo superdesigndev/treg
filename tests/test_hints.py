@@ -121,6 +121,7 @@ async def test_review_budget_caps_a_team_per_hour_and_every_invitation_is_an_eve
     assert [p['kind'] for p, _ in sent] == ['review', 'review']
     assert all(p['client'] == 'claude-code' and p['endpoint_id'] == 'example.search' and p['call_id']
                for p, _ in sent)
+    assert all(p['budget'] == 'main' and p['credited_endpoint'] == 'example.search' for p, _ in sent)
     assert all(kw['groups']['team'] for _, kw in sent)
     assert not [a for a, _ in events if a[1] == 'mcp_hint_attached']
 
