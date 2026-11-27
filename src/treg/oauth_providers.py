@@ -4247,6 +4247,35 @@ TIINGO = OAuthProvider(
 )
 
 
+TICKERLAYER = OAuthProvider(
+    service="tickerlayer",
+    display_name="TickerLayer",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your TickerLayer API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://tickerlayer.com/signup",
+    setup_action_label="Get your TickerLayer API key",
+    setup_steps=(
+        "Create a free TickerLayer account (no card needed).",
+        "Open the dashboard and copy your API key.",
+    ),
+    setup_note="A free key covers crypto, forex and US stocks with 3,000 REST calls every 30 days; "
+               "other feeds and higher limits come with a paid plan.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Live quotes and OHLCV history for stocks in 20 markets, ETFs, forex, crypto, indices, "
+            "commodities, perpetual futures and bond yields, on one key.",
+    base_url="https://api.tickerlayer.com",
+    docs_url="https://tickerlayer.com/docs",
+    # One call from the plan's allowance, free key included; a bogus key answers
+    # 401 {"message":"Unauthorized","statusCode":401}.
+    probe_path="/markets/status?market=US",
+)
+
 FINANCIALDATASETS = OAuthProvider(
     service="financialdatasets",
     display_name="Financial Datasets",
@@ -4631,7 +4660,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, TICKERLAYER,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
