@@ -173,10 +173,13 @@ jobs:
       - name: Run tests
         # Each xdist worker gets its own database (treg_test_gw0, ...; see tests/conftest.py), so
         # reset_db() in one worker never empties another's tables. TREG_TEST_SHARD picks this
-        # machine's half (tests/conftest.py). -v + faulthandler locate a stall: the fault handler
-        # dumps every thread's stack after 300s of one test.
+        # machine's half (tests/conftest.py). worksteal lets an idle worker take tests queued on a
+        # busy one, so a few slow tests at the end do not hold the shard. -v + faulthandler locate
+        # a stall: the fault handler dumps every thread's stack after 300s of one test.
         if: steps.docs.outputs.only != 'true'
-        run: uv run --frozen --with pytest-xdist python -m pytest -n auto -v -o faulthandler_timeout=300
+        run: >-
+          uv run --frozen --with pytest-xdist python -m pytest -n auto --dist worksteal -v
+          -o faulthandler_timeout=300
       - name: Dump Postgres activity on failure
         # Shows the database's view of a hang: every session, its state (idle in transaction = a
         # leaked or blocked one), what it waits on, and ungranted locks with their holders' queries.
