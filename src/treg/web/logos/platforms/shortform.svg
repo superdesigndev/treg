@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Short-form video">
+  <!-- Not a brand: vertical video across TikTok, Reels and Shorts, drawn as a tall frame with a play mark. -->
+  <rect x="6" y="1.8" width="12" height="20.4" rx="2.6" fill="#D9466B"/>
+  <rect x="7.6" y="4" width="8.8" height="16" rx="1.3" fill="#D9466B" opacity=".55"/>
+  <path fill="#fff" d="M10.4 8.6v6.8l5.4-3.4z"/>
+</svg>
