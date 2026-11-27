@@ -460,7 +460,10 @@ apart from a real tie, and `jev_orders` keeps both (A-first verdict, then B-firs
 choice, not text, so there is no Jev reason. Decided pairs come first, so the agents' votes
 calibrate Jev's from the first run; at most `compare_judge_per_run` pairs a run. A pair Jev could
 not judge steps aside: an unreadable answer backs off from an hour to a week (`jev_attempts`,
-`jev_retry_at`), a failed request waits an hour without counting a try. A new
+`jev_retry_at`), a failed request waits an hour without counting a try. Each request gets only
+the time left before the run's deadline; one the deadline cut short ends the pass
+(`stopped_by_deadline`) and its pairs wait, uncounted. `tokens_in` counts every request that
+answered, also when the other order failed. A new
 `compare_rubric.VERSION` judges every pair again; a build with an older one never overwrites it.
 `compare_judge` off skips the pass (its rollback switch; verdicts written stay).
 

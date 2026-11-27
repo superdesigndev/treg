@@ -1,5 +1,7 @@
 """Jev's blind verdicts on stored comparisons: asked in both orders, written apart from the agent's
 vote, split when the orders disagree, and stepping aside when it cannot judge."""
+import asyncio
+import time
 from datetime import timedelta
 
 from sqlmodel import select
@@ -35,8 +37,10 @@ def _fake(monkeypatch, answer):
     """Jev stand-in: `answer(pair)` per question gives the shown choice, or a whole Reply."""
     seen = []
 
-    async def ask(state, questions):
+    async def ask(state, questions, *, timeout_s):
         seen.append((state, questions))
+        if callable(getattr(answer, "reply", None)):
+            return await answer.reply(state, timeout_s)
         if isinstance(answer, Reply):
             return answer
         return Reply(answers={q: answer(state["pairs"][int(q[1:])]) for q in questions}, ms=1, tokens_in=7)
@@ -115,6 +119,43 @@ async def test_a_failed_request_waits_an_hour_without_counting_a_try(clients, mo
     assert (out["failed_requests"], out["retry_later"]) == (1, 1)
     row = (await _all())["c-0"]
     assert not row.jev_attempts and row.jev_retry_at is not None and row.jev_choice is None
+
+
+class _OneOrderFails:
+    """A-first answers, B-first fails: the answered side's tokens still count."""
+    async def reply(self, state, timeout_s):
+        if '"A' in state["pairs"][0]["answer_1"]:
+            return Reply(answers={"c0": {"choice": "1"}}, ms=1, tokens_in=7)
+        return Reply(answers=None, ms=1, error="http_500")
+
+
+async def test_tokens_of_the_order_that_answered_are_counted(clients, monkeypatch):
+    await _pairs(clients, [{}])
+    _fake(monkeypatch, _OneOrderFails())
+    out = await compare_judge.judge_pairs(deadline=float("inf"))
+    assert (out["failed_requests"], out["tokens_in"], out["judged"]) == (1, 7, 0)
+
+
+class _SlowerThanTheRun:
+    """Each request runs past the timeout it was given, like an HTTP timeout at the deadline."""
+    def __init__(self):
+        self.timeouts = []
+
+    async def reply(self, state, timeout_s):
+        self.timeouts.append(timeout_s)
+        await asyncio.sleep(timeout_s + 0.01)
+        return Reply(answers=None, ms=1, error="timeout")
+
+
+async def test_the_deadline_bounds_each_request_and_stops_without_a_failure(clients, monkeypatch):
+    await _pairs(clients, [{}, {}])
+    monkeypatch.setattr(get_settings(), "compare_judge_batch", 1)
+    slow = _SlowerThanTheRun()
+    _fake(monkeypatch, slow)
+    out = await compare_judge.judge_pairs(deadline=time.monotonic() + 0.05)
+    assert out["stopped_by_deadline"] and (out["failed_requests"], out["retry_later"]) == (0, 0)
+    assert len(slow.timeouts) == 2 and max(slow.timeouts) <= 0.05  # one batch, both orders
+    assert all(r.jev_retry_at is None and not r.jev_attempts for r in (await _all()).values())
 
 
 async def test_a_new_rubric_judges_again_and_never_over_a_newer_one(clients, monkeypatch):

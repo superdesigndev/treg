@@ -9,6 +9,9 @@ agents' votes calibrate Jev's from the first run. At most `compare_judge_per_run
 
 A pair Jev could not judge steps aside so the cap never stays on the same rows: an unreadable
 answer backs off from an hour to a week, a failed request waits an hour without counting a try.
+Each request gets only the time left before the deadline; one the deadline cut short stops the run
+and its pairs wait for the next one, not counted as failed. Tokens are counted for every request
+that answered, also when its other order failed.
 Run by `treg-worker reviews judge` (`review_judge.run`), off with `compare_judge`.
 """
 from __future__ import annotations
@@ -33,10 +36,10 @@ log = logging.getLogger("treg.compare_judge")
 FAILED_REQUEST_DELAY = timedelta(hours=1)
 
 
-async def _ask(state: dict, questions: dict[str, dict]) -> judge.Reply:
+async def _ask(state: dict, questions: dict[str, dict], *, timeout_s: float) -> judge.Reply:
     s = get_settings()
     return await judge.ask(state, questions, api_key=s.typesafe_api_key, model=s.typesafe_model,
-                           url=s.typesafe_url, timeout_s=float(s.review_judge_timeout_s))
+                           url=s.typesafe_url, timeout_s=timeout_s)
 
 
 def _retry_at(now, attempts: int):
@@ -73,7 +76,8 @@ async def judge_pairs(*, deadline: float) -> dict:
                       CallComparison.created_at.desc())
             .limit(s.compare_judge_per_run))).all()
     out = {"pending": pending, "selected": len(rows), "judged": 0, "split": 0, "already_judged": 0,
-           "failed_requests": 0, "unreadable": 0, "retry_later": 0, "tokens_in": 0}
+           "failed_requests": 0, "unreadable": 0, "retry_later": 0, "tokens_in": 0,
+           "stopped_by_deadline": False}
 
     async def step_aside(batch: list, failed: bool) -> None:
         at = utcnow_naive()
@@ -87,18 +91,25 @@ async def judge_pairs(*, deadline: float) -> dict:
 
     size = s.compare_judge_batch
     for start in range(0, len(rows), size):
-        if time.monotonic() >= deadline:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            out["stopped_by_deadline"] = True
             break
         batch = rows[start:start + size]
         questions = {f"c{i}": compare_rubric.question(i) for i in range(len(batch))}
+        timeout_s = min(float(s.review_judge_timeout_s), left)
         replies = await asyncio.gather(
-            *(_ask(_state(batch, a_first, s.compare_judge_answer_chars), questions) for a_first in (True, False)))
+            *(_ask(_state(batch, a_first, s.compare_judge_answer_chars), questions, timeout_s=timeout_s)
+              for a_first in (True, False)))
+        out["tokens_in"] += sum(reply.tokens_in or 0 for reply in replies if reply.answers is not None)
         if any(reply.answers is None for reply in replies):
+            if time.monotonic() >= deadline:  # cut short by the run's end, not Jev's fault
+                out["stopped_by_deadline"] = True
+                break
             out["failed_requests"] += 1
             log.warning("comparison judge abstained: %s", "; ".join(str(r.error) for r in replies if r.answers is None))
             await step_aside(batch, True)
             continue
-        out["tokens_in"] += sum(reply.tokens_in or 0 for reply in replies)
         answers = [reply.answers if isinstance(reply.answers, dict) else {} for reply in replies]
         verdicts, unread = {}, []
         for i, r in enumerate(batch):
