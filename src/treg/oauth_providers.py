@@ -4605,6 +4605,30 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+OTTER = OAuthProvider(
+    service="otter",
+    display_name="Otter",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Otter API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.otterab.com/docs/developer-reference/api-keys",
+    setup_action_label="Get your Otter API key",
+    setup_steps=(
+        "Sign in to Otter and open Settings → API & MCP.",
+        "Create a key with projects:read and experiments:read, then copy the token.",
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="A/B testing for websites, with project discovery and experiment configuration metadata.",
+    base_url="https://www.otterab.com/api/v1",
+    docs_url="https://www.otterab.com/api-docs",
+    probe_path="/capabilities/experiment_types",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4635,6 +4659,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Other API-key providers
+        OTTER,
     )
 }
 
