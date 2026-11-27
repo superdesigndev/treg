@@ -423,6 +423,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "mirkaat",  # partner key has no credit wallet to run out of; invoiced monthly
     "descovo",  # funded plan credits remain; its 402 error code is undocumented and unobserved
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "branddev", "brightdata", "coresignal", "crustdata",

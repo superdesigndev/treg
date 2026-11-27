@@ -3,62 +3,152 @@ source:
   docs: https://app.mirkaat.com/developers
   openapi: https://app.mirkaat.com/api/v1/openapi.json
   curated: 2026-11-27
-limits: "120 calls a minute per key, 30 of them POST /posts"
-pricing_url: https://www.mirkaat.com/pricing
+limits: "120 calls a minute per key, 30 of them POST /posts. On treg's key every call names a profile this team made: 1 profile per person, who connects their own networks through a login link and needs no Mirkaat account."
+pricing_url: https://app.mirkaat.com/developers#profiles
 proposed_capabilities:
+  social.profile.create: "Make a posting profile for 1 person, who then connects their own social accounts"
+  social.profile.detail: "Get a posting profile and the social networks it can post to"
+  social.profile.delete: "Delete a posting profile, its scheduled posts and its connected accounts"
+  social.account.connect: "Get a login link that connects a person's social account (LinkedIn, Instagram, X...)"
   social.post.create: "Post or schedule one post to several social networks at once"
-  social.post.list: "List your scheduled or sent posts across networks"
+  social.post.list: "List scheduled or sent posts across networks"
   social.post.detail: "Get a post's status and each network's link or error"
   social.post.cancel: "Cancel a scheduled post"
-  social.brand.list: "List your brands and the networks each can post to"
-  social.account.list: "List your connected social accounts"
+  social.account.list: "List connected social accounts"
 defaults:
-  provenance: {source: docs, source_url: 'https://www.mirkaat.com/pricing', checked: '2026-11-27', confidence: documented}
+  provenance: {source: docs, source_url: 'https://app.mirkaat.com/developers#profiles', checked: '2026-11-27', confidence: documented}
 endpoints:
+  - id: mirkaat.social.profile.create
+    added: '2026-11-27'
+    capability: social.profile.create
+    platform: social
+    scope: any_account
+    kind: account
+    method: POST
+    path: /profiles
+    name: "Make a posting profile"
+    summary: "Make a profile for 1 person: they connect their own networks with GET /profiles/{id}/connect and never need a Mirkaat account"
+    note: "Make 1 profile per person and keep its id: every post, list and link call names it."
+    input:
+      body:
+        name: {type: string, required: false, maxLength: 80, note: "a label for the person or brand", example: "Ana"}
+        timezone: {type: string, required: false, note: "IANA time zone for the queue times; default UTC", example: "Europe/Paris"}
+      bodyType: json
+    managed_resource:
+      operation: create
+      kind: profile
+      id: {in: response, path: id}
+      name_from: {in: body, path: name}
+      cleanup_endpoint: mirkaat.social.profile.delete
+    test_request:
+      body: {name: "treg verification profile"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#profiles
+
+  - id: mirkaat.social.profile.detail
+    added: '2026-11-27'
+    capability: social.profile.detail
+    platform: social
+    scope: any_account
+    kind: account
+    method: GET
+    path: /profiles/{id}
+    name: "Get a posting profile"
+    summary: "A profile's connected_networks and accounts (network and username, never tokens)"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "the id POST /profiles returned", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+    managed_resource: {operation: read, kind: profile, id: {in: pathParams, name: id}}
+    miss: {status: [404], means: "no such profile on this key"}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#profiles
+
+  - id: mirkaat.social.profile.delete
+    added: '2026-11-27'
+    capability: social.profile.delete
+    platform: social
+    scope: any_account
+    kind: account
+    method: DELETE
+    path: /profiles/{id}
+    name: "Delete a posting profile"
+    summary: "Cancel the profile's scheduled posts, remove its connected accounts and close it; sent posts stay on the networks"
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+    managed_resource: {operation: delete, kind: profile, id: {in: pathParams, name: id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#profiles
+
+  - id: mirkaat.social.profile.connect
+    added: '2026-11-27'
+    capability: social.account.connect
+    platform: social
+    scope: any_account
+    kind: account
+    method: GET
+    path: /profiles/{id}/connect
+    name: "Get a social login link"
+    summary: "A login link for 1 network: the person opens it, logs in, and lands on a page that says to go back to their AI"
+    note: "Hand the url to the person; then GET /profiles/{id} shows the network under connected_networks. linkedin=page connects a company page."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+      queryParams:
+        network: {type: string, required: true, enum: [instagram, tiktok, threads, facebook, x, pinterest, youtube, linkedin], example: "linkedin"}
+        linkedin: {type: string, required: false, enum: [personal, page], default: personal}
+    managed_resource: {operation: use, kind: profile, id: {in: pathParams, name: id}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://app.mirkaat.com/developers#profiles
+
   - id: mirkaat.social.post.create
     added: '2026-11-27'
     capability: social.post.create
     platform: social
-    scope: own_account
+    scope: any_account
     kind: action
     method: POST
     path: /posts
     name: "Post or schedule to up to 8 networks"
-    summary: "Post now, schedule, queue, or save a draft for Instagram, TikTok, LinkedIn, X, Threads, Facebook, Pinterest and YouTube in one call, after the same checks as the Mirkaat composer"
-    note: "Send dry_run: true first: it answers 200 with ok and every problem (not connected, a failed check, no posts left) and posts nothing. A brand set to need client approval only takes draft: true. Send an Idempotency-Key header so a retry never posts twice."
+    summary: "Post now, schedule, or queue one post for Instagram, TikTok, LinkedIn, X, Threads, Facebook, Pinterest and YouTube in one call, after the same checks as the Mirkaat composer"
+    note: "Send dry_run: true first: it is free, answers 200 with ok and every problem (not connected, a failed check) and posts nothing. Send an Idempotency-Key header so a retry never posts twice."
     input:
       body:
-        networks: {type: array, items: {type: string}, required: true, note: "any of instagram, tiktok, threads, facebook, x, pinterest, youtube, linkedin", example: ["linkedin", "x"]}
+        profile: {type: string, required: false, note: "profile id from POST /profiles; required on treg's key (on your own Mirkaat key, a brand id, optional with 1 brand)", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+        networks: {type: array, items: {type: string}, required: true, maxItems: 8, note: "any of instagram, tiktok, threads, facebook, x, pinterest, youtube, linkedin", example: ["linkedin", "x"]}
         text: {type: string, required: false, note: "the text for every network", example: "We just shipped our API."}
         text_per_network: {type: object, required: false, note: "own text for some networks, keyed by network", example: {x: "Shorter for X"}}
         media: {type: array, items: {type: object}, required: false, note: "public https URLs as {url, type?}: up to 20 photos, or 1 video, or 1 PDF (LinkedIn)", example: [{url: "https://example.com/photo.jpg"}]}
-        brand: {type: string, required: false, note: "brand id from /brands; optional when the workspace has 1 brand"}
         scheduled_at: {type: string, required: false, note: "ISO 8601 with a time zone, at least 1 minute ahead; leave out to post now", example: "2026-12-05T09:00:00+07:00"}
-        queue: {type: boolean, required: false, note: "the brand's next free posting slot instead of a time"}
-        draft: {type: boolean, required: false, note: "save it in Mirkaat Drafts for a person to finish"}
-        dry_run: {type: boolean, required: false, note: "run every check and the plan count, post nothing", example: true}
+        queue: {type: boolean, required: false, note: "the profile's next free posting slot instead of a time"}
+        dry_run: {type: boolean, required: false, default: false, note: "run every check, post nothing, free", example: true}
         options: {type: object, required: false, note: "per network choices, e.g. {youtube: {format: short, title: ...}, pinterest: {board_id: ...}}; see the docs"}
-    test_request:
-      body: {networks: ["linkedin"], text: "Checking the Mirkaat API from treg.", dry_run: true}
-    price: {value: '0', currency: USD, unit: call, note: "included in the Mirkaat plan; each network posted to counts as 1 of the plan's monthly posts"}
+      bodyType: json
+    managed_resource: {operation: use, kind: profile, id: {in: body, path: profile}}
+    price: {value: '0.05', currency: USD, unit: post, note: "$0.05 per network the post goes to, each counted as 1 post (1 post to LinkedIn and X = $0.10). Dry runs and refused posts are free."}
+    reserve: {entities: {from: body.networks, max: 8}}
+    settle: {count: {path: response.networks}}
+    bill:
+      free_when:
+        - {path: response.object, op: equals, value: dry_run}
     docs_url: https://app.mirkaat.com/developers#create
 
   - id: mirkaat.social.post.list
     added: '2026-11-27'
     capability: social.post.list
     platform: social
-    scope: own_account
+    scope: any_account
+    kind: data
     method: GET
     path: /posts
     name: "List scheduled or sent posts"
-    summary: "List your scheduled posts, soonest first, or sent posts, newest first, with each network's result"
+    summary: "A profile's scheduled posts, soonest first, or sent posts, newest first, with each network's result"
     input:
       queryParams:
+        profile: {type: string, required: false, note: "profile id; required on treg's key", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
         status: {type: string, required: false, enum: [scheduled, sent], default: scheduled, example: "scheduled"}
-        brand: {type: string, required: false, note: "only this brand's posts"}
         limit: {type: integer, required: false, min: 1, max: 100, default: 50, example: 1}
-    test_request:
-      queryParams: {status: "scheduled", limit: 1}
+    managed_resource: {operation: use, kind: profile, id: {in: queryParams, name: profile}}
     price: {value: '0', currency: USD, unit: call}
     docs_url: https://app.mirkaat.com/developers#list
 
@@ -66,15 +156,19 @@ endpoints:
     added: '2026-11-27'
     capability: social.post.detail
     platform: social
-    scope: own_account
+    scope: any_account
+    kind: data
     method: GET
     path: /posts/{id}
     name: "Get a post"
-    summary: "Get one post's status (scheduled, publishing, published, partly_failed, failed) and each network's link or error"
+    summary: "One post's status (scheduled, publishing, published, partly_failed, failed) and each network's link or error"
     input:
       pathParams:
         id: {type: string, required: true, note: "the id POST /posts returned", example: "sp_8f2k1c"}
-    miss: {status: [404], means: "no such post in this workspace"}
+      queryParams:
+        profile: {type: string, required: false, note: "the post's profile id; required on treg's key", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+    managed_resource: {operation: use, kind: profile, id: {in: queryParams, name: profile}}
+    miss: {status: [404], means: "no such post on this profile"}
     price: {value: '0', currency: USD, unit: call}
     docs_url: https://app.mirkaat.com/developers#get
 
@@ -82,7 +176,7 @@ endpoints:
     added: '2026-11-27'
     capability: social.post.cancel
     platform: social
-    scope: own_account
+    scope: any_account
     kind: action
     method: DELETE
     path: /posts/{id}
@@ -92,37 +186,26 @@ endpoints:
     input:
       pathParams:
         id: {type: string, required: true, example: "sp_8f2k1c"}
+      queryParams:
+        profile: {type: string, required: false, note: "the post's profile id; required on treg's key", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+    managed_resource: {operation: use, kind: profile, id: {in: queryParams, name: profile}}
     price: {value: '0', currency: USD, unit: call}
     docs_url: https://app.mirkaat.com/developers#cancel
-
-  - id: mirkaat.social.brand.list
-    added: '2026-11-27'
-    capability: social.brand.list
-    platform: social
-    scope: own_account
-    method: GET
-    path: /brands
-    name: "List brands"
-    summary: "List your brands with the networks each can post to now, its time zone and queue times"
-    test_request:
-      queryParams: {}
-    price: {value: '0', currency: USD, unit: call}
-    docs_url: https://app.mirkaat.com/developers#brands
 
   - id: mirkaat.social.account.list
     added: '2026-11-27'
     capability: social.account.list
     platform: social
-    scope: own_account
+    scope: any_account
+    kind: data
     method: GET
     path: /accounts
     name: "List connected accounts"
-    summary: "List your connected social accounts: network, username and brand"
+    summary: "A profile's connected social accounts: network and username, never tokens"
     input:
       queryParams:
-        brand: {type: string, required: false, note: "only this brand's accounts"}
-    test_request:
-      queryParams: {}
+        profile: {type: string, required: false, note: "profile id; required on treg's key", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+    managed_resource: {operation: use, kind: profile, id: {in: queryParams, name: profile}}
     price: {value: '0', currency: USD, unit: call}
     docs_url: https://app.mirkaat.com/developers#brands
 
@@ -130,14 +213,18 @@ endpoints:
     added: '2026-11-27'
     capability: pinterest.user.boards
     platform: pinterest
-    scope: own_account
+    scope: any_account
+    kind: data
     method: GET
     path: /accounts/{id}/boards
-    name: "List your Pinterest boards"
-    summary: "List a connected Pinterest account's boards, for options.pinterest.board_id when posting"
+    name: "List Pinterest boards"
+    summary: "A connected Pinterest account's boards, for options.pinterest.board_id when posting"
     input:
       pathParams:
-        id: {type: string, required: true, note: "a Pinterest account id from /accounts"}
-    miss: {status: [404], means: "no such account in this workspace"}
+        id: {type: string, required: true, note: "a Pinterest account id from /accounts", example: "spc_1a2b3c"}
+      queryParams:
+        profile: {type: string, required: false, note: "the account's profile id; required on treg's key", example: "8d2c41f0-5b7e-4d1a-9a3c-2f6e1b0c7d55"}
+    managed_resource: {operation: use, kind: profile, id: {in: queryParams, name: profile}}
+    miss: {status: [404], means: "no such account on this profile"}
     price: {value: '0', currency: USD, unit: call}
     docs_url: https://app.mirkaat.com/developers#brands

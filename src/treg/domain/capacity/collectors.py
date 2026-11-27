@@ -1261,6 +1261,7 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "mirkaat": "no prepaid balance: a partner key has no limit and is invoiced monthly per network posted; GET /api/v1/usage gives the month's count, not a balance",
     "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
                 "field; the prepaid USD balance is visible in the Corpo API dashboard",
     "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
