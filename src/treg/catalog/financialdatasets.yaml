@@ -9,14 +9,10 @@ limits: "Financial Datasets publishes Credits pricing per successful request but
 # BYOK and treg's platform key expose the same paths. A team's own key is unmetered by treg.
 # On treg's key, documented Credits rates are settled from the catalog rate card after success.
 proposed_capabilities:
-  stocks.financials.all: "Get standardized company financial statements"
   stocks.financials.income-statements: "Get company income statements"
   stocks.financials.balance-sheets: "Get company balance sheets"
   stocks.financials.cash-flow-statements: "Get company cash-flow statements"
-  stocks.financials.segments: "Get company financial-statement segments"
   stocks.earnings.list: "List company earnings"
-  stocks.filings.list: "List SEC filings"
-  stocks.insider-trades.list: "List insider trades"
   stocks.institutional-holdings.list: "List institutional holdings"
   stocks.index-funds.holdings: "Get ETF and index-fund holdings and weights"
   stocks.screener.search: "Screen US public companies by financial filters"
@@ -32,7 +28,6 @@ proposed_capabilities:
   stocks.discovery.earnings-tickers: "List tickers available for earnings"
   stocks.discovery.filings-tickers: "List tickers available for filings"
   stocks.discovery.filings-ciks: "List CIKs available for filings"
-  stocks.discovery.filings-types: "List filing types available for filings"
   stocks.discovery.financial-metrics-snapshot-tickers: "List tickers available for financial-metric snapshots"
   stocks.discovery.screener-filters: "List supported financial-screener fields and operators"
   stocks.discovery.interest-rate-banks: "List central banks available for interest rates"
