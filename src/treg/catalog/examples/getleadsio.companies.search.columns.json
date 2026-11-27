@@ -1,0 +1,1 @@
+{"ok":true,"columns":[{"canonical_name":"company_domain","label":"Company domain","description":"The company's website domain.","group":"Company","type":"string","filter_mode":"exact","searchable":true,"exportable":true,"filter_params":["domains"],"derived":false,"values_lookup":false}]}
