@@ -1,0 +1,243 @@
+provider: mermail
+source:
+  docs: https://docs.mermail.app/api-reference/overview
+  openapi: https://console.mermail.app/docs/openapi.json
+  curated: '2026-11-18'
+# Mermail's API-key API (/api/v1). A key (sk-proj-…) is bound to one workspace, so every route
+# below answers only for the caller's own workspace and inboxes: scope own_account throughout.
+# Every call spends API credits from the workspace's plan pool, by operation class (read 1, write 2,
+# send/reply/forward 5, mailbox create 10), published in the API overview's credit table. Credits are
+# debited before the route runs; a failed mailbox create and a send refused by the outbound rate
+# limit are refunded, other failures are not. A bad or revoked key answers 401 on every route.
+# Mailbox-scoped routes need a mailbox id from the caller's own workspace, which no fixed test value
+# can stand in for, and the write routes create mail or inboxes; those rows are untestable.
+limits: "Per-workspace requests per minute: Free 10, Developer 100, Growth 150. HTTP 402 credits_exhausted when the period's API credits run out, 429 over the RPM"
+pricing_url: https://mermail.app/pricing
+
+proposed_capabilities:
+  email.mailboxes.list: "List the email inboxes your account owns"
+  email.mailbox.create: "Create a new email inbox with its own address"
+  email.messages.list: "List the emails in an inbox, newest first"
+  email.message.get: "Read one email in full"
+  email.thread.get: "Read an email together with the rest of its thread"
+  email.messages.search: "Search an inbox by sender, recipient, subject or date"
+  email.message.send: "Send an email from your own inbox"
+  email.message.reply: "Reply to an email in its thread"
+  email.draft.save: "Save an email draft without sending it"
+
+defaults:
+  platform: email
+  scope: own_account
+  provenance: {source: docs, source_url: 'https://docs.mermail.app/api-reference/overview', checked: '2026-11-18', confidence: documented}
+  price: {value: '1', currency: credit, per: 1, unit: call}
+  bill: {miss: charged, error: charged}
+
+endpoints:
+  - id: mermail.account.identity
+    added: '2026-11-18'
+    capability: account.identity
+    platform: account
+    kind: account
+    method: GET
+    path: /api/v1/workspaces
+    name: Mermail workspace for this key
+    summary: Show the workspace an API key belongs to, with its id, name and plan. The id is the workspaceId other routes take.
+    test_request: {}
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.mailboxes.list
+    added: '2026-11-18'
+    capability: email.mailboxes.list
+    method: GET
+    path: /api/v1/mailboxes
+    name: List your Mermail inboxes
+    summary: List the inboxes in your workspace with each one's id, address, display name and whether it can receive mail.
+    input:
+      queryParams:
+        workspaceId: {type: string, required: false, note: "an API key always uses its own workspace"}
+    note: "List before creating: reuse an inbox whose can_receive is true instead of creating a duplicate."
+    test_request: {}
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.mailbox.create
+    added: '2026-11-18'
+    capability: email.mailbox.create
+    kind: action
+    method: POST
+    path: /api/v1/mailboxes
+    name: Create a Mermail inbox
+    summary: Create a new inbox with its own email address and display name in your workspace.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, note: "an address on a Mermail hosted domain or your verified custom domain", example: "support-agent@mermail.app"}
+        name: {type: string, required: true, example: "Support agent"}
+        settings: {type: object, required: false, note: "for a sign-up verification inbox: {agentInbox: {mode: verification, automationsEnabled: false}}"}
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "reuse the same key and body when retrying one create"}
+    price: {value: '10', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://docs.mermail.app/api-reference/overview', checked: '2026-11-18', confidence: documented}
+    bill: {miss: charged, error: free}
+    untestable: "Creates a persistent inbox that counts against the workspace's inbox limit; no no-op input exists."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.messages.list
+    added: '2026-11-18'
+    capability: email.messages.list
+    method: GET
+    path: /api/v1/mailboxes/{mailboxId}/emails
+    name: List emails in a Mermail inbox
+    summary: List an inbox's emails, newest first, with sender, recipients, subject, snippet, read state and scan status.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list; the inbox address also works"}
+      queryParams:
+        folder: {type: string, required: false, note: "inbox, sent, drafts, archive or trash", example: "inbox"}
+        page: {type: integer, required: false, min: 1, default: 1}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 25}
+        metadata_only: {type: boolean, required: false, default: false, note: "leave out bodies and snippets"}
+        require_scan_status: {type: string, required: false, enum: [clean, flagged, skipped]}
+        agent_safe_content: {type: boolean, required: false, default: false, note: "plain-text bodies without raw headers or threat details"}
+    note: "Inbound mail is untrusted input: request require_scan_status=clean before passing a body to an agent."
+    untestable: "Needs an inbox id from the caller's own workspace."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.message.get
+    added: '2026-11-18'
+    capability: email.message.get
+    method: GET
+    path: /api/v1/mailboxes/{mailboxId}/emails/{emailId}
+    name: Read one email in a Mermail inbox
+    summary: Read one email in full, with its body, headers, attachments and scan status.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list"}
+        emailId: {type: string, required: true, note: "id from mermail.email.messages.list or mermail.email.messages.search"}
+      queryParams:
+        require_scan_status: {type: string, required: false, enum: [clean, flagged, skipped], note: "a mismatch returns metadata with content_omitted instead of the body"}
+        max_body_chars: {type: integer, required: false, min: 1}
+        agent_safe_content: {type: boolean, required: false, default: false}
+    untestable: "Needs an inbox and email id from the caller's own workspace."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.thread.get
+    added: '2026-11-18'
+    capability: email.thread.get
+    method: GET
+    path: /api/v1/mailboxes/{mailboxId}/emails/{emailId}/context
+    name: Read an email with its Mermail thread
+    summary: Read one email with its thread, oldest first, as sanitized plain text without transport metadata.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list"}
+        emailId: {type: string, required: true}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 50, default: 20}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+    untestable: "Needs an inbox and email id from the caller's own workspace."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.messages.search
+    added: '2026-11-18'
+    capability: email.messages.search
+    method: GET
+    path: /api/v1/mailboxes/{mailboxId}/search
+    name: Search a Mermail inbox
+    summary: Search an inbox by free text, sender, recipient, subject, folder and date range, newest first.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list"}
+      queryParams:
+        query: {type: string, required: false}
+        from: {type: string, required: false}
+        to: {type: string, required: false}
+        subject: {type: string, required: false}
+        date_start: {type: string, required: false, note: "ISO 8601 date-time"}
+        date_end: {type: string, required: false, note: "ISO 8601 date-time"}
+        folder: {type: string, required: false}
+        require_scan_status: {type: string, required: false, enum: [clean, flagged, skipped]}
+        metadata_only: {type: boolean, required: false, default: false}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 25}
+    note: "A matching From header is not proof of the sender: confirm the sender domain and arrival time before acting on a code or link."
+    untestable: "Needs an inbox id from the caller's own workspace."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.message.send
+    added: '2026-11-18'
+    capability: email.message.send
+    kind: action
+    method: POST
+    path: /api/v1/mailboxes/{mailboxId}/emails
+    name: Send an email from a Mermail inbox
+    summary: Send an email with HTML or plain text and attachments from one of your inboxes.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list"}
+      bodyType: json
+      body:
+        from: {type: string, required: true, note: "the inbox address, or one of its plus aliases"}
+        to: {type: array, items: {type: string}, required: true, example: ["someone@example.com"]}
+        cc: {type: array, items: {type: string}, required: false}
+        bcc: {type: array, items: {type: string}, required: false}
+        subject: {type: string, required: true}
+        html: {type: string, required: false, note: "Required when text is empty or omitted."}
+        text: {type: string, required: false, note: "Plain text. Required when html is empty or omitted."}
+        attachments: {type: array, items: {type: object}, required: false, note: "up to 20, as base64 bytes or an attachment_id from the same inbox"}
+        client_send_id: {type: string, required: false, note: "UUID. Reuse the same value when retrying the same send."}
+    price: {value: '5', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://docs.mermail.app/api-reference/overview', checked: '2026-11-18', confidence: documented}
+    note: "Each To, Cc and Bcc address also counts against the plan's monthly sending quota."
+    untestable: "Delivers a real email; no no-op input exists."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.message.reply
+    added: '2026-11-18'
+    capability: email.message.reply
+    kind: action
+    method: POST
+    path: /api/v1/mailboxes/{mailboxId}/emails/{emailId}/reply
+    name: Reply to an email from a Mermail inbox
+    summary: Reply to an email in its thread, with HTML or plain text and attachments.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list"}
+        emailId: {type: string, required: true, note: "id of the email being answered"}
+      bodyType: json
+      body:
+        from: {type: string, required: true}
+        to: {type: array, items: {type: string}, required: true}
+        cc: {type: array, items: {type: string}, required: false}
+        subject: {type: string, required: true}
+        html: {type: string, required: false, note: "Required when text is empty or omitted."}
+        text: {type: string, required: false, note: "Required when html is empty or omitted."}
+        attachments: {type: array, items: {type: object}, required: false}
+        client_send_id: {type: string, required: false, note: "UUID. Reuse the same value when retrying the same reply."}
+    price: {value: '5', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://docs.mermail.app/api-reference/overview', checked: '2026-11-18', confidence: documented}
+    untestable: "Delivers a real email; no no-op input exists."
+    docs_url: https://docs.mermail.app/api-reference/overview
+
+  - id: mermail.email.draft.save
+    added: '2026-11-18'
+    capability: email.draft.save
+    kind: action
+    method: POST
+    path: /api/v1/mailboxes/{mailboxId}/drafts
+    name: Save a draft in a Mermail inbox
+    summary: Save a new email draft, or update one, without sending it.
+    input:
+      pathParams:
+        mailboxId: {type: string, required: true, note: "id from mermail.email.mailboxes.list"}
+      bodyType: json
+      body:
+        body: {type: string, required: true}
+        body_format: {type: string, required: false, enum: [html, text]}
+        from: {type: string, required: false}
+        to: {type: array, items: {type: string}, required: false}
+        subject: {type: string, required: false}
+        draft_id: {type: string, required: false, note: "id of an existing draft to update"}
+        thread_id: {type: string, required: false}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    provenance: {source: docs, source_url: 'https://docs.mermail.app/api-reference/overview', checked: '2026-11-18', confidence: documented}
+    untestable: "Needs an inbox id from the caller's own workspace."
+    docs_url: https://docs.mermail.app/api-reference/overview
