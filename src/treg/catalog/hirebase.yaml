@@ -79,8 +79,8 @@ endpoints:
     scope: any_account
     method: POST
     path: /jobs/estimate
-    name: Count jobs a search would return
-    summary: "Count the jobs a hirebase.jobs.search body matches, for free: with limit 0 the total, otherwise what that page would cost."
+    name: Estimate the cost of a job search
+    summary: "Estimate what a hirebase.jobs.search would cost, for free. Returns {cost: N} where N is the number of credits the search would use. Since each job is 1 credit, cost equals the job count: with limit 0 the total matches, otherwise what that page would use."
     input:
       bodyType: json
       body:
@@ -90,8 +90,8 @@ endpoints:
         location_types: {type: array, items: {type: string}, required: false}
         company_slug: {type: array, items: {type: string}, required: false, example: ["palantir-technologies"]}
         days_ago: {type: integer, required: false, example: 7}
-        limit: {type: integer, required: false, default: 10, min: 0, note: "0 returns the total match count"}
-      note: "Takes every hirebase.jobs.search field."
+        limit: {type: integer, required: false, default: 10, min: 0, note: "0 returns the total cost (equals total job count); a positive value returns that page's cost"}
+      note: "Takes every hirebase.jobs.search field. For the full job count with job data, hirebase.jobs.search with limit 1 returns total_count."
     test_request: {body: {job_titles: ["software engineer"], geo_locations: [{country: "United States"}], days_ago: 7, limit: 0}}
     price: {value: '0', currency: USD, unit: call, note: "Free, also once a monthly allowance is spent."}
     docs_url: https://www.hirebase.org/docs/api-reference/jobs/estimate
