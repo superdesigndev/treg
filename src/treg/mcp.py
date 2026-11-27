@@ -111,8 +111,7 @@ class _SurfacePolicy:
     client_name: str
     event_source: str
     next_call: str
-    # Renders the review or feedback invitation `/call/` decided on. Without the tools to answer
-    # it, a surface must not ask: `/call/` still decides and records, this surface does not show it.
+    # Whether this surface renders invitations and may request them from `/call/`.
     invites: bool = True
     # Catalog platforms this surface neither lists, describes nor calls.
     hidden_platforms: frozenset[str] = frozenset()
@@ -277,9 +276,8 @@ _TOOL_SCOPES = {"v1": _V1_TOOL_SCOPES, "v2": _V2_TOOL_SCOPES}
 _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 
 # OpenAI's clients: ChatGPT and its plugin reviewer send `openai-mcp/...`, Codex `codex-mcp-client/...`.
-# Their plugin review reads an agent-initiated `review`, and the review/feedback invitations in call
-# results, as collecting behavioral data for analytics. Those clients get neither; every other client
-# keeps both. `/call/` still decides and records an invitation, this surface just does not show it.
+# Their plugin review treats agent-initiated ratings as behavioral data collection. Tool calls
+# from those clients opt out of invitations when they reach `/call/`.
 _OPENAI_UA_PREFIXES = ("openai-mcp/", "codex-mcp-client/")
 _OPENAI_HIDDEN_TOOLS = frozenset({"review", "mark", "compare"})
 
@@ -864,25 +862,41 @@ async def _internal_auth(token: str) -> dict[str, str]:
     }
 
 
+_INVITATION_TOOLS = ("review", "mark", "feedback", "compare")
+
+
+def _accepted_hints(token: str) -> str:
+    """Invitation kinds this credential's scopes permit the agent to answer."""
+    claims = _oauth_claims(token)
+    if claims is None:
+        return ",".join(_INVITATION_TOOLS)
+    from .domain.identity import mcp_oauth
+    granted = mcp_oauth.mcp_permissions(claims.get("scope", ""))
+    return ",".join(kind for kind in _INVITATION_TOOLS if _V1_TOOL_SCOPES[kind] in granted)
+
+
 @asynccontextmanager
-async def _api(token: str, *, client_name: str = "mcp"):
+async def _api(token: str, *, client_name: str = "mcp", invites: bool = False):
     """An in-process client bound to treg's own ASGI app, carrying the caller's identity."""
     from .api import app  # deferred: bootstrap imports THIS module while assembling api:app
 
     host_name, host_user_agent = _caller_host.get()
     host = {k: v for k, v in (("X-Treg-Mcp-Client", host_name),
                               ("X-Treg-Mcp-User-Agent", host_user_agent)) if v}
+    # Omission selects legacy hints, so send an explicit empty value to opt out.
+    accepted = (
+        _accepted_hints(token)
+        if invites and not _is_openai_client({"user-agent": host_user_agent})
+        else ""
+    )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url=_INTERNAL_BASE,
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        # Every invitation kind this surface renders into the hint slot (`_call_impl`); only the
-        # team surface has the `compare` tool that answers a comparison invitation.
         headers={**await _internal_auth(token), "X-Treg-Client": client_name,
-                 "X-Treg-Hints": ("review,mark,feedback,compare" if client_name == _TEAM_SURFACE.client_name
-                                  else "review,mark,feedback"), **host,
+                 "X-Treg-Hints": accepted, **host,
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
@@ -1465,12 +1479,11 @@ async def _review_impl(
     *, surface: _SurfacePolicy, rows: list["MarkItemIn"] | None = None,
 ) -> ReviewOut:
     token = _bearer(ctx)
-    api_context = (_api(token) if surface is _TEAM_SURFACE
-                   else _api(token, client_name=surface.client_name))
     body = {"call_id": call_id, "usefulness": usefulness, "reason": reason}
     if rows:
         body["rows"] = [row.model_dump(exclude_none=True) for row in rows]
-    async with api_context as client:
+    # A review also declares whether its client can answer a comparison.
+    async with _api(token, client_name=surface.client_name, invites=surface.invites) as client:
         response = await client.post("/reviews", json=body)
     return _body(response)
 
@@ -1966,7 +1979,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     # model fills in — a model that omits it mid-chain drops that spend out of its user's invoice.
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
-                                          "idempotency-key", "x-treg-meta",
+                                          "idempotency-key", "x-treg-meta", "x-treg-hints",
                                           "x-treg-authorization-method")}
     if authorization_method:
         extra_headers["X-Treg-Authorization-Method"] = authorization_method
@@ -2000,11 +2013,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                 ctype = "text/plain"
         extra_headers["content-type"] = ctype
 
-    # Keep the existing team-MCP call shape intact for integrations/tests that wrap `_api(token)`. The V2
-    # connector opts into its own attribution header without changing the established surface.
-    api_context = (_api(token) if surface is _TEAM_SURFACE
-                   else _api(token, client_name=surface.client_name))
-    async with api_context as client:
+    async with _api(token, client_name=surface.client_name, invites=surface.invites) as client:
         # Resolve the team the same way `balance`/`my_tools` do BEFORE spending anything: a
         # multi-team identity token otherwise reaches /call and bounces off its raw
         # "choose an org (send X-Treg-Org)" 400 — a header hint an MCP caller cannot act on.
@@ -2189,10 +2198,8 @@ async def _call_media_impl(
         )
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
-                                          "idempotency-key", "x-treg-meta")}
-    api_context = (_api(token) if surface is _TEAM_SURFACE
-                   else _api(token, client_name=surface.client_name))
-    async with api_context as client:
+                                          "idempotency-key", "x-treg-meta", "x-treg-hints")}
+    async with _api(token, client_name=surface.client_name) as client:
         _, slug, problem = await _resolve_org(client)
         if problem:
             return CallToolResult(

@@ -1240,7 +1240,7 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
-    async def _api(_token):
+    async def _api(_token, **_kwargs):
         yield _Client()
 
     async def _org(_client):
@@ -1280,7 +1280,7 @@ async def test_call_sends_form_urlencoded_body_when_endpoint_specifies_bodytype_
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
-    async def _api(_token):
+    async def _api(_token, **_kwargs):
         yield _Client()
 
     async def _org(_client):

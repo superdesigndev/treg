@@ -141,16 +141,20 @@ async def test_admin_review_pagination(clients, monkeypatch):
     assert (await clients.get('/admin/reviews', headers=headers, params={'limit': 101})).status_code == 422
 
 
-async def test_mcp_review_relay(clients):
+async def test_mcp_review_relay(clients, monkeypatch):
+    from treg.application import compare, review_targets
+    from treg.infra import kv
     from test_mcp import _call_tool as team_call, mcp_session
 
-    org = await seed(clients)
+    monkeypatch.setattr(review_targets, 'sampled', lambda *_: True)
+    org = await seed(clients, credential_tier='platform')
     async with mcp_session(clients) as client:
         result = await team_call(client, 'review', {'call_id': 'review-call', 'usefulness': 'partly',
                                              'reason': 'Some results helped.'}, token=org['token'])
     row, = await rows()
     assert result == {'review_id': row.id, 'status': 'received'}
     assert row.usefulness == 'partly'
+    assert await kv.store().get_text(compare.answering_key(org['org_id']))
 
 
 async def test_mcp_review_schema():

@@ -79,7 +79,7 @@ async def test_header_before_stream_without_changing_response(
     assert consumed == ['body', 'close']
 
 
-def _platform_call(monkeypatch, *, tier='platform', own=False):
+def _platform_call(monkeypatch, *, tier='platform', own=False, upstream_headers=()):
     """A stubbed 2xx call on treg's platform key (or an own tool, or a routed parent, which runs
     no marketplace target of its own) with a static body."""
     from treg.routers import call
@@ -97,9 +97,37 @@ def _platform_call(monkeypatch, *, tier='platform', own=False):
             context.route_summary = {'identity': {}}
         else:
             context.marketplace = SimpleNamespace(endpoint_id='example.search', tier=tier)
-        return UpstreamResponse(200, (), stream(), close)
+        response_headers = ((b'x-treg-call-id', context.call_ref.encode()), *upstream_headers)
+        return UpstreamResponse(200, response_headers, stream(), close)
     monkeypatch.setattr(call, 'execute_call', execute)
     monkeypatch.setattr(call.catalog_store, 'load', lambda: SimpleNamespace(by_id={'example.search': {}}))
+
+
+@pytest.mark.parametrize('kind', ['compare', 'review', 'mark', 'feedback'])
+async def test_upstream_failure_envelope_skips_invitation(clients, monkeypatch, kind):
+    from treg import analytics
+    from treg.application import compare, review_targets
+    from treg.infra import kv
+
+    org_id = (await clients.get('/orgs')).json()[0]['org_id']
+    _platform_call(monkeypatch, upstream_headers=((b'x-treg-upstream-failed', b'task failed'),))
+    monkeypatch.setattr(compare, 'configured', lambda: True)
+    monkeypatch.setattr(review_targets, 'sampled', lambda *_: True)
+    monkeypatch.setattr(hints, 'sampled', lambda *_: True)
+    store = kv.store()
+    await store.set_flag(compare.ready_key(org_id), 60)
+    take = AsyncMock(wraps=store.take)
+    monkeypatch.setattr(store, 'take', take)
+    capture = MagicMock()
+    monkeypatch.setattr(analytics, 'capture', capture)
+
+    response = await clients.get('/call/example.search', headers={'X-Treg-Hints': kind})
+
+    assert response.status_code == 200 and response.content == b'{}'
+    assert response.headers['X-Treg-Upstream-Failed'] == 'task failed'
+    assert all(name not in response.headers for name in ('X-Treg-Hint', 'X-Treg-Hint-Text', 'X-Treg-Review'))
+    take.assert_not_awaited()
+    assert 'hint_attached' not in [entry.args[1] for entry in capture.call_args_list]
 
 
 async def test_review_budget_caps_a_team_per_hour_and_every_invitation_is_an_event(clients, monkeypatch):

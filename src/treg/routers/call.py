@@ -32,7 +32,7 @@ from ..application.call.service import (
     create_call_context,
     execute_call,
 )
-from ..application.call.invite import accepted_kinds, catalog_endpoint, invitation, review_endpoint
+from ..application.call.invite import catalog_endpoint, invitation, review_endpoint
 from ..application.call.intake import (
     META_HEADER,
     CallMeta,
@@ -479,10 +479,14 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
         del response.headers[name]
     try:
         # Optional invitation, decided before the body streams (application/call/invite.py).
-        kind = await invitation(context, response.status_code,
-                                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
-                                accepts=accepted_kinds(request.headers.get("X-Treg-Hints"),
-                                                       _client_of(request)))
+        declared_hints = hints.hints_header(request.headers)
+        kind = None
+        if not response.headers.get("X-Treg-Upstream-Failed"):
+            kind = await invitation(
+                context, response.status_code,
+                replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
+                accepts=hints.accepted_kinds(declared_hints, _client_of(request)),
+            )
         if kind is not None:
             response.headers["X-Treg-Hint"] = kind
             if kind == "review":
@@ -490,7 +494,7 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
             variant = None
             # Words only for a client that declared what it shows: an older one prints its own
             # line, and these name flags (`--rows`) its release may not have.
-            if kind == "mark" or request.headers.get("X-Treg-Hints") is not None:
+            if kind == "mark" or declared_hints is not None:
                 variant, text = hints.header_text(kind, context.call_ref)
                 response.headers["X-Treg-Hint-Text"] = text
             _capture_hint(request, context, kind, variant)

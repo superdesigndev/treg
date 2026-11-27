@@ -1,8 +1,31 @@
-"""Local deterministic invitation sampling. No network, database or response body access."""
+"""Invitation negotiation and deterministic sampling without network or database access."""
 import hashlib
 from typing import Literal
 
 from .config import get_settings
+
+
+LEGACY_KINDS: frozenset[str] = frozenset({"review", "feedback"})
+UNNAMED_KINDS: frozenset[str] = LEGACY_KINDS - {"review"}
+
+
+def accepted_kinds(header: str | None, client: str = "") -> frozenset[str]:
+    """Parse `X-Treg-Hints`. An empty value opts out. When omitted, a named runtime accepts
+    the legacy kinds and an unnamed caller accepts feedback only."""
+    if header is None:
+        return LEGACY_KINDS if client else UNNAMED_KINDS
+    return frozenset(k.strip().lower() for k in header.split(",") if k.strip())
+
+
+def hints_header(headers) -> str | None:
+    """Read and join all `X-Treg-Hints` header lines (RFC 9110); None only when absent."""
+    if hasattr(headers, "getlist"):
+        values = headers.getlist("X-Treg-Hints")
+        return ",".join(values) if values else None
+    if hasattr(headers, "get"):
+        return headers.get("X-Treg-Hints")
+    values = [bytes(v).decode("latin-1") for k, v in headers if bytes(k).lower() == b"x-treg-hints"]
+    return ",".join(values) if values else None
 
 
 def _bucket(salt: str, sample_id: str) -> int:
