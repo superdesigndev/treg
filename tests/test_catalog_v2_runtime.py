@@ -734,3 +734,19 @@ def test_a_platform_check_refuses_with_its_reason_and_fails_closed(monkeypatch):
     call_resolution._enforce_platform_check({**ep, "platform_check": None}, b'[1]', query)
     with pytest.raises(ValueError, match="plugin"):
         row(platform_check={"plugin": "nodot"})
+
+
+def test_platform_query_declared_takes_only_the_declared_names():
+    from treg.application.call import resolve as call_resolution
+    from treg.application.call.types import ResolutionFailed
+    ep = {"id": "demo.poll", "provider": "demo", "platform_query": "declared",
+          "input": {"pathParams": {"id": {"type": "string"}}, "queryParams": {"wait": {"type": "integer"}}}}
+    call_resolution._enforce_platform_query(ep, call_resolution.QueryValues((("id", "1"), ("wait", "5"))))
+    for name in ("token", "token[]", "Wait"):
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_query(ep, call_resolution.QueryValues(((name, "x"),)))
+        assert exc.value.detail["parameter"] == "queryParams" and "x" not in exc.value.detail["message"]
+    call_resolution._enforce_platform_query({**ep, "platform_query": None},
+                                            call_resolution.QueryValues((("token", "x"),)))
+    with pytest.raises(ValueError):
+        row(platform_query="all")

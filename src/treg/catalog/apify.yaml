@@ -189,6 +189,7 @@ endpoints:
     price: {value: '0', currency: USD, unit: call, note: 'starting a run costs nothing; the run itself bills per result or per compute unit according to the actor''s pricing'}
     reserve: null
     platform_check: null
+    platform_query: declared
     settle: null
     error: null
     platform_blocked: "Runs any actor the caller names and bills per that actor's own pricing, which a free catalog price cannot meter; connect your own Apify key."
@@ -223,6 +224,7 @@ endpoints:
     price: {value: '0', currency: USD, unit: call, note: 'polling is free'}
     reserve: null
     platform_check: null
+    platform_query: declared
     settle: null
     error: null
     test_request:
@@ -274,6 +276,7 @@ endpoints:
     price: {value: '0', currency: USD, unit: call, note: 'reading a dataset costs nothing; you paid when the run produced the items'}
     reserve: null
     platform_check: null
+    platform_query: declared
     settle: null
     error: null
     test_request:
@@ -298,6 +301,7 @@ endpoints:
     price: {value: '0', currency: USD, unit: call, note: 'free; this is also the registry''s probe endpoint for the provider'}
     reserve: null
     platform_check: null
+    platform_query: declared
     settle: null
     error: null
     test_request: {queryParams: {}}

@@ -484,6 +484,9 @@ cost:
   provider never answers for the caller's own account there.
 - **`platform_check`** names a plugin that checks the whole request on the shared credential when
   pins cannot say the rule (a v2 row only; [catalog-schema](catalog-schema.md)).
+- **`platform_query: declared`** (a v2 row only): on the shared credential the query and path carry
+  only the names the row's `input` declares, so a parameter the provider also reads, in any spelling
+  its parser takes (Apify's `token`), never reaches it; a team's own key sends its query as given.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.

@@ -306,6 +306,7 @@ class V2Row(RowBase):
     bill: Bill | None = field(kind="P")
     ceiling_param: CeilingParam | None = field(kind="P")
     platform_check: PlatformCheck | None = field(kind="A")
+    platform_query: Literal["declared"] | None = field(kind="A")
     async_: dict[str, Json] | None = field(alias="async", kind="P")
 
     @model_validator(mode="after")

@@ -552,8 +552,9 @@ table prices an absent field; duplicate JSON keys are rejected so validation and
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
 run), outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads, and refusal of a credential the caller could send
-in a second place the provider reads (Apify's run rows take only their run options and its run
-polls only their declared query options; elsewhere a `headers.*` null pin). Own keys are
+in a second place the provider reads (Apify's run rows take only their run options, through their
+`platform_check`, and its run polls only their declared query options, `platform_query: declared`;
+elsewhere a `headers.*` null pin). Own keys are
 unaffected: the provider, not treg, bears that account's exposure. A routed child refused for a
 header is skipped for that provider only ([catalog](catalog.md), routed endpoints).
 

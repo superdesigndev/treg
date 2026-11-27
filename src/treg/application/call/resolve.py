@@ -1819,9 +1819,12 @@ def _enforce_platform_check(ep: dict, body: bytes, query) -> None:
     raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail=detail)
 
 
-def _enforce_apify_declared_query(ep: dict, query) -> None:
-    """An Apify row without a run cap (a run poll) takes only the query options it declares on
-    treg's key: Apify also reads a caller's own `token` from the query, in more than one spelling."""
+def _enforce_platform_query(ep: dict, query) -> None:
+    """`platform_query: declared`: on treg's key the query and path carry only the names the row
+    declares, so a parameter a provider also reads (a caller's own token, in any spelling its parser
+    takes) never reaches it."""
+    if ep.get("platform_query") != "declared":
+        return
     inputs = ep.get("input") or {}
     declared = set(inputs.get("queryParams") or {}) | set(inputs.get("pathParams") or {})
     names = [name for name, _ in query.multi_items()] if query is not None else []
@@ -1833,7 +1836,7 @@ def _enforce_apify_declared_query(ep: dict, query) -> None:
                 "endpoint_id": ep["id"],
                 "parameter": "queryParams",
                 "expected": expected,
-                "message": f"Apify platform calls to {ep['id']} take {expected}. "
+                "message": f"Platform calls to {ep['id']} take {expected}. "
                            "Connect your own key for other options",
             },
         )
@@ -1963,8 +1966,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             )
 
     _enforce_platform_check(ep, body, query)
-    if ep.get("provider") == "apify" and not (ep.get("reserve") or {}).get("money"):
-        _enforce_apify_declared_query(ep, query)
+    _enforce_platform_query(ep, query)
 
     input_schema = ep.get("input") or {}
     rules = ep.get("platform_request") or {}
