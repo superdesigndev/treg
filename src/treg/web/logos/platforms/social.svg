@@ -1,0 +1,5 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Social publishing">
+  <!-- Generic category, not a brand: one point sending to three. -->
+  <g fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round"><path d="M7.6 10.9 16.4 6.6M7.6 13.1l8.8 4.3M8 12h8"/></g>
+  <g fill="#6B7280"><circle cx="5.5" cy="12" r="2.6"/><circle cx="18.5" cy="5.5" r="2.2"/><circle cx="18.5" cy="12" r="2.2"/><circle cx="18.5" cy="18.5" r="2.2"/></g>
+</svg>

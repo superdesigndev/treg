@@ -660,6 +660,7 @@ class Settings(BaseSettings):
     platform_key_mapsdata: str = ""   # Bearer key (mdk_live_…); scrapes settle from the finished job's email_count
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
+    platform_key_mirkaat: str = ""  # Bearer mk_live_ partner key: profiles per team, billed per network posted
     # Fish API-credit lookups need the workspace selector to read the shared workspace wallet.
     # This is account metadata, not a credential and not another platform-provider slot.
     platform_fishaudio_workspace_id: str = ""
