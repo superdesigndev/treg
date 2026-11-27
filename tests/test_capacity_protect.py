@@ -34,6 +34,7 @@ from treg.timeutil import utcnow_naive
 from test_marketplace_call import (  # noqa: F401
     EP, EP_MICRO, PLATFORM_KEYS, _balance, _fake_relay, platform_on,
 )
+from test_routing import _relay_by_provider
 
 OUT = b'{"detail":"Insufficient balance"}'  # matches the bare-402 balance signature
 
@@ -633,6 +634,8 @@ async def test_the_same_answer_on_a_teams_own_key_is_relayed_as_sent(
         get_settings.cache_clear()
 
 
+VERIFY_ROUTE = "treg.people.email.verify"
+
 # A credential a provider reads beside the one treg injects: (provider, headers, query, the refused
 # parameter). Apify's query parser takes a `token` in more than one spelling.
 _CALLER_CREDENTIAL = [
@@ -666,5 +669,78 @@ async def test_a_callers_own_credential_never_reaches_the_provider_on_tregs_key(
         assert (await clients.post("/secrets", json={"name": provider, "value": "TEAM-OWN-KEY"})).status_code == 200
         r = await _test_request(clients, rows[0], headers=headers, **query)
         assert r.status_code == 200 and relay.calls == 1, r.text
+    finally:
+        get_settings.cache_clear()
+
+
+def _verify_on_tregs_key(monkeypatch) -> None:
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SCRUBBY", "PLATFORM-SCRUBBY-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DROPLEADS", "PLATFORM-DROPLEADS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrubby,dropleads")
+    get_settings.cache_clear()
+
+
+async def test_a_routed_verify_with_a_stray_authorization_header_goes_on_to_the_next_provider(
+        clients: AsyncClient, monkeypatch):
+    """A routed child inherits the parent's headers. An Authorization meant for something else is
+    refused by Scrubby on treg's key, for Scrubby only: the next provider serves the call."""
+    _verify_on_tregs_key(monkeypatch)
+    try:
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"scrubby": [(200, {"result": "Valid"})], "dropleads": [(200, {"status": "valid"})]}, seen))
+        before = await _balance(clients)
+        r = await clients.post(f"/call/{VERIFY_ROUTE}", json={"email": "info@example.com"}, headers={
+            "X-Treg-Route-Prefer": "scrubby,dropleads", "Authorization": "Bearer another-service"})
+        assert r.status_code == 200, r.text
+        routed = r.json()["_treg"]
+        assert routed["served_by"] == "dropleads.people.email.verify"
+        assert [(t["provider"], t["outcome"]) for t in routed["tried"]] == [("scrubby", "skipped"), ("dropleads", "hit")]
+        assert "headers.authorization" in routed["tried"][0]["detail"]
+        assert [s[0] for s in seen] == ["dropleads"]
+        assert before - await _balance(clients) == routed["charged_micro"] > 0
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_decisive_verify_bills_the_answers_before_a_refused_header_as_usual(
+        clients: AsyncClient, monkeypatch):
+    """Dropleads answers without deciding, Scrubby refuses the stray header: the paid Dropleads
+    answer comes back, billed as any undecided answer is, never released for treg to pay."""
+    _verify_on_tregs_key(monkeypatch)
+    try:
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+            {"dropleads": [(200, {"status": "unknown"})], "scrubby": [(200, {"result": "Valid"})]}, seen))
+        before = await _balance(clients)
+        r = await clients.post(f"/call/{VERIFY_ROUTE}", json={"email": "info@example.com"}, headers={
+            "X-Treg-Route-Prefer": "dropleads,scrubby", "X-Treg-Route-Decisive": "true",
+            "Authorization": "Api-Key CALLER-KEY"})
+        assert r.status_code == 200, r.text
+        routed = r.json()["_treg"]
+        assert routed["served_by"] == "dropleads.people.email.verify" and routed["decision"]["decided"] is False
+        dropleads, scrubby = routed["tried"]
+        assert (dropleads["outcome"], scrubby["outcome"], scrubby["charged_micro"]) == ("weak", "skipped", 0)
+        assert dropleads["charged_micro"] > 0 and before - await _balance(clients) == dropleads["charged_micro"]
+        assert [s[0] for s in seen] == ["dropleads"]
+        assert [e.kind for e in await _rows(LedgerEntry) if e.kind != "grant"] == ["reserve", "settle"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_routed_verify_whose_only_provider_refuses_the_header_says_which_header(
+        clients: AsyncClient, monkeypatch):
+    """Nothing else could serve: the caller gets the header refusal, the one thing to change."""
+    _verify_on_tregs_key(monkeypatch)
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrubby")
+    get_settings.cache_clear()
+    try:
+        seen = []
+        monkeypatch.setattr(call_service, "relay", _relay_by_provider({"scrubby": [(200, {"result": "Valid"})]}, seen))
+        before = await _balance(clients)
+        r = await clients.post(f"/call/{VERIFY_ROUTE}", json={"email": "info@example.com"},
+                               headers={"Authorization": "Api-Key CALLER-KEY"})
+        assert r.status_code == 400 and r.json()["detail"]["parameter"] == "headers.authorization", r.text
+        assert seen == [] and await _balance(clients) == before
     finally:
         get_settings.cache_clear()

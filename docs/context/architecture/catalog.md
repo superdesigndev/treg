@@ -1284,6 +1284,9 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
+    A child inherits the parent's headers, so a header one provider refuses on treg's key (a
+    `platform_request` header pin, `route._platform_header_refusal`) skips that candidate the same
+    way; when every candidate was skipped so, the caller gets that header's 400.
   - Before planning, each identity field is read (`invalid_identity`, 422, even when another
     complete variant was sent): one of `format: url` must parse as an HTTP URL with a dotted host and
     no userinfo (a scheme-less one gets `https://`), and a stand-in key (`q`) must be a string. A
