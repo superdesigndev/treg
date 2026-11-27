@@ -790,6 +790,16 @@ adapters:
           company_domain: "results[0].data.org_domain", linkedin_url: "results[0].data.linkedin_url",
           location: "place(results[0].data.location_city, results[0].data.location_state, results[0].data.location_country)"}
     miss: "coalesce(results[0].success, false) == false"
+  getleadsio.people.enrich.from_personal_email:
+    accepts: [[email]]
+    test_identity: {email: nobody-treg-20261127@example.invalid}
+    in: {email: queryParams.email}
+    out: {full_name: "coalesce(data.full_name, join(data.first_name, data.last_name))",
+          first_name: data.first_name, last_name: data.last_name, title: data.current_title,
+          company: data.current_company_name, company_domain: data.org_domain,
+          linkedin_url: data.linkedin_url,
+          location: "place(data.location_city, data.location_state, data.location_country)"}
+    miss: "coalesce(success, false) == false"
   prospeo.people.enrich:
     accepts: [[email], [linkedin_url], [full_name, domain], [first_name, last_name, domain]]
     in: {email: body.data.email, linkedin_url: body.data.linkedin_url,
@@ -1258,6 +1268,16 @@ adapters:
           title: "results[0].jobTitle", company: "results[0].company.name", linkedin_url: "results[0].socialLinks.linkedin",
           location: "results[0].location.raw"}
   # ---- companies.enrich (batch 5, 2026-08-28) --------------------------------------------------
+  getleadsio.companies.enrich:
+    accepts: [[domain], [name]]
+    in: {domain: queryParams.domain, name: queryParams.company_name}
+    test_identity: {domain: treg-nonexistent-20261127.invalid}
+    out: {name: company.co_name, domain: company.org_domain, website: company.co_website,
+          description: company.co_description, industry: company.current_company_industry,
+          employees: company.employee_count_range,
+          location: "join(company.company_hq_city, company.company_hq_country)",
+          linkedin_url: company.current_company_linkedin_url}
+    miss: "coalesce(found, false) == false"
   orbisearch.companies.enrich:
     accepts: [[domain], [linkedin_url]]
     in: {domain: queryParams.domain, linkedin_url: queryParams.linkedin_url}
