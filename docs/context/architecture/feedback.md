@@ -35,6 +35,7 @@ sources:
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
   - src/treg/alembic/versions/0137_compareattemptday_spent.py
+  - src/treg/alembic/versions/0139_callcomparison_jev.py
   - src/treg/alembic/versions/0105_callmark.py
   - src/treg/alembic/versions/0115_callcomparison.py
   - tests/test_feedback_handling_schema.py
@@ -47,6 +48,7 @@ sources:
   - tests/test_kv.py
   - tests/test_compare.py
   - tests/test_compare_spend_migration.py
+  - tests/test_callcomparison_jev_migration.py
 related:
   - architecture/data-model.md
   - architecture/mcp-oauth.md
