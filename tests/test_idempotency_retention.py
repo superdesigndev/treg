@@ -79,12 +79,12 @@ async def test_lock_timeout_rolls_back_batch(clients):
     assert result.deleted == 1
 
 
-async def test_live_pages_do_not_stop_the_expiry_sweep(clients):
+async def test_live_pages_within_the_order_slack_do_not_stop_the_expiry_sweep(clients):
     for n in range(4):
-        await _seed_answer(clients, f"live-{n}")
-    await _seed_answer(clients, "expired-tail", ttl_s=-3600)
+        await _seed_answer(clients, f"live-{n}", ttl_s=idempotency._PRUNE_ORDER_SLACK_S // 2)
+    await _seed_answer(clients, "expired-tail", ttl_s=-60)
     result = await idempotency.prune_expired_idempotency(batch_size=2, pause_s=0)
-    assert (result.deleted, result.batches, result.complete) == (1, 3, True)
+    assert (result.deleted, result.batches, result.complete, result.stopped) == (1, 3, True, "end")
 
 
 async def test_counts_accumulate_from_page_metadata_not_aggregate_queries(clients):
@@ -543,6 +543,21 @@ async def test_the_prune_command_saves_the_trim_place_for_the_next_run(clients, 
     assert await _prune_command(monkeypatch) == 0
     second = json.loads(capsys.readouterr().out.splitlines()[-1])["trim"]
     assert (second["start_after"], second["examined"]) == (row_id, 0)
+
+
+async def test_a_table_larger_than_the_page_budget_exits_zero_once_the_expired_rows_are_gone(
+        clients, capsys, monkeypatch):
+    import json
+
+    for n in range(4):
+        await _seed_answer(clients, f"expired-{n}", ttl_s=-3600)
+    for n in range(10):
+        await _seed_answer(clients, f"live-{n}", ttl_s=idempotency.IDEMPOTENCY_WINDOW_S)
+    assert await _prune_command(monkeypatch, batch_size=2, max_batches=4, skip_trim=True) == 0
+    out = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert (out["deleted"], out["batches"], out["complete"], out["stopped"]) == (4, 3, True, "unexpired")
+    async with session_maker() as db:
+        assert set((await db.scalars(select(IdempotentCall.key))).all()) == {f"live-{n}" for n in range(10)}
 
 
 async def test_a_prune_run_that_finds_another_running_does_nothing(clients, capsys, monkeypatch):

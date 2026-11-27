@@ -398,7 +398,11 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   `idempotency_response_too_large` is kept instead.
 - The per-call expired-label sweep deletes at most `IDEMPOTENCY_SWEEP_BATCH` rows with
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
-- `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
+- `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, walking
+  ids up to the largest at its start. Ids follow claim order and `expires_at` is the claim time plus
+  the fixed window, never moved, so the walk stops at the first page whose every row expires more
+  than `_PRUNE_ORDER_SLACK_S` (clock skew between hosts) after the cutoff; it is incomplete, and
+  the command exits nonzero, only when it runs out of pages first or skips a timed-out one. Then
   `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
   `archive.bytes_on_file` confirms and whose own sha256 matches; after hashing it holds those keys `FOR SHARE SKIP
   LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
