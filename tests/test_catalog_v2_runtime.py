@@ -647,12 +647,12 @@ def test_a_bare_top_level_array_is_counted():
     assert call(ep, answer={"items": [1]})[1].actual_micro == 5000      # not a list: the hold
 
 
-def test_a_money_hold_is_the_request_s_spend_cap_plus_one_base():
+def test_a_money_hold_is_the_request_s_spend_cap():
     ep = capped()
-    assert call(ep, query=[("cap", "0.05")])[0] == 50500
-    assert call(ep, query=[("cap", "0.0500001")])[0] == 50501             # rounded up
+    assert call(ep, query=[("cap", "0.05")])[0] == 50000
+    assert call(ep, query=[("cap", "0.0500001")])[0] == 50001             # rounded up
     for bad in ([], [("cap", "0")], [("cap", "1.5")], [("cap", "1e-2")], [("cap", "0.1"), ("cap", "0.2")]):
-        assert call(ep, query=bad)[0] == 1000500                          # unreadable: the row's max
+        assert call(ep, query=bad)[0] == 1000000                          # unreadable: the row's max
     assert ep["cost"]["type"] == "per_result" and ep["cost"]["call_fee"] == 0.0005
 
 
@@ -662,17 +662,17 @@ def test_a_base_is_billed_on_top_of_the_counted_units_and_on_a_charged_miss():
     assert call(ep, query=[("cap", "0.05")], answer=[1, 2, 3])[1].actual_micro == 3500
     assert call(ep, query=[("cap", "0.05")], answer=[])[1].actual_micro == 500
     assert call(free, query=[("cap", "0.05")], answer=[])[1].actual_micro == 0
-    assert call(ep, query=[("cap", "0.05")], answer=b"")[1].actual_micro == 50500   # no evidence: the hold
+    assert call(ep, query=[("cap", "0.05")], answer=b"")[1].actual_micro == 50000   # no evidence: the hold
     units = capped(miss={"when": {"path": "response", "op": "empty"}}, bill={"miss": 1})
     assert call(units, query=[("cap", "0.05")], answer=[])[1].actual_micro == 1500  # a fixed-unit miss carries the base
 
 
 def test_a_bill_within_the_declared_units_of_the_hold_is_the_hold():
     ep = capped(settle={"count": {"path": "response"}, "hold_within_units": 2})
-    query = [("cap", "0.01")]                                             # hold 10,500
+    query = [("cap", "0.01")]                                             # hold 10,000
     assert call(ep, query=query, answer=[1] * 7)[1].actual_micro == 7500
-    assert call(ep, query=query, answer=[1] * 8)[1].actual_micro == 10500  # 8,500 + 2 units reaches it
-    assert call(ep, query=query, answer=[1] * 30)[1].actual_micro == 10500  # never above the hold
+    assert call(ep, query=query, answer=[1] * 8)[1].actual_micro == 10000  # 8,500 + 2 units reaches it
+    assert call(ep, query=query, answer=[1] * 30)[1].actual_micro == 10000  # never above the hold
     assert call(capped(settle={"count": {"path": "response"}, "hold_within_units": 20}),
                 query=query, answer=[])[1].actual_micro == 500             # no row: the base, not the hold
     plain = capped()
@@ -691,9 +691,9 @@ def test_a_settle_plugin_may_bill_the_base_more_than_once(monkeypatch):
     assert call(ep, {"runs": 3}, query=query, answer=[1, 2])[1].actual_micro == 3500
     assert call(ep, {"runs": 16}, query=query, answer=[])[1].actual_micro == 8000
     assert call(ep, {"runs": 17}, query=query, answer=[])[1].actual_micro == 8500    # no row: never the hold
-    assert call(ep, {"runs": 16}, query=query, answer=[1])[1].actual_micro == 10500  # 8,500 + 2 units
+    assert call(ep, {"runs": 16}, query=query, answer=[1])[1].actual_micro == 10000  # 8,500 + 2 units
     bad = capped(settle={"plugin": "demo.bad"})
-    assert call(bad, {"runs": 1}, query=query, answer=[1])[1].actual_micro == 10500  # not a quantity
+    assert call(bad, {"runs": 1}, query=query, answer=[1])[1].actual_micro == 10000  # not a quantity
     with pytest.raises(ValueError, match="price.base needs a unit price"):
         row(price={"rates": {"r": "1"}, "base": "1", "currency": "USD"},
             reserve={"plugin": "demo.runs", "max": "1"})

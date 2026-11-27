@@ -1992,8 +1992,9 @@ does not bind actors whose own input sets the row count. Only the run options `m
 `maxItems`, `memory` and `timeout` are accepted, each once and in plain ASCII, because a dataset-view
 option (`limit`, `offset`, `format`, `unwind`) would make the returned rows disagree with the events
 billed (`_enforce_apify_run_options`, which reads the cap's ceiling from `reserve.money.max` and its
-floor from `money_floor_micro`). The hold is the cap plus one `price.base`, the flat per-run charge
-(`reserve.money` on `query.maxTotalChargeUsd`). The bill counts the bare dataset array the run-sync
+floor from `money_floor_micro`). The hold is the cap (`reserve.money` on `query.maxTotalChargeUsd`):
+Apify's cap bounds every event a run bills, the flat per-run charge (`price.base`) included, so no
+bill passes the caller's own cap. The bill counts the bare dataset array the run-sync
 call answers (`settle.count` on `response`) at the row price, plus the base; LinkedIn job search
 bills the base once per job title x location (`settle.plugin: apify.job_starts`). An empty answer
 bills the base (`bill.miss: charged`), and an Apify error envelope in a 2xx settles at the hold

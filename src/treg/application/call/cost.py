@@ -365,10 +365,11 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
         terms["count_max_micro"] = _micro_up(Decimal(reserve["max"]) * rate)
         hold = min(held, terms["count_max_micro"])
     elif "money" in reserve:
-        # The caller's spend cap, which the provider enforces, plus one base; a request without a
-        # readable cap (refused on treg's key) holds the most the row takes.
+        # The caller's spend cap, which the provider enforces on every charge the run makes, the
+        # base included; a request without a readable cap (refused on treg's key) holds the most
+        # the row takes.
         cap = money_micro(ep, request_data)
-        hold = (_micro_up(Decimal(reserve["money"]["max"]) * _MICRO) if cap is None else cap) + _base(terms)
+        hold = _micro_up(Decimal(reserve["money"]["max"]) * _MICRO) if cap is None else cap
     else:
         units = ((_rows(reserve["rows"], raw) or 1) if "rows" in reserve
                  else _entities(reserve["entities"], raw) if "entities" in reserve else 1)
