@@ -3892,6 +3892,35 @@ MAPSDATA = OAuthProvider(
 )
 
 
+VERTICALAI = OAuthProvider(
+    service="verticalai",
+    display_name="Vertical AI",
+    auth_kind="key",
+    token_label="Access token",
+    token_placeholder="vai_pat_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.verticalai.com.au/settings/api-tokens",
+    setup_action_label="Get your Vertical AI access token",
+    setup_steps=(
+        "Sign in to Vertical AI and open Settings, then API tokens.",
+        "Create a token with write access for your workspace and copy it. It is shown once.",
+    ),
+    setup_note=(
+        "A placed call bills its answered minutes on your Vertical AI plan; unanswered calls are "
+        "free. Reading a call's result and the account check are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="An AI agent rings an Australian number for you, asks your questions and returns the answers.",
+    base_url="https://app.verticalai.com.au/api/v1",
+    docs_url="https://docs.verticalai.com.au/docs/platform/placed-calls",
+    probe_path="/me",  # free; a bogus Bearer token answers 401 problem+json {"code": "invalid_token"}
+)
+
+
 LEADSFORGE = OAuthProvider(
     service="leadsforge",
     display_name="LeadsForge",
@@ -4625,7 +4654,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA, VERTICALAI,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

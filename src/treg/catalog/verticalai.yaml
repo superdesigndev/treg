@@ -1,0 +1,140 @@
+provider: verticalai
+source:
+  docs: https://docs.verticalai.com.au/docs/platform/placed-calls
+  openapi: https://app.verticalai.com.au/api/v1/openapi.json
+  curated: '2026-11-24'
+limits: "Placed calls in flight per workspace: the workspace's calls-at-once limit, at most 10, and 4 on treg's key. A call above it is refused 429 rate_limited with a retry hint. 600 API requests a minute per token. Australian numbers only."
+pricing_url: https://verticalai.com.au/pricing
+cache: forbidden
+proposed_capabilities:
+  phone-calls.place: "Have an AI agent ring a phone number, ask your questions, and return the answers"
+  phone-calls.status: "Check a placed phone call and read its answers, summary and transcript"
+  people.contact.verify: Verify that supplied contact details are consistent and reachable
+
+defaults:
+  provenance: {source: vendor_email, source_url: 'https://verticalai.com.au/pricing', checked: '2026-11-27', confidence: documented}
+
+endpoints:
+  - id: verticalai.phone.call.place
+    added: '2026-11-24'
+    capability: phone-calls.place
+    platform: phone-calls
+    domain: calls
+    scope: any_account
+    method: POST
+    path: /workspaces/{workspace}/agents/{agent}/placed-calls
+    name: Ring a number and ask your questions
+    summary: An AI agent rings an Australian number for the person you name, asks what you list, and returns typed answers, a summary and the transcript.
+    input:
+      bodyType: json
+      pathParams:
+        workspace: {type: string, required: true, default: treg-calls, note: "your workspace slug when you connect your own key; on treg's key it is treg-calls"}
+        agent: {type: string, required: true, default: phone, note: "the agent that makes the call; on treg's key it is phone"}
+      body:
+        to: {type: string, required: true, note: "Australian number in E.164, a landline or a mobile. +61251541342 is a test line that answers as a made-up workshop", example: "+61251541342"}
+        onBehalfOf: {type: string, required: true, note: "who the call is for, said in the opening line", example: "Sam Lee at Acme Fleet"}
+        name: {type: string, required: false, note: "who you're ringing, a person or a business; the agent knows who it called and listens for the name", example: "Ironbark Motors"}
+        company: {type: string, required: false, note: "where they work, when name is a person", example: "Coastal Haulage"}
+        task: {type: string, required: true, note: "what to do on the call, in plain words", example: "Ask whether they can fix a burst pipe in Subiaco tomorrow morning and what the call-out fee is."}
+        answers: {type: object, required: false, note: "field name to what to find out; up to 12 fields, names in snake_case", example: {available_tomorrow: "Can they come tomorrow morning", call_out_fee: "The call-out fee in dollars"}}
+        maxMinutes: {type: integer, required: false, default: 3, min: 1, max: 10, note: "the call is cut off at this length"}
+        fromNumber: {type: string, required: false, note: "a caller ID the workspace owns; defaults to the agent's own number"}
+      note: "Answers 201 with callId and status ringing. Poll verticalai.phone.call.get until status is completed, no_answer, busy, voicemail or failed. The caller is responsible for having the right to call the number."
+    test_request:
+      pathParams: {workspace: treg-calls, agent: phone}
+      body: {to: "+61251541342", onBehalfOf: "Sam Lee at Acme Fleet", name: "Ironbark Motors", task: "Ask whether they service diesel utes, and the earliest day they could book one in.", answers: {services_diesel: "whether they service diesel utes", earliest_booking: "the earliest day they could book a ute in"}, maxMinutes: 2}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: credit
+      note: "One credit is one answered minute, US$0.12. Billed per answered minute, rounded up to whole minutes, with a 1-minute minimum on an answered call (a voicemail the agent hangs up on included). No answer, busy and a failed dial cost nothing. The hold is maxMinutes; the finished call's billableMinutes settles it."
+    provenance: {source: observed, source_url: 'https://docs.verticalai.com.au/docs/platform/placed-calls', checked: '2026-11-27', confidence: verified}
+    reserve: {rows: {param: body.maxMinutes, default: {value: 3, source: docs}, max: 10}}
+    expect: {path: response.callId, op: present}
+    settle: {usage: {path: response.billableMinutes, unit: credit}, worst_case: '10'}
+    async:
+      id_from: callId
+      poll:
+        endpoint: verticalai.phone.call.get
+        param: {in: pathParams, name: call}
+      status:
+        path: status
+        progress: [ringing, in_progress, processing]
+        success: [completed]
+        failure: [no_answer, busy, failed]
+        billed_failure: [voicemail]
+      result: {path: answers}
+      interval: 10
+      max_age: 1800
+    docs_url: https://docs.verticalai.com.au/docs/platform/placed-calls
+
+  - id: verticalai.people.contact.verify
+    added: '2026-11-24'
+    capability: people.contact.verify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /workspaces/{workspace}/agents/{agent}/number-checks
+    name: Ring a number to confirm whose it is
+    summary: An AI agent rings an Australian number, asks for the person or business you name, and returns right_person, who answered and the best way to reach them.
+    input:
+      bodyType: json
+      pathParams:
+        workspace: {type: string, required: true, default: treg-calls}
+        agent: {type: string, required: true, default: phone}
+      body:
+        to: {type: string, required: true, note: "Australian number in E.164. +61251541342 is a test line for Dana Reid at Ironbark Motors", example: "+61251541342"}
+        name: {type: string, required: true, note: "the person or business you expect to reach", example: "Dana Reid"}
+        company: {type: string, required: false, note: "their company, when name is a person", example: "Ironbark Motors"}
+        onBehalfOf: {type: string, required: true, note: "who the check is for, said on the call", example: "Sam Lee at Acme Fleet"}
+      note: "A one-minute call. Poll verticalai.phone.call.get for right_person, answered_by and best_way_to_reach."
+    test_request:
+      pathParams: {workspace: treg-calls, agent: phone}
+      body: {to: "+61251541342", name: "Dana Reid", company: "Ironbark Motors", onBehalfOf: "Sam Lee at Acme Fleet"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: "US$0.12 for an answered check, which is cut off at one minute. No answer, busy and a failed dial cost nothing."
+    provenance: {source: observed, source_url: 'https://docs.verticalai.com.au/docs/platform/placed-calls', checked: '2026-11-27', confidence: verified}
+    expect: {path: response.callId, op: present}
+    settle: {usage: {path: response.billableMinutes, unit: credit}, worst_case: '1'}
+    async:
+      id_from: callId
+      poll:
+        endpoint: verticalai.phone.call.get
+        param: {in: pathParams, name: call}
+      status:
+        path: status
+        progress: [ringing, in_progress, processing]
+        success: [completed]
+        failure: [no_answer, busy, failed]
+        billed_failure: [voicemail]
+      result: {path: answers}
+      interval: 10
+      max_age: 1200
+    docs_url: https://docs.verticalai.com.au/docs/platform/placed-calls
+
+  - id: verticalai.phone.call.get
+    added: '2026-11-24'
+    kind: utility
+    capability: phone-calls.status
+    platform: phone-calls
+    domain: calls
+    scope: any_account
+    method: GET
+    path: /workspaces/{workspace}/agents/{agent}/placed-calls/{call}
+    name: Check a placed call
+    summary: Read a placed call's status, billable minutes, typed answers, summary and transcript.
+    resource_ownership: {requires: {kind: 'poll:verticalai.phone.call.get', param: call}}
+    input:
+      pathParams:
+        workspace: {type: string, required: true, default: treg-calls}
+        agent: {type: string, required: true, default: phone}
+        call: {type: string, required: true, note: "the callId a placed call or number check returned"}
+      note: "status runs ringing, in_progress, processing, then completed; or no_answer, busy, voicemail or failed. Reads are free."
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://docs.verticalai.com.au/docs/platform/placed-calls

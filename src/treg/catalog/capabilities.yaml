@@ -35,6 +35,7 @@ platforms:
   video-understand: {label: "Video understanding", category: "AI generation", summary: "Answer a prompt about a video: a summary, a shot list, or structured JSON from a public video URL."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}
+  phone-calls: {label: "Phone calls", category: "AI generation", summary: "An AI agent rings a number for you, asks your questions and returns what it learned."}
   music-gen: {label: "Music generation", category: "AI generation", summary: "Songs and short music clips from a text prompt, with prices side by side."}
 
   # --- Social: global social & video -----------------------------------------------------------
