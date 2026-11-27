@@ -336,10 +336,9 @@ The parameter check holds every declared parameter a catalog call sends to its d
 every tier and before anything is held or relayed: `_enforce_declared_query` reads each query and
 path value, and `_enforce_catalog_body` each top-level body field (a dotted name reads the nested
 value; a JSON array body is read task by task, a form body as strings, each value of a repeated JSON
-field), both through `catalog.params.check` ([catalog schema](catalog-schema.md#parameter-types)). A
-field nested in a declared object's `properties` is not checked, nor is any field of a multipart
-body. An undeclared parameter is relayed as sent, and a body that does not parse is left for the
-provider. The routed road reads the same function for the routed call's own fields
+field), both through `catalog.params.check` ([catalog schema](catalog-schema.md#parameter-types)).
+This check skips nested object `properties` and multipart bodies. An undeclared parameter is
+relayed as sent, and a body that does not parse is left for the provider. The routed road reads the same function for the routed call's own fields
 ([routed endpoints](#routed-endpoints---the-resolve-stage-short-circuit)), and its plan runs each
 child's adapter-built request through these checks (`_query_refusal`, `_body_refusal`).
 
@@ -367,8 +366,10 @@ inputs and values outside a declared enum; declared path placeholders pass and a
 `strict_body` and `body_allowlist` rows (`_enforce_strict_body`) require one JSON object body and
 hold its arrays to their item enum and count; `body_allowlist` rows also reject undeclared top-level
 fields and missing required ones, hold each declared scalar to its type, enum and numeric bounds, and
-may require all or any named item fields of an array of objects. All of these apply on every tier
-and never to raw own-tool relays.
+may require all or any named item fields of an array of objects. They apply the same field and
+scalar checks recursively to declared object `properties` (`_enforce_allowlisted_object`). A nested
+refusal names the field, for example `body.search.count`. All of these apply on every tier and never
+to raw own-tool relays.
 
 ### Authorization and deny rules
 
