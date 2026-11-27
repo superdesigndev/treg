@@ -1864,7 +1864,7 @@ async def test_catalog_get_siblings_quote_grouped_and_per_record_prices(clients)
     assert hunter["cost"]["display_unit"] == "started 10 emails"
     assert hunter["cost"]["per"] == 10 and "reported_charge" not in hunter["cost"]
     per_record = siblings["getleadsio.people.search"]
-    assert per_record["usd"] == per_record["cost"]["usd"] == 0.00032
+    assert per_record["usd"] == per_record["cost"]["usd"] == 0.000855
     assert "trial_calls_per_team_day" not in per_record["cost"]
 
 
