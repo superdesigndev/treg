@@ -155,11 +155,15 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
       - name: Install disposable Redis test dependency
-        # A few tests start their own redis-server on a unix socket to stall it on purpose.
+        # A few tests start their own redis-server on a unix socket to stall it on purpose. The
+        # binary comes from the redis service container, not apt (whose index refresh alone takes
+        # longer than those tests); --version fails the step rather than letting them skip.
         if: steps.docs.outputs.only != 'true'
+        env:
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
+          sudo docker cp "$REDIS_CONTAINER:/usr/local/bin/redis-server" /usr/local/bin/redis-server
+          redis-server --version
       - name: Run tests
         # Each xdist worker gets its own database (treg_test_gw0, ...; see tests/conftest.py), so
         # reset_db() in one worker never empties another's tables. TREG_TEST_SHARD picks this
