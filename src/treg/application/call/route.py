@@ -266,6 +266,15 @@ CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be as
 ROUTED_ASYNC_WAIT_SECONDS = 60
 
 
+def _platform_header_refusal(exc: CallFailure) -> str | None:
+    """The header (`headers.<name>`) a child's treg-key request guard refused, or None: a
+    `platform_request` header pin is about one provider, never about the job."""
+    if (exc.kind == "catalog_parameter_invalid" and exc.rule == "platform"
+            and (exc.parameter or "").startswith("headers.")):
+        return exc.parameter
+    return None
+
+
 def _over_ceiling(held: int | None, remaining: int) -> str:
     """The skip note for a child its own reserve refused: the hold that did not fit (the adapted
     request's price with margin) and the ceiling left, so a caller can size the ceiling."""
@@ -1458,6 +1467,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
     rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     admission_refusals: list[admission.AdmissionDenied] = []  # treg money the team may not use
+    header_refusals: list[CallFailure] = []  # a parent header one provider refuses on treg's key
     team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
@@ -1573,6 +1583,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if exc.kind == "provider_capacity":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "treg's account is used up"))
+                continue
+            if (header := _platform_header_refusal(exc)) is not None:
+                # A header the parent carries that this provider refuses on treg's key (a key it
+                # would read beside treg's): this provider only, not the job.
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, f"treg's key does not take {header} here"))
+                header_refusals.append(exc)
                 continue
             if exc.kind == "provider_rate_limited":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
@@ -1945,6 +1962,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, 403, 0, audit_client)
             raise admission.routed_refusal(ep["id"], admission_refusals, [t.view() for t in tried])
+        if header_refusals and all(t.outcome == "skipped" for t in tried):
+            # Nothing ran, and dropping that header would let a provider serve: say so.
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, header_refusals[0].status_code, 0, audit_client)
+            raise header_refusals[0]
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],

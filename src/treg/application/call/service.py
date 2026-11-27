@@ -1159,6 +1159,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 upstream_url=upstream_url,
                 method=request.method,
                 client_ip=request.client_ip,
+                headers=request.headers.raw,
+                query=request.query_params.items,
             ),
             request,
             call_ref,

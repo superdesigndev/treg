@@ -3678,6 +3678,27 @@ DESCOVO = OAuthProvider(
 )
 
 
+UPCELL = OAuthProvider(
+    service="upcell", display_name="Upcell", auth_kind="key",
+    token_label="API key", token_placeholder="your Upcell API key",
+    token_header="Authorization", token_format="{secret}",
+    setup_url="https://upcell.io",
+    setup_action_label="Ask Upcell for an API key",
+    setup_steps=("Contact Upcell; API keys are issued by their team, not self-serve.",
+                 "Copy the key they send you."),
+    setup_note=(
+        "A mobile number found is charged; a lookup with no number and the usage check are free."
+    ),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find a person's mobile number from LinkedIn, an email, or their name and company.",
+    base_url="https://app.upcell.io",
+    docs_url="https://api.upcell.io/docs/dataenrichment/data-enrichment-api",
+    # Free: 200 {"valid": true, ...} for a good key; 401 {"error": "Invalid API key"} for a bad one.
+    probe_path="/validate-api-key", probe_method="POST",
+)
+
+
 MILLIONPHONES = OAuthProvider(
     service="millionphones", display_name="MillionPhones", auth_kind="key",
     token_label="API key", token_placeholder="mp_live_...",
@@ -4625,7 +4646,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,

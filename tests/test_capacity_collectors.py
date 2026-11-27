@@ -48,6 +48,20 @@ async def test_anymailfinder_balance_uses_free_account_route(monkeypatch):
                                b'{"error":"upgrade_needed","message":"You do not have enough credits."}').kind == "balance"
 
 
+async def test_upcell_balance_reads_the_free_usage_route(monkeypatch):
+    def probe(request):
+        assert (request.method, str(request.url)) == ("POST", "https://app.upcell.io/v1/enrich/usageStats")
+        assert request.headers["authorization"] == "test-key"
+        return httpx.Response(200, json={"endpointUsage": [], "creditBalance": "500"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await _balance(monkeypatch, "upcell", client, "test-key")
+    assert row == {"value": 500.0, "unit": "credits", "note": ""}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"endpointUsage": [], "creditBalance": "n/a"}))) as client:
+        _refused(await _balance(monkeypatch, "upcell", client, "test-key"), "no credit balance")
+
+
 async def test_descovo_balance_uses_free_credits_route(monkeypatch):
     def probe(request):
         assert request.method == "GET"

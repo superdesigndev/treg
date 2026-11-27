@@ -88,7 +88,7 @@ from treg.domain.catalog.schema import violations  # noqa: E402
 from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
 from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
 
-COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
+COST_TYPES = {"per_call", "per_result", "per_success", "free"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
 # and convert via fx.yaml's `credit_rates_usd` / `unit_rates_usd` (see catalog_store.cost_view).
 CURRENCIES = {"USD", "CNY", "credit", "unit"}
@@ -450,10 +450,10 @@ def check_platform_request(rule: object, input_schema: object, where: str,
     fields = _input_fields(input_schema)
     for path, value in rule.items():
         if value is None:
-            if (not isinstance(path, str) or not path.startswith(("queryParams.", "body."))
-                    or path in ("queryParams.", "body.")):
-                fail(errors, where, "platform_request null (must be absent) applies to a query parameter "
-                                    "or a body field only")
+            if (not isinstance(path, str) or not path.startswith(("queryParams.", "headers.", "body."))
+                    or path in ("queryParams.", "headers.", "body.")):
+                fail(errors, where, "platform_request null (must be absent) applies to a query parameter, "
+                                    "a header or a body field only")
             elif path.startswith("body.") and fields.get(path) is None:
                 fail(errors, where, "platform_request null on a body field names a declared body field")
             continue
@@ -1564,7 +1564,7 @@ def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
     if (adapters.get(ep.get("id")) or {}).get("miss"):
         fail(errors, where, "a v2 row's miss is its own `miss` rule: remove the adapter's miss "
                             "from adapters.yaml")
-    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
+    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss", "platform_check")
              if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
     for name in names:
         try:

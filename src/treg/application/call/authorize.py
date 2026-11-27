@@ -17,9 +17,11 @@ log = logging.getLogger("treg.call")
 
 async def authorize_call(
     *, caller: Caller, tool: Tool, upstream_url: str, method: str, client_ip: str,
+    headers: tuple[tuple[bytes, bytes], ...] = (), query: tuple[tuple[str, str], ...] = (),
 ) -> date | None:
     """Run the no-money gates in their frozen ACL, deny, member-cap, public-demo order. Returns
-    the UTC day the member's call slot was taken on, or None when no slot was taken."""
+    the UTC day the member's call slot was taken on, or None when no slot was taken. `headers`
+    and `query` are the request's own: a method override in them is matched by deny rules too."""
     async with session_maker() as db:
         # Per-member tool + project ACL (NULL access = all; admins exempt).
         try:
@@ -30,9 +32,11 @@ async def authorize_call(
         # Policy deny is evaluated on the RESOLVED upstream, so it sees the real host/path/method
         # whichever shape the caller used. The relay never follows redirects, so a blocked host
         # cannot be reached through a 3xx bounce.
+        overrides = access_policy.method_overrides(headers, query)
         try:
             for url in [upstream_url, *oauth_providers.legacy_aliases(upstream_url)]:
-                await access_policy.enforce_deny(caller, url, method, db, tool.project_id)
+                await access_policy.enforce_deny(caller, url, method, db, tool.project_id,
+                                                 overrides=overrides)
         except access_policy.AccessPolicyError as exc:
             raise AuthorizationFailed(
                 "policy_denied", status_code=403, detail=exc.detail) from exc

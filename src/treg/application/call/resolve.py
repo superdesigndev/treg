@@ -28,7 +28,7 @@ from ...domain.connections.refresh import expiry_state
 from ...domain.governance import access as access_policy
 from ...domain.identity.access import Caller
 from ...domain.money import settlement as settlement_basis
-from ...domain import provider_resources
+from ...domain import plugins, provider_resources
 from ...infra.db import session_maker
 from ...infra.upstream import pathsegment
 from ...domain.governance.access import pinned_tag_predicates
@@ -725,11 +725,11 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
     elif isinstance(cost.get("reserve"), dict):
         n = (_reserved_rows(cost, body, query) if "rows" in cost["reserve"]
              else _entity_count(query, body))
-    elif cost.get("type") in ("per_result", "quota_rows") and cost.get("unit") in _ENTITY_UNITS:
+    elif cost.get("type") == "per_result" and cost.get("unit") in _ENTITY_UNITS:
         # Priced per INPUT entity, not per returned row: the page-size default below has no
         # meaning here. The request names how many entities it asks about.
         n = 1 if cost.get("unit") == "call" else _entity_count(query, body)
-    elif cost.get("type") in ("per_result", "quota_rows"):
+    elif cost.get("type") == "per_result":
         asked = None
         for name in _LIMIT_PARAMS:
             raw = query.get(name)
@@ -945,13 +945,13 @@ def _marketplace_pricing(
     estimate = _platform_estimate_micro(cost, query, body)
     credit_rate = (catalog_store.load().credit_rates.get(provider)
                    if cost.get("currency") == "credit" else None)
-    if credit_rate and cost.get("type") in ("per_result", "quota_rows"):
+    if credit_rate and cost.get("type") == "per_result":
         unit = _usd_to_micro(credit_rate)
     elif cost.get("type") == "per_success" and cost.get("usd"):
         unit = _usd_to_micro(cost["usd"])
     else:
         unit = (_usd_to_micro(cost["usd"])
-                if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
+                if cost.get("type") == "per_result" and cost.get("usd") else 0)
     if provider == "quickenrich":
         credit = _usd_to_micro(float(cost.get("usd") or 0))
         if endpoint_id == "quickenrich.people.search.domain":
@@ -1083,7 +1083,7 @@ def _oauth_billed_estimate(provider, ep: dict | None, method: str, query, body: 
         est = _platform_estimate_micro(cv, query, body)
         if method != "GET" and provider.billed_write_link_usd and _post_has_link(body):
             est = max(est, _usd_to_micro(provider.billed_write_link_usd))
-        return est, ctype, (_usd_to_micro(cv["usd"]) if ctype in ("per_result", "quota_rows") else 0)
+        return est, ctype, (_usd_to_micro(cv["usd"]) if ctype == "per_result" else 0)
     if method == "GET":
         rate = provider.billed_read_usd
         est = _platform_estimate_micro({"type": "per_result", "usd": rate}, query, body)
@@ -1772,25 +1772,6 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
     return _strict_json_object(body, ep["id"])
 
 
-# Apify runs bill per event, and only the run option maxTotalChargeUsd bounds those events: the
-# maxItems option does not bind actors whose own input sets the row count. A platform call must name
-# that cap, and may add only the run options below, each once; a dataset-view option (limit, offset,
-# format, unwind) would make the returned rows disagree with the events billed.
-# ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
-# the cap; the row's `reserve.money.max` bounds that loss per call. Settling from the run itself
-# would lift it.
-#
-# A run must end, and its rows arrive, before anyone stops waiting: past Apify's 300-second synchronous
-# wait it answers 408, past treg's upstream read timeout (call_timeout_s) or the MCP client's 120 s
-# the call fails, and each releases the hold unbilled while the run keeps billing. 90 s leaves room
-# for the container start and the dataset read under the shortest of those waits.
-_APIFY_PLATFORM_MAX_TIMEOUT = 90
-
-
-def _apify_max_timeout() -> int:
-    # Catalog rows pin timeout 90, so call_timeout_s must stay >= 120 or those rows refuse every call.
-    return max(1, min(_APIFY_PLATFORM_MAX_TIMEOUT, get_settings().call_timeout_s - 30))
-_APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
 _APOLLO_WEBHOOK_PARAMS = frozenset({
     "reveal_phone_number", "webhook_url", "poll_only", "run_waterfall_email", "run_waterfall_phone",
 })
@@ -1813,47 +1794,50 @@ def _query_value(raw: str, expected: object) -> object:
     return raw
 
 
-def _apify_cap_rule(ep: dict, query) -> tuple[float, int | None, int]:
-    """(the most a cap may be in USD, the cap in RAW micro-USD or None, the least it may be), read
-    from the row's `reserve.money` and its price."""
-    top = float(((ep.get("reserve") or {}).get("money") or {}).get("max") or 0)
-    request_data = settlement_basis.request_evidence(query.multi_items(), b"")
-    return (top, call_cost.money_micro(ep, request_data),
-            call_cost.money_floor_micro(ep, catalog_store.load()))
+def _enforce_platform_check(ep: dict, body: bytes, query) -> None:
+    """On treg's key, a row's `platform_check` plugin reads the request (a body as a strict JSON
+    object) before any hold; a reason it returns refuses the call. A plugin that raises refuses it
+    too: a check that cannot run never serves the request."""
+    rule = ep.get("platform_check")
+    if not rule:
+        return
+    document = _strict_json_object(body, ep["id"]) if body else {}
+    items = query.multi_items() if query is not None else []
+    request = plugins.Request(method=ep.get("method") or "GET",
+                              query=settlement_basis.request_evidence(items, b"")["queryParams"],
+                              body=document)
+    try:
+        reason = plugins.resolve(rule["plugin"], ep["provider"])(request)
+    except Exception as exc:  # noqa: BLE001 - fail closed, and never echo the request
+        logging.getLogger("treg.plugins").error("platform check %s raised %s", rule["plugin"], type(exc).__name__)
+        reason = {"message": "treg could not check this request for its key"}
+    if reason is None:
+        return
+    detail = {"error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+              **{key: reason[key] for key in ("parameter", "expected") if key in reason},
+              "message": reason["message"]}
+    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, rule="platform", detail=detail)
 
 
-def _enforce_apify_run_options(ep: dict, query) -> None:
+def _enforce_platform_query(ep: dict, query) -> None:
+    """`platform_query: declared`: on treg's key the query and path carry only the names the row
+    declares, so a parameter a provider also reads (a caller's own token, in any spelling its parser
+    takes) never reaches it."""
+    if ep.get("platform_query") != "declared":
+        return
+    inputs = ep.get("input") or {}
+    declared = set(inputs.get("queryParams") or {}) | set(inputs.get("pathParams") or {})
     names = [name for name, _ in query.multi_items()] if query is not None else []
-    top, cap, floor = _apify_cap_rule(ep, query if query is not None else QueryValues(()))
-    problem = None
-    if any(name not in _APIFY_PLATFORM_QUERY for name in names):
-        problem = "only maxTotalChargeUsd, maxItems, memory and timeout"
-    elif len(names) != len(set(names)):
-        problem = "each run option at most once"
-    elif cap is None:
-        problem = f"maxTotalChargeUsd above 0 and at most {top:g}"
-    elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
-              and 1 <= int(query.get("timeout")) <= _apify_max_timeout()):
-        problem = f"timeout from 1 to {_apify_max_timeout()} seconds"
-    elif query.get("maxItems") is not None and not (
-            _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
-        problem = "maxItems as a positive integer"
-    elif cap < floor:
-        # Settlement bills the whole cap within two rows of it, so a smaller cap would bill a
-        # one-row answer in full.
-        problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
-                   "(the call fee plus three rows)")
-    if problem:
+    if any(name not in declared for name in names):
+        expected = "only " + ", ".join(sorted(declared)) if declared else "no query options"
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400, rule="platform", detail={
                 "error": "catalog_parameter_invalid",
                 "endpoint_id": ep["id"],
                 "parameter": "queryParams",
-                "expected": problem,
-                "message": (
-                    f"Apify platform calls take {problem}; maxTotalChargeUsd is the spend cap Apify "
-                    "enforces and the hold. Connect your own key for larger runs"
-                ),
+                "expected": expected,
+                "message": f"Platform calls to {ep['id']} take {expected}. "
+                           "Connect your own key for other options",
             },
         )
 
@@ -1981,8 +1965,8 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "apify" and (ep.get("reserve") or {}).get("money"):
-        _enforce_apify_run_options(ep, query)
+    _enforce_platform_check(ep, body, query)
+    _enforce_platform_query(ep, query)
 
     input_schema = ep.get("input") or {}
     rules = ep.get("platform_request") or {}
@@ -2007,6 +1991,17 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             continue
         name = str(path).split(".", 1)[1].lower()
         supplied = _request_header_values(headers, name)
+        if expected is None:
+            if supplied:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"headers.{name}",
+                        "message": f"{ep['id']} does not take header {name} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
+            continue
         if supplied != [str(expected)]:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, rule="platform", detail={
@@ -2694,9 +2689,6 @@ async def _resolve_catalog_tier(
         _enforce_team_label(ep, caller.org_id, body, request_headers, query)
         _enforce_caller_email(ep, caller.email, body, request_headers, query)
         _enforce_request_quantity(ep, cost, body, query)
-        if service == "sumble":
-            from . import sumble
-            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
             call_cost.require_rows(ep, pricing.request_data, body)

@@ -19,9 +19,7 @@ permissions:
 
 jobs:
   checks:
-    # The repository variable CI_LINUX_RUNNER names the runner label for the Linux jobs that run
-    # Python (checks, test-postgres, cli-go's Linux leg); unset, they run on GitHub's own runner.
-    runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -34,9 +32,6 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
-          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
-          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
-          enable-cache: true
       - uses: actions/setup-node@v4
         if: steps.docs.outputs.only != 'true'
         with:
@@ -85,7 +80,8 @@ jobs:
 
   test-postgres:
     # The whole suite on Postgres, production's database, split across machines. The background
-    # pool connects through a transaction-pooling PgBouncer, as in production.
+    # pool connects through a transaction-pooling PgBouncer, as in production. The repository
+    # variable CI_LINUX_RUNNER names its runner label; unset, it runs on GitHub's own runner.
     runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
@@ -208,9 +204,8 @@ jobs:
 
   cli-go:
     # The binary CLI: vet and unit tests on every platform it ships for, then the parity suite that
-    # runs it beside the Python CLI against a real local registry. The matrix value stays the job's
-    # name, so the required check keeps its name whichever runner the Linux leg lands on.
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && vars.CI_LINUX_RUNNER || matrix.os }}
+    # runs it beside the Python CLI against a real local registry.
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -243,9 +238,6 @@ jobs:
         if: runner.os == 'Linux'
         with:
           python-version: "3.13"
-          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
-          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
-          enable-cache: true
       - uses: actions/setup-node@v4
         if: runner.os == 'Linux'
         with:

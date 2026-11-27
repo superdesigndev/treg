@@ -309,6 +309,10 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Seconds a team refused for its balance is refused again from a mark in the key-value
+    # store, before any money queue or database work (money.md "The balance-empty mark"); 0 = off.
+    money_empty_mark_ttl_s: int = Field(default=0, ge=0, le=10)
+
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
     # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
     # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
@@ -631,6 +635,7 @@ class Settings(BaseSettings):
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
     platform_key_descovo: str = ""  # Bearer key; monthly plan credits, free balance on /v1/credits
+    platform_key_upcell: str = ""  # raw Authorization header; free balance on /v1/enrich/usageStats
     platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
@@ -794,6 +799,17 @@ class Settings(BaseSettings):
     review_judge_praise: bool = True
     review_judge_praise_days: int = Field(default=28, ge=1, le=90)
     review_judge_praise_per_run: int = Field(default=1000, ge=1, le=10000)
+    # Jev's blind verdicts on stored comparisons (`application.compare_judge`), in the review judge's
+    # run. Off: no comparison is judged (its rollback switch). Only capabilities whose answers can be
+    # judged by reading them; finding or verifying emails and phones, or people, cannot be.
+    compare_judge: bool = True
+    compare_judge_capabilities: list[str] = Field(default_factory=lambda: [
+        "google.serp.organic", "google.serp.maps", "web.search", "web.extract"])
+    compare_judge_per_run: int = Field(default=200, ge=1, le=5000)
+    # Pairs per Jev request (each pair is asked in both orders, so two requests per batch), and each
+    # answer shortened to this many characters (`body_view.shrink`) for the judge.
+    compare_judge_batch: int = Field(default=4, ge=1, le=25)
+    compare_judge_answer_chars: int = Field(default=6000, ge=22, le=20000)
     # Calls before this moment are never read back as their archived answer: older call rows do not
     # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
     # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`
@@ -981,6 +997,10 @@ class Settings(BaseSettings):
     # Bodies above this size are hash-counted but never stored (skipped whole, not truncated):
     # the archive is for API JSON answers, not downloads. Statistics still record size_bytes.
     archive_max_body_bytes: int = 2_000_000
+    # A request body above this size is kept on its archive key as a sha256 and a size only. The
+    # key hash is taken from the caller's body, so a hit still answers; the refresh worker cannot
+    # re-ask such a question and skips it.
+    archive_max_request_body_bytes: int = Field(default=64 * 1024, ge=0)
     # What happens to an endpoint WITHOUT a judged `cache:` field: "transient" keeps every answer
     # body as short-lived cache; "forbidden" is the keep-nothing posture. A judged forbidden (a
     # licence that was read and says no) is always respected, and actions are never stored, whatever

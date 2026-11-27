@@ -38,6 +38,8 @@ sources:
   - src/treg/application/call/async_bridge.py
   - src/treg/application/call/route.py
   - src/treg/application/call/reserve.py
+  - src/treg/infra/empty_balance.py
+  - tests/test_empty_balance_mark.py
   - src/treg/application/call/settle.py
   - src/treg/application/call/cost.py
   - tests/test_catalog_v2_runtime.py
@@ -1016,6 +1018,103 @@ Default off; `money_admission_org_ids` selects an opt-in subset (all orgs when e
 Rollout and measurement: [deployment controls](../ops/deploy.md#optional-money-admission). Timing
 details live in `infra/money_admission.py` and its tests.
 
+### The balance-empty mark
+
+A team with no money that keeps calling is refused with 402 `insufficient_balance` each time, and
+each of those refusals costs what a paid reserve costs: the allowance take and its refill, the
+team's money admission lease, a money session with the preflight reads, the refused reserve, and
+the read that asks whether the allowance counter holds the difference. The mark lets the next
+refusals skip all of it. Off by default: `money_empty_mark_ttl_s` (`TREG_MONEY_EMPTY_MARK_TTL_S`)
+is the mark's lifetime in seconds, 0 = off, 10 at most.
+
+- **What it stands for.** `infra/empty_balance.py` keeps one self-expiring text per team in the
+  shared key-value store: "a reserve of N micro-USD was refused, and the database alone showed
+  the team's money, wherever it sits, below N". `_platform_reserve` writes it
+  (`empty_balance.remember`) only from the balance refusal the database decided, and only when
+  `allowance_runtime.onto_balance_or_short` answers `short`: `allowance.credit_bound` (the
+  balance plus the allowance hold, less the queued charges) is below N, or the team has no
+  allowance to ask. A refusal that proves no shortfall (the counter may hold the money behind a
+  busy lease, the store did not answer, the give-back failed) writes no mark. The mark also
+  carries the balance that refusal showed, for the body.
+- **A credit beside the write.** A credit can commit between that confirmation and the write,
+  and its clear then finds nothing to clear. So after the write the reserve reads
+  `credit_bound` once more (`allowance_runtime.still_short`) and deletes the mark it just wrote
+  when the money now reaches N, or when the read fails. A credit that commits after that read
+  starts its clear after the write, so the clear finds the mark.
+- **What it answers.** `_empty_mark` reads it before the allowance take, the admission lease and
+  any session. A call that would reserve N or more is refused from the mark alone; a call that
+  would reserve less reserves as it always did, since the team may still afford it. It answers
+  only a call for which the balance refusal is the first answer the usual road would give: no
+  tag (a tag's own limits come first, and its refusal must not show the team's figures), no
+  member spend limit, no daily spend limit on the team (the limit is checked before the
+  balance, and cheaper calls paid after the mark can use the day up), no trial pool, no
+  purchased-credit-only endpoint, not a keyless wallet's request, not a $0 reservation. A call
+  that needs none of treg's money (the team's own credential, a free endpoint, a free archive
+  hit) never reaches `_platform_reserve`, so the mark cannot refuse it. Routed children and
+  overflow rungs reserve through the same function and are refused with the same failure kind
+  as before.
+- **The answer has the same shape.** `_insufficient_balance` builds the 402 on both roads: same
+  body fields, `estimated_cost_micro` this call's own. `balance_micro` (and the figure in
+  `message`) on a refusal from the mark is the one the mark's refusal showed, not a fresh read:
+  cheaper calls paid since then make the real balance lower, never high enough for this call.
+  The call record is written as before (`refused_by: balance`), so Activity and the refusal
+  counts do not change; only the money work is skipped. A refusal from the mark does not ask
+  for an auto top-up; the one refusal per lifetime that reaches the database does.
+- **`Retry-After`.** The 402 `insufficient_balance` of a metered call (`_platform_reserve`:
+  direct calls, routed children, overflow rungs, hub steps) carries `Retry-After` on both
+  roads, mark on or off: the mark's lifetime, never less than
+  `INSUFFICIENT_BALANCE_RETRY_AFTER_S`. The hub price refusal (`hub_price_unaffordable`, whose
+  body also says `insufficient_balance`) is another refusal, written in `hub/runner.py`, and
+  carries none.
+- **Every credit clears it.** Every increase of `org.balance_micro` goes through
+  `domain/money._add_balance`, which calls `empty_balance.credited` for a positive move: grant,
+  top-up (auto top-up included), release of a hold, the refund of a settle, the stale-hold
+  reaper's releases, a hub seller's `earned` credit, and the allowance hold returning to the
+  balance (a close, a drain, a give-back, a fold that covers less than it set aside). One
+  listener on every session's commit (registered once, at import) starts the delete in a task
+  of its own; a rolled-back credit clears nothing. SQLAlchemy fires the same events for a
+  SAVEPOINT (`topup` holds one open, so one commit fires twice): the listeners act only when
+  the outer transaction ends, since a released savepoint has committed nothing and a rolled
+  back one keeps the credits made before it. The process that committed the credit also
+  stops asking the store about that team at once (`_suspects`), so a reserve that follows a
+  release in the same request (a routed call's next child) never meets a mark whose delete is
+  still on its way. `revoke` only lowers a balance and clears nothing. A refill moves money
+  from the balance into the allowance hold: the team's money is the same, and the mark is about
+  all of it, so a refill is not a credit.
+- **Bounded by its lifetime.** The mark expires after `money_empty_mark_ttl_s`. A refusal it
+  answers never rewrites it, so steady traffic cannot keep it alive: when it ends, the next
+  call takes the usual road and the database decides again. That is per process, not once for
+  the team: a process asks the store only about a team it has seen refused, so each process's
+  first refusal of a team takes the usual road and writes the mark again (the same true
+  statement, with a new lifetime). The lifetime is the only bound in
+  these cases, each worth at most that many seconds of refusals:
+  - a clear that is lost: the store failed the delete, or the credit was committed by a
+    process running with the setting at 0;
+  - a hold that turns stale while the mark lives: the stale-hold reaper runs at the top of a
+    reserve, and a refusal from the mark never reaches it, so that money comes back with the
+    first call after the mark ends;
+  - money that becomes spendable with no balance increase. None is known: `credit_bound`
+    counts the balance and the whole allowance hold.
+- **Fail open.** A store that is slow, down or answers with an error reads as no mark, and a
+  failed write or clear is ignored: every call then takes the usual road, as with the mark off.
+  Nothing is counted or remembered about the failure, so there is no state to leave. The read
+  waits `_READ_WAIT_S` at most, below the store's own limit for optional work, and a call
+  whose read got no answer does not ask the store to write: a store that hangs costs a
+  recently refused team's call that one wait.
+- **Cost on the call road.** A process asks the store about a team only for a minute after it
+  last saw that team refused for its balance (`empty_balance.suspect`), so a team never refused
+  pays nothing, and the first refusal in each process takes the usual road. A team that was
+  refused and then paid keeps costing one store read per metered reserve in that process until
+  the minute ends or the process itself commits a credit for it. A confirmed refusal on the
+  usual road adds one store write and one more `credit_bound` statement. Each committed
+  balance increase adds one background delete in the store, after the commit and outside the
+  admission lease.
+- One `empty_balance_fast_refusals` log line a minute per process counts the calls the mark
+  answered and the teams that sent them.
+
+Without a shared store (`TREG_KV_URL` unset) the mark lives in each process, so a credit handled
+by one process clears it there and the other processes wait out the lifetime.
+
 ## Signup credit eligibility
 
 `application.signup._grant_signup_promo` calls `identity.promotions.claim_signup_promo` for the
@@ -1566,7 +1665,7 @@ row's cost `note` states the rule. Their shared rules:
 `_body_limit`) reads the caller's page-size fields in query or body (including camelCase spellings and
 a nested `pagination`), or for providers that bill per listed item the length of the target array;
 with no signal it is a 20-row page. A cap key only belongs there if the provider honours it as the
-spend cap; otherwise the reservation follows a cap the bill ignores. A `per_result`/`quota_rows` cost
+spend cap; otherwise the reservation follows a cap the bill ignores. A `per_result` cost
 whose unit is an input entity (`resolve._ENTITY_UNITS`) is counted by `_entity_count` (repeated or
 comma-separated query values, a body array including a JSON-RPC `params`, one per task object, else
 one; capped at 10,000, not the page max), because on those providers nothing reports a cost
@@ -1991,9 +2090,10 @@ call requires `maxTotalChargeUsd` (above 0, at most $1), the spend cap Apify enf
 does not bind actors whose own input sets the row count. Only the run options `maxTotalChargeUsd`,
 `maxItems`, `memory` and `timeout` are accepted, each once and in plain ASCII, because a dataset-view
 option (`limit`, `offset`, `format`, `unwind`) would make the returned rows disagree with the events
-billed (`_enforce_apify_run_options`, which reads the cap's ceiling from `reserve.money.max` and its
-floor from `money_floor_micro`). The hold is the cap plus one `price.base`, the flat per-run charge
-(`reserve.money` on `query.maxTotalChargeUsd`). The bill counts the bare dataset array the run-sync
+billed (`platform_check: {plugin: apify.run_options}`; the cap's ceiling and floor are
+`reserve.money`'s own check, `require_money`, with the floor from `money_floor_micro`). The hold is the cap (`reserve.money` on `query.maxTotalChargeUsd`):
+Apify's cap bounds every event a run bills, the flat per-run charge (`price.base`) included, so no
+bill passes the caller's own cap. The bill counts the bare dataset array the run-sync
 call answers (`settle.count` on `response`) at the row price, plus the base; LinkedIn job search
 bills the base once per job title x location (`settle.plugin: apify.job_starts`). An empty answer
 bills the base (`bill.miss: charged`), and an Apify error envelope in a 2xx settles at the hold
@@ -2005,8 +2105,8 @@ never the hold. The cap must cover the base plus three rows.
 `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run that times
 out, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases although Apify may have
 billed up to the cap; so does an answer over the evidence limit, and so does a caller who disconnects
-mid-run. The $1 ceiling bounds each loss. `timeout` is required and at most
-`min(90, call_timeout_s - 30)` seconds (`_apify_max_timeout`), because a run still going when Apify's synchronous wait, treg's upstream
+mid-run. The $1 ceiling bounds each loss. `timeout` is required and at most 90 seconds
+(`apify.MAX_TIMEOUT`; a test keeps `call_timeout_s` at least 30 s above it), because a run still going when Apify's synchronous wait, treg's upstream
 read timeout or an MCP client's timeout ends leaves an unbilled failed call while the run keeps
 billing. That failure body names the run, so **treg's Apify account must keep general resource
 access Restricted**: with public access anyone could read the unbilled run's dataset by id.

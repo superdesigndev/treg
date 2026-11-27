@@ -42,6 +42,7 @@ limits: "actor runs are asynchronous — poll or use a webhook"
 pricing_url: https://apify.com/pricing  # Billed on compute units plus storage; actor-specific rental may apply.; free tier: 5 USD platform credit/month
 defaults:
   reserve: {money: {param: query.maxTotalChargeUsd, max: '1'}}
+  platform_check: {plugin: apify.run_options}
   settle: {count: {path: response}, hold_within_units: 2}
   error: {when: {path: response.error, op: present}, means: an Apify error envelope in place of the dataset}
   bill: {miss: charged, error: charged}
@@ -187,6 +188,8 @@ endpoints:
       note: "the whole request body IS the actor's input object — there is no wrapper key; use the same fields as the run-sync entries above (startUrls/resultsLimit for the Facebook actor, search/limit for the TikTok one). Returns immediately with {data: {id, status, defaultDatasetId}}. This is the route for anything that outruns run-sync's 300-second ceiling: keep `id` to poll and `defaultDatasetId` to collect results. The test_request deliberately targets apify~hello-world rather than a data actor — REPLAYING IT STARTS A REAL RUN, and hello-world is the cheapest actor that exists (observed 2026-07-31: $0.00013 of compute, no results, so nothing pay-per-result can bill). Verified live 2026-07-31 that /actors/{id}/runs and the older /acts/{id}/runs are the same endpoint — both answer 201"
     price: {value: '0', currency: USD, unit: call, note: 'starting a run costs nothing; the run itself bills per result or per compute unit according to the actor''s pricing'}
     reserve: null
+    platform_check: null
+    platform_query: declared
     settle: null
     error: null
     platform_blocked: "Runs any actor the caller names and bills per that actor's own pricing, which a free catalog price cannot meter; connect your own Apify key."
@@ -220,6 +223,8 @@ endpoints:
       note: "status is READY | RUNNING | SUCCEEDED | FAILED | TIMED-OUT | ABORTED. The response also carries usageTotalUsd — what the run has cost so far — and defaultDatasetId for collecting results. GET /actor-runs (no id) lists recent runs with the same fields, which is how you price a run-sync call after the fact: run-sync-get-dataset-items returns the items only, never the run id. CHAINED ID: the run_id in test_request is a real hello-world run from 2026-07-31 and unnamed runs expire with the plan's data-retention window — re-verify by starting a fresh run and harvesting its id, not by trusting a 404 here"
     price: {value: '0', currency: USD, unit: call, note: 'polling is free'}
     reserve: null
+    platform_check: null
+    platform_query: declared
     settle: null
     error: null
     test_request:
@@ -249,9 +254,29 @@ endpoints:
         fields: {type: string, required: false, note: "comma-separated field allow-list — the fastest way to shrink an unwieldy scrape result", example: "adId,pageName,adText,snapshotUrl"}
         format: {type: string, required: false, note: "json (default) | jsonl | csv | xlsx | xml | rss", example: "json"}
         clean: {type: boolean, required: false, note: "true drops empty and hidden (#-prefixed) items", example: true}
+        outputFields: {type: string, required: false}
+        omit: {type: string, required: false, note: "comma-separated fields to leave out of each item"}
+        unwind: {type: string, required: false, note: "comma-separated fields whose arrays or objects are unwound into separate items"}
+        flatten: {type: string, required: false, note: "comma-separated fields whose nested objects are flattened"}
+        desc: {type: [boolean, integer], required: false, note: "true or 1 returns the items newest first"}
+        attachment: {type: [boolean, integer], required: false, note: "true or 1 answers as a file download"}
+        delimiter: {type: string, required: false, note: "the csv field delimiter"}
+        bom: {type: [boolean, integer], required: false, note: "true or 1 adds a UTF-8 byte order mark to csv"}
+        xmlRoot: {type: string, required: false, note: "the xml root element name"}
+        xmlRow: {type: string, required: false, note: "the xml element name of each item"}
+        skipHeaderRow: {type: [boolean, integer], required: false, note: "true or 1 leaves out the csv header row"}
+        skipHidden: {type: [boolean, integer], required: false, note: "true or 1 leaves out hidden (#-prefixed) fields"}
+        skipEmpty: {type: [boolean, integer], required: false, note: "true or 1 leaves out empty items"}
+        simplified: {type: [boolean, integer], required: false}
+        view: {type: string, required: false, note: "a view the dataset defines"}
+        skipFailedPages: {type: [boolean, integer], required: false}
+        feedTitle: {type: string, required: false, note: "the rss feed title"}
+        feedDescription: {type: string, required: false, note: "the rss feed description"}
       note: "results are already paid for at run time — re-reading a dataset is free and repeatable, so store the dataset id rather than re-running the actor. The response is the items ARRAY at the top level, not an envelope. CHAINED ID: the dataset_id in test_request is the defaultDatasetId of that same 2026-07-31 hello-world run and expires with it — harvest a fresh one from a run before re-verifying"
     price: {value: '0', currency: USD, unit: call, note: 'reading a dataset costs nothing; you paid when the run produced the items'}
     reserve: null
+    platform_check: null
+    platform_query: declared
     settle: null
     error: null
     test_request:
@@ -275,6 +300,8 @@ endpoints:
       note: "no parameters. Returns the account's plan, monthly usage in USD and the limits it is measured against — the pre-flight check before a large pay-per-result pull, and the cheapest way to prove a token is valid (a bad token 401s here)"
     price: {value: '0', currency: USD, unit: call, note: 'free; this is also the registry''s probe endpoint for the provider'}
     reserve: null
+    platform_check: null
+    platform_query: declared
     settle: null
     error: null
     test_request: {queryParams: {}}

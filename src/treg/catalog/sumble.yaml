@@ -13,6 +13,7 @@ defaults:
   settle: {reported: {path: response.credits_used, unit: credit, missing: 0}}
 endpoints:
 - id: sumble.organizations
+  platform_check: {plugin: sumble.organizations_request}
   platform: companies
   scope: any_account
   method: POST
@@ -341,6 +342,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.organizations.techs
+  platform_check: {plugin: sumble.organization_techs_request}
   platform: companies
   scope: any_account
   method: GET
@@ -594,6 +596,7 @@ endpoints:
     BYOK.
   cache: forbidden
 - id: sumble.jobs
+  platform_check: {plugin: sumble.jobs_request}
   platform: companies
   scope: any_account
   method: POST
@@ -798,6 +801,7 @@ endpoints:
   added: '2026-09-10'
   example_response: examples/sumble.jobs.json
 - id: sumble.teams
+  platform_check: {plugin: sumble.teams_request}
   platform: companies
   scope: any_account
   method: POST

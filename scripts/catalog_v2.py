@@ -315,8 +315,6 @@ def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple
     if found := [k for k in PROVIDER_KEYS if k in cost]:
         raise Refused(f"cost.{found[0]} is a single-provider key: a plugin or its batch")
     kind = cost.get("type")
-    if kind == "quota_rows":
-        raise Refused("quota_rows has no v2 rewrite yet")
     settle_word = cost.get("settle")
     if isinstance(settle_word, str) and settle_word in PLUGIN_SETTLES:
         raise Refused(f"cost.settle: {settle_word} is a plugin or a batch decision")

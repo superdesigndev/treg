@@ -159,7 +159,6 @@ def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
 
 
 @pytest.mark.parametrize("row,reason", [
-    ({"cost": {"type": "quota_rows", "value": 1}}, "quota_rows"),
     ({"cost": {"type": "per_success", "value": 1, "settle": "modifiers"}}, "plugin"),
     ({"cost": {"type": "per_result", "value": 1}}, "a person picks its reserve"),
     ({"cost": {"type": "per_success", "value": 1, "octen_rates": {}}}, "single-provider key"),

@@ -24,6 +24,9 @@ endpoints:
         email: {type: string, required: true, format: email, example: info@scrubby.io}
       note: A fresh verification can take about two minutes. Retrying the exact address within 24 hours returns the cached result without another credit. Scrubby support confirmed that client-side timeouts do not auto-refund.
     test_request: {body: {email: info@scrubby.io}}
+    # Scrubby also reads `Authorization: Api-Key <key>` beside the injected x-api-key. On treg's key
+    # only treg's key may reach it: a caller's own empty account would read as treg's.
+    platform_request: {headers.authorization: null}
     cost:
       type: per_success
       value: 1

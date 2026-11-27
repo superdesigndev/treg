@@ -450,6 +450,16 @@ and money-worker process must use the same store and rollout settings; no migrat
 `TREG_MONEY_ADMISSION_ORG_IDS` selects an opt-in subset (`[]` = all orgs). Wait, lease and retry
 semantics are in [money](../architecture/money.md#optional-admission-before-the-settlement-session).
 
+`TREG_MONEY_EMPTY_MARK_TTL_S` (default `0`, off) is the lifetime in seconds of the balance-empty
+mark: a team refused for its balance is refused again from a mark in the key-value store, before
+the admission lease and the database, until a credit clears the mark or it expires
+([money](../architecture/money.md#the-balance-empty-mark)). It needs no migration and is safe to
+turn off at any time: marks already written expire on their own. Use a few seconds (10 at
+most); the value is also the longest a team can keep being refused after money arrives if a
+clear is lost. Set it on
+every process that moves money (web and workers) with the same `TREG_KV_URL`: a process with it
+off credits a balance without clearing the mark, which then waits out its lifetime.
+
 `TREG_HOLDLESS_FREE_ORG_IDS` (default `[]`) lists orgs whose untagged free platform calls skip
 the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless").
 `TREG_HOLDLESS_FREE_ALL_ORGS` (default `false`) does the same for every org except those in

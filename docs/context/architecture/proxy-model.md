@@ -41,6 +41,7 @@ sources:
   - tests/test_tag_billing.py
   - tests/test_tag_billing_adversarial.py
   - tests/test_call_architecture.py
+  - tests/test_deny_rules.py
   - tests/test_asynctasks.py
   - tests/test_relay_content_length.py
 related:
@@ -385,6 +386,27 @@ permission tier). A rule with `project_id` fires only on that project's tools; h
 member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mirrors
 `localrun.check_deny` (argv instead of URL).
 
+A method rule matches the method the request was sent with **and** every method the request asks
+its upstream to run instead (`access.method_overrides`), so an override can add a refusal and never
+remove one: a POST rule refuses a GET carrying one, and a GET rule still refuses that GET. The
+signals are ones real upstreams honour, names and values case-insensitive, a comma list read as
+several, each value as sent:
+
+- query `method`: Meta's Graph API runs `GET ?method=post` or `?method=delete` as that method;
+- query `_method`: Laravel, Symfony, Spring and Express apps (Rails reads `_method` only from a
+  POST form body: see the limit below);
+- headers `X-HTTP-Method-Override` (Google's APIs, most web frameworks), `X-Method-Override` (a
+  common variant) and `X-HTTP-Method` (OData), each also spelled with `_` for `-`, since Rack and
+  CGI servers fold both spellings into one key.
+
+A query value that names no rule's method (an RPC API's `method=photos.search`) refuses nothing.
+A value that does name one is refused even where the upstream means something else by it (a
+parameter that happens to be called `method`, such as a shipping method `method=post`).
+The refusal says which method the request asked for. Nothing relayed changes: the parameter and the
+header reach the upstream as sent. A `_method` field in a request body is not read here, because
+the body is read only after these gates (and only when small or metered); a team that denies a
+method on an upstream reading `_method` from POST bodies (Rails, Laravel) also denies POST there.
+
 ### Call-time SSRF guard
 
 Every call-time lookup goes through `ssrf.host_is_public_async`: the blocking resolver runs on a small
@@ -521,15 +543,20 @@ to rotation ([capacity](../ops/capacity.md)).
 
 ## Platform capacity: refuse before reserve
 
-Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
+Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`, and a row's
+`platform_check` plugin, `_enforce_platform_check`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
 table price row must equal its value, or be absent when its declared default is that value, as the
 table prices an absent field; duplicate JSON keys are rejected so validation and upstream
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
-run), and outright refusal of options whose charge or result arrives later at a
-caller's webhook, outside settlement's reads. Own keys are unaffected: the provider, not treg,
-bears that account's exposure.
+run), outright refusal of options whose charge or result arrives later at a
+caller's webhook, outside settlement's reads, and refusal of a credential the caller could send
+in a second place the provider reads (Apify's run rows take only their run options, through their
+`platform_check`, and its run polls only their declared query options, `platform_query: declared`;
+elsewhere a `headers.*` null pin). Own keys are
+unaffected: the provider, not treg, bears that account's exposure. A routed child refused for a
+header is skipped for that provider only ([catalog](catalog.md), routed endpoints).
 
 Tier 4 spends treg's own vendor account, which can be empty. After `_platform_offer` says yes,
 `_resolve_marketplace_call` consults the in-process capacity view (`domain.capacity.view`, loaded
