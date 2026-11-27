@@ -575,11 +575,9 @@ async def test_a_recovery_proof_repriced_again_keeps_its_recovery(
     assert len(calls) == 1
 
 
-async def test_a_recovery_short_of_credit_pays_as_that_recovery(
-        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
-    """A recovery proof whose credit no longer covers the call is asked to pay on the same
-    recovery terms: the payment that runs the call claims the recovery, so the kept transfer sent
-    again after that answer was lost runs no second call."""
+async def _recovery_short_of_credit(wallet: AsyncClient, chain, monkeypatch, tx: str):
+    """A kept transfer whose recovery proof finds its credit short: the 402 asking to pay, the
+    pushed credential, the wallet's account and the relayed calls."""
     from mpp import Credential
 
     calls: list = []
@@ -588,8 +586,7 @@ async def test_a_recovery_short_of_credit_pays_as_that_recovery(
     chain.payer = account.address.lower()
     challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
     echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
-    pushed = Credential(challenge=echo,
-                        payload={"type": "hash", "hash": "0x" + "fb" * 32}).to_authorization()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": tx}).to_authorization()
     _raise_margin(monkeypatch)
     kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
     assert kept.status_code == 402, kept.text
@@ -600,6 +597,18 @@ async def test_a_recovery_short_of_credit_pays_as_that_recovery(
                              headers={"Authorization": await _mpp_proof(kept, account)})
     assert short.status_code == 402, short.text
     assert short.json()["detail"]["reason"] == "credit_insufficient"
+    return short, pushed, account, calls
+
+
+async def test_a_recovery_short_of_credit_pays_as_that_recovery(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """A recovery proof whose credit no longer covers the call is asked to pay on the same
+    recovery terms: the payment that runs the call claims the recovery, so the kept transfer sent
+    again after that answer was lost runs no second call."""
+    from mpp import Credential
+
+    short, pushed, account, calls = await _recovery_short_of_credit(
+        wallet, chain, monkeypatch, "0x" + "fb" * 32)
     pay = next(c for c in _mpp_challenges(short) if c.request["amount"] != "0")
     paid = Credential(challenge=pay.to_echo(),
                       payload={"type": "hash", "hash": "0x" + "fc" * 32}).to_authorization()
@@ -660,6 +669,35 @@ async def test_a_refused_recovery_proof_keeps_its_recovery(
     assert retried.status_code == 409, retried.text
     assert retried.json()["detail"]["reason"] == "challenge_used"
     assert "www-authenticate" not in retried.headers
+    assert len(calls) == 1
+
+
+async def test_a_refused_recovery_payment_leaves_the_recovery_to_retry(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """A payment on a recovery's terms refused for good at settlement moved nothing and ran no
+    call: the recovery stays open, and the next payment under it runs the call."""
+    from mpp import Credential
+    from treg.infra.agent_payments import PaymentRejected
+
+    short, _, _, calls = await _recovery_short_of_credit(wallet, chain, monkeypatch, "0x" + "fe" * 32)
+    pay = next(c for c in _mpp_challenges(short) if c.request["amount"] != "0")
+    rail = next(r for r in agent_payments._rails if r.protocol == "mpp")
+    settle = rail.settle
+
+    async def refused(*args, **kwargs):
+        raise PaymentRejected("settlement_failed", "the transaction was refused")
+
+    monkeypatch.setattr(rail, "settle", refused)
+    unsent = Credential(challenge=pay.to_echo(), payload={
+        "type": "transaction", "signature": "0x76" + "33" * 40}).to_authorization()
+    failed = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": unsent})
+    assert failed.status_code == 402, failed.text
+    monkeypatch.setattr(rail, "settle", settle)
+    again = next(c for c in _mpp_challenges(failed) if c.request["amount"] != "0")
+    paid = Credential(challenge=again.to_echo(),
+                      payload={"type": "hash", "hash": "0x" + "ef" * 32}).to_authorization()
+    run = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": paid})
+    assert run.status_code == 200, run.text
     assert len(calls) == 1
 
 

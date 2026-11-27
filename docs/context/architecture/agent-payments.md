@@ -358,7 +358,9 @@ headers (`X-Treg-Payment` among them) and no receipt.
   covers the call is asked to pay on those recovery terms, and a payment under them claims the
   recovery before its call (claimed already, or its terms used by another payment: nothing moved
   is refused the final `challenge_used`, a pushed transfer is kept as credit with the same 409);
-  any other refusal of such a payment is a challenge on the same recovery terms. A kept transfer has one recovery deadline, its receipt's week from when it was kept,
+  any other refusal of such a payment is a challenge on the same recovery terms, and one refused
+  for good at settlement (nothing moved, no call ran) gives back the recovery and terms claims it
+  holds, so the wallet can retry. A kept transfer has one recovery deadline, its receipt's week from when it was kept,
   stored with the receipt (and in every recovery token, `k<nonce>d<deadline>`) so a resent answer
   carries the same one; every recovery term expires by
   it whatever a challenge's lifetime is, and the spent mark, claimed after the transfer was kept

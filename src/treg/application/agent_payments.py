@@ -603,8 +603,8 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                                   message="another payment already used this challenge's terms")
         agreed, used = False, True
     # A payment on a recovery's terms runs the call only as that recovery's one call.
-    if agreed and signed is not None and signed.recovery \
-            and not await _claim_recovery(signed.nonce):
+    recovering = agreed and signed is not None and signed.recovery
+    if recovering and not await _claim_recovery(signed.nonce, verified.proof_id):
         if not verified.moved:
             raise _recovery_used(paid)
         agreed, used = False, True
@@ -638,6 +638,10 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                                 "call was not made. If the transfer lands it is kept as this "
                                 "wallet's credit; do not send this payment again."),
                 }) from exc
+            if recovering:
+                # Refused for good, the payment moved nothing and ran no call: the recovery and
+                # its terms are this wallet's to retry.
+                await _release_recovery(signed, verified)
             raise await challenge(_recovering(paid, signed), reason=exc.code,
                                   message=exc.message) from exc
     if not agreed:
@@ -847,7 +851,8 @@ async def _admit_proof(paid: PaidOffer, verified: Verified,
         raise PayerSuspended(reason)
     if not await _claim_proof(verified):
         raise await challenge(paid, reason="payment_replayed", message="this proof was already used")
-    if signed is not None and signed.recovery and not await _claim_recovery(signed.nonce):
+    if signed is not None and signed.recovery \
+            and not await _claim_recovery(signed.nonce, verified.proof_id):
         raise _recovery_used(paid)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=None)
 
@@ -867,14 +872,26 @@ async def _recovery_spent(nonce: str) -> bool:
     return spent is not None
 
 
-async def _claim_recovery(nonce: str) -> bool:
+async def _release_recovery(signed: Terms, verified: Verified) -> None:
+    """Give back a recovery and its terms that this payment claimed, when it was refused without
+    moving anything; a claim another payment holds stays."""
+    async with session_maker() as db:
+        for ns, key in ((KEPT_NS, f"spent:{signed.nonce}"),
+                        (TERMS_NS, f"{verified.protocol}:{signed.nonce}")):
+            held = await ratestore.kv_get(db, ns, key)
+            if (held or {}).get("proof") == verified.proof_id:
+                await ratestore.kv_pop(db, ns, key)
+        await db.commit()
+
+
+async def _claim_recovery(nonce: str, proof_id: str) -> bool:
     """A kept transfer's recovery terms run one call, however many proofs were signed for them.
     Claimed after the transfer was kept and kept a week, the mark outlives every recovery term,
     which expires by the transfer's deadline (`_recovery_deadline`), whatever a challenge's
     lifetime is."""
     async with session_maker() as db:
         claimed = await ratestore.kv_claim(db, KEPT_NS, f"spent:{nonce}",
-                                           REPLAY_KEEP_S + TERMS_GRACE_S)
+                                           REPLAY_KEEP_S + TERMS_GRACE_S, v={"proof": proof_id})
         await db.commit()
     return claimed
 
