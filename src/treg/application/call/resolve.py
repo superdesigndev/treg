@@ -725,11 +725,11 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
     elif isinstance(cost.get("reserve"), dict):
         n = (_reserved_rows(cost, body, query) if "rows" in cost["reserve"]
              else _entity_count(query, body))
-    elif cost.get("type") in ("per_result", "quota_rows") and cost.get("unit") in _ENTITY_UNITS:
+    elif cost.get("type") == "per_result" and cost.get("unit") in _ENTITY_UNITS:
         # Priced per INPUT entity, not per returned row: the page-size default below has no
         # meaning here. The request names how many entities it asks about.
         n = 1 if cost.get("unit") == "call" else _entity_count(query, body)
-    elif cost.get("type") in ("per_result", "quota_rows"):
+    elif cost.get("type") == "per_result":
         asked = None
         for name in _LIMIT_PARAMS:
             raw = query.get(name)
@@ -945,13 +945,13 @@ def _marketplace_pricing(
     estimate = _platform_estimate_micro(cost, query, body)
     credit_rate = (catalog_store.load().credit_rates.get(provider)
                    if cost.get("currency") == "credit" else None)
-    if credit_rate and cost.get("type") in ("per_result", "quota_rows"):
+    if credit_rate and cost.get("type") == "per_result":
         unit = _usd_to_micro(credit_rate)
     elif cost.get("type") == "per_success" and cost.get("usd"):
         unit = _usd_to_micro(cost["usd"])
     else:
         unit = (_usd_to_micro(cost["usd"])
-                if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
+                if cost.get("type") == "per_result" and cost.get("usd") else 0)
     if provider == "quickenrich":
         credit = _usd_to_micro(float(cost.get("usd") or 0))
         if endpoint_id == "quickenrich.people.search.domain":
@@ -1083,7 +1083,7 @@ def _oauth_billed_estimate(provider, ep: dict | None, method: str, query, body: 
         est = _platform_estimate_micro(cv, query, body)
         if method != "GET" and provider.billed_write_link_usd and _post_has_link(body):
             est = max(est, _usd_to_micro(provider.billed_write_link_usd))
-        return est, ctype, (_usd_to_micro(cv["usd"]) if ctype in ("per_result", "quota_rows") else 0)
+        return est, ctype, (_usd_to_micro(cv["usd"]) if ctype == "per_result" else 0)
     if method == "GET":
         rate = provider.billed_read_usd
         est = _platform_estimate_micro({"type": "per_result", "usd": rate}, query, body)

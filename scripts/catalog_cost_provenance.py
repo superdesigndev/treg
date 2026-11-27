@@ -136,7 +136,7 @@ PRICES: dict[str, dict] = {
     "spyfu.google.domain.competitors": {"value": 0.20, "currency": "USD", "per": 1000, "unit": "row"},
     "spyfu.google.domain.ppc_competitors": {"value": 0.20, "currency": "USD", "per": 1000, "unit": "row"},
 
-    # Moz meters a ROW QUOTA, not money: `quota_rows` is the provider's own meter, so it stops
+    # Moz meters a ROW QUOTA, not money: `quota_row` is the provider's own meter, so it stops
     # pretending to be dollars.
     "moz.web.url.metrics": _u(1, "quota_row"),
     "moz.web.backlinks.summary": _u(2, "quota_row"),

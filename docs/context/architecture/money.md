@@ -1665,7 +1665,7 @@ row's cost `note` states the rule. Their shared rules:
 `_body_limit`) reads the caller's page-size fields in query or body (including camelCase spellings and
 a nested `pagination`), or for providers that bill per listed item the length of the target array;
 with no signal it is a 20-row page. A cap key only belongs there if the provider honours it as the
-spend cap; otherwise the reservation follows a cap the bill ignores. A `per_result`/`quota_rows` cost
+spend cap; otherwise the reservation follows a cap the bill ignores. A `per_result` cost
 whose unit is an input entity (`resolve._ENTITY_UNITS`) is counted by `_entity_count` (repeated or
 comma-separated query values, a body array including a JSON-RPC `params`, one per task object, else
 one; capped at 10,000, not the page max), because on those providers nothing reports a cost

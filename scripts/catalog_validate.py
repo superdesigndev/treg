@@ -88,7 +88,7 @@ from treg.domain.catalog.schema import violations  # noqa: E402
 from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
 from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
 
-COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
+COST_TYPES = {"per_call", "per_result", "per_success", "free"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
 # and convert via fx.yaml's `credit_rates_usd` / `unit_rates_usd` (see catalog_store.cost_view).
 CURRENCIES = {"USD", "CNY", "credit", "unit"}

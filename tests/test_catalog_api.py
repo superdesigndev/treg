@@ -1162,23 +1162,20 @@ def test_generic_display_prices_match_web_and_cli():
 
 def test_a_row_quota_priced_per_returned_item_holds_the_limit_and_says_per_result():
     """A list that bills one quota row per returned item, with `limit` choosing how many come back,
-    must quote that unit. `quota_rows` with no display unit is labelled `/call`, so a `limit` of 50
-    looks like the one-row price. `display.unit` names the returned item; the meter stays
-    `quota_rows` and `usd` stays the price of one row."""
+    must quote that unit. `display.unit` names the returned item; the meter stays `quota_row` and
+    `usd` stays the price of one row."""
     from treg.application.call.resolve import _platform_estimate_micro
     from treg.routers.views.catalog import cost_label as _cost_label, cost_usd as _cost_usd
     from treg.routers.web import _price_label
 
     cat = cs.load()
-    row = {"type": "quota_rows", "value": 0.004, "currency": "USD", "unit": "quota_row"}
+    row = {"type": "per_result", "value": 0.004, "currency": "USD", "unit": "quota_row"}
     viewed = cat.cost_view({**row, "display": {"unit": "result"}}, "demo")
     assert viewed["usd"] == 0.004 and viewed["display_unit"] == "result"
     assert _price_label(viewed) == _cost_usd(viewed) == _cost_label(viewed) == "$0.004/result"
     assert _platform_estimate_micro(viewed, {}, b'{"limit":1}') == 4_000
     assert _platform_estimate_micro(viewed, {}, b'{"limit":50}') == 200_000
-    plain = cat.cost_view(row, "demo")
-    assert "display_unit" not in plain
-    assert _price_label(plain).endswith("/call") and _cost_usd(plain).endswith("/call")
+    assert "display_unit" not in cat.cost_view(row, "demo")
 
 
 async def test_every_comparison_page_in_the_sitemap_serves(clients):
