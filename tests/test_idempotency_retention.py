@@ -537,6 +537,36 @@ async def test_a_prune_run_that_finds_another_running_does_nothing(clients, caps
         assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1
 
 
+async def test_a_dry_run_never_moves_the_saved_trim_place(clients, platform_on, capsys, monkeypatch):
+    from treg import ratestore
+    from treg.worker import TRIM_CURSOR_KEY, TRIM_CURSOR_NS
+
+    await _linked_answers(clients, "dry-place", 2)
+    assert await _prune_command(monkeypatch, dry_run=True) == 0
+    async with session_maker() as db:
+        assert await ratestore.kv_get(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY) is None
+
+
+@pytest.mark.parametrize("bad", [{"trim_after": -1}, {"trim_max_seconds": 0.0},
+                                 {"trim_max_seconds": float("nan")}, {"trim_max_seconds": float("inf")}])
+async def test_bad_trim_options_are_refused_before_the_prune_deletes_anything(clients, monkeypatch, bad):
+    await _seed_answer(clients, "expired-but-kept", ttl_s=-3600)
+    with pytest.raises(ValueError):
+        await _prune_command(monkeypatch, **bad)
+    async with session_maker() as db:
+        assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1
+
+
+@pytest.mark.parametrize("argv", [["--trim-after", "-1"], ["--trim-max-seconds", "0"],
+                                  ["--trim-max-seconds", "nan"], ["--trim-max-seconds", "-5"]])
+def test_the_command_line_refuses_bad_trim_options(argv):
+    from treg import worker
+
+    with pytest.raises(SystemExit) as exit_:
+        worker.main(["idempotency", "prune", *argv])
+    assert exit_.value.code == 2
+
+
 def _postgres_only():
     if session_maker.kw["bind"].dialect.name != "postgresql":
         pytest.skip("advisory locks and row locks need PostgreSQL")

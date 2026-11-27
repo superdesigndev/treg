@@ -49,6 +49,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import sys
 
 
@@ -823,6 +824,22 @@ def _positive_int(value: str) -> int:
     if n < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return n
+
+
+def _nonnegative_int(value: str) -> int:
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return n
+
+
+def _positive_seconds(value: str) -> float:
+    n = float(value)
+    if not (math.isfinite(n) and n > 0):
+        raise argparse.ArgumentTypeError("must be a finite number above 0")
+    return n
+
+
 IDEMPOTENCY_RUN_LOCK_KEY = 0x6964656D  # "idem"
 TRIM_CURSOR_NS, TRIM_CURSOR_KEY = "idempotency", "trim_after"
 TRIM_CURSOR_TTL_S = 3 * 24 * 3600
@@ -830,14 +847,28 @@ TRIM_CURSOR_TTL_S = 3 * 24 * 3600
 
 async def _idempotency_prune(args) -> int:
     """One prune pass, then one trim pass from where the last one stopped. A run that finds another
-    still going exits at once (`"stopped": "busy"`). The trim's place is kept in `Ephemeral`
-    (namespace `idempotency`); a lost one only means the next pass starts from the front."""
+    still going exits at once (`"stopped": "busy"`; PostgreSQL only). The trim's place is kept in
+    `Ephemeral` (namespace `idempotency`) after every page it commits; a lost one only means the
+    next pass starts from the front. A dry run never moves it."""
     from dataclasses import asdict
     import logging
 
     from . import ratestore
     from .infra.db import only_one_run, session_maker, verify_db
     from .application.call.idempotency import prune_expired_idempotency, trim_archived_answers
+
+    trim_after = getattr(args, "trim_after", None)
+    trim_max_seconds = getattr(args, "trim_max_seconds", None)
+    if trim_after is not None and trim_after < 0:
+        raise ValueError("--trim-after must be >= 0")
+    if trim_max_seconds is not None and not (math.isfinite(trim_max_seconds) and trim_max_seconds > 0):
+        raise ValueError("--trim-max-seconds must be a finite number above 0")
+
+    async def save_place(resume_after: int) -> None:
+        async with session_maker() as db:
+            await ratestore.kv_put(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY, {"after": resume_after},
+                                   ttl_s=TRIM_CURSOR_TTL_S)
+            await db.commit()
 
     await verify_db()
     logging.basicConfig(level=logging.INFO)
@@ -852,7 +883,7 @@ async def _idempotency_prune(args) -> int:
         out = asdict(result)
         if not getattr(args, "skip_trim", False):
             # Live rows whose answer the archive holds byte for byte drop their own copy.
-            after = getattr(args, "trim_after", None)
+            after = trim_after
             if after is None:
                 async with session_maker() as db:
                     after = int((await ratestore.kv_get(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY) or {})
@@ -860,13 +891,9 @@ async def _idempotency_prune(args) -> int:
             trim = await trim_archived_answers(
                 batch_size=args.batch_size, pause_s=args.pause_seconds,
                 max_batches=args.max_batches, dry_run=args.dry_run,
-                after=after, max_seconds=getattr(args, "trim_max_seconds", None),
+                after=after, max_seconds=trim_max_seconds,
+                on_progress=None if args.dry_run else save_place,
             )
-            if not args.dry_run:
-                async with session_maker() as db:
-                    await ratestore.kv_put(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY,
-                                           {"after": trim.resume_after}, ttl_s=TRIM_CURSOR_TTL_S)
-                    await db.commit()
             out["trim"] = asdict(trim)
     print(json.dumps(out, default=str, sort_keys=True))
     return 0 if result.complete else 1
@@ -1127,9 +1154,9 @@ def main(argv: list[str] | None = None) -> int:
     prune.add_argument("--max-batches", type=int, default=10000)
     prune.add_argument("--skip-trim", action="store_true",
                        help="only delete expired rows; keep live rows' copies of archived answers")
-    prune.add_argument("--trim-max-seconds", type=float, default=1500.0,
+    prune.add_argument("--trim-max-seconds", type=_positive_seconds, default=1500.0,
                        help="stop the trim after this long; the next run resumes (default 1500)")
-    prune.add_argument("--trim-after", type=int,
+    prune.add_argument("--trim-after", type=_nonnegative_int,
                        help="start the trim after this id instead of the saved cursor")
     prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
