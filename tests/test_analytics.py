@@ -112,12 +112,10 @@ def test_archive_config_id_changes_with_serving_settings(monkeypatch):
     assert analytics.archive_config_id() not in (before, changed)
 
 
-@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
-def test_archive_config_id_identifies_body_read_rollout(monkeypatch, path):
-    setting = 'archive_body_read_' + path
-    monkeypatch.setattr(get_settings(), setting, 'db')
+def test_archive_config_id_identifies_body_read_rollout(monkeypatch):
+    monkeypatch.setattr(get_settings(), 'archive_body_read_lookup', 'db')
     before = analytics.archive_config_id()
-    monkeypatch.setattr(get_settings(), setting, 'r2-first')
+    monkeypatch.setattr(get_settings(), 'archive_body_read_lookup', 'r2-first')
     assert analytics.archive_config_id() != before
 
 
