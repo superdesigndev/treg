@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import UTC
 
 import httpx
 
@@ -25,7 +26,7 @@ from treg.domain import money as ledger
 from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.db import session_maker
 from treg.timeutil import utcnow_naive
-from treg.models import AgentPayer, AgentPayment, CallRecord, Hold, LedgerEntry
+from treg.models import AgentPayer, AgentPayment, CallRecord, Ephemeral, Hold, LedgerEntry
 
 from test_agent_payments import (  # noqa: F401 - fixtures
     EP, EP_MICRO, FLOOR, RECIPIENT, _balance, _payer_org, _entries, _fake_relay, _mpp_challenges, _mpp_credential,
@@ -596,10 +597,10 @@ async def test_a_spent_recovery_is_never_asked_to_pay(
     assert len(calls) == 1
 
 
-async def test_a_recovery_on_another_host_runs_one_call(
-        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
-    """The 409 hands a recovery reference for the proof's host: sent there in X-Treg-Recovery,
-    it gets the transfer's own recovery terms, so following the receipt twice runs one call."""
+async def _kept_on_another_host(wallet: AsyncClient, chain, monkeypatch, tx: str):
+    """A pushed transfer kept on changed terms where the paying rail proves on another host: the
+    409 that names `proof_url` and `recovery`, the wallet's account, the relayed calls, and the
+    pushed credential."""
     from mpp import Credential
 
     calls: list = []
@@ -612,34 +613,74 @@ async def test_a_recovery_on_another_host_runs_one_call(
     chain.payer = account.address.lower()
     challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
     echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
-    pushed = Credential(challenge=echo,
-                        payload={"type": "hash", "hash": "0x" + "f8" * 32}).to_authorization()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": tx}).to_authorization()
     _raise_margin(monkeypatch)
     kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
     assert kept.status_code == 409, kept.text
-    detail = kept.json()["detail"]
+    return kept.json()["detail"], account, calls, pushed
+
+
+async def _recovery_quote(ref: str):
+    return await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
+                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
+                                      body=b"", recovery=ref)
+
+
+async def test_a_recovery_on_another_host_runs_one_call(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The 409 hands a recovery reference for the proof's host: sent there in X-Treg-Recovery,
+    it gets the transfer's own recovery terms, so following the receipt twice runs one call.
+    Followed again past its deadline, it is a final 410 offering no challenge to sign."""
+    detail, account, calls, _ = await _kept_on_another_host(
+        wallet, chain, monkeypatch, "0x" + "f8" * 32)
     follow = {"X-Treg-Recovery": detail["recovery"]}
     async with AsyncClient(transport=ASGITransport(app=app)) as client:
         asked = [await client.get(detail["proof_url"], headers=follow) for _ in range(2)]
         proofs = [await _mpp_proof(a, account) for a in asked]
         runs = [await client.get(detail["proof_url"], headers={**follow, "Authorization": p})
                 for p in proofs]
-    assert [r.status_code for r in runs] == [200, 409], runs[1].text
+        assert [r.status_code for r in runs] == [200, 409], runs[1].text
+        assert all("x-treg-recovery" not in str(call).lower() for call in calls)
+        later = time.time() + agent_payments.REPLAY_KEEP_S + 1
+        monkeypatch.setattr(agent_payments.time, "time", lambda: later)
+        expired = await client.get(detail["proof_url"], headers=follow)
+    assert expired.status_code == 410, expired.text
+    assert expired.json()["detail"]["reason"] == "recovery_expired"
+    assert "www-authenticate" not in expired.headers
+    assert "payment-required" not in expired.headers
     assert len(calls) == 1
-    assert all("x-treg-recovery" not in str(call).lower() for call in calls)
-    # The reference stops working with its receipt, before the mark that makes its recovery
-    # final can expire: past it, a request carrying it is offered no recovery terms.
-    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
-                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
-                                      body=b"", recovery=detail["recovery"])
-    assert agent_payments.signed_terms(paid.offer.terms, paid.offer.resource_url,
-                                       agent_payments.Terms(0, 0)).recovery
-    later = time.time() + agent_payments.REPLAY_KEEP_S + 1
-    monkeypatch.setattr(agent_payments.time, "time", lambda: later)
-    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
-                                      query="aweme_id=7", query_items=(("aweme_id", "7"),),
-                                      body=b"", recovery=detail["recovery"])
-    assert agent_payments._TERMS.fullmatch(paid.offer.terms).group(4) == "r", "plain terms"
+
+
+async def test_every_recovery_term_expires_by_the_transfer_s_deadline(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """A kept transfer has one recovery deadline, the same in its first answer and a resent one.
+    Recovery terms offered just before it expire by it, even after the challenge lifetime is
+    raised, so the spent mark of a recovery that already ran outlives every proof under them."""
+    detail, account, calls, pushed = await _kept_on_another_host(
+        wallet, chain, monkeypatch, "0x" + "f9" * 32)
+    resent = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert resent.status_code == 409, resent.text
+    assert resent.json()["detail"]["recovery"] == detail["recovery"]
+    follow = {"X-Treg-Recovery": detail["recovery"]}
+    async with AsyncClient(transport=ASGITransport(app=app)) as client:
+        asked = await client.get(detail["proof_url"], headers=follow)
+        run = await client.get(detail["proof_url"],
+                               headers={**follow, "Authorization": await _mpp_proof(asked, account)})
+    assert run.status_code == 200, run.text
+    ref = agent_payments._RECOVERY.fullmatch(detail["recovery"])
+    nonce, until = ref.group(1), int(ref.group(2))
+    async with session_maker() as db:
+        mark = (await db.execute(select(Ephemeral).where(
+            Ephemeral.ns == agent_payments.KEPT_NS, Ephemeral.k == f"spent:{nonce}"))).scalars().one()
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MPP_CHALLENGE_TTL_S", "3600")
+    get_settings.cache_clear()
+    monkeypatch.setattr(agent_payments.time, "time", lambda: until - 10)
+    terms = agent_payments.signed_terms(
+        (paid := await _recovery_quote(detail["recovery"])).offer.terms,
+        paid.offer.resource_url, agent_payments.Terms(0, 0))
+    assert terms.recovery and terms.expires <= until
+    assert terms.expires <= mark.expires_at.replace(tzinfo=UTC).timestamp()
+    assert len(calls) == 1
 
 
 async def test_with_the_switch_off_a_kept_transfer_offers_a_plain_proof(

@@ -263,7 +263,8 @@ challenge, that a wallet with credit signs it and pays nothing now. A first chal
 `reason: payment_required`; a refusal names `reason`: `credit_insufficient` (a proof whose credit
 does not cover the call; payment challenges only), `payment_replayed`, `invalid_challenge` (another route, query or amount),
 `price_changed` (signed on terms that no longer buy the call), `challenge_used` (another payment
-already used this challenge's terms),
+already used this challenge's terms), `recovery_expired` (410: a recovery reference followed past
+its deadline),
 `payment_expired`, `malformed_credential`, `expiry_required` (a Tempo transfer with no
 `valid_before`), `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`, `unknown_wallet` and
@@ -346,13 +347,16 @@ headers (`X-Treg-Payment` among them) and no receipt.
   alone is public. Writing one sweeps the namespace's expired rows. The kept 402's proof
   challenge carries recovery terms whose nonce is derived from the transfer (`k` in the token),
   so every proof offered for one kept transfer shares it, and only the first proof under it runs
-  a call (`spent:<nonce>`, kept the receipt's week plus the terms' life, so it outlives the last
-  proof that can be offered); another answers 409 `challenge_used`, checked before price, credit
+  a call (`spent:<nonce>`); another answers 409 `challenge_used`, checked before price, credit
   or a replay could ask for a payment (the nonce is read from a token treg issued, expired or
-  not). The 409 for another host carries `recovery`, an HMAC'd reference to that nonce and this
-  request that expires with the receipt (the transfer's time plus the week), so terms offered from
-  it end before the spent mark can; sent to `proof_url` in `X-Treg-Recovery` (consumed, never relayed), it makes that host
-  offer the same recovery terms, so following the receipt twice still runs one call. Recovery
+  not). A kept transfer has one recovery deadline, its receipt's week from when it was kept,
+  stored with the receipt so a resent answer carries the same one; every recovery term expires by
+  it whatever a challenge's lifetime is, and the spent mark, claimed after the transfer was kept
+  and kept a week, outlives them all. The 409 for another host carries `recovery`, an HMAC'd
+  reference to that nonce, the deadline and this request; sent to `proof_url` in
+  `X-Treg-Recovery` (consumed, never relayed), it makes that host offer the same recovery terms,
+  so following the receipt twice still runs one call. Followed past its deadline it is a final
+  410 `recovery_expired` with no challenge, never a fresh 402 a wallet would sign or pay. Recovery
   terms and the reference exist only while the switch is on.
 - **Rollout.** Every instance reads both formats: a credential that carries no terms (none in MPP's
   data, no `tregTerms` key in x402's `extra`, or, on a SIWX proof only, a nonce of pympp's own 32
