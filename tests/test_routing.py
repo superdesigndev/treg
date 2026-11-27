@@ -284,8 +284,9 @@ def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_integer_filter_and
 
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
     """people.search builds `q` from the caller's title, company and place, but only for a provider
-    that accepts none of the caller's own fields: exa joins a {title} or {company_domain, title}
-    request, and a provider that takes {title} still gets exactly the title."""
+    that accepts none of the caller's own fields: exa joins a {title} request, and a
+    provider that takes {title} still gets exactly the title. A {company_domain, title}
+    request no longer scopes exa, because company_domain is only a hint in the built q."""
     from treg.domain.catalog.routing.contracts import adapter_accepts
     from treg.domain.catalog.routing.plan import unscoped
 
@@ -305,7 +306,7 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
         "currentJobTitle": {"include": ["Product Manager"]}, "location": {"include": ["Seattle, United States"]},
         "keyword": {"include": ["developer tools"]}}, "a provider that takes the title gets it unchanged"
     scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
-    assert not unscoped(exa, contract, scoped), "the stand-in carries the company"
+    assert unscoped(exa, contract, scoped) == ("company_domain",), "a soft domain in a built q does not scope"
     assert exa.to_upstream(scoped, adapter_accepts(exa, scoped))[1]["query"] == "CTO at stripe.com"
     with pytest.raises(ValueError, match="stand_in"):
         from treg.domain.catalog.routing import contracts as C
@@ -316,7 +317,7 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
 def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
     """exa and parallel write the company into the text of a `q` the caller sent, so a
     {company_domain, q} request ("executives" at openai.com) reaches them; a {company_domain, title}
-    request reaches them through the stand-in, which carries the company itself."""
+    request does not, because company_domain is soft and a built q only hints it."""
     from treg.domain.catalog.routing.contracts import adapter_accepts
     from treg.domain.catalog.routing.plan import unscoped
 
@@ -328,7 +329,7 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
         assert adapter_accepts(ad, asked) == ("q",) and not unscoped(ad, contract, asked)
         assert ad.to_upstream(asked, ("q",))[1][field] == "executives openai.com"
         scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
-        assert not unscoped(ad, contract, scoped)
+        assert unscoped(ad, contract, scoped) == ("company_domain",)
         assert ad.to_upstream(scoped, ("q",))[1][field] == "CTO at stripe.com", "the domain is said once"
     # A provider that answers this shape by company alone drops what q asked; one with the title
     # in its variant still answers {q, title}
@@ -516,11 +517,11 @@ def all_people_search_on(monkeypatch, platform_on):
     {"company_domain": "example.com", "title": "Head of Tax"},
     {"company_domain": "example.com"},
 ])
-async def test_a_company_scoped_request_offers_the_free_text_providers_last(
+async def test_a_company_scoped_request_drops_free_text_providers_that_only_hint_the_domain(
         clients, all_people_search_on, monkeypatch, identity):
-    """The stand-in makes exa and parallel candidates for a company-scoped request without moving
-    anyone: every other provider keeps its order, and the two follow them, since a built `q` covers
-    none of the caller's keys. Only a prefer rule or route rule moves them up."""
+    """exa and parallel declare company_domain soft, so a built `q` that mentions the domain
+    does not scope them. They stay off a company-scoped request; a prefer does not bring them
+    back. Providers that take the caller's fields keep their order."""
     import dataclasses
     cat = catalog_store.load()
     options = call_route.RouteOptions.from_headers(lambda key: None)
@@ -529,19 +530,61 @@ async def test_a_company_scoped_request_offers_the_free_text_providers_last(
     plan = await call_route.build_plan(ep, identity, caller, options)
     order = [c.endpoint["id"] for c in plan.candidates]
     q_only = ["parallel.people.search", "exa.people.search"]
-    assert order[-2:] == q_only and "exa.people.search" not in {d["endpoint_id"] for d in plan.dropped}
-    exa = next(c for c in plan.candidates if c.endpoint["id"] == "exa.people.search")
-    assert exa.variant == ("q",) and exa.ignored == tuple(k for k in ("country", "company_domain") if k in identity)
-    assert exa.hinted == exa.ignored, "a hint is named, never ranked down"
-    _, body = exa.adapter.to_upstream(plan.identity, exa.variant)
-    assert body["query"].startswith(identity.get("title", "people") + " at example.com")
+    assert not set(q_only) & set(order)
+    for eid in q_only:
+        why = next(d["why"] for d in plan.dropped if d["endpoint_id"] == eid)
+        assert why.startswith("cannot scope by company_domain")
     preferred = await call_route.build_plan(ep, identity, caller, call_route.RouteOptions.from_headers(
         lambda key: "exa" if key == call_route.PREFER_HEADER else None))
-    assert preferred.candidates[0].endpoint["id"] == "exa.people.search", "a prefer moves it up"
+    assert "exa.people.search" not in [c.endpoint["id"] for c in preferred.candidates]
     for eid in q_only:
         monkeypatch.setitem(cat.adapters, eid, dataclasses.replace(cat.adapters[eid], _stand_in={}))
     without = await call_route.build_plan(ep, identity, caller, options)
-    assert [c.endpoint["id"] for c in without.candidates] == order[:-2], "nobody else moved"
+    assert [c.endpoint["id"] for c in without.candidates] == order, "nobody else moved"
+
+
+async def test_a_title_request_still_offers_the_free_text_providers_last(
+        clients, all_people_search_on):
+    """A {title} request has no company_domain, so the stand-in `q` still reaches exa and
+    parallel after every provider that takes the title itself."""
+    cat = catalog_store.load()
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(cat.by_id["treg.people.search"], {"title": "Head of Tax"}, caller, options)
+    order = [c.endpoint["id"] for c in plan.candidates]
+    q_only = ["parallel.people.search", "exa.people.search"]
+    assert order[-2:] == q_only and "exa.people.search" not in {d["endpoint_id"] for d in plan.dropped}
+
+
+async def test_a_caller_written_q_with_a_company_still_reaches_the_free_text_providers(
+        clients, all_people_search_on):
+    """A caller-written `q` folded with company_domain still scopes exa and parallel; this is
+    a semantic brief, not a structured role-at-company lookup."""
+    cat = catalog_store.load()
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(
+        cat.by_id["treg.people.search"], {"q": "Head of Tax", "company_domain": "example.com"}, caller, options)
+    ids = {c.endpoint["id"] for c in plan.candidates}
+    assert {"parallel.people.search", "exa.people.search"} <= ids
+
+
+def test_a_stand_in_does_not_scope_a_soft_company_domain():
+    """Public repro of the {company_domain, title} defect: exa was scoped by a built `q`,
+    billed as a hit, and listed company_domain in ignored_filters. After the fix, unscoped
+    names company_domain; a caller-written `q` or a title-only request stays scoped."""
+    from treg.domain.catalog.routing.plan import unscoped
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    asked, _ = canonical_identity(contract, {"company_domain": "replicate.com", "title": "Recruiter"})
+    for eid in ("exa.people.search", "parallel.people.search"):
+        assert unscoped(cat.adapters[eid], contract, asked) == ("company_domain",)
+    written, _ = canonical_identity(contract, {"q": "Recruiter at replicate.com", "company_domain": "replicate.com"})
+    for eid in ("exa.people.search", "parallel.people.search"):
+        assert not unscoped(cat.adapters[eid], contract, written)
+    titled, _ = canonical_identity(contract, {"title": "Recruiter"})
+    for eid in ("exa.people.search", "parallel.people.search"):
+        assert not unscoped(cat.adapters[eid], contract, titled)
 
 
 @pytest.fixture
