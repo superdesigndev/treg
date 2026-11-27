@@ -23,6 +23,8 @@ sources:
   - tests/test_review_body_audit.py
   - src/treg/domain/feedback/comparisons.py
   - src/treg/application/compare.py
+  - src/treg/application/compare_judge.py
+  - src/treg/domain/feedback/compare_rubric.py
   - src/treg/hints.py
   - src/treg/config.py
   - src/treg/routers/call.py
@@ -47,6 +49,7 @@ sources:
   - tests/test_hints.py
   - tests/test_kv.py
   - tests/test_compare.py
+  - tests/test_compare_judge.py
   - tests/test_compare_spend_migration.py
   - tests/test_callcomparison_jev_migration.py
 related:
@@ -440,6 +443,26 @@ when it names a vendor), and either vendor's id, endpoint id or API host inside 
 `truncated` saying which; `first` (which answer is shown as 1) is random. The team's
 `compare-ready:<org_id>` flag is then set for three days in the shared store, so `TREG_KV_URL` must
 be set for markers and invitations to reach across processes.
+
+**Jev's blind verdict** (`application.compare_judge`, a pass of `treg-worker reviews judge`):
+every comparison holding both answers (`ready`, or `decided` by an agent) on a capability in
+`compare_judge_capabilities` gets Jev's verdict beside the agent's, in `jev_choice`,
+`jev_orders`, `jev_version` and `jev_judged_at`; `choice` and `status` are never touched. Only
+capabilities whose answers can be judged by reading them are listed: finding or verifying an
+email, a phone or a person cannot be. Jev sees the capability, the input and the two answers,
+never a vendor, under `compare_rubric.RUBRIC` (which better serves the input as written, by
+content and never by length), each answer shortened to `compare_judge_answer_chars` with the marks
+`body_view.shrink` leaves explained and `truncated` naming the parts cut when stored. Each pair is
+asked twice, A shown first and then B, in two requests that go out together
+(`compare_judge_batch` pairs each); it is written only when both answered. When the orders agree
+that is the verdict (a, b, tie, both_bad); when they disagree it is `split`, an order effect kept
+apart from a real tie, and `jev_orders` keeps both (A-first verdict, then B-first). Jev returns a
+choice, not text, so there is no Jev reason. Decided pairs come first, so the agents' votes
+calibrate Jev's from the first run; at most `compare_judge_per_run` pairs a run. A pair Jev could
+not judge steps aside: an unreadable answer backs off from an hour to a week (`jev_attempts`,
+`jev_retry_at`), a failed request waits an hour without counting a try. A new
+`compare_rubric.VERSION` judges every pair again; a build with an older one never overwrites it.
+`compare_judge` off skips the pass (its rollback switch; verdicts written stay).
 
 **API**: `GET /comparisons/next` (team member) returns the team's oldest `ready` row younger than
 three days as `{comparison_id, capability, input, answer_1, answer_2, truncated,
