@@ -59,7 +59,7 @@ def _read_scripts(p: Path) -> str:
                 continue
             seen.add(f)
             try:
-                text += f.read_text(errors="replace") + "\n"
+                text += f.read_text(encoding="utf-8", errors="replace") + "\n"
             except OSError:
                 pass
     return text
@@ -284,7 +284,7 @@ def write_contract(det: SkillDetection, force: bool = False) -> str | None:
     path = Path(det.path) / convert.CONTRACT_FILE
     if path.exists() and not force:
         return None
-    path.write_text(json.dumps(to_contract(det), indent=2))
+    path.write_text(json.dumps(to_contract(det), indent=2), encoding="utf-8")
     return str(path)
 
 
@@ -340,7 +340,7 @@ def build_payload(det: SkillDetection, values: dict[str, str]) -> dict:
     for s in det.secrets:
         if s.get("file"):
             # strip trailing newline/space — a stray "\n" in a token becomes an illegal header value
-            val = convert.resolve_secret_path(p, s["file"]).read_text().strip()
+            val = convert.resolve_secret_path(p, s["file"]).read_text(encoding="utf-8").strip()
         elif s.get("env"):
             val = values.get(s["env"])
             if val is None:

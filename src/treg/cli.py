@@ -1692,12 +1692,16 @@ def _sync_contract_secret(skill_dir, src_file, name: str, kind: str) -> None:
         return
     try:
         contract = json.loads(path.read_text(encoding="utf-8"))
-        rel = str(Path(src_file).resolve().relative_to(Path(skill_dir).resolve()))
+        rel = Path(src_file).resolve().relative_to(Path(skill_dir).resolve()).as_posix()
         secrets = contract.setdefault("secrets", [])
-        entry = next((s for s in secrets if s.get("file") == rel), None)
+        entry = next(
+            (s for s in secrets if isinstance(s.get("file"), str) and s["file"].replace("\\", "/") == rel),
+            None,
+        )
         if entry is None:
             secrets.append({"file": rel, "name": name, "kind": kind})
         else:
+            entry["file"] = rel
             entry["name"], entry["kind"] = name, kind
         path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
         print(f"[synced {CONTRACT_FILE}]", file=sys.stderr)
