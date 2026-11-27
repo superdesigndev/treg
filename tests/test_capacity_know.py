@@ -4,6 +4,7 @@ and the latest-state view. Observe-only: nothing here touches the call path."""
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -28,31 +29,6 @@ async def test_policy_population_covers_every_platform_slot_and_both_aggregators
     assert "tomba_secret" not in pop  # the second half of a credential pair is not an account
 
 
-@pytest.mark.parametrize(("provider", "rate_limit", "where"), [
-    ("octen", {"limit": 5, "window_s": 1, "source": "policy"}, "dashboard"),
-    # The balance route takes an Account API OAuth token, never the API key treg holds.
-    ("parallel", {"limit": 600, "window_s": 60, "source": "docs"}, "Platform"),
-])
-async def test_platform_account_has_a_known_dashboard_only_capacity_policy(
-    monkeypatch, provider, rate_limit, where,
-):
-    from treg.config import get_settings
-
-    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "TEST-KEY")
-    get_settings.cache_clear()
-    try:
-        policy = default_policy(provider, has_key=True)
-        assert (policy.capacity_type, policy.funding_mode, policy.source) == (
-            "cash", "manual", "manual",
-        )
-        assert policy.rate_limit == rate_limit
-        balance = await collectors.provider_balance(provider)
-        assert balance["no_api"] is True
-        assert where in balance["note"]
-    finally:
-        get_settings.cache_clear()
-
-
 async def test_import_creates_one_policy_per_account_and_flags_unknowns_without_overwriting():
     await reset_db()
     async with session_maker() as db:
@@ -72,6 +48,23 @@ async def test_import_creates_one_policy_per_account_and_flags_unknowns_without_
     # a second import is a no-op
     async with session_maker() as db:
         assert await ensure_policies(db, has_key=lambda p: False) == []
+
+
+async def test_import_moves_a_seeded_rate_limit_to_the_new_default_but_keeps_an_edited_one():
+    await reset_db()
+    async with session_maker() as db:
+        db.add(CapacityPolicy(provider="filtrat", capacity_type="credits", funding_mode="manual",
+                              source="api", rate_limit={"limit": 600, "window_s": 60, "source": "docs"}))
+        db.add(CapacityPolicy(provider="filtrat-finder", capacity_type="credits", funding_mode="manual",
+                              source="api", rate_limit={"limit": 50, "window_s": 60, "source": "policy"}))
+        await db.commit()
+    async with session_maker() as db:
+        await ensure_policies(db, has_key=lambda p: True)
+        await db.commit()
+    async with session_maker() as db:
+        rows = {r.provider: r for r in (await db.execute(select(CapacityPolicy))).scalars()}
+    assert rows["filtrat"].rate_limit == default_policy("filtrat", has_key=True).rate_limit
+    assert rows["filtrat-finder"].rate_limit == {"limit": 50, "window_s": 60, "source": "policy"}
 
 
 def test_snapshot_never_carries_a_credential():
@@ -174,6 +167,28 @@ async def test_view_sees_a_published_state_from_a_fresh_process_within_the_ttl()
     assert view.get("findymail").exhausted_until == state.exhausted_until
 
 
+async def test_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from treg.domain.capacity import view as view_mod
+    await reset_db()
+    monkeypatch.setattr(view_mod, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    state = LatestState("findymail", 0.0, "credits", utcnow_naive(), "exact", health="ok")
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "findymail", state.to_json(), ttl_s=3600)
+        await db.commit()
+    view = LatestStateView(ttl_s=60)
+    await view.load()
+    assert view.get("findymail") is not None, "the first load reads the database"
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "findymail", LatestState(
+            "findymail", 0.0, "credits", utcnow_naive(), "exact", health="exhausted",
+            exhausted_until=utcnow_naive() + timedelta(hours=1)).to_json(), ttl_s=3600)
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert view.is_exhausted("findymail"), "a load after invalidate() reads the database"
+
+
 @pytest.mark.parametrize(("provider", "path", "body"), [
     ("fiber-ai", "/v1/get-org-credits", {"output": [{"available": 0, "max": 100}]}),
     ("mobiusengine-jobs", "/v1/balance", {"mode": "wallet", "balance_usd": 0}),
@@ -210,22 +225,16 @@ async def test_a_swept_empty_account_reaches_the_call_path_under_its_catalog_id(
     assert keyslots.exhausted(provider, f"{provider}.x", None)
 
 
-def test_capacity_view_getters_are_sync_and_io_free():
-    import inspect
-    assert not inspect.iscoroutinefunction(LatestStateView.get)
-    assert not inspect.iscoroutinefunction(LatestStateView.is_exhausted)
-
-
 def _apollo_profile(lead_left):
     """api_profile's credit fields as Apollo returns them: the "unified" meter moves with phone
     reveals only, so the lead pool minus it says nothing about lead credits."""
-    return {"num_credits_remaining": lead_left, "effective_num_lead_credits": 5000,
+    return {"num_credits_remaining": lead_left, "effective_num_lead_credits": 50000,
             "num_lead_credits_used": 0, "effective_num_direct_dial_credits": 5000,
             "num_direct_dial_credits_used": 40, "total_unified_credits_used": 40,
             "effective_num_ai_credits": 1000, "num_ai_credits_used": 0}
 
 
-@pytest.mark.parametrize("lead_left,health", [(0, "exhausted"), (1234, "ok")])
+@pytest.mark.parametrize("lead_left,health", [(0, "exhausted"), (1234, "low"), (12345, "ok")])
 async def test_sweep_reads_apollos_lead_credits_not_the_unified_meter(monkeypatch, lead_left, health):
     """Apollo answers every enrich with 422 `credit_type: lead credits, credit_balance: 0` while its
     unified meter still shows almost the whole pool unused. The sweep must read the lead pool, so a

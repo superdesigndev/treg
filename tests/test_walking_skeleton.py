@@ -94,21 +94,37 @@ def test_the_pool_cannot_outnumber_postgres_during_a_deploy():
         "that is how the 2026-08-15 outage started")
 
 
-def test_migrations_fail_fast_rather_than_queueing_the_world():
+async def test_migrations_fail_fast_rather_than_queueing_the_world(monkeypatch):
     """An ALTER on a hot table needs an exclusive lock. Without a lock_timeout it QUEUES behind live
-    traffic, and every new query then queues behind IT — both instances starve and the shared
-    database wedges (2026-08-15, root cause). The startup path must set the timeout before running
-    migrations so a contended deploy fails cleanly instead."""
-    from importlib.resources import files
+    traffic, and every new query then queues behind IT, so the shared database wedges. The migration
+    connection must carry the configured timeout before Alembic runs anything, so a contended deploy
+    fails cleanly instead."""
+    import pytest
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
 
-    from treg.config import Settings
+    from tests.test_alembic_baseline import _upgrade_to
+    from treg.config import get_settings
+    from treg.infra import db
 
-    env_src = files("treg").joinpath("alembic", "env.py").read_text()
-    assert "SET lock_timeout = '{lock_ms}ms'" in env_src
-    assert "statement_timeout = '120s'" in env_src
-    assert env_src.index("in _session_timeouts():\n                await") < env_src.index(
-        "run_sync(_run_migrations)"), "the timeout must be set BEFORE Alembic migrations run"
-    assert Settings.model_fields["migration_lock_timeout_s"].default <= 5
+    if db._engine.dialect.name != "postgresql":
+        pytest.skip("lock_timeout is a Postgres session setting")
+    monkeypatch.setenv("TREG_MIGRATION_LOCK_TIMEOUT_S", "3.5")
+    get_settings.cache_clear()
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, *args):
+        seen.append(statement.strip())
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        await _upgrade_to("head")
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
+        get_settings.cache_clear()
+    first_alembic = next(i for i, sql in enumerate(seen) if "alembic_version" in sql)
+    before = seen[:first_alembic]
+    assert "SET lock_timeout = '3500ms'" in before, seen[:10]
+    assert "SET statement_timeout = '120s'" in before, seen[:10]
 
 
 def test_the_budget_reports_what_a_process_retains_while_idle():

@@ -809,7 +809,8 @@ async def test_a_bad_token_is_rejected_at_paste_time(clients: AsyncClient, monke
 
 async def test_token_connect_provisions_a_tool_with_a_plain_binding(clients: AsyncClient, monkeypatch):
     """A token secret is a plain string — injecting it as an oauth blob would look for an
-    access_token field that isn't there."""
+    access_token field that isn't there. auth.test already names the workspace, and with no
+    consent response the scopes come from its response header."""
     import dataclasses
 
     from treg import oauth_providers as P
@@ -819,25 +820,13 @@ async def test_token_connect_provisions_a_tool_with_a_plain_binding(clients: Asy
     r = await clients.post("/connections/token", json={"provider": "slack", "token": "xoxb-good"})
     assert r.status_code == 200, r.text
     assert r.json()["health"] == "ok", "a verified token is known-good, not 'unknown'"
+    assert (r.json()["resource_name"], r.json()["resource_ref"]) == ("Acme Workspace", "T0ACME")
+    assert set(r.json()["scopes"]) == {"chat:write", "channels:read", "users:read"}
 
     tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "slack")
     b = tool["bindings"][0]
     assert b["injector"] == "env" and b["format"] == "Bearer {secret}"
     assert "secret_field" not in b or b.get("secret_field") in (None, "")
-
-
-async def test_token_connect_records_which_workspace(clients: AsyncClient, monkeypatch):
-    """auth.test already says which Slack this is — using it spares a second call, and without it
-    the row would just say "whole account"."""
-    import dataclasses
-
-    from treg import oauth_providers as P
-
-    monkeypatch.setitem(P.REGISTRY, "slack", dataclasses.replace(
-        P.REGISTRY["slack"], base_url="http://upstream", discover_path=""))
-    r = await clients.post("/connections/token", json={"provider": "slack", "token": "xoxb-good"})
-    assert r.json()["resource_name"] == "Acme Workspace"
-    assert r.json()["resource_ref"] == "T0ACME"
 
 
 async def test_oauth_providers_reject_the_token_endpoint(clients: AsyncClient, treg_google_app):
@@ -909,20 +898,6 @@ async def test_slack_style_ok_false_is_reported_not_swallowed(clients: AsyncClie
     got = await clients.get(f"/connections/{sid}/resources")
     assert got.status_code == 502
     assert "invalid_auth" in got.text, "the upstream's own reason must reach the user"
-
-
-async def test_token_scopes_come_from_the_response_header(clients: AsyncClient, monkeypatch):
-    """There is no consent response for a bring-your-own-token provider, so without reading the
-    header the connection claims "0 scopes" while holding a perfectly well-scoped token."""
-    import dataclasses
-
-    from treg import oauth_providers as P
-
-    monkeypatch.setitem(P.REGISTRY, "slack", dataclasses.replace(
-        P.REGISTRY["slack"], base_url="http://upstream", discover_path=""))
-    r = await clients.post("/connections/token", json={"provider": "slack", "token": "xoxb-good"})
-    assert r.status_code == 200
-    assert set(r.json()["scopes"]) == {"chat:write", "channels:read", "users:read"}
 
 
 def test_every_provider_has_a_logo():

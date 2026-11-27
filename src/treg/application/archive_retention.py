@@ -30,7 +30,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
@@ -41,7 +40,7 @@ from sqlalchemy.orm import aliased
 from .. import archive, archive_bodies
 from ..config import get_settings
 from ..domain.governance.teams import erase_archive_keys, erase_archive_marks
-from ..infra.db import session_maker
+from ..infra.db import only_one_run, session_maker
 from ..models import (
     ArchiveKey, ArchiveKeyOrg, ArchiveObjectPending, ArchiveRetentionCursor, ArchiveSnapshot,
     IdempotentCall,
@@ -371,33 +370,11 @@ async def run(*, dry_run: bool = False, days: int | None = None, batch: int | No
                    session_factory=session_factory, clock=clock)
     if dry_run:
         return await _run(result, **options)
-    async with _only_run() as alone:
+    async with only_one_run(RUN_LOCK_KEY) as alone:
         if not alone:
             result.stopped = "busy"
             return asdict(result)
         return await _run(result, **options)
-
-
-@asynccontextmanager
-async def _only_run():
-    """Hold a session-level advisory lock for the run on a connection of its own (idle between
-    its two statements, so it pins no snapshot) -> whether this run got it. SQLite: always.
-    The connection is the API pool's, which never goes through a transaction pooler: the lock
-    lives on the server connection that took it."""
-    async with session_maker.kw["bind"].connect() as connection:
-        if connection.dialect.name != "postgresql":
-            yield True
-            return
-        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
-                                             {"key": RUN_LOCK_KEY})).scalar_one())
-        await connection.commit()
-        try:
-            yield got
-        finally:
-            if got:
-                await connection.execute(text("SELECT pg_advisory_unlock(:key)"),
-                                         {"key": RUN_LOCK_KEY})
-                await connection.commit()
 
 
 async def _run(result: RetentionResult, *, days: int, batch: int, pause_s: float,

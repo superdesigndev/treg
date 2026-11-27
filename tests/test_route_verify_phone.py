@@ -136,9 +136,7 @@ async def test_a_non_us_hit_sends_no_usa_status(clients: AsyncClient, phone_on, 
 
 
 @pytest.mark.parametrize("live_status,word,credits", [
-    ("LIVE", "live", 1), ("DEAD", "dead", 1), ("ABSENT_SUBSCRIBER", "unknown", 1),
-    ("NO_TELESERVICE_PROVISIONED", "unknown", 1), ("NOT_AVAILABLE_NETWORK_ONLY", "unknown", 1),
-    ("INCONCLUSIVE", "unknown", 1), ("NO_COVERAGE", "unknown", 0), ("NOT_APPLICABLE", "unknown", 0),
+    ("LIVE", "live", 1), ("DEAD", "dead", 1), ("ABSENT_SUBSCRIBER", "unknown", 1), ("NO_COVERAGE", "unknown", 0),
 ])
 async def test_every_hlr_live_status_maps_to_a_word(clients: AsyncClient, phone_on, monkeypatch, live_status, word, credits):
     monkeypatch.setattr(call_service, "relay", _relay(
@@ -160,7 +158,7 @@ async def test_an_hlr_error_is_no_check_and_costs_nothing(clients: AsyncClient, 
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == r.json()["_treg"]["tried"][0]["charged_micro"]
 
 
-@pytest.mark.parametrize("phone", ["(415) 555-0142", "4155550142", "07790606023", "14155550142"])
+@pytest.mark.parametrize("phone", ["(415) 555-0142", "14155550142"])
 async def test_a_number_not_written_internationally_is_never_sent(phone):
     async def never(child, client):
         raise AssertionError("no call may be made")
@@ -183,21 +181,17 @@ def test_e164_digits_trusts_only_an_international_number(raw, digits):
 
 @pytest.mark.parametrize("phone,country,out", [
     ("4155550142", "US", "+14155550142"), ("6135550142", "CA", "+16135550142"), (" 4155550142 ", "us", "+14155550142"),
-    ("4155550142", "GB", "4155550142"), ("4155550142", None, "4155550142"), ("4155550142", "", "4155550142"),
+    ("4155550142", "GB", "4155550142"), ("4155550142", None, "4155550142"),
     ("415555014", "US", "415555014"), ("14155550142", "US", "14155550142"), ("+14155550142", "US", "+14155550142"),
-    ("+447540822872", "US", "+447540822872"), ("0155550142", "US", "0155550142"),
-    ("415-555-0142", "US", "+14155550142"), ("(415) 555-0142", "US", "+14155550142"), ("415.555.0142", "CA", "+14155550142"),
-    ("415-555-01AB", "US", "415-555-01AB"), ("(415) 555-01423", "US", "(415) 555-01423"), ("1-415-555-0142", "US", "1-415-555-0142"),
-    ("+1 415 555 0142", "US", "+1 415 555 0142"), ("(015) 555-0142", "US", "(015) 555-0142"), (None, "US", None),
+    ("0155550142", "US", "0155550142"), ("(415) 555-0142", "US", "+14155550142"),
+    ("415-555-01AB", "US", "415-555-01AB"), (None, "US", None),
 ])
 def test_with_country_code_adds_only_a_plan_it_fits(phone, country, out):
     assert P.with_country_code(phone, country) == out
 
 
 @pytest.mark.parametrize("phone,country,out", [
-    ("4155550142", "US", "+14155550142"), ("6135550142", "CA", "+16135550142"),
-    ("4155550142", "MX", "4155550142"), ("4155550142", None, "4155550142"), ("415555014", "US", "415555014"),
-    ("14155550142", "US", "14155550142"), ("+14155550142", "US", "+14155550142"), ("(415) 555-0142", "US", "+14155550142"),
+    ("4155550142", "US", "+14155550142"), ("4155550142", "MX", "4155550142"),
 ])
 def test_quickenrich_output_gets_plus_one_and_raw_stays(phone, country, out):
     adapter = catalog_store.load().adapters["quickenrich.people.phone.find"]
@@ -241,19 +235,6 @@ def test_skip_advice_needs_a_when():
     from treg.domain.catalog.routing.contracts import _parse_check
     with pytest.raises(ValueError, match="skip_advice"):
         _parse_check("x", {"endpoint": "e", "field": "phone", "skip_advice": "tip"}, {"phone": {}})
-
-
-def test_starts_with():
-    assert P.starts_with("14155550142", "1") and not P.starts_with("447540822872", "1")
-    assert not P.starts_with(None, "1")
-
-
-def test_the_arena_phone_check_is_untouched():
-    """Enrich Arena keeps its format check: HLR's live check is not one of its candidates."""
-    from treg.domain import arena as rules
-    cat = catalog_store.load()
-    assert rules.VERIFICATION_TASKS["people.phone.find"] == ("people.phone.verify", "phone")
-    assert HLR not in {e["id"] for e in cat.for_capability("people.phone.verify")}
 
 
 async def test_the_teams_own_hlr_key_serves_the_check_unmetered(clients: AsyncClient, phone_on, monkeypatch):

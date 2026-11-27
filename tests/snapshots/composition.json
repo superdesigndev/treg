@@ -17,6 +17,10 @@
       "handler": "treg.api._id_out_of_range"
     },
     {
+      "exception": "sqlalchemy.exc.DBAPIError",
+      "handler": "treg.api._db_id_out_of_range"
+    },
+    {
       "exception": "sqlalchemy.exc.TimeoutError",
       "handler": "treg.api._pool_saturated"
     },

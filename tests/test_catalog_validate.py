@@ -1458,6 +1458,9 @@ def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
 @pytest.mark.parametrize("endpoint_id,keys,message", [
     ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
      "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "0", "currency": "USD", "unit": "call"},
+                                 "settle": {"reported": {"path": "response.cost", "unit": "usd"}}},
+     "a free price never settles from a reported charge"),
     ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
      "price.currency unit (unit page) has no fx.yaml rate"),
     ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},

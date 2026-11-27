@@ -1112,33 +1112,6 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
-@pytest.mark.parametrize(("items", "valid"), [
-    ((), True),
-    ((("limit", "1"),), True),
-    ((("limit", "100"),), True),
-    ((("limit", "101"),), False),
-    ((("limit", "1000"),), False),
-    ((("limit", "0"),), False),
-    ((("limit", "ten"),), False),
-    ((("limit", "5"), ("limit", "5")), False),
-])
-def test_predictleads_shared_key_lists_take_at_most_100_records(items, valid):
-    ep = {"id": "predictleads.jobs.discover", "provider": "predictleads", "cost": {"type": "per_result"}}
-    query = call_resolution.QueryValues(items)
-    if valid:
-        call_resolution._enforce_platform_request(ep, b"", query=query)
-    else:
-        with pytest.raises(ResolutionFailed) as exc:
-            call_resolution._enforce_platform_request(ep, b"", query=query)
-        assert exc.value.detail["parameter"] == "queryParams.limit"
-
-
-def test_predictleads_per_response_rows_keep_the_vendor_limit():
-    ep = {"id": "predictleads.companies.job_openings", "provider": "predictleads", "cost": {"type": "per_call"}}
-    call_resolution._enforce_platform_request(
-        ep, b"", query=call_resolution.QueryValues((("limit", "1000"),)))
-
-
 def test_a_null_platform_request_body_field_must_be_absent_on_treg_key():
     ep = {"id": "demo.enrich", "provider": "demo",
           "input": {"bodyType": "json", "body": {"person": {"type": "object"}, "revealPhones": {"type": "object"}}},
@@ -1290,39 +1263,20 @@ def test_openmart_settlement_rounds_three_credits_per_ten_records(endpoint, body
     assert call_settle._observed_cost_micro(mk, body) == expected
 
 
-@pytest.mark.parametrize(("body", "expected"), [
-    (b'[]', 10_000),
-    (b'[{"mid":"1"}]', 15_000),
-    (b'[{},{},{}]', 25_000),
-    (b'[' + b','.join([b'{}'] * 5) + b']', 35_000),
-    (b'[' + b','.join([b'{}'] * 6) + b']', 50_000),
-    (b'[' + b','.join([b'{}'] * 50) + b']', 50_000),
-    (b'{"error":{"type":"run-failed"}}', None),
-])
-def test_apify_settlement_counts_rows_and_bills_the_cap_when_reached(monkeypatch, body, expected):
-    """Rows x price + call_fee, but a run within two rows of its hold (maxTotalChargeUsd + fee)
-    reached the caller's cap: it may have billed an event it never pushed, so the cap is the bill."""
-    endpoint = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
-    endpoint['cost'] = {**endpoint['cost'], 'call_fee': 0.01}
-    monkeypatch.setitem(catalog_store.load().by_id, endpoint['id'], endpoint)
-    mk = _mk('apify', endpoint_id=endpoint['id'], cost_type='per_result', unit_micro=5_000,
-             estimate_micro=50_000)
-    assert call_settle._observed_cost_micro(mk, body) == expected
-
-
 @pytest.mark.parametrize(('items', 'hold'), [
     ((('maxTotalChargeUsd', '0.04'), ('timeout', '60')), 50_000),
     ((('maxTotalChargeUsd', '0.025'), ('timeout', '90')), 35_000),
-    ((('maxTotalChargeUsd', '1'), ('maxItems', '3'), ('memory', '1024'), ('timeout', '90')),
-     1_010_000),
     ((('maxTotalChargeUsd', '0.024'), ('timeout', '60')), None),
-    ((('maxTotalChargeUsd', '0.04'),), None),
+    ((('maxTotalChargeUsd', '0.6'), ('timeout', '60')), None),
     ((('maxTotalChargeUsd', '0.04'), ('timeout', '91')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('maxItems', '3'), ('memory', '1024'), ('timeout', '90')), 510_000),
+    ((('maxTotalChargeUsd', '0.04'), ('limit', '1'), ('timeout', '60')), None),
+    ((('timeout', '60'),), None),
+    ((('maxTotalChargeUsd', '0.04'),), None),
     ((('maxTotalChargeUsd', '0.04'), ('timeout', '0')), None),
     ((), None),
     ((('maxItems', '1'),), None),
     ((('maxTotalChargeUsd', '0'),), None),
-    ((('maxTotalChargeUsd', '1.5'),), None),
     ((('maxTotalChargeUsd', '1e-1'),), None),
     ((('maxTotalChargeUsd', '０.5'),), None),
     ((('maxTotalChargeUsd', ' 0.5'),), None),
@@ -1330,15 +1284,22 @@ def test_apify_settlement_counts_rows_and_bills_the_cap_when_reached(monkeypatch
     ((('maxTotalChargeUsd', '0.5'), ('maxItems', '2'), ('maxItems', '1')), None),
     ((('maxTotalChargeUsd', '0.5'), ('maxItems', '²')), None),
     ((('maxTotalChargeUsd', '0.5'), ('maxItems', '0')), None),
-    ((('maxTotalChargeUsd', '0.5'), ('limit', '1')), None),
     ((('maxTotalChargeUsd', '0.5'), ('format', 'csv')), None),
     ((('maxTotalChargeUsd', '0.5'), ('unwind', 'x')), None),
 ])
-def test_apify_platform_hold_is_the_charge_cap_plus_call_fee(items, hold):
-    ep = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
-    ep.pop('platform_request', None)
-    cost = {**catalog_store.load().cost_view(ep['cost'], 'apify'), 'call_fee': 0.01}
-    ep['cost'] = cost
+def test_apify_run_options_read_a_v2_row_s_spend_cap_and_floor(items, hold):
+    """On a v2 row the cap's ceiling is `reserve.money.max` and its floor the base plus one unit
+    more than `settle.hold_within_units`; the run options stay Apify's."""
+    from treg.domain.catalog.schema import V2Row, served
+    keys = {"price": {"value": "0.005", "base": "0.01"},
+            "provenance": {"source": "docs", "source_url": "https://example.com",
+                           "checked": "2026-11-27", "confidence": "documented"},
+            "reserve": {"money": {"param": "query.maxTotalChargeUsd", "max": "0.5"}},
+            "settle": {"count": {"path": "response"}, "hold_within_units": 2}}
+    parsed = V2Row.model_validate({"id": "apify.demo", "method": "POST", "path": "/x", **keys})
+    inputs = {"queryParams": {"maxTotalChargeUsd": {"type": "number"}}}
+    ep = {"id": "apify.demo", "provider": "apify", "method": "POST", "input": inputs,
+          **served(parsed, inputs)}
     query = call_resolution.QueryValues(items)
     if hold is None:
         with pytest.raises(ResolutionFailed) as exc:
@@ -1346,8 +1307,7 @@ def test_apify_platform_hold_is_the_charge_cap_plus_call_fee(items, hold):
         assert exc.value.detail['parameter'] == 'queryParams'
         return
     call_resolution._enforce_platform_request(ep, b'{}', query=query)
-    assert call_resolution._marketplace_pricing('apify', ep['id'], cost, query, b'{}') \
-        == (hold, 5_000)
+    assert call_resolution.price_call(ep, query, b'{}', set()).estimate_micro == hold
 
 
 @pytest.mark.parametrize(("endpoint", "doc", "expected"), [
@@ -3673,16 +3633,6 @@ def _usd_to_micro_for_test(usd) -> int:
 
 
 @pytest.mark.parametrize(("endpoint_id", "query", "req", "body", "rows"), [
-    # CompanyEnrich: 2 credits per person returned, the 2-credit minimum on an empty page.
-    ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
-    ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
-    ("companyenrich.people.search", None, {"pageSize": 10}, b'{"totalItems":0}', None),
-    # CompanyEnrich companies: 1 credit per company, 5 per lookalike, one company on an empty page.
-    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
-    ("companyenrich.companies.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
-    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10}, b'{"items":[]}', 1),
-    ("companyenrich.companies.similar", None, {"domains": ["x.io"], "pageSize": 10},
-     b'{"items":[{},{}]}', 2),
     # Icypeas bulk: only FOUND rows bill, at the row's credits (10 per reverse-email hit).
     ("icypeas.people.identity.resolve.bulk", None, {"data": [["a@x.io"], ["b@x.io"], ["c@x.io"]]},
      b'{"data":[{"status":"FOUND"},{"status":"NOT_FOUND"},{"status":"FOUND"}]}', 2),
@@ -3696,13 +3646,6 @@ def _usd_to_micro_for_test(usd) -> int:
      b'{"validationErrors":[{"field":"query"}],"success":false}', 0),
     ("icypeas.companies.search", None, {"query": {}, "pagination": {"size": 5}},
      b'{"success":true,"leads":[{}],"total":1}', 1),
-    # Serpstat: an error envelope is free, rows bill with a 1-credit minimum, unknown shapes estimate.
-    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}},
-     b'{"id":"1","error":{"code":-32600,"message":"Data not found"}}', 0),
-    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}}, b'{"id":"1","result":{"data":[{},{}]}}', 2),
-    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}}, b'{"id":"1","result":{"data":[]}}', 1),
-    ("serpstat.google.domain.overview", None, {"params": {"domains": ["a.com", "b.com"]}},
-     b'{"id":"1","result":{"a.com":{},"b.com":{}}}', None),
     # TheCompaniesAPI search: one credit per company returned.
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[]}', 0),
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[{},{}]}', 2),
@@ -3733,10 +3676,6 @@ def test_row_counts_never_bill_above_the_hold():
     mk, estimate, _ = _priced("findymail.search.employees", None,
                               {"website": "x.io", "job_titles": ["CEO"], "count": 5})
     assert call_settle._observed_cost_micro(mk, json.dumps([{"name": str(i)} for i in range(5)]).encode()) == estimate
-    mk, estimate, _ = _priced("serpstat.google.domain.ranked_keywords", None,
-                              {"params": {"domain": "a.com", "se": "g_us", "size": 1000}})
-    assert call_settle._observed_cost_micro(
-        mk, json.dumps({"id": "1", "result": {"data": [{}] * 1000}}).encode()) == estimate
 
 
 def test_thecompaniesapi_simplified_is_free_only_where_declared():
@@ -3770,7 +3709,7 @@ def test_every_catalog_row_prices_an_empty_request():
 
 def test_platform_eligible_row_with_a_null_rate_still_raises(monkeypatch):
     cat = catalog_store.load()
-    ep = cat.by_id["semrush.google.keywords.volume"]
+    ep = cat.by_id["findymail.verify"]
     monkeypatch.setattr(type(cat), "platform_eligible", lambda self, endpoint: True)
     with pytest.raises(ValueError):
         call_resolution.price_call(ep, call_resolution.QueryValues(()), b"", set())
@@ -4005,20 +3944,6 @@ async def test_parallel_extract_of_only_unreadable_urls_is_free(clients, monkeyp
 
 
 
-@pytest.mark.parametrize(('body', 'fee'), [
-    ({'jobTitles': ['a'], 'locations': ['x']}, 1_000),
-    ({'jobTitles': ['a', 'b', 'c'], 'locations': ['x']}, 3_000),
-    ({'jobTitles': ['a'], 'locations': ['x', 'y']}, 2_000),
-    ({'jobTitles': ['a', 'b'], 'locations': []}, 2_000),
-    ({'jobTitles': ['a', 'b']}, 2_000),
-])
-def test_apify_call_fee_multiplies_by_each_query_the_actor_starts(body, fee):
-    """LinkedIn jobs bills one actor-start per job title x location searched."""
-    cost = catalog_store.load().by_id['apify.linkedin.search.jobs']['cost']
-    mk = _mk('apify', endpoint_id='apify.linkedin.search.jobs', cost_type='per_result',
-             unit_micro=1_000, estimate_micro=1_001_000, request_data={'body': body})
-    assert call_settle._apify_call_fee_micro(mk, cost) == fee
-    assert call_settle._observed_cost_micro(mk, b'[{}]') == 1_000 + fee
 
 
 # Enrichlayer settles from this call's returned result count.
@@ -4361,3 +4286,36 @@ async def test_treg_s_key_refuses_a_row_it_has_no_rate_for_and_an_own_key_serves
         assert len(relayed) == 1 and await _balance(clients) == 1_000_000
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("body,content_type", [
+    (b'{"limit": 100}', "application/json"),
+    (b"limit=100", "application/x-www-form-urlencoded"),
+])
+async def test_treg_key_refuses_a_query_rows_parameter_in_a_get_body(clients, monkeypatch, body, content_type):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HUNTER", "PLATFORM-HUNTER")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append(request)
+        return _dropleads_response(200, {"data": {"emails": []}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        before = await _balance(clients)
+        refused = await clients.request("GET", "/call/hunter.companies.emails", params={"domain": "example.com"},
+                                        content=body, headers={"content-type": content_type})
+        assert refused.status_code == 400, refused.text
+        assert refused.json()["detail"]["parameter"] == "body.limit"
+        assert not seen and await _balance(clients) == before
+        passed = await clients.request("GET", "/call/hunter.companies.emails",
+                                       params={"domain": "example.com", "limit": "10"})
+        assert passed.status_code == 200, passed.text
+        saved = await clients.post("/secrets", json={"name": "hunter", "value": "OWN-HUNTER"})
+        assert saved.status_code == 200, saved.text
+        own = await clients.request("GET", "/call/hunter.companies.emails", params={"domain": "example.com"},
+                                    content=body, headers={"content-type": content_type})
+        assert own.status_code == 200, own.text
+    get_settings.cache_clear()

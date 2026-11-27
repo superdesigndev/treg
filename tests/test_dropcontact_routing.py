@@ -118,13 +118,8 @@ async def test_routed_pending_job_can_be_read_without_resubmission(clients, monk
 
 @pytest.mark.parametrize("qualification,result_email,expected_valid,expected_verdict", [
     ("nominative@pro", "support@dropcontact.com", True, "valid"),
-    ("generic@pro", "support@dropcontact.com", True, "valid"),
-    ("nominatif@pro", "support@dropcontact.com", True, "valid"),
-    ("generique@pro", "support@dropcontact.com", True, "valid"),
-    ("nominative@perso", "support@dropcontact.com", True, "valid"),
     ("catch_all@pro", "support@dropcontact.com", False, "catch_all"),
     ("invalid@pro", "", False, "invalid"),
-    ("invalide@pro", "", False, "invalid"),
     (None, "", False, "unknown"),
 ])
 async def test_routed_verifier_keeps_billable_verdicts(

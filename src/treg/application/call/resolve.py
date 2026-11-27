@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import oauth, oauth_providers
-from ... import sandbox as demo_sandbox
 from ...config import get_settings
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity.routes_view import view as overflow_routes_view
@@ -38,7 +37,6 @@ from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, 
 from ..connect import _host_of, _provider_bindings
 from . import cost as call_cost
 from . import keyslots
-from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
 
 _param_log = logging.getLogger("treg.param_check")
@@ -965,13 +963,6 @@ def _marketplace_pricing(
             size = max(1, min(size, 100)) if type(size) is int else 100
             return size * credit, credit
         return estimate, credit
-    if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
-        # The platform guard requires maxTotalChargeUsd, which caps every event Apify bills; the
-        # flat call_fee adds the per-run charge (a start event inside the cap, or run compute billed
-        # to the caller outside it).
-        cap = _apify_charge_cap(query)
-        rows = unit * _PLATFORM_PAGE_DEFAULT if cap is None else _usd_to_micro(cap)
-        return _usd_to_micro(float(cost.get("call_fee") or 0)) + rows, unit
     if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
         # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
         # A partial non-empty page still costs the full block; settlement frees empty pages.
@@ -1151,8 +1142,8 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
     Every clause is a refusal we WANT to be boring: an unpriced/unknown-confidence price
     (`platform_eligible`), a provider nobody enabled (`platform_key_for` — key AND allow-list), an
     OAuth provider (a platform key is meaningless for one: the credential is a user's own account),
-    or a demo org (the sandbox and the public demo must never be able to spend real money — the
-    landing page is reachable by anyone with the URL)."""
+    or the public demo org (it must never be able to spend real money: anyone with the URL can
+    reach it)."""
     if ep.get("platform_auth") == "anonymous" or not provider.uses_pasted_secret:
         return None
     cat = catalog_store.load()
@@ -1160,7 +1151,7 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
         return None
     if not get_settings().platform_key_for(ep["provider"]):
         return None
-    if demo_sandbox.is_sandbox(org) or org.public_demo:
+    if org.public_demo:
         return None
     return cat.cost_view(ep.get("cost"), ep["provider"]) or None
 
@@ -1187,7 +1178,7 @@ def _anonymous_offer(ep: dict, org: Org) -> dict | None:
     Catalog validation confines this mode to verified, free, read-only endpoints.
     """
     cost = anonymous_served(ep)
-    if cost is None or demo_sandbox.is_sandbox(org) or org.public_demo:
+    if cost is None or org.public_demo:
         return None
     return cost
 
@@ -1197,8 +1188,8 @@ def _anonymous_refusal(ep: dict | None, org: Org | None) -> str:
     as `_anonymous_offer`: only an un-allow-listed provider is "not enabled"."""
     if ep is None or not get_settings().platform_provider_enabled(ep["provider"]):
         return "is a keyless public API that this server has not enabled"
-    if org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo):
-        return "is a keyless public API, but demo and sandbox teams do not call it: use a signed-up team"
+    if org is not None and org.public_demo:
+        return "is a keyless public API, but the public demo team does not call it: use a signed-up team"
     return ("is a keyless public API, but this tool is not served keyless here: only a verified, "
             "free, read-only catalog tool is")
 
@@ -1263,7 +1254,7 @@ def _marketplace_no_credential(
         lines.extend(_capability_alternatives(ep, org=org) if ep is not None else [])
         # attributed in `_anonymous_refusal`'s order, so the log names the reason the caller reads
         ours = ep is not None and _platform_key_missing(ep, provider)  # not allow-listed: treg's side
-        demo = not ours and org is not None and (demo_sandbox.is_sandbox(org) or org.public_demo)
+        demo = not ours and org is not None and org.public_demo
         return ResolutionFailed("credential_missing", status_code=404, detail="\n".join(lines),
                                 log_kind="platform_key_missing" if ours
                                 else "admission_denied" if demo else None)  # treg's demo policy
@@ -1786,8 +1777,9 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
 # that cap, and may add only the run options below, each once; a dataset-view option (limit, offset,
 # format, unwind) would make the returned rows disagree with the events billed.
 # ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
-# the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
-_APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
+# the cap; the row's `reserve.money.max` bounds that loss per call. Settling from the run itself
+# would lift it.
+#
 # A run must end, and its rows arrive, before anyone stops waiting: past Apify's 300-second synchronous
 # wait it answers 408, past treg's upstream read timeout (call_timeout_s) or the MCP client's 120 s
 # the call fails, and each releases the hold unbilled while the run keeps billing. 90 s leaves room
@@ -1821,40 +1813,36 @@ def _query_value(raw: str, expected: object) -> object:
     return raw
 
 
-def _apify_charge_cap(query) -> float | None:
-    """The single, plainly spelled maxTotalChargeUsd a platform Apify call carries, else None."""
-    values = [value for name, value in query.multi_items() if name == "maxTotalChargeUsd"] \
-        if query is not None else []
-    if len(values) != 1 or not _ASCII_DECIMAL.fullmatch(values[0]):
-        return None
-    cap = float(values[0])
-    return cap if 0 < cap <= _APIFY_PLATFORM_MAX_CHARGE_USD else None
+def _apify_cap_rule(ep: dict, query) -> tuple[float, int | None, int]:
+    """(the most a cap may be in USD, the cap in RAW micro-USD or None, the least it may be), read
+    from the row's `reserve.money` and its price."""
+    top = float(((ep.get("reserve") or {}).get("money") or {}).get("max") or 0)
+    request_data = settlement_basis.request_evidence(query.multi_items(), b"")
+    return (top, call_cost.money_micro(ep, request_data),
+            call_cost.money_floor_micro(ep, catalog_store.load()))
 
 
 def _enforce_apify_run_options(ep: dict, query) -> None:
     names = [name for name, _ in query.multi_items()] if query is not None else []
+    top, cap, floor = _apify_cap_rule(ep, query if query is not None else QueryValues(()))
     problem = None
     if any(name not in _APIFY_PLATFORM_QUERY for name in names):
         problem = "only maxTotalChargeUsd, maxItems, memory and timeout"
     elif len(names) != len(set(names)):
         problem = "each run option at most once"
-    elif _apify_charge_cap(query) is None:
-        problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
+    elif cap is None:
+        problem = f"maxTotalChargeUsd above 0 and at most {top:g}"
     elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
               and 1 <= int(query.get("timeout")) <= _apify_max_timeout()):
         problem = f"timeout from 1 to {_apify_max_timeout()} seconds"
     elif query.get("maxItems") is not None and not (
             _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
         problem = "maxItems as a positive integer"
-    else:
+    elif cap < floor:
         # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
         # empty answer in full.
-        cost = ep.get("cost") or {}
-        floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
-            float(cost.get("value") or 0) / float(cost.get("per") or 1))
-        if _usd_to_micro(_apify_charge_cap(query)) < floor:
-            problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
-                       "(the call fee plus three rows)")
+        problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
+                   "(the call fee plus three rows)")
     if problem:
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400, rule="platform", detail={
@@ -1900,18 +1888,6 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     "parameter": "queryParams.limit", "expected": "an explicit integer from 1 to 10",
                     "message": "LeadOcean shared-key people search requires an explicit limit from 1 to 10; "
                                "connect your own key for larger searches",
-                },
-            )
-
-    if ep.get("provider") == "predictleads" and (ep.get("cost") or {}).get("type") == "per_result":
-        limits = [value for name, value in query.multi_items() if name == "limit"] if query is not None else []
-        if len(limits) > 1 or (limits and re.fullmatch(r"(?:[1-9][0-9]?|100)", limits[0]) is None):
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, rule="platform", detail={
-                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
-                    "parameter": "queryParams.limit", "expected": "one integer from 1 to 100",
-                    "message": "PredictLeads shared-key lists bill per record and take a limit from 1 to 100; "
-                               "page for more, or connect your own key",
                 },
             )
 
@@ -2005,7 +1981,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
+    if ep.get("provider") == "apify" and (ep.get("reserve") or {}).get("money"):
         _enforce_apify_run_options(ep, query)
 
     input_schema = ep.get("input") or {}
@@ -2723,7 +2699,8 @@ async def _resolve_catalog_tier(
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
         if schema.is_v2(ep):
             call_cost.require_rates(ep, catalog_store.load())
-            call_cost.require_rows(ep, pricing.request_data)
+            call_cost.require_rows(ep, pricing.request_data, body)
+            call_cost.require_money(ep, catalog_store.load(), pricing.request_data)
             call_cost.require_entities(ep, pricing.request_data)
             call_cost.require_plugin_max(ep, catalog_store.load(), pricing.request_data)
         if service == "contactout":
@@ -2759,9 +2736,7 @@ async def _resolve_catalog_tier(
     key_slot = None
     if cost is not None:
         # None: any of treg's accounts may serve it; the call path picks one before the relay.
-        key_slot = keyslots.pinned(
-            service, owners=async_owners + resource_owners,
-            idempotency_key=_key_affinity(caller, request_headers))
+        key_slot = keyslots.pinned(service, owners=async_owners + resource_owners)
     metered = cost is not None and capacity_marks.spends_balance(str(cost.get("type") or "per_call"))
     if cost is not None and (keyslots.exhausted(service, ep["id"], key_slot, metered=metered)
                              if key_slot is not None
@@ -2774,10 +2749,11 @@ async def _resolve_catalog_tier(
         key_slot = key_slot or keyslots.PRIMARY_SLOT
         cap_slot = keyslots.capacity_slot(key_slot)
         lock = capacity_view.active_lock(service, ep["id"], cap_slot, metered=metered)
-        state = capacity_view.get(service) if lock is None and cap_slot is None and metered else None
+        state = capacity_view.get(service, cap_slot) if lock is None and metered else None
         if lock is not None and capacity_marks.probe_due(lock.key):
             probe_lock_id = lock.lock_id
-        elif state is not None and capacity_marks.sweep_probe_due(service, state.observed_at):
+        elif state is not None and capacity_marks.sweep_probe_due(
+                keyslots.capacity_key(service, key_slot), state.observed_at):
             probe_lock_id = capacity_marks.sweep_probe_id(state.observed_at)
         elif (get_settings().overflow_mode == "on" and not caller.org.platform_overflow_disabled
                 and overflow_routes_view.for_endpoint(ep["id"])):
@@ -2799,13 +2775,6 @@ async def _resolve_catalog_tier(
                                key_slot=key_slot, **{
             **common, "cost_type": str(cost.get("type") or "per_call")})
     raise _marketplace_no_credential(service, ep["id"], provider, ep, caller.org)
-
-
-def _key_affinity(caller: Caller, headers) -> str:
-    """The caller's Idempotency-Key, scoped to the org: what pins a retry to one of treg's
-    accounts (`keyslots`). Empty without the header."""
-    key = _idempotency_key(headers.get(IDEMPOTENCY_HEADER) if headers is not None else None)
-    return f"{caller.org_id}{_IDEM_SCOPE_SEP}{key}" if key else ""
 
 
 CAPACITY_RETRY_AFTER_S = 60

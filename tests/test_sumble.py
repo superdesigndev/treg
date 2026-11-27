@@ -8,7 +8,6 @@ from treg.application.call import service
 from treg.config import get_settings
 from treg.domain import money
 from treg.domain.capacity import collectors
-from treg.domain.capacity.policy import default_policy
 from treg.infra.db import session_maker
 from test_marketplace_call import _balance, _entries, _fake_relay, platform_on  # noqa: F401
 
@@ -89,9 +88,7 @@ async def test_byok_full_surface_keeps_original_request_and_no_meter(clients,sum
 
 
 @pytest.mark.parametrize('remaining,expected',[(9900,9900),(0,0),(None,None),(-1,None),(True,None),('10',None)])
-async def test_capacity_probe_and_subscription_policy(remaining,expected):
+async def test_capacity_probe(remaining,expected):
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r:httpx.Response(200,json={'credits_used':0,'credits_remaining':remaining}))) as c:
         row=await collectors._sumble(c,'test')
     assert row['value']==expected
-    policy=default_policy('sumble',has_key=True)
-    assert policy.capacity_type=='monthly_quota'

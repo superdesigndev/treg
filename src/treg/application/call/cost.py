@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
+from urllib.parse import parse_qsl
 
 from ...domain import plugins
 from ...domain.catalog import outcome as outcomes
@@ -87,9 +89,23 @@ def amount(terms: dict, units: int | float | Decimal) -> int:
     return _micro_up(blocks * Decimal(terms["block_micro"]))
 
 
+def _base(terms: dict, times: int | float = 1) -> int:
+    """`price.base`, `times` over, at the frozen rate; 0 on a row without one."""
+    base = terms.get("base_micro")
+    return 0 if base is None else _micro_up(Decimal(str(times)) * Decimal(base))
+
+
 def _priced(terms: dict, quantity: object) -> int | None:
     """A plugin's quantity priced: a number at the unit price, or `{rate: quantity}` at the frozen
-    rates. None when the quantity is not one."""
+    rates. On a row with `price.base`, a number bills the base once and `{units: n, base: k}` bills
+    n units and the base k times. None when the quantity is not one."""
+    if terms.get("base_micro") is not None:
+        if isinstance(quantity, dict):
+            units, times = quantity.get("units"), quantity.get("base")
+            if set(quantity) != {"units", "base"} or not _count(units) or not _count(times):
+                return None
+            return amount(terms, units) + _base(terms, times)
+        return amount(terms, quantity) + _base(terms) if _count(quantity) else None
     if terms.get("rates_micro") is not None:
         if not isinstance(quantity, dict):
             return None
@@ -155,12 +171,34 @@ def require_request(ep: dict, request_data: dict) -> None:
                            f"{ep['id']} needs {rule['param']}: a whole number from 1 to {rule['max']}")
 
 
-def require_rows(ep: dict, request_data: dict) -> None:
+def _body_names(request_data: dict, raw_body: bytes) -> set[str]:
+    """The top-level names a request body carries: a JSON object's keys, else the names of a
+    form-encoded body. Any other body names nothing."""
+    body = request_data.get("body")
+    if isinstance(body, dict) and body:
+        return set(body)
+    if not raw_body:
+        return set()
+    try:
+        pairs = parse_qsl(raw_body.decode("ascii"), keep_blank_values=True, strict_parsing=True)
+    except (UnicodeDecodeError, ValueError):
+        return set()
+    return {name.removesuffix("[]") for name, _ in pairs}
+
+
+def require_rows(ep: dict, request_data: dict, raw_body: bytes = b"") -> None:
     """On treg's key, a `reserve.rows` with no default refuses a request without its parameter,
-    and one with `platform_max` refuses a count above it, before anything is held."""
+    one with `platform_max` refuses a count above it, and one whose parameter is a query path
+    refuses a body that carries the same name, before anything is held."""
     rule = (ep.get("reserve") or {}).get("rows")
     if not rule:
         return
+    param = rule.get("param") or ""
+    if param.startswith("query.") and param.removeprefix("query.") in _body_names(request_data, raw_body):
+        name = param.removeprefix("query.")
+        raise _invalid(ep, f"body.{name}", "platform",
+                       f"{ep['id']} reads {name} from the query on treg's key; send it as the query "
+                       f"parameter {name}, not in the body")
     top = int(rule.get("platform_max") or rule["max"])
     rows = _rows(rule, request_document(ep, request_data, defaults=False))
     if rows is None:
@@ -220,6 +258,50 @@ def require_entities(ep: dict, request_data: dict) -> None:
                        "request or connect your own key"})
 
 
+_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+
+
+def money_micro(ep: dict, request_data: dict) -> int | None:
+    """RAW micro-USD of the spend cap a `reserve.money` row's request names: its parameter sent
+    once as a plain ASCII decimal above 0 and at most `max`, else None."""
+    rule = (ep.get("reserve") or {}).get("money")
+    if not rule:
+        return None
+    found = select(rule["param"], request_document(ep, request_data, defaults=False))
+    raw = found[0] if found else None
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        raw = str(raw)
+    if not isinstance(raw, str) or not _DECIMAL.fullmatch(raw):
+        return None
+    value = Decimal(raw)
+    return _micro_up(value * _MICRO) if 0 < value <= Decimal(rule["max"]) else None
+
+
+def money_floor_micro(ep: dict, cat) -> int:
+    """The least spend cap a `reserve.money` row takes on treg's key: with
+    `settle.hold_within_units`, the base and one unit more than those units, so an answer that
+    bills only its base is not taken for one that reached the cap; else 1."""
+    within = (ep.get("settle") or {}).get("hold_within_units")
+    if not within:
+        return 1
+    _hold, _unit, _credit, terms = price(ep, cat, {})
+    return _base(terms) + amount(terms, int(within) + 1)
+
+
+def require_money(ep: dict, cat, request_data: dict) -> None:
+    """On treg's key, a `reserve.money` row refuses a request whose spend cap is missing, not a
+    plain decimal, above `max` or below the floor, before anything is held."""
+    rule = (ep.get("reserve") or {}).get("money")
+    if not rule:
+        return
+    cap, floor = money_micro(ep, request_data), money_floor_micro(ep, cat)
+    if cap is None or cap < floor:
+        name = rule["param"]
+        raise _invalid(ep, name, "platform",
+                       f"{ep['id']} needs {name} on treg's key: the spend cap in USD, from "
+                       f"{Decimal(floor) / _MICRO:f} to {Decimal(rule['max']):f}")
+
+
 def require_plugin_max(ep: dict, cat, request_data: dict) -> None:
     """On treg's key, a request a `reserve.plugin` prices above the row's `max` is refused before
     anything is held: the hold stops at the max, and a reported settle is not capped by it."""
@@ -262,6 +344,7 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
         "block_micro": None if rates else str(_block(price_, request, ep.get("input") or {}, rate)
                                               if rate else Decimal(0)),
         "rates_micro": {name: str(Decimal(v) * rate) for name, v in rates.items()} if rates else None,
+        "base_micro": str(Decimal(price_["base"]) * rate) if price_.get("base") is not None else None,
         "reported_micro": None,
         **{key: ep.get(key) for key in ("expect", "error", "miss", "bill", "settle")},
     }
@@ -281,13 +364,18 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
                 "message": f"{ep['id']} could not price this request"})
         terms["count_max_micro"] = _micro_up(Decimal(reserve["max"]) * rate)
         hold = min(held, terms["count_max_micro"])
+    elif "money" in reserve:
+        # The caller's spend cap, which the provider enforces, plus one base; a request without a
+        # readable cap (refused on treg's key) holds the most the row takes.
+        cap = money_micro(ep, request_data)
+        hold = (_micro_up(Decimal(reserve["money"]["max"]) * _MICRO) if cap is None else cap) + _base(terms)
     else:
         units = ((_rows(reserve["rows"], raw) or 1) if "rows" in reserve
                  else _entities(reserve["entities"], raw) if "entities" in reserve else 1)
-        hold = amount(terms, units)
+        hold = amount(terms, units) + _base(terms)
         top = (reserve.get("rows") or reserve.get("entities") or {}).get("max")
         if top is not None:
-            terms["count_max_micro"] = amount(terms, int(top))
+            terms["count_max_micro"] = amount(terms, int(top)) + _base(terms)
     scalar = (price_.get("value") if price_.get("value") is not None
               else (price_.get("fallback") or {}).get("value"))
     unit = _micro_up(Decimal(scalar) * rate) if scalar is not None else 0
@@ -348,10 +436,14 @@ def _last_line(raw: bytes) -> object:
     return document(last)
 
 
-def reported(terms: dict, doc: object, headers=None) -> int | None:
-    """The provider's own charge for this answer after `scale`, or None when it is unreadable."""
+def reported(terms: dict, doc: object, headers=None, *, archived: bool = False) -> int | None:
+    """The provider's own charge for this answer after `scale`, or None when it is unreadable.
+    An `archived` answer is stored bytes without the provider's headers, so a header figure is
+    unknown on it: None, whatever `missing` says."""
     rule = (terms.get("settle") or {}).get("reported")
     if rule is None or terms.get("reported_micro") is None:
+        return None
+    if "header" in rule and archived:
         return None
     if "header" in rule:
         raw = headers.get(rule["header"]) if headers is not None else None
@@ -376,8 +468,13 @@ def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | No
     """What a `count` or `plugin` settle reads off this answer, capped at the row's declared
     maximum (its `reserve` max at the unit price), or at the hold when the row declares none."""
     found = _uncapped(terms, doc, request, answer)
+    if found is None:
+        return None
+    within = (terms.get("settle") or {}).get("hold_within_units")
+    if within and found + amount(terms, int(within)) >= hold:
+        return hold
     cap = terms.get("count_max_micro")
-    return None if found is None else min(found, hold if cap is None else int(cap))
+    return min(found, hold if cap is None else int(cap))
 
 
 def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
@@ -393,7 +490,7 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
             return None
         else:
             found = found[0]
-        return amount(terms, sum(item is not None for item in found))
+        return amount(terms, sum(item is not None for item in found)) + _base(terms)
     if "plugin" in settle:
         return _priced(terms, plugins.call(settle["plugin"], terms["provider"], request, answer))
     return None
@@ -438,23 +535,25 @@ def _settled(terms: dict, basis_: dict, hold: int, doc: object, raw: bytes, evid
     return hold if evidence is None else evidence
 
 
-def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None) -> int | None:
+def _figure(terms: dict, doc: object, headers, terminal: bool, submitted: int | None,
+            archived: bool = False) -> int | None:
     """The provider's reported charge: read off this answer, or for an async task the one it
     reported on the submission, which is when the task was billed; a terminal answer's own figure
     is never read."""
     if terminal:
         return submitted if (terms.get("settle") or {}).get("reported") else None
-    return reported(terms, doc, headers)
+    return reported(terms, doc, headers, archived=archived)
 
 
 def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, raw: bytes = b"",
            headers=None, request_data: dict | None = None, terminal: bool = False,
-           submitted: int | None = None) -> tuple[int | None, int]:
+           submitted: int | None = None, archived: bool = False) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
     what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
     today's spelling records it. A `terminal` answer is an async task's, settled with what the
-    provider reported on its `submitted` submission."""
+    provider reported on its `submitted` submission. An `archived` answer is an archive hit,
+    which carries no provider header to report a charge."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -465,7 +564,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if free_when is not None and holds(free_when, {
             **request_document(endpoint, request_values, defaults=True), "response": doc}):
         return 0, 0
-    if (figure := _figure(terms, doc, headers, terminal, submitted)) is not None:
+    if (figure := _figure(terms, doc, headers, terminal, submitted, archived)) is not None:
         return figure, figure
     evidence = _evidence(terms, hold, doc, request, answer)
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
@@ -473,7 +572,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     if rule == "free":
         return (0 if evidence is None else evidence), 0
     if rule != "charged":
-        return evidence, min(amount(terms, rule), hold)
+        return evidence, min(amount(terms, rule) + _base(terms), hold)
     return evidence, _settled(terms, basis_, hold, doc, raw, evidence)
 
 

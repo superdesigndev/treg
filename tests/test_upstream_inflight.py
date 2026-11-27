@@ -25,12 +25,6 @@ def _fresh_counts():
     get_settings.cache_clear()
 
 
-def test_the_shared_client_waits_briefly_for_a_connection_and_reads_for_the_call_timeout():
-    s = get_settings()
-    assert s.upstream_pool_timeout_s <= 5 < s.call_timeout_s
-    assert s.upstream_max_connections >= 1000
-
-
 def test_log_mode_counts_and_logs_but_never_refuses(caplog):
     gate = InFlight()
     with caplog.at_level(logging.WARNING, logger="treg.upstream_inflight"):

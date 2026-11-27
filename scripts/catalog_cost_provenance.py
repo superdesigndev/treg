@@ -53,8 +53,6 @@ PROVIDERS: dict[str, dict] = {
     "diffbot": {"source": "docs", "confidence": "documented",
                 "url": "https://www.diffbot.com/pricing/",
                 "units": {"*": "page", "per_result": "record"}},
-    "apify": {"source": "docs", "confidence": "documented",
-              "url": "https://apify.com/pricing", "units": {"*": "ad"}},
     "akta": {"source": "docs", "confidence": "documented",
              "url": "https://docs.akta.pro/getting-started/pricing", "units": {"*": "call"}},
     "apollo": {"source": "docs", "confidence": "documented",
@@ -78,12 +76,8 @@ PROVIDERS: dict[str, dict] = {
     # Providers whose prices live in prose only; see PRICES below.
     "majestic": {"source": "docs", "confidence": "documented",
                  "url": "https://majestic.com/plans-pricing", "units": {"*": "call"}},
-    "semrush": {"source": "docs", "confidence": "documented",
-                "url": "https://www.semrush.com/api-documentation/", "units": {"*": "call"}},
     "seranking": {"source": "docs", "confidence": "documented",
                   "url": "https://seranking.com/pricing.html", "units": {"*": "call"}},
-    "serpstat": {"source": "docs", "confidence": "documented",
-                 "url": "https://serpstat.com/pay/", "units": {"*": "call"}},
     "spyfu": {"source": "docs", "confidence": "documented",
               "url": "https://www.spyfu.com/api", "units": {"*": "row"}},
 }
@@ -105,21 +99,7 @@ def _cr(value, unit, per=1, **extra):
     return {"value": value, "currency": "credit", "unit": unit, "per": per, **extra}
 
 
-# Semrush: "N API units per LINE returned" / "per REQUEST" — units are pre-purchased in packages,
-# so the unit price in dollars is unpublished and stays null in fx.yaml.
 PRICES: dict[str, dict] = {
-    "semrush.google.domain.ranked_keywords": _u(10, "api_unit"),
-    "semrush.google.domain.paid_keywords": _u(20, "api_unit"),
-    "semrush.google.domain.competitors": _u(40, "api_unit"),
-    "semrush.google.keywords.volume": _u(10, "api_unit"),
-    "semrush.google.keywords.ideas": _u(40, "api_unit"),
-    "semrush.google.serp.organic": _u(10, "api_unit"),
-    "semrush.web.backlinks.summary": _u(40, "api_unit"),
-    "semrush.web.backlinks.list": _u(40, "api_unit"),
-    "semrush.web.linking_domains.list": _u(40, "api_unit"),
-    "semrush.web.anchors.list": _u(40, "api_unit"),
-    "semrush.web.backlinks.competitors": _u(40, "api_unit"),
-
     # Majestic: three independent meters. A list command charges a flat ANALYSIS fee plus 1
     # RETRIEVAL unit per row; the schema records one price, so it records the dominant flat fee and
     # the note keeps the per-row half. `confidence: inferred` says exactly that: the figure is a
@@ -143,19 +123,6 @@ PRICES: dict[str, dict] = {
     "seranking.web.linking_domains.list": _cr(1, "domain"),
     "seranking.web.anchors.list": _cr(1, "row"),
     "seranking.web.url.metrics": _cr(10, "target"),
-
-    # Serpstat: API credits come with the plan at no published per-credit price → rate null.
-    "serpstat.google.domain.overview": _cr(5, "domain"),
-    "serpstat.google.domain.ranked_keywords": _cr(1, "keyword"),
-    "serpstat.google.domain.competitors": _cr(1, "result"),
-    "serpstat.google.keywords.volume": _cr(1, "keyword"),
-    "serpstat.google.keywords.ideas": _cr(1, "keyword"),
-    "serpstat.google.serp.organic": _cr(1, "row"),
-    "serpstat.web.backlinks.summary": _cr(5, "call"),
-    "serpstat.web.backlinks.list": _cr(1, "row"),
-    "serpstat.web.linking_domains.list": _cr(1, "domain"),
-    "serpstat.web.anchors.list": _cr(1, "row"),
-    "serpstat.web.site.top_pages": _cr(1, "page"),
 
     # SpyFu prices in dollars per 1,000 rows (a CPM), which is exactly what `per` is for. Two
     # endpoints sit on a published RANGE rather than a figure; the top of the range is recorded (an
@@ -207,8 +174,6 @@ PRICES: dict[str, dict] = {
     "coresignal.people.enrich": {"confidence": "inferred"},
     "diffbot.companies.enrich": {"confidence": "inferred"},          # 25, or 100 with refresh=true
     "diffbot.people.enrich": {"confidence": "inferred"},
-    "apify.meta-ads.library.search": {"confidence": "inferred"},     # "~$5.00 … $3.40-$5.80 by tier"
-    "apify.tiktok-ads.library.search": {"confidence": "inferred"},
     # No figure at all: the note itself calls the number unconfirmed, or the provider publishes
     # none. `value: null` + `confidence: unknown` is the honest pair, and
     # it is what refuses the endpoint a platform key.

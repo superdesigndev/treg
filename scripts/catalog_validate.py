@@ -537,8 +537,6 @@ UNDECLARED_RESERVE = frozenset({
     "seranking.google.keywords.volume",
     "seranking.web.backlinks.summary",
     "seranking.web.url.metrics",
-    "serpstat.google.domain.overview",
-    "serpstat.google.keywords.volume",
 })
 
 
@@ -1618,6 +1616,9 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
                                               rule.unit):
             fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
                                 f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.reported is not None and _v2_price_is_free(ep.get("price")):
+        fail(errors, where, "a free price never settles from a reported charge: opt out of the "
+                            "provider's settle with `settle: null`")
     if settle is not None and settle.worst_case is not None and price is not None:
         bound = price.value if price.value is not None else (price.fallback.value if price.fallback else None)
         if bound is not None and settle.worst_case < bound:
@@ -1633,6 +1634,13 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
         for path in sources:
             if not parse_path(path).many and fields.get(_v2_field(path, inp)) is None:
                 fail(errors, where, f"reserve.entities.from '{path}' must name a declared input field")
+    if reserve is not None and reserve.money is not None:
+        spec = fields.get(_v2_field(reserve.money.param, inp))
+        if spec is None or spec.get("type") not in ("number", "string"):
+            fail(errors, where, f"reserve.money.param '{reserve.money.param}' must name a declared "
+                                "number or string input field")
+        if price is None:
+            fail(errors, where, "reserve.money needs a price beside it")
     if price is None or price.table is None:
         return
     view = schema.served(row, inp)["cost"]

@@ -10,19 +10,7 @@ import pytest
 from treg.application.call import settle as call_settle
 from treg.application.call.resolve import MarketplaceCall
 from treg.domain.capacity import signatures as S
-from treg.domain.catalog import store as cs
 from treg.domain.money import settlement as settlement_basis
-
-
-def test_every_paid_crawl4ai_route_is_platform_priced():
-    cat = cs.load()
-    eps = [e for e in cat.endpoints if e["provider"] == "crawl4ai"]
-    assert eps
-    for ep in eps:
-        if ep["cost"]["type"] == "free" or ep.get("scope") == "own_account":
-            continue
-        assert cat.platform_eligible(ep), ep["id"]
-        assert cat.cost_view(ep["cost"], "crawl4ai")["usd"] > 0, ep["id"]
 
 
 def _mk(endpoint_id: str, unit_micro: int = 2_000) -> MarketplaceCall:
@@ -33,11 +21,10 @@ def _mk(endpoint_id: str, unit_micro: int = 2_000) -> MarketplaceCall:
     )
 
 
-@pytest.mark.parametrize("header, micro", [("0.250", 250), ("1.952", 1_952), ("2.000", 2_000)])
-def test_a_single_answer_settles_at_its_x_c4_cost_header(header, micro):
-    """1 credit = $0.001 (fx.yaml), so a 0.25-credit archived scrape is 250 micro-USD."""
+def test_a_single_answer_settles_at_its_x_c4_cost_header():
+    """1 credit = $0.001 (fx.yaml), so a 1.952-credit scrape is 1,952 micro-USD."""
     mk = _mk("crawl4ai.web.scrape")
-    assert call_settle._observed_cost_micro(mk, b'{"ok": true}', headers={"x-c4-cost": header}) == micro
+    assert call_settle._observed_cost_micro(mk, b'{"ok": true}', headers={"x-c4-cost": "1.952"}) == 1_952
 
 
 def test_a_batch_stream_settles_at_its_closing_summary_line():

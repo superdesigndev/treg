@@ -9,10 +9,12 @@ from treg.infra.db import session_maker
 from treg.models import (CallRecord, WebArenaCallCursor, WebArenaCallDayStat,
                          WebArenaPublication, WebArenaSeedDayStat, WebArenaSeedProgress)
 from treg.timeutil import utcnow_naive
+from conftest import seed_teams
 
 
 async def _call(*, org=1, hit=None, status=200, cached=False, refused_by=None, ms=120,
                 endpoint="exa.web.search", age=timedelta(minutes=5), response_bytes=100):
+    await seed_teams(org)
     async with session_maker() as db:
         db.add(CallRecord(org_id=org, user_email="web@example.com", tool_name="web search",
                           method="POST", path="/search", status_code=status,

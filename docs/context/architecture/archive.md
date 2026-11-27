@@ -13,6 +13,7 @@ sources:
   - src/treg/config.py
   - src/treg/infra/object_store.py
   - src/treg/alembic/versions/0032_archive_body_storage.py
+  - src/treg/alembic/versions/0138_archivesnapshot_reported_headers.py
   - tests/test_archive_r2.py
   - tests/fake_object_store.py
   - scripts/smoke_archive_r2.py
@@ -224,7 +225,8 @@ passes and deletes nothing. It reports keys, snapshots, marks and distinct bodie
 count is an upper bound, because a shared body stays.
 
 Endpoint running totals subtract what each DELETE returned, so two erasers subtract once, and
-move in endpoint order, the order `archive.flush_stats` locks the same rows in, so the two cannot
+move in endpoint order, the order `archive.flush_stats` visits the same rows in (it holds at most
+one of them at a time, and gives up on a held one after a short lock timeout), so the two cannot
 deadlock. The worker prints the running totals to stderr after every committed batch. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
 upload only after one `head` confirms the object still exists. Accepted race (documented in the
@@ -256,6 +258,18 @@ charge and marks roll back together. Only a storable question is marked. `lookup
 `repeat_for_org`; the settle scales the raw amount (floor division) before the ledger applies the
 margin. `tool_called` carries `cache_price` (`full` | `repeat` | `free`). 100 restores "a hit
 bills like a live call"; 0 makes repeats free.
+
+A hit is settled from the stored answer. A `settle.reported` path reads the stored body as it
+would live. The body carries no provider header, so for a v2 row whose `settle.reported` reads a
+header, `record()` keeps that one header's raw value on the snapshot (`reported_headers`,
+`{name: value}`, the value null when the provider sent none; NULL for a row that reads no header),
+on a caller's answer and on a refresh alike, and `lookup` hands it to the settle with the served
+snapshot. The hit then settles as the live answer did ([money](money.md)): a stored figure is the
+charge, a stored absence is 0 under `missing: 0`. A snapshot with nothing stored for the row's
+current header (every row older than migration 0138, or one recorded while the row read no
+header) leaves the figure unknown: `missing: 0` does not make it free, and it settles by the
+outcome and `bill`, then the hold. The stored value feeds settlement only; the answer the caller
+receives on a hit carries no provider header.
 
 The mark is keyed by `(org_id, key_hash)` and nothing else, so writing one takes no number from
 a sequence: a counter that can run out would make every first-time settle roll back, and a routed
@@ -479,9 +493,26 @@ never waits for archive work. Per-process counters reset on restart and are not 
 kept_bytes, newest_fetch), changed only by atomic column arithmetic, never read-modify-write. The
 row is shared by every team, so a recording adds its counts to an in-process delta after its own
 commit (`_count_stats`; a dropped or retried recording counts nothing), and `flush_stats` lands
-them as one statement per endpoint, in endpoint order so two processes cannot deadlock, under the
-archive's write semaphore. A failed or interrupted flush keeps its deltas; a process that dies
-between flushes loses that window, which is fine because nothing serves or bills from the totals.
+them as one statement per endpoint, each in its own short transaction, in endpoint order, under
+the archive's write semaphore. A flush never holds one endpoint's row while it waits for the
+next, so a busy row costs the others nothing. On PostgreSQL each statement runs under a short
+`lock_timeout`; an endpoint whose row another writer (a flush in another process, the pruner,
+erasure) still holds past it keeps its delta, merged with newer ones, for the next flush, and the
+flush moves on. Such a late delta still adds its counts, but `newest_fetch`, and the
+provider and policy seen with it, only move forward (a `CASE` in the same `UPDATE`). Any other failure, or an interrupted flush, puts back the deltas that have not
+committed and raises; a cancellation first waits for the endpoint transaction in flight to
+finish, so the ones already committed are not counted again. That wait is bounded
+(`_STATS_CANCEL_WAIT_S`), because `lock_timeout` does not cover a stalled connection or
+COMMIT: past it the transaction is abandoned, its connection invalidated, and its delta
+dropped, so it is counted at most once. `drain()` (shutdown, and `refresh_once`
+mid-life) retries endpoints left busy within a budget of a few seconds that bounds the whole
+pass: the wait for a write slot, each endpoint's lock wait (cut to what is left) and the start of
+each endpoint all fit in it, and so does waiting for the timer's flush, which drain() takes
+over; a flush still finishing past the budget puts its deltas back and re-arms the timer
+itself. It then logs
+how many deltas did not land and re-arms the timer, which shutdown cancels. Across endpoints the
+totals are not one snapshot, which is fine for a staff report; a process that dies between
+flushes loses that window, which is fine because nothing serves or bills from the totals.
 The pruner, erasure and row retention subtract directly. Arithmetic commutes only while the row exists, so the
 first recording of an endpoint creates it zeroed inside its own transaction (`_ensure_stat_row`),
 and a process skips that check only after one of its recordings committed with the row.

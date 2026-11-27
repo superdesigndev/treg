@@ -915,6 +915,8 @@ def dfs_task_get_row(post: dict, get_path: str, op: dict) -> dict:
             "example": "00000000-0000-0000-0000-000000000000"}}},
         "price": {"value": "0", "currency": "USD", "unit": "call",
                   "note": "DataForSEO does not bill task_get; the submission paid for the task"},
+        # The answer's `cost` repeats the task's price, which the submission already settled.
+        "settle": None,
         # a task_get answers 20000 only once its task is done; the async status words judge it
         "expect": None,
         "resource_ownership": {"requires": {"kind": f"poll:{endpoint_id}", "param": "id"}},

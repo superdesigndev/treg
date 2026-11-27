@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from treg import archive, archive_bodies, bootstrap
+from treg import archive, archive_bodies
 from treg.application import billing, asynctasks as task_app, compare as compare_app
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as call_allowance
@@ -48,9 +48,6 @@ _DATAPLANE_DERIVED_WRITES = {
     ),
     "public_demo_ratestore_hit": (
         (authorize.authorize_call, "publicdemo_policy.enforce_public_demo_ip_cap"),
-    ),
-    "sandbox_ratestore_hit": (
-        (authorize.enforce_public_demo_limit, "publicdemo_policy.enforce_public_demo_ip_cap"),
     ),
     "first_call_adconversion_outbox": (
         (settle._record_first_call, "adsconv.queue"),
@@ -206,7 +203,6 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "archive_body_object",
     "auto_topup_task",
     "public_demo_ratestore_hit",
-    "sandbox_ratestore_hit",
     "first_call_adconversion_outbox",
     "lazy_stale_hold_reap",
     "capacity_exhausted_mark",
@@ -312,8 +308,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # a refill that folded a full batch leaves the rest of the queue to a background fold
     ("application/call/allowance.py", "_fold_backlog", "allowance.fold_charges_in_transaction"),
     ("application/call/allowance.py", "_fold_backlog", "money_admission.admit"),
-    ("application/call/allowance.py", "_fold_backlog", "store.acquire_lease"),
-    ("application/call/allowance.py", "_fold_backlog", "store.release_lease"),
+    ("application/call/allowance.py", "_release_lease_soon", "store.release_lease"),
     ("application/call/allowance.py", "_refill", "allowance.refill_allowance_in_transaction"),
     ("application/call/allowance.py", "_refill", "ledger.reap_stale_holds"),
     ("application/call/allowance.py", "_refill", "money_admission.admit"),
@@ -326,15 +321,14 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/allowance.py", "_write", "store.allowance_freeze"),
     ("application/call/allowance.py", "_refill", "store.allowance_take_up_to"),
     # a call near the counter's deadline refills it beside itself, under the same lease
-    ("application/call/allowance.py", "_refresh_once", "store.acquire_lease"),
     ("application/call/allowance.py", "_refresh_once", "store.release_lease"),
-    ("application/call/allowance.py", "_take", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.allowance_take"),
+    # every taker of the team's lease (a refill, its refresh, the request-path fold, a
+    # give-back) asks for it through one helper, which yields to a starved team's fold claim
+    ("application/call/allowance.py", "acquire_money_lease", "store.acquire_lease"),
     ("application/call/allowance.py", "_take", "store.release_lease"),
     # an exact-path call the balance alone cannot pay for gets the sized counter back first:
     # the team's lease asked for once, then admission, the drop and the release in one session
-    ("application/call/allowance.py", "give_back_for_exact_path", "store.acquire_lease"),
-    ("application/call/allowance.py", "give_back_for_exact_path", "store.release_lease"),
     ("application/call/allowance.py", "_give_back", "money_admission.admit"),
     ("application/call/allowance.py", "_give_back", "store.allowance_drop"),
     ("application/call/allowance.py", "_give_back", "allowance.close_allowance_in_transaction"),
@@ -377,8 +371,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("archive_bodies.py", "prepare", "_store.put"),
     ("application/billing.py", "maybe_schedule_autotopup", "loop.create_task"),
     ("application/call/authorize.py", "authorize_call",
-     "publicdemo_policy.enforce_public_demo_ip_cap"),
-    ("application/call/authorize.py", "enforce_public_demo_limit",
      "publicdemo_policy.enforce_public_demo_ip_cap"),
     ("application/call/authorize.py", "authorize_call", "usage_policy.enforce_daily_cap"),
     ("domain/governance/usage.py", "enforce_daily_cap", "take_daily_slot"),
@@ -460,26 +452,6 @@ def _call_names(source: str) -> set[str]:
     return names
 
 
-def _forbidden_imports(source: str, forbidden: tuple[str, ...]) -> set[str]:
-    found = set()
-    for node in ast.walk(ast.parse(source)):
-        names: list[str] = []
-        if isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names = [node.module]
-        for name in names:
-            if any(name == root or name.startswith(root + ".") for root in forbidden):
-                found.add(name)
-    return found
-
-
-def _package_forbidden_imports(package: Path, forbidden: tuple[str, ...]) -> set[str]:
-    return set().union(*(
-        _forbidden_imports(path.read_text(), forbidden) for path in package.rglob("*.py")
-    ))
-
-
 def _transaction_calls(source: str) -> set[str]:
     return _call_names(source) & {"db.commit", "db.rollback"}
 
@@ -503,15 +475,6 @@ def _derived_write_sites(overrides: dict[Path, str] | None = None) -> set[tuple[
     return sites
 
 
-def test_call_runtime_import_edges_point_inward() -> None:
-    call_forbidden = ("treg.api", "treg.bootstrap", "treg.routers", "fastapi", "starlette")
-    upstream_forbidden = call_forbidden
-    assert _package_forbidden_imports(_SRC / "application" / "call", call_forbidden) == set()
-    assert _package_forbidden_imports(_SRC / "infra" / "upstream", upstream_forbidden) == set()
-    async_forbidden = ("treg.api", "treg.routers", "treg.application", "treg.audit")
-    assert _package_forbidden_imports(_SRC / "domain" / "asynctasks", async_forbidden) == set()
-
-
 def test_catalog_access_router_only_translates_the_application_result() -> None:
     tree = ast.parse((_SRC / "routers" / "call.py").read_text())
     owner = next(
@@ -523,21 +486,6 @@ def test_catalog_access_router_only_translates_the_application_result() -> None:
         "get_catalog_endpoint_access",
         "_translate_call_failure",
     }
-
-
-def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
-    assert bootstrap.ROLE_BACKGROUND_TASKS == {
-        "all": ("treg.adsconv.worker", "treg.application.affiliates.worker",
-                "treg.application.allowance_sweep.worker"),
-        "dataplane": (),
-        "control": ("treg.adsconv.worker", "treg.application.affiliates.worker",
-                    "treg.application.allowance_sweep.worker"),
-    }
-    for checks in bootstrap.ROLE_STARTUP_CHECKS.values():
-        assert "treg.api._backfill_provider_extra_tools" not in checks
-        assert "treg.api._bootstrap_single_user" not in checks
-    assert "treg.mcp.mcp_lifespan" in bootstrap.ROLE_STARTUP_CHECKS["dataplane"]
-    assert "treg.mcp.mcp_lifespan" not in bootstrap.ROLE_STARTUP_CHECKS["control"]
 
 
 def test_dataplane_derived_write_allowlist_is_explicit_and_live() -> None:

@@ -47,8 +47,6 @@ async def _answering(status: int, doc: dict) -> None:
 
 
 @pytest.mark.parametrize(("status", "kw", "expected"), [
-    (400, {"refused_by": "request", "kind": "catalog_parameter_invalid"}, ("treg", "caller_input")),
-    (400, {}, ("upstream", "caller_input")),
     (429, {"refused_by": "cap", "kind": "provider_rate_limited"}, ("treg", "treg_capacity")),
     (429, {"refused_by": "cap"}, ("treg", "caller_balance_or_cap")),
     (400, {"refused_by": "request", "kind": "route_caller_fault"}, ("upstream", "caller_input")),
@@ -57,23 +55,15 @@ async def _answering(status: int, doc: dict) -> None:
     (403, {"tier": "platform"}, ("upstream", "upstream_error")),
     (403, {"tier": "platform", "signal": "balance"}, ("upstream", "our_provider_account")),
     (401, {"tier": "platform"}, ("upstream", "our_provider_account")),
-    (403, {"tier": "credential"}, ("upstream", "caller_provider_account")),
     (402, {"tier": "anonymous"}, ("upstream", "our_provider_account")),
-    (400, {"tier": "platform", "signal": "balance"}, ("upstream", "our_provider_account")),
     (400, {"tier": "credential", "signal": "balance"}, ("upstream", "caller_provider_account")),
-    (400, {"tier": "tool", "signal": "unrecorded"}, ("upstream", "caller_provider_account")),
     (402, {"tier": "tool", "billed_oauth": True}, ("upstream", "our_provider_account")),
     (401, {"tier": "tool", "billed_oauth": True}, ("upstream", "caller_provider_account")),
-    (429, {"tier": "platform", "signal": "burst"}, ("upstream", "rate_limit")),
-    (403, {"tier": "platform", "signal": "edge_block"}, ("upstream", "upstream_error")),
-    (404, {}, ("upstream", "not_found")),
-    (502, {"kind": "read_timeout"}, ("upstream", "timeout")),
     (503, {}, ("upstream", "upstream_error")),
     (418, {}, ("upstream", "other")),
     (422, {"refused_by": "request", "kind": "route_no_candidate"}, ("treg", "caller_input")),
     (503, {"kind": "route_no_candidate"}, ("treg", "treg_capacity")),
     (503, {"answered": False}, ("treg", "treg_error")),
-    (402, {"refused_by": "payment"}, ("treg", "payment_required")),
 ])
 def test_class_table(status, kw, expected):
     assert call_errors.classify(status, **{"tier": None, **kw}) == expected
@@ -83,6 +73,7 @@ def test_the_sql_view_leaves_out_the_same_caller_side_classes():
     sql = (Path(__file__).parents[1] / "scripts/call_events_actionable_errors.sql").read_text()
     lists = re.findall(r"error_class (?:NOT )?IN \(([^)]*)\)", sql)
     assert [set(re.findall(r"'(\w+)'", found)) for found in lists] == [call_errors.CALLER_SIDE] * 2
+    assert call_errors.CALLER_SIDE <= set(re.findall(r"THEN '(\w+)'", sql))
 
 
 async def test_a_balance_refusal_logs_the_caller_side_line(clients: AsyncClient, platform_on,

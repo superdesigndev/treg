@@ -115,3 +115,18 @@ async def record_answer_wait(db: AsyncSession, review_id: int, version: str, see
         CallReview.id == review_id, *_upgradable(version), _attempts_still(seen))
         .values(answer_retry_at=retry_at))
     return result.rowcount == 1
+
+
+async def record_code_retry(db: AsyncSession, review_id: int, version: str, seen: int | None,
+                            retry_at: datetime, *, count: bool = True) -> bool:
+    """A review Jev could not code now (its answer unreadable, or its request failed): not asked
+    again before `retry_at`, and with `count` one more failed try. Only while it is still uncoded
+    under `version` and holds the `seen` tries this run read, so two runs failing together count
+    once. A useful review keeps this back-off in the answer back-off's columns, which it never
+    uses otherwise; `record_codes` clears both."""
+    result = await db.execute(update(CallReview).where(
+        CallReview.id == review_id,
+        or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version),
+        _attempts_still(seen),
+    ).values(answer_attempts=(seen or 0) + 1 if count else seen, answer_retry_at=retry_at))
+    return result.rowcount == 1

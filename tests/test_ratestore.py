@@ -89,13 +89,13 @@ async def test_rate_check_is_all_keys_or_none():
 async def test_sweep_drops_expired_rows_only():
     await _fresh_db()
     async with session_maker() as db:
-        await ratestore.kv_put(db, "sandbox_hit", "live", {"hits": [1e12]}, ttl_s=3600)
-        await ratestore.kv_put(db, "sandbox_hit", "dead", {"hits": [1]}, ttl_s=-1)
+        await ratestore.kv_put(db, "probe_hit", "live", {"hits": [1e12]}, ttl_s=3600)
+        await ratestore.kv_put(db, "probe_hit", "dead", {"hits": [1]}, ttl_s=-1)
         await db.commit()
-        await ratestore.sweep(db, "sandbox_hit")
+        await ratestore.sweep(db, "probe_hit")
         await db.commit()
-        assert await db.get(Ephemeral, ("sandbox_hit", "dead")) is None
-        assert await db.get(Ephemeral, ("sandbox_hit", "live")) is not None
+        assert await db.get(Ephemeral, ("probe_hit", "dead")) is None
+        assert await db.get(Ephemeral, ("probe_hit", "live")) is not None
 
 
 async def test_kv_put_of_a_missing_key_is_an_upsert_on_both_backends():

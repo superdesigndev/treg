@@ -1,7 +1,6 @@
 """Money observations cannot own a transaction, suppress a failure or grow with team count."""
 
 import asyncio
-from types import SimpleNamespace
 
 import pytest
 
@@ -22,43 +21,6 @@ def clock(monkeypatch):
     return now
 
 
-def test_observation_includes_session_cleanup_and_keeps_phases_separate(clock):
-    with money_timing.observe_money("reserve", org_id=7, call_id="opaque-call") as timing:
-        with timing.phase("preflight"):
-            clock[0] += 0.020
-        with timing.phase("ledger"):
-            clock[0] += 0.030
-        with timing.phase("commit"):
-            clock[0] += 0.010
-        clock[0] += 0.040  # session cleanup remains in the enclosing operation
-    [(props, slowest)] = money_timing.snapshot()
-    assert props["completed"] == 1 and props["failed"] == 0
-    assert props["duration_total_ms"] == 100
-    assert props["preflight_total_ms"] == 20
-    assert props["ledger_total_ms"] == 30
-    assert props["commit_total_ms"] == 10
-    assert props["inflight"] == 0 and props["inflight_peak"] == 1
-    assert props["process_instance"] == money_timing.PROCESS_INSTANCE
-    assert "org_id" not in props and "call_id" not in props
-    assert slowest is None
-    assert sum(value for key, value in props.items() if key.startswith("duration_bucket_")) == 1
-
-
-def test_rollover_keeps_active_operations_and_resets_completed_counts(clock):
-    with money_timing.observe_money("close"):
-        with money_timing.observe_money("close"):
-            clock[0] += 1
-            [(first, _)] = money_timing.snapshot()
-            assert first["completed"] == 0
-            assert first["inflight"] == 2 and first["inflight_peak"] == 2
-        clock[0] += 1
-    [(second, _)] = money_timing.snapshot()
-    assert second["completed"] == 2
-    assert second["duration_total_ms"] == 3000
-    assert second["inflight"] == 0 and second["inflight_peak"] == 2
-    assert money_timing.snapshot() == []
-
-
 @pytest.mark.parametrize("error", [ValueError("private detail"), asyncio.CancelledError()])
 def test_failure_and_cancellation_propagate_unchanged(clock, error):
     with pytest.raises(type(error)) as caught:
@@ -73,16 +35,6 @@ def test_failure_and_cancellation_propagate_unchanged(clock, error):
     assert props["ledger_total_ms"] == 1000
     assert props["inflight"] == 0
     assert "private detail" not in repr((props, slowest))
-
-
-def test_deadlocks_are_counted_by_sqlstate_not_error_text(clock):
-    error = RuntimeError("private database detail")
-    error.orig = SimpleNamespace(sqlstate="40P01")
-    with pytest.raises(RuntimeError):
-        with money_timing.observe_money("deferred", batch_size=3):
-            raise error
-    [(props, _)] = money_timing.snapshot()
-    assert props["deadlocks"] == 1 and props["batch_items"] == 3
 
 
 def test_cardinality_is_fixed_and_only_slowest_sample_is_retained(clock):

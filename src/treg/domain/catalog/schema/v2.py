@@ -54,9 +54,11 @@ class PriceDisplay(Model):
 
 
 class Price(Model):
-    """Absent: unpriced, never billable on treg's key."""
+    """Absent: unpriced, never billable on treg's key. `base` is a fixed amount every charged
+    answer bills on top of its units, and the hold carries once."""
 
     value: Money | None = None
+    base: Money | None = None
     table: list[TableRow] | None = Field(default=None, min_length=1)
     rates: dict[str, Money] | None = Field(default=None, min_length=1)
     fallback: Fallback | None = None
@@ -76,6 +78,8 @@ class Price(Model):
             raise ValueError("an unknown price (value: null) needs a note saying why")
         if self.currency == "unit" and not self.unit:
             raise ValueError("currency: unit names its meter in unit")
+        if self.base is not None and self.rates is not None:
+            raise ValueError("price.base needs a unit price; price.rates has none")
         return self
 
 
@@ -127,17 +131,32 @@ class Entities(Model):
     max: int = Field(default=10_000, ge=1)
 
 
+class ReserveMoney(Model):
+    """A hold the caller names in USD: a request parameter whose value is a spend cap the provider
+    enforces, above 0 and at most `max`."""
+
+    param: RequestPath
+    max: Money
+
+    @model_validator(mode="after")
+    def _shape(self) -> ReserveMoney:
+        if self.max <= 0:
+            raise ValueError("reserve.money.max must be above 0")
+        return self
+
+
 class Reserve(Model):
     """Absent: one unit, the flat price or the matched table row."""
 
     rows: Rows | None = None
     entities: Entities | None = None
     plugin: PluginName | None = None
+    money: ReserveMoney | None = None
     max: Money | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> Reserve:
-        _one_of(self, ("rows", "entities", "plugin"))
+        _one_of(self, ("rows", "entities", "plugin", "money"))
         if (self.plugin is None) != (self.max is None):
             raise ValueError("reserve.plugin needs max beside it, and max belongs only to a plugin")
         return self
@@ -192,19 +211,23 @@ class Usage(Model):
 
 class Settle(Model):
     """Absent: the hold. `worst_case`, beside a reported or usage settle, is the most one call can
-    settle at, in the price's currency: the hold is never below it."""
+    settle at, in the price's currency: the hold is never below it. `hold_within_units`, beside a
+    count or plugin settle, bills the hold when the bill comes within that many units of it."""
 
     count: Count | None = None
     reported: Reported | None = None
     usage: Usage | None = None
     plugin: PluginName | None = None
     worst_case: Money | None = None
+    hold_within_units: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _shape(self) -> Settle:
         _one_of(self, ("count", "reported", "usage", "plugin"))
         if self.worst_case is not None and self.reported is None and self.usage is None:
             raise ValueError("settle.worst_case belongs beside settle.reported or settle.usage")
+        if self.hold_within_units is not None and self.count is None and self.plugin is None:
+            raise ValueError("settle.hold_within_units belongs beside settle.count or settle.plugin")
         return self
 
 
@@ -294,6 +317,8 @@ class V2Row(RowBase):
                                  "settle, if any, that is a plugin")
             if self.bill is not None and isinstance(self.bill.miss, int):
                 raise ValueError("bill.miss in units needs a unit price; price.rates has none")
+            if self.settle is not None and self.settle.hold_within_units is not None:
+                raise ValueError("settle.hold_within_units needs a unit price; price.rates has none")
         return self
 
 
@@ -387,6 +412,8 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
     out: dict = {"type": cost_type(price, row.get("reserve"), row.get("settle"), row["bill"])}
     if price.get("value") is not None:
         out["value"] = _number(price["value"])
+    if price.get("base") is not None:
+        out["call_fee"] = _number(price["base"])
     if price.get("rates") is not None:
         out["fallback"] = {"value": _number(reserve["max"]),
                            "note": "the most one call is held at; its plugin's quantities are priced by the rates"}

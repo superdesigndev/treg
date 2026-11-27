@@ -17,6 +17,7 @@ sources:
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
   - src/treg/domain/plugins/anyapi.py
+  - src/treg/domain/plugins/apify.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
@@ -25,6 +26,7 @@ sources:
   - tests/test_catalog_params.py
   - tests/test_catalog_v2_codemod.py
   - tests/plugins/test_anyapi.py
+  - tests/plugins/test_apify.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -114,7 +116,8 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   per_call when a miss is charged; else per_success), a price table as today's equality maps
   (omitted when a condition is not one equality; its floor `table_min` is served either way),
   `reserve.rows` (its `platform_max` included) with its parameter back in
-  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
+  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `price.base` as `call_fee`
+  (the per-call fee routing's ranking adds), `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
   reads a v2 row unchanged; billing never reads it
@@ -188,10 +191,11 @@ rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
-declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
-USD, and the request
-paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
-declared input fields; an equality-only table also meets today's table checks (enum and range, a
+declared `usd: null`, which keeps the row off treg's key; a settle may not), a free price inherits
+no `settle.reported` (it opts out with `settle: null`, as today's spelling refuses
+`reported_charge` beside `type: free`), usage `terms` are in USD, and the request
+paths of `reserve.rows.param`, `reserve.entities.from`, `reserve.money.param` (a number or
+string field) and `price.table` (`when` and `times`) name declared input fields; an equality-only table also meets today's table checks (enum and range, a
 bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
 field without a default: an equality on an absent field does not hold, so a later row or the
 fallback prices that request. A

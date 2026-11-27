@@ -50,13 +50,17 @@ async def _reserve(org_id: int, call_id: str) -> str:
         )
 
 
-async def _wait_for_blocker(waiter_pid: int, blocker_pid: int) -> None:
-    """Observe an actual server-side wait, rather than assume a sleep caused an interleaving."""
+async def _wait_for_blocker(waiter_pid: int | Callable[[], int], blocker_pid: int) -> None:
+    """Observe an actual server-side wait, rather than assume a sleep caused an interleaving.
+
+    A callable `waiter_pid` is read on every poll: a waiter that commits partway may run its
+    blocked statement on another pooled connection than its first one."""
     async with asyncio.timeout(5):
         async with session_maker() as observer:
             while True:
+                pid = waiter_pid() if callable(waiter_pid) else waiter_pid
                 blockers = (await observer.execute(
-                    text("SELECT pg_blocking_pids(:pid)"), {"pid": waiter_pid}
+                    text("SELECT pg_blocking_pids(:pid)"), {"pid": pid}
                 )).scalar_one()
                 if blocker_pid in blockers:
                     return
@@ -124,7 +128,8 @@ async def _contend_after_statement(
     paused = asyncio.Event()
     resume = asyncio.Event()
     first_pid = 0
-    second_pid: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+    second_started = asyncio.Event()
+    second_pid = 0
     tasks = []
 
     async def pause(driver_connection):
@@ -139,8 +144,10 @@ async def _contend_after_statement(
             conn.connection.dbapi_connection.run_async(pause)
 
     def before_statement(conn, cursor, statement, parameters, context, executemany):
-        if len(tasks) > 1 and asyncio.current_task() is tasks[1] and not second_pid.done():
-            second_pid.set_result(conn.connection.driver_connection.get_server_pid())
+        nonlocal second_pid
+        if len(tasks) > 1 and asyncio.current_task() is tasks[1]:
+            second_pid = conn.connection.driver_connection.get_server_pid()
+            second_started.set()
 
     event.listen(engine.sync_engine, "after_cursor_execute", after_statement)
     event.listen(engine.sync_engine, "before_cursor_execute", before_statement)
@@ -151,7 +158,8 @@ async def _contend_after_statement(
             if while_paused is not None:
                 await while_paused()
             tasks.append(asyncio.create_task(second()))
-            await _wait_for_blocker(await second_pid, first_pid)
+            await second_started.wait()
+            await _wait_for_blocker(lambda: second_pid, first_pid)
             resume.set()
             return await asyncio.gather(*tasks, return_exceptions=True)
     finally:

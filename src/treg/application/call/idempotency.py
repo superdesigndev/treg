@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -759,11 +760,15 @@ class IdempotencyTrimResult:
     bytes_freed: int
     batches: int
     complete: bool
+    start_after: int = 0
+    resume_after: int = 0
+    stopped: str = ""
 
 
 async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                                 max_batches: int = 10000, min_age_s: int = 600, dry_run: bool = False,
-                                make_session=session_maker) -> IdempotencyTrimResult:
+                                after: int = 0, max_seconds: float | None = None, on_progress=None,
+                                make_session=session_maker, clock=time.monotonic) -> IdempotencyTrimResult:
     """Drop a live retry row's own copy of an answer the archive holds byte for byte.
 
     Without this the same answer is stored twice, once per table, for a day. A row qualifies when its call's `CallRecord`
@@ -774,9 +779,24 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
     `min_age_s`: the archive records a moment after the call and can shed a recording under load,
     so a row is looked at only once it is ten minutes old. Paged like `prune_expired_idempotency`:
     a fixed upper id, id pages without bodies first, bodies read only for qualifying rows.
+
+    `after` starts the walk past an id an earlier pass already decided; `resume_after` is the last id
+    up to which every row was decided here, so the next pass starts there instead of re-reading the
+    whole live day. A row is left for the next pass while it is a live pending claim (neither expired
+    nor stale: its owner renews it), younger than `min_age_s`, its archive key is held by someone
+    else (`FOR SHARE SKIP LOCKED` skipped it), or the budget ran out before its update. A dead claim
+    no prune removes is passed over, not deleted. `on_progress(resume_after)` runs after each
+    committed page, outside its session, so a run that fails later keeps what it did, and once at
+    the start when a stale `after` was reset. The walk stops at the first page whose rows were all
+    claimed too recently (`stopped="young"`; the claim time is `expires_at` less the window, which
+    a lease renewal never moves, unlike `created_at`), or once `max_seconds` have gone by, inside a
+    page too (`stopped="budget"`). A row passed over while it had no archive link keeps its own copy
+    until it expires; that costs space, never an answer.
     """
     if not 1 <= batch_size <= 1000 or not 1 <= max_batches <= 10000:
         raise ValueError("batch_size must be 1..1000 and max_batches must be 1..10000")
+    if after < 0 or (max_seconds is not None and not (math.isfinite(max_seconds) and max_seconds > 0)):
+        raise ValueError("after must be >= 0 and max_seconds a finite positive number")
     log = logging.getLogger("treg.idempotency")
 
     async def bound(db):
@@ -784,14 +804,32 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
             await db.execute(text("SET LOCAL lock_timeout = '1s'"))
             await db.execute(text(f"SET LOCAL statement_timeout = '{_PAGE_TIMEOUT_S}s'"))
 
+    started = clock()
+
+    def left() -> float:
+        return math.inf if max_seconds is None else max_seconds - (clock() - started)
+
     async with make_session() as db:
         await bound(db)
         cutoff = (await db.scalar(select(func.current_timestamp()))).replace(tzinfo=None)
         upper_id = (await db.scalar(select(func.max(IdempotentCall.id)))) or 0
     settled_before = cutoff - timedelta(seconds=min_age_s)
-    cursor = examined = trimmed = freed = batches = 0
+    claimed_before = settled_before + timedelta(seconds=IDEMPOTENCY_WINDOW_S)  # as an `expires_at`
+    stale_before = cutoff - timedelta(seconds=IDEMPOTENCY_STALE_PENDING_S)
+    if after > upper_id:  # a cursor from before the table was emptied or restored
+        after = 0
+        if on_progress is not None:
+            await on_progress(0)
+    cursor = resume_after = after
+    decided = True
+    examined = trimmed = freed = batches = 0
     complete = False
+    stopped = "max_batches"
     while batches < max_batches:
+        if batches and left() <= 0:
+            stopped = "budget"
+            break
+        out_of_time = False
         async with make_session() as db:
             await bound(db)
             page = (await db.execute(select(
@@ -801,8 +839,14 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
             ).where(IdempotentCall.id > cursor, IdempotentCall.id <= upper_id)
               .order_by(IdempotentCall.id).limit(batch_size))).all()
             if not page:
-                complete = True
+                complete, stopped = True, "end"
                 break
+            if all(r.expires_at >= claimed_before for r in page):
+                complete, stopped = True, "young"
+                break
+            undecided = {r.id for r in page
+                         if (r.status == "pending" and r.expires_at >= cutoff and r.created_at >= stale_before)
+                         or (r.status != "pending" and r.created_at >= settled_before)}
             rows = [r for r in page if r.status == "done" and r.has_body and r.call_ref
                     and r.archive_content_hash is None and 200 <= (r.response_status or 0) < 300
                     and r.created_at < settled_before and r.expires_at >= cutoff]
@@ -821,16 +865,22 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
             if wanted:
                 bodies = (await db.execute(select(IdempotentCall.id, IdempotentCall.response_body)
                                            .where(IdempotentCall.id.in_(wanted)))).all()
-                same = [(b.id, len(b.response_body)) for b in bodies
-                        if b.response_body is not None and archive.content_hash(b.response_body) == wanted[b.id][1]]
+                same = sorted((b.id, len(b.response_body)) for b in bodies
+                              if b.response_body is not None
+                              and archive.content_hash(b.response_body) == wanted[b.id][1])
                 if same and not dry_run:
                     # Hold the keys only for the updates below, after the bodies are read and
                     # hashed, so row retention cannot delete an answer between the check above and
                     # the trim, and a recorder (which locks the key) waits for the updates only. A
-                    # key retention holds is left for the next trim.
+                    # key someone else holds is left for the next trim.
                     held = await archive.lock_keys_for_share(db, {wanted[i][0] for i, _ in same})
+                    undecided |= {i for i, _ in same if wanted[i][0] not in held}
                     same = [(i, size) for i, size in same if wanted[i][0] in held]
-                for row_id, size in same:
+                for n, (row_id, size) in enumerate(same):
+                    if left() <= 0:
+                        undecided |= {i for i, _ in same[n:]}
+                        out_of_time = True
+                        break
                     if dry_run:
                         trimmed, freed = trimmed + 1, freed + size
                         continue
@@ -843,12 +893,27 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
                     .execution_options(synchronize_session=False))).rowcount
                     trimmed, freed = trimmed + done, freed + (size if done else 0)
                 await db.commit()
+        before = resume_after
+        if decided:
+            first = min(undecided, default=None)
+            for r in page:
+                if first is not None and r.id >= first:
+                    decided = False
+                    break
+                resume_after = r.id
+        if on_progress is not None and resume_after != before:
+            await on_progress(resume_after)
+        if out_of_time:
+            batches += 1  # the page committed what it did before the budget ran out
+            stopped = "budget"
+            break
         cursor = page[-1].id
         batches += 1
         if len(page) < batch_size or cursor >= upper_id:
-            complete = True
+            complete, stopped = True, "end"
             break
         if batches % 50 == 0:
             log.info("idempotency trim: batches=%d trimmed=%d freed=%d cursor=%d", batches, trimmed, freed, cursor)
-        await asyncio.sleep(pause_s)
-    return IdempotencyTrimResult(cutoff, upper_id, examined, trimmed, freed, batches, complete)
+        await asyncio.sleep(max(0.0, min(pause_s, left())))
+    return IdempotencyTrimResult(cutoff, upper_id, examined, trimmed, freed, batches, complete,
+                                 after, resume_after, stopped)

@@ -22,7 +22,7 @@ from typing import cast
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import QueryableAttribute, defer
 from sqlmodel import select
@@ -163,6 +163,17 @@ async def _id_out_of_range(request: Request, exc: OverflowError) -> JSONResponse
     return JSONResponse({"detail": "identifier out of range"}, status_code=404)
 
 
+async def _db_id_out_of_range(request: Request, exc: DBAPIError) -> JSONResponse:
+    # asyncpg refuses a parameter past Postgres's 32-bit `integer` while binding it, and SQLAlchemy
+    # wraps that OverflowError in a DBAPIError. Any other database error stays a 500.
+    cause: BaseException | None = exc.orig
+    while cause is not None and not isinstance(cause, OverflowError):
+        cause = cause.__cause__
+    if cause is None:
+        raise exc
+    return await _id_out_of_range(request, cause)
+
+
 _app_version_cache: tuple[float, str] | None = None  # (index.html mtime, content hash)
 
 
@@ -266,7 +277,7 @@ async def create_tool_request(
     """Open: file a "the catalog doesn't have X" report. No auth on purpose — the filer is most
     often an agent that just got zero search results and holds no token, and a signup wall here
     costs exactly the demand signal the catalog team wants. Per-IP rate limiting (ratestore) is
-    the abuse valve, same shape as POST /demo/sandbox; field caps bound the row.
+    the abuse valve; field caps bound the row.
 
     Identity is attribution, never authorization: when the caller happens to be signed in (token
     or same-origin session), the row records who asked so they can be told when it lands — a
@@ -349,7 +360,6 @@ router.routes.extend(auth_routes.grants_router.routes)
 router.routes.extend(org_routes.org_entry_router.routes)
 router.routes.extend(org_routes.invite_entry_router.routes)
 router.routes.extend(onboard_routes.onboard_entry_router.routes)
-router.routes.extend(onboard_routes.sandbox_router.routes)
 router.routes.extend(onboard_routes.onboard_teammate_router.routes)
 router.routes.extend(org_routes.invite_management_router.routes)
 router.routes.extend(org_routes.member_list_router.routes)

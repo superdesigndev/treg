@@ -28,7 +28,6 @@ sources:
   - src/treg/infra/upstream/relay.py
   - src/treg/application/connect.py
   - src/treg/application/onboard/__init__.py
-  - src/treg/application/onboard/sandbox.py
   - src/treg/application/referrals.py
   - src/treg/application/signup.py
   - src/treg/routers/__init__.py
@@ -56,12 +55,9 @@ sources:
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
   - src/treg/domain/governance/publicdemo.py
-  - src/treg/domain/governance/sandbox.py
   - src/treg/domain/governance/usage.py
   - src/treg/domain/identity/mcp_oauth.py
   - src/treg/domain/identity/session.py
-  - src/treg/sandbox.py
-  - src/treg/sandbox_identity.py
   - src/treg/timeutil.py
   - src/treg/domain/catalog/store.py
   - src/treg/email.py
@@ -103,9 +99,9 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 - Each identity dependency commits its read-only transaction before the handler runs, so a use
   case can open its own session without waiting behind the request's pool slot. This relies on
   every session maker setting `expire_on_commit=False`.
-- Sandbox identities (the closed landing sandbox) are refused centrally in
-  `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403); never re-add per-route exceptions.
-  `POST /demo/sandbox` answers 410.
+- The landing sandbox is removed, but its visitor users and tokens may remain in a deployment. They
+  are refused centrally in `domain/identity/access.py` (`_refuse_sandbox_visitor`, 403) until those
+  rows are deleted; never re-add per-route exceptions.
 - **Public demo tokens** (`POST /orgs/{id}/public-token`, owner-only; re-POST rotates) are
   viewer-role tokens on a can't-log-in identity. Lockdown is centralized in the auth deps: below
   admin on a `public_demo` org, `require_member` allows only `/call/*` and GET/HEAD/OPTIONS, so
@@ -285,6 +281,8 @@ the provider.
 | 503 `upstream_busy` | No upstream connection was free within the pool wait, or the provider is at its in-flight cap on `TREG_UPSTREAM_INFLIGHT_MODE=enforce` ([capacity](../ops/capacity.md)); nothing sent, not charged, `Retry-After` set. |
 | 429 `provider_rate_limited` | On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, the shared rate window is full ([capacity](../ops/capacity.md)); refused before it is sent, not charged, `detail` carries `provider`, `endpoint_id`, `retry_after_s`, with `Retry-After` the same. An enabled overflow route may serve it instead. A routed job skips the candidate without spending its error budget and answers this itself only when every candidate was skipped. |
 | 429 `money_admission_timeout` | Money admission exhausted its reserve wait; no hold, no upstream request, `Retry-After` jittered between `money_admission_retry_after_s` and twice that. Not stored under `Idempotency-Key`, so the same key can retry. |
+| 503 `money_statement_timeout` | A reserve statement ran past the money session's `statement_timeout` and its transaction rolled back; no hold, no upstream request, `Retry-After` jittered like `money_admission_timeout`. Logged as `money_statement_timeout operation=reserve`, apart from `db_pool` and money admission. Not stored under `Idempotency-Key`. |
+| 499 `client_disconnected` | The caller closed its connection before treg read the request body; nothing held, nothing sent upstream. The answer reaches no one; it is logged as the caller-side `caller_disconnected` class, never as a 500. The same holds on the keyless payment road, before any payment is opened. A caller that hangs up while its body is already streaming to the provider is not this refusal. |
 | 429 `member_spend_cap_reached` | The caller's own daily spend limit on treg's keys is reached ([money](../architecture/money.md)); refused before it is sent, not charged. `detail` carries `spent_today_micro`, `daily_spend_cap_micro`, `resets_at` (the next 00:00 UTC) and `retry_after_s`, with `Retry-After` the same. `member_spend_cap_unavailable` when the limit cannot be checked. |
 | 402 `free_credit_excludes_video` | The endpoint's platform is `purchased_credit_only` (no platform sets it today) and the team's purchased credit, less its open purchased-only holds, cannot cover the reserve; free credit (promotional, referral, bonus, earned) never pays for it. Refused before any upstream request, nothing held; `detail` carries `purchased_balance_micro`, `balance_micro`, `estimated_cost_micro`, `topup_url`. A routed job stops on it. |
 | 403 `funds_required`, `own_key_required` | An installed policy extension's `call_admission` point refused treg's money for this call ([policy extensions](../architecture/policy-extensions.md)); refused before any hold or provider request, never naming the rule. `funds_required` (a team that never bought credit) names `topup_url` and the own-key alternative, `own_key_required` only the own-key alternative. Not charged; `refused_by=policy`; MCP strips the top-up link. |

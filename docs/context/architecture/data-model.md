@@ -64,7 +64,6 @@ sources:
   - src/treg/alembic/versions/0116_stamped_baseline_indexes.py
   - tests/test_stamped_baseline_indexes_migration.py
   - src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py
-  - tests/test_callrecord_drop_unused_indexes_migration.py
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
@@ -248,6 +247,31 @@ publication state on a version that is not approved. Allocating versions, valida
 and keeping snapshots immutable are the private admin's job; the call path never reads the table
 ([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
 
+## Call-path tables have no foreign key to `org`
+
+The tables in `ORG_ROWS_WITHOUT_FOREIGN_KEY` (`domain/governance/teams.py`) keep `org_id` (indexed)
+but no foreign key, one revision per table from 0130. A foreign key makes every insert take
+`FOR KEY SHARE` on the team's `org` row, the row every balance write updates. Locks of different
+transactions on one row are recorded as a MultiXact, a new one each time another transaction
+joins, so a busy team's concurrent inserts and balance writes keep writing MultiXacts that grow
+with the number of lockers. On PostgreSQL 16 the MultiXact SLRUs are a few fixed pages behind one
+lock each, shared by the whole server: once they thrash, inserts of every team wait on
+`MultiXactOffsetSLRU`.
+
+Team deletion deletes these tables in its walk and once more after the team row: that DELETE waits
+for every transaction that updated the row and lets none update it after, so a row a call
+committed while the walk ran is taken too (`tests/test_org_delete_race_postgres.py`). A table joins
+the list only when no write to it can commit after the team row is gone: each of its writers
+updates the team row first, share-locks it (the allowance fold, once per fold, since a fold of
+unpaid or late-queued charges may touch no balance, block or hold of the team's), claims a row the
+deletion also deletes, or writes through a foreign key that still stands. `CallRecord` keeps its foreign key for that reason: the audit queue writes it
+from memory after the call, holding no lock on anything of the team's, so without the constraint a
+row with the caller's email, tags and error evidence could land after the team is gone.
+
+Each drop takes ACCESS EXCLUSIVE on the child table and on `org`, bounded by the revision's own
+`SET LOCAL lock_timeout`; a timeout leaves the earlier drops applied (rolling back from there:
+[deploy](../ops/deploy.md), "Rolling back past a revision").
+
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
 `CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables and both
@@ -381,6 +405,16 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
   `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
   closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
+  On PostgreSQL only one run goes at a time (`infra.db.only_one_run`). The trim does not re-read the
+  live day each run: it starts after `resume_after`, the last id up to which every row was decided,
+  which the worker saves in `Ephemeral` after each committed page. A row stays undecided while it
+  is a live pending claim (not expired, renewed within `IDEMPOTENCY_STALE_PENDING_S`), younger than
+  `min_age_s`, its archive key was skipped by `FOR SHARE SKIP LOCKED`, or the time budget ran out
+  before its update; a dead claim is passed over and kept. The walk stops at the first page whose
+  rows were all claimed less than `min_age_s` ago (the claim time is `expires_at` less the window:
+  a lease renewal rewrites `created_at`, never `expires_at`), and at the budget, checked before
+  every update. A row passed over before its archive link existed keeps its own copy until it
+  expires.
 
 ## Caller tags (`X-Treg-Meta`)
 
@@ -431,8 +465,14 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
-- `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
-  rebuilding the schema only when its column-and-index fingerprint changed.
+- `reset_db()` is test-only: it deletes every row (one probe names the tables holding any, and only
+  those are emptied), rewinds Postgres sequences and stamps head, rebuilding the schema only when
+  its column-and-index fingerprint changed. The fingerprint is read only after some engine in the
+  process ran DDL (a listener on every `Engine`, installed by the first reset, so a server never
+  carries it), and only then are the pools disposed, so no connection keeps a statement prepared
+  against an old table; otherwise pooled connections live on into the next test, as a server's do
+  between requests. It works a few tables per transaction: Postgres's lock table is shared by every
+  database on the server, and parallel test workers each locking every table at once exhaust it.
 - `TREG_READ_DATABASE_URL` adds `read_session_maker`, read-only by default (PostgreSQL read-only
   transactions, SQLite `PRAGMA query_only`); these guard accidents, not deliberate SQL. Failures
   never fall back to the primary. Authorization always stays on the primary. Replication and lag

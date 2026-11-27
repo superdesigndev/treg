@@ -107,14 +107,6 @@ def test_an_owner_pins_its_account_and_a_retired_one_is_refused(two_tikhub_accou
     assert split.value.kind == "platform_account_split" and split.value.status_code == 409
 
 
-def test_an_idempotency_key_always_lands_on_the_same_account(two_tikhub_accounts):
-    picks = {keyslots.pinned("tikhub", idempotency_key=f"1\x1fk{i}") for i in range(40)}
-    assert picks == {PRIMARY_SLOT, "b"}, "keys spread across accounts"
-    for i in range(5):
-        key = f"1\x1fretry-{i}"
-        assert len({keyslots.pinned("tikhub", idempotency_key=key) for _ in range(5)}) == 1
-
-
 def test_the_primary_account_keeps_the_providers_own_binding_and_bucket(two_tikhub_accounts):
     provider = oauth_providers.get("tikhub")
     assert all("account" not in b for b in oauth_providers.platform_bindings(provider, PRIMARY_SLOT))
@@ -314,6 +306,153 @@ async def test_concurrency_places_are_per_account_and_a_full_one_is_avoided(
         other_team.release()
         fair_share.reset()
     assert seen == [f"Bearer {TIKHUB_B}"] * 3
+
+
+# ---- every account's balance --------------------------------------------------------------------
+
+async def _sweep_tikhub(balances: dict[str, float]):
+    """One real sweep of tikhub, each account answering the balance its own key holds."""
+    from treg.domain.capacity.sweep import run_sweep
+    from treg.domain.capacity.view import view as capacity_view
+    from treg.infra.db import session_maker
+
+    def serve(request):
+        assert request.url.path == "/api/v1/tikhub/user/get_user_info"
+        return httpx.Response(200, json={"user_data": {"balance": balances[request.headers["authorization"]]}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        async with session_maker() as db:
+            result = await run_sweep(db, client=upstream, only={"tikhub"})
+    await capacity_view.load(force=True)
+    return result
+
+
+async def _keys_serving(clients: AsyncClient, monkeypatch, calls: int, *,
+                        idempotent: bool = False) -> list[str]:
+    seen: list[str] = []
+
+    def upstream(request):
+        seen.append(request.headers["authorization"])
+        return _dropleads_response(200, {"comments": []})
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        for i in range(calls):
+            headers = {"Idempotency-Key": f"k{i}"} if idempotent else {}
+            r = await clients.get(f"/call/{EP}?aweme_id={i}", headers=headers)
+            assert r.status_code == 200, r.text
+    return seen
+
+
+PRIMARY_AUTH, B_AUTH = "Bearer PLATFORM-TIKHUB-KEY", f"Bearer {TIKHUB_B}"
+
+
+async def test_the_sweep_reads_every_account_and_a_dry_one_serves_nothing_until_it_refills(
+    clients: AsyncClient, two_tikhub_accounts, monkeypatch,
+):
+    """One account reads empty while another has money: no caller is sent to the empty one (no probe
+    either, another can serve), and the next sweep that reads it refilled puts it back in rotation."""
+    result = await _sweep_tikhub({PRIMARY_AUTH: 0, B_AUTH: 12.5})
+    assert {p: s.health for p, s in result.states.items()} == {"tikhub": "exhausted", "tikhub#b": "ok"}
+    assert {s.provider for s in result.snapshots} == {"tikhub", "tikhub#b"}
+    assert set(await _keys_serving(clients, monkeypatch, 4)) == {B_AUTH}
+
+    await _sweep_tikhub({PRIMARY_AUTH: 30, B_AUTH: 0})
+    assert set(await _keys_serving(clients, monkeypatch, 4)) == {PRIMARY_AUTH}
+
+    await _sweep_tikhub({PRIMARY_AUTH: 30, B_AUTH: 12.5})
+    assert set(await _keys_serving(clients, monkeypatch, 4)) == {PRIMARY_AUTH, B_AUTH}
+
+
+async def test_a_call_with_an_idempotency_key_is_not_held_on_a_dry_account(
+    clients: AsyncClient, two_tikhub_accounts, monkeypatch,
+):
+    await _sweep_tikhub({PRIMARY_AUTH: 0, B_AUTH: 12.5})
+    assert set(await _keys_serving(clients, monkeypatch, 8, idempotent=True)) == {B_AUTH}
+
+
+async def test_an_account_below_its_drain_mark_hands_its_calls_to_the_others_and_still_serves_alone(
+    clients: AsyncClient, two_tikhub_accounts, monkeypatch,
+):
+    from treg.domain.capacity import policy
+    monkeypatch.setitem(policy._DRAIN_BELOW, "tikhub", 10)
+    result = await _sweep_tikhub({PRIMARY_AUTH: 4, B_AUTH: 50})
+    assert result.states["tikhub"].health == "low" and not result.states["tikhub"].is_exhausted()
+    assert set(await _keys_serving(clients, monkeypatch, 4)) == {B_AUTH}
+
+    await _sweep_tikhub({PRIMARY_AUTH: 4, B_AUTH: 3})
+    assert set(await _keys_serving(clients, monkeypatch, 4)) == {PRIMARY_AUTH, B_AUTH}, \
+        "every account low: they keep serving until they read empty"
+
+
+async def test_a_call_pinned_to_an_empty_account_probes_its_reading_and_lifts_only_that_one(
+    clients: AsyncClient, two_tikhub_accounts, monkeypatch,
+):
+    from datetime import timedelta
+
+    from treg import ratestore
+    from treg.domain.capacity.policy import LatestState
+    from treg.domain.capacity.sweep import STATE_NS
+    from treg.domain.capacity.view import view as capacity_view
+    from treg.infra.db import session_maker
+
+    async def publish_empty(key: str, ago: timedelta) -> None:
+        now = utcnow_naive()
+        state = LatestState(key, 0.0, "USD", now - ago, "exact", exhausted_until=now + timedelta(hours=1),
+                            health="exhausted")
+        async with session_maker() as db:
+            await ratestore.kv_put(db, STATE_NS, key, state.to_json(), ttl_s=3600)
+            await db.commit()
+
+    async def state(key: str) -> LatestState:
+        async with session_maker() as db:
+            return LatestState.from_json(await ratestore.kv_get(db, STATE_NS, key))
+
+    monkeypatch.setattr(keyslots, "pinned", lambda service, **_: "b")
+    await publish_empty("tikhub", timedelta(minutes=3))
+    await publish_empty("tikhub#b", timedelta(minutes=2))
+    await capacity_view.load(force=True)
+
+    seen: list[str] = []
+
+    def upstream(request):
+        seen.append(request.headers["authorization"])
+        return _dropleads_response(200, {"comments": []})
+
+    async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+        monkeypatch.setattr(A.app.state, "http", vendor)
+        r = await clients.get(f"/call/{EP}?aweme_id=1")
+    assert r.status_code == 200, r.text
+    assert seen == [B_AUTH]
+    assert (await state("tikhub#b")).exhausted_until is None, "b's probe lifted b's reading"
+    assert (await state("tikhub")).exhausted_until is not None, "and left the primary's alone"
+
+
+@pytest.fixture
+def two_tomba_accounts(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TOMBA", "TOMBA-KEY-A")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TOMBA_SECRET", "TOMBA-SECRET-A")
+    monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps(
+        {"tomba": {"b": {"platform_key_tomba": "TOMBA-KEY-B", "platform_key_tomba_secret": "TOMBA-SECRET-B"}}}))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_an_account_with_a_paired_credential_is_swept_with_its_own_pair(two_tomba_accounts):
+    from treg.domain.capacity.sweep import run_sweep
+    from treg.infra.db import reset_db, session_maker
+    await reset_db()
+    left ={("TOMBA-KEY-A", "TOMBA-SECRET-A"): 0, ("TOMBA-KEY-B", "TOMBA-SECRET-B"): 70}
+
+    def serve(request):
+        pair = (request.headers["x-tomba-key"], request.headers["x-tomba-secret"])
+        return httpx.Response(200, json={"data": {"requests": {"domains": {"available": left[pair], "used": 0}}}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        async with session_maker() as db:
+            result = await run_sweep(db, client=upstream, only={"tomba"})
+    assert {p: s.remaining for p, s in result.states.items()} == {"tomba": 0, "tomba#b": 70}
 
 
 def test_every_process_does_not_start_its_rotation_on_the_primary(two_tikhub_accounts):

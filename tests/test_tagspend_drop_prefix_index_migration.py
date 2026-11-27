@@ -1,5 +1,5 @@
-"""0117 drops six unused single-column `callrecord` indexes where they exist, records itself where
-they never did, refuses a same-named stranger, and downgrade rebuilds them.
+"""0135 drops the tagspend index 0134's covering index replaces, only once that one can take over;
+refuses a same-named stranger; downgrade rebuilds it.
 
 The Postgres CI job runs these against a real server.
 """
@@ -14,17 +14,18 @@ from treg.infra import db
 from tests.test_alembic_baseline import _drop_everything
 
 
-migration = import_module("treg.alembic.versions.0117_callrecord_drop_unused_indexes")
-NAMES = [name for _, name in migration._INDEXES]
+migration = import_module("treg.alembic.versions.0135_tagspend_drop_prefix_index")
+OLD = migration.NAME
+COVERING = migration.COVERING
 
 
 @pytest.fixture
 async def created_by_alembic():
-    """The head schema plus the six indexes, as a database Alembic created before 0117 has it."""
+    """The head schema plus the old index, as a database at 0134 has it."""
     await db.reset_db()
     async with db._engine.begin() as connection:
-        for column, name in migration._INDEXES:
-            await connection.execute(sa.text(f"CREATE INDEX {name} ON callrecord ({column})"))
+        await connection.execute(sa.text(
+            f"CREATE INDEX {OLD} ON tagspend (org_id, dim, val, created_at)"))
     try:
         yield
     finally:
@@ -54,56 +55,62 @@ async def _indexes() -> set[str]:
     async with db._engine.connect() as connection:
         if connection.dialect.name == "postgresql":
             rows = (await connection.execute(sa.text(
-                "SELECT indexname FROM pg_indexes WHERE tablename = 'callrecord'"))).scalars().all()
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'tagspend'"))).scalars().all()
         else:
             rows = (await connection.execute(sa.text(
-                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'callrecord'"
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'tagspend'"
             ))).scalars().all()
-    return set(rows) & set(NAMES)
+    return set(rows) & {OLD, COVERING}
 
 
 def _ddl(statements: list[str]) -> list[str]:
     return [s for s in statements if s.startswith(("CREATE INDEX", "DROP INDEX"))]
 
 
-async def test_present_indexes_are_dropped_and_a_rerun_changes_nothing(created_by_alembic):
-    assert await _indexes() == set(NAMES)
+async def test_the_old_index_is_dropped_and_a_rerun_changes_nothing(created_by_alembic):
+    assert await _indexes() == {OLD, COVERING}
     statements: list[str] = []
     await _apply("upgrade", statements)
-
-    assert await _indexes() == set()
+    assert await _indexes() == {COVERING}
     ddl = _ddl(statements)
-    assert len(ddl) == len(NAMES)
+    assert len(ddl) == 1
     if db._engine.dialect.name == "postgresql":
-        assert all(s.startswith("DROP INDEX CONCURRENTLY IF EXISTS") for s in ddl)
+        assert ddl[0].startswith("DROP INDEX CONCURRENTLY IF EXISTS")
 
     again: list[str] = []
     await _apply("upgrade", again)
     assert not _ddl(again)
 
 
-async def test_a_database_that_never_had_them_only_records_the_revision():
-    await db.reset_db()   # the head model declares none of the six, like a stamped database
-    assert await _indexes() == set()
-    statements: list[str] = []
-    await _apply("upgrade", statements)
-    assert not _ddl(statements)
-    assert not [s for s in statements if s.startswith("SET statement_timeout")]
-
-
-async def test_downgrade_rebuilds_them(created_by_alembic):
+async def test_downgrade_rebuilds_it(created_by_alembic):
     await _apply("upgrade")
     statements: list[str] = []
     await _apply("downgrade", statements)
-    assert await _indexes() == set(NAMES)
+    assert await _indexes() == {OLD, COVERING}
     if db._engine.dialect.name == "postgresql":
         assert all(s.startswith("CREATE INDEX CONCURRENTLY IF NOT EXISTS") for s in _ddl(statements))
 
 
+@pytest.mark.parametrize("covering", ["missing", "without_include"])
+async def test_nothing_is_dropped_while_the_covering_index_cannot_take_over(created_by_alembic, covering):
+    if db._engine.dialect.name != "postgresql":
+        pytest.skip("INCLUDE is PostgreSQL's; SQLite has no tag-read index to protect")
+    async with db._engine.begin() as connection:
+        await connection.execute(sa.text(f"DROP INDEX {COVERING}"))
+        if covering == "without_include":
+            await connection.execute(sa.text(
+                f"CREATE INDEX {COVERING} ON tagspend (org_id, dim, val, created_at)"))
+    statements: list[str] = []
+    with pytest.raises(RuntimeError, match="would leave the tag spend reads without an index"):
+        await _apply("upgrade", statements)
+    assert not _ddl(statements)
+    assert OLD in await _indexes()
+
+
 @pytest.mark.parametrize("definition", [
-    "CREATE INDEX ix_callrecord_provider ON callrecord (endpoint_id)",
-    "CREATE INDEX ix_callrecord_provider ON callrecord (provider, created_at)",
-    "CREATE UNIQUE INDEX ix_callrecord_provider ON callrecord (provider)",
+    f"CREATE INDEX {OLD} ON tagspend (org_id, dim, val)",
+    f"CREATE INDEX {OLD} ON tagspend (org_id, dim, created_at, val)",
+    f"CREATE UNIQUE INDEX {OLD} ON tagspend (org_id, dim, val, created_at)",
 ])
 async def test_a_same_named_index_with_another_definition_is_refused(definition):
     await db.reset_db()
@@ -113,7 +120,7 @@ async def test_a_same_named_index_with_another_definition_is_refused(definition)
         statements: list[str] = []
         with pytest.raises(RuntimeError, match="Refusing index migration"):
             await _apply("upgrade", statements)
-        assert not _ddl(statements)   # refused before dropping anything
+        assert not _ddl(statements)
     finally:
         await _drop_everything()
         await db.reset_db()

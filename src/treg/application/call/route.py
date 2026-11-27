@@ -117,7 +117,6 @@ from ...domain.catalog.routing.plan import (
     sampled_provider_allowed, unscoped,
 )
 from ... import oauth_providers
-from ... import sandbox as demo_sandbox
 from .. import asynctasks as async_task_app
 from . import admission, async_bridge, keyslots
 from . import allowance as allowance_runtime
@@ -256,7 +255,8 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_vide
                               "member_spend_cap_reached", "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
-_TEAM_BUSY = frozenset({"money_admission_timeout", "platform_cap_unavailable", "tag_budget_unavailable",
+_TEAM_BUSY = frozenset({"money_admission_timeout", "money_statement_timeout",
+                        "platform_cap_unavailable", "tag_budget_unavailable",
                         "member_spend_cap_unavailable"})
 
 
@@ -886,7 +886,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # a keyless row the anonymous tier did not take: say why, never "no key" for a keyless API
             # demo policy only where it is the reason given: a provider not enabled here is capacity
             demo = (get_settings().platform_provider_enabled(e["provider"]) and caller.org is not None
-                    and (demo_sandbox.is_sandbox(caller.org) or caller.org.public_demo))
+                    and caller.org.public_demo)
             dropped.append({"endpoint_id": e["id"], "why": f"{e['provider']} {_anonymous_refusal(e, caller.org)}",
                             **({"policy": True} if demo else {})})  # treg's demo policy, not capacity
             continue
@@ -2140,6 +2140,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
+               **({"merged_from": merged_from} if merged_from else {}),
                hit=False if ruled_out else {"hit": True, "weak": True, "miss": False}.get(winner_outcome),
                check_verdict=(verification or {}).get("verdict")
                if (verification or {}).get("checked") else None)
