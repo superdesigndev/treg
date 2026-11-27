@@ -104,8 +104,8 @@ Gates 1 and 2 are `archive.policy(entry)`. Also never recorded or served:
   resource. The serve path skips such rows (`_only_submits`) unless `terminal_on_submission`;
 - a body failing the endpoint's `expect` rule (lookup reports `result_error` for one already
   stored);
-- free final fetches and free `utility` lists that stream (`streamable_free_result`) and
-  `spooled_response` answers: no
+- free final fetches and free `utility` lists that stream (`streamable_free_result`, never on a
+  row marked `echoes_credential`) and `spooled_response` answers: no
   buffered body, so no empty or partial hash is recorded. A body over the 8 MiB settlement buffer
   fails before recording.
 
@@ -113,9 +113,11 @@ Image/video entries carry effective `cache: forbidden`, and lookup and refresh r
 current policy, so old stored responses are never replayed. Async terminal evidence is the
 deliberate exception: the winning finalizer stores the terminal provider JSON under
 `treg://asynctasks/<call_id>` independent of replay policy, as settlement evidence, with treg's
-own credentials for the provider masked (settlement reads the provider's bytes first). It is never
-cache or learning evidence, the worker never follows result URLs in it and never stores generated
-media bytes. `load_terminal_responses` reads it back for Activity, which masks it again on read.
+own credentials for the provider masked on a row marked `echoes_credential` and as received on any
+other (settlement reads the provider's bytes first). It is never cache or learning evidence, the
+worker never follows result URLs in it and never stores generated media bytes.
+`load_terminal_responses` reads it back for Activity, which masks treg's credentials in it on
+read, on every row.
 
 ## The cache key
 
@@ -130,7 +132,9 @@ path's recorder; the refresh worker (`_refresh_call`, with `platform_answer_mask
 credentials in every row's refreshed answer, so on a marked row a refreshed version hashes like a
 live one. A hit on a marked row is masked again with the call's credentials and treg's for the
 provider, and `GET /calls/{id}/result` masks treg's on every row, which covers a copy kept before
-([proxy-model](proxy-model.md), "Answers that quote a credential").
+([proxy-model](proxy-model.md), "Answers that quote a credential"). On a row not so marked, a 2xx
+that quotes a credential is relayed as received, stored as received on a call on treg's key, and
+served so on other teams' hits; marking the row `echoes_credential` is the remedy.
 
 ### The stored request body
 

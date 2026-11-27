@@ -725,7 +725,8 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                     buf = bytearray(waited.raw)
                     doc = waited.document
                     async_outcome = waited.outcome
-                    views = await async_task_app.views_for(current.org_id, [context.call_ref])
+                    views = await async_task_app.views_for(
+                        current.org_id, [context.call_ref], answers=False)
                     task_view = views.get(context.call_ref) or {}
                     a["reserved_micro"] = task_view.get("reserved_micro", reserved)
                     a["charged_micro"] = task_view.get("settled_micro")

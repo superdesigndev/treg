@@ -402,6 +402,7 @@ class MarketplaceCall:
     resource_ownership: dict | None = None
     managed_resource: dict | None = None
     kind: str = ""                  # the row's `kind`; a free `utility` list streams (streamable_free_result)
+    echoes_credential: bool = False  # the row's `echoes_credential`: its answers are read whole, never streamed
     public_resource_ids: tuple[str, ...] = ()
     # On an endpoint declaring `spooled_response`: the response paths its settlement reads (the
     # usage meters, the `expect` success rule). A metered 2xx goes to disk; only these are kept.
@@ -447,10 +448,11 @@ class MarketplaceCall:
     def streamable_free_result(self) -> bool:
         """A free answer with no body evidence to settle or learn: an authorized final fetch, or a
         free reference list (`kind: utility`) with no ownership rule, which can outgrow the 8 MiB
-        settlement buffer (DataForSEO's US location list)."""
+        settlement buffer (DataForSEO's US location list). Never on a row marked
+        `echoes_credential`: its answer is read whole to be masked."""
         ownership = self.resource_ownership or {}
         required = ownership.get("requires") or {}
-        return (self.tier == "platform" and self.cost_type == "free"
+        return (self.tier == "platform" and self.cost_type == "free" and not self.echoes_credential
                 and self.estimate_micro == 0 and not self.billed_oauth
                 and self.async_owner_call_id is None and not self.async_descriptor
                 and not ownership.get("produces")
@@ -2630,7 +2632,7 @@ async def _resolve_catalog_tier(
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         cost_terms=pricing.terms,
-        kind=str(ep.get("kind") or ""),
+        kind=str(ep.get("kind") or ""), echoes_credential=ep.get("echoes_credential") is True,
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),

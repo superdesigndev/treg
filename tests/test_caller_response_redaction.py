@@ -793,6 +793,36 @@ async def test_a_meta_hit_quoting_the_teams_token_is_masked(clients: AsyncClient
         "https://graph.facebook.com/v21.0/ads_archive?access_token=***&limit=25&after=QVFIUmNh")
 
 
+META_PLATFORM_TOKEN = "EAAGm0PX4ZCpsBAtregOwnAdLibraryToken77"
+
+
+@pytest.fixture
+def meta_on_treg_key(monkeypatch):
+    """No setting holds a Meta platform key today; a class attribute stands in for one."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "meta-ad-library")
+    get_settings.cache_clear()
+    monkeypatch.setattr(type(get_settings()), "platform_key_meta_ad_library", META_PLATFORM_TOKEN,
+                        raising=False)
+    yield
+    get_settings.cache_clear()
+
+
+async def test_a_marked_row_on_treg_key_never_streams_its_free_answer_unread(
+    clients: AsyncClient, meta_on_treg_key, monkeypatch,
+):
+    """A free `utility` row on treg's key streams unread (`streamable_free_result`), save a row
+    marked `echoes_credential`: the Meta search row forced into that shape is read whole and
+    masked."""
+    monkeypatch.setitem(catalog_store.load().by_id[META_EP], "kind", "utility")
+    seen = _vendor(monkeypatch, _meta_page)
+    r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+    assert r.status_code == 200, r.text
+    assert seen[0].url.params["access_token"] == META_PLATFORM_TOKEN
+    assert META_PLATFORM_TOKEN not in r.text
+    assert r.json()["paging"]["next"] == (
+        "https://graph.facebook.com/v21.0/ads_archive?access_token=***&limit=25&after=QVFIUmNh")
+
+
 def test_a_short_half_of_a_basic_credential_leaves_the_answer_data_alone(monkeypatch):
     """On an error the decoded halves of a Basic credential are masked too; in an answer a 4-digit
     login is an ordinary number, so only the spellings of 8 characters or more are rewritten."""

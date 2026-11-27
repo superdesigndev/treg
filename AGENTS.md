@@ -60,24 +60,29 @@ Everything else in this file is guidance; these are the contract, and they win o
    body is masked (`***`) before the caller, an idempotent replay or the evidence row sees it, on
    every row, owned free polls included. The error body is read whole (gzip/deflate decoded) up to
    8 MiB; on a credentialed call one that cannot be scanned is replaced whole, never relayed as a
-   prefix. A 2xx is masked the same way only on a catalog row marked `echoes_credential` (a
-   provider that writes the credential into successful answers: Meta's Graph rows, whose paging
-   links carry `access_token`), before the caller, an idempotent replay, a task record or the
-   archive sees it, and only where the application holds it whole: a metered answer or an owned
-   free poll, both read whole already; an own-key answer, read whole up to
+   prefix. Any other answer (a status below 400) is masked the same way only on a catalog row
+   marked `echoes_credential` (a provider that writes the credential into successful answers:
+   Meta's Graph rows, whose paging links carry `access_token`), before the caller, an idempotent
+   replay, a task record or the archive sees it, and only where the application holds it whole: a
+   metered answer or an owned free poll, both read whole already (a marked row's free answer on
+   treg's key is read whole too, never streamed unread); an own-key 2xx, read whole up to
    `archive_max_body_bytes`, asked for identity when the archive records the row, otherwise with
    the request keeping only the caller's gzip and deflate and up to the larger of that and 2 MiB
    when it names a task; and an archive hit, also masked with treg's own credentials for its
    provider. Only spellings of 8 or more characters that are not all digits, never a whole-body
    replacement. Relayed exactly as without this rewrite: every answer of a row not so marked, and
    on a marked row an own-key 1xx or 3xx answer, one past that bound (it streams on, never cut), a
-   free answer that streams in full (below), a spooled answer, one treg cannot decode whole (br,
-   zstd, a multi-member gzip, or one past 8 MiB decoded) and one whose credentials cannot be
-   rendered. Stored copies are masked with treg's own credentials for the provider on every row, at
-   no cost to the relay: the archive refresh worker and terminal task evidence store them masked,
-   and `GET /calls/{id}/result`, Activity, the review judge and the staff archive panel mask a copy
-   kept before when they read it. A recording on a team's own credential is stored as received,
-   since an answer holding a spelling of it is never recorded.
+   spooled answer, one treg cannot decode whole (br, zstd, a multi-member gzip, or one past 8 MiB
+   decoded) and one whose credentials cannot be rendered. So on a row not so marked, an answer
+   that quotes a credential reaches the caller as received, is stored as received on a call on
+   treg's key, and is served so on other teams' hits; marking the row is the remedy. Stored copies
+   are masked with treg's own credentials for the provider off the call path: the archive refresh
+   worker stores a refreshed answer masked on every row, terminal task evidence is stored masked
+   on a marked row and as received on any other, and `GET /calls/{id}/result`, Activity, the review
+   judge and the staff archive panel mask every row's stored copy when they read it. Error bodies
+   aside, on a row not so marked the call path renders no spelling and searches no answer. A
+   recording on a team's own credential is stored as received, since an answer holding a spelling
+   of it is never recorded.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
    (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
@@ -114,7 +119,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    row reads (usage meters, `expect` success leaf), then relays the file byte for byte; it is never
    archived or replayed.
    Free answers needing no body evidence (an authorized final fetch, or a free `utility` reference
-   list with no ownership rule) stream in full.
+   list with no ownership rule) stream in full, save on a row marked `echoes_credential`.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential

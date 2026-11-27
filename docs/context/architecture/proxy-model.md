@@ -243,17 +243,20 @@ idempotent replay, a task record or the archive sees it:
   served to an own-key caller, or a copy kept before the archive masked answers.
 
 What the archive keeps from treg's key is masked with treg's own credentials for the provider,
-every account's (`platform_answer_mask`): on a marked row the call path records the masked
-answer; on every row, at no cost to the relay, the refresh worker masks before it records
-(`archive._refresh_call`) and terminal task evidence is stored masked
-(`asynctasks._finish_terminal`, whose settlement still reads the provider's bytes). Every reader
-that shows stored bytes masks them on the way out as well, on every row, which covers copies kept
-before this: `GET /calls/{id}/result` (`service.stored_answer_for_caller`, then the reported-charge strip
-for a metered row), the activity feed's task view (`asynctasks.views_for`), the review judge,
-whose answer goes to a model outside treg (`review_answers.as_delivered`, before its own
-reported-charge strip), and the staff archive panel (`admin_archive_body`). A reader that pages
-or cuts a stored answer must do so after this masking, never before. An idempotent replay stored
-before then is returned as stored until it expires.
+every account's (`platform_answer_mask`): on a marked row the call path records the masked answer
+and terminal task evidence is stored masked (`asynctasks._finish_terminal`, whose settlement
+still reads the provider's bytes; any other row's is stored as received); off the call path the
+refresh worker masks every row's refreshed answer before it records (`archive._refresh_call`).
+Every reader that shows stored bytes masks them on the way out as well, on every row, which
+covers copies kept before this: `GET /calls/{id}/result` (`service.stored_answer_for_caller`,
+then the reported-charge strip for a metered row), the activity feed's task view
+(`asynctasks.views_for`), the review judge, whose answer goes to a model outside treg
+(`review_answers.as_delivered`, before its own reported-charge strip), and the staff archive
+panel (`admin_archive_body`). A caller that reads only a task's money (`route._async_cost` for a
+routed async child, the arena) passes `views_for(..., answers=False)`, which loads and masks no
+answer, so error bodies aside a row not marked costs the call path no rendering and no search.
+A reader that pages or cuts a stored answer must do so after this masking, never before. An
+idempotent replay stored before then is returned as stored until it expires.
 
 The search is bytes only, with no decode of the body and no regex over it. Each spelling is found
 through its probe (`_probe`): its longest run of the characters percent-encoding, JSON escaping
@@ -273,12 +276,16 @@ or whose credentials cannot be rendered, is relayed as it came, with the renderi
 in the second case.
 
 Not masked: any answer, error bodies aside, of a row not marked `echoes_credential` or of an own
-tool (no catalog row). On a marked row, because no one holds it whole: an own-key 1xx or 3xx
-answer, an own-key answer larger than the hold (it streams on, untouched and never cut, from the
-first byte past it), a streamed free fetch and a spooled answer; nor one the search cannot decode
+tool (no catalog row). So on a row not marked, an answer that quotes a credential reaches the
+caller as received, is stored as received on a call on treg's key and is served so on other
+teams' hits; marking the row is the remedy. On a marked row, because no one holds it whole: an
+own-key 1xx or 3xx answer, an own-key answer larger than the hold (it streams on, untouched and
+never cut, from the first byte past it) and a spooled answer; nor one the search cannot decode
 whole (br, zstd, a multi-member gzip, or one past 8 MiB decoded) or one whose credentials cannot
-be rendered. Meta's Graph read rows are own-key catalog rows, so their pages are held and masked on
-every archive setting.
+be rendered. A marked row's free answer on treg's key never streams unread
+(`MarketplaceCall.streamable_free_result` is false there): it is read whole and masked like a
+metered one. Meta's Graph read rows are own-key catalog rows, so their pages are held and masked
+on every archive setting.
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
 sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,
@@ -799,7 +806,7 @@ archived under the submission's call id.
 
 `MarketplaceCall.streamable_free_result` marks platform fetch utilities with an explicit free price,
 zero estimate, a required fetch ownership rule and no submission, owned poll or produced-resource
-evidence. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
+evidence, never on a row marked `echoes_credential`. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
 and stream in full with headers (including Range) through the router's close-once lifecycle. Audit
 size is unknown, not zero; nothing is archived or kept for replay, and the claim is released.
 A free `kind: utility` row with no ownership rule or managed resource (a provider's reference

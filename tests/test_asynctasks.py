@@ -511,14 +511,24 @@ async def _end_task_with_a_quoting_poll(clients: AsyncClient, monkeypatch) -> st
     return call_id
 
 
-async def test_an_owned_terminal_poll_keeps_a_masked_copy(
-    clients: AsyncClient, monkeypatch, replicate_platform,
+@pytest.mark.parametrize("flagged", [True, False])
+async def test_an_owned_terminal_poll_keeps_a_masked_copy_on_a_marked_row(
+    clients: AsyncClient, monkeypatch, replicate_platform, flagged: bool,
 ):
-    """The poll that ends a task settles from the provider's bytes; the archive keeps the terminal
-    answer, which the activity feed reads, with treg's key masked."""
+    """The poll that ends a task settles from the provider's bytes. On a row marked
+    `echoes_credential` the archive keeps the terminal answer with treg's key masked; on any other
+    row it keeps it as received and the call path searches no answer. The activity feed masks
+    treg's key in the copy it reads either way."""
+    if flagged:
+        monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
+    searched: list[int] = []
+    real = AnswerMask.mask
+    monkeypatch.setattr(AnswerMask, "mask", lambda self, body: searched.append(len(body)) or real(self, body))
     call_id = await _end_task_with_a_quoting_poll(clients, monkeypatch)
     kept = (await archive.load_terminal_responses([(call_id, EP)]))[call_id]
-    assert b"test-platform-token" not in kept and b"first.png?token=***" in kept
+    assert (b"first.png?token=***" in kept) is flagged
+    assert (b"test-platform-token" in kept) is not flagged
+    assert bool(searched) is flagged
     await audit.drain()
     assert "test-platform-token" not in json.dumps((await clients.get("/calls")).json())
 

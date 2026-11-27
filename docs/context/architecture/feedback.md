@@ -573,9 +573,10 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   `review_codes.REQUEST_NOTE` tells every judge, the blind audit too, that the order of parameters
   is not the agent's while every value shown is exact. The judge sees what this call's delivery is known to have had: its own
   status and the body (`review_answers.as_delivered`), with treg's own credentials for the
-  provider masked first, since the judge is a model outside treg and a copy kept before the
-  archive masked answers may still quote them ([proxy-model](proxy-model.md), "Answers that quote
-  a credential"), and without the provider-reported charge the
+  provider masked first, since the judge is a model outside treg and a stored copy may still quote
+  them (one on a row not marked `echoes_credential`, or kept before the archive masked answers;
+  [proxy-model](proxy-model.md), "Answers that quote a credential"), and without the
+  provider-reported charge the
   endpoint declares (whether this delivery kept it is not on file), read from a version of that
   answer that kept its bytes and still matches its content hash
   (`archive.resolve_result(prefer_bytes=True, verify=True)`). The reason codes become

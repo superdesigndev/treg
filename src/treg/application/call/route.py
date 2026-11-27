@@ -1186,7 +1186,7 @@ async def _async_cost(parent: CallContext, child_ref: str, fallback: int = 0) ->
     if org_id is None:
         return fallback
     views = await async_task_app.views_for(
-        org_id, [child_ref], pinned_tags=getattr(parent.meta, "tags", None))
+        org_id, [child_ref], pinned_tags=getattr(parent.meta, "tags", None), answers=False)
     view = views.get(child_ref) or {}
     settled = view.get("settled_micro")
     return int(settled) if settled is not None else fallback

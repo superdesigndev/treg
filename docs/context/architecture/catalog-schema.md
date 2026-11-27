@@ -227,9 +227,11 @@ provider writes the credential treg injected into a successful answer, as Meta's
 the request's `access_token` into `paging.next` and `paging.previous`. Set it in the provider's
 `defaults:` when every row of the provider does so (each Graph file: `facebook`, `instagram`,
 `meta-ads`, `meta-ad-library`), or on one endpoint; under a default a row's `false` or `null` opts
-out. The loader serves a plain boolean (`True` only for a literal `true`, else `False`). On the
-call path only a marked row's answers are held whole and searched for the credential; every other
-row's answer is relayed as it comes ([proxy-model](proxy-model.md#answers-that-quote-a-credential)).
+out. The loader serves a plain boolean on every row it reads from a provider file (`True` only for
+a literal `true`, else `False`); a routed `treg.*` row carries none. On the call path only a
+marked row's answers are held whole and searched for the credential, and its free answer on
+treg's key is never streamed unread; every other row's answer is relayed as it comes
+([proxy-model](proxy-model.md#answers-that-quote-a-credential)).
 Mark a row only on evidence that its provider quotes the credential in a 2xx, since holding an
 answer delays its first byte to its last.
 

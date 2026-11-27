@@ -1188,8 +1188,9 @@ For a tier-4 endpoint carrying `async`, a successful submission keeps its hold a
 replays from the row alone. BYOK creates neither hold nor row. A caller poll and the worker share
 `_finish_terminal`: terminal 2xx evidence settles the task once under its row lock; an unexpired
 success or billed failure without required usage only records result ownership; a failure or a
-state past the window releases. Only the winning finalizer archives terminal evidence, with treg's
-own credentials for the provider masked after the settlement read the provider's bytes. The same
+state past the window releases. Only the winning finalizer archives terminal evidence, on a row
+marked `echoes_credential` with treg's own credentials for the provider masked after the
+settlement read the provider's bytes, as received on any other. The same
 transaction stores the adapter hit verdict and verdict word on the task; the audit path copies them
 to the submission row whichever is written first, with the amount the task closed at as the row's
 `cost_charged_micro` (0 on a release or a timeout), so a sum over `callrecord` counts async charges.
@@ -1248,9 +1249,11 @@ in which case it releases only `{call_ref}:overflow`.
 
 The audit row froze the reserve as `cost_charged_micro` at submission, so displays must not read it
 alone. `application.asynctasks.views_for` joins the org's tasks, loads archived terminal JSON,
-masks treg's credentials in it once more (a copy kept before masking) and derives the artifact
-with `domain.asynctasks.artifact`; `/calls`, `/calls/{ref}`, `treg audit`, the
-dashboard Activity page and the CLI's `--await` all read this one view.
+masks treg's credentials in it (stored as received on a row not marked `echoes_credential`, or
+kept before masking) and derives the artifact with `domain.asynctasks.artifact`; `/calls`,
+`/calls/{ref}`, `treg audit`, the dashboard Activity page and the CLI's `--await` all read this
+one view. A caller that needs only the money (`route._async_cost`, the arena) passes
+`answers=False`: no terminal JSON is loaded or masked.
 
 ## Stripe (`application/billing.py` and `infra/stripe.py`)
 
