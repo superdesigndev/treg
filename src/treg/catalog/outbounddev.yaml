@@ -1,0 +1,309 @@
+provider: outbounddev
+source:
+  docs: https://docs.outbound.dev
+  openapi: https://api.outbound.dev/openapi.json
+  curated: '2026-11-27'
+# Prepaid balance in USD. Every answer to a live key carries the exact charge in X-Charged-Usd, zero for a free
+# endpoint, an empty page, a miss or an error; treg settles on it. Probe: GET /me is free; a made-up or missing
+# key answers 401.
+limits: "Per organization: people and company search 20 a minute and 1,000 a day each; a company's people 120 a minute and 10,000 a day; counts 60 a minute and 10,000 a day; finding emails and phone numbers 60 a minute and 2,000 a day; email checks 60 a minute and 5,000 a day. HTTP 402 when the balance cannot cover a call's most possible cost."
+pricing_url: https://docs.outbound.dev/billing
+defaults:
+  provenance: {source: docs, source_url: 'https://docs.outbound.dev/billing', checked: '2026-11-27', confidence: documented}
+  settle: {reported: {header: x-charged-usd, unit: usd}}
+proposed_capabilities:
+  companies.search.filters: "List the accepted values for a company-search filter"
+  people.search.autocomplete: "Suggest valid people-search filter values as you type"
+endpoints:
+  - id: outbounddev.people.search
+    added: '2026-11-27'
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/search
+    name: "Search people by title, seniority, company or location"
+    summary: "Find B2B people from a plain-English description or filters. Each person has a full name, job title, seniority, department, company, location and LinkedIn URL."
+    note: "Send query or filters, not both. People carry no email or phone: find those with outbounddev.people.email.find and outbounddev.people.phone.find. A page can hold fewer people than limit, so only a missing pagination.nextCursor marks the end."
+    input:
+      body:
+        query: {type: string, required: false, maxLength: 2000, note: "who you want, in plain English; send this or filters", example: "chief executive officers at Microsoft"}
+        filters: {type: object, required: false, note: "filters in the vocabulary outbounddev.people.search.filters lists, such as job_title_levels and job_title_role; send this or query", example: {"job_title_levels": ["director"], "job_title_role": ["operations"]}}
+        linkedinUrl: {type: string, required: false, note: "one person's LinkedIn profile URL, looked up on its own or within the search", example: "https://www.linkedin.com/in/williamhgates"}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "people per page and the price dial", example: 10}
+        cursor: {type: string, required: false, note: "pagination.nextCursor from the previous page, sent with the filters that page answered with"}
+    test_request:
+      body: {query: "chief executive officers at Microsoft", limit: 1}
+    price: {value: '0.001', currency: USD, per: 1, unit: result, note: "per person returned; a page with no one on it costs nothing"}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+    docs_url: https://docs.outbound.dev/api-reference/people/search-people
+
+  - id: outbounddev.people.search.by_company
+    added: '2026-11-27'
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /companies/people
+    name: "List the decision makers and employees at a company"
+    summary: "List the people who work at one company, narrowed by department or seniority. Each person has a full name, job title, seniority and LinkedIn URL."
+    note: "Name the company by domain, linkedinUrl or name; when several are sent only the most precise is looked up, and a domain is safest for a common name. A company nothing matches answers 200 with status not_found and costs nothing. People carry no email or phone."
+    input:
+      body:
+        company: {type: object, required: true, note: "{domain}, {linkedinUrl} or {name} of the company", example: {"domain": "microsoft.com"}}
+        filters: {type: object, required: false, note: "people filters such as job_title_role (department) and job_title_levels (cxo, vp, director, owner, manager, senior); values from outbounddev.people.search.filters", example: {"job_title_levels": ["cxo"]}}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 25, note: "people per page and the price dial", example: 10}
+        cursor: {type: string, required: false, note: "pagination.nextCursor from the previous page, sent with the same company and filters"}
+    test_request:
+      body: {company: {domain: "microsoft.com"}, filters: {job_title_levels: ["cxo"]}, limit: 1}
+    price: {value: '0.001', currency: USD, per: 1, unit: result, note: "per person returned; a company with no match costs nothing"}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 25}}
+    miss: {when: {any: [{path: response.status, op: equals, value: not_found}, {path: response.data, op: empty}]}}
+    docs_url: https://docs.outbound.dev/api-reference/companies/list-a-companys-people
+
+  - id: outbounddev.companies.search
+    added: '2026-11-27'
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/search
+    name: "Search companies by industry, size, location or tech"
+    summary: "Find companies from a plain-English description or filters such as industry, headcount, headquarters, funding stage and technologies."
+    note: "Send query or filters, not both. Pair it with outbounddev.people.search.by_company to list the people at each company."
+    input:
+      body:
+        query: {type: string, required: false, maxLength: 2000, note: "which companies you want, in plain English; send this or filters", example: "software companies headquartered in Seattle"}
+        filters: {type: object, required: false, note: "filters in the vocabulary outbounddev.companies.search.filters lists; send this or query", example: {"headquartersCountryCode": [{"value": "PRT", "label": "PRT", "status": "include"}]}}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "companies per page and the price dial", example: 25}
+        cursor: {type: string, required: false, note: "pagination.nextCursor from the previous page, sent with the filters that page answered with"}
+    test_request:
+      body: {query: "software companies headquartered in Seattle", limit: 1}
+    price: {value: '0.001', currency: USD, per: 1, unit: result, note: "per company returned; a page with none on it costs nothing"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 100}}
+    miss: {when: {any: [{path: response.data, op: absent}, {path: response.data, op: empty}]}}
+    docs_url: https://docs.outbound.dev/api-reference/companies/search-companies
+
+  - id: outbounddev.people.search.count
+    added: '2026-11-27'
+    domain: contacts
+    kind: utility
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/count
+    name: "Count the people a search would find"
+    summary: "Count the people a people search would return, before paying for any."
+    note: "A new count runs in the background: the first answer is 202 with status pending. Send the same request again every few seconds until it answers 200 with status ready and the total; a count takes up to about a minute and a half."
+    input:
+      body:
+        query: {type: string, required: false, maxLength: 2000, note: "as outbounddev.people.search takes it; send this or filters", example: "chief executive officers at Microsoft"}
+        filters: {type: object, required: false, note: "as outbounddev.people.search takes them; send this or query", example: {"job_title_levels": ["cxo"]}}
+    test_request:
+      body: {filters: {job_title_levels: ["cxo"], job_title_role: ["operations"]}}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    docs_url: https://docs.outbound.dev/api-reference/people/count-people
+
+  - id: outbounddev.companies.search.count
+    added: '2026-11-27'
+    domain: companies
+    kind: utility
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/count
+    name: "Count the companies a search would find"
+    summary: "Count the companies a company search would return, before paying for any."
+    note: "A new count runs in the background: the first answer is 202 with status pending. Send the same request again every few seconds until it answers 200 with status ready and the total."
+    input:
+      body:
+        query: {type: string, required: false, maxLength: 2000, note: "as outbounddev.companies.search takes it; send this or filters", example: "software companies headquartered in Seattle"}
+        filters: {type: object, required: false, note: "as outbounddev.companies.search takes them; send this or query", example: {"headquartersCountryCode": [{"value": "PRT", "label": "PRT", "status": "include"}]}}
+    test_request:
+      body: {query: "software companies headquartered in Seattle"}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    docs_url: https://docs.outbound.dev/api-reference/companies/count-companies
+
+  - id: outbounddev.people.search.filters
+    added: '2026-11-27'
+    domain: contacts
+    kind: utility
+    capability: people.search.filters
+    platform: people
+    scope: any_account
+    method: GET
+    path: /people/filters
+    name: "List people search filter values"
+    summary: "List the filters the people search takes and the values each accepts, such as seniorities and departments."
+    input:
+      queryParams:
+        field: {type: string, required: false, note: "one filter's name; without it, every filter's values", example: "job_title_levels"}
+    test_request:
+      queryParams: {field: "job_title_levels"}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    docs_url: https://docs.outbound.dev/api-reference/people/list-people-filter-values
+
+  - id: outbounddev.companies.search.filters
+    added: '2026-11-27'
+    domain: companies
+    kind: utility
+    capability: companies.search.filters
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /companies/filters
+    name: "List company search filter values"
+    summary: "List the values the company search filters take, such as industries, countries, funding stages and technologies."
+    input:
+      queryParams:
+        field: {type: string, required: false, note: "one filter's name; without it, every filter's values", example: "headquartersCountryCode"}
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    docs_url: https://docs.outbound.dev/api-reference/companies/list-company-filter-values
+
+  - id: outbounddev.people.search.autocomplete
+    added: '2026-11-27'
+    domain: contacts
+    kind: utility
+    capability: people.search.autocomplete
+    platform: people
+    scope: any_account
+    method: GET
+    path: /people/autocomplete
+    name: "Suggest people search filter values"
+    summary: "Suggest job titles, companies, websites, locations, regions, schools or skills as they are typed, as values for the people search."
+    input:
+      queryParams:
+        field: {type: string, required: true, enum: [title, company, website, location, region, school, skill], example: "title"}
+        q: {type: string, required: true, note: "what has been typed so far", example: "head of sal"}
+    test_request:
+      queryParams: {field: "title", q: "head of sal"}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    docs_url: https://docs.outbound.dev/api-reference/people/suggest-people-filter-values
+
+  - id: outbounddev.companies.autocomplete
+    added: '2026-11-27'
+    domain: companies
+    kind: utility
+    capability: companies.autocomplete
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /companies/autocomplete
+    name: "Suggest company names, headquarters places or states"
+    summary: "Suggest company names, headquarters cities or states as they are typed, as values for the company search."
+    input:
+      queryParams:
+        field: {type: string, required: true, enum: [company, location, state], example: "company"}
+        q: {type: string, required: true, minLength: 2, note: "what has been typed so far, two characters or more", example: "micros"}
+        orgType: {type: string, required: false, enum: [investor], note: "only with field=company: suggest investors"}
+    test_request:
+      queryParams: {field: "company", q: "micros"}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    docs_url: https://docs.outbound.dev/api-reference/companies/suggest-company-filter-values
+
+  - id: outbounddev.companies.domain.find
+    added: '2026-11-27'
+    domain: companies
+    capability: companies.domain.find
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /companies/resolve
+    name: "Resolve a company to its domain, LinkedIn page and logo"
+    summary: "Resolve a company name, website domain or LinkedIn page to one company: its name, website domain, LinkedIn page and logo."
+    note: "When several identifiers are sent only the most precise is looked up: linkedinUrl, then domain, then name. A name resolves to the best-known company of that name."
+    input:
+      body:
+        name: {type: string, required: false, note: "the company's name", example: "Microsoft"}
+        domain: {type: string, required: false, note: "the company's website domain", example: "microsoft.com"}
+        linkedinUrl: {type: string, required: false, note: "the company's LinkedIn page URL"}
+    test_request:
+      body: {name: "Microsoft"}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    miss: {when: {path: response.status, op: equals, value: not_found}}
+    docs_url: https://docs.outbound.dev/api-reference/companies/resolve-a-company
+
+  - id: outbounddev.people.email.find
+    added: '2026-11-27'
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/enrich
+    name: "Find a person's work email"
+    summary: "Find a person's work email from their LinkedIn URL, or from their name and company domain or name. Only addresses whose check is valid or catch-all are returned."
+    note: "Personal addresses are left out and never charged. The person is saved, with what was found, as a contact in the calling account's outbound.dev workspace, and an address that account already holds is returned free."
+    input:
+      body:
+        linkedinUrl: {type: string, required: false, note: "the person's LinkedIn profile URL; send this or a name with a company", example: "https://www.linkedin.com/in/williamhgates"}
+        firstName: {type: string, required: false, note: "with lastName and companyDomain or companyName"}
+        lastName: {type: string, required: false, note: "with firstName and companyDomain or companyName"}
+        fullName: {type: string, required: false, note: "in place of firstName and lastName"}
+        companyDomain: {type: string, required: false, note: "the company's website domain, with a name", example: "microsoft.com"}
+        companyName: {type: string, required: false, note: "the company's name, with a name"}
+    test_request:
+      body: {linkedinUrl: "https://www.linkedin.com/in/williamhgates"}
+    price: {value: '0.02', currency: USD, per: 1, unit: call, note: "only when a work email is found; a miss costs nothing"}
+    miss: {when: {any: [{path: response.emails, op: absent}, {path: response.emails, op: empty}]}}
+    docs_url: https://docs.outbound.dev/api-reference/enrichment/enrich-a-person
+
+  - id: outbounddev.people.phone.find
+    added: '2026-11-27'
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /people/enrich
+    name: "Find a person's phone number"
+    summary: "Find a person's phone number from their LinkedIn URL, or from their name and company domain or name. Each number carries its check: valid, hq (the company's main line) or unverified."
+    note: "find must be phone. The person is saved, with what was found, as a contact in the calling account's outbound.dev workspace, and a number that account already holds is returned free."
+    input:
+      body:
+        find: {type: string, required: true, enum: [phone], example: "phone"}
+        linkedinUrl: {type: string, required: false, note: "the person's LinkedIn profile URL; send this or a name with a company", example: "https://www.linkedin.com/in/williamhgates"}
+        firstName: {type: string, required: false, note: "with lastName and companyDomain or companyName"}
+        lastName: {type: string, required: false, note: "with firstName and companyDomain or companyName"}
+        fullName: {type: string, required: false, note: "in place of firstName and lastName"}
+        companyDomain: {type: string, required: false, note: "the company's website domain, with a name", example: "microsoft.com"}
+        companyName: {type: string, required: false, note: "the company's name, with a name"}
+    test_request:
+      body: {find: "phone", linkedinUrl: "https://www.linkedin.com/in/williamhgates"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call, note: "only when a phone number is found; a miss costs nothing"}
+    miss: {when: {any: [{path: response.phones, op: absent}, {path: response.phones, op: empty}]}}
+    docs_url: https://docs.outbound.dev/api-reference/enrichment/enrich-a-person
+
+  - id: outbounddev.people.email.verify
+    added: '2026-11-27'
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /emails/verify
+    name: "Verify an email address"
+    summary: "Check whether an email address can receive mail, without writing to it: valid, invalid (spam traps and do-not-mail addresses included), risky (the domain accepts every address) or unknown."
+    note: "A check takes a few seconds and ends within about 25 seconds. An unknown verdict is free."
+    input:
+      body:
+        email: {type: string, required: true, note: "the address to check", example: "support@outbound.dev"}
+    test_request:
+      body: {email: "support@outbound.dev"}
+    price: {value: '0.01', currency: USD, per: 1, unit: call, note: "per verdict; unknown is free"}
+    docs_url: https://docs.outbound.dev/api-reference/enrichment/verify-an-email-address

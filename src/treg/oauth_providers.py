@@ -3883,6 +3883,33 @@ ICYPEAS = OAuthProvider(
 )
 
 
+OUTBOUNDDEV = OAuthProvider(
+    service="outbounddev",
+    display_name="outbound.dev",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your outbound.dev API key (ob_live_...)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://console.outbound.dev",
+    setup_action_label="Get your outbound.dev API key",
+    setup_steps=(
+        "Sign up at console.outbound.dev and open API keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note="Searches are billed per record returned, emails and phone numbers only when found, and email checks per verdict; counts, filter values and company lookups are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find B2B people and companies, list the decision makers at a company, then find their work emails and phone numbers and verify emails.",
+    base_url="https://api.outbound.dev/v1",
+    docs_url="https://docs.outbound.dev",
+    # Free account read: a valid key answers 200, a made-up or missing key a 401.
+    probe_path="/me",
+)
+
+
 MAPSDATA = OAuthProvider(
     service="mapsdata",
     display_name="MapsData",
@@ -4646,7 +4673,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
-        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
+        COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, OUTBOUNDDEV, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
