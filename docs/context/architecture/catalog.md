@@ -478,7 +478,10 @@ cost:
   run mode the row does not price, such as a discovery switch, is refused on the shared credential.
   A `body.*` pin of `null` does the same for a declared body field: an option the provider bills
   outside the answer treg relays (a reveal delivered to the caller's webhook) is refused on the
-  shared credential, with the field named and its value never echoed.
+  shared credential, with the field named and its value never echoed. A `headers.*` pin of `null`
+  does the same for a header (it need not be declared): a second place the provider reads a
+  credential from, beside the one treg injects, is refused on the shared credential, so the
+  provider never answers for the caller's own account there.
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.
@@ -1281,6 +1284,9 @@ an invalid extra never disables the primary.
     is returned and the refused attempt is `skipped` with detail `refused by treg: <kind>`.
     A `call_admission` refusal of treg's money skips that candidate without
     spending the error allowance; every candidate refused answers that 403 for the routed endpoint.
+    A child inherits the parent's headers, so a header one provider refuses on treg's key (a
+    `platform_request` header pin, `route._platform_header_refusal`) skips that candidate the same
+    way; when every candidate was skipped so, the caller gets that header's 400.
   - Before planning, each identity field is read (`invalid_identity`, 422, even when another
     complete variant was sent): one of `format: url` must parse as an HTTP URL with a dotted host and
     no userinfo (a scheme-less one gets `https://`), and a stand-in key (`q`) must be a string. A

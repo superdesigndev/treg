@@ -228,6 +228,19 @@ _OUT_OF_CREDITS = [
     ("apify", 403, b'{"error":{"type":"platform-feature-disabled","message":"You\'ve reached your monthly usage limit '
      b'of $100.00, so Actor runs and other Apify services are blocked until your monthly usage cycle resets."}}',
      b'{"error":{"type":"insufficient-permissions","message":"You do not have permission to run this Actor."}}'),
+    ("scrubby", 403, b'{"detail": "Insufficient credits."}', b'{"detail": "Not authenticated"}'),
+    # OpenRouter's other 403s echo the caller's words: a moderated model's `flagged_input`, a
+    # provider's verbatim `metadata.raw`.
+    ("openrouter", 403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}',
+     b'{"error":{"code":403,"message":"Your chosen model requires moderation and your input was flagged",'
+     b'"metadata":{"reasons":["violence"],"flagged_input":"pay my overdue balance now"}}}'),
+    ("openrouter", 403, b'{"error":{"code":403,"message":"Your account has an overdue balance"}}',
+     b'{"error":{"code":403,"message":"Provider returned error","metadata":{"raw":{"error":{"message":'
+     b'"Prompt about an overdue balance was rejected"}},"provider_name":"Google"}}}'),
+    ("marketstack", 401, b'{"error":{"code":"inactive_user","message":"Permission denied - User not active"}}',
+     b'{"error":{"code":"invalid_access_key","message":"You have not supplied a valid API Access Key."}}'),
+    ("minimax", 200, b'{"data":null,"base_resp":{"status_code":1008,"status_msg":"insufficient balance"}}',
+     b'{"data":{"audio":"https://example.test/a.mp3"},"base_resp":{"status_code":0,"status_msg":"success"}}'),
 ]
 
 
@@ -328,6 +341,23 @@ def test_a_daily_quota_without_a_wait_header_resets_at_the_next_utc_midnight():
     assert lusha.kind == "quota" and lusha.resets_at == datetime(2026, 1, 3)
     with pytest.raises(ValueError):
         S.Signature("x", 429, r"", "quota", resets="next_tuesday")
+
+
+def test_account_answers_the_shared_rows_already_read():
+    """Answers on treg's key that need no row of their own: a 402 is the shared balance row whatever
+    its words, and ContactOut's two 429s are told apart by their wait header alone."""
+    for provider, out in (("fishaudio", b'{"message":"Insufficient API credit for this model"}'),
+                          ("fishaudio", b""),
+                          ("tikhub", b'{"detail":{"code":402,"message":"Insufficient balance, this endpoint '
+                                     b'requires payment"}}'),
+                          ("exa", b'{"error":"You have exceeded your credits limit.","tag":"NO_MORE_CREDITS"}')):
+        assert S.classify(provider, 402, None, out).kind == "balance", provider
+    daily = S.classify("contactout", 429, httpx.Headers({"retry-after": "45280", "x-ratelimit-limit": "3000"}),
+                       b'{"message":"You have reached the daily limit for this API."}', now=_NOW)
+    assert daily.kind == "quota" and daily.resets_at == _NOW + timedelta(seconds=45280)
+    pace = S.classify("contactout", 429, httpx.Headers({"retry-after": "27", "x-ratelimit-limit": "20"}),
+                      b'{ "message": "Too Many Attempts." }', now=_NOW)
+    assert pace.kind == "burst" and not S.is_exhausting(pace)
 
 # Apollo API reference, "422 Unprocessable Entity": the body an empty credit pool gets (live 2026-09-01).
 APOLLO_OUT_OF_CREDITS = b'{"error": "Insufficient credits. Please upgrade your plan."}'
@@ -436,7 +466,7 @@ _UNRECORDED_SIGNATURE = {
     "upcell",  # what it answers with no credits left is undocumented and unobserved
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "branddev", "brightdata", "coresignal", "crustdata",
-    "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
+    "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi",
     "sumble",  # exhaustion not forced; no overflow route claimed
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
@@ -451,7 +481,6 @@ _UNRECORDED_SIGNATURE = {
     "localfalcon",  # invoiced per request, no prepaid balance to exhaust; no empty-credit response exists to record
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
-    "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
     "bounceban",  # verification credits remain; exhaustion was not forced and no overflow is claimed
     "zerobounce",  # credits remain; exhaustion was not forced and no overflow is claimed
@@ -463,7 +492,7 @@ _UNRECORDED_SIGNATURE = {
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "fundable",  # unlimited API account; an exhausted-credit response was not forced
-    "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
+    "oceanio", "replicate", "scrapecreators", "seranking",
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
     "serper",  # funded credits remain; no provider-specific empty-balance response was forced

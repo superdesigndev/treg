@@ -782,7 +782,7 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'queryParams.type': None}, True),     # null: must be absent, declared or not
     ({'body.realtime': None}, True),        # a declared body field may be absent-only too
     ({'body.missing': None}, False),        # an absent-only body field is a declared one
-    ({'headers.x-key': None}, False),
+    ({'headers.x-key': None}, True),        # null: the header must be absent, declared or not
     ({'pathParams.model': ['stable', 'stable-preview']}, True),   # a path or query pin may list values
     ({'pathParams.model': 'stable'}, True),
     ({'queryParams.memory': [1024, 2048]}, True),

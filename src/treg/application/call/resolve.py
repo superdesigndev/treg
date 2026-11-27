@@ -1858,6 +1858,26 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
         )
 
 
+def _enforce_apify_declared_query(ep: dict, query) -> None:
+    """An Apify row without a run cap (a run poll) takes only the query options it declares on
+    treg's key: Apify also reads a caller's own `token` from the query, in more than one spelling."""
+    inputs = ep.get("input") or {}
+    declared = set(inputs.get("queryParams") or {}) | set(inputs.get("pathParams") or {})
+    names = [name for name, _ in query.multi_items()] if query is not None else []
+    if any(name not in declared for name in names):
+        expected = "only " + ", ".join(sorted(declared)) if declared else "no query options"
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                "error": "catalog_parameter_invalid",
+                "endpoint_id": ep["id"],
+                "parameter": "queryParams",
+                "expected": expected,
+                "message": f"Apify platform calls to {ep['id']} take {expected}. "
+                           "Connect your own key for other options",
+            },
+        )
+
+
 def _spool_evidence_paths(ep: dict, cost: dict) -> tuple[str, ...]:
     """What a spooled answer must keep for settlement: the top-level objects its usage terms read,
     and the leaf its `expect` success rule compares; for a v2 row, every answer path its outcome
@@ -1981,8 +2001,11 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                 },
             )
 
-    if ep.get("provider") == "apify" and (ep.get("reserve") or {}).get("money"):
-        _enforce_apify_run_options(ep, query)
+    if ep.get("provider") == "apify":
+        if (ep.get("reserve") or {}).get("money"):
+            _enforce_apify_run_options(ep, query)
+        else:
+            _enforce_apify_declared_query(ep, query)
 
     input_schema = ep.get("input") or {}
     rules = ep.get("platform_request") or {}
@@ -2007,6 +2030,17 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             continue
         name = str(path).split(".", 1)[1].lower()
         supplied = _request_header_values(headers, name)
+        if expected is None:
+            if supplied:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, rule="platform", detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": f"headers.{name}",
+                        "message": f"{ep['id']} does not take header {name} on treg's key; "
+                                   "connect your own key to use it",
+                    },
+                )
+            continue
         if supplied != [str(expected)]:
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, rule="platform", detail={
