@@ -457,7 +457,9 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
 - `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
-  rebuilding the schema only when its column-and-index fingerprint changed. It works a few tables
+  rebuilding the schema only when its column-and-index fingerprint changed. The fingerprint is
+  read only after some engine in the process ran DDL (a listener on every `Engine`, installed by
+  the first reset, so a server never carries it). It works a few tables
   per transaction: Postgres's lock table is shared by every database on the server, and parallel
   test workers each locking every table at once exhaust it.
 - `TREG_READ_DATABASE_URL` adds `read_session_maker`, read-only by default (PostgreSQL read-only

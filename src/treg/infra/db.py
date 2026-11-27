@@ -10,7 +10,7 @@ from functools import cache
 from importlib import import_module
 
 from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
-from sqlalchemy import bindparam, event, inspect, text
+from sqlalchemy import Engine, bindparam, event, inspect, text
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -439,6 +439,16 @@ async def _stamp_test_schema(connection) -> None:
 # The schema reset_db() last built. A test that alters the shared schema (a column, an index, a
 # dropped table) changes the fingerprint, and the next reset rebuilds instead of only deleting rows.
 _built_schema: tuple | None = None
+# Whether any engine in this process ran DDL since the last reset. Only then can the schema differ
+# from `_built_schema`, so only then is the fingerprint read.
+_ddl_seen = True
+_DDL_HEADS = ("CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "REINDEX", "CLUSTER")
+
+
+def _note_ddl(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+    global _ddl_seen
+    if not _ddl_seen and statement.lstrip()[:8].upper().startswith(_DDL_HEADS):
+        _ddl_seen = True
 
 
 async def _schema_fingerprint(connection) -> tuple:
@@ -472,14 +482,22 @@ async def reset_db() -> None:
     fed per-test DDL accumulates WAL until an unrelated commit stalls). The schema is rebuilt only
     when it is not the one this function last built: a fresh database, or a test that altered it.
     """
-    global _built_schema
+    global _built_schema, _ddl_seen
     from .. import models  # noqa: F401 - populate SQLModel.metadata
+
+    if not event.contains(Engine, "before_cursor_execute", _note_ddl):
+        event.listen(Engine, "before_cursor_execute", _note_ddl)
 
     for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
         await engine.dispose()
     tables = SQLModel.metadata.sorted_tables
-    async with _engine.begin() as connection:
-        built = _built_schema is not None and await _schema_fingerprint(connection) == _built_schema
+    if _built_schema is None:
+        built = False
+    elif _ddl_seen:
+        async with _engine.begin() as connection:
+            built = await _schema_fingerprint(connection) == _built_schema
+    else:
+        built = True
     # Postgres holds every lock a transaction takes until it ends, in one table shared by every
     # database on the server (max_locks_per_transaction x max_connections entries). One
     # transaction over every table and index, in each of many parallel test workers, fills it
@@ -507,6 +525,7 @@ async def reset_db() -> None:
         if not built:
             _built_schema = await _schema_fingerprint(connection)
         await _stamp_test_schema(connection)
+    _ddl_seen = False
 
 
 _RESET_BATCH = 8
