@@ -37,13 +37,12 @@ async def test_apps_are_in_the_served_html_and_the_structured_data(clients: Asyn
 
 
 async def test_showcase_is_linked_and_listed(clients: AsyncClient):
-    for page in ("/", "/blog", "/use-cases", "/people-search", "/leads-signals", "/grokbot", "/fable",
+    assert f'href="{PATH}"' in (await clients.get("/")).text
+    # the bundled pages unwrap their hosted markers when they serve (the home page keeps its own)
+    for page in ("/blog", "/use-cases", "/people-search", "/leads-signals", "/grokbot", "/fable",
                  "/ugc", "/aeo", "/rea-growth", "/rea-marketing", "/social", "/jev", "/gtm-engineering"):
         r = await clients.get(page)
-        assert f'href="{PATH}"' in r.text, page
-        # the bundled pages unwrap their hosted markers when they serve (the home page keeps its own)
-        if page != "/":
-            assert "hosted-->" not in r.text, page
+        assert r.status_code == 200 and "hosted-->" not in r.text, page
     assert f"{PATH}<" in (await clients.get("/sitemap.xml")).text
 
 

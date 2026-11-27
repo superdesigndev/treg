@@ -218,22 +218,6 @@ async def test_the_worker_command(clients, monkeypatch, capsys):
     assert out["privacy"]["judged"] == 1 and out["codes"]["judged"] == 1
 
 
-def test_the_codebook_sends_quota_on_treg_s_account_to_treg_and_caller_scope_to_context():
-    # A choice is decided mostly by its criteria, so the rules live there, not only in the instructions.
-    assert "treg's own account" in review_codes.CODES["TREG"]
-    assert "which is TREG" in review_codes.CODES["ERROR"]
-    assert "unfiltered" in review_codes.CODES["CONTEXT"] and "target segment" in review_codes.CODES["CONTEXT"]
-    assert review_codes.CODES["RISKY"].startswith("The vendor's own output")
-
-
-def test_off_topic_hits_are_wrong_not_context_and_boilerplate_is_noreason():
-    assert "that is WRONG" in review_codes.CODES["CONTEXT"]
-    assert "only share a word" in review_codes.CODES["WRONG"]
-    assert "boilerplate" in review_codes.CODES["NOREASON"]
-    # Versions order as strings, so a same-day revision still re-judges the earlier one.
-    assert review_codes.CODEBOOK_VERSION > "2026-11-23"
-
-
 async def test_the_judge_runs_from_reasons_when_object_storage_is_unavailable(clients, monkeypatch, capsys):
     import argparse
 

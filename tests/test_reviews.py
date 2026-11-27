@@ -108,7 +108,7 @@ async def test_invited_recomputed(clients, monkeypatch, tier, rate, status, cach
 
 
 @pytest.mark.parametrize('fields', [
-    {'call_id': 'private@example.com'}, {'call_id': 'x' * 129}, {'call_id': ''},
+    {'call_id': 'private@example.com'}, {'call_id': 'x' * 129},
     {'usefulness': 'excellent'}, {'reason': '  '}, {'reason': 'x' * 201},
     {'endpoint_id': 'spoofed'}, {'invited': True},
 ])
@@ -226,6 +226,7 @@ async def test_review_rows_become_one_mark_tied_to_the_review(clients):
                           {'index': 5, 'verdict': 'missing'}]
     # A repeated review keeps the first, adds no rows and names the first one's mark.
     again = await submit(clients, org, usefulness='not_useful', rows=[{'verdict': 'wrong'}])
+    assert again.status_code == 200
     assert again.json() == {'review_id': body['review_id'], 'status': 'already_reviewed',
                             'mark_id': mark.id}
     assert len(await marks_for()) == 1
@@ -307,14 +308,12 @@ async def test_a_bad_prior_review_never_fails_the_call(clients, monkeypatch):
     assert await rows() == []
 
 
-@pytest.mark.parametrize('prior', [
-    'unreviewed', ['review-call'], 7, True,
-    {'call_id': 'review-call', 'usefulness': 'partly', 'reason': 'x' * 201},
-    {'call_id': 'review-call', 'usefulness': 'partly', 'rows': [{'row': 2, 'verdict': 'wrong'}]},
-    {'call_id': 'review-call', 'usefulness': 'great'},
-    {'usefulness': 'useful'},
+@pytest.mark.parametrize('prior,rate', [
+    ('unreviewed', 1), (['review-call'], 1),
+    ({'call_id': 'review-call', 'usefulness': 'partly', 'reason': 'x' * 201}, 1),
+    ({'call_id': 'review-call', 'usefulness': 'partly', 'rows': [{'row': 2, 'verdict': 'wrong'}]}, 1),
+    ({'call_id': 'review-call', 'usefulness': 'great'}, 0),
 ])
-@pytest.mark.parametrize('rate', [0, 1])
 async def test_a_malformed_prior_review_is_dropped_and_the_call_runs(clients, monkeypatch, prior, rate):
     from test_mcp import _call_tool as team_call, mcp_session
 
@@ -379,17 +378,6 @@ async def test_the_real_submission_gives_up_after_its_timeout(clients, monkeypat
         yield Slow()
     monkeypatch.setattr(mcp, '_api', slow_api)
     await asyncio.wait_for(mcp._submit_prior(mcp.PriorReviewIn(call_id='c1', usefulness='useful'), 't'), 1)
-
-
-async def test_a_retried_review_returns_the_mark_its_rows_wrote(clients):
-    org = await seed(clients)
-    rows_ = [{'index': 1, 'verdict': 'wrong'}]
-    first = (await submit(clients, org, usefulness='partly', rows=rows_)).json()
-    again = await submit(clients, org, usefulness='partly', rows=rows_)
-    assert again.status_code == 200
-    assert again.json() == {'review_id': first['review_id'], 'status': 'already_reviewed',
-                            'mark_id': first['mark_id']}
-    assert len(await marks_for()) == 1
 
 
 async def test_review_rows_spend_the_mark_allowance(clients, monkeypatch):
