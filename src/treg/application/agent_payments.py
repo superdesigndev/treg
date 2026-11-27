@@ -850,7 +850,10 @@ async def _admit_proof(paid: PaidOffer, verified: Verified,
     if reason := await _suspension(org_id):
         raise PayerSuspended(reason)
     if not await _claim_proof(verified):
-        raise await challenge(paid, reason="payment_replayed", message="this proof was already used")
+        # A concurrent send of the same recovery proof keeps the recovery: its replacement can
+        # run no call the first one already ran.
+        raise await challenge(_recovering(paid, signed), reason="payment_replayed",
+                              message="this proof was already used")
     if signed is not None and signed.recovery \
             and not await _claim_recovery(signed.nonce, verified.proof_id):
         raise _recovery_used(paid)

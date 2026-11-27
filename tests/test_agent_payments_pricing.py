@@ -701,6 +701,43 @@ async def test_a_refused_recovery_payment_leaves_the_recovery_to_retry(
     assert len(calls) == 1
 
 
+async def test_a_recovery_proof_replayed_concurrently_keeps_its_recovery(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The same recovery proof sent twice at once: both pass the spent check before either
+    claims the recovery, and the one that loses the proof claim is offered the same recovery's
+    terms, so following it runs no second call."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "ee" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert kept.status_code == 402, kept.text
+    proof = await _mpp_proof(kept, account)
+    assert (await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": proof})).status_code == 200
+    spent = agent_payments._recovery_spent
+
+    async def not_yet(nonce):   # as the concurrent send saw it, before the first claimed it
+        return False
+
+    monkeypatch.setattr(agent_payments, "_recovery_spent", not_yet)
+    lost = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+    assert lost.status_code == 402, lost.text
+    monkeypatch.setattr(agent_payments, "_recovery_spent", spent)
+    followed = await wallet.get(f"/call/{EP}?aweme_id=7",
+                                headers={"Authorization": await _mpp_proof(lost, account)})
+    assert followed.status_code == 409, followed.text
+    assert followed.json()["detail"]["reason"] == "challenge_used"
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("switch", [False, True], ids=["switch-off", "switch-on"])
 async def test_a_challenge_issued_with_the_configured_realm_still_pays(
         wallet: AsyncClient, payments_on, chain, monkeypatch, switch):

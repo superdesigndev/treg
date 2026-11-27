@@ -354,7 +354,7 @@ headers (`X-Treg-Payment` among them) and no receipt.
   ordinary terms that would run a call without claiming the recovery; so is one its rail refuses
   (its challenge expired, say), whose terms each rail reads without verifying (`offered_terms`;
   treg's own MAC authenticates them), and that refusal answers the final 409 once the recovery
-  ran. One whose credit no longer
+  ran; so is the copy of a recovery proof that loses its proof claim to a concurrent send. One whose credit no longer
   covers the call is asked to pay on those recovery terms, and a payment under them claims the
   recovery before its call (claimed already, or its terms used by another payment: nothing moved
   is refused the final `challenge_used`, a pushed transfer is kept as credit with the same 409);
