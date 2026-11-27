@@ -1,0 +1,16 @@
+{
+  "data": {
+    "email": "jane.doe@example.com",
+    "is_catch_all": false,
+    "is_role_based": false,
+    "is_disposable": false,
+    "is_consumer": false,
+    "email_provider": "",
+    "verdict": "undeliverable",
+    "deliverability_score": 0
+  },
+  "credits": {
+    "charged": 1,
+    "available": null
+  }
+}

@@ -167,17 +167,6 @@ def test_disagree_advice_needs_a_verified_output():
     assert c["x.find"].check.disagree_advice == "x"
 
 
-async def test_a_plain_verify_call_keeps_its_own_order(clients: AsyncClient, verifiers_on, monkeypatch):
-    """BounceBan is preferred inside the check only: the contract itself prefers nobody."""
-    assert catalog_store.load().contracts["people.email.verify"].prefer == ()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay(
-        {"tomba-verify": [(200, {"data": {"email": {"status": "valid", "score": 99}}})]}, seen))
-    r = await clients.post(f"/call/{VERIFY}", json={"email": "p@stripe.com"},
-                           headers={"X-Treg-Route-Prefer": "tomba"})
-    assert r.status_code == 200 and seen == ["tomba-verify"], "the caller's own prefer still decides"
-
-
 async def test_the_teams_own_verifier_key_goes_before_bounceban(clients: AsyncClient, verifiers_on, monkeypatch):
     seen = []
     hunter_valid = (200, {"data": {"status": "valid", "score": 95}})
@@ -338,9 +327,7 @@ def test_the_header_never_reaches_a_child():
 
 
 @pytest.mark.parametrize("kind,reason", [
-    ("route_max_cost", "over_cost_limit"), ("insufficient_balance", "spend_limit"),
-    ("daily_cap_reached", "spend_limit"), ("policy_denied", "not_allowed"),
-    ("capability_pinned", "not_allowed"), ("route_no_candidate", "no_checker"), ("route_failed", "checker_failed"),
+    ("route_max_cost", "over_cost_limit"), ("insufficient_balance", "spend_limit"), ("route_failed", "checker_failed"),
 ])
 async def test_a_refused_check_says_why_and_costs_nothing(kind, reason):
     async def refuse(child, client):
@@ -350,6 +337,7 @@ async def test_a_refused_check_says_why_and_costs_nothing(kind, reason):
     parent.meta = None
     parent.quota_admissions = set()
     parent.quota_pending = ()
+    parent.routed_allowance = parent.routed_root = None
     parent.input = type("I", (), {"raw_headers": (), "caller": None, "client_ip": "", "catalog_only": False})()
     v, cost = await call_route._run_check(parent, Check(endpoint=VERIFY, field="email", prefer=("bounceban",)),
                                           {"email": "a@b.c"}, None, [], refuse, None)

@@ -11,16 +11,16 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, func, text, true, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
 from ...infra.money_trace import mark_money, money_stage
-from ...models import CallCharge, Hold, LedgerEntry, Org
+from ...models import CallCharge, Hold, LedgerEntry, Org, TagSpend
 from . import (
     _add_balance,
     _charge_parts,
@@ -182,14 +182,15 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if not claimed:
         return Folded()
     charges = sorted(claimed, key=lambda row: (row.created_at, row.call_id))
-    if charges and not await team_exists(db, org_id):
-        charges = []
+    charged = sum(row.amount_micro for row in charges)
+    blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
+    # Blocks, then the team row: the order a team's deletion deletes them in.
+    if not await _lock_team(db, org_id):
+        charges, charged, blocks = [], 0, []
     orphaned = len(claimed) - len(charges)
     if orphaned:
         log.error("allowance_charges_orphaned org_id=%s dropped=%s: the team they were admitted "
                   "for has been deleted", org_id, orphaned)
-    charged = sum(row.amount_micro for row in charges)
-    blocks = await _lock_blocks(db, {org_id}) if charged > 0 else []
     folded_at = _now()
     consumed = 0
     for row in charges:
@@ -202,6 +203,10 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
             meta={**(row.meta or {}), "allowance": True, "settled_micro": row.amount_micro,
                   "consumed_micro": drawn, "block_shortfall_micro": shortfall,
                   "charged_at": row.created_at.isoformat()})
+        # A tagged call's tag rows, settled at once with the entry, as `settle` leaves them.
+        for dim, val in ((row.meta or {}).get("tags") or {}).items():
+            db.add(TagSpend(org_id=org_id, dim=dim, val=val, hold_id=row.call_id,
+                            amount_micro=drawn, settled=True, created_at=folded_at))
     # The hold pays for what each of ITS calls set aside and no more. A call's overrun comes out
     # of the balance, as it does at `settle`, and so does all of a call that set its money aside
     # from an earlier hold: this one belongs to the calls it admitted.
@@ -216,6 +221,17 @@ async def _apply_charges(db: AsyncSession, org_id: int, hold: Hold | None, claim
     if covered != consumed or consumed != counted:
         await _add_balance(db, org_id, covered - consumed, spent_delta_micro=consumed - counted)
     return Folded(len(charges), charged, consumed, orphaned)
+
+
+async def _lock_team(db: AsyncSession, org_id: int) -> bool:
+    """Whether there is still a team to charge, holding it until this transaction ends. A fold
+    may write no balance or block change and still write the team's settle entries and tag rows;
+    the share lock is what makes a deletion of the team wait for those rows (PostgreSQL's DELETE
+    conflicts with it) and then take them, or makes this fold wait for the deletion and find no
+    team. One lock per fold, not per row."""
+    with money_stage(db, "lock_team"):
+        return (await db.execute(select(Org.id).where(Org.id == org_id)
+                                 .with_for_update(read=True, key_share=True))).first() is not None
 
 
 async def team_exists(db: AsyncSession, org_id: int) -> bool:
@@ -340,6 +356,52 @@ def _epoch(hold: Hold) -> int:
 
 def _epoch_of(created_at: datetime) -> int:
     return (created_at - datetime(1970, 1, 1)) // timedelta(microseconds=1)
+
+
+async def unheld_free(db: AsyncSession, org_id: int) -> int:
+    """`org.balance_micro` less what queued charges owe it (`_queued_unbacked`): what a reserve
+    meets. Below zero when an overrun is owed, which a reserve of anything, nothing included,
+    then cannot pass."""
+    return int((await db.execute(
+        select(Org.balance_micro - _queued_unbacked(org_id)).where(Org.id == org_id)
+    )).scalar() or 0)
+
+
+async def spendable(db: AsyncSession, org_id: int, *, counter_micro: int = 0,
+                    counter_epoch: int | None = None) -> int:
+    """The balance a team is shown: what it can spend now. `org.balance_micro` less what its
+    queued charges owe the balance (`_queued_unbacked`), plus what its allowance counter offers
+    (`counter_micro`, read from the store for `counter_epoch`). A refill moves up to a chunk from
+    the balance into the hold, which for a small team is all of it; what the counter still
+    offers is the team's to spend, and a call short of money takes it back.
+
+    The rest of the hold is not counted: calls in flight took it, or a counter lost with the
+    store left it behind until the idle sweep returns it. A counter built for another hold, or
+    showing more than this hold has, counts for nothing beyond the hold."""
+    free = await unheld_free(db, org_id)
+    offered = 0
+    if counter_micro > 0 and counter_epoch:
+        hold = (await db.execute(select(Hold.created_at, Hold.amount_micro).where(
+            Hold.id == allowance_id(org_id)))).one_or_none()
+        if hold is not None and _epoch_of(hold.created_at) == counter_epoch:
+            offered = min(int(counter_micro), int(hold.amount_micro))
+    return max(0, free + offered)
+
+
+async def credit_bound(db: AsyncSession, org_id: int) -> int:
+    """The team's money wherever it sits: `org.balance_micro` plus its allowance hold, less what
+    queued charges have spent, in one statement. Above what it can spend now by what calls in
+    flight took and what a lost counter left in the hold; never below it, so money a refill or
+    a give-back is moving between the store and the database is inside it. Not a balance to
+    show or spend against: below a figure, it says the money is not there at all."""
+    from_hold, outright = _charge_parts(org_id)
+    queued = func.coalesce(select(func.sum(from_hold + outright)).where(
+        CallCharge.org_id == org_id).scalar_subquery(), 0)
+    held = func.coalesce(select(Hold.amount_micro).where(
+        Hold.id == allowance_id(org_id)).scalar_subquery(), 0)
+    bound = (await db.execute(
+        select(Org.balance_micro + held - queued).where(Org.id == org_id))).scalar()
+    return max(0, int(bound or 0))
 
 
 async def committed_today(db: AsyncSession, org_id: int) -> int:
@@ -573,26 +635,82 @@ async def close_stale_allowance_in_transaction(
     return await _close(db, org_id, hold, reason, None)
 
 
+Shard = tuple[int, int]
+"""`(index, count)`: the teams whose number leaves `index` when divided by `count`."""
+
+
+def _in_shard(column, shard: Shard | None):
+    if shard is None or shard[1] <= 1:
+        return true()
+    return column % shard[1] == shard[0]
+
+
 async def stale_allowance_orgs(db: AsyncSession, stale_before: datetime, *,
-                               after: int = 0, limit: int = 50) -> list[int]:
+                               after: int = 0, limit: int = 50,
+                               shard: Shard | None = None) -> list[int]:
     """Teams whose allowance hold stopped admitting calls before `stale_before`, in the order of
     their numbers, a page at a time: `after` is the last team of the page before. A read; the
     close re-checks under the lock."""
     return list((await db.execute(
         select(Hold.org_id).where(
-            Hold.allowance.is_(True), Hold.org_id > after,
+            Hold.allowance.is_(True), Hold.org_id > after, _in_shard(Hold.org_id, shard),
             func.coalesce(Hold.heartbeat_at, Hold.created_at) < stale_before)
         .order_by(Hold.org_id).limit(limit))).scalars())
 
 
+_QUEUED_TEAMS = """
+WITH RECURSIVE teams(org_id) AS (
+    SELECT (SELECT min(org_id) FROM callcharge)
+    UNION ALL
+    SELECT (SELECT min(c.org_id) FROM callcharge c WHERE c.org_id > teams.org_id)
+    FROM teams WHERE teams.org_id IS NOT NULL
+)
+SELECT org_id, oldest FROM (
+    SELECT t.org_id,
+           (SELECT min(c.created_at) FROM callcharge c
+            WHERE c.org_id = t.org_id AND c.created_at < :queued_before) AS oldest
+    FROM teams t
+    WHERE t.org_id IS NOT NULL AND t.org_id % :shard_count = :shard_index
+) queued
+WHERE oldest IS NOT NULL{after}
+ORDER BY oldest, org_id
+LIMIT :limit
+"""
+_FIRST_PAGE = text(_QUEUED_TEAMS.format(after=""))
+_NEXT_PAGE = text(_QUEUED_TEAMS.format(
+    after=" AND (oldest > :after_oldest OR (oldest = :after_oldest AND org_id > :after_org))"))
+
+QueuedTeam = tuple[int, Any]
+"""`(org_id, oldest)`: a team and when its oldest queued charge was written, as read."""
+
+
+async def queued_teams(db: AsyncSession, queued_before: datetime, *, limit: int = 500,
+                       shard: Shard | None = None,
+                       after: QueuedTeam | None = None) -> list[QueuedTeam]:
+    """Teams with a charge queued before `queued_before`, the team whose oldest charge has waited
+    longest first, at most `limit` of them, starting after `after` (the last of the page before).
+
+    The queue is walked one team number at a time on `ix_callcharge_org_id_created_at` (each
+    step the next number, one index probe), and a team's oldest charge is one more probe, taken
+    only for the teams of `shard`. So a share costs a probe per team with a queue plus one per
+    team of its own, however many rows those teams have queued; a share with no queue of its own
+    reads no queued row at all. The walk itself grows with the number of teams that have a
+    queue, in every share: with very many of them, more shares make each share's list shorter,
+    not its walk."""
+    index, count = shard if shard is not None and shard[1] > 1 else (0, 1)
+    params = {"queued_before": queued_before, "shard_count": count, "shard_index": index,
+              "limit": limit}
+    if after is not None:
+        params.update(after_org=after[0], after_oldest=after[1])
+    rows = await db.execute(_FIRST_PAGE if after is None else _NEXT_PAGE, params)
+    return [(row[0], row[1]) for row in rows]
+
+
 async def orgs_with_queued_charges(db: AsyncSession, queued_before: datetime, *,
-                                   after: int = 0, limit: int = 50) -> list[int]:
-    """Teams with a charge queued before `queued_before`, in the order of their numbers, a page
-    at a time: `after` is the last team of the page before."""
-    return list((await db.execute(
-        select(CallCharge.org_id)
-        .where(CallCharge.created_at < queued_before, CallCharge.org_id > after)
-        .distinct().order_by(CallCharge.org_id).limit(limit))).scalars())
+                                   limit: int = 500, shard: Shard | None = None) -> list[int]:
+    """The team numbers of `queued_teams`' first page."""
+    return [org_id for org_id, _ in await queued_teams(
+        db, queued_before, limit=limit, shard=shard)]
 
 
 async def _close(db: AsyncSession, org_id: int, hold: Hold | None, reason: str,

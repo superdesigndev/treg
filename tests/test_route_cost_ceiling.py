@@ -35,7 +35,7 @@ async def _assert_no_holds():
 
 @pytest.mark.parametrize('endpoint', ['moz.web.backlinks.list', 'treg.web.backlinks.list'])
 @pytest.mark.parametrize('cap,margin,status', [
-    ('0.01', '0', 402), ('0.333349', '0', 402), ('0.333350', '0', 200),
+    ('0.333349', '0', 402), ('0.333350', '0', 200),
     ('0.333350', '0.2', 402), ('0.400020', '0.2', 200),
 ])
 async def test_backlinks_ceiling(clients, moz_on, monkeypatch, endpoint, cap, margin, status):

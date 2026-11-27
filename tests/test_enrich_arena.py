@@ -36,6 +36,17 @@ async def plan(c, mode="compare", providers=None, **extra):
     return r.json()
 
 
+def _no_rate_wait(monkeypatch):
+    """Wiza's published rate makes its poll wait for the next token; these tests are about the poll."""
+    from treg.application.call import keyslots
+    real = keyslots.rate_bucket
+
+    def roomy(*args):
+        bucket = real(*args)
+        return bucket and (bucket[0], 1000, bucket[2])
+    monkeypatch.setattr(keyslots, "rate_bucket", roomy)
+
+
 async def test_wiza_async_email_finder_completes_inside_arena(clients, monkeypatch):
     from treg.config import get_settings
 
@@ -44,6 +55,7 @@ async def test_wiza_async_email_finder_completes_inside_arena(clients, monkeypat
     get_settings.cache_clear()
     endpoint = arena.catalog_store.load().by_id["wiza.people.email.find"]
     monkeypatch.setitem(endpoint["async"], "interval", 0.01)
+    _no_rate_wait(monkeypatch)
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({
         "wiza": [
@@ -138,6 +150,7 @@ async def test_wiza_arena_poll_404_stops_waterfall_while_task_is_live(clients, m
     get_settings.cache_clear()
     endpoint = arena.catalog_store.load().by_id["wiza.people.phone.find"]
     monkeypatch.setitem(endpoint["async"], "interval", 0.01)
+    _no_rate_wait(monkeypatch)
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({
         "wiza": [
@@ -243,7 +256,10 @@ async def test_batch_waterfall_admits_first_step_for_every_entry(clients, enrich
     assert q["required_micro"] == single["required_micro"] * 2
     async def one_entry_balance(*args):
         return single["required_micro"]
-    monkeypatch.setattr(arena.money, "balance_of", one_entry_balance)
+    monkeypatch.setattr(arena.call_allowance, "spendable", one_entry_balance)
+    async def one_entry_reach(*args):
+        return arena.call_allowance.Reach(single["required_micro"], True)
+    monkeypatch.setattr(arena.call_allowance, "reach", one_entry_reach)
     q = await batch_plan(clients, "waterfall")
     assert not q["affordable"]
     assert (await clients.post(f"/arena/runs/{q['id']}/start")).status_code == 402
@@ -497,14 +513,6 @@ def test_non_winner_feedback(kind,selected):
     rules.validate_vote(kind,selected,[],[{'id':'a','state':'hit'},{'id':'b','state':'hit'}])
 
 
-def test_false_mailbox_verdict_is_not_a_miss():
-    from treg.domain.catalog import store
-    cat=store.load();ep=cat.by_id['hunter.people.email.verify']
-    outcome,out=rules.classify(cat.contracts['people.email.verify'],cat.adapters[ep['id']],ep,200,
-        {'data':{'status':'invalid','score':0}})
-    assert outcome=='hit' and out['valid'] is False
-
-
 async def test_oauth_return_only_allows_arena(clients,monkeypatch):
     from types import SimpleNamespace
     from starlette.requests import Request
@@ -671,21 +679,23 @@ async def test_manual_plan_rechecks_own_key_and_credit_admission(clients, enrich
     target = result['results'][1]
     path = '/arena/runs/' + result['id'] + '/attempts/' + target['id']
     q = (await clients.post(path+'/plan')).json()
-    from treg.domain import money
-    original = money.balance_of
+    money = arena.call_allowance
+    original = money.spendable
     async def empty(*args, **kwargs): return 0
-    monkeypatch.setattr(money, 'balance_of', empty)
+    async def none_found(*args, **kwargs): return money.Reach(0, True)
+    monkeypatch.setattr(money, 'spendable', empty)
+    monkeypatch.setattr(money, 'reach', none_found)
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 402
     assert len(seen) == 1
-    monkeypatch.setattr(money, 'balance_of', original)
+    monkeypatch.setattr(money, 'spendable', original)
     await clients.post('/secrets',json={'name':'hunter','value':'OWN-KEY'})
     before = await _balance(clients)
     async def negative(*args, **kwargs): return -100
-    monkeypatch.setattr(money, 'balance_of', negative)
+    monkeypatch.setattr(money, 'spendable', negative)
     q = (await clients.post(path+'/plan')).json()
     assert q['estimate_micro'] == 0 and q['affordable'] is True
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 200
-    monkeypatch.setattr(money, 'balance_of', original)
+    monkeypatch.setattr(money, 'spendable', original)
     task = arena._owners.get(result['id'])
     if task: await task
     extra = (await clients.get('/arena/runs/'+result['id'])).json()['results'][1]
@@ -717,12 +727,11 @@ async def test_manual_and_feedback_scope_validation_and_expiry(clients, enrichme
     clients.headers['X-Treg-Token'] = token
 
 
-@pytest.mark.parametrize('mode', ['waterfall', 'compare'])
-async def test_ratings_persist_without_details_and_can_change(clients, enrichment_on, monkeypatch, mode):
+async def test_ratings_persist_without_details_and_can_change(clients, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(service, 'relay', _relay_by_provider({
         'tomba': [(200, TOMBA_HIT)], 'hunter': [(200, HUNTER_HIT)]}, seen))
-    result = await finish(clients, await plan(clients, mode=mode))
+    result = await finish(clients, await plan(clients, mode='waterfall'))
     first = result['results'][0]
     root = '/arena/runs/' + result['id']
     path = root + '/attempts/' + first['id']
@@ -848,8 +857,8 @@ async def test_hourly_limit_applies_at_start_but_pricing_remains_available(clien
     assert not seen
 
 
-@pytest.mark.parametrize('verdict', ['valid', 'invalid'])
-async def test_tomba_verification_sends_email_query_and_settles(clients, enrichment_on, monkeypatch, verdict):
+async def test_tomba_verification_sends_email_query_and_settles(clients, enrichment_on, monkeypatch):
+    verdict = 'valid'
     from treg.application.call.types import UpstreamResponse
     seen = []
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
@@ -914,7 +923,7 @@ def test_provider_402_is_distinct_from_team_balance_refusal():
     assert rules.present({'attempts':[attempt]},mode='compare',state='completed')['results'][0]['upstream_status'] is None
 
 
-@pytest.mark.parametrize('capability,identity', [
+MALFORMED_IDENTITIES = [
     *[('people.email.verify', {'email': email}) for email in
       ['@', 'person@', '@example.com', 'person@@example.com', 'person@example',
        'person@ex\tample.com', 'person@example..com', 'person@example.com/path']],
@@ -923,6 +932,19 @@ def test_provider_402_is_distinct_from_team_balance_refusal():
     *[('people.enrich', {'linkedin_url': url}) for url in
       ['https://[invalid', 'https://linkedin.com:bad/in/person',
        'https://user@linkedin.com/in/person', 'https://linkedin.com/in/a b']],
+]
+
+
+@pytest.mark.parametrize('capability,identity', MALFORMED_IDENTITIES)
+def test_a_malformed_identity_is_refused(capability, identity):
+    with pytest.raises(rules.ArenaError):
+        rules.validate_identity(capability, identity)
+
+
+@pytest.mark.parametrize('capability,identity', [
+    ('people.email.verify', {'email': 'person@@example.com'}),
+    ('companies.enrich', {'domain': 'https://user@example.com'}),
+    ('people.enrich', {'linkedin_url': 'https://linkedin.com:bad/in/person'}),
 ])
 async def test_malformed_identity_is_rejected_before_quote_or_charge(clients, enrichment_on, capability, identity):
     before = await _balance(clients)
@@ -939,8 +961,7 @@ def test_valid_email_forms_remain_accepted(email):
     assert rules.validate_identity('people.email.verify', {'email': email}) == {'email': email}
 
 
-@pytest.mark.parametrize('mode', ['compare', 'waterfall'])
-async def test_aviato_company_not_found_is_a_free_miss(clients, enrichment_on, monkeypatch, mode):
+async def test_aviato_company_not_found_is_a_free_miss(clients, enrichment_on, monkeypatch):
     from treg.application.call.types import UpstreamResponse
     async def relay(*args, **kwargs):
         async def body():
@@ -950,7 +971,7 @@ async def test_aviato_company_not_found_is_a_free_miss(clients, enrichment_on, m
         return UpstreamResponse(404, ((b'content-type', b'text/plain'),), body(), close)
     monkeypatch.setattr(service, 'relay', relay)
     before = await _balance(clients)
-    run = await finish(clients, await plan(clients, mode=mode, providers=['aviato'],
+    run = await finish(clients, await plan(clients, mode='compare', providers=['aviato'],
         capability='companies.enrich', identity={'domain': 'microsoft.com'}))
     assert run['state'] == 'completed'
     assert run['results'][0]['state'] == 'miss'
@@ -1290,9 +1311,10 @@ async def test_verification_credit_admission_and_ownership(clients, enrichment_o
     final = await finish(clients,await plan(clients,mode='waterfall'))
     path = '/arena/runs/'+final['id']+'/attempts/'+final['results'][0]['id']+'/verification'
     q = (await clients.post(path+'/plan')).json()
-    from treg.domain import money
     async def empty(*args,**kwargs): return 0
-    monkeypatch.setattr(money,'balance_of',empty)
+    monkeypatch.setattr(arena.call_allowance,'spendable',empty)
+    async def none_found(*args,**kwargs): return arena.call_allowance.Reach(0, True)
+    monkeypatch.setattr(arena.call_allowance,'reach',none_found)
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 402
     assert (await clients.post(path+'/plan')).json()['affordable'] is False
     assert len(seen) == 1
@@ -1376,36 +1398,48 @@ def test_issue_requires_completed_explicit_negative_email_verdict(task,state,sta
     assert rules.verification_rejected_email(attempt,'people.email.find') is expected
     assert not rules.verification_rejected_email(attempt,'people.phone.find')
 
-async def test_new_free_verifier_is_selected_for_auto_verification(clients, enrichment_on, monkeypatch):
+def _verifier_prices(monkeypatch, usd: dict[str, float]):
+    """Fix each named provider's email-verify price, so the verifier order is the test's, not the catalog's."""
+    from treg.domain.catalog import store as catalog_store
+    by_id = catalog_store.load().by_id
+    for provider, value in usd.items():
+        endpoint = by_id[f'{provider}.people.email.verify']
+        monkeypatch.setitem(endpoint, 'cost', {**endpoint['cost'], 'value': value, 'currency': 'USD'})
+
+
+async def test_cheapest_verifier_is_selected_and_charged_for_auto_verification(clients, enrichment_on, monkeypatch):
     from treg.config import get_settings
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,contactout,trykitt,millionverifier')
-    for name in ['CONTACTOUT','TRYKITT','MILLIONVERIFIER']:
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,contactout,millionverifier')
+    for name in ['CONTACTOUT','MILLIONVERIFIER']:
         monkeypatch.setenv('TREG_PLATFORM_KEY_'+name,'SYNTHETIC-VERIFICATION-KEY')
     get_settings.cache_clear()
+    _verifier_prices(monkeypatch, {'millionverifier': 0.001, 'contactout': 0.002, 'tomba': 0.005})
     seen=[]
-    monkeypatch.setattr(service,'relay',_relay_by_provider({'tomba':[(200,TOMBA_HIT)],'contactout':[(200,{'status_code':200,'data':{'status':'valid'}})]},seen))
+    monkeypatch.setattr(service,'relay',_relay_by_provider({'tomba':[(200,TOMBA_HIT)],'millionverifier':[(200,{'result':'ok','quality':'good','error':''})]},seen))
     q=await plan(clients,mode='waterfall',providers=['tomba'],auto_verify=True)
     assert q['auto_verify']['provider']=='treg'
     assert q['auto_verify']['estimate_micro']>0
     final=await finish(clients,q)
     result=final['results'][0]
-    assert result['verification']['provider']=='contactout'
+    assert result['verification']['provider']=='millionverifier'
     assert result['verification']['output']['valid'] is True
-    assert result['verification']['charged_micro']==0
-    assert result['charged_micro']==result['lookup_charged_micro']
-    assert [c[0] for c in seen]==['tomba','contactout']
+    assert result['verification']['charged_micro']==1_000
+    assert result['charged_micro']==result['lookup_charged_micro']+result['verification']['charged_micro']
+    assert [c[0] for c in seen]==['tomba','millionverifier']
 
-@pytest.mark.parametrize('automatic', [True, False])
-@pytest.mark.parametrize('first_response', [(403, {'status_code':403,'message':'Out of credits'}), (200, {'status_code':200,'data':{}})])
-@pytest.mark.parametrize('verdict', ['valid', 'invalid', 'catch_all'])
+@pytest.mark.parametrize('automatic,first_response,verdict', [
+    (True, (403, {'status_code':403,'message':'Out of credits'}), 'invalid'),
+    (False, (200, {'status_code':200,'data':{}}), 'valid'),
+])
 async def test_email_verification_uses_routed_fallback_and_accounts_for_children(clients, enrichment_on, monkeypatch, automatic, first_response, verdict):
     from treg.config import get_settings
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,contactout,leadmagic')
-    monkeypatch.setenv('TREG_PLATFORM_KEY_CONTACTOUT','SYNTHETIC-VERIFICATION-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','tomba,millionverifier,leadmagic')
+    monkeypatch.setenv('TREG_PLATFORM_KEY_MILLIONVERIFIER','SYNTHETIC-VERIFICATION-KEY')
     get_settings.cache_clear()
+    _verifier_prices(monkeypatch, {'millionverifier': 0.001, 'leadmagic': 0.002, 'tomba': 0.005})
     seen=[]
     monkeypatch.setattr(service,'relay',_relay_by_provider({
-        'tomba':[(200,TOMBA_HIT)], 'contactout':[first_response],
+        'tomba':[(200,TOMBA_HIT)], 'millionverifier':[first_response],
         'leadmagic':[(200,{'email_status':verdict})]},seen))
     before=await _balance(clients)
     final=await finish(clients,await plan(clients,mode='waterfall',providers=['tomba'],auto_verify=automatic))
@@ -1420,8 +1454,8 @@ async def test_email_verification_uses_routed_fallback_and_accounts_for_children
     assert v['state']=='hit' and v['provider']=='leadmagic'
     assert v['served_by']=='leadmagic.people.email.verify'
     assert v['output']['status']==verdict
-    assert [t['provider'] for t in v['tried']]==['contactout','leadmagic']
-    assert [c[0] for c in seen]==['tomba','contactout','leadmagic']
+    assert [t['provider'] for t in v['tried']]==['millionverifier','leadmagic']
+    assert [c[0] for c in seen]==['tomba','millionverifier','leadmagic']
     assert before-await _balance(clients)==final['charged_micro']
     assert v['charged_micro']>0
     assert bool(final['results'][0].get('report'))==(verdict=='invalid')

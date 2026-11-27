@@ -10,8 +10,8 @@ covers (frontmatter `sources:`). Regenerate this index with
 
 | Fragment | Status | Covers |
 |---|---|---|
-| [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, adtrack.js, … |
-| [Affiliate program on Dub Partners - click or code, lead outbox, Stripe tag](architecture/affiliates.md) | shipped | affiliates.py, dub.py, signup_cookies.py, 0118_affiliate_lead.py |
+| [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, click-id.js, … |
+| [Affiliate program on Dub Partners - click or code, lead outbox, Stripe tag](architecture/affiliates.md) | shipped | affiliates.py, affiliate_bonus.py, dub.py, signup_cookies.py, … |
 | [Agent payments — a keyless caller pays a catalog call with MPP or x402](architecture/agent-payments.md) | built, behind `agent_payments_enabled` (TREG_AGENT_PAYMENTS_ENABLED), off by default | agent_payments.py, __init__.py, tempo.py, x402.py, … |
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
 | [Auth & secrets - injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, credential_cipher.py, … |
@@ -30,7 +30,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [MCP - the front door for assistants, and treg as an OAuth authorization server](architecture/mcp-oauth.md) | shipped | auth.py, mcp.py, health.py, mcp_oauth.py, … |
 | [Media hosting - reference files a vendor can fetch (`treg host`)](architecture/media.md) | shipped | media.py, media.py, models.py, object_store.py, … |
 | [Money - prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | policy.py, tavily.yaml, tinyfish.yaml, test_tinyfish.py, … |
-| [Multi-tenancy - orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
+| [Multi-tenancy - orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, names.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, … |
 | [Exact organization and endpoint call allowances](architecture/org-endpoint-quota.md) | shipped | org_endpoint_quota.py, service.py, types.py, route.py, … |
 | [Org admission - published pause, rate and concurrency limits, with optional defaults](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
 | [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |

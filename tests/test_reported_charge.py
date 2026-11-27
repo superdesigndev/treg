@@ -218,3 +218,80 @@ async def test_an_archive_hit_loses_the_charge_and_the_archive_keeps_it(clients,
     assert result["response"]["body_text"] == SERVED.decode()
     asked = (await clients.get(f"/calls/{row['id']}/result", headers={KEEP: "true"})).json()
     assert asked["response"]["body_text"] == ANSWER.decode()
+
+
+def test_the_header_kept_with_an_answer_is_the_one_its_settlement_reads():
+    from treg.domain.catalog.reported_charge import header_of, settle_headers
+    row = {"bill": {}, "settle": {"reported": {"header": "X-Credits", "unit": "credit"}}}
+    assert header_of(row) == "x-credits"
+    assert settle_headers(row, httpx.Headers({"X-CREDITS": "2", "x-other": "9"})) == {"x-credits": "2"}
+    assert settle_headers(row, ((b"x-credits", b"0.5"),)) == {"x-credits": "0.5"}
+    assert settle_headers(row, httpx.Headers({})) == {"x-credits": None}
+    assert settle_headers(row, None) == {"x-credits": None}
+    for other in ({"bill": {}, "settle": {"reported": {"path": "response.c", "unit": "credit"}}},
+                  {"cost": {"type": "per_call", "value": 1}}, None):
+        assert header_of(other) is None and settle_headers(other, httpx.Headers({"x-credits": "2"})) is None
+
+
+@pytest.fixture
+def header_serve(platform_on, monkeypatch):
+    """EP settling from a response header instead of its body, served from the archive."""
+    monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
+    monkeypatch.setattr(get_settings(), "archive_hit_repeat_price_percent", 100)
+    entry = catalog_store.load().by_id[EP]
+    monkeypatch.setitem(entry, "cache", "transient")
+    monkeypatch.setitem(entry, "settle", {"reported": {"header": "x-credits", "unit": "credit", "missing": 0}})
+
+
+def _vendor_with(monkeypatch, headers: dict) -> list[httpx.Request]:
+    seen: list[httpx.Request] = []
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, stream=httpx.ByteStream(SERVED),
+                              headers={"content-type": "application/json", **headers})
+
+    monkeypatch.setattr(A.app.state, "http", AsyncClient(transport=httpx.MockTransport(upstream)))
+    return seen
+
+
+@pytest.mark.parametrize("vendor_headers,credits", [({"x-credits": "2"}, 2), ({}, 0)])
+async def test_a_hit_settles_from_the_header_stored_with_its_answer(
+        clients, header_serve, monkeypatch, vendor_headers, credits):
+    seen = _vendor_with(monkeypatch, vendor_headers)
+    live = await _call(clients)
+    assert live.status_code == 200 and int(live.headers["X-Treg-Cost-Micro"]) == credits * EP_CREDIT_MICRO
+    await archive.drain()
+    async with session_maker() as s:
+        snap = (await s.execute(select(ArchiveSnapshot))).scalars().one()
+    assert snap.reported_headers == {"x-credits": vendor_headers.get("x-credits")}
+    hit = await _call(clients)
+    assert hit.headers["X-Treg-Cache"] == "hit" and len(seen) == 1
+    assert int(hit.headers["X-Treg-Cost-Micro"]) == credits * EP_CREDIT_MICRO
+    assert "x-credits" not in {k.lower() for k in hit.headers}   # settle reads it; the caller does not
+
+
+@pytest.mark.parametrize("stored", [None, {"x-other-header": "2"}])
+async def test_a_hit_whose_snapshot_stored_no_figure_settles_at_the_hold(clients, header_serve, monkeypatch, stored):
+    """A snapshot from before the column, or one stored for another header: the figure is unknown,
+    so `missing: 0` does not make the hit free; it settles at the one-credit hold."""
+    _vendor_with(monkeypatch, {"x-credits": "2"})
+    await _call(clients)
+    await archive.drain()
+    async with session_maker() as s:
+        snap = (await s.execute(select(ArchiveSnapshot))).scalars().one()
+        snap.reported_headers = stored
+        await s.commit()
+    hit = await _call(clients)
+    assert hit.headers["X-Treg-Cache"] == "hit"
+    assert int(hit.headers["X-Treg-Cost-Micro"]) == EP_CREDIT_MICRO
+
+
+async def test_a_row_that_reads_no_header_stores_none(clients, serve, monkeypatch):
+    _vendor(monkeypatch, 200, ANSWER)
+    await _call(clients)
+    await archive.drain()
+    async with session_maker() as s:
+        assert (await s.execute(select(ArchiveSnapshot))).scalars().one().reported_headers is None

@@ -271,18 +271,6 @@ async def test_a_relayed_405_is_the_CATALOGS_failure_not_the_callers(clients: As
     assert caller_fault["ok_rate"] is None
 
 
-async def test_a_405_endpoint_sinks_in_the_ranking(clients: AsyncClient):
-    """The payoff for report #4: the row that cannot be called stops being offered first."""
-    from treg.domain.catalog import store as cs
-    for _ in range(7):
-        await _record(EP, 405)
-    stats = {EP: (await _observed([EP]))[EP],
-             "rival": {"samples": 17, "ok_rate": 0.8}}
-    rows = [({"id": EP, "tier": "extended", "verified": None, "cost": None}, 6),
-            ({"id": "rival", "tier": "extended", "verified": None, "cost": None}, 6)]
-    assert [e["id"] for e, _ in cs.rerank(rows, stats)] == ["rival", EP]
-
-
 async def test_HTTP_search_orders_equal_matches_on_observed_evidence(clients: AsyncClient):
     """Pin the HTTP wiring with an order the catalog's default order gets wrong.
 

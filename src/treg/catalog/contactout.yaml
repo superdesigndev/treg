@@ -1,5 +1,5 @@
 # ContactOut v1. Starter rates are the account owner's commercial terms, not public plan estimates.
-# Deferred: sync/async LinkedIn batches, batch email verification, hashed email and campaigns.
+# Deferred: sync/async LinkedIn batches, batch email verification and campaigns.
 # Work/personal splits use real documented parameters; no invented upstream endpoints.
 # Logo supplied by the account owner.
 provider: contactout
@@ -220,19 +220,22 @@ endpoints:
         type: string
         required: true
         example: support@contactout.com
-    note: 'Free under current commercial terms: verifier credits are not charged.
-      Recheck this rate if ContactOut starts metering verification.'
+    note: Charged only for a valid, invalid or accept_all verdict. Unknown, disposable
+      and no verdict are free.
   test_request:
     queryParams:
       email: support@contactout.com
   cost:
-    type: free
-    value: 0
+    type: per_success
+    value: 0.01
     currency: USD
     per: 1
     unit: call
-    note: 'Free under current commercial terms: verifier credits are not charged.
-      Recheck this rate if ContactOut starts metering verification.'
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-11-24'
+    note: ContactOut bills one verifier credit per valid, invalid or accept_all
+      verdict, single or batch. Unknown, disposable and no verdict are not charged.
   verified: 2026-09-09
   added: '2026-09-08'
   example_response: examples/contactout.people.email.verify.json
@@ -1106,6 +1109,58 @@ endpoints:
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
     verification request or stored example under the catalog PII rule.
+- id: contactout.people.audience.email-hash
+  added: '2026-11-25'
+  domain: contacts
+  capability: people.audience.email_hash
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/identifiers
+  name: Get hashed personal emails for a batch of LinkedIn profiles
+  summary: SHA-256 hashes of the personal emails of 5 to 100 LinkedIn profiles, for ad platform audience uploads
+  input:
+    bodyType: json
+    body:
+      profiles:
+        type: array
+        items: {type: string}
+        required: true
+        note: 5 to 100 unique LinkedIn profile URLs (linkedin.com/in/ or linkedin.com/pub/).
+          Fewer than 5 is refused with a 400.
+        example:
+        - https://www.linkedin.com/in/satyanadella
+        - https://www.linkedin.com/in/williamhgates
+        - https://www.linkedin.com/in/reidhoffman
+        - https://www.linkedin.com/in/jeffweiner08
+        - https://www.linkedin.com/in/sundarpichai
+    note: Returns matches.emails, one SHA-256 hex hash per personal email found across
+      the whole batch, in no particular order, so a hash cannot be tied back to one profile.
+      ContactOut trims each email before hashing and does not say it lowercases it. Work
+      emails are not included. matches_found counts the profiles with at least one hash;
+      unmatched lists the rest. A batch with no hashes answers 404.
+  untestable: Requires real LinkedIn profiles and returns hashes of their private addresses;
+    no automated verification request is stored under the catalog PII rule. The example is a
+    structural fixture hashed from reserved fake addresses.
+  example_response: examples/contactout.people.audience.email-hash.json
+  price:
+    value: '0.25'
+    currency: USD
+    per: 1
+    unit: result
+    note: One personal email credit ($0.25 on the account owner's Starter rate) per profile
+      that returns at least one hash, not per hash. A profile with no hash is free; the hold
+      is one credit per profile sent.
+  provenance:
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-11-25'
+    confidence: documented
+  expect: {path: response.status_code, op: equals, value: 200}
+  reserve: {entities: {from: body.profiles, max: 100}}
+  settle: {plugin: contactout.profiles_matched}
+  miss: {status: [404], means: "No profile in the batch has a hashed personal email; free"}
+  docs_url: https://api.contactout.com/
 proposed_capabilities:
   people.email.personal.availability: Check personal email availability for a LinkedIn
     profile

@@ -34,21 +34,12 @@ def test_plan_shims_filters_and_sorts():
     assert warnings == []
 
 
-def test_plan_shims_routes_server_for_runnable_tools():
-    tools = [
-        {"name": "stripe-tool", "cli": {"bin": "stripe", "enabled": True}, "server_runnable": True},
-        {"name": "gh", "cli": {"bin": "gh", "enabled": True}, "server_runnable": False},
-    ]
-    # by bin (stripe) → server; gh requested but NOT server-runnable → falls back to local + a warning
-    entries, warnings = shell.plan_shims(tools, frozenset({"stripe", "gh"}))
-    assert entries == [("gh", "gh", "local"), ("stripe", "stripe-tool", "server")]
+def test_server_for_falls_back_to_local_with_a_warning():
+    """The API advertises no tool as `server_runnable`, so `--server-for` warns and runs locally."""
+    tools = [{"name": "gh", "cli": {"bin": "gh", "enabled": True}, "server_runnable": False}]
+    entries, warnings = shell.plan_shims(tools, frozenset({"gh"}))
+    assert entries == [("gh", "gh", "local")]
     assert any("gh" in w and "server" in w for w in warnings)
-
-
-def test_plan_shims_matches_server_for_by_tool_name():
-    tools = [{"name": "stripe-tool", "cli": {"bin": "stripe", "enabled": True}, "server_runnable": True}]
-    entries, _ = shell.plan_shims(tools, frozenset({"stripe-tool"}))  # by tool name, not bin
-    assert entries == [("stripe", "stripe-tool", "server")]
 
 
 # ---- the shim contract --------------------------------------------------------------------
@@ -79,23 +70,21 @@ def test_shim_execs_treg_run_with_clean_path_and_verbatim_args(tmp_path):
     assert argv_out.read_text().splitlines() == ["run", "stripe-tool", "--", "balance", "--live"]
 
 
-def test_server_route_shim_execs_treg_run_server(tmp_path):
-    """A server-routed shim must call `treg run --server <tool>` through a real shell."""
-    argv_out = tmp_path / "argv.out"
+def test_a_tool_name_cannot_add_a_line_to_the_shim(tmp_path):
+    marker, argv_out = tmp_path / "pwned", tmp_path / "argv.out"
     fake_treg = tmp_path / "faketreg"
-    fake_treg.write_text(
-        "#!/bin/sh\n"
-        f': > {argv_out}\n'
-        f'for a in "$@"; do printf "%s\\n" "$a" >> {argv_out}; done\n'
-    )
+    fake_treg.write_text(f'#!/bin/sh\nfor a in "$@"; do printf "%s\\0" "$a"; done > {argv_out}\n')
     fake_treg.chmod(0o755)
     shim_dir = tmp_path / "bin"
     shim_dir.mkdir()
-    shell.write_shims(str(shim_dir), [("stripe", "stripe-tool", "server")], str(fake_treg))
-    env = dict(os.environ, TREG_SHELL_REALPATH="/usr/bin:/bin")
-    r = subprocess.run([str(shim_dir / "stripe"), "balance"], env=env, capture_output=True)
-    assert r.returncode == 0
-    assert argv_out.read_text().splitlines() == ["run", "--server", "stripe-tool", "--", "balance"]
+    name = f"x\ntouch {marker}\n#"
+    shell.write_shims(str(shim_dir), [("aws", name, "local")], str(fake_treg))
+
+    subprocess.run([str(shim_dir / "aws"), "s3", "ls"], check=True,
+                   env=dict(os.environ, TREG_SHELL_REALPATH="/usr/bin:/bin"))
+
+    assert not marker.exists()
+    assert argv_out.read_bytes().split(b"\0")[:-1] == [b"run", name.encode(), b"--", b"s3", b"ls"]
 
 
 def test_completion_call_bypasses_treg_real_bin_runs(tmp_path):

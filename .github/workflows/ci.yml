@@ -18,11 +18,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    # A throttled shared runner once turned the 5-minute suite into 20+ (log showed 68s before the
-    # first test started). Die loudly instead of eating half an hour; a re-run usually lands on a
-    # healthier machine.
+  checks:
+    # The repository variable CI_LINUX_RUNNER names the runner label for the Linux jobs that run
+    # Python (checks, test-postgres, cli-go's Linux leg); unset, they run on GitHub's own runner.
+    runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -30,23 +29,14 @@ jobs:
           fetch-depth: 2  # the docs-only check diffs HEAD against its parent
       - name: Detect a docs-only push
         id: docs
-        # Direct pushes that change only docs/ and *.md skip the suite — half of one week's runs
-        # bought nothing. PULL REQUESTS AND MERGE QUEUE BUILDS ALWAYS RUN: the branch-protection check
-        # must report, and a skipped required check would block the merge forever.
-        run: |
-          ONLY=false
-          if [ "${{ github.event_name }}" = "push" ]; then
-            CHANGED=$(git diff --name-only HEAD^ HEAD || true)
-            if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qvE '^docs/|\.md$'; then
-              ONLY=true
-            fi
-          fi
-          echo "docs-only: $ONLY"
-          echo "only=$ONLY" >> "$GITHUB_OUTPUT"
+        run: bash .github/scripts/docs-only.sh
       - uses: astral-sh/setup-uv@v7
         if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
+          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
+          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
+          enable-cache: true
       - uses: actions/setup-node@v4
         if: steps.docs.outputs.only != 'true'
         with:
@@ -59,11 +49,6 @@ jobs:
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
-      - name: Install disposable Redis test dependency
-        if: steps.docs.outputs.only != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
       - name: Verify pause context documentation
         if: steps.docs.outputs.only != 'true'
         run: |
@@ -83,16 +68,30 @@ jobs:
         # The required unchanged check validates the full catalog on pull requests and merge groups.
         if: github.event_name == 'push' && steps.docs.outputs.only != 'true'
         run: uv run --locked python scripts/catalog_validate.py
-      - name: Run tests
+      - name: Run the SQLite tests
+        # Production runs on Postgres, and test-postgres runs the whole suite there. SQLite is the
+        # local development database: these are the paths only it takes (the dev sign-in code,
+        # single-user mode, the CLI against a local server, migrations on a fresh local file).
         if: steps.docs.outputs.only != 'true'
-        # -n auto: the suite is 2,700+ small independent tests — serial execution is what let a
-        # throttled runner turn minutes into tens of minutes. xdist arrives via --with rather than
-        # the lockfile on purpose (local daily default uses the same --with).
-        run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
+        run: >-
+          uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
+          tests/test_auth_email.py
+          tests/test_single_user.py
+          tests/test_dev_title.py
+          tests/test_operational.py
+          tests/test_cli_account_flows.py
+          tests/test_maintenance.py
+          tests/test_alembic_baseline.py
 
   test-postgres:
-    runs-on: ubuntu-latest
+    # The whole suite on Postgres, production's database, split across machines. The background
+    # pool connects through a transaction-pooling PgBouncer, as in production.
+    runs-on: ${{ vars.CI_LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     services:
       redis:
         image: redis:7.4
@@ -116,126 +115,74 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      pgbouncer:
+        image: edoburu/pgbouncer:v1.25.2-p0
+        env:
+          DB_HOST: postgres
+          DB_USER: treg
+          DB_PASSWORD: treg
+          AUTH_TYPE: scram-sha-256
+          POOL_MODE: transaction
+          MAX_PREPARED_STATEMENTS: '200'
+          MAX_CLIENT_CONN: '1000'
+          LISTEN_PORT: '6432'
+        ports:
+          - 6432:6432
     env:
       TREG_TEST_DB_URL: postgresql+asyncpg://treg:treg@127.0.0.1:5432/treg_test
+      TREG_TEST_POOLER_URL: postgresql+asyncpg://treg:treg@127.0.0.1:6432/treg_test
       TREG_TEST_KV_URL: redis://127.0.0.1:6379/15
+      TREG_TEST_SHARD: ${{ matrix.shard }}/2
       PYTHONUNBUFFERED: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Detect a docs-only push
+        id: docs
+        run: bash .github/scripts/docs-only.sh
       - uses: astral-sh/setup-uv@v7
+        if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
+          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
+          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
+          enable-cache: true
       - uses: actions/setup-node@v4
+        if: steps.docs.outputs.only != 'true'
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Build dashboard
+        if: steps.docs.outputs.only != 'true'
         run: bash scripts/build-dashboard.sh
       - name: Install dependencies
+        if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
-      - name: Run Postgres tests
+      - name: Install disposable Redis test dependency
+        # A few tests start their own redis-server on a unix socket to stall it on purpose. The
+        # binary comes from the redis service container, not apt (whose index refresh alone takes
+        # longer than those tests); --version fails the step rather than letting them skip.
+        if: steps.docs.outputs.only != 'true'
+        env:
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
+        run: |
+          sudo docker cp "$REDIS_CONTAINER:/usr/local/bin/redis-server" /usr/local/bin/redis-server
+          redis-server --version
+      - name: Run tests
         # Each xdist worker gets its own database (treg_test_gw0, ...; see tests/conftest.py), so
-        # reset_db() in one worker never empties another's tables.
-        # -v + faulthandler: this job has twice been killed at its time limit with zero output on
-        # this runner while the identical list passes locally. Per-test lines locate the stall;
-        # the fault handler dumps every thread's stack after 300s of one test.
+        # reset_db() in one worker never empties another's tables. TREG_TEST_SHARD picks this
+        # machine's half (tests/conftest.py). worksteal lets an idle worker take tests queued on a
+        # busy one, so a few slow tests at the end do not hold the shard. -v + faulthandler locate
+        # a stall: the fault handler dumps every thread's stack after 300s of one test.
+        if: steps.docs.outputs.only != 'true'
         run: >-
-          uv run --frozen --with pytest-xdist python -m pytest -n auto -v -o faulthandler_timeout=300
-          tests/callmatrix
-          tests/test_team_limit.py
-          tests/test_ledger.py
-          tests/test_ledger_claim_review.py
-          tests/test_money_lock_order.py
-          tests/test_money_allowance.py
-          tests/test_allowance_sized_refill_postgres.py
-          tests/test_money_admission.py
-          tests/test_money_admission_application.py
-          tests/test_money_admission_postgres.py
-          tests/test_money_session_postgres.py
-          tests/test_money_admission_reporting.py
-          tests/test_money_bigint.py
-          tests/test_topup_reconcile.py
-          tests/test_kv.py
-          tests/test_kv_allowance.py
-          tests/test_auth_email_postgres.py
-          tests/test_default_key_postgres.py
-          tests/test_kv_release_retry.py
-          tests/test_kv_lease_diagnostics.py
-          tests/test_org_concurrency.py
-          tests/test_org_concurrency_redis.py
-          tests/test_org_flow_control.py
-          tests/test_org_flow_control_reader.py
-          tests/test_org_flow_control_redis.py
-          tests/test_org_rate_limit_redis.py
-          tests/test_provider_concurrency_redis.py
-          tests/test_capacity_rate_observe.py
-          tests/test_money_trace.py
-          tests/test_money_trace_postgres.py
-          tests/test_money_trace_runner.py
-          tests/test_asynctasks.py
-          tests/test_alembic_baseline.py
-          tests/test_maintenance.py
-          tests/test_org_flow_control_schema.py
-          tests/test_workbench_table_schema.py
-          tests/test_redundant_index_migration.py
-          tests/test_callrecord_call_ref_index_migration.py
-          tests/test_enrich_arena.py
-          tests/test_arena_insights.py
-          tests/test_arena_verification_insights.py
-          tests/test_feedback.py
-          tests/test_archive.py
-          tests/test_archive_batch.py
-          tests/test_archive_batch_postgres.py
-          tests/test_archivekeyorg_natural_key_migration.py
-          tests/test_cache_result_admission.py
-          tests/test_archive_r2.py
-          tests/test_archive_opt_out.py
-          tests/test_archive_retention.py
-          tests/test_call_cancellation.py
-          tests/test_idempotency_retention.py
-          tests/test_call_pool_discipline.py
-          tests/test_catalog_stats_refresh.py
-          tests/test_catalog_stats_corrections.py
-          tests/test_catalog_stats_concurrency.py
-          tests/test_catalog_stats_hot_corrections.py
-          tests/test_catalog_stats_requeue.py
-          tests/test_catalog_stats_requeue_concurrency.py
-          tests/test_catalog_stat_dirty_audit.py
-          tests/test_catalog_observation_folds.py
-          tests/test_catalog_observation_concurrency.py
-          tests/test_catalog_observation_arena.py
-          tests/test_catalog_observation_cache.py
-          tests/test_endpoint_stats.py
-          tests/test_key_spend_rollup.py
-          tests/test_api_key_spend.py
-          tests/test_api_keys.py
-          tests/test_cli_pairing.py
-          tests/test_login_page.py
-          tests/test_auth.py
-          tests/test_turnstile.py
-          tests/test_signup_promo.py
-          tests/test_postgres_reset.py
-          tests/test_read_replica.py
-          tests/test_admin_errors_replica.py
-          tests/test_marketplace_call.py
-          tests/test_capacity_overflow_spend.py
-          tests/test_billing.py
-          tests/test_agent_capture.py
-          tests/test_adsconv.py
-          tests/test_health.py
-          tests/test_localrun.py
-          tests/test_orgs.py
-          tests/test_orgs_isolation.py
-          tests/test_orgs_mgmt.py
-          tests/test_hub.py
-          tests/test_hub_sandbox.py
-          tests/test_mcp.py
+          uv run --frozen --with pytest-xdist python -m pytest -n auto --dist worksteal -v
+          -o faulthandler_timeout=300
       - name: Dump Postgres activity on failure
-        # Three CI-only hangs at archive drains were undiagnosable from Python stacks alone; this
-        # shows the DATABASE's view: every session, its state (idle in transaction = a leaked or
-        # blocked one), what it waits on, and ungranted locks with their holders' queries.
-        # Delete once the hang is understood and fixed.
+        # Shows the database's view of a hang: every session, its state (idle in transaction = a
+        # leaked or blocked one), what it waits on, and ungranted locks with their holders' queries.
         if: failure()
         env:
           PGPASSWORD: treg
@@ -243,10 +190,27 @@ jobs:
           psql -h 127.0.0.1 -U treg -d treg_test -x -c "select datname, pid, state, wait_event_type, wait_event, xact_start, state_change, left(query,140) as query from pg_stat_activity where datname like 'treg_test%' order by xact_start nulls last;" || true
           psql -h 127.0.0.1 -U treg -d treg_test -c "select l.pid, l.locktype, l.mode, l.granted, a.state, left(a.query,90) as query from pg_locks l join pg_stat_activity a using(pid) where not l.granted;" || true
 
+  test:
+    # The required check, under the name branch protection asks for: it passes only when the lint
+    # and SQLite job and every Postgres shard passed. A job skipped or cancelled fails it.
+    needs: [checks, test-postgres]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every part of the suite passed
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          POSTGRES: ${{ needs.test-postgres.result }}
+        run: |
+          echo "checks: $CHECKS, test-postgres: $POSTGRES"
+          [ "$CHECKS" = success ] && [ "$POSTGRES" = success ]
+
   cli-go:
     # The binary CLI: vet and unit tests on every platform it ships for, then the parity suite that
-    # runs it beside the Python CLI against a real local registry.
-    runs-on: ${{ matrix.os }}
+    # runs it beside the Python CLI against a real local registry. The matrix value stays the job's
+    # name, so the required check keeps its name whichever runner the Linux leg lands on.
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && vars.CI_LINUX_RUNNER || matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -279,6 +243,9 @@ jobs:
         if: runner.os == 'Linux'
         with:
           python-version: "3.13"
+          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
+          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
+          enable-cache: true
       - uses: actions/setup-node@v4
         if: runner.os == 'Linux'
         with:

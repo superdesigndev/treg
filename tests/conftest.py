@@ -44,27 +44,28 @@ atexit.register(lambda: [os.remove(p) for p in glob.glob(_db_file + "*")])
 _default = f"sqlite+aiosqlite:///{_db_file}"
 
 
-def _per_worker_postgres(url: str) -> str:
-    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
-    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
-    import asyncio
+async def ensure_postgres_database(url: str, name: str) -> str:
+    """Create database `name` on `url`'s server unless it exists -> its URL."""
     import asyncpg
     from sqlalchemy.engine import make_url
 
     base = make_url(url)
-    name = f"{base.database}_{_worker}"
-
-    async def ensure() -> None:
-        dsn = base.set(drivername="postgresql").render_as_string(hide_password=False)
-        conn = await asyncpg.connect(dsn)
-        try:
-            if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
-                await conn.execute(f'CREATE DATABASE "{name}"')
-        finally:
-            await conn.close()
-
-    asyncio.run(ensure())
+    conn = await asyncpg.connect(base.set(drivername="postgresql").render_as_string(hide_password=False))
+    try:
+        if not await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", name):
+            await conn.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        await conn.close()
     return base.set(database=name).render_as_string(hide_password=False)
+
+
+def _per_worker_postgres(url: str) -> str:
+    """An xdist worker against Postgres gets its own database (treg_test_gw0, ...), created on first
+    use: `reset_db()` empties every table, so workers sharing one database wipe each other's rows."""
+    import asyncio
+    from sqlalchemy.engine import make_url
+
+    return asyncio.run(ensure_postgres_database(url, f"{make_url(url).database}_{_worker}"))
 
 
 _test_db_url = os.environ.get("TREG_TEST_DB_URL")
@@ -73,8 +74,21 @@ if _test_db_url and _worker and _test_db_url.startswith("postgresql"):
     _test_db_url = os.environ.get("TREG_TEST_DB_URL_WORKER") or _per_worker_postgres(_test_db_url)
     os.environ["TREG_TEST_DB_URL_WORKER"] = _test_db_url
 os.environ["TREG_DATABASE_URL"] = _test_db_url or _default
+# A server on Postgres refuses to start without a Fernet key (`verify_db`), as production always has
+# one; only a local SQLite server may fall back to an ephemeral key.
+if (_test_db_url or "").startswith("postgresql"):
+    os.environ.setdefault("TREG_SECRET_KEY", "dHJlZy10ZXN0LWtleS1mb3ItcG9zdGdyZXMtcnVucyE=")
 # Replica tests opt in explicitly; never inherit a real replica from the shell or .env.
 os.environ["TREG_READ_DATABASE_URL"] = ""
+# The background pool goes through a pooler only when TREG_TEST_POOLER_URL names one (CONTRIBUTING.md).
+_test_pooler_url = (os.environ.get("TREG_TEST_POOLER_URL", "")
+                    if (_test_db_url or "").startswith("postgresql") else "")
+if _test_pooler_url:
+    from sqlalchemy.engine import make_url
+
+    _test_pooler_url = make_url(_test_pooler_url).set(
+        database=make_url(_test_db_url).database).render_as_string(hide_password=False)
+os.environ["TREG_BACKGROUND_DATABASE_URL"] = _test_pooler_url
 os.environ["TREG_WORKOS_API_KEY"] = ""
 os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
@@ -100,6 +114,8 @@ os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
 os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
 os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
 os.environ["TREG_HOLDLESS_FREE_ORG_IDS"] = "[]"
+os.environ["TREG_HOLDLESS_FREE_ALL_ORGS"] = "false"
+os.environ["TREG_HOLDLESS_FREE_EXCLUDED_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
@@ -149,9 +165,35 @@ from treg.domain.identity import api_keys as managed_keys  # noqa: E402
 from treg.application import media as media_app  # noqa: E402
 
 
-# The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
+# The OTP-start and other throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
 # process-global dicts — so `reset_db()` (called by every client fixture) already clears them between
 # tests. No separate rate-limit reset fixture is needed.
+
+
+@pytest.fixture
+async def load_db_module(monkeypatch):
+    """`load(**settings)` imports a fresh `treg.infra.db` built from those settings, without
+    replacing the application's imported engines and makers; each one is disposed afterwards."""
+    import importlib.util
+
+    from treg import config
+    from treg.infra import db as infra_db
+
+    modules = []
+
+    def load(**settings):
+        values = config.Settings(_env_file=None, **settings)
+        spec = importlib.util.spec_from_file_location("treg.infra._loaded_for_test", infra_db.__file__)
+        module = importlib.util.module_from_spec(spec)
+        with monkeypatch.context() as patch:
+            patch.setattr(config, "get_settings", lambda: values)
+            spec.loader.exec_module(module)
+        modules.append(module)
+        return module
+
+    yield load
+    for module in modules:
+        await module.dispose_engine()
 
 
 @pytest.fixture
@@ -459,10 +501,29 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
     return up
 
 
-async def verified_identity(client, email):
-    """Real OTP proof, capturing mail delivery even when Postgres hides dev codes."""
+async def seed_teams(*ids):
+    """Create the teams these ids name, for rows a test seeds with a literal `org_id`: Postgres
+    enforces the foreign key that SQLite ignores. The id sequence moves past them, so a team the
+    test creates afterwards gets a fresh id."""
+    from sqlalchemy import text
+    from treg.infra import db as infra_db
+    from treg.models import Org
+
+    async with infra_db.session_maker() as db:
+        for org_id in ids:
+            if await db.get(Org, org_id) is None:
+                db.add(Org(id=org_id, name=f"Team {org_id}", slug=f"seeded-team-{org_id}"))
+        await db.flush()
+        if not infra_db._is_sqlite:
+            await db.execute(text(
+                "SELECT setval(pg_get_serial_sequence('org', 'id'), (SELECT max(id) FROM org))"))
+        await db.commit()
+
+
+async def email_code(client, email):
+    """Start the email sign-in and return the code the inbox gets: the dev code a local SQLite
+    server shows, or else the one handed to the mail sender (Postgres never shows one)."""
     from unittest.mock import patch
-    import httpx
     from treg import email as email_sender
 
     delivered = {}
@@ -470,12 +531,19 @@ async def verified_identity(client, email):
     async def receive(email, code, **kwargs):
         delivered[email] = code
 
+    with patch.object(email_sender, "send_otp", receive):
+        started = await client.post("/auth/email/start", json={"email": email})
+    assert started.status_code == 200, started.text
+    return started.json().get("dev_code") or delivered[started.json()["email"]]
+
+
+async def verified_identity(client, email):
+    """Real OTP proof, on any database."""
+    import httpx
+
     previous_cookies = httpx.Cookies(client.cookies)
     try:
-        with patch.object(email_sender, "send_otp", receive):
-            started = await client.post("/auth/email/start", json={"email": email})
-        assert started.status_code == 200, started.text
-        code = started.json().get("dev_code") or delivered[started.json()["email"]]
+        code = await email_code(client, email)
         proof = await client.post("/auth/email/verify", json={"email": email, "code": code})
         assert proof.status_code == 200, proof.text
         return proof.json()["token"]
@@ -786,3 +854,23 @@ def pytest_runtest_teardown(item, nextitem):
         raise AssertionError(f"{item.nodeid} left the working directory at {leaked}; "
                              "use monkeypatch.chdir so it is restored")
     return result
+
+
+def pytest_collection_modifyitems(config, items):
+    """`TREG_TEST_SHARD=k/n` keeps one of n disjoint shards of the collected tests, so CI can split
+    the suite across machines. A test's shard follows from its id alone, so every xdist worker and
+    every machine agrees, and the shards together are exactly the suite."""
+    shard = os.environ.get("TREG_TEST_SHARD", "")
+    if not shard:
+        return
+    k, n = (int(part) for part in shard.split("/"))
+    if not 1 <= k <= n:
+        raise pytest.UsageError(f"TREG_TEST_SHARD={shard}: want k/n with 1 <= k <= n")
+    import zlib
+
+    kept, dropped = [], []
+    for item in items:
+        (kept if zlib.crc32(item.nodeid.encode()) % n == k - 1 else dropped).append(item)
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+        items[:] = kept

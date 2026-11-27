@@ -243,7 +243,21 @@ database returns `warming`. No production metrics ship in assets or fixtures.
 It must not run in web processes: every web process would contend for the cursor row and walk
 `callrecord` on the money-path database. Once caught up it re-aggregates only every
 `REFRESH_SECONDS`, because each aggregate scans the whole window. The rewind that revisits recent
-evidence is constrained to Arena endpoints so it rides `ix_callrecord_endpoint_id_created_at`.
+evidence is constrained to Arena endpoints so it rides `ix_callrecord_endpoint_id_created_at`,
+and asks for `min(id + 0)`: PostgreSQL answers a bare `min(id)` by walking the primary key from
+the oldest row, filtering every row until it reaches the last ten minutes (`rewind_query`). The
+batch read has the same trap: `endpoint_id IN (...) AND id > cursor ORDER BY id LIMIT n` walks the
+primary key from the cursor through every endpoint's rows, and to the end of the table once fewer
+than `n` remain before the cycle's cutoff. On PostgreSQL it therefore asks one endpoint at a time
+(a `LATERAL` probe per endpoint on `ix_callrecord_endpoint_id_id` with the window applied before
+each limit, `batch_ids_query`), over at most `SCAN_SPAN` ids after the cursor and no further than
+the first row written at or after the cutoff plus `LATE` (`_batch_span`, a binary search on the
+primary key), and then reads those rows by id. Ids follow insertion, not `created_at`, so the
+bound holds only for rows inserted within `LATE` of their `created_at`, the same allowance the
+rewind makes. A span with fewer than `n` rows of the window is read whole and the cursor moves
+to its end. That end can be past the id of a row still being committed, so the cursor is only the
+cycle's progress: `resume_cursor` keeps where the cycle started, moved up to each row it
+collects, and a cycle whose rewind finds no recent row hands that to the next one instead.
 
 - It reads a bounded batch of audit records and archive pointers, closes the session, resolves
   bodies through `archive_bodies.read` (path `arena`), then reacquires the cursor lock and

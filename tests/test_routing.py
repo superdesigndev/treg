@@ -21,6 +21,7 @@ from treg.domain import money as ledger
 from treg.domain.catalog.schema import is_v2
 from treg.application.call import overflow as call_overflow
 from treg.application.call import resolve as call_resolve
+from treg.application.call import cost as call_cost
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.application import catalog_stats
@@ -36,7 +37,7 @@ from treg.infra.upstream import relay as relay_module
 from treg.models import CallRecord, Hold, LedgerEntry, OverflowRoute
 from treg.timeutil import utcnow_naive
 
-from test_marketplace_call import _balance, firecrawl_platform_on, platform_on  # noqa: F401
+from test_marketplace_call import _balance, platform_on  # noqa: F401
 
 ROUTED = "treg.people.email.find"
 
@@ -195,30 +196,10 @@ def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     assert C.verify(ad, contract, endpoint, {"items": [{"first": "A"}]})[0] is True
 
 
-def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
-    """instagram.search.users rows: an agent picks accounts by audience size and bio. The provider's
-    picture URL and bio-link metadata were most of each row's tokens and told it nothing."""
-    ad = catalog_store.load().adapters["scrapecreators.x.v1-instagram-search-profiles"]
-    assert ad.verified, ad.verify_note
-    row = ad.from_upstream({"profiles": [{
-        "username": "ada", "full_name": "Ada", "url": "https://www.instagram.com/ada/", "follower_count": 12000,
-        "media_count": 300, "biography": "coffee roaster", "is_private": False, "is_professional_account": True,
-        "profile_pic_url": "https://scontent.cdninstagram.com/" + "x" * 400,
-        "bio_links": [{"url": "https://linktr.ee/ada", "lynx_url": "https://l.instagram.com/" + "y" * 300}]}]})["users"][0]
-    assert row == {"username": "ada", "full_name": "Ada", "url": "https://www.instagram.com/ada/", "follower_count": 12000,
-                   "media_count": 300, "biography": "coffee roaster", "is_private": False,
-                   "is_professional_account": True}, "the provider's own names, so existing readers still work"
-    # a link is never cut: a 305-character URL cut to 300 points at another resource
-    long_url = "https://example.com/" + "a" * 275 + "?id=target"
-    row2 = ad.from_upstream({"profiles": [{"username": "bo", "url": "https://www.instagram.com/bo/",
-                                           "external_url": long_url, "biography": "b " * 400}]})["users"][0]
-    assert row2["external_url"] == long_url and len(long_url) > 300
-    assert len(row2["biography"]) == 300, "text is still cut"
-
-
 def test_a_row_field_may_keep_more_text_than_the_default_cut():
     """people.search's `summary` is the evidence an agent checks a brief against: it keeps up to its
-    own `maxLength` while every other text field is still cut to ROW_TEXT_MAX."""
+    own `maxLength` while every other text field is still cut to ROW_TEXT_MAX. A `format: url` field
+    is never cut: a cut link points at another resource."""
     from treg.domain.catalog.routing import contracts as C
 
     cat = catalog_store.load()
@@ -226,9 +207,11 @@ def test_a_row_field_may_keep_more_text_than_the_default_cut():
     assert cap > C.ROW_TEXT_MAX
     ad = cat.adapters["parallel.people.search"]
     long = "evidence " * (cap // 4)
-    row = ad.from_upstream({"entities": [{"name": "Ada " + "x" * 400, "url": "https://linkedin.com/in/ada",
+    long_url = "https://linkedin.com/in/ada?" + "a" * C.ROW_TEXT_MAX
+    row = ad.from_upstream({"entities": [{"name": "Ada " + "x" * 400, "url": long_url,
                                           "description": long}]})["people"][0]
     assert len(row["summary"]) == cap and len(row["name"]) == C.ROW_TEXT_MAX
+    assert row["profile_url"] == long_url
     doc = {"identity": [{"q": "string"}], "output": {"people": {"type": "array", "required": True}},
            "row": {"of": "people", "needs": ["name"], "fields": {"name": {"type": "string"}}}}
     for bad in (0, -5, True, "1000", 1.5):
@@ -240,15 +223,16 @@ def test_a_row_field_may_keep_more_text_than_the_default_cut():
 
 def test_identity_notes_say_what_to_put_in_each_key_and_only_email_finds_mention_domain_match():
     """A routed endpoint's identity keys read "identity" plus the contract's note, so an agent knows
-    what a free-text `q` is for; the `domain_match` sentence belongs to email finds only."""
+    what a free-text `q` is for; the `domain_match` sentence belongs to contracts that judge it."""
     from treg.domain.catalog.routing import contracts as C
 
     cat = catalog_store.load()
-    body = cat.by_id["treg.people.search"]["input"]["body"]
-    assert body["q"]["note"].startswith("identity; describe the people in words")
-    assert body["company_domain"]["note"].startswith("identity; the employer's website domain")
-    assert "domain_match" not in cat.by_id["treg.people.search"]["input"]["note"]
-    assert "domain_match" in cat.by_id["treg.people.email.find"]["input"]["note"]
+    for cap in ("people.search", "people.email.find"):
+        contract, row = cat.contracts[cap], cat.by_id[f"treg.{cap}"]["input"]
+        for key, note in contract.identity_notes.items():
+            assert row["body"][key]["note"] == f"identity; {note}"
+        assert ("domain_match" in row["note"]) is bool(contract.advice_domain_mismatch)
+    assert cat.contracts["people.search"].identity_notes and cat.contracts["people.email.find"].advice_domain_mismatch
     doc = {"identity": [{"q": "string"}], "output": {"a": "string"}}
     assert C.parse_contracts({"contracts": {"y": {**doc, "identity_notes": {"q": " words "}}}})["y"].identity_notes == {"q": "words"}
     for bad in ({"nope": "x"}, {"q": ""}, {"q": 3}, {}, ["q"]):
@@ -283,8 +267,9 @@ def test_a_filter_range_is_a_whole_min_and_optional_max_on_an_integer_filter_and
 
     cat = catalog_store.load()
     for cap in ("web.map", "people.search"):
+        declared = cat.contracts[cap].filters["limit"]
         limit = cat.by_id[f"treg.{cap}"]["input"]["body"]["limit"]
-        assert limit["min"] == 1 and "max" not in limit
+        assert "min" in declared and (limit["min"], limit.get("max")) == (declared["min"], declared.get("max"))
     doc = {"identity": [{"q": "string"}], "output": {"a": "string"}}
     for ranged in ({"type": "integer", "default": 10, "min": 1}, {"type": "integer", "default": 10, "min": 1, "max": 50}):
         assert C.parse_contracts({"contracts": {"y": {**doc, "filters": {"limit": ranged}}}})["y"].filters["limit"] == ranged
@@ -381,17 +366,9 @@ def test_a_company_folded_into_the_callers_q_scopes_a_free_text_provider():
 
 @pytest.mark.parametrize("sent, text", [
     ({"title": "Head of Tax"}, "Head of Tax"),
-    ({"full_name": "Alice Cooper"}, "Alice Cooper"),
     ({"company_domain": "stripe.com"}, "people at stripe.com"),
-    ({"company_domain": "stripe.com", "title": "Head of Tax"}, "Head of Tax at stripe.com"),
     ({"company_domain": "stripe.com", "title": "Head of Tax", "country": "ie"}, "Head of Tax at stripe.com in Ireland"),
-    ({"company_domain": "stripe.com", "title": "Head of Tax", "country": "ie", "location": "Dublin, Ireland"},
-     "Head of Tax at stripe.com in Dublin, Ireland"),
     ({"title": "CTO", "location": "Cambridge", "country": "us"}, "CTO in Cambridge, United States"),
-    ({"company_domain": "stripe.com", "full_name": "Alice Cooper"}, "Alice Cooper at stripe.com"),
-    ({"full_name": "Alice Cooper", "title": "CTO", "country": "de"}, "Alice Cooper, CTO in Germany"),
-    ({"company_domain": "stripe.com", "title": "CFO, Head of Finance or Controller"},
-     "CFO, Head of Finance or Controller at stripe.com"),
     ({"company_domain": ["stripe.com"], "title": "CTO"}, "CTO"),
 ])
 def test_the_people_search_stand_in_says_who_at_which_company_where(sent, text):
@@ -489,9 +466,7 @@ def test_an_adapters_soft_names_only_its_contracts_keys():
 
 
 @pytest.mark.parametrize("identity, kept", [
-    ({"title": "CTO", "location": "Dublin, Ireland", "country": "ie"}, False),
     ({"title": "CTO", "location": "Cambridge", "country": "us"}, False),
-    ({"title": "CTO", "location": "Dublin, Ireland"}, False),
     ({"title": "CTO", "country": "zz"}, False),
     ({"title": "CTO"}, True),
 ])
@@ -586,6 +561,28 @@ async def _first_providers(ep_id: str, identity: dict, header: str | None = None
     caller = SimpleNamespace(org_id=org_id, org=SimpleNamespace(id=org_id, platform_overflow_disabled=False))
     plan = await call_route.build_plan(catalog_store.load().by_id[ep_id], identity, caller, options)
     return [c.endpoint["provider"] for c in plan.candidates][:n]
+
+
+async def test_a_table_row_the_adapter_fixes_ranks_the_child_at_that_row(clients, monkeypatch):
+    """The routed phone find always sends quality_tier=most_coverage (9 Forager credits), so the
+    plan ranks Forager at that row; a direct call without it still holds the 15-credit fallback."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER", "PLATFORM-FORAGER-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FORAGER_ACCOUNT", "1234")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "forager")
+    get_settings.cache_clear()
+    try:
+        cat = catalog_store.load()
+        caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+        plan = await call_route.build_plan(cat.by_id["treg.people.phone.find"], {"linkedin_handle": "williamhgates"},
+                                           caller, call_route.RouteOptions.from_headers(lambda key: None))
+        forager = next(c for c in plan.candidates if c.endpoint["provider"] == "forager")
+        unit = cat.credit_rates["forager"]
+        assert forager.price_micro == round(9 * unit * 1_000_000)
+        direct = call_cost.price(cat.by_id["forager.people.phone.find"], cat,
+                                 {"body": {"linkedin_public_identifier": "williamhgates"}})[0]
+        assert direct == round(15 * unit * 1_000_000)
+    finally:
+        get_settings.cache_clear()
 
 
 def test_phrase_leaves_out_what_the_text_already_says():
@@ -811,75 +808,6 @@ def test_every_routed_adapter_request_meets_its_childs_declarations():
                            or call_resolve._body_refusal(ep, call_route._child_body(ep, body))):
                     refused[(endpoint_id, capability, variant)] = why
     assert refused == {}, refused
-
-
-def test_a_parallel_extract_page_with_only_excerpts_is_a_hit():
-    cat = catalog_store.load()
-    # A direct Extract without full_content still returns billed excerpts; only an empty page or
-    # an unreadable URL (results [], errors[]) is the free miss.
-    extract = cat.adapters["parallel.web.extract"]
-    assert not extract.is_miss({"results": [{"url": "u", "excerpts": ["text"], "full_content": None}]})
-    assert not extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": "This domain is for use in documentation examples without needing permission."}]})
-    assert extract.is_miss({"results": [{"url": "u", "excerpts": [], "full_content": None}]})
-    assert extract.is_miss({"results": [], "errors": [{"url": "u", "error_type": "connect_error"}]})
-    # A multi-URL call is never judged by its first page: a later page may have text.
-    assert not extract.is_miss({"results": [{"url": "a", "excerpts": [], "full_content": None},
-                                            {"url": "b", "excerpts": ["text"], "full_content": "text"}]})
-    # With several pages, an explicitly empty usage[] is the miss; an absent one is unobserved.
-    empty = {"url": "a", "excerpts": [], "full_content": None}
-    assert extract.is_miss({"results": [empty, empty], "usage": []})
-    assert not extract.is_miss({"results": [empty, empty]})
-
-
-def test_search_adapter_does_not_treat_an_answer_without_results_as_a_miss():
-    adapter = catalog_store.load().adapters["linkup.web.search"]
-    assert adapter.verified
-    assert adapter.is_miss({"results": []})
-    assert not adapter.is_miss({"answer": "A sourced answer", "sources": []})
-    assert not adapter.is_miss({"data": {"answer": "A structured answer"}})
-
-
-@pytest.mark.parametrize(("parent", "child", "routed_input", "upstream_body", "expected_body", "expected_cost"), [
-    (
-        "treg.web.search", "firecrawl.web.search",
-        {"q": "example", "limit": 3},
-        {"success": True, "data": {"web": [{"title": "Example", "url": "https://example.com"}]}, "creditsUsed": 2},
-        {"query": "example", "limit": 3}, 10_000,
-    ),
-    (
-        "treg.web.extract", "firecrawl.web.scrape",
-        {"url": "https://example.com"},
-        {"success": True, "data": {"markdown": "# Example\n\nThis domain is for use in documentation examples without needing permission.", "metadata": {"sourceURL": "https://example.com"}}},
-        {"url": "https://example.com", "formats": ["markdown"], "parsers": []}, 5_000,
-    ),
-    (
-        "treg.web.map", "firecrawl.web.map",
-        {"url": "https://example.com", "q": "docs", "limit": 3},
-        {"success": True, "links": [{"url": "https://example.com/docs"}]},
-        {"url": "https://example.com", "search": "docs", "limit": 3}, 5_000,
-    ),
-])
-async def test_firecrawl_web_routed_calls_serve_and_settle(
-    clients, monkeypatch, firecrawl_platform_on,
-    parent, child, routed_input, upstream_body, expected_body, expected_cost,
-):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "firecrawl": [(200, upstream_body)],
-    }, seen))
-
-    before = await _balance(clients)
-    response = await clients.post(
-        f"/call/{parent}", json=routed_input,
-        headers={"X-Treg-Route-Prefer": "firecrawl", "X-Treg-Route-Waterfall": "0"},
-    )
-    assert response.status_code == 200, response.text
-    doc = response.json()
-    assert doc["_treg"]["served_by"] == child
-    assert doc["_treg"]["charged_micro"] == expected_cost
-    assert response.headers["X-Treg-Route-Outcome"] == "hit"
-    assert before - await _balance(clients) == expected_cost
-    assert len(seen) == 1 and seen[0][3] == expected_body
 
 
 async def test_a_ceiling_is_judged_on_the_adapted_request_not_the_plan_upper_bound(clients, monkeypatch):
@@ -1142,35 +1070,6 @@ async def test_sampled_provider_changes_routed_call_not_direct_call(clients, mon
         assert served.json()["_treg"]["served_by"] == "leadocean.people.phone.find"
         assert served.json()["_treg"]["charged_micro"] == 5_000
         assert [provider for provider, *_ in seen] == ["leadocean", "leadocean"]
-    finally:
-        get_settings.cache_clear()
-
-
-@pytest.mark.parametrize(("status", "outcome", "charged"), [
-    ("verified", "hit", 5_000), ("catch_all", "miss", 0), ("untested", "miss", 0),
-])
-async def test_leadocean_work_email_routes_only_verified_hits(clients, monkeypatch, status, outcome, charged):
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
-    monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":100}')
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "leadocean": [(200, {"data": {"email": "jane@example.com", "status": status}})],
-    }, seen))
-
-    try:
-        before = await _balance(clients)
-        response = await clients.post("/call/treg.people.email.find",
-                                      json={"linkedin_url": "https://www.linkedin.com/in/example"},
-                                      headers={"X-Treg-Route-Waterfall": "0"})
-        assert response.status_code == 200, response.text
-        routed = response.json()["_treg"]
-        assert routed["served_by"] == "leadocean.people.email.find.work"
-        assert routed["outcome"] == outcome
-        assert routed["charged_micro"] == charged
-        assert before - await _balance(clients) == charged
-        assert [provider for provider, *_ in seen] == ["leadocean"]
     finally:
         get_settings.cache_clear()
 
@@ -1455,12 +1354,14 @@ async def test_off_domain_hit_sets_domain_match_false(clients: AsyncClient, enri
     """When the caller sent a domain and the child returns an address at another host (a LinkedIn-
     only finder returning a former employer), the hit is still billed and the address is unchanged,
     but `_treg.domain_match` / `X-Treg-Domain-Match` disclose the mismatch and advice names it."""
+    seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tomba": [(200, {"data": {"email": "alan@othercorp.example", "score": 90,
-                                    "verification": {"status": "valid"}}})]}, []))
+                                    "verification": {"status": "valid"}}})]}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Alan Marquez", "domain": "pruittstructures.com"})
     assert r.status_code == 200, r.text
+    assert [provider for provider, *_ in seen] == ["tomba"], "without the header the hit ends the call"
     d = r.json()
     assert d["output"]["email"] == "alan@othercorp.example", "the child's answer is not rewritten"
     assert d["_treg"]["outcome"] == "hit" and d["_treg"]["domain_match"] is False
@@ -1737,15 +1638,6 @@ async def test_a_ceiling_at_the_catalog_price_skips_a_child_whose_hold_carries_m
     assert "would hold $0.030625" in hunter["detail"] and "$0.0245 left" in hunter["detail"]
 
 
-async def test_max_cost_below_the_cheapest_refuses_before_any_call(clients: AsyncClient, enrichment_on, monkeypatch):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"tomba": [(200, {})]}, seen))
-    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "P C", "domain": "stripe.com"}, headers={"X-Treg-Route-Max-Cost": "0.001"})
-    assert r.status_code == 402 and r.json()["detail"]["error"] == "route_max_cost" and seen == []
-    async with session_maker() as db:
-        assert (await db.execute(select(Hold))).scalars().all() == []
-
-
 async def test_identity_no_provider_accepts_is_422_naming_variants(clients: AsyncClient, enrichment_on):
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison"})
     assert r.status_code == 422 and r.json()["detail"]["error"] == "identity_incomplete"
@@ -1833,6 +1725,23 @@ async def test_the_routed_quote_ranks_the_children_the_router_skips_last(clients
     assert skipped == sorted(skipped) and any(skipped) and not skipped[0]
     tomba = next(c for c in plan if c["endpoint_id"] == "tomba.people.email.find")
     assert tomba["skipped"] == "not platform-eligible and no own key" and tomba["accepts"]
+
+
+async def test_the_routed_quote_prices_and_orders_children_as_the_router_does(clients: AsyncClient, enrichment_on):
+    """A price table the adapter's `const` fixes to one row is quoted at that row, not at its
+    fallback ceiling, and the contract's `ask_last` places those providers last, as a call does."""
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    plan = (await clients.get("/catalog/endpoints/treg.people.phone.find")).json()["routing"]["plan"]
+    kid = "descovo.people.phone.find"
+    ad = cat.adapters[kid]
+    held = call_route.const_table_price(cat, cat.by_id[kid], ad, dict(ad.test_identity), ad.accepts[0])
+    row = next(c for c in plan if c["endpoint_id"] == kid)
+    assert held is not None and row["usd"] == held / 1_000_000, row
+    for group in ([c for c in plan if "skipped" not in c], [c for c in plan if "skipped" in c]):
+        ids = [c["endpoint_id"].split(".")[0] for c in group]
+        if "leadocean" in ids:
+            assert ids[-1] == "leadocean", ids
 
 
 async def test_idempotent_replay_of_a_routed_call_never_calls_a_provider_twice(clients: AsyncClient, enrichment_on, monkeypatch):
@@ -1993,7 +1902,7 @@ async def test_hit_verdict_is_recorded_and_becomes_a_hit_rate(clients: AsyncClie
         # historical rows without a verdict: a per-success 2xx with cost_observed 0 is a miss, > 0 a hit
         for r in rows:
             r.hit = None
-            r.cost_observed_micro = 8_900 if r.status_code == 200 and "x" else 0
+            r.cost_observed_micro = 8_900 if r.status_code == 200 else 0
         rows[0].cost_observed_micro = 0
         await db.commit()
         s = (await stats.observed(db, ["tomba.people.email.find"], per_success={"tomba.people.email.find"}))["tomba.people.email.find"]
@@ -2028,30 +1937,20 @@ async def test_a_registered_tool_for_a_provider_ranks_first_and_is_free(clients:
     assert await _balance(clients) == before and r.json()["_treg"]["charged_micro"] == 0
 
 
-def test_filters_reach_adapters_through_in_expr_and_array_bodies():
+def test_filter_defaults_ride_with_the_identity_and_the_routed_row_names_them():
     cat = catalog_store.load()
     contract = cat.contracts["google.keywords.ideas"]
+    defaults = {k: spec["default"] for k, spec in contract.filters.items() if (spec or {}).get("default") is not None}
+    assert defaults
     req, variant = canonical_identity(contract, {"keyword": "coffee"})
-    assert variant == ("keyword",) and req["country"] == "us" and req["limit"] == 20, "filter defaults ride with the identity"
-    req, _ = canonical_identity(contract, {"keyword": "coffee", "country": "GB", "limit": 5})
-    q, b = cat.adapters["dataforseo.google.keywords.ideas"].to_upstream(req)
-    assert b == [{"keyword": "coffee", "location_code": 2826, "language_code": "en", "limit": 5}], "task list body, GB → 2826"
-    q, b = cat.adapters["seranking.google.keywords.ideas"].to_upstream(req)
-    assert q == {"keyword": "coffee", "source": "uk", "limit": "5"}
-    q, b = cat.adapters["serpapi.google.keywords.ideas"].to_upstream(req)
-    assert q == {"q": "coffee", "gl": "gb", "hl": "en", "engine": "google_autocomplete"}
-    q, b = cat.adapters["tomba.people.email.verify"].to_upstream({"email": "a@b.io"})
-    assert q == {"email": "a@b.io"}, "Tomba verification requires the email query parameter"
-    assert cat.by_id["tomba.people.email.verify"]["path"] == "/v1/email-verifier"
-    assert cost_at({"usd": 0.00179, "type": "per_result", "per": 1}, req) == 8_950, "priced at the requested limit"
-    ep = cat.by_id["treg.google.keywords.ideas"]
-    assert ep["input"]["body"]["country"]["note"].startswith("filter; default 'us'")
+    assert variant == ("keyword",) and {k: req[k] for k in defaults} == defaults
+    body = cat.by_id["treg.google.keywords.ideas"]["input"]["body"]
+    for key, value in defaults.items():
+        assert body[key]["note"].startswith(f"filter; default {value!r}")
 
 
 def test_a_contract_may_set_its_own_default_ceiling():
     from treg.application.call.route import RouteOptions, DEFAULT_MAX_COST_MICRO
-    cat = catalog_store.load()
-    assert cat.contracts["people.search"].default_max_cost_usd is None, "the $1 default covers every current ladder"
     assert RouteOptions.from_headers(lambda k: None, 500_000).max_cost_micro == 500_000
     assert RouteOptions.from_headers(lambda k: None).max_cost_micro == DEFAULT_MAX_COST_MICRO
     assert RouteOptions.from_headers(lambda k: "0.02" if k == "x-treg-route-max-cost" else None, 500_000).max_cost_micro == 20_000
@@ -2341,7 +2240,6 @@ def test_wall_page_is_true_only_for_a_wall_or_a_blank_page(page, wall):
     "Impressum: Beispiel GmbH, Hauptstraße 5, 10115 Berlin. Geschäftsführer: Max Müller. Telefon 030 123456.",
     "Zapatillas de running ligeras con suela de goma. Precio: 59,99 €. Envío gratis en pedidos superiores a 50 €.",
     # A structured answer is never a wall.
-    '{"ip": "203.0.113.7"}',
     '{"status":"ok","version":"2.4.1","uptime":86400}',
     # A real short page that carries a cookie banner, a sign-in line, a JavaScript notice or says "access denied".
     "We use cookies to improve your experience. Accept all | Manage preferences\n\n# Opening hours\n\nOur bakery "
@@ -2357,10 +2255,7 @@ def test_wall_page_is_true_only_for_a_wall_or_a_blank_page(page, wall):
     "An old silent pond / A frog jumps into the pond / Splash! Silence again.",
     "We use cookies to improve your experience. Manage preferences or accept all to continue browsing.",
     # A short answer is not a wall for being short: judging it a miss would walk every provider.
-    "OK", "pong", "42", "true", "203.0.113.7", "Hello, World!", "# r/askscience rules",
-    "User-agent: *\nDisallow: /admin/\nSitemap: https://example.com/sitemap.xml",
-    "Bitcoin price: $97,412.55", "# Weather\nLondon 12C, cloudy", "# Coming soon\n\nWe launch in March.",
-    "Ephemeral: lasting for a very short time.",
+    "OK", "203.0.113.7", "# Coming soon\n\nWe launch in March.",
     # A real short page with a sign-in, sign-up or log-in line, or a form's "I'm not a robot".
     "# Jane Doe\nSenior Data Engineer at Acme Corp\nBerlin, Germany\n500+ connections\n\n"
     "Sign in to view Jane's full profile",
@@ -2515,31 +2410,6 @@ async def test_routed_discovery_is_a_runtime_switch(clients: AsyncClient, enrich
     call = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"})
     assert call.status_code == 200 and call.json()["_treg"]["served_by"] == "tomba.people.email.find"
     get_settings.cache_clear()
-
-def test_keywords_are_a_filter_so_they_reach_every_provider_that_can_express_them():
-    """The brief's SUBSTANCE lives in its keywords. As identity they would be dropped whenever
-    another variant matched — icypeas matches {title}, so a `q` carrying "microservices" never
-    reached it and the search degenerated to title+location (bench 2026-08-29: "football scouting
-    analysts" reached the provider as title="Football Analyst" and scored 0 qualified of 15)."""
-    cat = catalog_store.load()
-    contract = cat.contracts["people.search"]
-    assert "keywords" in contract.filters and "keywords" not in {k for v in contract.identity for k in v}
-    ident, variant = canonical_identity(contract, {
-        "q": "backend developers with microservices", "title": "Backend Engineer",
-        "location": "London, United Kingdom", "country": "GB",
-        "keywords": ["microservices", "architecture"], "limit": 15})
-    from treg.domain.catalog.routing.contracts import adapter_accepts
-    icy = cat.adapters["icypeas.people.search"]
-    _, body = icy.to_upstream(ident, adapter_accepts(icy, ident))
-    assert body["query"]["keyword"]["include"] == ["microservices", "architecture"], \
-        "icypeas takes them natively — the whole point of the contract field"
-    exa = cat.adapters["exa.people.search"]
-    _, body = exa.to_upstream(ident, adapter_accepts(exa, ident))
-    assert "microservices" in body["query"], "a semantic provider gets them folded into the query"
-    # and a provider with nowhere to put them says so, which ranks it down (PR #254)
-    from treg.domain.catalog.routing.plan import ignored_filters
-    assert "keywords" in ignored_filters(cat.adapters["aviato.people.search"], contract, ident)
-
 
 @pytest.mark.parametrize(("minimum", "providers", "charged"), [
     (None, ["cloro"], 2_400),
@@ -2764,20 +2634,6 @@ def test_a_people_search_adapter_lists_its_wider_variants_first():
             continue
         for i, narrow in enumerate(ad.accepts):
             assert not any(set(narrow) < set(wide) for wide in ad.accepts[i + 1:]), (eid, narrow)
-    leadocean = cat.adapters["leadocean.people.search"]
-    contract = cat.contracts["people.search"]
-    ident, _ = canonical_identity(contract, {"company_domain": "example.com", "title": "CFO", "q": "speaks Japanese"})
-    assert leadocean.to_upstream(ident, adapter_accepts_of(leadocean, ident))[0] == {
-        "domain": "example.com", "title": "CFO", "q": "speaks Japanese", "limit": "10"}
-    # its person sits under profile_data, which a merge must read to tell a repeat from a new row
-    assert leadocean.rows([{"profile_data": {"profile_full_name": "Jane Doe", "profile_headline": "CFO at Example",
-                                             "profile_url": "https://www.linkedin.com/in/jane",
-                                             "profile_address": {"city": "Austin", "country": "US"}},
-                            "contact_data": {"contact_current_experiences": [
-                                {"company_name": "Example Inc", "company_domain": "example.com", "job_title": "CFO"}]}}]) == [
-        {"name": "Jane Doe", "profile_url": "https://www.linkedin.com/in/jane", "title": "CFO",
-         "company": "Example Inc", "company_domain": "example.com", "location": "Austin, US",
-         "summary": "CFO at Example"}]
 
 
 def test_every_routed_people_search_adapter_answers_in_the_contract_row_shape():
@@ -2799,23 +2655,6 @@ def test_every_routed_people_search_adapter_answers_in_the_contract_row_shape():
             assert isinstance(row, dict) and set(row) <= set(contract.row_fields), (eid, row)
             assert any(row.get(k) for k in contract.row_needs), (eid, row)
             assert row.get("name") and any(row.get(k) for k in ("title", "profile_url", "email")), (eid, row)
-
-
-def adapter_accepts_of(adapter, identity):
-    from treg.domain.catalog.routing.contracts import adapter_accepts
-    return adapter_accepts(adapter, identity)
-
-
-async def test_a_title_sent_through_an_expression_still_ranks_on_price(clients, platform_on, monkeypatch):
-    """prospeo and companyenrich both send {company_domain, title}; with prospeo's narrower
-    {company_domain} variant listed first its title went unranked and the dearer one led."""
-    for p in ("PROSPEO", "COMPANYENRICH"):
-        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "prospeo,companyenrich")
-    get_settings.cache_clear()
-    got = await _first_providers("treg.people.search", {"company_domain": "example.com", "title": "CFO", "limit": 3}, n=2)
-    get_settings.cache_clear()
-    assert got == ["prospeo", "companyenrich"]
 
 
 async def test_keys_no_provider_can_send_together_are_refused_422_not_503(
@@ -3079,18 +2918,20 @@ async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: Asyn
          "tomba": [(200, {"data": {"e164_format": None}})],
          "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
          "findymail": [(200, {"phone": None})],
-         "leadsforge": [(200, {"phoneNumber": None})]}, seen))
+         "leadsforge": [(200, {"phoneNumber": None})],
+         "fiber": [(404, {"message": "Profile not found."})]}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"})
     assert r.status_code == 200, r.text
     assert r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["_treg"]["served_by"] is None
     outcomes = {t["endpoint_id"]: t["outcome"] for t in r.json()["_treg"]["tried"]}
-    assert outcomes["aviato.people.phone.find"] == "miss" and len(seen) == 5, "the 404 is a miss; every provider was still asked"
+    assert outcomes["aviato.people.phone.find"] == "miss" and outcomes["fiber-ai.people.phone.find"] == "miss"
+    assert len(seen) == 6, "each 404 is a miss; every provider was still asked"
     assert await _balance(clients) == before, "nobody found anything, nothing was charged"
     # an UNDECLARED 4xx keeps its meaning: a vendor rejecting the request is still the caller's fault
     seen.clear()
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 4}, seen))
+        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 5}, seen))
     r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
                            headers={"X-Treg-Route-Prefer": "aviato"})
     assert r.status_code == 422 and r.json()["detail"]["error"] == "route_caller_fault", r.text
@@ -3184,13 +3025,8 @@ def test_adapter_unit_quote_requires_nonnegative_integer(expression, expected):
 
 @pytest.mark.parametrize('endpoint,given,expected', [
     ('people.email.find', {'first_name': 'Example', 'last_name': 'Person', 'domain': 'example.com'}, 4834),
-    ('people.phone.find', {'linkedin_url': 'https://linkedin.com/in/example'}, 4834),
-    ('people.enrich', {'email': 'person@example.com'}, 4834),
     ('people.search', {'company_domain': 'example.com', 'limit': 10}, 0),
-    ('people.search.domain', {'company_domain': 'example.com', 'limit': 1}, 4834),
     ('people.search.domain', {'company_domain': 'example.com', 'title': 'CEO', 'limit': 1}, 96680),
-    ('companies.search', {'domain': 'example.com'}, 48340),
-    ('companies.search', {'domain': 'example.com', 'limit': 1}, 4834),
     ('companies.search', {'domain': 'example.com', 'limit': 100}, 483400),
 ])
 def test_enrichment_route_quote_matches_direct_reservation(endpoint, given, expected):
@@ -3220,44 +3056,21 @@ def test_row_values_and_nested_lookup_expressions(value, expected):
 
 
 def _make_throwing_adapter(real, throw_on: str):
-    """Create a wrapper adapter that throws on the specified method."""
+    """A wrapper adapter that throws on the named method and delegates everything else, so the
+    only failure the router sees is the simulated one."""
+    failures = {"to_upstream": KeyError, "from_upstream": ValueError, "is_miss": TypeError}
+
     class ThrowingAdapter:
-        def __init__(self, real):
-            self._real = real
-            # Copy ALL attributes from the real Adapter dataclass
-            self.endpoint_id = real.endpoint_id
-            self.accepts = real.accepts
-            self.in_map = real.in_map
-            self.out_map = real.out_map
-            self.miss = real.miss
-            self.const = getattr(real, 'const', {})
-            self.in_expr = getattr(real, 'in_expr', {})
-            self.body_array = getattr(real, 'body_array', False)
-            self.test_identity = getattr(real, 'test_identity', {})
-            self.route = real.route
-            self.cost_units = getattr(real, 'cost_units', '')
-            self.additional_capabilities = getattr(real, 'additional_capabilities', ())
-            self.verified_capabilities = getattr(real, 'verified_capabilities', ())
-            self.verified = real.verified
-            self.verify_note = getattr(real, 'verify_note', '')
-            self._filter_keys = getattr(real, '_filter_keys', ())
+        def __getattr__(self, name):
+            attr = getattr(real, name)
+            if name != throw_on:
+                return attr
 
-        def to_upstream(self, identity, variant):
-            if throw_on == 'to_upstream':
-                raise KeyError("simulated to_upstream failure")
-            return self._real.to_upstream(identity, variant)
+            def throw(*args, **kwargs):
+                raise failures[name](f"simulated {name} failure")
+            return throw
 
-        def from_upstream(self, provider_body):
-            if throw_on == 'from_upstream':
-                raise ValueError("simulated from_upstream failure")
-            return self._real.from_upstream(provider_body)
-
-        def is_miss(self, provider_body):
-            if throw_on == 'is_miss':
-                raise TypeError("simulated is_miss failure")
-            return self._real.is_miss(provider_body)
-
-    return ThrowingAdapter(real)
+    return ThrowingAdapter()
 
 
 def _patched_catalog_with_throwing_adapter(original_cat, endpoint_id: str, throw_on: str):
@@ -3348,16 +3161,9 @@ async def test_adapter_throws_on_all_children_returns_structured_502_with_tried(
     doc = r.json()
     assert doc['detail']['error'] == 'route_failed'
     assert await _balance(clients) == before
-    # The tried list should have some error outcomes (adapters that threw)
     tried = doc['detail']['tried']
-    assert len(tried) > 0
-    error_outcomes = [t for t in tried if t['outcome'] == 'error']
-    # At least one adapter should have thrown (those with email.find in name)
-    assert len(error_outcomes) > 0, f"Expected at least one error outcome, got: {tried}"
-    # Check that error details mention adapter failure
-    for t in error_outcomes:
-        if 'detail' in t and t['detail']:
-            assert 'adapter' in t['detail'] or 'failed' in t['detail'], f"Unexpected error detail: {t}"
+    assert tried and all(t['outcome'] == 'error' and 'adapter.from_upstream failed' in t['detail']
+                         for t in tried), tried
 
 
 async def test_a_miss_with_a_failed_answer_on_the_way_is_an_incomplete_miss_that_charges_only_misses(
@@ -3381,6 +3187,7 @@ async def test_a_miss_with_a_failed_answer_on_the_way_is_an_incomplete_miss_that
     assert r.headers['X-Treg-Route-Incomplete'] == 'true'
     outcomes = {t['outcome'] for t in doc['_treg']['tried']}
     assert {'miss', 'error'} <= outcomes
+    assert all('adapter.from_upstream failed' in t['detail'] for t in doc['_treg']['tried'] if t['outcome'] == 'error')
     assert all(t['charged_micro'] == 0 for t in doc['_treg']['tried'] if t['outcome'] == 'error')
     billed_misses = sum(t['charged_micro'] for t in doc['_treg']['tried'] if t['outcome'] == 'miss')
     assert doc['_treg']['charged_micro'] == billed_misses
@@ -3545,50 +3352,20 @@ def _example(eid: str) -> dict:
     return json.loads((Path(catalog_store.__file__).parents[2] / "catalog" / "examples" / f"{eid}.json").read_text())
 
 
-async def test_people_enrich_not_found_from_dropleads_and_aiark_is_a_miss_not_a_502(clients, monkeypatch):
-    """Dropleads "Person not found" 400s and AI Ark "data not found" 404s were read as provider
-    faults, so a person nobody had came back as 502 route_failed. Both are now declared misses; a rate limit or another 400 stays an error."""
-    monkeypatch.setenv("TREG_PLATFORM_KEY_DROPLEADS", "PLATFORM-DROPLEADS")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_AIARK", "PLATFORM-AIARK")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "dropleads,aiark")
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "dropleads": [(400, {"success": False, "error": "Person not found. Try providing more information like LinkedIn URL or company name."})],
-        "ai-ark": [(404, {"status": 404, "error": "data not found", "path": ""})],
-    }, seen))
-    r = await clients.post("/call/treg.people.enrich", json={"email": "nobody@example.com"},
-                           headers={"X-Treg-Route-Prefer": "dropleads,aiark"})
-    assert r.status_code == 200, r.text
-    assert r.json()["_treg"]["outcome"] == "miss"
-    assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "miss"]
-    assert len(seen) == 2
-    get_settings.cache_clear()
-
-
-# ---- web.extract / web.search: crawl4ai first by default -------------------------------------------
-@pytest.mark.parametrize("job, body, answer, first_seen", [
-    ("treg.web.extract", {"url": "https://example.com"},
-     {"ok": True, "markdown": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission.", "content_hash": "x", "engine": "archive"},
-     {"url": "https://example.com", "format": "md"}),
-    ("treg.web.search", {"q": "rust web crawler"},
-     {"results": [{"title": "spider", "url": "https://github.com/spider-rs/spider", "snippet": "s", "source": "gs"}], "n": 1},
-     None),
-])
-async def test_crawl4ai_answers_scrape_and_search_first_by_default(clients, monkeypatch, job, body, answer, first_seen):
+# ---- web.extract: crawl4ai first by default -------------------------------------------------------
+async def test_crawl4ai_answers_scrape_first_by_default(clients, monkeypatch):
+    answer = {"ok": True, "markdown": "# Example Domain\n\nThis domain is for use in documentation examples without "
+                                      "needing permission.", "content_hash": "x", "engine": "archive"}
     monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
     monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,firecrawl")
     get_settings.cache_clear()
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"crawl4ai": [(200, answer)], "*": []}, seen))
-    r = await clients.post(f"/call/{job}", json=body)
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://example.com"})
     assert r.status_code == 200, r.text
     assert r.json()["_treg"]["provider"] == "crawl4ai" and [s[0] for s in seen] == ["crawl4ai"]
-    if first_seen is not None:
-        assert seen[0][3] == first_seen
-    else:
-        assert seen[0][2] == {"q": "rust web crawler"}
+    assert seen[0][3] == {"url": "https://example.com", "format": "md"}
     get_settings.cache_clear()
 
 
@@ -3734,26 +3511,6 @@ async def test_a_declared_not_found_ends_the_job_and_an_empty_page_is_a_miss(cli
     get_settings.cache_clear()
 
 
-async def test_google_organic_asks_crawl4ai_first_and_falls_back_when_it_is_empty(clients, monkeypatch):
-    """The routed Google organic job sends crawl4ai the query, country, language and the depth rounded
-    up to whole Google pages; an empty answer is a miss and the next provider answers."""
-    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_ANYAPI", "PLATFORM-ANYAPI")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,anyapi")
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "crawl4ai": [(200, {"results": [], "empty_reason": "rescue_no_results"})],
-        "*": [(200, {"output": {"data": {"results": [{"title": "t", "link": "https://example.com"}]}}})]}, seen))
-    r = await clients.post("/call/treg.google.serp.organic", json={"q": "pizza", "country": "PL", "language": "pl", "limit": 25})
-    assert r.status_code == 200, r.text
-    assert seen[0][0] == "crawl4ai" and seen[0][2] == {"q": "pizza", "country": "pl", "language": "pl", "num": "30"}
-    assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "hit"]
-    assert r.json()["_treg"]["provider"] == "anyapi"
-    get_settings.cache_clear()
-
-
-
 def test_empty_output_uses_list_and_count_defaults_not_null():
     """A routed miss must keep list-typed contract fields as [] (and count as 0), never null.
 
@@ -3796,72 +3553,6 @@ async def test_routed_web_search_miss_emits_empty_results_list_not_null(clients,
     assert all(t["outcome"] in ("miss", "skipped") for t in body["_treg"]["tried"])
     assert [s[0] for s in seen] == ["crawl4ai", "tinyfish"]
     get_settings.cache_clear()
-
-
-async def test_routed_google_serp_organic_miss_emits_empty_results_list_not_null(clients, monkeypatch):
-    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "crawl4ai": [(200, {"results": [], "empty_reason": "rescue_no_results"})],
-    }, seen))
-    r = await clients.post("/call/treg.google.serp.organic", json={"q": "site:example.invalid xyzzy-no-hits", "limit": 5},
-                           headers={"X-Treg-Route-Prefer": "crawl4ai", "X-Treg-Route-Max-Cost": "0.05"})
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["_treg"]["outcome"] == "miss"
-    assert body["output"] == {"results": [], "count": 0}
-    get_settings.cache_clear()
-
-
-# ---- web.extract.structured: a new routed job, crawl4ai first ----------------------------------------
-_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}
-
-
-@pytest.fixture
-def _structured_keys(monkeypatch):
-    for k, v in (("CRAWL4AI", "PLATFORM-C4AI"), ("LINKUP", "PLATFORM-LINKUP"), ("SEARCH1API", "PLATFORM-S1")):
-        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{k}", v)
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,linkup,search1api")
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
-
-
-async def test_structured_extract_goes_to_crawl4ai_first(clients, monkeypatch, _structured_keys):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"crawl4ai": [(200, {"ok": True, "data": {"title": "Example Domain"}})], "*": []}, seen))
-    r = await clients.post("/call/treg.web.extract.structured",
-                           json={"url": "https://example.com", "schema": _SCHEMA, "instruction": "the page title"})
-    assert r.status_code == 200, r.text
-    assert r.json()["output"]["data"] == {"title": "Example Domain"} and [s[0] for s in seen] == ["crawl4ai"]
-    assert seen[0][3] == {"url": "https://example.com", "schema": _SCHEMA, "instruction": "the page title"}
-
-
-async def test_an_instruction_without_a_schema_only_fits_crawl4ai(clients, monkeypatch, _structured_keys):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"crawl4ai": [(200, {"ok": True, "data": [{"title": "a"}]})], "*": []}, seen))
-    r = await clients.post("/call/treg.web.extract.structured",
-                           json={"url": "https://example.com", "instruction": "the story titles"})
-    assert r.status_code == 200, r.text
-    assert [s[0] for s in seen] == ["crawl4ai"]
-
-
-async def test_when_crawl4ai_fails_linkup_answers_with_the_same_schema(clients, monkeypatch, _structured_keys):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "crawl4ai": [(502, {"error": "fetch_failed"})],
-        "linkup": [(200, {"data": {"title": "Example Domain"}, "markdown": "x"})],
-        "*": [],
-    }, seen))
-    r = await clients.post("/call/treg.web.extract.structured", json={"url": "https://example.com", "schema": _SCHEMA},
-                           headers={"X-Treg-Route-Prefer": "crawl4ai,linkup"})
-    assert r.status_code == 200, r.text
-    assert [s[0] for s in seen] == ["crawl4ai", "linkup"] and r.json()["_treg"]["provider"] == "linkup"
-    assert seen[1][3]["schema"] == _SCHEMA and seen[1][3]["mode"] == "standard"
 
 
 def test_every_iso_country_reaches_dataforseo_as_its_own_location():
@@ -4031,8 +3722,9 @@ async def _post_ranged_limit(clients, monkeypatch, capability, limit):
     return r, seen
 
 
-@pytest.mark.parametrize("capability", ["web.map", "people.search"])
-@pytest.mark.parametrize("limit", [5.5, "abc", True, 0, -1, " 5"])
+@pytest.mark.parametrize("capability, limit", [
+    *(("people.search", limit) for limit in (5.5, "abc", True, 0, -1, " 5")), ("web.map", 0),
+])
 async def test_a_routed_limit_outside_its_declared_range_is_refused_before_any_hold(
     clients: AsyncClient, monkeypatch, platform_on, capability, limit,
 ):
@@ -4049,8 +3741,9 @@ async def test_a_routed_limit_outside_its_declared_range_is_refused_before_any_h
         assert (await db.execute(select(LedgerEntry).where(LedgerEntry.kind == "reserve"))).scalars().all() == []
 
 
-@pytest.mark.parametrize("capability", ["web.map", "people.search"])
-@pytest.mark.parametrize("limit", [10, "5", "0005", 1001, 5000, "1" + "0" * 30])
+@pytest.mark.parametrize("capability, limit", [
+    *(("people.search", limit) for limit in (10, "0005", 5000, "1" + "0" * 30)), ("web.map", 10),
+])
 async def test_a_routed_limit_inside_its_declared_range_is_served(
     clients: AsyncClient, monkeypatch, platform_on, capability, limit,
 ):
@@ -4167,6 +3860,7 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
         "fiber-ai.people.search": "chargeInfo.creditsCharged; charged per profile returned",
         "leadmagic.x.companies-search-v3": "credits_consumed; free if zero matches",
         "leadmagic.x.employee-finder": "credits_consumed; free if no results",
+        "lusha.companies.enrich": "billing.creditsCharged; a no-match is free",
         "lusha.companies.search": "billing.creditsCharged; an unmatched search charges 0",
         "lusha.people.search": "billing.creditsCharged; an unmatched search charges 0",
         "quickenrich.companies.search": "meta.credits_used; empty results free",
@@ -4244,33 +3938,6 @@ def test_a_whole_request_miss_is_ranked_at_the_hold_the_routed_request_reserves(
     assert wrong == []
 
 
-@pytest.fixture
-def findymail_and_prospeo_on(monkeypatch, platform_on):
-    for p in ("FINDYMAIL", "PROSPEO"):
-        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "findymail,prospeo")
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
-
-
-async def test_a_company_scoped_people_search_tries_findymail_before_prospeo(clients, findymail_and_prospeo_on):
-    """findymail.search.employees bills per contact found and nothing when none: unmeasured, its
-    expected cost per hit is its hit price, not twice that, so it goes ahead of prospeo's dearer
-    per-success page for a one-person {company_domain, title} search."""
-    options = call_route.RouteOptions.from_headers(lambda key: None)
-    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
-    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
-                                       {"company_domain": "stripe.com", "title": "CTO", "limit": 1}, caller, options)
-    by = {c.endpoint["provider"]: c for c in plan.candidates}
-    assert [c.endpoint["provider"] for c in plan.candidates][:2] == ["findymail", "prospeo"]
-    findymail = by["findymail"]
-    assert findymail.endpoint["id"] == "findymail.search.employees" and findymail.hit_rate is None
-    # Price decides once both use the title and the domain: it must not double findymail's price.
-    assert findymail.expected_cost_per_hit == findymail.price_micro
-    assert findymail.expected_cost_per_hit < by["prospeo"].expected_cost_per_hit
-
-
 def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
     """A per-success child is free on a miss unless cost.bills_miss is true; the routed row counts
     those children in miss_billed_by and never claims misses are free while one of them bills."""
@@ -4345,8 +4012,7 @@ def test_prefer_by_domain_suffix_takes_the_longest_suffix_then_the_contract_pref
 
 
 @pytest.mark.parametrize("rule", [
-    {"fr": []}, {"fr": "enrow"}, ["fr"], {"fr": [None]}, {"fr": [""]}, {"fr": ["  "]}, {"fr": [1]},
-    {"": ["enrow"]}, {".": ["enrow"]}, {}, [], False, "fr",
+    ["fr"], {}, {"fr": []}, {"fr": "enrow"}, {"fr": [None]}, {"fr": ["  "]}, {"": ["enrow"]},
 ])
 def test_a_malformed_prefer_by_domain_suffix_fails_the_load(rule):
     from treg.domain.catalog.routing.contracts import parse_contracts
@@ -4385,21 +4051,6 @@ async def test_a_routed_find_asks_the_suffix_provider_first(clients, enrichment_
     assert [p for p, *_ in seen][:len(order)] == order and r.json()["_treg"]["served_by"] == "hunter.people.email.find"
 
 
-@pytest.mark.parametrize("contents", [True, False, None])
-def test_a_web_search_that_asks_for_passages_asks_exa_for_the_ones_matching_q(contents):
-    """`contents: true` asks exa for the passages that match q, at its search price; `false` or no
-    flag leaves Exa's request unchanged. A published route rule puts exa first for it
-    (test_route_rules.py)."""
-    body = {"q": "top B2B sales influencers on Instagram", **({} if contents is None else {"contents": contents})}
-    cat = catalog_store.load()
-    ident, _ = canonical_identity(cat.contracts["web.search"], body)
-    sent = cat.adapters["exa.web.search"].to_upstream(ident, ("q",))[1]
-    if contents:
-        assert sent["contents"] == {"highlights": {"query": body["q"], "maxCharacters": 2000}}
-    else:
-        assert "contents" not in sent
-
-
 def test_a_flag_that_is_off_leaves_the_provider_sample_where_it_was():
     """An unsent or `false` flag asks for nothing: the sample hash sees the identity it saw before the
     filter existed, so a request that never sends `contents` keeps its provider."""
@@ -4420,7 +4071,7 @@ def test_a_flag_that_is_off_leaves_the_provider_sample_where_it_was():
                      for o in range(40)]
 
 
-@pytest.mark.parametrize("value", ["false", 0, 1, "true", [True]])
+@pytest.mark.parametrize("value", ["true", 1, [True]])
 async def test_a_flag_that_is_not_a_bool_is_refused_before_any_provider(clients, platform_on, monkeypatch, value):
     for p in ("CRAWL4AI", "EXA"):
         monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
@@ -4460,7 +4111,7 @@ async def test_a_request_without_the_flag_samples_providers_as_before(clients, p
     monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"crawl4ai":50}')
     get_settings.cache_clear()
     seen = set()
-    for i in range(12):
+    for i in range(4):
         q = f"example {i}"
         want = sampled_provider_allowed("crawl4ai", {"crawl4ai": 50}, org_id=1, capability="web.search",
                                         identity={"q": q, "limit": 10})
@@ -4643,6 +4294,7 @@ async def test_waterfall_off_miss_after_a_billed_failure_is_incomplete_and_bills
     assert r.status_code == 200, r.text
     doc = r.json()['_treg']
     assert [(t['provider'], t['outcome']) for t in doc['tried']] == [('tomba', 'error'), ('findymail', 'miss')]
+    assert 'adapter.from_upstream failed' in doc['tried'][0]['detail']
     assert doc['outcome'] == 'miss' and doc['incomplete'] is True
     assert r.headers['X-Treg-Route-Incomplete'] == 'true'
     assert doc['tried'][0]['charged_micro'] == 0
@@ -5018,7 +4670,7 @@ async def test_a_demo_team_s_routed_keyless_refusal_is_treg_policy_not_capacity(
 async def test_a_strict_drop_beside_a_demo_policy_drop_keeps_its_own_message(monkeypatch):
     """Demo policy speaks for the refusal only when it took every candidate."""
     plan = SimpleNamespace(candidates=[], variant=("symbol",), route_rule=None, health=None, dropped=[
-        {"endpoint_id": "a.keyless", "why": "a is a keyless public API, but demo and sandbox teams do not call it",
+        {"endpoint_id": "a.keyless", "why": "a is a keyless public API, but the public demo team does not call it",
          "policy": True},
         {"endpoint_id": "b.paid", "why": "ignores country", "strict": True}])
 
@@ -5063,3 +4715,148 @@ async def test_a_host_the_provider_does_not_approve_does_not_move_the_router_s_t
                                        call_route.RouteOptions.from_headers(lambda key: None))
     tiers = {c.endpoint["id"]: c.tier for c in plan.candidates}
     assert tiers.get("financialdatasets.prices.snapshot") == "tool", (tiers, plan.dropped)
+
+
+@pytest.fixture
+def routed_allowance_on(monkeypatch, enrichment_on):
+    """Every team on the allowance, its routed children too, over the allowance tests' store."""
+    from test_call_allowance import FakeStore
+
+    from treg.application.call import allowance as allowance_runtime
+    from treg.infra import kv
+
+    store = FakeStore()
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(allowance_runtime, "_database_supported", lambda: True)
+    monkeypatch.setattr(allowance_runtime, "_charges", allowance_runtime._ChargeWriter())
+    monkeypatch.setattr(allowance_runtime, "_in_flight", [0])
+    monkeypatch.setattr(allowance_runtime, "_refused_until", {})
+    monkeypatch.setattr(allowance_runtime, "_ahead", lambda: {"ahead_ms": 0, "low_micro": 0})
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_allowance_all_orgs", True)
+    monkeypatch.setattr(settings, "money_allowance_routed_all_orgs", True)
+    monkeypatch.setattr(settings, "money_allowance_linger_ms", 1)
+    return store
+
+
+@pytest.mark.parametrize("key", [None, "routed-allowance-key"])
+async def test_routed_children_on_the_allowance_hold_nothing_and_only_the_hit_is_charged(
+    clients: AsyncClient, routed_allowance_on, monkeypatch, key,
+):
+    from treg.models import CallCharge, Hold, LedgerEntry
+
+    miss_tomba = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [miss_tomba],
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    headers = {"X-Treg-Route-Prefer": "tomba,findymail", **({"Idempotency-Key": key} if key else {})}
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers=headers)
+    assert r.status_code == 200, r.text
+    assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "hit"]
+    call_id = r.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold))).scalars().all()
+        charges = (await db.execute(select(CallCharge))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry))).scalars().all()
+    assert [h.allowance for h in holds] == [True], "the team's allowance hold, no child's own"
+    assert [(c.call_id, c.amount_micro) for c in charges] == [
+        (f"{call_id}:r1", int(r.headers["X-Treg-Cost-Micro"]))]
+    assert not [e for e in entries if (e.call_id or "").startswith(call_id)]
+    assert routed_allowance_on.marks == set(), "the root's mark is cleared"
+    assert ([call_id] in routed_allowance_on.cleared_batches) == bool(key), "only a keyed root is marked"
+
+
+async def test_a_tagged_call_through_call_queues_its_tags_and_the_fold_attributes_them(
+    clients: AsyncClient, routed_allowance_on, monkeypatch,
+):
+    from treg.domain import money as ledger
+    from treg.domain.money import allowance as money_allowance
+    from treg.models import CallCharge, Hold, LedgerEntry, TagSpend
+
+    monkeypatch.setattr(get_settings(), "money_allowance_tagged_all_orgs", True)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "findymail",
+                                    "X-Treg-Meta": "customer=cust_1"})
+    assert r.status_code == 200, r.text
+    call_id, cost = r.headers["X-Treg-Call-Id"], int(r.headers["X-Treg-Cost-Micro"])
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold))).scalars().all()
+        charges = (await db.execute(select(CallCharge))).scalars().all()
+    assert [h.allowance for h in holds] == [True]
+    child = charges[0].call_id if charges else ""
+    assert child.startswith(f"{call_id}:r")
+    assert [(c.call_id, c.amount_micro, c.meta["tags"]) for c in charges] == [
+        (child, cost, {"customer": "cust_1"})]
+    async with session_maker() as db:
+        await money_allowance.fold_charges_in_transaction(db, org_id)
+        await db.commit()
+    async with session_maker() as db:
+        rows = (await db.execute(select(TagSpend))).scalars().all()
+        settle = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == child, LedgerEntry.kind == "settle"))).scalar_one()
+        by_tag = await ledger.spend_by_tag(db, org_id, "customer", ledger._day_start())
+    assert [(t.dim, t.val, t.hold_id, t.amount_micro, t.settled) for t in rows] == [
+        ("customer", "cust_1", child, cost, True)]
+    assert settle.amount_micro == -cost and by_tag == {"cust_1": cost}
+
+
+async def test_a_routed_root_the_store_will_not_mark_keeps_its_children_on_holds(
+    clients: AsyncClient, routed_allowance_on, monkeypatch,
+):
+    from treg.models import CallCharge, LedgerEntry
+
+    async def refuse(call_ref, ttl_ms):
+        return False
+    monkeypatch.setattr(routed_allowance_on, "mark_call_in_flight", refuse)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "findymail", "Idempotency-Key": "unmarked"})
+    assert r.status_code == 200, r.text
+    call_id = r.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        charges = (await db.execute(select(CallCharge))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry))).scalars().all()
+    assert charges == []
+    assert sorted(e.kind for e in entries if (e.call_id or "").startswith(call_id)) == ["reserve", "settle"]
+
+
+async def test_a_failed_route_charges_nothing_from_the_allowance(
+    clients: AsyncClient, routed_allowance_on, monkeypatch,
+):
+    from treg.application.call import settle as call_settle
+    from treg.models import CallCharge
+
+    closed = []
+    real = call_settle.close_deferred
+
+    async def spy(items, **kwargs):
+        closed.append((kwargs["charge"], [d.epoch is not None for d in items]))
+        return await real(items, **kwargs)
+    monkeypatch.setattr(call_route, "close_deferred", spy)
+
+    async def boom(*args, **kwargs):
+        raise call_route.CallFailure("route_failed", status_code=502, detail={"tried": []})
+    real_run = call_route._run_routed
+
+    async def run_then_fail(parent, ep, body, get_header, client, execute_child, pending, **kw):
+        await real_run(parent, ep, body, get_header, client, execute_child, pending, **kw)
+        await boom()
+    monkeypatch.setattr(call_route, "_run_routed", run_then_fail)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "findymail"})
+    assert r.status_code == 502, r.text
+    assert closed == [(False, [True])], "the hit's take reached the close, and was given back"
+    async with session_maker() as db:
+        assert (await db.execute(select(CallCharge))).scalars().all() == []

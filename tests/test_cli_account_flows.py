@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from treg import cli
+from treg import email as email_sender
 from treg.api import app
 from treg.domain.identity import session as sess
 
@@ -25,12 +26,17 @@ async def test_login_team_switch_team_create_and_email_login_each_leave_a_workin
     trace = []
     otp = {}
 
+    async def deliver(email, code, **kwargs):  # the inbox, where no dev code is shown
+        otp['code'] = code
+
+    monkeypatch.setattr(email_sender, 'send_otp', deliver)
+
     async def send(request):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app)) as c:
             response = await c.send(request)
             trace.append((request.method, request.url.path, response.status_code))
             if request.url.path == '/auth/email/start' and response.status_code == 200:
-                otp['code'] = response.json()['dev_code']
+                otp['code'] = response.json().get('dev_code') or otp['code']
             if request.url.path == '/auth/cli/start' and response.status_code == 200:
                 otp['pair'] = response.json()['code']
             return httpx.Response(response.status_code, headers=response.headers,

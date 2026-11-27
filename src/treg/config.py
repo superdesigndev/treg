@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import json
 import os
 import re
@@ -117,31 +119,6 @@ _PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 _CAPABILITY_NAME = re.compile(r"[a-z0-9][a-z0-9_.-]*")
 
 
-def _parse_compare_pairs(raw: str) -> dict[str, list[tuple[str, str]]]:
-    if not raw.strip():
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except ValueError:
-        raise ValueError("compare_pairs must be a JSON object") from None
-    message = ("compare_pairs must map capabilities to lists of two different lowercase providers, "
-               'e.g. {"web.search": [["provider-a", "provider-b"]]}')
-    if not isinstance(parsed, dict):
-        raise ValueError(message)
-    out: dict[str, list[tuple[str, str]]] = {}
-    for capability, pairs in parsed.items():
-        if not (isinstance(capability, str) and _CAPABILITY_NAME.fullmatch(capability)
-                and isinstance(pairs, list)):
-            raise ValueError(message)
-        for pair in pairs:
-            if not (isinstance(pair, list) and len(pair) == 2
-                    and all(isinstance(p, str) and _PROVIDER_NAME.fullmatch(p) for p in pair)
-                    and pair[0] != pair[1]):
-                raise ValueError(message)
-        out[capability] = [(a, b) for a, b in pairs]
-    return out
-
-
 RANKING_TIERS = ("good", "bad")
 
 
@@ -222,12 +199,18 @@ class Settings(BaseSettings):
     mark_hint_texts: list[str] = Field(default_factory=list)
     ranking_tiers: str = ""
     # Pairwise comparisons (application/compare.py, docs feedback.md "Pairwise comparisons"): the
-    # hourly `treg-worker compare collect` run asks the other vendor of a configured pair the input
-    # of a recent routed call the call path marked as sampled, on treg's key, and the team's agent is later invited to judge
-    # the two answers blinded. Off unless pairs are set and `compare_max_per_day` is above 0.
-    # JSON: capability -> list of unordered provider pairs, e.g.
-    # {"web.search": [["provider-a", "provider-b"]]}.
-    compare_pairs: str = ""
+    # hourly `treg-worker compare collect` run asks a second vendor the input of a recent routed
+    # call the call path marked as sampled, on treg's key, and the team's agent is later invited to
+    # judge the two answers blinded. Only the capabilities are configured: A is the vendor that
+    # served, B is chosen per call among the capability's vendors. Off unless capabilities are
+    # listed, `compare_max_per_day` is above 0 and `compare_daily_usd` is above 0.
+    compare_capabilities: list[str] = Field(default_factory=list)
+    # Providers never asked as B (A is whoever served, so this never limits which calls count).
+    compare_exclude: list[str] = Field(default_factory=list)
+    # B's catalog price for one request at most, in micro-USD; a dearer endpoint is never asked.
+    compare_max_b_micro: int = Field(default=100_000, ge=0)
+    # All runs of one UTC day together: B's catalog prices summed (the claims' `b_cost_micro`).
+    compare_daily_usd: float = Field(default=0, ge=0)
     compare_rate: float = Field(default=0, ge=0, le=1)
     # Second-vendor calls one run makes, and all runs of one UTC day together (counted in the table).
     compare_max_per_run: int = Field(default=20, ge=0)
@@ -323,8 +306,22 @@ class Settings(BaseSettings):
             "money_admission_retry_after_s"))
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
-    # call (money.md "Allowance"); [] = none. Needs the shared key-value store.
+    # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
+    # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the
+    # orgs named here also get a line of their own.
     money_allowance_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org is on the allowance, as if listed, except `money_allowance_excluded_org_ids`.
+    money_allowance_all_orgs: bool = False
+    # Never on the allowance, whatever the two settings above say.
+    money_allowance_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # A routed call's children may take from the allowance too (their parent finishes the takes):
+    # for these teams, or every team on the allowance.
+    money_allowance_routed_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_routed_all_orgs: bool = False
+    # A tagged call (`X-Treg-Meta` or a pinned token) may take from the allowance too when no tag
+    # budget limits any of its tags: for these teams, or every team on the allowance.
+    money_allowance_tagged_org_ids: list[PositiveInt] = Field(default_factory=list)
+    money_allowance_tagged_all_orgs: bool = False
     # What a refill brings the allowance counter up to, in micro-USD.
     money_allowance_chunk_micro: int = Field(default=1_000_000, ge=1, le=1_000_000_000)
     # Above 0: a refill brings the counter up to what the team took from it over this many
@@ -339,17 +336,28 @@ class Settings(BaseSettings):
     money_allowance_fresh_s: int = Field(default=30, ge=1, le=3600)
     # How long finished calls wait to share one insert of their charges.
     money_allowance_linger_ms: int = Field(default=5, ge=0, le=1000)
+    # How many processes may fold queued charges at once, each for its own share of the teams
+    # (money.md "One place folds the queue"). 1 = one process folds for every team.
+    money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
 
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
+    # Every org's untagged free platform calls take no $0 hold, as if listed, except
+    # `holdless_free_excluded_org_ids`.
+    holdless_free_all_orgs: bool = False
+    # Never holdless, whatever the two settings above say.
+    holdless_free_excluded_org_ids: list[PositiveInt] = Field(default_factory=list)
 
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.
     # Empty keeps read_session_maker on the existing primary pool.
     read_database_url: str = ""
+    # The background pool's own route to `database_url`'s database: a transaction-pooling PgBouncer.
+    # Empty keeps it on `database_url`. SQLite has no pools and ignores it.
+    background_database_url: str = ""
 
-    @field_validator("database_url", "read_database_url")
+    @field_validator("database_url", "read_database_url", "background_database_url")
     @classmethod
     def _async_pg_driver(cls, v: str) -> str:
         # Some hosts inject a bare `postgres://`/`postgresql://` URL, but
@@ -379,6 +387,13 @@ class Settings(BaseSettings):
         if v and not v.startswith(("sqlite+aiosqlite://", "postgresql+asyncpg://")):
             raise ValueError("read_database_url must use sqlite+aiosqlite or postgresql+asyncpg, or be empty")
         return v
+
+    @model_validator(mode="after")
+    def _background_database(self):
+        if (self.background_database_url and not self.database_url.startswith("sqlite")
+                and not self.background_database_url.startswith("postgresql+asyncpg://")):
+            raise ValueError("background_database_url must be a PostgreSQL URL")
+        return self
 
     # Pool sizing overrides, e.g. "admin.pool_size=4,background.pool_size=12". Empty = the defaults
     # in `infra.db.POOL_SPECS`. This exists because pool sizing can only be validated in production:
@@ -416,12 +431,6 @@ class Settings(BaseSettings):
         return self
 
     api_token: str = "dev-token"
-
-    # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
-    # live wire: a sandbox call to the exact seeded stripe tool relays for real with THIS key
-    # injected — the key never exists in any sandbox org (see sandbox.is_live_tool / api.call_tool).
-    # Empty = every sandbox call synthesizes.
-    demo_stripe_key: str = ""
 
     # Cross-tenant super-admin bearer (env TREG_ADMIN_TOKEN). Presenting it authorizes every
     # /admin/* endpoint regardless of org. Empty = the env key is disabled (only is_superadmin
@@ -617,6 +626,8 @@ class Settings(BaseSettings):
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
+    platform_key_descovo: str = ""  # Bearer key; monthly plan credits, free balance on /v1/credits
+    platform_key_millionphones: str = ""  # x-api-key header; plan credits, free balance on /v1/credits
     platform_key_forager: str = ""          # X-API-KEY header; monthly plan credits, free balance on /api/users/current/
     platform_key_forager_account: str = ""  # the account id bound to that key, filled into every path — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
@@ -762,6 +773,29 @@ class Settings(BaseSettings):
     # take. It runs from a cron, so its wait is not a caller's.
     review_judge_batch: int = Field(default=25, ge=1, le=100)
     review_judge_timeout_s: float = 60.0
+    # A direct call's negative review is upgraded with the call's answer in view: this many per Jev
+    # request (an answer is far longer than a reason), each answer shortened to
+    # this many characters (`body_view.shrink`, at least its MIN_BUDGET).
+    review_judge_answer_batch: int = Field(default=5, ge=1, le=25)
+    review_judge_answer_chars: int = Field(default=4000, ge=22, le=20000)
+    # An answer not readable yet is tried again, backing off from an hour to a week; after this many
+    # tries its review keeps the codes from its reason.
+    review_judge_answer_attempts: int = Field(default=10, ge=1)
+    # Off: the review judge codes from reasons only, as before the answer upgrade (its rollback switch).
+    review_judge_answers: bool = True
+    # Off: `useful` reviews are not coded with the praise codebook (`review_codes.PRAISE_CODES`), its
+    # rollback switch. On, each run codes at most `review_judge_praise_per_run` of them, newest first,
+    # from their reasons only, within the last `review_judge_praise_days`: the cap bounds the first
+    # runs' backfill, and the window is what the report cards read.
+    review_judge_praise: bool = True
+    review_judge_praise_days: int = Field(default=28, ge=1, le=90)
+    review_judge_praise_per_run: int = Field(default=1000, ge=1, le=10000)
+    # Calls before this moment are never read back as their archived answer: older call rows do not
+    # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
+    # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`
+    # finished serving: until then such an instance answers `/table/` (a retry included) without
+    # recording the surface, though the column exists. Keep `review_judge_answers` off until it is set.
+    review_answer_surface_since: datetime | None = None
     # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
     # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
     # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
@@ -817,10 +851,9 @@ class Settings(BaseSettings):
     # already theirs.
     oauth_billed_providers: str = ""
 
-    # OUR billing account's keys. Deliberately NOT the `demo_stripe_*` pair above: that one belongs to
-    # the landing page's sandbox feed and its webhook secret signs a different endpoint. Empty secret
-    # key = top-ups are off (the /billing/* endpoints 503); empty webhook secret = the webhook 404s,
-    # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
+    # OUR billing account's keys. Empty secret key = top-ups are off (the /billing/* endpoints 503);
+    # empty webhook secret = the webhook 404s, so an unconfigured deploy exposes no unauthenticated
+    # POST surface.
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     ops_slack_webhook_url: str = ""
@@ -875,6 +908,8 @@ class Settings(BaseSettings):
     proxy_ssrf_check: bool = True
     # Threads for the call-time address lookup, which runs off the event loop; one lookup per host at a time.
     ssrf_lookup_threads: int = 8
+    # A caller waiting longer than this for that lookup is refused, as an unresolvable host is.
+    ssrf_lookup_timeout_s: float = Field(default=10.0, gt=0, allow_inf_nan=False)
 
     # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
     # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible
@@ -1191,6 +1226,15 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # Where BROWSERS send analytics, when it differs from `posthog_host`: a first-party proxy such as
+    # PostHog's managed reverse proxy. Blockers drop requests to PostHog's own domains, so a page that
+    # talks to them directly loses its blocker-using visitors. Server-side capture and the install
+    # script keep `posthog_host`; nothing blocks them. Empty = browsers use `posthog_host`.
+    posthog_browser_host: str = ""
+
+    @property
+    def posthog_page_host(self) -> str:
+        return (self.posthog_browser_host or self.posthog_host).rstrip("/")
     # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
     # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
     cli_latest_version: str = ""
@@ -1311,6 +1355,10 @@ class Settings(BaseSettings):
     # Dub requires a country on a lead created without a click. The request's `CF-IPCountry` is used
     # when present; this is the fallback. It shapes Dub's partner analytics only, never money.
     dub_default_country: str = "US"
+    # The most bonus credit one paid top-up can earn from a partner offer set in Dub, whatever the
+    # offer says. A typo in Dub ($500 for $5, 200% for 20%) is then a bounded mistake, not a free
+    # balance. The offer's minimum top-up is the friend referral's (`referral_min_topup_micro`).
+    affiliate_bonus_max_micro: int = 50_000_000  # $50
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
@@ -1428,10 +1476,18 @@ class Settings(BaseSettings):
             raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
         return v
 
-    @field_validator("compare_pairs")
+    @field_validator("compare_capabilities")
     @classmethod
-    def _compare_pairs_shape(cls, v: str) -> str:
-        _parse_compare_pairs(v)  # raises ValueError on a malformed value
+    def _compare_capabilities_shape(cls, v: list[str]) -> list[str]:
+        if not all(_CAPABILITY_NAME.fullmatch(c) for c in v):
+            raise ValueError("compare_capabilities must list lowercase capability names")
+        return v
+
+    @field_validator("compare_exclude")
+    @classmethod
+    def _compare_exclude_shape(cls, v: list[str]) -> list[str]:
+        if not all(_PROVIDER_NAME.fullmatch(p) for p in v):
+            raise ValueError("compare_exclude must list lowercase provider names")
         return v
 
     @field_validator("ranking_tiers")
@@ -1445,14 +1501,10 @@ class Settings(BaseSettings):
         return _parse_ranking_tiers(self.ranking_tiers)
 
     @property
-    def compare_pair_map(self) -> dict[str, list[tuple[str, str]]]:
-        """`compare_pairs` parsed: capability -> unordered provider pairs."""
-        return _parse_compare_pairs(self.compare_pairs)
-
-    @property
     def compare_configured(self) -> bool:
-        """Pairs and a daily limit above 0: what a comparison run needs at all."""
-        return bool(self.compare_pairs.strip() and self.compare_max_per_day > 0)
+        """Capabilities, a daily call limit and a daily spend limit: what a run needs at all."""
+        return bool(self.compare_capabilities and self.compare_max_per_day > 0
+                    and self.compare_daily_usd > 0)
 
     @property
     def route_provider_sample_percentages(self) -> dict[str, int]:

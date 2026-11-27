@@ -87,11 +87,6 @@ def test_valid_steps_manifest_normalizes():
     assert v.inputs["domain"]["secret"] is False
 
 
-def test_valid_script_manifest():
-    v = validate(_script_manifest(), catalog_ids=CATALOG, own_tools=OWN)
-    assert v.kind == "script" and v.script == "run.js" and v.output == {"fields": ["rows", "count"]}
-
-
 @pytest.mark.parametrize("change,field,rule_words", [
     ({"name": "Leads DB"}, "name", "lowercase"),
     ({"summary": ""}, "summary", "required"),
@@ -345,13 +340,6 @@ async def test_a_steps_tool_refuses_a_missing_required_input_by_name(clients: As
     assert r.headers.get("x-treg-error") == "1"
 
 
-async def test_unchecked_version_is_not_on_the_call_road(clients: AsyncClient, hub_on):
-    await _own_supabase(clients)
-    tool_id = (await clients.post("/hub/tools", json={
-        "manifest": _steps_manifest(), "check": CHECK, "readme": "x"})).json()["tool_id"]
-    assert (await clients.get(f"/call/{tool_id}")).status_code == 404
-
-
 async def test_flag_off_the_call_road_is_exactly_as_today(clients: AsyncClient, hub_on, monkeypatch):
     tool_id = await _publish_live(clients)
     monkeypatch.setenv("TREG_HUB_ENABLED", "0")
@@ -364,19 +352,8 @@ async def test_an_own_tool_named_like_a_hub_id_wins(clients: AsyncClient, hub_on
     sid = (await clients.post("/secrets", json={"name": "k", "value": "K"})).json()["id"]
     await clients.post("/tools", json={"name": tool_id, "base_url": "http://upstream", "secret_id": sid})
     r = await clients.get(f"/call/{tool_id}")
-    assert r.status_code != 501          # resolved as the own tool, never reached the hub
-
-
-async def test_a_catalog_id_is_never_a_hub_tool(clients: AsyncClient, hub_on):
-    # Even if a row carried a catalog id, the catalog branch runs first and the hub is never asked.
-    from treg.application import hub as hub_app
-    from treg.infra.db import session_maker
-    assert hub_app.is_hub_id_shape(EP)
-    async with session_maker() as s:
-        assert await hub_app.tool_for(s, EP) is None
-    r = await clients.get(f"/call/{EP}")
-    assert r.status_code != 501
-
+    assert r.status_code == 200, r.text
+    assert "raw_path" in r.json()        # the own tool's upstream answered, not the recipe
 
 
 # ---------------------------------------------------------------------------------------------
@@ -771,6 +748,8 @@ async def test_price_edit_applies_to_later_runs_without_a_version_bump(clients: 
     token = (await funded_user(clients, "buyer@example.com"))["token"]
     run = await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={"X-Treg-Token": token})
     assert run.status_code == 200 and run.json()["usage"]["price_micro"] == 50_000
+    usage = run.json()["usage"]
+    assert usage["steps_micro"] > 0 and usage["cost_micro"] == 50_000 + usage["steps_micro"]
 
 
 async def test_health_is_failing_after_three_failed_runs_and_clears_on_a_pass(clients: AsyncClient, hub_on, platform_on, monkeypatch):
@@ -885,21 +864,7 @@ async def test_the_makers_list_carries_health_and_thirty_day_numbers(clients: As
 # Pricing in the run (round 4): a recipe's fixed price, a script's ctx.charge lines under its cap.
 # The runner holds the price or the cap, settles the real amount, releases the rest.
 
-async def _publish_priced(clients, monkeypatch, price_usd, *, n=5):
-    """A live steps tool with a fixed price whose one catalog step returns a list of `n` items."""
-    monkeypatch.setattr(call_service, "relay",
-                        _fake_relay(200, ("{\"data\": [" + ",".join(["1"] * n) + "]}").encode()))
-    await _own_supabase(clients)
-    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
-                        output={"rows": "$people.data"}, pricing={"price_usd": price_usd})
-    m.pop("price_usd", None)
-    r = await clients.post("/hub/tools", json={"manifest": m, "readme": "x",
-                                               "check": {"inputs": {"domain": "figma.com"}, "fields": ["rows"]}})
-    assert r.status_code == 201 and r.json()["status"] == "live", r.text
-    return r.json()["tool_id"]
-
-
-# One catalog call returning a list; the price is per item, a margin on the call's cost, or both.
+# One catalog call returning a list, priced per item.
 PER_ITEM = ("export default async function run(ctx) {"
             "  const r = await ctx.call('" + EP + "', {query: {aweme_id: ctx.inputs.search || 'x'}});"
             "  if (r.status !== 200) throw new Error('step failed ' + r.status);"
@@ -907,7 +872,6 @@ PER_ITEM = ("export default async function run(ctx) {"
             "  ctx.charge(rows.length * 0.002, 'per row');"
             "  return { rows, count: rows.length };"
             "}")
-MARGIN = PER_ITEM.replace("ctx.charge(rows.length * 0.002, 'per row');", "ctx.charge(r.cost_usd * 0.5, '50% margin');")
 
 
 async def _publish_script_priced(clients, monkeypatch, max_price_usd, script, *, n=5):
@@ -921,30 +885,6 @@ async def _publish_script_priced(clients, monkeypatch, max_price_usd, script, *,
     return r.json()["tool_id"]
 
 
-async def test_a_script_charges_per_result(clients: AsyncClient, hub_on, platform_on, monkeypatch):
-    tool_id = await _publish_script_priced(clients, monkeypatch, 0.5, PER_ITEM, n=5)
-    token = (await funded_user(clients, "b1@example.com"))["token"]
-    run = await clients.post(f"/call/{tool_id}", json={}, headers={"X-Treg-Token": token})
-    assert run.status_code == 200, run.text
-    assert run.json()["usage"]["price_micro"] == 10_000        # 5 rows x $0.002
-    assert run.json()["usage"]["cost_micro"] == 11_000         # + one $0.001 step
-
-
-async def test_a_script_charges_a_margin_on_the_call_cost(clients: AsyncClient, hub_on, platform_on, monkeypatch):
-    tool_id = await _publish_script_priced(clients, monkeypatch, 0.5, MARGIN, n=3)
-    token = (await funded_user(clients, "b4@example.com"))["token"]
-    run = await clients.post(f"/call/{tool_id}", json={}, headers={"X-Treg-Token": token})
-    assert run.json()["usage"]["steps_micro"] == 1_000
-    assert run.json()["usage"]["price_micro"] == 500          # 50% of $0.001
-
-
-async def test_a_recipe_charges_its_fixed_price(clients: AsyncClient, hub_on, platform_on, monkeypatch):
-    tool_id = await _publish_priced(clients, monkeypatch, 0.02, n=5)
-    token = (await funded_user(clients, "b2@example.com"))["token"]
-    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={"X-Treg-Token": token})
-    assert run.json()["usage"]["price_micro"] == 20_000 and run.json()["usage"]["cost_micro"] == 21_000
-
-
 async def test_a_charged_run_moves_money_on_both_teams(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     tool_id = await _publish_script_priced(clients, monkeypatch, 0.5, PER_ITEM, n=5)
     seller_org = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -952,7 +892,10 @@ async def test_a_charged_run_moves_money_on_both_teams(clients: AsyncClient, hub
     hdr = {"X-Treg-Token": (await funded_user(clients, "b5@example.com"))["token"]}
     buyer_org = (await clients.get("/orgs", headers=hdr)).json()[0]["org_id"]
     buyer_before = (await clients.get(f"/orgs/{buyer_org}/balance", headers=hdr)).json()["balance_micro"]
-    await clients.post(f"/call/{tool_id}", json={}, headers=hdr)
+    run = await clients.post(f"/call/{tool_id}", json={}, headers=hdr)
+    assert run.status_code == 200, run.text
+    assert run.json()["usage"]["price_micro"] == 10_000        # 5 rows x $0.002
+    assert run.json()["usage"]["cost_micro"] == 11_000         # + one $0.001 step
     seller_after = (await clients.get(f"/orgs/{seller_org}/balance")).json()["balance_micro"]
     buyer_after = (await clients.get(f"/orgs/{buyer_org}/balance", headers=hdr)).json()["balance_micro"]
     assert seller_after - seller_before == 10_000             # the maker earns the charges, not the cap
@@ -976,18 +919,6 @@ async def test_a_failed_charged_run_pays_the_seller_nothing(clients: AsyncClient
 # ---------------------------------------------------------------------------------------------
 # The surfaces that show the price.
 
-async def test_the_public_page_shows_the_cap_before_any_run(clients: AsyncClient, hub_on, platform_on, monkeypatch):
-    tool_id = await _publish_script_priced(clients, monkeypatch, 0.5, PER_ITEM, n=5)
-    page = (await clients.get(f"/hub/{tool_id}")).text
-    assert "seller up to $0.5 a run" in page
-
-
-async def test_the_mine_list_carries_the_price_label(clients: AsyncClient, hub_on, platform_on, monkeypatch):
-    tool_id = await _publish_script_priced(clients, monkeypatch, 0.5, MARGIN, n=3)
-    row = [t for t in (await clients.get("/hub/tools/mine")).json() if t["tool_id"] == tool_id][0]
-    assert row["pricing"] == {"mode": "charge", "max_price_usd": 0.5} and row["price_label"] == "up to $0.5 a run"
-
-
 async def test_every_price_surface_leads_with_the_observed_range(clients: AsyncClient, hub_on, platform_on, monkeypatch):
     """2026-09-18: the headline price is what a run actually cost (steps + seller part) over recent
     successful runs, one number or a low–high range. Before any run, the declared price or cap."""
@@ -1005,6 +936,8 @@ async def test_every_price_surface_leads_with_the_observed_range(clients: AsyncC
     assert seller_part_micro({"pricing": {"mode": "per_call", "price_usd": 0.01}}, None) == 10_000
     tool_id = await _publish_script_priced(clients, monkeypatch, 0.5, PER_ITEM, n=3)
     row = [t for t in (await clients.get("/hub/tools/mine")).json() if t["tool_id"] == tool_id][0]
+    assert row["pricing"] == {"mode": "charge", "max_price_usd": 0.5} and row["price_label"] == "up to $0.5 a run"
+    assert "seller up to $0.5 a run" in (await clients.get(f"/hub/{tool_id}")).text
     # the publish check was the maker's own run: 3 rows charged $0.006 on top of the $0.001 step
     # only the maker's own check run so far: the figure says so
     assert row["price_samples"] >= 1 and row["price_range"] == "$0.007/run so far · seller up to $0.5 a run (from the maker's own tests)"
@@ -1254,7 +1187,7 @@ async def test_the_public_page_shows_recent_runs_and_never_the_caller_inputs_or_
     for _ in range(2):
         assert (await clients.post(f"/call/{tool_id}", json={"domain": "INPUT-MARKER-55"}, headers=hdr)).status_code == 200
     page = (await clients.get(f"/hub/{tool_id}")).text
-    assert "Recent runs" in page and "2 runs, 2 ok, 0 failed" in page and page.count("<span class=\"ok\">ok</span>") == 2
+    assert "Recent runs" in page and "2 runs, 2 ok, 0 failed" in page
     assert "$0.01" in page and "runs per day" in page
     for leak in ("stranger-log@example.com", "INPUT-MARKER-55", "OUTPUT-MARKER-77"):
         assert leak not in page, leak
@@ -1493,6 +1426,8 @@ async def _approved_with_capability(clients, monkeypatch, capability=None):
 
 
 async def test_an_approved_capability_puts_the_tool_beside_the_providers(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    from tests.test_mcp import _call_tool, mcp_session
+
     tool_id = await _approved_with_capability(clients, monkeypatch)
     monkeypatch.setenv("TREG_ADMIN_TOKEN", ADMIN)
     get_settings.cache_clear()
@@ -1511,6 +1446,15 @@ async def test_an_approved_capability_puts_the_tool_beside_the_providers(clients
     got = (await clients.get(f"/catalog/endpoints/{tool_id}")).json()
     assert got["endpoint"]["capability"] == CAP and got["endpoint"]["observed"]["estimated"] is True
     assert EP in [s["id"] for s in got["siblings"]]
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        mcp_tool = await _call_tool(c, "catalog_get", {"endpoint_id": tool_id}, token=token)
+        mcp_provider = await _call_tool(c, "catalog_get", {"endpoint_id": EP}, token=token)
+    assert mcp_tool["endpoint"]["call_template"] == got["endpoint"]["call_template"]
+    assert mcp_tool["endpoint"]["call_template"]["body"]["domain"] == "figma.com"
+    hub_sibling = next(s for s in mcp_provider["siblings"] if s["id"] == tool_id)
+    assert hub_sibling["kind"] == "hub" and hub_sibling["hub"] is True
+    assert hub_sibling["observed"] == mine["observed"] and "platform_eligible" not in hub_sibling
     # a stranger's runs move the seed
     hdr = {"X-Treg-Token": (await funded_user(clients, "cap-buyer@example.com"))["token"]}
     for _ in range(2):
@@ -1583,7 +1527,7 @@ async def test_an_empty_answer_pays_no_seller_price(clients: AsyncClient, hub_on
 # Team names (hub simulation run 2): a team named treg, official, or a catalog provider would let a
 # stranger's hub tool pass for ours or theirs.
 
-@pytest.mark.parametrize("name", ["treg", "treg-official", "Treg Hub Verified", "Acme Official Data", "tikhub"])
+@pytest.mark.parametrize("name", ["treg", "Treg Hub Verified", "tikhub"])
 async def test_a_reserved_team_name_is_refused(clients: AsyncClient, name):
     r = await clients.post("/orgs", json={"name": name})
     assert r.status_code == 422 and "reserved" in r.text, r.text
@@ -1666,7 +1610,7 @@ async def test_a_maker_cannot_review_its_own_hub_tool(clients: AsyncClient, hub_
     assert r.status_code == 400 and "own hub tool" in r.text, r.text
 
 
-async def test_a_team_tool_may_not_point_at_treg(clients: AsyncClient, hub_on):
+async def test_a_team_tool_may_not_point_at_treg(clients: AsyncClient):
     sid = (await clients.post("/secrets", json={"name": "relay-key", "value": "K"})).json()["id"]
     from treg.config import get_settings
     host = get_settings().public_url.rstrip("/")

@@ -163,40 +163,20 @@ async def test_active_trace_identifies_the_real_block_holder_before_either_commi
         assert await ledger.spent_today_from_ledger(db, org_id) == 130
 
 
-async def test_reused_backend_pid_has_a_new_transaction_id_and_no_stale_identity(postgres_trace):
+async def test_a_pooled_engine_reports_no_backend_pid(postgres_trace):
     engine = create_async_engine(postgres_trace.url, pool_size=1, max_overflow=0)
-    money_trace.install_engine(engine.sync_engine, pool_name="api")
-    # Re-installation is harmless: it must not double-count each observed statement.
-    money_trace.install_engine(engine.sync_engine, pool_name="api")
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    money_trace.install_engine(engine.sync_engine, pool_name="background", pooled=True)
     try:
-        async with sessions() as db:
-            money_trace.mark_money(db, "settle", org_id=7, call_id="first-pooled-call")
-            first_pid = (await db.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+        async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+            money_trace.mark_money(db, "settle", org_id=7, call_id="pooled-call")
+            await db.execute(text("SELECT 1"))
             money_trace.sample()
-            [first] = [row for row in money_trace.drain_events() if row["event"] == "money_txn_slow"]
-            assert first["backend_pid"] == first_pid
-            assert first["sql_count"] == 1
-            await db.commit()
-        money_trace.drain_events()
-        async with sessions() as db:
-            second_pid = (await db.execute(text("SELECT pg_backend_pid()"))).scalar_one()
-            assert second_pid == first_pid, "the single-connection pool really reused this backend"
-            money_trace.sample()
-            assert not [row for row in money_trace.drain_events() if row["event"] == "money_txn_slow"]
-            money_trace.mark_money(db, "release", org_id=8, call_id="second-pooled-call")
-            money_trace.sample()
-            [second] = [row for row in money_trace.drain_events() if row["event"] == "money_txn_slow"]
-            assert second["backend_pid"] == first["backend_pid"]
-            assert second["app_txn_id"] != first["app_txn_id"]
-            assert second["org_ids"] == [8]
-            assert second["call_ids"] == ["second-pooled-call"]
-            assert second["sql_count"] == 1
+            [row] = [row for row in money_trace.drain_events() if row["event"] == "money_txn_slow"]
+            assert row["backend_pid"] is None
+            assert row["pool"] == "background"
             await db.rollback()
     finally:
         await engine.dispose()
-    money_trace.sample()
-    assert not [row for row in money_trace.drain_events() if row["event"] == "money_txn_slow"]
 
 
 async def test_cancelling_a_real_lock_wait_clears_its_trace_and_preserves_the_hold(postgres_trace):

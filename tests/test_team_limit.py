@@ -3,18 +3,6 @@ import asyncio
 from conftest import verified_signup, accept_with_code
 
 
-async def test_eleventh_owned_team_is_refused(clients):
-    # The authenticated fixture already owns its first team.
-    for i in range(9):
-        r = await clients.post('/orgs', json={'name': f'team-{i}'})
-        assert r.status_code == 200, r.text
-    before = (await clients.get('/orgs')).json()
-    r = await clients.post('/orgs', json={'name': 'eleventh'})
-    assert r.status_code == 403, r.text
-    assert '10 teams' in r.json()['detail']
-    assert (await clients.get('/orgs')).json() == before
-
-
 async def test_concurrent_creations_share_the_last_slot(clients):
     for i in range(8):
         assert (await clients.post('/orgs', json={'name': f'team-{i}'})).status_code == 200

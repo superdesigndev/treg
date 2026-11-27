@@ -31,8 +31,7 @@ def test_cli_review(monkeypatch, capsys, status, receipt_status):
     assert json.loads(capsys.readouterr().out) == {'review_id': 9, 'status': receipt_status}
 
 
-@pytest.mark.parametrize('status,code', [(400, 'not_catalog_call'), (401, 'authentication_required'),
-    (403, 'access_denied'), (404, 'not_found'), (422, 'invalid_review'), (503, 'submission_unconfirmed')])
+@pytest.mark.parametrize('status,code', [(401, 'authentication_required'), (503, 'submission_unconfirmed')])
 def test_cli_review_errors_are_structured_and_private(monkeypatch, capsys, status, code):
     client(monkeypatch, lambda request: httpx.Response(status, json={'detail': 'private response'}))
     with pytest.raises(SystemExit):

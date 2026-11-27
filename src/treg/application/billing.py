@@ -58,7 +58,7 @@ from ..config import get_settings
 from ..infra import stripe as stripe_adapter
 from ..models import CreditBlock, EnterpriseSSO, EnterpriseSSOIdentity, EnterpriseDirectoryUser, LedgerEntry, Membership, Org, User
 from ..infra.db import session_maker
-from . import affiliates, enterprise_sso
+from . import affiliate_bonus, affiliates, enterprise_sso
 
 
 
@@ -1494,6 +1494,10 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
             select(CreditBlock.id).where(CreditBlock.stripe_payment_intent == pi["id"])
         )).first() is not None
         await ledger.topup(db, org_id, credited, pi["id"], meta={"auto": True, "source": "stripe"})
+        if not already:
+            # Staged with this credit, as `_credit` does: the webhook's later delivery finds the
+            # payment credited and stages nothing. The worker reads the card from Stripe.
+            await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi["id"], amount_micro=credited)
         org = await db.get(Org, org_id)
         org.autotopup_failures = 0
         # A pause recorded while this attempt was paying is resolved by this payment. Blanking the
@@ -1724,6 +1728,12 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     )).first() is not None
     block = await ledger.topup(db, org_id, amount_micro, pi_id,
                               meta={"auto": auto, "source": "stripe", **attribution})
+    if not already:
+        # The partner offer's outbox row commits with the credit, so a crash after this commit
+        # cannot lose it (a redelivery is not `fresh` and stages nothing). The affiliate worker
+        # decides it later from Dub; this webhook never waits on Dub.
+        await affiliate_bonus.queue(db, org_id=org_id, payment_intent=pi_id,
+                                    amount_micro=amount_micro, fingerprint=fingerprint)
     block_id = block.id  # captured now: a later rollback (the ad-conversion except below) expires
                         # every object this session is tracking, `block` included, and reading an
                         # expired attribute outside an awaited call raises MissingGreenlet.
@@ -2149,18 +2159,20 @@ async def _on_setup_succeeded(db: AsyncSession, si: dict, created: int | None = 
     return {"handled": True, "payment_method_saved": bool(pm_id), "changed": changed}
 
 
-async def billing_state(db: AsyncSession, org: Org) -> dict:
+async def billing_state(db: AsyncSession, org: Org, offer=None) -> dict:
     """Everything the dashboard/CLI needs to render billing in one round-trip: is Stripe on, is there
     a customer and a card, what the auto-top-up policy is, and how much of the monthly cap the
     automatic charges have used so far."""
     prefs = autotopup_prefs(org)
     s = get_settings()
     spent = await monthly_autotopup_spend(db, org.id) if org.id else 0
+    from .call import allowance as call_allowance  # the call runtime imports this module
+    balance = await call_allowance.spendable(db, org.id, offer) if org.id else 0
     return {
         "org_id": org.id,
         "configured": configured(),
-        "balance_micro": int(org.balance_micro or 0),
-        "balance_usd": ledger.usd(int(org.balance_micro or 0)),
+        "balance_micro": balance,
+        "balance_usd": ledger.usd(balance),
         "customer": bool(org.stripe_customer_id),
         "card_on_file": bool(org.stripe_default_pm),
         # Whether the hosted portal can be opened at all. It hangs off the Stripe customer, which only
@@ -2242,9 +2254,11 @@ async def _journey_org(db: AsyncSession, org_id: int) -> Org:
 
 
 async def get_billing_state(org_id: int) -> dict:
+    from .call import allowance as call_allowance
+    offer = await call_allowance.counter_offer(org_id)  # a store read: before the session
     async with _db.session_maker() as db:
         org = await _journey_org(db, org_id)
-        state = await billing_state(db, org)
+        state = await billing_state(db, org, offer)
         # Merged HERE rather than inside `billing_state`, so billing keeps its one job (Stripe) and
         # does not grow a second reason to know about referrals. This is the screen where a referred
         # team is already deciding how much to add, so it is the only place the minimum actually
@@ -2283,6 +2297,8 @@ async def configure_autotopup(
     amount_usd: float | None, monthly_cap_usd: float | None, return_base: str, email: str,
     setup_url: bool = True, per_hour: int | None = None,
 ) -> dict:
+    from .call import allowance as call_allowance
+    offer = await call_allowance.counter_offer(org_id)  # a store read: before the session
     async with _db.session_maker() as db:
         org = await _journey_org(db, org_id)
         if enabled and not consent and not org.autotopup_consented_at:
@@ -2297,7 +2313,7 @@ async def configure_autotopup(
                 monthly_cap_usd=monthly_cap_usd, per_hour=per_hour)
         except (TopupRejected, ValueError) as e:
             raise BillingJourneyError("rejected", str(e)) from e
-        state = await billing_state(db, org)
+        state = await billing_state(db, org, offer)
         if enabled and setup_url and not org.stripe_default_pm:
             try:
                 state["setup_url"] = (await create_setup_checkout(

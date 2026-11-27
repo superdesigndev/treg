@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from cryptography.fernet import InvalidToken
 from sqlalchemy import delete, func, tuple_, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -992,19 +992,35 @@ async def _resolve_oauth_client(client_id: str, db: AsyncSession) -> OAuthClient
         return row
     if not client_id.startswith("https://"):
         return row  # a dcr client we do not know is simply unknown
+    await db.commit()  # the metadata fetch below holds no pooled connection
     doc = await mcp_oauth.fetch_client_id_metadata(client_id)
     if doc is None:
         return row  # keep a stale copy over nothing: a transient fetch failure is not a revocation
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if row is None:
-        row = OAuthClient(client_id=client_id, kind="cimd")
-        db.add(row)
-    row.kind, row.refreshed_at = "cimd", now
-    row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
-    row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
-    await db.commit()
-    await db.refresh(row)
-    return row
+    return await _store_cimd_client(client_id, doc, db)
+
+
+async def _store_cimd_client(client_id: str, doc: dict, db: AsyncSession) -> OAuthClient:
+    """Write a fetched document onto its row. Two first sights of one client_id may both insert;
+    the loser of the unique constraint updates the winner's row instead."""
+    for attempt in range(2):
+        row = (await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
+               ).scalar_one_or_none()
+        if row is None:
+            row = OAuthClient(client_id=client_id, kind="cimd")
+            db.add(row)
+        row.kind, row.refreshed_at = "cimd", datetime.now(timezone.utc).replace(tzinfo=None)
+        row.client_name, row.client_uri = doc["client_name"], doc["client_uri"]
+        row.logo_uri, row.redirect_uris, row.scope = doc["logo_uri"], doc["redirect_uris"], doc["scope"]
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            if attempt:
+                raise
+            continue
+        await db.refresh(row)
+        return row
+    raise AssertionError("unreachable")
 
 
 def _wrong_resource(resource: str) -> str | None:
@@ -1139,18 +1155,25 @@ async def prepare_oauth_authorization(
         if user is None:
             return None
 
+        from .call import allowance as call_allowance
         sso_org_id = (sess.read_session_claims(session_cookie) or {}).get("sso_org_id")
         memberships = (await db.execute(
             select(Membership).where(Membership.user_id == user.id))).scalars().all()
-        teams = []
+        usable = []
         for membership in memberships:
             org = await db.get(Org, membership.org_id)
             if org is not None and not org.suspended and await sso_team_allowed(db, membership, sso_org_id):
-                # The BALANCE belongs on this list. Choosing a team here decides which balance the
-                # client spends for the life of the grant, and a list of slugs makes the one question
-                # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
-                teams.append({"org_id": org.id, "slug": org.slug, "role": membership.role,
-                              "balance_usd": round((org.balance_micro or 0) / 1_000_000, 4)})
+                usable.append((membership.role, org.id, org.slug))
+        # The read ends before the store is asked for the counters: a slow store must not keep
+        # this session's connection.
+        await db.commit()
+        offers = await call_allowance.counter_offers(org_id for _, org_id, _ in usable)
+        # The BALANCE belongs on this list. Choosing a team here decides which balance the
+        # client spends for the life of the grant, and a list of slugs makes the one question
+        # that matters - "which of these can actually pay?" - invisible at the moment of choosing.
+        teams = [{"org_id": org_id, "slug": slug, "role": role,
+                  "balance_usd": round(await call_allowance.spendable(db, org_id, offers[org_id]) / 1_000_000, 4)}
+                 for role, org_id, slug in usable]
         new_team = (first_run.team_names(user.email)[0]
                     if _first_team_due(client, user, memberships, sso_org_id) else "")
         if not teams and not new_team:

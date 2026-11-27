@@ -44,8 +44,6 @@ export default {
       <p v-if="oauthSignin" class="sub">After sign-in, review the requested access before you approve it.</p>
       <p v-else-if="invitePrefill" class="sub">Sign in with <b>{{invitePrefill}}</b> and you'll drop straight into the team.</p>
       <p v-else-if="shareGate" class="sub">You'll land on “{{shareGate.name}}” right after.</p>
-      <!-- The default line is the SANDBOX's ("bring it into a real account"), which is nonsense to
-           someone who arrived on a catalog page from a search result and has no sandbox. -->
       <p v-else-if="publicCatalog" class="sub">Verify your new account and create a team to call these tools. <b>$1.00 of credit once</b> on an eligible team, no card.</p>
       <p v-else class="sub">Sign in to connect your agent and manage your team.</p>
       <div v-if="!emailStage">

@@ -85,6 +85,9 @@ async def _plan(sql: str) -> str:
         if connection.dialect.name == "postgresql":
             await connection.execute(sa.text("SET enable_seqscan = off"))
             return "\n".join((await connection.execute(sa.text(f"EXPLAIN {sql}"))).scalars())
+        # SQLite plans EXPLAIN QUERY PLAN against the schema the connection already holds, and a
+        # pooled connection that last read the schema before the index existed answers SCAN.
+        await connection.invalidate()
         return "\n".join(str(r[-1]) for r in (await connection.execute(sa.text(
             f"EXPLAIN QUERY PLAN {sql}"))).all())
 

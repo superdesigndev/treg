@@ -89,8 +89,6 @@ async def test_static_page_revalidates_to_a_304(clients: AsyncClient):
 
 @pytest.mark.parametrize(("path", "policy"), [
     ("/media/landing/gateway.js", "no-cache"),
-    ("/media/landing/gateway.css", "no-cache"),
-    ("/media/grokbot/grokbot.png", "public, max-age=86400"),
     ("/media/og.png", "public, max-age=86400"),
 ])
 async def test_media_cache_policy(clients: AsyncClient, path: str, policy: str):

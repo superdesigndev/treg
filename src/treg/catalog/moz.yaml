@@ -8,42 +8,33 @@ source:
 # integrations at a unified V3 JSON-RPC API (api.moz.com); V2 is still live and is what treg's
 # registry entry (oauth_providers.MOZ.base_url) targets, so that is what is catalogued here.
 #
-# Billing model: Moz meters a ROW QUOTA per billing period, not per call — `cost.value` below is
-# rows consumed by ONE call of the shape in `test_request`. For list endpoints one returned result
-# = one row, so `limit` is the cost dial. Three endpoints are "weighted" and burn more than one row
-# per result: link_intersect (5x per result), link_status (2x per source), url_metrics (+1 row per
-# history/distribution modifier). POST /v2/usage_data reports rows consumed so far and is free.
+# Billing model: Moz meters a ROW QUOTA per billing period, not per call. For list endpoints one
+# returned result = one row, so `limit` is the cost dial. Three endpoints are "weighted" and burn
+# more than one row per result: link_intersect (5 per result), link_status (2 per source),
+# url_metrics (+1 row per target for `distributions` and for each history list entry). Every billed
+# answer reports the rows it spent in the X-Row-Count response header; an empty result and an error
+# carry none and spend no rows. POST /v2/usage_data reports rows consumed so far and is free; its
+# count updates minutes late, so it cannot attribute a single call.
 # Errors use real HTTP status codes (400/401/403), so no `expect` blocks are needed.
-#
-# ROW COSTS MEASURED 2026-07-31 — every `cost` below now carries `source: observed`. Each endpoint
-# was called once with exactly the `test_request` shown, with a free POST /v2/usage_data read
-# immediately before and after, and rows_consumed moved by exactly the documented value on all ten
-# priced endpoints — including all three WEIGHTED ones (link_status 2x, url_metrics+distributions
-# 2x, link_intersect 5x), which were the figures most likely to be wrong and were not. The whole
-# 12-endpoint sweep cost 17 rows. Moz's meter updates synchronously, which is what makes per-call
-# attribution possible here and is NOT true of every row/credit provider (SE Ranking's lags ~30s
-# and cannot be attributed this way).
-#   The one CHANGE: /v2/index_metadata was `value: null, confidence: unknown` because the 07-28 run
-#   had exhausted its quota before reaching it. It is 1 row.
 #
 # CONFIRMED ENDPOINT LIST: the API enumerated its own valid V2 actions in an error message, so this
 # list is authoritative rather than transcribed from docs —
 #   /v2/anchor_text, /v2/final_redirect, /v2/global_top_pages, /v2/global_top_root_domains,
 #   /v2/index_metadata, /v2/link_intersect, /v2/link_status, /v2/linking_root_domains, /v2/links,
 #   /v2/top_pages, /v2/url_metrics, /v2/usage_data
-# There is NO /v2/quota route (oauth_providers.MOZ.probe_path points at one — registry bug).
+# There is NO /v2/quota route.
 #
 # QUOTA TRAP — read before probing this provider: /v2/global_top_pages and /v2/global_top_root_domains
 # have NO required parameters, so a "schema probe" with an empty body `{}` does not error, it returns
-# the FULL default result set (25 rows each) and bills you for it. Two such probes burned this
-# account's entire 50-row period allowance. The target-taking endpoints (url_metrics, links,
-# anchor_text, linking_root_domains, top_pages) do reject `{}` for free with HTTP 400.
-#
-# VERIFICATION STATUS: three endpoints answered HTTP 200 and are stamped — moz.account.usage,
-# moz.web.global.top_pages, moz.web.global.top_domains. The remaining nine are unverified because the
-# credential's row quota was exhausted (they now all answer HTTP 403 {"issue": "insufficient-quota"});
-# their paths and parameters come from the official V2 docs linked in each entry's docs_url.
+# the FULL default result set (25 rows each) and bills you for it. The target-taking endpoints
+# (url_metrics, links, anchor_text, linking_root_domains, top_pages) do reject `{}` for free with
+# HTTP 400.
 pricing_url: https://moz.com/api/pricing
+
+defaults:
+  provenance: {source: docs, source_url: 'https://moz.com/products/api/pricing', checked: '2026-11-25', confidence: verified}
+  settle: {reported: {header: x-row-count, unit: quota_row}}
+
 endpoints:
   - id: moz.web.url.metrics
     capability: web.url.metrics
@@ -57,7 +48,7 @@ endpoints:
       bodyType: json
       body:
         targets: {type: array, items: {type: string}, required: true, note: "1-50 URLs or domains; a bare domain is treated as that page", example: ["moz.com"]}
-        distributions: {type: boolean, required: false, note: "adds link distribution histograms; +1 row", example: false}
+        distributions: {type: boolean, required: false, default: false, note: "adds link distribution histograms; +1 row", example: false}
         daily_history_deltas: {type: array, items: {type: string}, required: false, note: "metrics to return 60d daily gains/losses for; +1 row per entry"}
         daily_history_values: {type: array, items: {type: string}, required: false, note: "metrics to return 60d daily values for; +1 row per entry"}
         monthly_history_deltas: {type: array, items: {type: string}, required: false, note: "as daily_history_deltas, over 32 months; +1 row per entry"}
@@ -65,17 +56,15 @@ endpoints:
       note: "history params accept count metrics (pages_to_page, …), page_authority, domain_authority; you cannot select which base metrics come back — all are returned per target"
     test_request:
       body: {targets: ["moz.com"]}
-    cost:
-      type: quota_rows
-      value: 1
+    price:
+      table:
+        - {when: [{path: body.distributions, op: equals, value: false}], value: '1'}
+      fallback: {value: '2', note: "with distributions: true"}
       currency: unit
-      per: 1
       unit: quota_row
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: '1 row per target with no modifiers; each history list entry and `distributions: true` adds 1 row per target (weighted endpoint) OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.'
+      note: "1 row per target; `distributions: true` adds 1 row per target, and so does each entry of a history list"
+    reserve: {entities: {from: body.targets, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.url.metrics.json
@@ -97,17 +86,9 @@ endpoints:
       note: "Moz has no dedicated backlink-summary endpoint — url_metrics IS the summary: it returns pages_to_root_domain, root_domains_to_root_domain, nofollow/redirect/deleted splits etc. This entry is the same path called with distributions:true, which adds METRIC_by_MEASURE histograms (bucketed by root_domains, domain_authority, spam_score). Use moz.web.url.metrics when you only need DA/PA/Spam Score."
     test_request:
       body: {targets: ["moz.com"], distributions: true}
-    cost:
-      type: quota_rows
-      value: 2
-      currency: unit
-      per: 1
-      unit: quota_row
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per target + 1 row for the distributions modifier OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '2', currency: unit, unit: quota_row, note: "2 rows per target: 1 for its metrics, 1 for the distributions"}
+    reserve: {entities: {from: body.targets, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.backlinks.summary.json
@@ -132,23 +113,14 @@ endpoints:
         source_root_domain: {type: string, required: false, note: "only links from this source root domain"}
         source_scope: {type: string, required: false, note: "page | subdomain | root_domain (default page) — at subdomain/root_domain returns only the best link per source"}
         subdomains_limited_to_one: {type: array, items: {type: string}, required: false, note: "return only the best link from each listed subdomain"}
-        limit: {type: number, required: false, note: "1-50, default 25 — this is the cost dial", example: 1}
+        limit: {type: integer, required: false, note: "1-50, default 25 — this is the cost dial", example: 1}
         next_token: {type: string, required: false, note: "cursor from a previous response's next_token"}
       note: "not every sort/filter works with anchor_text, source_root_domain or subdomains_limited_to_one — see the Parameter Compatibility table in the docs"
     test_request:
       body: {target: "moz.com/blog", target_scope: "page", filter: "external", limit: 1}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per returned link; `limit` (1-50) sets the ceiling OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '1', currency: unit, unit: quota_row, display: {unit: result}, note: "1 row per returned link; an empty page is free"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.backlinks.list.json
@@ -171,23 +143,14 @@ endpoints:
         sort: {type: string, required: false, note: "default source_domain_authority; also source_link_propensity, source_spam_score, date_gained, date_lost"}
         begin_date: {type: string, required: false, note: "YYYY-MM-DD; only valid when sort is date_gained or date_lost"}
         end_date: {type: string, required: false, note: "YYYY-MM-DD; only valid when sort is date_gained or date_lost"}
-        limit: {type: number, required: false, note: "1-50, default 25", example: 1}
+        limit: {type: integer, required: false, note: "1-50, default 25", example: 1}
         next_token: {type: string, required: false}
       note: "positive filters need one matching link from the source domain, negative filters need ALL links to match (e.g. 'nofollow' = every link from that domain is nofollow)"
     test_request:
       body: {target: "moz.com", target_scope: "root_domain", filter: "external", limit: 1}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per returned root domain; `limit` (1-50) sets the ceiling OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '1', currency: unit, unit: quota_row, display: {unit: result}, note: "1 row per returned root domain; an empty page is free"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.linking_domains.list.json
@@ -206,23 +169,14 @@ endpoints:
       body:
         target: {type: string, required: true, example: "moz.com"}
         scope: {type: string, required: false, note: "page | subdomain | root_domain (default page)", example: "root_domain"}
-        limit: {type: number, required: false, note: "1-50, default 25", example: 1}
+        limit: {type: integer, required: false, note: "1-50, default 25", example: 1}
         next_token: {type: string, required: false}
       note: "results are always ordered by external_root_domains descending; there is no sort parameter"
     test_request:
       body: {target: "moz.com", scope: "root_domain", limit: 1}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per returned anchor-text phrase; `limit` (1-50) sets the ceiling OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '1', currency: unit, unit: quota_row, display: {unit: result}, note: "1 row per returned anchor-text phrase; an empty page is free"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.anchors.list.json
@@ -247,22 +201,13 @@ endpoints:
         daily_history_values: {type: array, items: {type: string}, required: false}
         monthly_history_deltas: {type: array, items: {type: string}, required: false}
         monthly_history_values: {type: array, items: {type: string}, required: false}
-        limit: {type: number, required: false, note: "1-50, default 25", example: 1}
+        limit: {type: integer, required: false, note: "1-50, default 25", example: 1}
         next_token: {type: string, required: false}
     test_request:
       body: {target: "moz.com", scope: "root_domain", limit: 1}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per returned page; history modifiers add rows as in url_metrics OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '1', currency: unit, unit: quota_row, display: {unit: result}, note: "1 row per returned page; an empty page is free"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.site.top_pages.json
@@ -286,18 +231,8 @@ endpoints:
       note: "the cheapest way to answer 'did my outreach link go live?' without pulling the whole backlink list"
     test_request:
       body: {target: "moz.com/blog", sources: ["twitter.com"], source_scope: "root_domain", target_scope: "page"}
-    cost:
-      type: quota_rows
-      value: 2
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: source, variable: true}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 'weighted endpoint: 2 rows per source (1 source = 2 rows, 50 sources = 100 rows) OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.'
+    price: {value: '2', currency: unit, unit: quota_row, display: {unit: source, variable: true}, note: "2 rows per source, whether it links or not"}
+    reserve: {entities: {from: body.sources, max: 50}}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.backlinks.status.json
@@ -319,25 +254,16 @@ endpoints:
         min_matching_targets: {type: number, required: false, note: "only return sources matching at least this many positive targets"}
         source_scope: {type: string, required: false, note: "page (default) | root_domain"}
         sort: {type: string, required: false, note: "matching_target_count (default) | source_domain_authority | source_spam_score"}
-        limit: {type: number, required: false, note: "1-50, default 25 — expensive, keep low", example: 1}
+        limit: {type: integer, required: false, note: "1-50, default 25 — expensive, keep low", example: 1}
         next_token: {type: string, required: false}
     test_request:
       body:
         positive_targets: [{target: "moz.com", scope: "root_domain"}]
         source_scope: "page"
         limit: 1
-    cost:
-      type: quota_rows
-      value: 5
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result, variable: true}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 'weighted endpoint: 5 rows per RETURNED result (limit 1 = 5 rows, limit 50 = 250 rows). Fewer results than `limit` cost proportionally less. OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.'
+    price: {value: '5', currency: unit, unit: quota_row, display: {unit: result, variable: true}, note: "5 rows per returned source; an empty page is free"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.backlinks.intersect.json
@@ -357,16 +283,7 @@ endpoints:
       note: "takes no parameters; the body must still be an empty JSON object"
     test_request:
       body: {}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      source: observed
-      checked: '2026-07-31'
-      confidence: verified
-      note: '1 row per call. OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after; rows_consumed moved by exactly 1. This closes the previous `value: null, confidence: unknown`, which existed only because the test credential had been out of quota on 2026-07-28 — the endpoint gates on quota (403 insufficient-quota), so it was never free, just unmeasurable at the time.'
+    price: {value: '1', currency: unit, unit: quota_row, note: "1 row per call"}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.index.metadata.json
@@ -389,12 +306,9 @@ endpoints:
       note: "send {} for the current billing period. The count can lag by up to an hour. The captured example's rows_consumed value is masked — it is a real number in responses, account-specific."
     test_request:
       body: {}
-    cost:
-      type: free
-      value: 0
-      currency: USD
-      unit: call
-      note: answers 200 even when the account's row quota is fully exhausted, so it costs nothing and is the right liveness probe for a Moz key
+    price: {value: '0', currency: USD, unit: call, note: "answers 200 even when the account's row quota is fully exhausted, so it costs nothing and is the right liveness probe for a Moz key"}
+    provenance: null
+    settle: null
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.account.usage.json
@@ -412,23 +326,14 @@ endpoints:
     input:
       bodyType: json
       body:
-        limit: {type: number, required: false, note: "1-50, DEFAULT 25 — always send this; omitting it bills 25 rows", example: 1}
+        limit: {type: integer, required: false, note: "1-50, DEFAULT 25 — always send this; omitting it bills 25 rows", example: 1}
         next_token: {type: string, required: false, note: "cursor from a previous response's next_token"}
       note: "no required parameters — an empty body {} is a valid, billable request returning the default 25 rows"
     test_request:
       body: {limit: 1}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per returned page; defaults to 25 rows when `limit` is omitted OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '1', currency: unit, unit: quota_row, display: {unit: result}, note: "1 row per returned page; without `limit`, 25 rows"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.global.top_pages.json
@@ -446,23 +351,14 @@ endpoints:
     input:
       bodyType: json
       body:
-        limit: {type: number, required: false, note: "1-50, DEFAULT 25 — always send this; omitting it bills 25 rows", example: 1}
+        limit: {type: integer, required: false, note: "1-50, DEFAULT 25 — always send this; omitting it bills 25 rows", example: 1}
         next_token: {type: string, required: false, note: "cursor from a previous response's next_token"}
       note: "no required parameters — an empty body {} is a valid, billable request returning the default 25 rows"
     test_request:
       body: {limit: 1}
-    cost:
-      type: quota_rows
-      value: 1
-      currency: unit
-      per: 1
-      unit: quota_row
-      display: {unit: result}
-      source: observed
-      source_url: https://moz.com/api/pricing
-      checked: '2026-07-31'
-      confidence: verified
-      note: 1 row per returned root domain; defaults to 25 rows when `limit` is omitted OBSERVED 2026-07-31 — measured against POST /v2/usage_data (free) immediately before and after this exact test_request; rows_consumed moved by exactly this value.
+    price: {value: '1', currency: unit, unit: quota_row, display: {unit: result}, note: "1 row per returned root domain; without `limit`, 25 rows"}
+    reserve: {rows: {param: body.limit, default: {value: 25, source: docs}, max: 50}}
+    miss: {when: [{path: response.results, op: present}, {path: response.results, op: empty}]}
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/moz.web.global.top_domains.json

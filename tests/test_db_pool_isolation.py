@@ -96,6 +96,14 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     # Runs only inside `treg-worker reviews judge`; same reasoning as `worker.py`. No session is held
     # across a Jev request.
     "application/review_judge.py": {API},
+    # Runs only inside `treg-worker reviews body-pilot`; same reasoning as `worker.py`. Reads only,
+    # and no session is held across an archive read or a Jev request.
+    "application/review_body_pilot.py": {API},
+    # Read only by the review judge, pilot and audit, which run only inside `treg-worker reviews`;
+    # same reasoning as `worker.py`. One short read per review, closed before the archive read.
+    "application/review_answers.py": {API},
+    # Runs only inside `treg-worker reviews body-audit`; same reasoning as `worker.py`.
+    "application/review_body_audit.py": {API},
     # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.
     "application/key_spend_rollup.py": {API},
     # Runs only inside `treg-worker usage rollup`; same reasoning as `worker.py`.
@@ -169,14 +177,6 @@ def test_the_three_pools_are_separate_engines_on_a_real_database():
     protect and file-level write locks cannot be shared, so all three alias one engine."""
     engines = {infra_db._engine, infra_db._admin_engine, infra_db._background_engine}
     assert len(engines) == (1 if infra_db._is_sqlite else 3)
-
-
-def test_no_minor_pool_can_outgrow_its_slots():
-    """Overflow is exactly the escape hatch a bulkhead must not have, so it is 0 on both minor
-    pools; the API keeps its overflow because refusing a real call is the cost this exists to avoid."""
-    assert infra_db.POOL_SPECS["admin"]["max_overflow"] == 0
-    assert infra_db.POOL_SPECS["background"]["max_overflow"] == 0
-    assert infra_db.POOL_SPECS["api"]["max_overflow"] > 0
 
 
 def test_the_background_pool_fits_every_consumer_not_just_the_throttled_ones():

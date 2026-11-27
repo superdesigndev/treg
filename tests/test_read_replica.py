@@ -1,6 +1,5 @@
 """Replica routing is opt-in; its pool must not become a second write path."""
 
-import importlib.util
 import sqlite3
 from contextlib import closing
 
@@ -14,24 +13,12 @@ from treg.infra import db as infra_db
 
 
 @pytest.fixture
-async def load_database(monkeypatch):
-    """Build isolated module instances without replacing the application's imported makers."""
-    modules = []
-
+def load_database(load_db_module):
     def load(read_url="", overrides="", *, primary_url=None):
-        settings = config.Settings(_env_file=None, database_url=primary_url or infra_db._db_url,
-                                   read_database_url=read_url, db_pool_overrides=overrides)
-        spec = importlib.util.spec_from_file_location("treg.infra._replica_test", infra_db.__file__)
-        module = importlib.util.module_from_spec(spec)
-        with monkeypatch.context() as patch:
-            patch.setattr(config, "get_settings", lambda: settings)
-            spec.loader.exec_module(module)
-        modules.append(module)
-        return module
+        return load_db_module(database_url=primary_url or infra_db._db_url,
+                              read_database_url=read_url, db_pool_overrides=overrides)
 
-    yield load
-    for module in modules:
-        await module.dispose_engine()
+    return load
 
 
 @pytest.mark.parametrize("scheme", ["postgres", "postgresql", "postgresql+asyncpg"])

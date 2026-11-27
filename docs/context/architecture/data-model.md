@@ -27,6 +27,8 @@ sources:
   - src/treg/alembic/versions/0029_arena_verification_snapshot.py
 
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
+  - src/treg/alembic/versions/0127_callrecord_served_call_ref.py
+  - tests/test_callrecord_served_call_ref_migration.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0099_idempotentcall_archive_link.py
@@ -62,7 +64,6 @@ sources:
   - src/treg/alembic/versions/0116_stamped_baseline_indexes.py
   - tests/test_stamped_baseline_indexes_migration.py
   - src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py
-  - tests/test_callrecord_drop_unused_indexes_migration.py
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
@@ -193,6 +194,13 @@ Rollups and analytics tables are optional read models: they never determine a mo
   click) or `partner_code` (a typed code, with the `country` Dub requires for it). Only a
   `verified_at` row attributes; `stripe_synced_at` records that an existing Stripe customer was
   brought in line. No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateBonus`**: one per paid top-up of a partner-brought team (unique `payment_intent`),
+  staged with the credit and decided by the affiliate worker: `outcome` records what the partner
+  offer paid and why, `block_id` the granted `bonus` block ([affiliates](affiliates.md) "Partner
+  offer"). No foreign key to `org`: team deletion removes it in code.
+- **`AffiliateCardClaim`**: a card (Stripe's opaque `fingerprint`) that already earned a fixed
+  partner offer, unique. No `org_id`: it outlives team deletion, so a deleted team never frees its
+  card to earn the offer again.
 - **`AffiliateClaim`**: the person a partner brought, by `promo_inbox`, staged with the lead. No
   `org_id` and no foreign key: like `SignupPromoClaim` it outlives the team and the user, so a deleted
   team never makes its creator attributable again. Not unique, so a racing second team leaves a second
@@ -238,6 +246,31 @@ versions, a reviewer on every reviewed row, a publisher on every published row, 
 publication state on a version that is not approved. Allocating versions, validating the rule JSON
 and keeping snapshots immutable are the private admin's job; the call path never reads the table
 ([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
+
+## Call-path tables have no foreign key to `org`
+
+The tables in `ORG_ROWS_WITHOUT_FOREIGN_KEY` (`domain/governance/teams.py`) keep `org_id` (indexed)
+but no foreign key, one revision per table from 0130. A foreign key makes every insert take
+`FOR KEY SHARE` on the team's `org` row, the row every balance write updates. Locks of different
+transactions on one row are recorded as a MultiXact, a new one each time another transaction
+joins, so a busy team's concurrent inserts and balance writes keep writing MultiXacts that grow
+with the number of lockers. On PostgreSQL 16 the MultiXact SLRUs are a few fixed pages behind one
+lock each, shared by the whole server: once they thrash, inserts of every team wait on
+`MultiXactOffsetSLRU`.
+
+Team deletion deletes these tables in its walk and once more after the team row: that DELETE waits
+for every transaction that updated the row and lets none update it after, so a row a call
+committed while the walk ran is taken too (`tests/test_org_delete_race_postgres.py`). A table joins
+the list only when no write to it can commit after the team row is gone: each of its writers
+updates the team row first, share-locks it (the allowance fold, once per fold, since a fold of
+unpaid or late-queued charges may touch no balance, block or hold of the team's), claims a row the
+deletion also deletes, or writes through a foreign key that still stands. `CallRecord` keeps its foreign key for that reason: the audit queue writes it
+from memory after the call, holding no lock on anything of the team's, so without the constraint a
+row with the caller's email, tags and error evidence could land after the team is gone.
+
+Each drop takes ACCESS EXCLUSIVE on the child table and on `org`, bounded by the revision's own
+`SET LOCAL lock_timeout`; a timeout leaves the earlier drops applied (rolling back from there:
+[deploy](../ops/deploy.md), "Rolling back past a revision").
 
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
@@ -304,6 +337,27 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
   `not_found`); null where the status rule decides. Reliability reads it first ([catalog](catalog.md)).
 - `archive_key_hash` / `archive_content_hash`: the link for `GET /calls/{id}/result`
   ([archive](archive.md)).
+- `served_call_ref` (Alembic 0127): on a routed parent only, the `call_ref` of the child whose
+  answer the caller received (`answered_by` in `route._run_routed`: the winning attempt, an async
+  attempt's submission, an upgrade's own served child, under a merge the answer whose body is `raw`,
+  not `served_by`). It names a child only when that child's body is the `raw` returned. NULL on a
+  miss or a failure, when the router wrote `raw` itself (a declared-miss status, a failed async
+  task, a non-JSON body), when re-serializing `raw` changes its value or that cannot be told
+  (`route._delivered_as_received`: the provider's bytes read exactly, numbers as Decimal, in any
+  encoding `json.loads` accepts and with no repeated key, against the delivered `raw` read back; a
+  float past 15 significant digits or a dropped duplicate key fails it, and so does a body the check
+  cannot read, which costs the link, never the call), on an answer over `route.SERVED_CHECK_MAX` (64
+  KiB: the check parses the body again on the request path, so a larger one is served as before and
+  not linked), on a pending 202 (the caller got the submission ticket, not the answer later filed
+  under its ref), on an answer an overflow aggregator served (that row shares the child's ref with
+  the direct attempt's, so a ref could not name one), on every non-routed row and on rows written
+  before 0127, successful ones included: NULL means no usable link was recorded, never that no
+  answer was served. Unindexed and never a foreign key: a reader starts from the parent by id and
+  reads the child by that exact ref through `ix_callrecord_call_ref`. It is not review credit
+  (`route_summary["credited"]`, [feedback](feedback.md)). `served_content_hash` (same revision) is
+  the sha256 of the bytes returned as `raw`, in `archive.content_hash`'s digest: a reader takes an
+  archived answer for this call only when its content hash equals it ([archive](archive.md), "The
+  call-archive link").
 
 **Failure evidence.** `error_request` / `error_response` hold redacted, truncated failure evidence
 on every tier; `/calls` never fetches them, `GET /admin/errors` reads them, and
@@ -330,6 +384,10 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
 - `request_fingerprint` hashes method, path, query and body, a JSON body as its canonical
   serialization (`_canonical_json`); a row stored with the raw-bytes fingerprint still matches
   the same bytes (`_raw_request_fingerprint`). A 409 on a live `pending` row names its `call_ref`.
+- `surface` is `call` or `table`, the surface the label was taken on: a retry on the other one is
+  the 422 mismatch, since `/table/` returns a reshaped answer. NULL on labels stored before 0128,
+  which replay on either surface as before rather than becoming a new paid call; they expire
+  within the window.
 - A `pending` row is a lease owned by one call's `call_ref`: the owner renews `created_at` every
   `IDEMPOTENCY_LEASE_RENEW_S`, and every store, release and renewal is fenced on `call_ref`.
 - A lease older than `IDEMPOTENCY_STALE_PENDING_S` with no open hold or pending async task under
@@ -347,6 +405,16 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
   `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
   closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
+  On PostgreSQL only one run goes at a time (`infra.db.only_one_run`). The trim does not re-read the
+  live day each run: it starts after `resume_after`, the last id up to which every row was decided,
+  which the worker saves in `Ephemeral` after each committed page. A row stays undecided while it
+  is a live pending claim (not expired, renewed within `IDEMPOTENCY_STALE_PENDING_S`), younger than
+  `min_age_s`, its archive key was skipped by `FOR SHARE SKIP LOCKED`, or the time budget ran out
+  before its update; a dead claim is passed over and kept. The walk stops at the first page whose
+  rows were all claimed less than `min_age_s` ago (the claim time is `expires_at` less the window:
+  a lease renewal rewrites `created_at`, never `expires_at`), and at the budget, checked before
+  every update. A row passed over before its archive link existed keeps its own copy until it
+  expires.
 
 ## Caller tags (`X-Treg-Meta`)
 
@@ -397,8 +465,14 @@ The request session commits before the relay ([proxy-model](proxy-model.md)).
   additive release can roll back; any other unknown stamp is refused.
 - `dispose_engine()` closes pooled connections before a maintenance event loop exits, so a later
   loop never inherits connections bound to a closed one.
-- `reset_db()` is test-only: it deletes every row, rewinds Postgres sequences and stamps head,
-  rebuilding the schema only when its column-and-index fingerprint changed.
+- `reset_db()` is test-only: it deletes every row (one probe names the tables holding any, and only
+  those are emptied), rewinds Postgres sequences and stamps head, rebuilding the schema only when
+  its column-and-index fingerprint changed. The fingerprint is read only after some engine in the
+  process ran DDL (a listener on every `Engine`, installed by the first reset, so a server never
+  carries it), and only then are the pools disposed, so no connection keeps a statement prepared
+  against an old table; otherwise pooled connections live on into the next test, as a server's do
+  between requests. It works a few tables per transaction: Postgres's lock table is shared by every
+  database on the server, and parallel test workers each locking every table at once exhaust it.
 - `TREG_READ_DATABASE_URL` adds `read_session_maker`, read-only by default (PostgreSQL read-only
   transactions, SQLite `PRAGMA query_only`); these guard accidents, not deliberate SQL. Failures
   never fall back to the primary. Authorization always stays on the primary. Replication and lag
@@ -463,7 +537,8 @@ Their contract for anyone changing them: they issue no SQL, add no awaits to mon
 never change a transaction boundary or swallow an exception or cancellation, and carry no SQL text,
 parameters, amounts, exception messages, keys or tokens. Org and call ids appear only in bounded
 slow-operation logs, never as aggregate dimensions. A backend PID is reusable, so join trace records
-by `app_txn_id` and time interval. PostHog is a lossy diagnostic sink, never evidence that a charge
+by `app_txn_id` and time interval. A pool behind a connection pooler records no backend PID: the
+id its client sees is the pooler's. PostHog is a lossy diagnostic sink, never evidence that a charge
 committed; short-lived workers are verified from their local exit summary. The quota fail-open
 summary is described in [org-endpoint quotas](org-endpoint-quota.md#store-contract).
 

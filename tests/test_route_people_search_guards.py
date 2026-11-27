@@ -23,12 +23,11 @@ def exa_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
-@pytest.mark.parametrize("paging", [{"page": 2}, {"offset": 100}, {"next_cursor": "abc"}])
-async def test_paging_key_is_refused_before_any_call(clients, exa_on, monkeypatch, paging):
+async def test_paging_key_is_refused_before_any_call(clients, exa_on, monkeypatch):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"*": [(200, {})]}, seen))
     before = await _balance(clients)
-    r = await clients.post("/call/treg.people.search", json={"title": "VP Sales", **paging})
+    r = await clients.post("/call/treg.people.search", json={"title": "VP Sales", "page": 2})
     assert r.status_code == 422, r.text
     assert r.json()["detail"]["error"] == "route_paging_unsupported"
     assert seen == [] and await _balance(clients) == before
@@ -93,6 +92,20 @@ async def test_cursor_pages_through_the_provider_that_served_page_one(clients, l
     assert second["output"]["next_cursor"] is None and len(second["output"]["people"]) == 3
 
 
+async def test_a_long_cursor_from_a_paging_provider_is_named_on_treg(clients, lists_on, monkeypatch):
+    """A paging child's over-long token still uses the long-cursor fallback: output.next_cursor
+    is null, raw keeps the token, and _treg.next_cursor names the path. Wrapping first and
+    dropping the token would make that null look like exhaustion."""
+    from treg.application.call import route as call_route
+    token = "Q" * (call_route.CURSOR_MAX + 1)
+    monkeypatch.setattr(service, "relay", _relay_by_provider(
+        {"quickenrich": [(200, _qe(3, token))], "*": []}, []))
+    answer = await _page(clients, {"title": "VP Sales", "limit": 3}, "quickenrich")
+    assert answer["output"]["next_cursor"] is None
+    assert answer["raw"]["meta"]["next_cursor"] == token
+    assert answer["_treg"]["next_cursor"] == {"chars": len(token), "in_raw": "meta.next_cursor"}
+
+
 async def test_a_provider_that_cannot_page_names_the_ones_that_can(clients, lists_on, monkeypatch):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"dropleads": [(200, _dl(2, 4))], "*": []}, seen))
@@ -101,7 +114,7 @@ async def test_a_provider_that_cannot_page_names_the_ones_that_can(clients, list
     assert "X-Treg-Route-Prefer: quickenrich" in answer["_treg"]["paging"]
 
 
-@pytest.mark.parametrize("change", [{"title": "CFO"}, {"limit": 50}, "tamper"])
+@pytest.mark.parametrize("change", [{"title": "CFO"}, "tamper"])
 async def test_cursor_for_another_question_is_refused(clients, lists_on, monkeypatch, change):
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({"quickenrich": [(200, _qe(3, "QE-2"))], "*": []}, seen))

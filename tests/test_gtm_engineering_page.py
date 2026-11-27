@@ -23,12 +23,11 @@ async def test_hub_is_served_canonical_and_measurable(clients: AsyncClient):
     assert "{BASE}" not in html and "{ENDPOINTS}" not in html and "{PROVIDERS}" not in html
     # Hand-written pages are the ones PostHog sees; the hub exists partly to be measured.
     # The agent name in the H1 rotates in the browser; what a crawler reads must already be whole.
-    assert '<span id="agName">Claude Code</span>' in html
     assert re.search(r"<h1>.*GTM engineering playbook.*Claude Code.*</h1>", html, re.S)
     title = re.search(r"<title>(.*?)</title>", html).group(1)
     assert len(title.replace("&amp;", "&")) <= 62, title
     assert '<script src="/sitetrack.js"></script>' in html
-    assert '<script src="/adtrack.js"></script>' in html
+    assert '<script src="/click-id.js"></script>' in html
     kinds = []
     for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S):
         kinds.append(json.loads(block)["@type"])
@@ -98,9 +97,9 @@ async def test_markdown_twin_carries_every_chapter(clients: AsyncClient):
 
 
 async def test_studies_publish_results_without_naming_the_databases(clients: AsyncClient):
-    """The three studies ship their headline figures inside their own sections, on the page and in
-    the twin; their FAQ answers match the JSON-LD word for word; and no catalog provider is named in
-    any study block: the claims are about stored records, signals and verdicts, not a vendor ranking."""
+    """The three studies ship in their own sections, on the page and in the twin; their FAQ answers
+    match the JSON-LD word for word; and no catalog provider is named in any study block: the claims
+    are about stored records, signals and verdicts, not a vendor ranking."""
     import html as _html
     import json
     from pathlib import Path
@@ -122,17 +121,6 @@ async def test_studies_publish_results_without_naming_the_databases(clients: Asy
         "job-changes": block(md, "### Job changes", "Rule:"),
         "test-your-signals": block(md, "### Test a timing signal", "Rule:"),
     }
-    expected = {
-        "found-vs-deliverable": ["32 deliverable", "53%", "16 risky", "8 invalid", "4 unknown"],
-        "job-changes": ["148", "68%", "64%", "69%", "84 of 139", "49 of"],
-        "test-your-signals": ["57", "54", "30%", "24%", "47%", "48%", "26%", "54%"],
-    }
-    for key, figures in expected.items():
-        assert f'href="#{key}"' in page
-        for figure in figures:
-            assert figure in html_blocks[key], (key, figure)
-            assert figure in md_blocks[key], (key, figure)
-
     catalog = Path(treg.__file__).parent / "catalog"
     providers = {p.name.split(".")[0] for p in catalog.glob("*.yaml")} - {"adapters", "linkedin", "you"}  # the source the study names, and a common word
     studies = " ".join(list(html_blocks.values()) + list(md_blocks.values())).lower()

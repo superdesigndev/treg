@@ -10475,7 +10475,10 @@ endpoints:
   test_request:
     queryParams:
       user_id: '182988865'
-  unverified: 'http 400: Request failed. Please retry. Check the docs below to verify your parameters, te'
+  unverified: 'http 404: Not Found'
+  status: retired
+  status_note: "TikHub dropped this route from its API: every call answers 404 Not Found, the catalog's own example user id included (live 2026-11-23). The same panel now lives at /api/v1/instagram/v2/fetch_user_about_info."
+  superseded_by: tikhub.x.instagram-v2-fetch-user-about-info
 - id: tikhub.x.instagram-v1-fetch-user-info-by-id
   platform: instagram
   method: GET
@@ -11048,6 +11051,33 @@ endpoints:
   added: '2026-07-28'
   example_response: examples/tikhub.x.instagram-v2-fetch-user-following.json
   capability: instagram.user.following
+- id: tikhub.x.instagram-v2-fetch-user-about-info
+  added: '2026-11-23'
+  platform: instagram
+  method: GET
+  path: /api/v1/instagram/v2/fetch_user_about_info
+  name: "Instagram account country and date joined"
+  summary: 'Instagram: "About this account" panel: country the account is based in, date joined, verification date, former usernames (v2)'
+  price: {value: '0.002', currency: USD, per: 1, unit: call}
+  miss: {when: {path: response.data.data.id, op: absent}}
+  input:
+    queryParams:
+      username:
+        type: string
+        required: false
+        note: Username; give this or user_id
+        example: cristiano
+      user_id:
+        type: string
+        required: false
+        note: User ID; give this or username
+        example: '182988865'
+  test_request:
+    queryParams:
+      username: cristiano
+  verified: '2026-11-23'
+  example_response: examples/tikhub.x.instagram-v2-fetch-user-about-info.json
+  capability: instagram.user.about
 - id: tikhub.x.instagram-v2-fetch-user-highlights
   platform: instagram
   method: GET

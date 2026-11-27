@@ -6,14 +6,16 @@ import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from functools import cache
 from importlib import import_module
 
 from asyncpg.exceptions import CannotConnectNowError, TooManyConnectionsError
-from sqlalchemy import bindparam, event, inspect, text
+from sqlalchemy import Engine, bindparam, event, exists, inspect, literal, select, text, union_all
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
 
 from ..config import get_settings
@@ -26,21 +28,31 @@ from . import money_trace
 _db_url = get_settings().database_url
 _read_db_url = get_settings().read_database_url
 _is_sqlite = _db_url.startswith("sqlite")
+_background_url = "" if _is_sqlite else get_settings().background_database_url
 
 
 # THREE PRIMARY POOLS, ONE DATABASE — a bulkhead. Each class of work can exhaust only its own slots, so
 # admin pages and background writers cannot starve the API. Sizing is deliberately lopsided:
-# the API is the product, the other two are not. Overflow is 0 on both minor pools because overflow
-# is the escape hatch a bulkhead must not have. A pool, not a semaphore: a semaphore bounds only the
-# module that remembers to take one, a pool bounds every module routed to it.
+# the API is the product, the other two are not. A pool's cap is `pool_size + max_overflow`; both
+# are bounded (`_OVERRIDE_FLOORS`), so overflow does not breach the bulkhead. A pool, not a
+# semaphore: a semaphore bounds only the module that remembers to take one, a pool bounds every
+# module routed to it.
+#
+# The two numbers cost different things. A pool opens connections lazily, never at startup, and
+# keeps up to `pool_size` of them open after they are returned, so once a process has been that
+# busy it holds them while idle, old processes included during a rolling deploy. Overflow
+# connections close on return, so they cost only while in use, at the price of a fresh connect per
+# burst. Moving capacity from `pool_size` to `max_overflow` lowers what stays open after traffic
+# subsides; the peak under full load is still `pool_size + max_overflow`.
 #
 # `background` is sized from `BACKGROUND_CONSUMERS` below.
 #
 # `admin` is 3: one slot for a staff page left polling, one for a human using the dashboard, one
 # spare. Any handler that opens a SECOND session eats two.
 #
-# Sizes are PER PROCESS: per-process size times workers times instances (a rolling deploy runs
-# old and new at once) must stay under the database's connection ceiling. See `connection_budget`.
+# Sizes are PER PROCESS: per-process size times workers times instances, doubled for a rolling
+# deploy that runs old and new at once, must stay under the database's connection ceiling. See
+# `connection_budget`.
 #
 # These numbers can only be validated in production: too small and real traffic gets 503s, too large
 # and the bulkhead is decorative, and no test can tell you which. `TREG_DB_POOL_OVERRIDES` makes a
@@ -131,35 +143,77 @@ def answers_db_busy(exc: BaseException) -> bool:
 
 
 def connection_budget(workers: int | None = None) -> dict[str, int]:
-    """How many PRIMARY connections these specs can open, at the three scopes that matter.
+    """How many PRIMARY connections these specs can open, for ONE process and ONE instance.
 
     Every number in `POOL_SPECS` is per process. The optional read pool is budgeted against its
-    target separately and is excluded here. Uvicorn may run multiple workers, and a rolling
-    deployment may briefly run two instances. Operators must compare
-    `per_process * workers * 2` with their database's `max_connections` and leave headroom.
+    target separately and is excluded here. `deploy_peak` is one instance replaced by one running
+    the same specs. A deployment with several instances, or one changing these specs, sums each
+    generation on its own: old specs times old processes plus new specs times new processes,
+    compared with the database's `max_connections` with headroom left.
+
+    `retained_per_process` counts only `pool_size`: the most connections a process keeps open
+    after its load subsides, reached once it has used that many at the same moment. It is not
+    opened at startup.
+
+    The background pool is excluded when `background_database_url` routes it through a pooler: the
+    database sees the pooler's server connections for it, not its client connections.
     """
+    direct = [name for name in _PRIMARY_POOL_NAMES if not (name == "background" and _background_url)]
     per_process = sum(POOL_SPECS[name]["pool_size"] + POOL_SPECS[name]["max_overflow"]
-                      for name in _PRIMARY_POOL_NAMES)
+                      for name in direct)
+    retained_per_process = sum(POOL_SPECS[name]["pool_size"] for name in direct)
     if workers is None:
         try:
             workers = max(1, int(os.environ.get("WEB_CONCURRENCY", "1")))
         except ValueError:
             workers = 1
     return {"per_process": per_process, "workers": workers,
-            "per_instance": per_process * workers, "deploy_peak": per_process * workers * 2}
+            "per_instance": per_process * workers, "deploy_peak": per_process * workers * 2,
+            "retained_per_process": retained_per_process,
+            "retained_per_instance": retained_per_process * workers}
 
 
-_budget = connection_budget()
-logging.getLogger("treg").info(
-    "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
-    "instance, %d at a rolling deploy; compare with the deployment database connection ceiling",
-    POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
-    POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
-    POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
-    _budget["per_process"], _budget["workers"], _budget["per_instance"], _budget["deploy_peak"])
+def log_connection_budget() -> None:
+    """Log the budget once per process. Called from the app lifespan, not at import: Uvicorn imports
+    the app before treg's loggers are configured, and an import-time INFO line is dropped."""
+    budget = connection_budget()
+    pools = {name: f"{name} {POOL_SPECS[name]['pool_size']}+{POOL_SPECS[name]['max_overflow']}"
+             for name in _PRIMARY_POOL_NAMES}
+    pooled = pools.pop("background") if _background_url else None
+    logging.getLogger("treg").info(
+        "db pools per process: %s = %d; x%d workers = %d per instance at full load, %d retained once "
+        "idle; a rolling deploy adds the new generation to the old one on every instance it "
+        "replaces; compare with the database connection ceiling%s",
+        ", ".join(pools.values()), budget["per_process"], budget["workers"], budget["per_instance"],
+        budget["retained_per_instance"],
+        f"; {pooled} connects through TREG_BACKGROUND_DATABASE_URL, outside these totals"
+        if pooled else "")
 
 
-def _new_engine(name: str, url: str | None = None):
+def _abort_socket_after_close(dialect) -> None:
+    """Close the socket of every connection the pool closes or terminates, whatever interrupted it.
+
+    asyncpg marks its protocol closing before a graceful close waits on anything, and its abort
+    returns early once that mark is set. A cancellation that lands during the graceful close (a
+    request cancelled again while its checkout pre-ping fails, for example) therefore leaves the
+    socket open with no owner: the server keeps the session, idle in transaction after the
+    pre-ping's `BEGIN; ;`, until the process exits."""
+    for name in ("do_terminate", "do_close"):
+        close = getattr(dialect, name)
+
+        def closed_for_good(dbapi_connection, close=close) -> None:
+            try:
+                close(dbapi_connection)
+            finally:
+                driver = getattr(dbapi_connection, "driver_connection", None)
+                transport = getattr(driver, "_transport", None)
+                if transport is not None and not transport.is_closing():
+                    transport.abort()
+
+        setattr(dialect, name, closed_for_good)
+
+
+def _new_engine(name: str, url: str | None = None, *, pooled: bool = False):
     """One pooled engine per `POOL_SPECS` entry.
 
     `pool_timeout` is 5 s, not SQLAlchemy's default 30: a request that cannot get a slot is treg
@@ -181,7 +235,9 @@ def _new_engine(name: str, url: str | None = None):
         # Use a replica/read-only database role as the access boundary, not this session default.
         kwargs["connect_args"] = {"server_settings": {"default_transaction_read_only": "on"}}
     engine = create_async_engine(db_url, **kwargs)
-    money_trace.install_engine(engine.sync_engine, pool_name=name)
+    if engine.dialect.driver == "asyncpg":
+        _abort_socket_after_close(engine.dialect)
+    money_trace.install_engine(engine.sync_engine, pool_name=name, pooled=pooled)
     if name == "read" and is_sqlite:
         # Keep this on the dedicated reader even when both URLs name the same SQLite file.
         # Applying it to the shared primary engine would also disable application writes.
@@ -197,7 +253,8 @@ def _new_engine(name: str, url: str | None = None):
 
 _engine = _new_engine("api")
 _admin_engine = _new_engine("admin")
-_background_engine = _new_engine("background")
+_background_engine = _new_engine("background", _background_url or None,
+                                 pooled=bool(_background_url))
 
 if _is_sqlite:
     # No pool to protect, and file-level write locks it cannot share: three engines against one file
@@ -254,6 +311,36 @@ read_session_maker = (async_sessionmaker(_read_engine, class_=AsyncSession, expi
                       if _read_db_url else session_maker)
 
 
+@asynccontextmanager
+async def only_one_run(key: int) -> AsyncIterator[bool]:
+    """Hold the session-level advisory lock `key` for a job's run -> whether this run got it.
+
+    PostgreSQL: the lock lives on one server session for the whole run, a connection of its own
+    opened outside every pool (idle between its two statements, so it pins no snapshot, and with
+    `idle_session_timeout` off), so the job's own work keeps every slot of a one-connection pool. It goes to the API URL, which never
+    goes through a transaction pooler. SQLite has no such lock: always True, and only the scheduler
+    keeps two runs apart."""
+    bind = session_maker.kw["bind"]
+    if bind.dialect.name != "postgresql":
+        yield True
+        return
+    engine = create_async_engine(bind.url, poolclass=NullPool)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SET idle_session_timeout = 0"))
+            got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                                 {"key": key})).scalar_one())
+            await connection.commit()
+            try:
+                yield got
+            finally:
+                if got:
+                    await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+                    await connection.commit()
+    finally:
+        await engine.dispose()
+
+
 @cache
 def _schema_info() -> tuple[str, frozenset[str]]:
     from alembic.script import ScriptDirectory
@@ -288,6 +375,36 @@ def _current_revision(sync_connection) -> str | None:
     return revisions[0] if len(revisions) == 1 else None
 
 
+_IDENTITY = text("SELECT current_database(), current_user, current_schema(), pg_postmaster_start_time()")
+_IDENTITY_FIELDS = ("database", "role", "schema", "server start")
+# asyncpg's own names for the statements it prepares; a transaction-pooling PgBouncer that tracks
+# prepared statements replaces them with its own before they reach the server.
+_DRIVER_STATEMENTS = text(r"SELECT count(*) FROM pg_prepared_statements WHERE name LIKE '\_\_asyncpg\_%'")
+
+
+async def verify_background_database() -> None:
+    """`background_database_url` reaches the database `database_url` does, as the same role and
+    schema, and keeps asyncpg's prepared statements usable across transactions. A wrong URL, or a
+    pooler that would hand a statement prepared on one server connection to another, refuses to
+    start instead of failing background writes later."""
+    if not _background_url:
+        return
+    async with _engine.connect() as connection:
+        direct = tuple((await connection.execute(_IDENTITY)).one())
+    async with _background_engine.connect() as connection:
+        routed = tuple((await connection.execute(_IDENTITY)).one())
+        passed_through = (await connection.execute(_DRIVER_STATEMENTS)).scalar_one()
+    if routed != direct:
+        differences = ", ".join(f"{field} {mine!r} instead of {theirs!r}" for field, mine, theirs
+                                in zip(_IDENTITY_FIELDS, routed, direct) if mine != theirs)
+        raise RuntimeError(f"TREG_BACKGROUND_DATABASE_URL reaches {differences} (TREG_DATABASE_URL)")
+    if passed_through:
+        raise RuntimeError(
+            "TREG_BACKGROUND_DATABASE_URL passes asyncpg's prepared statements to the server under "
+            "their own names: it must be a transaction-pooling PgBouncer with prepared statement "
+            "support (1.21 or later, max_prepared_statements above 0)")
+
+
 async def verify_db() -> None:
     """Verify configuration and schema compatibility without writing to the database."""
     from .. import models  # noqa: F401 - populate SQLModel.metadata for app subsystems
@@ -305,6 +422,7 @@ async def verify_db() -> None:
             "TREG_SECRET_KEY unset - using an EPHEMERAL key; stored secrets will not survive a restart."
         )
 
+    await verify_background_database()
     async with _engine.connect() as connection:
         revision = await connection.run_sync(_current_revision)
 
@@ -353,6 +471,16 @@ async def _stamp_test_schema(connection) -> None:
 # The schema reset_db() last built. A test that alters the shared schema (a column, an index, a
 # dropped table) changes the fingerprint, and the next reset rebuilds instead of only deleting rows.
 _built_schema: tuple | None = None
+# Whether any engine in this process ran DDL since the last reset. Only then can the schema differ
+# from `_built_schema`, so only then is the fingerprint read.
+_ddl_seen = True
+_DDL_HEADS = ("CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "REINDEX", "CLUSTER")
+
+
+def _note_ddl(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+    global _ddl_seen
+    if not _ddl_seen and statement.lstrip()[:8].upper().startswith(_DDL_HEADS):
+        _ddl_seen = True
 
 
 async def _schema_fingerprint(connection) -> tuple:
@@ -378,37 +506,79 @@ async def _schema_fingerprint(connection) -> tuple:
     return tuple(sorted(tuple(row) for row in rows))
 
 
+async def _tables_with_rows(connection, tables: list) -> set[str]:
+    """The names of the tables holding at least one row, read in one query."""
+    probe = union_all(*(
+        select(literal(table.name)).where(exists().select_from(table)) for table in tables
+    ))
+    return set((await connection.execute(probe)).scalars())
+
+
 async def reset_db() -> None:
     """Give each test a clean, head-stamped registry.
 
     reset_db runs before every test, so it deletes the rows the previous test left behind instead
     of rebuilding every table: an order of magnitude cheaper, and no DDL (a containerized Postgres
-    fed per-test DDL accumulates WAL until an unrelated commit stalls). The schema is rebuilt only
-    when it is not the one this function last built: a fresh database, or a test that altered it.
+    fed per-test DDL accumulates WAL until an unrelated commit stalls). Only the tables that hold
+    rows are emptied, found by one probe. The schema is rebuilt only when it is not the one this
+    function last built: a fresh database, or a test that altered it. After any DDL every pool is
+    disposed, so no connection keeps a statement prepared against an old table; otherwise pooled
+    connections live on into the next test, as a server's do between requests.
     """
-    global _built_schema
+    global _built_schema, _ddl_seen
     from .. import models  # noqa: F401 - populate SQLModel.metadata
 
-    for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
-        await engine.dispose()
+    if not event.contains(Engine, "before_cursor_execute", _note_ddl):
+        event.listen(Engine, "before_cursor_execute", _note_ddl)
+    tables = SQLModel.metadata.sorted_tables
+    if _built_schema is None:
+        built = False
+    elif _ddl_seen:
+        async with _engine.begin() as connection:
+            built = await _schema_fingerprint(connection) == _built_schema
+    else:
+        built = True
+    if _ddl_seen:
+        for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
+            await engine.dispose()
+    if built:
+        async with _engine.begin() as connection:
+            filled = await _tables_with_rows(connection, tables)
+    # Postgres holds every lock a transaction takes until it ends, in one table shared by every
+    # database on the server (max_locks_per_transaction x max_connections entries). One
+    # transaction over every table and index, in each of many parallel test workers, fills it
+    # ("out of shared memory"), so each transaction covers a few tables. Children go first.
+    if built:
+        for batch in _batches([table for table in reversed(tables) if table.name in filled]):
+            async with _engine.begin() as connection:
+                for table in batch:
+                    await connection.execute(table.delete())
+    else:
+        for batch in _batches(list(reversed(tables))):
+            async with _engine.begin() as connection:
+                await connection.run_sync(SQLModel.metadata.drop_all, tables=batch)
+        for batch in _batches(tables):
+            async with _engine.begin() as connection:
+                await connection.run_sync(SQLModel.metadata.create_all, tables=batch)
     async with _engine.begin() as connection:
-        if _built_schema is not None and await _schema_fingerprint(connection) == _built_schema:
-            # Children first, so foreign keys hold.
-            for table in reversed(SQLModel.metadata.sorted_tables):
-                await connection.execute(table.delete())
-            if not _is_sqlite:
-                # Rewind every sequence so ids restart at 1, as they do on an emptied sqlite table.
-                await connection.execute(text(
-                    "SELECT setval(c.oid, 1, false) FROM pg_class c "
-                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                    "WHERE c.relkind = 'S' AND n.nspname = current_schema()"
-                ))
-        else:
-            await connection.run_sync(SQLModel.metadata.drop_all)
-            await connection.run_sync(SQLModel.metadata.create_all)
+        if built and not _is_sqlite:
+            # Rewind every sequence so ids restart at 1, as they do on an emptied sqlite table.
+            await connection.execute(text(
+                "SELECT setval(c.oid, 1, false) FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE c.relkind = 'S' AND n.nspname = current_schema()"
+            ))
+        if not built:
             _built_schema = await _schema_fingerprint(connection)
-
         await _stamp_test_schema(connection)
+    _ddl_seen = False
+
+
+_RESET_BATCH = 8
+
+
+def _batches(tables: list) -> list[list]:
+    return [tables[i:i + _RESET_BATCH] for i in range(0, len(tables), _RESET_BATCH)]
 
 
 async def dispose_engine() -> None:

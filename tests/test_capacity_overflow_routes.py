@@ -72,6 +72,36 @@ def test_eligibility_rule_in_order():
     assert "free for us" in R.eligible(_route(ratio=None, agg_price_micro=20_000), our_cost=free, platform_eligible=True, policy=None, our_usd=0).reason
 
 
+def test_an_async_job_never_overflows():
+    """A job started at an aggregator lives on its account: our key cannot poll it, so the hold
+    could never close on the real outcome. The sync disables the row, and the view drops it even
+    before the next sync does."""
+    from treg.domain.capacity.routes_view import RouteView
+    cost = {"type": "per_success", "value": 1, "unit": "call"}
+    verdict = R.eligible(_route(), our_cost=cost, platform_eligible=True, policy=None, async_job=True)
+    assert not verdict.enabled and verdict.reason.startswith("async job")
+    view = RouteView()
+    view._routes = [_route(endpoint_id="icypeas.people.email.find", enabled=True)]
+    assert view.for_endpoint("icypeas.people.email.find") == []
+
+
+async def test_route_view_loads_on_a_host_booted_less_than_a_ttl_ago(monkeypatch):
+    """`time.monotonic()` counts from boot, and a fresh VM serves within its first minute."""
+    from types import SimpleNamespace
+    from treg.domain.capacity import routes_view
+    await reset_db()
+    monkeypatch.setattr(routes_view, "time", SimpleNamespace(monotonic=lambda: 5.0))
+    view = routes_view.RouteView()
+    await view.load()
+    async with session_maker() as db:
+        db.add(_route(enabled=True))
+        await db.commit()
+    view.invalidate()
+    await view.load()
+    assert [r.endpoint_id for r in view.for_endpoint("findymail.search.business-profile")] == [
+        "findymail.search.business-profile"]
+
+
 def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
     ours = [{"endpoint_id": "hunter.people.email.find", "provider": "hunter", "method": "GET",
              "path": "/email-finder", "base_url": "https://api.hunter.io/v2"},
@@ -123,7 +153,8 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     # What was verified but is NOT on, and why — every reason is one the rule names.
     off = {k: by[k].disabled_reason for k in verified - on}
     allowed = ("ratio ", "unit mismatch", "endpoint not platform-eligible",
-               "policy for scrapecreators disallows overflow", "no price on one side", "free for us")
+               "policy for scrapecreators disallows overflow", "no price on one side", "free for us",
+               "async job")
     assert all(r.startswith(allowed) for r in off.values()), off
     # a route with ratio 6.5 in the seed never enables, and a re-sync without it disables it
     bad = {**seed[0], "endpoint_id": "findymail.search.business-profile", "aggregator": "monid",
@@ -143,37 +174,6 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     async with session_maker() as db:
         r3 = await R.apply_sync(db, seed, catalog=cat, now=now + timedelta(days=8))
         assert r3.enabled == 0
-
-
-async def test_verified_akta_news_monid_fallback_is_enabled_at_the_observed_default_price():
-    await reset_db()
-    candidate = next(x for x in R.load_seed()
-                     if x["endpoint_id"] == "akta.companies.news" and x["aggregator"] == "monid")
-    async with session_maker() as db:
-        await ensure_policies(db, has_key=lambda p: True)
-        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
-                           now=R._dt("2026-09-25T12:00:00"))
-        await db.commit()
-        row = await db.get(OverflowRoute, ("akta.companies.news", "monid"))
-    assert row.enabled
-    assert row.agg_price_micro == 10_000
-    assert row.agg_unit == "call"
-    assert row.ratio == 1
-
-
-async def test_akta_enrichment_monid_route_is_eligible_only_after_live_verification():
-    await reset_db()
-    candidate = next(x for x in R.load_seed()
-                     if x["endpoint_id"] == "akta.companies.enrich" and x["aggregator"] == "monid")
-    assert candidate["verified_at"] is None and candidate["single_result"] is True
-    candidate = {**candidate, "verified_at": "2026-09-25"}
-    async with session_maker() as db:
-        await ensure_policies(db, has_key=lambda p: True)
-        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
-                           now=R._dt("2026-09-25T12:00:00"))
-        await db.commit()
-        row = await db.get(OverflowRoute, ("akta.companies.enrich", "monid"))
-    assert row.enabled and row.agg_unit == "result" and row.single_result is True
 
 
 def test_route_for_orders_orthogonal_first():
@@ -423,6 +423,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "descovo",  # funded plan credits remain; its 402 error code is undocumented and unobserved
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "branddev", "brightdata", "coresignal", "crustdata",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",

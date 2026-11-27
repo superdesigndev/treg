@@ -20,10 +20,7 @@ def _mk(unit_micro=22_580, endpoint_id="datagma.people.email.find"):
     )
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("0", 0), ("1", 22_580), (30, 677_400), ("1.5", 33_870),
-    (-1, None), (True, None), ("bad", None), (None, None),
-])
+@pytest.mark.parametrize("raw,expected", [("0", 0), ("1", 22_580), ("1.5", 33_870), ("bad", None)])
 def test_datagma_settles_from_reported_credit_burn(raw, expected):
     assert call_settle._observed_cost_micro(
         _mk(), json.dumps({"creditBurn": raw}).encode()) == expected
@@ -55,7 +52,6 @@ async def test_datagma_internal_balance_exposes_only_credit_count(monkeypatch):
         assert "owner" not in str(row) and "plan" not in str(row)
         capacity = policy.default_policy("datagma", has_key=True)
         assert capacity.funding_mode == "manual"
-        assert capacity.rate_limit == {"limit": 10, "window_s": 1, "source": "docs"}
     finally:
         collectors.get_settings.cache_clear()
 

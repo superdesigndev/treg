@@ -211,7 +211,10 @@ that account's access key.
    (`_credit`).
 5. The request headers minus every payment credential header, whichever rails are on
    (`agent_payments.consumes`), go to the call as
-   the payer team. Every answer after this point, a refusal included, carries
+   the payer team. The call takes no allowance (`reserve.keyless_payer`, set by the router for
+   the whole call, routed and overflow children included): the draw-or-settle decision read the
+   team's balance, so no reservation moves that balance into an allowance counter, where it
+   would read as missing and settle a payment the credit covered. Every answer after this point, a refusal included, carries
    `X-Treg-Payment: paid|credit`, `X-Treg-Credit-Micro` (the payer's credit once the call has
    settled or released) and, when this payment settled, `X-Treg-Paid-Micro` and
    `X-Treg-Payment-Reference: <transaction>`; `X-Treg-Cost-Micro` is the call's charge as on

@@ -1,0 +1,6 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="UGC clips">
+  <!-- Not a brand: short creator clips, drawn as a phone playing a video. -->
+  <rect x="6" y="1.8" width="12" height="20.4" rx="2.4" fill="#8A5CC2"/>
+  <rect x="7.6" y="4" width="8.8" height="14.6" rx=".9" fill="#fff" opacity=".9"/>
+  <path fill="#8A5CC2" d="M10.6 8.4v5.8l4.6-2.9z"/>
+</svg>

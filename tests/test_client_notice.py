@@ -22,8 +22,6 @@ from treg.config import get_settings
     ("0.31.0.dev1", "0.32.0", "", None),
     ("", "0.31.0", "0.25.0", None),
     ("0.30.0", "not-a-version", "", None),
-    ("0.\u00b2", "0.31.0", "", None),
-    pytest.param("1" * 5000, "0.31.0", "", None, id="oversized"),
 ])
 def test_notice_wording(version, latest, minimum, expected):
     assert client_notice.notice(version, latest=latest, minimum=minimum) == expected

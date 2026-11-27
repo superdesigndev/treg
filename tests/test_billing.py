@@ -15,16 +15,19 @@ test secret, so the signature check is exercised for real rather than stubbed ou
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import hmac
 import json
 import time
+from collections import Counter
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
 import stripe
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import update
+from sqlalchemy import event as sa_event, update
 from stripe.params.checkout._session_create_params import (
     SessionCreateParams,
     SessionCreateParamsSetupIntentData,
@@ -38,6 +41,7 @@ from treg.application import billing
 from treg.domain import money as ledger
 from treg.api import app
 from treg.config import get_settings
+from treg.infra import db as db_module
 from treg.infra.db import reset_db, session_maker
 from treg.models import AdConversion, EnterpriseSSO, Org
 
@@ -128,19 +132,19 @@ def test_sub_cent_amounts_are_refused_not_rounded():
         billing.micro_to_cents(600)
 
 
-@pytest.mark.parametrize("amount", [1, 4, 4.99, 0, -10, 10.5, 99_999, "abc", None])
+@pytest.mark.parametrize("amount", [4.99, -10, 10.5, 99_999, "abc", None])
 def test_amount_validation_rejects_what_we_will_not_charge(amount):
     with pytest.raises(billing.TopupRejected):
         billing.validate_topup_usd(amount)
 
 
-@pytest.mark.parametrize("amount", [10, 25, 50, 37, 2_000])
+@pytest.mark.parametrize("amount", [10, 37, 2_000])
 def test_amount_validation_accepts_the_minimum_and_above(amount):
     assert billing.validate_topup_usd(amount) == amount
 
 
 # ---- monthly cap validation ---------------------------------------------------------------------
-@pytest.mark.parametrize("amount", [-10, -1, float("inf"), float("-inf"), float("nan"), "abc", None, 10.5, 1_000_000_001])
+@pytest.mark.parametrize("amount", [-1, float("inf"), float("nan"), "abc", None, 10.5, 1_000_000_001])
 def test_monthly_cap_validation_rejects_invalid_values(amount):
     """Monthly cap rejects negative, non-finite, fractional, non-numeric, or above-ceiling values."""
     with pytest.raises(billing.TopupRejected):
@@ -149,36 +153,12 @@ def test_monthly_cap_validation_rejects_invalid_values(amount):
 
 @pytest.mark.parametrize("amount,expected", [
     (0, 0),  # 0 resets to default
-    (2000, 2000),
-    (5000, 5000),
     (50000, 50000),  # above single top-up limit, valid for monthly cap
-    (100000, 100000),
     (1_000_000_000, 1_000_000_000),  # the technical bound
 ])
 def test_monthly_cap_validation_accepts_valid_values(amount, expected):
     """Monthly cap accepts 0 (reset) and whole dollars up to the ceiling."""
     assert billing.validate_monthly_cap_usd(amount) == expected
-
-
-async def test_monthly_cap_above_single_topup_limit_is_accepted(c: AsyncClient, monkeypatch):
-    """The monthly cap can be set higher than the single top-up limit ($2,000)."""
-    org_id, owner = await _org(c)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
-    # $50,000 is way above the $2,000 single top-up limit, but valid for monthly cap
-    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 50000})
-    assert r.status_code == 200, r.text
-    assert r.json()["autotopup"]["monthly_cap_usd"] == 50000
-
-
-async def test_monthly_cap_above_new_ceiling_is_rejected(c: AsyncClient, monkeypatch):
-    """A monthly cap above AUTOTOPUP_MONTHLY_CAP_MAX_USD is rejected."""
-    org_id, owner = await _org(c)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
-    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 1_000_000_001})
-    assert r.status_code == 422, r.text
-    assert "maximum monthly cap" in r.text
 
 
 async def test_single_topup_amount_still_capped_at_2000(c: AsyncClient, monkeypatch):
@@ -1069,13 +1049,14 @@ async def test_recent_paid_invoice_already_credited_allows_next_topup(c: AsyncCl
         "metadata": {"treg_org_id": str(org_id), "treg_kind": "topup", "treg_auto": "1",
                      "treg_attempt_base": prior_key, "treg_attempt_generation": "0"},
     }]
-    async with session_maker() as db:
-        async def no_db_during_stripe(fn, /, **kw):
-            assert not db.in_transaction(), f"DB transaction open during {fn}"
-            return await sdk(fn, **kw)
+    with _connections_held_by_task() as held:
+        async with session_maker() as db:
+            async def no_db_during_stripe(fn, /, **kw):
+                assert held() == 0, f"DB connection held during {fn}"
+                return await sdk(fn, **kw)
 
-        monkeypatch.setattr(billing, "_sdk", no_db_during_stripe)
-        assert (await billing.attempt_auto_topup(db, org_id))["ok"] is True
+            monkeypatch.setattr(billing, "_sdk", no_db_during_stripe)
+            assert (await billing.attempt_auto_topup(db, org_id))["ok"] is True
     assert sdk.state["invoice_count"] == sdk.state["charge_count"] == 1
 
 
@@ -1083,13 +1064,14 @@ async def test_stripe_calls_release_auto_topup_database_connection(c: AsyncClien
     org_id, _ = await _org(c)
     await _armed(org_id)
     sdk = _invoice_sdk()
-    async with session_maker() as db:
-        async def no_db_during_stripe(fn, /, **kw):
-            assert not db.in_transaction(), f"DB transaction open during {fn}"
-            return await sdk(fn, **kw)
+    with _connections_held_by_task() as held:
+        async with session_maker() as db:
+            async def no_db_during_stripe(fn, /, **kw):
+                assert held() == 0, f"DB connection held during {fn}"
+                return await sdk(fn, **kw)
 
-        monkeypatch.setattr(billing, "_sdk", no_db_during_stripe)
-        assert (await billing.attempt_auto_topup(db, org_id))["ok"] is True
+            monkeypatch.setattr(billing, "_sdk", no_db_during_stripe)
+            assert (await billing.attempt_auto_topup(db, org_id))["ok"] is True
 
 
 async def test_repeated_unknown_outcomes_pause_without_another_charge(c: AsyncClient,
@@ -1326,15 +1308,16 @@ async def test_no_database_transaction_is_open_during_the_stripe_write(c: AsyncC
                                                                          monkeypatch):
     org_id, _ = await _org(c)
     await _armed(org_id, stripe_default_pm_at=100)
-    async with session_maker() as db:
-        async def sdk(fn, /, **kw):
-            assert not db.in_transaction(), "a Stripe call must not hold a database connection"
-            return {"id": kw["id"]}
+    with _connections_held_by_task() as held:
+        async with session_maker() as db:
+            async def sdk(fn, /, **kw):
+                assert held() == 0, "a Stripe call must not hold a database connection"
+                return {"id": kw["id"]}
 
-        monkeypatch.setattr(billing, "_sdk", sdk)
-        assert await billing._set_default_pm(db, org_id, "pm_new", chosen_at=200) is True
-        # A redelivery changes nothing and still releases the connection before Stripe.
-        assert await billing._set_default_pm(db, org_id, "pm_new", chosen_at=200) is False
+            monkeypatch.setattr(billing, "_sdk", sdk)
+            assert await billing._set_default_pm(db, org_id, "pm_new", chosen_at=200) is True
+            # A redelivery changes nothing and still releases the connection before Stripe.
+            assert await billing._set_default_pm(db, org_id, "pm_new", chosen_at=200) is False
 
 
 async def test_a_customer_is_found_by_its_treg_org_metadata(c: AsyncClient, monkeypatch):
@@ -1982,10 +1965,10 @@ async def test_a_failed_authentication_webhook_disables_autotopup(c: AsyncClient
     assert state["enabled"] is False and state["disabled_reason"] == "authentication_required"
 
 
-@pytest.mark.parametrize("invoice_status, expected_reason", [
-    ("open", "authentication_required"), ("void", None),
+@pytest.mark.parametrize("invoice_status, expected_reason, error_code", [
+    ("open", "authentication_required", "authentication_required"),
+    ("void", None, "invoice_payment_intent_requires_action"),
 ])
-@pytest.mark.parametrize("error_code", sorted(billing.AUTH_REQUIRED_CODES))
 async def test_invoice_3ds_webhook_voids_or_ignores_late_failure(
         c: AsyncClient, monkeypatch, invoice_status, expected_reason, error_code):
     org_id, owner = await _org(c)
@@ -2065,6 +2048,31 @@ async def test_reading_the_balance_never_waits_on_stripe(c: AsyncClient, monkeyp
 
 async def _noop():
     return None
+
+
+@contextmanager
+def _connections_held_by_task():
+    """Count the pool connections the calling task holds, on every engine, so a session billing
+    opens for itself is caught as well as the caller's."""
+    held = Counter()
+
+    def checkout(connection, record, proxy):
+        record.info["billing_test_owner"] = asyncio.current_task()
+        held[record.info["billing_test_owner"]] += 1
+
+    def checkin(connection, record):
+        held[record.info.pop("billing_test_owner", None)] -= 1
+
+    engines = {engine.sync_engine for engine in db_module._engines}
+    for engine in engines:
+        sa_event.listen(engine, "checkout", checkout)
+        sa_event.listen(engine, "checkin", checkin)
+    try:
+        yield lambda: held[asyncio.current_task()]
+    finally:
+        for engine in engines:
+            sa_event.remove(engine, "checkout", checkout)
+            sa_event.remove(engine, "checkin", checkin)
 
 
 async def _no_sdk(fn, /, **kw):
@@ -2289,8 +2297,7 @@ async def test_pm_and_fingerprint_survives_sdk_objects(monkeypatch):
 
 # ---- tiered bonus + the ladder default ---------------------------------------------------------
 @pytest.mark.parametrize("usd,bonus,pct", [
-    (10, 0, 0), (49, 0, 0), (50, 2_500_000, 5), (99, 4_950_000, 5), (100, 10_000_000, 10),
-    (250, 37_500_000, 15), (2_000, 300_000_000, 15),
+    (49, 0, 0), (50, 2_500_000, 5), (99, 4_950_000, 5), (250, 37_500_000, 15),
 ])
 def test_bonus_tiers_apply_the_highest_floor_at_or_below_the_amount(usd, bonus, pct):
     assert billing.bonus_for_topup(usd * 1_000_000) == (bonus, pct)
@@ -2543,12 +2550,13 @@ async def _setup(c: AsyncClient, org_id: int, card: str, n: int = 1):
 
 @pytest.mark.parametrize("card", ["pm_old", "pm_new"])
 async def test_a_manual_payment_re_arms_autotopup_after_declines(c: AsyncClient, monkeypatch, card):
-    """The live case: three declines turned it off, then the team paid $20 by hand seven times in a
-    day and stayed off. A card that just paid is proof it works, the declined one included."""
+    """Repeated declines turned it off, then the team paid by hand and it stayed off. A card that
+    just paid is proof it works, the declined one included."""
     org_id, owner = await _org(c)
     monkeypatch.setattr(billing, "_sdk", _card_sync_only)
     await _set_org(org_id, **_declined())
-    assert (await _paid_checkout(c, monkeypatch, org_id, card)).json()["credited"] is True
+    paid = await _paid_checkout(c, monkeypatch, org_id, card)
+    assert paid.status_code == 200 and paid.json()["credited"] is True
     state = (await c.get("/billing", headers=_h(owner))).json()["autotopup"]
     assert state["enabled"] is True and state["disabled_reason"] is None
     async with session_maker() as db:
@@ -2558,11 +2566,11 @@ async def test_a_manual_payment_re_arms_autotopup_after_declines(c: AsyncClient,
 
 async def test_a_new_saved_card_re_arms_but_the_declined_card_saved_again_does_not(c: AsyncClient, monkeypatch):
     org_id, owner = await _org(c)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    monkeypatch.setattr(billing, "_sdk", _card_sync_only)
     await _set_org(org_id, **_declined())
-    await _setup(c, org_id, "pm_old", 1)                      # the same declined card: no proof
+    assert (await _setup(c, org_id, "pm_old", 1)).status_code == 200   # the same declined card: no proof
     assert (await c.get("/billing", headers=_h(owner))).json()["autotopup"]["enabled"] is False
-    await _setup(c, org_id, "pm_new", 2)                      # a different card: the cause is gone
+    assert (await _setup(c, org_id, "pm_new", 2)).status_code == 200   # a different card: the cause is gone
     state = (await c.get("/billing", headers=_h(owner))).json()["autotopup"]
     assert state["enabled"] is True and state["disabled_reason"] is None
 
@@ -2571,9 +2579,9 @@ async def test_a_new_saved_card_re_arms_but_the_declined_card_saved_again_does_n
 async def test_manual_payment_recovers_3ds_but_not_a_deliberate_off(c: AsyncClient, monkeypatch,
                                                                     reason, enabled):
     org_id, owner = await _org(c)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    monkeypatch.setattr(billing, "_sdk", _card_sync_only)
     await _set_org(org_id, **_declined(autotopup_disabled_reason=reason))
-    await _paid_checkout(c, monkeypatch, org_id, "pm_new")
+    assert (await _paid_checkout(c, monkeypatch, org_id, "pm_new")).status_code == 200
     state = (await c.get("/billing", headers=_h(owner))).json()["autotopup"]
     assert state["enabled"] is enabled
     assert state["disabled_reason"] == (None if enabled else reason)

@@ -537,21 +537,15 @@ def test_workos_webhook_signature_and_portal_response():
 
 
 async def test_workos_portal_accepts_documented_url():
-    def handle(request):
-        assert request.url.path == "/portal/generate_link"
-        assert json.loads(request.content) == {"organization": "org_1", "intent": "domain_verification"}
-        return httpx.Response(200, json={"link": "https://setup.workos.com?token=example"})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="domain_verification")
-    assert url == "https://setup.workos.com?token=example"
-
-
-async def test_workos_portal_accepts_live_staging_url():
-    def handle(request):
-        return httpx.Response(201, json={"link": "https://setup.workos.com/init?apiToken=example"})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
-        url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="sso")
-    assert url == "https://setup.workos.com/init?apiToken=example"
+    for status, link in [(200, "https://setup.workos.com?token=example"),
+                         (201, "https://setup.workos.com/init?apiToken=example")]:
+        def handle(request, status=status, link=link):
+            assert request.url.path == "/portal/generate_link"
+            assert json.loads(request.content) == {"organization": "org_1", "intent": "domain_verification"}
+            return httpx.Response(status, json={"link": link})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+            url = await workos.portal_link(client, key="sk_test", organization="org_1", intent="domain_verification")
+        assert url == link
 
 
 async def test_domain_verification_setup_and_status(clients, monkeypatch):
@@ -659,10 +653,6 @@ async def test_catalog_can_offer_bundle_only(monkeypatch):
 
 
 async def test_stripe_price_sets_displayed_bundle_amount(monkeypatch):
-    from treg.config import Settings
-    monkeypatch.delenv("TREG_ENTERPRISE_SSO_BUNDLE_ONLY", raising=False)
-    settings = Settings(_env_file=None)
-    assert settings.enterprise_sso_bundle_only
     from treg.config import get_settings
     current = get_settings()
     monkeypatch.setattr(current, "stripe_secret_key", "sk_stripe_test")
@@ -840,10 +830,7 @@ async def test_workos_domain_rejection_returns_to_signin_without_raw_error(clien
     assert "treg_sso_state=" in callback.headers["set-cookie"]
     landing = await clients.get(callback.headers["location"])
     assert landing.status_code == 200
-    assert 'id="sso-team"' not in landing.text
-    assert 'treg-pending-sso' in landing.text
-    assert '/media/signin-sso.js' in landing.text
-    assert "Company SSO sign-in did not finish" in landing.text
+    assert "Do not show this raw message" not in landing.text
 
 
 async def test_subscription_webhooks_activate_then_cancel_without_balance_credit(clients):

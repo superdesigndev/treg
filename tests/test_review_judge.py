@@ -2,6 +2,7 @@
 reviews, each pass written once and failing on its own."""
 from datetime import timedelta
 
+from sqlalchemy import update
 from sqlmodel import select
 
 from treg.application import review_judge
@@ -100,6 +101,7 @@ async def test_codes_judge_negative_reviews_with_their_context(clients, monkeypa
     rows = await _all()
     assert (rows["j-0"].primary_code, rows["j-0"].secondary_code) == ("ACCURACY", "RISKY")
     assert rows["j-0"].codebook_version == review_codes.CODEBOOK_VERSION
+    assert rows["j-0"].code_basis == "reason_final"  # routed: its answer is never read
     assert rows["j-1"].primary_code == "NOREASON"   # no reason: coded without asking
     assert rows["j-2"].code_judged_at is None       # useful reviews are not attributed
     assert rows["j-3"].code_judged_at is None       # unreadable: next run tries again
@@ -216,17 +218,398 @@ async def test_the_worker_command(clients, monkeypatch, capsys):
     assert out["privacy"]["judged"] == 1 and out["codes"]["judged"] == 1
 
 
-def test_the_codebook_sends_quota_on_treg_s_account_to_treg_and_caller_scope_to_context():
-    # A choice is decided mostly by its criteria, so the rules live there, not only in the instructions.
-    assert "treg's own account" in review_codes.CODES["TREG"]
-    assert "which is TREG" in review_codes.CODES["ERROR"]
-    assert "unfiltered" in review_codes.CODES["CONTEXT"] and "target segment" in review_codes.CODES["CONTEXT"]
-    assert review_codes.CODES["RISKY"].startswith("The vendor's own output")
+async def test_the_judge_runs_from_reasons_when_object_storage_is_unavailable(clients, monkeypatch, capsys):
+    import argparse
+
+    from treg import bootstrap, worker
+
+    def broken():
+        raise RuntimeError("Archive R2 is enabled but its endpoint, bucket or credentials are missing/invalid")
+
+    async def run(*, max_seconds):
+        return {"codes": {"judged": 0}}
+    monkeypatch.setattr(bootstrap, "archive_object_store", broken)
+    monkeypatch.setattr(review_judge, "run", run)
+    assert await worker._reviews_judge(argparse.Namespace(max_seconds=5)) == 0
+    assert '"judged": 0' in capsys.readouterr().out
 
 
-def test_off_topic_hits_are_wrong_not_context_and_boilerplate_is_noreason():
-    assert "that is WRONG" in review_codes.CODES["CONTEXT"]
-    assert "only share a word" in review_codes.CODES["WRONG"]
-    assert "boilerplate" in review_codes.CODES["NOREASON"]
-    # Versions order as strings, so a same-day revision still re-judges the earlier one.
-    assert review_codes.CODEBOOK_VERSION > "2026-11-23"
+async def _negatives(clients, *names, routed=()):
+    """Direct (or routed) partly reviews coded from their reason this codebook, each with a call row
+    whose archive key is its name."""
+    from test_review_body_pilot import _add, _org, _record, _review
+
+    org = await _org(clients)
+    rows = []
+    for name in names:
+        rows += [_review(org, name, "WRONG", routed=name in routed),
+                 _record(org, name, None if name in routed else f"k-{name}")]
+    await _add(*rows)
+    async with session_maker() as db:
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.code_basis = "reason_final" if r.routed_via else "reason"
+        await db.commit()
+
+
+def _answers(monkeypatch, states: dict, clock=None):
+    """Mock `answer_of`: review call_id -> "read" | "absent" | "unreadable" (default "read")."""
+    from treg.application import review_answers
+    from test_review_body_pilot import PEOPLE
+
+    found = {"request": {"method": "POST", "url": "u", "body_text": "{}"},
+             "response": {"status_code": 200, "body_text": PEOPLE}}
+    reads = []
+
+    async def answer_of(r):
+        reads.append(r.call_id)
+        state = states.get(r.call_id, "read")
+        if clock is not None:
+            clock(r)
+        return review_answers.Answer(state, found if state == "read" else None)
+    monkeypatch.setattr(review_judge, "answer_of", answer_of)
+    return reads
+
+
+async def test_reason_codes_come_first_and_answers_upgrade_them(clients, monkeypatch):
+    """Every review is coded from its reason first; a direct one is then upgraded with its answer,
+    a few per request. A routed review is never read, and one whose answer is gone keeps its
+    reason codes for good."""
+    await _negatives(clients, "d-0", "d-1", "d-2", "gone", "rt", routed=("rt",))
+    reads = _answers(monkeypatch, {"gone": "absent"})
+    monkeypatch.setattr(get_settings(), "review_judge_answer_batch", 2)
+    seen = _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY"})
+
+    out = await review_judge.judge_answers(deadline=float("inf"))
+    assert out["judged"] == 3 and out["final"] == 1 and out["retry_later"] == 0
+    assert "rt" not in reads and [len(state["reviews"]) for state, _ in seen] == [2, 1]
+    rows = await _all()
+    assert (rows["d-0"].primary_code, rows["d-0"].code_basis) == ("EMPTY", "answer")
+    assert (rows["gone"].primary_code, rows["gone"].code_basis) == ("WRONG", "reason_final")
+    assert (rows["rt"].primary_code, rows["rt"].code_basis) == ("WRONG", "reason_final")
+    again = await review_judge.judge_answers(deadline=float("inf"))
+    assert again["pending"] == 0
+
+
+async def test_an_unreadable_answer_backs_off_and_never_holds_up_the_rest(clients, monkeypatch):
+    """Answers that cannot be read now are tried again later, not at the next run; reviews after
+    them are upgraded in the same run, and after the last try the reason codes stand."""
+    await _negatives(clients, *[f"u-{i}" for i in range(20)], "late", "no-link")
+    reads = _answers(monkeypatch, {**{f"u-{i}": "unreadable" for i in range(20)}, "no-link": "absent"})
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY"})
+
+    out = await review_judge.judge_answers(deadline=float("inf"))
+    rows = await _all()
+    assert out["retry_later"] == 20 and rows["late"].code_basis == "answer"
+    assert rows["no-link"].code_basis == "reason_final"
+    assert rows["u-0"].answer_attempts == 1 and rows["u-0"].answer_retry_at is not None
+
+    reads.clear()
+    assert (await review_judge.judge_answers(deadline=float("inf")))["pending"] == 0 and reads == []
+
+    monkeypatch.setattr(get_settings(), "review_judge_answer_attempts", 2)
+    async with session_maker() as db:  # their time has come
+        for r in (await db.execute(select(CallReview))).scalars():
+            r.answer_retry_at = None if r.answer_retry_at else r.answer_retry_at
+        await db.commit()
+    last = await review_judge.judge_answers(deadline=float("inf"))
+    rows = await _all()
+    assert last["final"] == 20 and rows["u-0"].code_basis == "reason_final" and rows["u-0"].primary_code == "WRONG"
+
+
+async def test_a_new_codebook_version_codes_from_the_reason_and_upgrades_again(clients, monkeypatch):
+    await _negatives(clients, "v")
+    _answers(monkeypatch, {})
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY" if "response" in state["reviews"][0] else "PARAM"})
+    await review_judge.judge_answers(deadline=float("inf"))
+    assert (await _all())["v"].code_basis == "answer"
+    monkeypatch.setattr(review_codes, "CODEBOOK_VERSION", "2099-01-01.1")
+    await review_judge.judge_codes(deadline=float("inf"))
+    row = (await _all())["v"]
+    assert (row.primary_code, row.code_basis) == ("PARAM", "reason")
+    await review_judge.judge_answers(deadline=float("inf"))
+    assert (await _all())["v"].code_basis == "answer"
+
+
+async def test_a_slow_last_read_does_not_drop_what_was_read(clients, monkeypatch):
+    """1 s to run: two reads of 0.1 s, then one of 0.9 s, cut off by its time limit. That review
+    is left for the next run, and the two read are sent before the deadline."""
+    from types import SimpleNamespace
+
+    await _negatives(clients, "s-0", "s-1", "s-2")
+    now, limit = [0.0], [None]
+    monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    def clock(r):
+        took = 0.9 if r.call_id == "s-0" else 0.1  # the oldest is read last, and slowly
+        if took > limit[0]:  # what asyncio.wait_for does: cut off at its timeout
+            now[0] += limit[0]
+            raise TimeoutError
+        now[0] += took
+    _answers(monkeypatch, {}, clock=clock)
+
+    async def wait_for(coro, timeout):
+        limit[0] = timeout
+        return await coro
+    monkeypatch.setattr(review_judge, "_wait_for", wait_for)
+    sent_at = []
+    _fake(monkeypatch, lambda q, spec, state: sent_at.append(now[0]) or {"choice": "EMPTY"})
+
+    out = await review_judge.judge_answers(deadline=1.0)
+    assert out["judged"] == 2 and out["stopped_by_deadline"] is True and max(sent_at) < 1.0
+    cut = (await _all())["s-0"]
+    assert cut.code_basis == "reason" and cut.answer_retry_at is not None and not cut.answer_attempts
+    # It waits a few hours (spending no try), so the next run is not cut on it again.
+    now[0] = 0.0
+    assert (await review_judge.judge_answers(deadline=10.0))["pending"] == 0
+
+
+async def test_a_slow_read_cut_by_the_budget_lets_the_next_review_through_next_run(clients, monkeypatch):
+    """The newest review's read is slow and is cut by the run's budget every time; the one after it
+    is upgraded on the next run instead of never being reached."""
+    from types import SimpleNamespace
+
+    await _negatives(clients, "fast", "slow")  # "slow" is newer, so read first
+    now = [0.0]
+    monkeypatch.setattr(review_judge, "time", SimpleNamespace(monotonic=lambda: now[0]))
+
+    def clock(r):
+        if r.call_id == "slow":
+            raise TimeoutError
+    _answers(monkeypatch, {}, clock=clock)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "EMPTY"})
+
+    first = await review_judge.judge_answers(deadline=1.0)
+    assert first["judged"] == 0 and first["stopped_by_deadline"] is True
+    second = await review_judge.judge_answers(deadline=1.0)
+    assert second["judged"] == 1 and (await _all())["fast"].code_basis == "answer"
+
+
+async def test_an_answer_read_wins_over_a_concurrent_give_up(clients, monkeypatch):
+    """Run A has read the answer and waits on Jev; run B, meanwhile, spends the last try and makes
+    the reason codes final. A's judgement is still written; a newer codebook still is not touched."""
+    from treg.domain.feedback import reviews as reviews_domain
+
+    await _negatives(clients, "race")
+    review_id = (await _all())["race"].id
+    v = review_codes.CODEBOOK_VERSION
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_final(db, review_id, v)
+        await db.commit()
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_codes(db, review_id, "EMPTY", None, v, utcnow_naive())
+        await db.commit()
+    row = (await _all())["race"]
+    assert (row.primary_code, row.code_basis) == ("EMPTY", "answer")
+    async with session_maker() as db:  # never over another answer judgement
+        assert not await reviews_domain.record_answer_codes(db, review_id, "WRONG", None, v, utcnow_naive())
+
+
+async def test_the_answer_pass_can_be_switched_off(clients, monkeypatch):
+    calls = []
+
+    async def answers(*, deadline):
+        calls.append(1)
+        return {}
+    monkeypatch.setattr(review_judge, "judge_answers", answers)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "WRONG"})
+    monkeypatch.setattr(get_settings(), "review_judge_answers", False, raising=False)
+    out = await review_judge.run(max_seconds=5)
+    assert "answers" not in out and calls == []
+    monkeypatch.setattr(get_settings(), "review_judge_answers", True, raising=False)
+    assert "answers" in await review_judge.run(max_seconds=5)
+
+
+async def test_a_budget_cut_never_moves_back_a_failure_another_run_recorded(clients, monkeypatch):
+    """Run A read a review at 4 failed tries; run B meanwhile records the 5th with its back-off. A's
+    read is then cut by its budget: B's count and back-off stand. Two runs failing together count
+    once."""
+    from datetime import timedelta
+
+    from treg.domain.feedback import reviews as reviews_domain
+
+    await _negatives(clients, "busy")
+    review_id = (await _all())["busy"].id
+    v = review_codes.CODEBOOK_VERSION
+    later = utcnow_naive() + timedelta(hours=16)
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_retry(db, review_id, v, None, utcnow_naive())
+        await db.commit()
+    for _ in range(3):
+        seen = (await _all())["busy"].answer_attempts
+        async with session_maker() as db:
+            assert await reviews_domain.record_answer_retry(db, review_id, v, seen, utcnow_naive())
+            await db.commit()
+    assert (await _all())["busy"].answer_attempts == 4
+    async with session_maker() as db:  # B: the 5th failure
+        assert await reviews_domain.record_answer_retry(db, review_id, v, 4, later)
+        await db.commit()
+    async with session_maker() as db:  # A, which read 4: its budget wait and its failure are refused
+        assert not await reviews_domain.record_answer_wait(db, review_id, v, 4, utcnow_naive())
+        assert not await reviews_domain.record_answer_retry(db, review_id, v, 4, utcnow_naive())
+        await db.commit()
+    row = (await _all())["busy"]
+    assert row.answer_attempts == 5 and row.answer_retry_at == later
+
+
+async def test_tries_running_out_never_ends_a_back_off_another_run_moved_on(clients, monkeypatch):
+    """A worker allowed fewer tries read 4 and gives up; one allowed more recorded the 5th meanwhile:
+    its back-off stands. An answer gone for good still ends it whatever the count."""
+    from datetime import timedelta
+
+    from treg.domain.feedback import reviews as reviews_domain
+
+    await _negatives(clients, "limits")
+    review_id = (await _all())["limits"].id
+    v = review_codes.CODEBOOK_VERSION
+    later = utcnow_naive() + timedelta(hours=16)
+    async with session_maker() as db:
+        await db.execute(update(CallReview).where(CallReview.id == review_id).values(answer_attempts=5,
+                                                                                      answer_retry_at=later))
+        await db.commit()
+    async with session_maker() as db:
+        assert not await reviews_domain.record_answer_final(db, review_id, v, 4)
+        await db.commit()
+    row = (await _all())["limits"]
+    assert (row.code_basis, row.answer_attempts, row.answer_retry_at) == ("reason", 5, later)
+    async with session_maker() as db:
+        assert await reviews_domain.record_answer_final(db, review_id, v)
+        await db.commit()
+    assert (await _all())["limits"].code_basis == "reason_final"
+
+
+async def test_praise_codes_useful_reviews_from_their_reasons_only(clients, monkeypatch):
+    await _reviews(clients, [
+        ("useful", "Clean miss with no charge for a domain not in the index.", {}),
+        ("useful", None, {}),
+        ("partly", LONG, {}),
+        ("useful", "Returned the full profile and the email verified.", {"routed_via": "email.find"}),
+        ("useful", "It was fine, really, nothing more to say about it.", {}),
+    ])
+
+    def answer(q, spec, state):
+        review = state["reviews"][int(q[1:])]
+        if review["usefulness"] != "useful":
+            return None
+        if "Clean miss" in review["reason"]:
+            return {"choice": "HONEST", "probabilities": {"HONEST": 0.6, "CHEAP": 0.35}}
+        if "full profile" in review["reason"]:
+            return {"choice": "COMPLETE", "probabilities": {"COMPLETE": 0.9, "ACCURATE": 0.1}}
+        return {"choice": "EMPTY"}  # a negative code is not a praise code
+    seen = _fake(monkeypatch, answer)
+    out = await review_judge.judge_praise(deadline=float("inf"))
+    assert out == {"pending": 4, "selected": 4, "judged": 2, "no_reason": 1, "already_judged": 0,
+                   "failed_requests": 0, "unreadable": 1, "tokens_in": 10, "retry_later": 1}
+    assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.PRAISE_CODES)
+    rows = await _all()
+    assert (rows["j-0"].primary_code, rows["j-0"].secondary_code) == ("HONEST", "CHEAP")
+    assert (rows["j-3"].primary_code, rows["j-3"].secondary_code) == ("COMPLETE", None)
+    assert rows["j-1"].primary_code == "NOREASON"
+    for k in ("j-0", "j-1", "j-3"):  # never upgraded with the answer, direct or routed
+        assert rows[k].code_basis == "reason_final"
+        assert rows[k].codebook_version == review_codes.PRAISE_CODEBOOK_VERSION
+    assert rows["j-2"].code_judged_at is None  # negative reviews are the other pass's
+    assert rows["j-4"].code_judged_at is None  # unreadable: tried again after its back-off
+    assert rows["j-4"].answer_attempts == 1 and rows["j-4"].answer_retry_at is not None
+    # The negative pass never takes useful reviews, and the upgrade never reads their answers.
+    assert (await review_judge.judge_codes(deadline=float("inf")))["pending"] == 1
+    assert (await _all())["j-0"].primary_code == "HONEST"
+    assert (await review_judge.judge_answers(deadline=float("inf")))["pending"] == 0
+
+
+async def test_praise_is_bounded_per_run_and_by_its_window(clients, monkeypatch):
+    old = {"created_at": utcnow_naive() - timedelta(days=29)}
+    await _reviews(clients, [("useful", f"{LONG} {i}", {}) for i in range(5)] + [("useful", LONG, old)])
+    monkeypatch.setattr(get_settings(), "review_judge_praise_per_run", 3, raising=False)
+    monkeypatch.setattr(get_settings(), "review_judge_praise_days", 28, raising=False)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
+    first = await review_judge.judge_praise(deadline=float("inf"))
+    assert (first["pending"], first["selected"], first["judged"]) == (5, 3, 3)  # the backlog, not the cap
+    assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 2
+    assert (await review_judge.judge_praise(deadline=float("inf")))["pending"] == 0
+    assert (await _all())["j-5"].code_judged_at is None  # older than the praise window
+
+
+async def test_a_new_praise_codebook_version_judges_old_praise_again(clients, monkeypatch):
+    old = {"primary_code": "GENERIC", "codebook_version": "2000-01-01", "code_judged_at": utcnow_naive()}
+    current = old | {"codebook_version": review_codes.PRAISE_CODEBOOK_VERSION}
+    await _reviews(clients, [("useful", LONG, old), ("useful", LONG, current)])
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
+    out = await review_judge.judge_praise(deadline=float("inf"))
+    assert out["pending"] == 1 and out["judged"] == 1
+    assert (await _all())["j-0"].primary_code == "COMPLETE"
+
+
+async def test_the_praise_pass_can_be_switched_off(clients, monkeypatch):
+    await _reviews(clients, [("useful", LONG, {})])
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
+    monkeypatch.setattr(get_settings(), "review_judge_answers", False, raising=False)
+    monkeypatch.setattr(get_settings(), "review_judge_praise", False, raising=False)
+    assert "praise" not in await review_judge.run(max_seconds=5)
+    assert (await _all())["j-0"].code_judged_at is None
+    monkeypatch.setattr(get_settings(), "review_judge_praise", True, raising=False)
+    assert (await review_judge.run(max_seconds=5))["praise"]["judged"] == 1
+
+
+def test_praise_codes_never_share_a_name_with_a_negative_code():
+    assert not set(review_codes.PRAISE_CODES) & set(review_codes.CODES)
+    assert review_codes.codes_from({"choice": "ACCURATE"}) is None
+    assert review_codes.codes_from({"choice": "ACCURATE"}, review_codes.PRAISE_CODES) == ("ACCURATE", None)
+
+
+async def test_uncodable_praise_steps_aside_so_older_reviews_are_reached(clients, monkeypatch):
+    older = {"created_at": utcnow_naive() - timedelta(days=1)}
+    await _reviews(clients, [("useful", "poison " + LONG, {}), ("useful", "fine " + LONG, older)])
+    monkeypatch.setattr(get_settings(), "review_judge_praise_per_run", 1, raising=False)
+    _fake(monkeypatch, lambda q, spec, state: (
+        {"choice": "SOMETHING_ELSE"} if "poison" in state["reviews"][int(q[1:])]["reason"]
+        else {"choice": "COMPLETE"}))
+    first = await review_judge.judge_praise(deadline=float("inf"))
+    assert (first["unreadable"], first["retry_later"], first["pending"]) == (1, 1, 2)
+    second = await review_judge.judge_praise(deadline=float("inf"))
+    assert second["judged"] == 1  # the newest, backing off, no longer takes the cap
+    rows = await _all()
+    assert rows["j-1"].primary_code == "COMPLETE" and rows["j-0"].answer_attempts == 1
+    # Its time comes again: a second failure doubles the wait; coding it clears the back-off.
+    await _set("j-0", answer_retry_at=utcnow_naive() - timedelta(minutes=1))
+    third = await review_judge.judge_praise(deadline=float("inf"))
+    assert third["retry_later"] == 1 and third["pending"] == 1  # counted when the run starts
+    row = (await _all())["j-0"]
+    assert row.answer_attempts == 2 and row.answer_retry_at - utcnow_naive() > timedelta(hours=1, minutes=50)
+    await _set("j-0", answer_retry_at=None)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "HONEST"})
+    assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 1
+    row = (await _all())["j-0"]
+    assert (row.primary_code, row.answer_attempts, row.answer_retry_at) == ("HONEST", None, None)
+
+
+async def test_a_failed_praise_request_waits_an_hour_without_counting_a_try(clients, monkeypatch):
+    await _reviews(clients, [("useful", LONG, {})])
+    _fake(monkeypatch, Reply(answers=None, ms=1, error="timeout"))
+    out = await review_judge.judge_praise(deadline=float("inf"))
+    assert (out["failed_requests"], out["retry_later"]) == (1, 1)
+    row = (await _all())["j-0"]
+    assert not row.answer_attempts and row.answer_retry_at is not None
+    assert (await review_judge.judge_praise(deadline=float("inf")))["selected"] == 0
+
+
+def test_generic_never_carries_a_second_code():
+    P = review_codes.PRAISE_CODES
+    # A named quality likely beside GENERIC is the code itself.
+    assert review_codes.codes_from(
+        {"choice": "GENERIC", "probabilities": {"GENERIC": 0.5, "RELEVANT": 0.4}}, P) == ("RELEVANT", None)
+    # Below the second-code bar it stays GENERIC, alone.
+    assert review_codes.codes_from(
+        {"choice": "GENERIC", "probabilities": {"GENERIC": 0.9, "COMPLETE": 0.1}}, P) == ("GENERIC", None)
+    # Nor is it ever the second code beside a specific one.
+    assert review_codes.codes_from(
+        {"choice": "COMPLETE", "probabilities": {"COMPLETE": 0.5, "GENERIC": 0.4, "FAST": 0.3}}, P) == ("COMPLETE", "FAST")
+
+
+def test_the_praise_question_draws_the_boundaries_jev_crossed():
+    q = review_codes.praise_question(0)
+    text, c = q["instructions"], q["criteria"]
+    assert "one call" in c["FAST"] and "COMPLETE" in c["FAST"]        # one call is not speed
+    assert "not STRUCTURED" in c["STRUCTURED"]                         # clear writing is not format
+    assert "never a description" in c["HONEST"] and "never HONEST" in text  # generated output
+    assert "not ACCESS" in c["ACCESS"] and "rate limit" in c["ACCESS"]  # an obstacle overcome
+    assert "never takes a second code" in text

@@ -10,6 +10,9 @@ spends money the hold does not have.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import contextvars
+import enum
 import functools
 import logging
 import random
@@ -29,8 +32,9 @@ from ...domain.money import allowance
 from ...infra import db as infra_db
 from ...infra import kv, money_admission
 from ...infra.db import session_maker
-from ...infra.money_session import money_session
+from ...infra.money_session import bound_lock_wait, lock_timed_out, money_session
 from ...models import Org
+from .idempotency import IN_FLIGHT_MARK_MS
 
 log = logging.getLogger("treg.money_allowance")
 
@@ -45,15 +49,27 @@ _REFRESH_WAIT_S = 10.0
 # One batch of the fold a frozen call asks for (`_settled`). A transaction that keeps the
 # team's lease: kept short, so a refill never waits long behind it.
 _BACKLOG_FOLD = 100
-_SETTLED_TRIES = 20
+# The most batches that fold takes before leaving the rest of the queue to the background fold.
+_BACKLOG_BATCHES = 5
+# How long a call waits in all for its settle entry before answering with its charge.
+_SETTLED_WAIT_S = 1.0
+# The end of that wait kept for one last read of the entry, whatever the folding did with the
+# rest (a fifth of it at most).
+_LAST_READ_S = 0.2
 # Long enough that a counter outlives any pause in refills that still leaves its hold open.
 _COUNTER_TTL_MS = 24 * 3600 * 1000
 _refused_until: dict[int, float] = {}
+# Whether the refill this task's own take ran was turned away by money admission. A refill run by
+# a background refresh or by another process never sets it: it is no evidence about this call.
+_refill_turned_away: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "treg_allowance_refill_turned_away", default=False)
 # Takes this process admitted and has not finished. Each will hand the charge writer one row at
 # most, so admitting against the writer's room now is what keeps it from ever overflowing.
 _in_flight = [0]
 # The most charges this process may owe the database at once, in flight or waiting to be written.
 _MAX_OWED = 20_000
+# How often the charge writer renews the in-flight marks it holds: well inside their lifetime.
+_MARK_RENEW_S = 60.0
 _money_locks: dict[tuple[int, asyncio.AbstractEventLoop], asyncio.Lock] = {}
 
 
@@ -64,9 +80,41 @@ def money_lock(org_id: int) -> asyncio.Lock:
     key = (org_id, asyncio.get_running_loop())
     lock = _money_locks.get(key)
     if lock is None:
+        _prune_if_full()
         lock = _money_locks[key] = asyncio.Lock()
     return lock
+
+
+_TEAM_STATE_PRUNE_AT = 1024
+_next_prune_at = 0
+
+
+def _team_state_size() -> int:
+    return max(len(_money_locks), len(_refills), len(_refused_until))
+
+
+def _prune_if_full() -> None:
+    global _next_prune_at
+    if _team_state_size() < max(_TEAM_STATE_PRUNE_AT, _next_prune_at):
+        return
+    _prune()
+    _next_prune_at = 2 * _team_state_size()
+
+
+def _prune() -> None:
+    now = time.monotonic()
+    for org_id in [org_id for org_id, until in _refused_until.items() if until <= now]:
+        del _refused_until[org_id]
+    # asyncio has no public count of a lock's waiters.
+    for key in [key for key, lock in _money_locks.items()
+                if not lock.locked() and not lock._waiters]:
+        del _money_locks[key]
+    busy = ({org_id for org_id, _ in _money_locks} | set(_refreshing) | set(_refused_until)
+            | set(_taking))
+    for org_id in [org_id for org_id in _refills if org_id not in busy]:
+        del _refills[org_id]
 _refills: dict[int, int] = {}
+_taking: dict[int, int] = {}
 
 
 def refills(org_id: int) -> int:
@@ -75,9 +123,42 @@ def refills(org_id: int) -> int:
     return _refills.get(org_id, 0)
 
 
+def take_met_busy_refill() -> bool:
+    """Whether this task's last `take` ran a refill itself and money admission turned that refill
+    away. Only then is the call's refusal known to come from a busy money queue."""
+    return _refill_turned_away.get()
+
+
+def listed(org_id: int) -> bool:
+    """Whether the operator put the team on the allowance: every team when
+    `money_allowance_all_orgs`, else the ones in `money_allowance_org_ids`, never an excluded
+    one."""
+    settings = get_settings()
+    if org_id in settings.money_allowance_excluded_org_ids:
+        return False
+    return settings.money_allowance_all_orgs or org_id in settings.money_allowance_org_ids
+
+
+def routed_listed(org_id: int) -> bool:
+    """Whether a routed call of the team lets its children take from the allowance: a team on
+    the allowance, named in `money_allowance_routed_org_ids` or every one under
+    `money_allowance_routed_all_orgs`."""
+    settings = get_settings()
+    return listed(org_id) and (settings.money_allowance_routed_all_orgs
+                               or org_id in settings.money_allowance_routed_org_ids)
+
+
+def tagged_listed(org_id: int) -> bool:
+    """Whether a tagged call of the team no tag budget limits may take from the allowance: a
+    team on the allowance, named in `money_allowance_tagged_org_ids` or every one under
+    `money_allowance_tagged_all_orgs`."""
+    settings = get_settings()
+    return listed(org_id) and (settings.money_allowance_tagged_all_orgs
+                               or org_id in settings.money_allowance_tagged_org_ids)
+
+
 def enabled_for(org_id: int) -> bool:
-    return (org_id in get_settings().money_allowance_org_ids and kv.configured()
-            and _database_supported())
+    return listed(org_id) and kv.configured() and _database_supported()
 
 
 def _database_supported() -> bool:
@@ -95,6 +176,20 @@ def money_key(org_id: int) -> str:
     return f"treg:money-allowance-money:v1:{org_id}"
 
 
+def fold_claim_key(org_id: int) -> str:
+    """The claim the background fold sets on a team whose queue has waited too long
+    (`allowance_sweep`): while another token holds it, nobody else gets the team's lease."""
+    return f"treg:money-allowance-fold-claim:v1:{org_id}"
+
+
+async def acquire_money_lease(store, org_id: int, token: str, ttl_ms: int, *,
+                              owner: str | None = None) -> str:
+    """Take the team's lease (`money_key`), unless the background fold has claimed its next turn
+    (`fold_claim_key`) and this is not that claim's `owner`: then `busy`, as if held."""
+    return await store.acquire_lease(money_key(org_id), token, ttl_ms,
+                                     unless=fold_claim_key(org_id), owner=owner)
+
+
 async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
                after_refill: Callable[[], Awaitable[None]] | None = None) -> int | None:
     """Reserve `amount_micro` from the team's allowance. The counter's epoch, or None when the
@@ -103,18 +198,23 @@ async def take(org_id: int, amount_micro: int, *, daily_cap_micro: int = 0,
 
     A refill this call starts beside itself commits after this returns, so `refills` around the
     call does not show it: `after_refill` is awaited once that refill has moved the balance."""
+    _refill_turned_away.set(False)
     if (_refused_until.get(org_id, 0.0) > time.monotonic() or _charges.behind()
             or org_id in _freezes_due or not _charges.has_room(_in_flight[0])):
         return None
     # The place is taken before anything is awaited, so calls arriving together cannot all pass
     # on the last one. `finish` gives it back, or hands it to the charge writer.
     _in_flight[0] += 1
+    _taking[org_id] = _taking.get(org_id, 0) + 1
     epoch = None
     try:
         epoch = await _take(org_id, amount_micro, daily_cap_micro, after_refill)
     finally:
         if not epoch:
             _in_flight[0] -= 1
+        _taking[org_id] -= 1
+        if not _taking[org_id]:
+            del _taking[org_id]
     return epoch
 
 
@@ -144,7 +244,7 @@ async def _take(org_id: int, amount_micro: int, daily_cap_micro: int, after_refi
     key, token = money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFILL_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "unavailable":
             return None
         if acquired == "acquired":
@@ -219,7 +319,7 @@ async def _refresh_once(org_id: int, daily_cap_micro: int, after_refill) -> None
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     deadline = time.monotonic() + _REFRESH_WAIT_S
     while True:
-        acquired = await store.acquire_lease(key, token, _REFILL_LEASE_MS)
+        acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
         if acquired == "acquired":
             before = refills(org_id)
             try:
@@ -320,11 +420,16 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
                 ceiling_micro=settings.money_allowance_refill_max_micro)
             await db.commit()
     except money_admission.ReserveAdmissionTimeout:
+        _refill_turned_away.set(True)
+        log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
+                 org_id, need_micro, available)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
         # what it showed goes with it.
         available = 0
+    if org_id not in _refills:
+        _prune_if_full()
     _refills[org_id] = _refills.get(org_id, 0) + 1
     log.info("allowance_refill org_id=%s added=%s hold=%s counter_before=%s folded=%s "
              "target=%s", org_id, result.added_micro, result.amount_micro, available,
@@ -352,35 +457,195 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     return True
 
 
-async def _fold_backlog(org_id: int) -> None:
-    """Fold a team's queued charges now, a batch per transaction, until the queue is short. For
-    a call that must know what the ledger took for it (`_settled`); everything else is left to
-    the background loop. One process at a time per team; calls keep taking from the counter
-    meanwhile, since a fold moves only money their takes already removed from it."""
+class _Fold(enum.Enum):
+    SHORT = "short"  # the queue is short now
+    MORE = "more"  # one batch folded, and more may be queued
+    HERE = "here"  # this process has a money session of the team open
+    ELSEWHERE = "elsewhere"  # another process has the team's lease
+    GAVE_UP = "gave_up"  # admission or row locks not free in time, too long a queue, or a fault
+
+
+async def _fold_backlog(org_id: int, budget: list[int], call_id: str | None = None,
+                        found: list[int] | None = None, deadline: float | None = None) -> _Fold:
+    """Fold one batch of a team's queued charges now, in its own transaction. For a call that
+    must know what the ledger took for it (`_settled`), which reads its entry after each batch
+    and comes back while the queue is long; everything else is left to the background loop.
+    Calls keep taking from the counter meanwhile, since a fold moves only money their takes
+    already removed from it.
+
+    It never waits on another fold, here or elsewhere, and never waits long for the team's
+    admission or row locks while it holds a connection: the call is answering, and the
+    background fold applies the queue anyway. `budget` holds the batches the call has left and
+    is spent here, so a call folds no more than `_BACKLOG_BATCHES` in all. With `call_id`, the
+    call's settle entry is read in the fold's own transaction and appended to `found` once that
+    transaction has committed, so what the ledger took is known even if the call's deadline
+    passes while the session closes or the lease is given back. `deadline` (the event loop's
+    clock) bounds it until it holds a database connection."""
     store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
     try:
-        while True:
+        # Until it holds a connection the batch is optional, and bound by the call's deadline:
+        # past it, it does not take a connection a call waiting now could have. Once it holds
+        # one it finishes, commit or rollback, close and give back, whatever the time.
+        async with asyncio.timeout_at(deadline) as optional:
+            if budget[0] <= 0:
+                return _Fold.GAVE_UP
             # The lease is given up between batches, and a moment left for a refill to take it:
             # calls are waiting on a refill, nobody is waiting on this.
             await asyncio.sleep(0.05)
-            if await store.acquire_lease(key, token, _REFILL_LEASE_MS) != "acquired":
-                return
+            if money_lock(org_id).locked():
+                return _Fold.HERE
             try:
+                acquired = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
+            except BaseException:
+                # The store may have granted the lease before the call stopped waiting for its
+                # answer: give back whatever this token holds, or the team's refills and the
+                # background fold wait for it to expire. Release deletes only this token's, and
+                # runs on its own: the call is past its deadline and does not wait for it.
+                _release_lease_soon(store, key, token)
+                raise
+            if acquired != "acquired":
+                # The lease may be held by this process's own fold, which took it while this
+                # call waited for the store: its lock says so.
+                return _Fold.HERE if money_lock(org_id).locked() else _Fold.ELSEWHERE
+            try:
+                # Asked for again after the wait: an idle lock can be pruned meanwhile, and the
+                # one this process's other calls test is the one now in the map. Nothing is
+                # awaited between this test and taking it, so a free lock is taken at once.
+                lock = money_lock(org_id)
+                if lock.locked():
+                    return _Fold.HERE
                 async with (
-                    money_lock(org_id),
+                    lock,
                     money_admission.admit(
-                        money_admission.require_balance_orgs([org_id]), operation="close"),
+                        money_admission.require_balance_orgs([org_id]), operation="close",
+                        max_wait_s=_REFILL_WAIT_S, refuse_on_timeout=True),
                     money_session(session_maker()) as db,
                 ):
+                    await db.connection()
+                    optional.reschedule(None)
+                    budget[0] -= 1
+                    await bound_lock_wait(db)
                     folded = await allowance.fold_charges_in_transaction(
                         db, org_id, limit=_BACKLOG_FOLD)
+                    settled = (await allowance.settled_micro(db, org_id, call_id)
+                               if call_id is not None else None)
                     await db.commit()
+                    if settled is not None and found is not None:
+                        found.append(settled)
             finally:
-                await store.release_lease(key, token)
-            if folded.claimed < _BACKLOG_FOLD:
-                return
-    except Exception:
-        log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+                # Given back by a task of its own: a deadline that passes while the store answers
+                # stops this wait, not the release, which deletes only this token's lease. A call
+                # already past its deadline (cancelled while it waited for a connection, say) does
+                # not wait for the release at all.
+                release = _release_lease_soon(store, key, token)
+                current = asyncio.current_task()
+                if current is None or not current.cancelling():
+                    await asyncio.shield(release)
+            return _Fold.SHORT if folded.claimed < _BACKLOG_FOLD else _Fold.MORE
+    except (money_admission.AdmissionTimeout, TimeoutError):
+        return _Fold.GAVE_UP
+    except Exception as exc:
+        if lock_timed_out(exc):
+            log.info("folding the queued charges of org %s waited too long on its rows", org_id)
+        else:
+            log.error("folding the queued charges of org %s failed", org_id, exc_info=True)
+        return _Fold.GAVE_UP
+
+
+_lease_releases: set[asyncio.Task] = set()
+_background_folds: set[asyncio.Task] = set()
+# The request-path folds of each team running in this process, for a call that waits on one.
+_team_folds: dict[int, set[asyncio.Task]] = {}
+
+
+async def _fold_beside(org_id: int, budget: list[int], call_id: str, found: list[int],
+                       started: list[asyncio.Task], deadline: float) -> _Fold:
+    """`_fold_backlog` in a task of its own, which the call waits for only until its deadline.
+    The batch, and what follows its commit (closing the session, giving back the team's
+    admission and lease, its lock in this process), then finishes in order without the call,
+    if by `deadline` it holds a connection; one still waiting for one then gives up. The task
+    is appended to `started`, so the call can still take its answer later."""
+    task = asyncio.ensure_future(_fold_backlog(org_id, budget, call_id, found, deadline))
+    _background_folds.add(task)
+    task.add_done_callback(_background_folds.discard)
+    team = _team_folds.setdefault(org_id, set())
+    team.add(task)
+
+    def _forget(done: asyncio.Task) -> None:
+        team.discard(done)
+        if not team and _team_folds.get(org_id) is team:
+            del _team_folds[org_id]
+
+    task.add_done_callback(_forget)
+    started.append(task)
+    return await asyncio.shield(task)
+
+
+async def _last_look(org_id: int, call_id: str, found: list[int],
+                     fold: asyncio.Task | None) -> int | None:
+    """Read the call's entry while a fold of the team may still commit it: the call's own, or
+    the one this process is running for the team that the call waited on. Whichever answers
+    first. A fold that ends without answering this call (another call's batch, which may still
+    have applied this charge) is followed by one more read. The caller bounds it with its
+    deadline."""
+    read = asyncio.ensure_future(_read_settled(org_id, call_id))
+    reads = [read]
+    tasks = {read} if fold is None or fold.done() else {read, fold}
+    try:
+        while tasks:
+            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            if found:
+                return found[0]
+            if read in done:
+                try:
+                    settled = read.result()
+                except Exception:
+                    # The fold has a connection of its own and may still answer.
+                    log.error("reading the settle entry of allowance call %s failed", call_id,
+                              exc_info=True)
+                    settled = None
+                if settled is not None:
+                    return settled
+            if fold in done:
+                # A read begun before that batch committed may not see it: ask again.
+                read.cancel()
+                read = asyncio.ensure_future(_read_settled(org_id, call_id))
+                reads.append(read)
+                tasks.discard(fold)
+                tasks.add(read)
+                fold = None
+        return found[0] if found else None
+    finally:
+        for pending in reads:
+            pending.cancel()
+
+
+def _team_fold(org_id: int, started: list[asyncio.Task]) -> asyncio.Task | None:
+    """The request-path fold of the team still running in this process, the call's own first."""
+    for task in (*reversed(started), *_team_folds.get(org_id, ())):
+        if not task.done():
+            return task
+    return None
+
+
+async def _read_settled(org_id: int, call_id: str) -> int | None:
+    async with session_maker() as db:
+        return await allowance.settled_micro(db, org_id, call_id)
+
+
+def _release_lease_soon(store, key: str, token: str) -> asyncio.Task:
+    """Release `token`'s lease in a task that outlives a cancelled caller."""
+    task = asyncio.ensure_future(store.release_lease(key, token))
+    _lease_releases.add(task)
+    task.add_done_callback(_lease_releases.discard)
+    return task
+
+
+async def _team_session_ended(org_id: int) -> None:
+    """Wait, holding no connection, until this process has no money session of the team open."""
+    lock = money_lock(org_id)
+    async with lock:
+        pass
 
 
 async def _drain(org_id: int, epoch: int, reason: str) -> None:
@@ -402,39 +667,255 @@ async def _drain(org_id: int, epoch: int, reason: str) -> None:
         await db.commit()
 
 
+Offer = tuple[int, int | None]
+
+
+async def _counter_state(org_id: int) -> Offer | None:
+    """`counter_offer`, with None when the store cannot answer."""
+    try:
+        state = await kv.store().allowance_state(org_id)
+    except Exception:
+        log.warning("reading the allowance counter of org %s failed", org_id, exc_info=True)
+        return None
+    return (state[0], state[3]) if state else None
+
+
+async def counter_offer(org_id: int) -> Offer:
+    """What a team's allowance counter offers now, and the epoch of the hold it was built for;
+    `(0, None)` for a team off the allowance (no call of its takes from a counter, so what one
+    holds is not its to spend until the sweep returns it) or when the store cannot answer. A
+    store read: take it before a session holds a connection or a lock."""
+    if not enabled_for(org_id):
+        return 0, None
+    return await _counter_state(org_id) or (0, None)
+
+
+async def counter_offers(org_ids) -> dict[int, Offer]:
+    """`counter_offer` for several teams at once: the reads run together, so a slow store costs
+    one wait, not one per team."""
+    ids = list(dict.fromkeys(org_ids))
+    return dict(zip(ids, await asyncio.gather(*(counter_offer(org_id) for org_id in ids))))
+
+
+async def spendable(db, org_id: int, offer: Offer | None = None) -> int:
+    """The balance a team is shown (`allowance.spendable`): its balance plus what its counter
+    offers now (`offer`, read here when not given). A store that cannot answer shows the
+    balance alone. For a decision a short reading would cost, see `covers`."""
+    counter, epoch = offer if offer is not None else await counter_offer(org_id)
+    return await allowance.spendable(db, org_id, counter_micro=counter, counter_epoch=epoch)
+
+
+async def spendable_ending_read(db, org_id: int) -> int:
+    """`spendable` for a read-only request whose session has already read (its caller, its
+    team): the read is ended first, so the store read holds no connection. Only where the
+    session has written nothing: ending it commits."""
+    await db.commit()
+    return await spendable(db, org_id, await counter_offer(org_id))
+
+
+class Reach(NamedTuple):
+    """What `reach` found. `sure`: the reading was taken with nothing moving the team's money,
+    and `found` is what the team can spend now. Not `sure`: the team's money would cover the
+    amount (`found` is it wherever it sits, `allowance.credit_bound`), but another request held
+    the team's money lease for as long as a call waits for a refill, so where it is now is not
+    known."""
+
+    found: int
+    sure: bool
+
+
+@contextlib.asynccontextmanager
+async def _team_lease(org_id: int, *, wait: bool = True):
+    """The team's money lease for a reading or a give-back: yields "acquired", "unavailable"
+    (the store cannot answer: no call can take from a counter either) or "busy" (another
+    request kept it, or the background fold claimed its next turn, for as long as a call waits
+    for a refill, or at once without `wait`). Every request that moves the team's money between
+    the store and the database (a refill, a give-back, a fold, the idle sweep) holds it, so what
+    is read under it is one moment of both. Whatever this token may hold is given back on every
+    way out but "busy", in a task of its own: a store that timed out or a cancel may have come
+    after the lease was granted."""
+    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
+    deadline = time.monotonic() + (_REFILL_WAIT_S if wait else 0.0)
+    pause, answer = 0.01, "busy"
+    while True:
+        try:
+            # A background fold that claimed the team's next turn is not passed by a reading.
+            answer = await acquire_money_lease(store, org_id, token, _REFILL_LEASE_MS)
+        except Exception:
+            log.warning("asking for the allowance lease of org %s failed", org_id, exc_info=True)
+            answer = "unavailable"
+        except BaseException:
+            # The store may have granted the lease before a cancel stopped the wait for its
+            # answer: give back whatever this token holds, or the team's refills, give-backs and
+            # fold wait for it to expire.
+            _release_lease_soon(store, key, token)
+            raise
+        if answer != "busy" or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(pause + random.random() * pause)
+        pause = min(pause * 2, 0.1)
+    try:
+        yield answer
+    finally:
+        if answer == "acquired":
+            await asyncio.shield(_release_lease_soon(store, key, token))
+        elif answer == "unavailable":
+            # A store that timed out may have granted it first; release deletes only this token's.
+            _release_lease_soon(store, key, token)
+
+
+async def reach(org_id: int, amount_micro: int) -> Reach:
+    """Whether the team can pay `amount_micro` now, for a decision a wrong reading would cost: an
+    arena run starting or quoted.
+
+    The team's money wherever it sits (`allowance.credit_bound`, the database alone) below the
+    amount, or a team off the allowance, is answered from the database and the store is not
+    asked. Otherwise the counter and the database are read under the team's money lease
+    (`_team_lease`), so no refill or give-back moves money between them while they are read:
+    what the counter offers plus the balance is what calls can spend. A hold released or a take
+    made between the two readings can still move it by that much; an arena decision costs only
+    a refusal or a start whose calls each reserve their own money. Opens its own sessions: call
+    it with none held."""
+    if amount_micro <= 0:
+        return Reach(0, True)
+    async with session_maker() as db:
+        anywhere = await allowance.credit_bound(db, org_id)
+        if anywhere < amount_micro or not enabled_for(org_id):
+            return Reach(await allowance.spendable(db, org_id), True)
+    async with _team_lease(org_id) as lease:
+        if lease == "busy":
+            return Reach(anywhere, False)
+        offer = await _counter_state(org_id) if lease == "acquired" else None
+        async with session_maker() as db:
+            return Reach(await spendable(db, org_id, offer or (0, None)), True)
+
+
+async def onto_balance(org_id: int, amount_micro: int) -> bool:
+    """Whether the balance, free of the queue's claims, covers `amount_micro`, the team's
+    counter given back to it under the team's money lease when it does not: for a reserve the
+    balance refused, which runs again on True. A balance that already covers it (another
+    request gave the counter back after the refusal read it) answers at once, and so does a
+    team whose money is not there at all (`allowance.credit_bound`): one statement, no store.
+    Waits for the lease no longer than a call waits for a refill. False is a refusal, not a
+    confirmed shortfall: the balance and the counter are read apart, and the lease, the store
+    or the give-back may fail. Opens its own sessions: call it with none held."""
+    async with session_maker() as db:
+        free = await allowance.unheld_free(db, org_id)
+        if free >= amount_micro:
+            return True
+        if not enabled_for(org_id) or await allowance.credit_bound(db, org_id) < amount_micro:
+            return False
+    async with _team_lease(org_id) as lease:
+        if lease != "acquired":
+            return False
+        async with session_maker() as db:
+            free = await allowance.unheld_free(db, org_id)
+        if free >= amount_micro:
+            return True
+        state = await _counter_state(org_id)
+        if state is None or not state[1] or state[0] < amount_micro - free:
+            return False
+        try:
+            returned = await _give_back(org_id, state[1])
+        except money_admission.AdmissionTimeout:
+            return False
+        except Exception:
+            # The call is refused as it would have been: never an error of the give-back's own.
+            log.error("returning the allowance of org %s for the exact path failed", org_id,
+                      exc_info=True)
+            return False
+    if returned:
+        log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
+    return free + returned >= amount_micro
+
+
+async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:
+    """The balance a quote for `need_micro` shows. Whether it covers the need is `reach`'s: what
+    the team can spend now when it does, or, while another request holds its money lease, its
+    money wherever it sits, which the run's start asks about again. A team that cannot cover it
+    is shown `shown_micro`, the figure its quote read: `reach` answers that case from the
+    database alone, without what the counter offers. Opens its own sessions."""
+    found, sure = await reach(org_id, need_micro)
+    return found if found >= need_micro or not sure else min(shown_micro, need_micro - 1)
+
+
+class CreditShort(Exception):
+    """Raised from inside a session by a check (`short_of`) that wants the team's credit
+    confirmed, so `gives_counter_back` can ask `reach` with no session held. `refusal` is what
+    the caller raises when the money is not there, `busy` when it could not be confirmed."""
+
+    def __init__(self, need_micro: int, refusal: Exception, busy: Exception | None = None) -> None:
+        super().__init__(need_micro)
+        self.need_micro, self.refusal, self.busy = need_micro, refusal, busy or refusal
+
+
+# What `gives_counter_back` confirmed for the run it is running again: (org id, amount).
+_confirmed: contextvars.ContextVar[tuple[int, int] | None] = contextvars.ContextVar(
+    "treg_allowance_confirmed", default=None)
+
+
+def short_of(org_id: int, need_micro: int) -> bool:
+    """Whether a check inside a session must have the team's credit for `need_micro` confirmed
+    first: True until `gives_counter_back` runs the check again with `reach`'s answer. Read
+    inside the session, the two stores could miss money or count it twice."""
+    if need_micro <= 0:
+        return False
+    confirmed = _confirmed.get()
+    return confirmed is None or confirmed[0] != org_id or confirmed[1] < need_micro
+
+
+def gives_counter_back(run):
+    """`run(caller, ...)` raises `CreditShort` from its check (`short_of`); this asks `reach` with
+    no session held and runs it again with the answer, once. Money that is not there raises the
+    refusal, money that could not be confirmed the `busy` error. `run` must change nothing
+    before it raises, as a check inside a transaction it rolls back."""
+    @functools.wraps(run)
+    async def again(caller, *args, **kwargs):
+        try:
+            return await run(caller, *args, **kwargs)
+        except CreditShort as short:
+            found, sure = await reach(caller.org_id, short.need_micro)
+            if not sure:
+                raise short.busy from None
+            if found < short.need_micro:
+                raise short.refusal from None
+        token = _confirmed.set((caller.org_id, found))
+        try:
+            return await run(caller, *args, **kwargs)
+        except CreditShort as short:
+            raise short.refusal from None
+        finally:
+            _confirmed.reset(token)
+    return again
+
+
 async def give_back_for_exact_path(org_id: int, short_micro: int) -> bool:
     """Return what a team's counter holds to its balance, for a call on the exact path that the
     balance alone could not pay for, by `short_micro`: money set aside for the allowance is out
     of that balance's sight. True when that much went back, and the call may try once more.
-    Only while refills are sized to the team's spend, which can set aside much more than a
-    chunk.
+    A chunk can be all a small team has, so this holds with refills at the chunk too.
 
     It costs a refusal as little as it can. The counter is read first, without the team's
     lease, and a counter that cannot make up the difference is left alone. The team's lease is
     asked for once: held by a refill or a fold, the call is refused as before, not kept
     waiting. Then `_give_back`."""
-    if not (_sizing() and enabled_for(org_id)):
+    if not enabled_for(org_id):
         return False
-    store, key, token = kv.store(), money_key(org_id), uuid.uuid4().hex
-    leased = False
     # Whatever fails here, the call is refused as it would have been: never an error of its own.
     try:
-        state = await store.allowance_state(org_id)
+        state = await kv.store().allowance_state(org_id)
         if state is None or not state[3] or state[0] < max(1, short_micro):
             return False
-        leased = await store.acquire_lease(key, token, _REFILL_LEASE_MS) == "acquired"
-        if not leased:
-            return False
-        returned = await _give_back(org_id, state[3])
+        async with _team_lease(org_id, wait=False) as lease:
+            if lease != "acquired":
+                return False
+            returned = await _give_back(org_id, state[3])
     except money_admission.AdmissionTimeout:
         return False
     except Exception:
         log.error("returning the allowance of org %s for the exact path failed", org_id,
                   exc_info=True)
         return False
-    finally:
-        if leased:
-            await store.release_lease(key, token)
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
     return returned >= max(1, short_micro)
@@ -511,6 +992,13 @@ class _ChargeWriter:
     Every row here belongs to a call that was admitted while there was room for it (`owed`
     counts each from `submit` until it is known written), so nothing is ever cut from a queue.
 
+    A keyed call's in-flight mark (`marked`) is the writer's from `submit` on: a stale claim
+    reads the mark until it can read the charge, so the writer renews every mark it holds on its
+    own clock (`_keep_marks`), whatever its batches are doing, and clears one only once its charge
+    is known written, whatever happened to the call meanwhile. One mark may stand for several
+    charges (a routed root's, for its children: `mark_id`, `hold_mark`): it is cleared once the
+    last of them is written and every hold on it is released.
+
     The writer, not the call, freezes a team's counter for an overrun, and does it after the
     charge is committed and before the call is told: only then can a refill that reads the
     freeze have the charge in front of it, and a call cancelled while it waited changes nothing.
@@ -522,9 +1010,16 @@ class _ChargeWriter:
         self._task: asyncio.Task | None = None
         self._retry_task: asyncio.Task | None = None
         self.owed = 0
+        # mark -> charges and holds still keeping it; charge call id -> the mark it keeps
+        self._marked: dict[str, int] = {}
+        self._mark_of: dict[str, str] = {}
+        self._marks_task: asyncio.Task | None = None
+        # Orders a renewal against a clear: a mark set again after its clear would outlive its
+        # charge, and a claim would wait for it to expire.
+        self._marks_lock = asyncio.Lock()
 
-    def submit(self, charge: allowance.Charge,
-               archive_use: tuple[int, str] | None) -> asyncio.Future:
+    def submit(self, charge: allowance.Charge, archive_use: tuple[int, str] | None, *,
+               marked: bool = False, mark_id: str | None = None) -> asyncio.Future:
         """Queue one charge now, with no await: a call cancelled right after still pays. The
         future resolves to a `_Written`: confirmed once the charge is known committed,
         unconfirmed when that is not known yet and the writer keeps trying."""
@@ -532,6 +1027,11 @@ class _ChargeWriter:
         future = loop.create_future()
         self._pending.append((charge, archive_use, future))
         self.owed += 1
+        if marked:
+            mark = mark_id or charge.call_id
+            self._marked[mark] = self._marked.get(mark, 0) + 1
+            self._mark_of[charge.call_id] = mark
+            self._marks_task = self._ensure(self._marks_task, self._keep_marks, "treg-allowance-marks")
         self._task = self._ensure(self._task, self._run, "treg-allowance-charges")
         return future
 
@@ -557,7 +1057,7 @@ class _ChargeWriter:
                 failed, drew, fault = await self._attempt(
                     [row for row in rows if row[0].org_id in failed], again=True)
             owed = [row for row in rows if row[0].org_id in failed]
-            self._committed([row for row in rows if row[0].org_id not in failed])
+            await self._committed([row for row in rows if row[0].org_id not in failed])
             if owed:
                 log.error("writing %d call charges is unconfirmed; retrying in the background",
                           len(owed), exc_info=fault)
@@ -596,7 +1096,7 @@ class _ChargeWriter:
             rows = self._unconfirmed[:allowance.FOLD_BATCH]
             failed, _, _ = await self._attempt(rows, again=True)
             written = [row for row in rows if row[0].org_id not in failed]
-            self._committed(written)
+            await self._committed(written)
             # The rows still unconfirmed go to the back: a team whose writes keep failing does
             # not keep the teams queued behind it from being tried.
             self._unconfirmed = (self._unconfirmed[len(rows):]
@@ -614,10 +1114,52 @@ class _ChargeWriter:
         more calls to the allowance: each would add a charge the database is not taking."""
         return bool(self._unconfirmed)
 
-    def _committed(self, rows: list) -> None:
+    async def _committed(self, rows: list) -> None:
         """The rows are in the database and their teams' freezes with the store: count the rows
-        as written."""
+        as written, and clear their calls' in-flight marks, which a stale claim no longer needs."""
         self.owed = max(0, self.owed - len(rows))
+        async with self._marks_lock:
+            done = []
+            for charge, _ in rows:
+                mark = self._mark_of.pop(charge.call_id, None)
+                if mark is not None and self._drop_mark(mark):
+                    done.append(mark)
+            if done:
+                # One round trip for the batch: a store that does not answer costs the writer one
+                # short timeout, not one per row.
+                await kv.store().clear_calls_in_flight(done)
+
+    def _drop_mark(self, mark: str) -> bool:
+        """One charge or hold no longer keeps `mark`; True when none does."""
+        left = self._marked.get(mark, 0) - 1
+        if left > 0:
+            self._marked[mark] = left
+            return False
+        self._marked.pop(mark, None)
+        return True
+
+    def hold_mark(self, mark: str) -> None:
+        """Keep `mark` renewed until `release_mark`, whatever charges come and go meanwhile."""
+        self._marked[mark] = self._marked.get(mark, 0) + 1
+        self._marks_task = self._ensure(self._marks_task, self._keep_marks, "treg-allowance-marks")
+
+    async def release_mark(self, mark: str) -> None:
+        """Let go of a `hold_mark`; the mark is cleared now if no unwritten charge keeps it."""
+        async with self._marks_lock:
+            if self._drop_mark(mark):
+                await kv.store().clear_calls_in_flight([mark])
+
+    async def _keep_marks(self) -> None:
+        """Renew every mark the writer holds, queued, being written or unconfirmed alike, until
+        none is left: until its charge is written, the mark is all a stale claim can read of the
+        call, and the request that set it may be gone."""
+        while self._marked:
+            await asyncio.sleep(_MARK_RENEW_S)
+            # Set, not only extended: a store that restarted lost the marks, and the writer
+            # knows these calls' charges are still unwritten.
+            async with self._marks_lock:
+                if self._marked:
+                    await kv.store().mark_calls_in_flight(sorted(self._marked), IN_FLIGHT_MARK_MS)
 
     @staticmethod
     async def _write(rows: list, *, again: bool = False) -> set[int]:
@@ -792,11 +1334,27 @@ async def _deliver_freezes(org_id: int) -> None:
     _freeze_tasks.pop(org_id, None)
 
 
+def hold_mark(mark: str) -> None:
+    """The charge writer renews `mark` (a keyed routed root's in-flight mark) from now until
+    `release_mark` and until every charge handed over with it is written."""
+    _charges.hold_mark(mark)
+
+
+async def release_mark(mark: str) -> None:
+    await _charges.release_mark(mark)
+
+
 async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
                  endpoint_id: str, billable: bool, actual_micro: int | None = None,
-                 meta: dict | None = None, archive_use: tuple[int, str] | None = None) -> int:
+                 meta: dict | None = None, archive_use: tuple[int, str] | None = None,
+                 marked: bool = False, mark_id: str | None = None) -> int:
     """End one take, once: charge the call and give back the rest, or give back all of it.
     Returns what was charged. Never raises: the call already has its answer.
+
+    `marked`: the call has an in-flight mark (a keyed call). A call charged nothing clears it
+    here; a charge hands it to the writer, which clears it once the charge is written.
+    `mark_id` names the mark when it is not the call's own (a routed root's, held by
+    `hold_mark`): a call charged nothing then leaves it alone.
 
     The charge is queued before anything is awaited, so a cancel in the middle cannot lose it.
     A give-back that does not arrive leaves that money in the hold until a close returns it.
@@ -809,10 +1367,12 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
     try:
         if not billable:
             await store.allowance_give_back(org_id, epoch, reserved_micro)
+            if marked and mark_id is None:
+                await store.clear_call_in_flight(call_id)
             return 0
         charge = allowance.Charge(
             call_id, org_id, endpoint_id, actual_micro, meta, reserved_micro, epoch)
-        written = _charges.submit(charge, archive_use)
+        written = _charges.submit(charge, archive_use, marked=marked, mark_id=mark_id)
         amount = allowance.charged_micro(charge)
         if amount < reserved_micro:
             await store.allowance_give_back(org_id, epoch, reserved_micro - amount)
@@ -837,21 +1397,64 @@ async def finish(org_id: int, call_id: str, epoch: int, reserved_micro: int, *,
 
 
 async def _settled(org_id: int, call_id: str, amount: int) -> int:
-    """What the call's settle entry took, folding the team's queue to get it written. Another
-    process may hold the team's lease; it is folding too, so wait for the entry a bounded time.
-    `amount`, the charge, when the entry is not there by then or cannot be read: the charge is
-    written, and "nothing" would be the one answer known to be wrong."""
-    for _ in range(_SETTLED_TRIES):
-        await _fold_backlog(org_id)
+    """What the call's settle entry took, folding the team's queue to get it written.
+
+    One fold of the team at a time in this process: a call that finds one open waits for it,
+    holding no connection, instead of starting its own. A call that finds another process
+    folding reads the entry again shortly. Everything, waits for a pool connection included,
+    shares one deadline, `_SETTLED_WAIT_S`, of which the last `_LAST_READ_S` is kept for one
+    more read of the entry: a fold that runs out the time, or another process that settled the
+    call meanwhile, still leaves the call that look. `amount`, the charge, when the entry is not
+    there by then or cannot be read: the charge is written, and "nothing" would be the one
+    answer known to be wrong."""
+    budget, found, started = [_BACKLOG_BATCHES], [], []
+    loop = asyncio.get_running_loop()
+    end = loop.time() + _SETTLED_WAIT_S
+    folding_until = end - min(_LAST_READ_S, _SETTLED_WAIT_S / 5)
+    try:
+        async with asyncio.timeout_at(folding_until):
+            while True:
+                outcome = await _fold_beside(org_id, budget, call_id, found, started,
+                                             folding_until)
+                if found:
+                    return found[0]
+                if outcome is _Fold.MORE:
+                    # The batch's own transaction has just looked for the entry: fold on.
+                    continue
+                if outcome in (_Fold.GAVE_UP, _Fold.SHORT):
+                    break
+                if outcome is _Fold.HERE:
+                    await _team_session_ended(org_id)
+                # The timeout's cancel can be absorbed on the way out: a money session that
+                # fails and is cancelled while it closes re-raises its own failure, which the
+                # fold reports as giving up. So the deadline is looked at, not only awaited.
+                if loop.time() >= folding_until:
+                    break
+                async with session_maker() as db:
+                    settled = await allowance.settled_micro(db, org_id, call_id)
+                if settled is not None:
+                    return settled
+                if outcome is _Fold.ELSEWHERE:
+                    await asyncio.sleep(0.05)
+    except TimeoutError:
+        pass
+    except Exception:
+        log.error("reading the settle entry of allowance call %s failed", call_id, exc_info=True)
+        return found[0] if found else amount
+    if found:  # committed before the deadline cut the fold's cleanup short
+        return found[0]
+    if loop.time() < end:
         try:
-            async with session_maker() as db:
-                settled = await allowance.settled_micro(db, org_id, call_id)
+            async with asyncio.timeout_at(end):
+                settled = await _last_look(org_id, call_id, found, _team_fold(org_id, started))
+            if settled is not None:
+                return settled
+        except TimeoutError:
+            pass
         except Exception:
             log.error("reading the settle entry of allowance call %s failed", call_id,
                       exc_info=True)
-            return amount
-        if settled is not None:
-            return settled
-        await asyncio.sleep(0.05)
+    if found:  # a fold the call left running committed it while the call last looked
+        return found[0]
     log.warning("allowance call %s was answered before its charge was applied", call_id)
     return amount

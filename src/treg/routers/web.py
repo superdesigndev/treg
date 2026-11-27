@@ -190,18 +190,12 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     description, the canonical, the og/twitter card and the JSON-LD, so a new page cannot ship
     without them — that omission is exactly what left the landing page bare for a year.
 
-    It owns `/adtrack.js` for the same reason. That script was on the hand-written marketing HTML
-    (landing, usecase-*, resources, index) and on nothing rendered here, so every page off this
-    shell was invisible to paid attribution: no `treg_ad` cookie means
-    `signup._ad_attribution_from` returns empty, `org.ad_gclid` stays NULL, and `adsconv.queue()`
-    no-ops by design — a paid click could sign up and make its first call and Google would never
-    hear about it. It fails silently, with nothing in the logs. Keep it here, not per page.
-
-    `/sitetrack.js` is deliberately NOT here. It already shipped more widely (it is on
-    `tutorial.html` too), but it can load PostHog with pageview/session-recording config, which
-    contradicts what `web/privacy.html` promises and lists no such processor. Broadening it to the
-    whole server-rendered surface is a product/legal call, not a side effect of fixing ad
-    attribution. `treg_ad` and `/adtrack.js` are already documented in that policy, so this is not.
+    It owns both attribution scripts for the same reason; keep them here, not per page.
+    `/sitetrack.js` boots PostHog and sets the first-touch `treg_utm` cookie, and `/click-id.js` sets
+    `treg_ad`. Without them a visitor who lands here from search is invisible, and because every
+    response sends `Referrer-Policy: no-referrer`, the next page they open records them as
+    direct traffic: the first touch is lost, not delayed. `web/privacy.html` covers both (PostHog
+    as the site's product analytics, `treg_utm` set on the first page, `treg_ad`).
 
     The "Start free" CTA carries `?ref=<page>`: a logged-out visit to bare `/app` is bounced to the
     marketing landing with nothing open, which loses the page the visitor was reading. With `ref`
@@ -293,7 +287,8 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     </nav>
   </div>
 </footer>
-<script src="/adtrack.js"></script>
+<script src="/sitetrack.js"></script>
+<script src="/click-id.js"></script>
 <script src="/gtag.js"></script>
 </body>
 </html>""", headers={"Cache-Control": "public, max-age=600"})
@@ -4067,19 +4062,24 @@ async def agent_setup_js():
     return FileResponse(f, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/adtrack.js", include_in_schema=False)
-async def adtrack_js():
+@app.get("/click-id.js", include_in_schema=False)
+async def click_id_js():
     """First-party ad-click capture (see the file itself): sets the `treg_ad` cookie that
-    `_ad_attribution_from` reads at signup. No Google script, no third-party request."""
+    `_ad_attribution_from` reads at signup. No Google script, no third-party request.
+
+    The path names what the script reads, not "ad" or "track": EasyList's `/adtrack.` rule, on by
+    default in uBlock Origin, AdBlock Plus, AdGuard and Brave, blocked this script under its old
+    `/adtrack.js` name, so a visitor with a blocker never got `treg_ad` and their ad click was
+    never uploaded."""
     headers = {"Cache-Control": "no-cache"}
     if not adsconv.enabled():
         # The page keeps one static script include, but an unconfigured/self-hosted deployment must
         # not collect an advertising cookie at all. A stale cookie is also ignored at signup below.
         return Response(content="", media_type="application/javascript", headers=headers)
-    f = _WEB_DIR / "adtrack.js"
+    f = _WEB_DIR / "click-id.js"
     if not f.exists():
-        raise HTTPException(status_code=404, detail="adtrack.js not bundled")
-    # no-cache, same reasoning as tutorial.js: served as a bare `<script src="/adtrack.js">` with no
+        raise HTTPException(status_code=404, detail="click-id.js not bundled")
+    # no-cache, same reasoning as tutorial.js: served as a bare `<script src="/click-id.js">` with no
     # version query, so without this header a browser would keep an ad-window-stale copy after a fix.
     return FileResponse(f, media_type="application/javascript", headers=headers)
 
@@ -4108,7 +4108,7 @@ async def captcha_js(request: Request):
 async def gtag_js():
     """Google Ads conversion tracking via gtag.js. Loads the base tag (AW-18392771132) on every
     page; the signup conversion (AW-18392771132/0usqCIeQrO0cELzUrcJE) fires from the dashboard
-    on first team creation for a new user. Like adtrack.js, returns empty for unconfigured or
+    on first team creation for a new user. Like click-id.js, returns empty for unconfigured or
     self-hosted deployments that don't want external Google requests."""
     headers = {"Cache-Control": "no-cache"}
     if not adsconv.enabled():
@@ -4132,8 +4132,8 @@ async def sitetrack_js():
     s = get_settings()
     js = (f.read_text(encoding="utf-8")
           .replace("{POSTHOG_KEY}", s.posthog_key if s.posthog_key else "")
-          .replace("{POSTHOG_HOST}", s.posthog_host.rstrip("/") if s.posthog_key else ""))
-    # no-cache, same reasoning as adtrack.js: a bare `<script src>` with no version query.
+          .replace("{POSTHOG_HOST}", s.posthog_page_host if s.posthog_key else ""))
+    # no-cache, same reasoning as click-id.js: a bare `<script src>` with no version query.
     return Response(content=js, media_type="application/javascript",
                     headers={"Cache-Control": "no-cache"})
 

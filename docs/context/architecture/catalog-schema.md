@@ -17,6 +17,7 @@ sources:
   - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
   - src/treg/domain/plugins/anyapi.py
+  - src/treg/domain/plugins/apify.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
   - scripts/catalog_v2.py
@@ -25,6 +26,7 @@ sources:
   - tests/test_catalog_params.py
   - tests/test_catalog_v2_codemod.py
   - tests/plugins/test_anyapi.py
+  - tests/plugins/test_apify.py
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -113,12 +115,15 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
   per_call when a miss is charged; else per_success), a price table as today's equality maps
   (omitted when a condition is not one equality; its floor `table_min` is served either way),
-  `reserve.rows` with its parameter back in
-  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
+  `reserve.rows` (its `platform_max` included) with its parameter back in
+  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `price.base` as `call_fee`
+  (the per-call fee routing's ranking adds), `settle.count` and a
   `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
   meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
   reads a v2 row unchanged; billing never reads it
-  ([money](money.md#rows-in-the-v2-spelling)).
+  ([money](money.md#rows-in-the-v2-spelling)). When `price.unit: call` pairs a reserve plugin
+  with a reported charge, the plugin estimates the hold and `bill.miss` determines whether the
+  catalog shows `per_call` or `per_success`.
 
 The byte-identical claim is checked by the catalog dump in [replay](replay.md).
 
@@ -135,7 +140,8 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 `domain/catalog/outcome.py` judges one answer to a v2 row from its one declaration: a non-2xx is a
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
-`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.judged_outcome`
+`miss` rule holds, or the `ok_when` beside a rule's `status` holds (a provider that answers one miss
+with a 404 and another with an empty 2xx), else a hit. Billing reads it in the settlement order; `results.judged_outcome`
 records it on each call with `not_found` ahead of it, and reliability counts that word before the
 status ([catalog](catalog.md)); `results.classify` (the hit verdict, cache admission) reads it for a
 row that declares a `miss` rule, for a 2xx or a 4xx status, beside a verified adapter, in today's
@@ -185,10 +191,11 @@ rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
-declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
-USD, and the request
-paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
-declared input fields; an equality-only table also meets today's table checks (enum and range, a
+declared `usd: null`, which keeps the row off treg's key; a settle may not), a free price inherits
+no `settle.reported` (it opts out with `settle: null`, as today's spelling refuses
+`reported_charge` beside `type: free`), usage `terms` are in USD, and the request
+paths of `reserve.rows.param`, `reserve.entities.from`, `reserve.money.param` (a number or
+string field) and `price.table` (`when` and `times`) name declared input fields; an equality-only table also meets today's table checks (enum and range, a
 bounded `times`, a fallback at least every row's maximum), except that it may compare an optional
 field without a default: an equality on an absent field does not hold, so a later row or the
 fallback prices that request. A

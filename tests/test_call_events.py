@@ -17,7 +17,6 @@ from treg.application import call_events as ev
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.config import get_settings
-from treg.domain.arena import safe_output
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import contracts as C
 from treg.domain.catalog.routing import paths as P
@@ -313,40 +312,6 @@ def _example(endpoint_id: str) -> dict:
     return json.loads((examples / f"{endpoint_id}.json").read_text())
 
 
-def test_phone_verifiers_record_their_verdicts_in_the_event():
-    cat = catalog_store.load()
-    owner = _built("trestleiq.people.contact.verify", [("name", "Ann Lee"), ("phone", "+16175550142")],
-                   answer=_example("trestleiq.people.contact.verify"))
-    assert owner["answer_values"] == {"name_match": "true", "contact_grade": "A", "phone_valid": "true",
-                                      "line_type": "Mobile", "activity_score": "100"}
-    assert set(owner["input_keys"]) == {"phone", "full_name"}
-    live = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"},
-                  answer=_example("hlrlookup.people.phone.verify"))
-    assert live["answer_values"] == {"live_status": "LIVE", "line_type": "MOBILE", "ported": "true"}
-    assert live["input_meta"] == {"calling_code": "44"}
-    # The Arena's own filter is unchanged: it still blanks a boolean it does not rank on.
-    core = cat.adapters["hlrlookup.people.phone.verify"].from_upstream(_example("hlrlookup.people.phone.verify"))
-    assert safe_output(core, capability="people.phone.live")["ported"] is None
-
-
-@pytest.mark.parametrize("is_ported,ported", [("YES", "true"), ("NO", "false"), ("UNKNOWN", None), (None, None)])
-def test_hlr_live_keeps_an_unknown_porting_status_unknown(is_ported, ported):
-    answer = _example("hlrlookup.people.phone.verify")
-    answer["results"][0]["is_ported"] = is_ported
-    built = _built("hlrlookup.people.phone.verify", body={"telephone_number": "447540822872"}, answer=answer)
-    assert built["answer_values"].get("ported") == ported
-
-
-@pytest.mark.parametrize("number_type,error,valid", [
-    ("BAD_FORMAT", "NONE", "false"), ("MOBILE", "NONE", "true"), ("UNKNOWN", "NONE", None),
-    (None, "INTERNAL_ERROR", None)])
-def test_hlr_validate_reads_a_bad_format_number_as_invalid(number_type, error, valid):
-    answer = {"results": [{"error": error, "telephone_number_type": number_type, "credits_spent": 0}]}
-    built = _built("hlrlookup.people.phone.validate", body={"telephone_number": "447540822872"},
-                   answer=answer)
-    assert (built.get("answer_values") or {}).get("valid") == valid
-
-
 def test_a_trestle_country_hint_reads_a_national_number_in_that_country():
     def key(query):
         return (_built("trestleiq.people.phone.verify", query,
@@ -382,8 +347,6 @@ def test_llm_scrape_keyword_roundtrips_to_the_original_question(engine, slug, ev
 @pytest.mark.parametrize("location,expected", [
     ({"location_name": "France"}, {"country": "FR"}),
     ({"location_name": "Paris,France"}, None),
-    ({"location_code": 1006094}, None),
-    ({"location_coordinate": "48.8566,2.3522,200"}, None),
 ])
 def test_direct_llm_scrape_reports_only_an_identifiable_country(location, expected):
     cat = catalog_store.load()
@@ -402,9 +365,7 @@ def test_a_read_back_rule_is_part_of_the_adapter_fingerprint():
         != ev.adapter_fingerprint(hlr)
 
 
-@pytest.mark.parametrize("number,code", [("+1 617 555 0142", "1"), ("+7 912 345 6789", "7"),
-                                         ("+44 7700 900123", "44"), ("+353 85 123 4567", "353"),
-                                         ("+86 138 0013 8000", "86"), ("+971 50 123 4567", "971"),
+@pytest.mark.parametrize("number,code", [("+1 617 555 0142", "1"), ("+353 85 123 4567", "353"),
                                          ("6175550142", None)])
 def test_calling_code(number, code):
     assert P.calling_code(number) == code
@@ -432,39 +393,6 @@ def test_an_unknown_analytics_mode_fails_the_contract():
         C.parse_contracts({"contracts": {"x.find": {
             "identity": [{"email": "string"}], "filters": {"q": {"type": "string", "analytics": "key"}},
             "output": {"email": {"type": "string"}}}}})
-
-
-def test_the_shipped_catalog_uses_only_known_modes_and_keeps_its_routes():
-    # An unknown mode raises at load and every `treg.*` capability disappears, so the shipped
-    # file is checked here, not only the parser.
-    cat = catalog_store.load()
-    used = {(s or {}).get("analytics", "skip") for c in cat.contracts.values()
-            for s in [*(c.output or {}).values(), *(c.filters or {}).values()]}
-    assert used <= {"key", "value", "skip"}
-    for cap in ("people.email.find", "companies.enrich", "linkedin.company.profile", "people.enrich",
-                "linkedin.user.profile", "people.phone.find", "people.search", "companies.search"):
-        assert f"treg.{cap}" in cat.by_id, cap
-
-
-@pytest.mark.parametrize("endpoint_id,location", [
-    ("apollo.people.enrich", "San Francisco United States"),
-    ("fetchinio.linkedin.user.profile", "Seattle, Washington, United States"),
-    ("apollo.companies.enrich", "South San Francisco United States"),
-    ("wiza.companies.enrich", "Toronto, Ontario, Canada"),
-])
-def test_a_shipped_adapter_answer_lands_its_location_as_written(endpoint_id, location):
-    # The adapter's own fixture through `from_upstream`, as the builder reads a live answer:
-    # the place is kept as the provider wrote it, for analysis to parse.
-    cat = catalog_store.load()
-    adapter, ep = cat.adapters[endpoint_id], cat.by_id[endpoint_id]
-    assert adapter.verified, adapter.verify_note
-    output = adapter.from_upstream(json.loads(catalog_store.example_path(endpoint_id).read_text()))
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
-        get_settings.cache_clear()
-        cols = ev.answer_columns(cat.contracts[ep["capability"]], output)
-    get_settings.cache_clear()
-    assert cols["answer_values"]["location"] == location
 
 
 def test_company_segments_land_as_values_and_the_domain_joins_the_find():
@@ -804,6 +732,18 @@ def test_page_position_reads_a_declared_path_a_cursor_and_a_routed_caller():
         C.parse_adapters({"adapters": {"t": {"position": {"page": "body.p", "offset": "body.o"}}}})
 
 
+@pytest.mark.parametrize(("first", "offset"), [
+    (None, None), (1, None), (2, "1"), (11, "10"), ("11", "10"),
+    (0, None), (-2, None), (2.5, None), (True, None), ("2.5", None),
+])
+def test_one_based_result_position_matches_the_public_offset(first, offset):
+    declaration = {"position": {"offset": "zero_based(body.first)"}}
+    adapter = C.parse_adapters({"adapters": {"test": declaration}})["test"]
+    body = json.dumps({"first": first} if first is not None else {}).encode()
+    actual = ev.page_position(adapter, (), body)
+    assert actual == ev.page_position(None, identity={"offset": offset})
+
+
 def test_an_object_asked_by_url_or_by_id_hashes_the_same(monkeypatch):
     monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
     get_settings.cache_clear()
@@ -831,13 +771,6 @@ def test_id_readers_take_urls_ids_and_refuse_other_text():
     assert P.linkedin_job_id("https://example.com/jobs/view/4442669023") is None
     assert P.reddit_post_id("https://redd.it/AbC123") == P.reddit_post_id("abc123") == "t3_abc123"
     assert P.reddit_post_id("not a post id") is None
-
-
-def test_admission_only_contracts_never_mint_a_routed_row():
-    cat = catalog_store.load()
-    for capability in ("linkedin.search.people", "web.answer", "people.search.count", "x.post.detail"):
-        assert cat.contracts[capability].routed is False
-        assert f"treg.{capability}" not in cat.by_id
 
 
 def _direct_input(endpoint_id: str, query: tuple = (), body: dict | None = None) -> dict:

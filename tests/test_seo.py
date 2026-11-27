@@ -80,14 +80,14 @@ async def test_sitemap_redirects_from_a_legacy_host(clients: AsyncClient):
 
 # ------------------------------------------------------------------------------------------ HEAD
 
-@pytest.mark.parametrize("path", ["/", "/tutorial", "/llms.txt", "/favicon.svg", "/support",
-                                  "/robots.txt", "/sitemap.xml", "/catalog", "/meta"])
-async def test_head_is_answered_wherever_get_is(clients: AsyncClient, path: str):
+async def test_head_is_answered_wherever_get_is(clients: AsyncClient):
     """FastAPI's APIRoute never adds HEAD to a GET route, so every page 405'd on the probe crawlers
     and link unfurlers send first. api.py widens them all in one pass after registration."""
-    r = await clients.head(path)
-    assert r.status_code == 200, f"HEAD {path} -> {r.status_code}"
-    assert r.content == b""
+    for path in ("/", "/tutorial", "/llms.txt", "/favicon.svg", "/support",
+                 "/robots.txt", "/sitemap.xml", "/catalog", "/meta"):
+        r = await clients.head(path)
+        assert r.status_code == 200, f"HEAD {path} -> {r.status_code}"
+        assert r.content == b"", path
 
 
 async def test_head_is_still_refused_where_there_is_no_get(clients: AsyncClient):
@@ -163,15 +163,14 @@ _TEMPLATED_PATHS = sorted(
        "/tutorial.md", "/quickstart.md", "/contact", "/help"})
 
 
-@pytest.mark.parametrize("path", _TEMPLATED_PATHS)
-async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient, path: str):
+async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient):
     """`{BASE}` reaching a browser means a canonical or og:url is pointing at nothing, and an
     unfilled `{ENDPOINTS}` or `{PROVIDERS}` puts a template on the front door."""
-    r = await clients.get(path)
-    assert r.status_code == 200, (path, r.status_code)
-    text = r.text
-    for placeholder in ("{BASE}", "{ENDPOINTS}", "{PROVIDERS}"):
-        assert placeholder not in text, (path, placeholder)
+    for path in _TEMPLATED_PATHS:
+        r = await clients.get(path)
+        assert r.status_code == 200, (path, r.status_code)
+        for placeholder in ("{BASE}", "{ENDPOINTS}", "{PROVIDERS}"):
+            assert placeholder not in r.text, (path, placeholder)
 
 
 @pytest.mark.parametrize("source", ["/llms.txt", "/skill.md"])

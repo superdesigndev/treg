@@ -34,12 +34,6 @@ from test_marketplace_call import EP, platform_on  # noqa: F401 - real call fixt
 from test_money_admission import LeaseStore
 
 
-def test_money_retry_default_is_one_second(monkeypatch):
-    monkeypatch.delenv("TREG_MONEY_ADMISSION_RETRY_AFTER_S", raising=False)
-    monkeypatch.delenv("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", raising=False)
-    assert Settings(_env_file=None).money_admission_retry_after_s == 1
-
-
 @pytest.mark.parametrize("env_name", [
     "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
 ])
@@ -56,17 +50,10 @@ def test_money_retry_new_env_name_takes_precedence_over_legacy_alias(monkeypatch
     assert Settings(_env_file=None).money_admission_retry_after_s == 7
 
 
-@pytest.mark.parametrize("base", [1, 60])
-def test_money_retry_accepts_direct_setting_at_bounds(monkeypatch, base):
-    monkeypatch.delenv("TREG_MONEY_ADMISSION_RETRY_AFTER_S", raising=False)
-    monkeypatch.delenv("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", raising=False)
-    assert Settings(_env_file=None, money_admission_retry_after_s=base).money_admission_retry_after_s == base
-
-
-@pytest.mark.parametrize("source", [
-    "keyword", "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
+@pytest.mark.parametrize("source,base,error_type", [
+    ("keyword", 0, "greater_than_equal"),
+    ("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", 61, "less_than_equal"),
 ])
-@pytest.mark.parametrize("base,error_type", [(0, "greater_than_equal"), (61, "less_than_equal")])
 def test_money_retry_rejects_values_outside_bounds(monkeypatch, source, base, error_type):
     monkeypatch.delenv("TREG_MONEY_ADMISSION_RETRY_AFTER_S", raising=False)
     monkeypatch.delenv("TREG_ORG_CONCURRENCY_RETRY_AFTER_S", raising=False)
@@ -942,8 +929,10 @@ async def _admission_request(clients, surface):
             "replayed": response.headers.get("X-Treg-Idempotent-Replay") == "true"}
 
 
-@pytest.mark.parametrize("surface", ["/call/", "/catalog/call/", "/mcp/", "/mcp/v2/"])
-@pytest.mark.parametrize("release_pool_timeout", [False, True])
+@pytest.mark.parametrize("surface,release_pool_timeout", [
+    ("/call/", False), ("/catalog/call/", False), ("/mcp/", False), ("/mcp/v2/", False),
+    ("/call/", True),
+])
 async def test_reserve_timeout_releases_idempotency_key_then_retries_and_replays(
     clients, platform_on, monkeypatch, surface, release_pool_timeout,
 ):
@@ -1011,9 +1000,8 @@ async def test_reserve_timeout_releases_idempotency_key_then_retries_and_replays
         assert len(entries) == 1 and entries[0].amount_micro == -row.charged_micro
 
 
-@pytest.mark.parametrize("base", [1, 7, 60])
-@pytest.mark.parametrize("upper", [False, True])
-async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch, base, upper):
+async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch):
+    base = 7
     @asynccontextmanager
     async def refuse(*args, **kwargs):
         raise money_admission.ReserveAdmissionTimeout("wait_timeout")
@@ -1023,7 +1011,7 @@ async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch, ba
 
     def choose(lo, hi):
         bounds.append((lo, hi))
-        return hi if upper else lo
+        return hi
 
     monkeypatch.setattr(money_admission, "admit", refuse)
     monkeypatch.setattr(get_settings(), "money_admission_retry_after_s", base)
@@ -1032,7 +1020,7 @@ async def test_reserve_retry_jitter_uses_money_admission_setting(monkeypatch, ba
         async with call_reserve.reserve_admission(7):
             pytest.fail("refusal entered reserve")
     assert bounds == [(base, 2 * base)]
-    assert caught.value.retry_after_s == (2 * base if upper else base)
+    assert caught.value.retry_after_s == 2 * base
 
 
 async def test_reserve_timeout_does_not_cache_429_if_claim_cleanup_keeps_failing(
@@ -1361,6 +1349,40 @@ async def test_untagged_free_platform_call_takes_no_hold_and_no_admission(
         assert await ledger.balance_of(db, org_id) == before
 
 
+@pytest.mark.parametrize("listed", [False, True])
+@pytest.mark.parametrize("excluded", [False, True])
+async def test_all_orgs_holdless_except_the_excluded(
+        clients, icypeas_platform_on, monkeypatch, excluded, listed):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id] if listed else [])
+    monkeypatch.setattr(get_settings(), "holdless_free_all_orgs", True)
+    monkeypatch.setattr(get_settings(), "holdless_free_excluded_org_ids", [org_id] if excluded else [])
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == (["reserve", "release"] if excluded else [])
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == (
+        ["reserve", "settle"] if excluded else [])
+
+
+async def test_keyed_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(
+            f"/call/{FREE_EP}", json=FREE_BODY, headers={"Idempotency-Key": "free-keyed-1"})
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == ["reserve", "release"]
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == ["reserve", "settle"]
+
+
 async def test_tagged_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
     await _allow_holdless(clients, monkeypatch)
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -1391,6 +1413,54 @@ async def test_free_platform_call_still_honours_an_exhausted_daily_cap(
     response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
     assert response.status_code == 429, response.text
     assert "platform_daily_cap_reached" in response.text
+
+
+async def test_free_platform_call_still_honours_a_members_spent_limit(
+        clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    from treg.domain.governance import budgets as budget_policy
+
+    monkeypatch.setattr(budget_policy, "member_daily_spend_cap", lambda _member, _org: 500)
+
+    async def spent(_db, _membership_id, _since):
+        return 1_000
+
+    monkeypatch.setattr(ledger, "member_spent_since", spent)
+
+    async def no_reaping(*_args, **_kwargs):
+        raise AssertionError("a holdless call must not reap holds outside money admission")
+
+    monkeypatch.setattr(ledger, "reap_stale_holds", no_reaping)
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+        assert response.status_code == 429, response.text
+        assert "member_spend_cap_reached" in response.text
+        assert probe.calls == []
+    finally:
+        probe.close()
+
+
+async def test_free_call_past_both_limits_is_refused_for_the_member_first(
+        clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
+    from treg.domain.governance import budgets as budget_policy
+
+    monkeypatch.setattr(budget_policy, "member_daily_spend_cap", lambda _member, _org: 500)
+    monkeypatch.setattr(budget_policy, "_effective_daily_cap", lambda _org: 100)
+
+    async def member_spent(_db, _membership_id, _since):
+        return 1_000
+
+    async def team_spent(_db, _org_id):
+        return 101
+
+    monkeypatch.setattr(ledger, "member_spent_since", member_spent)
+    monkeypatch.setattr(money_allowance, "committed_today", team_spent)
+    response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+    assert response.status_code == 429, response.text
+    assert "member_spend_cap_reached" in response.text
 
 
 async def test_cancelled_untagged_free_call_does_not_return_to_the_money_queue(

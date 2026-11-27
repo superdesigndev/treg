@@ -44,6 +44,19 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  descovo.people.email.find:
+    # Standard mode, work email only: the 2-credit row of the reveal's price table.
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.linkedinUrl}
+    const: {body.mode: standard, body.enrichmentType.getWorkEmails: true,
+            body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: false}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: "data.profile.emails[0].email", verified: "data.profile.emails[0].status == 'valid'"}
+  millionphones.people.email.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.social_url}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {email: email, verified: "status == 'verified'", confidence: match_confidence}
   forager.people.email.find:
     accepts: [[first_name, last_name, domain], [linkedin_handle]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain,
@@ -348,21 +361,25 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.keyword}
     out: {posts: data.data.items, count: data.data.count, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   scrapecreators.x.v1-instagram-search-hashtag:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: posts, count: "len(posts)", next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   justoneapi.x.instagram-search-hashtag-posts-v1:
     accepts: [[hashtag]]
     in:  {hashtag: queryParams.hashtag}
     out: {posts: data.data.hashtag.edge_hashtag_to_media.edges, count: data.data.hashtag.edge_hashtag_to_media.count,
           next_cursor: data.data.hashtag.edge_hashtag_to_media.page_info.end_cursor}
+    paging: {cursor: queryParams.endCursor}
 
   # ---- x.user.posts -------------------------------------------------------------------------
   tikhub.x.user.posts:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.screen_name, user_id: queryParams.rest_id}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
   scrapecreators.x.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
@@ -371,6 +388,7 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.restId}
     out: {posts: data.timeline, next_cursor: data.next_cursor}
+    paging: {cursor: queryParams.cursor}
 
   # ---- tiktok.user.profile ------------------------------------------------------------------
   tikhub.tiktok.user.profile:
@@ -460,6 +478,26 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  descovo.people.phone.find:
+    # Standard mode, phone only: the 3-credit row of the reveal's price table.
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.linkedinUrl}
+    const: {body.mode: standard, body.enrichmentType.getWorkEmails: false,
+            body.enrichmentType.getPersonalEmails: false, body.enrichmentType.getPhoneNumbers: true}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "data.profile.phoneNumbers[0].number"}
+  fiber-ai.people.phone.find:
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: body.linkedinUrl}
+    const: {body.enrichmentType: {getWorkEmails: false, getPersonalEmails: false, getPhoneNumbers: true}}
+    out: {phone: "output.profile.phoneNumbers[0].number"}
+    miss: "coalesce(output.profile.phoneNumbers, []) == []"
+  millionphones.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.social_url, first_name: queryParams.first_name,
+         last_name: queryParams.last_name, domain: queryParams.company_domain}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: "phone_numbers[0]"}
   forager.people.phone.find:
     # most_coverage returns every verified number, the highest_quality ones included, for fewer credits.
     accepts: [[linkedin_handle]]
@@ -484,7 +522,6 @@ adapters:
     const: {body.reveal: [phones]}
     test_identity: {first_name: Jane, last_name: Doe, domain: lusha.com}
     out: {phone: "results[0].phones[0].number", line_type: "results[0].phones[0].type", country_code: "results[0].phones[0].countryIso2"}
-    miss: "results[0].phones[0].number == null"
   wiza.people.phone.find:
     accepts: [[linkedin_url], [email], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.individual_reveal.profile_url,
@@ -616,6 +653,15 @@ adapters:
     out: {valid: "result == 'Valid'", status: result}
     # Invalid, Risky and Unknown are useful verdicts. Only a missing verdict is a miss.
     miss: "result == null"
+  descovo.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "data.verdict == 'ok'", status: data.verdict}
+    verdicts: {ok: valid, undeliverable: invalid, inconclusive: unknown}
+  millionphones.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "result == 'valid'", status: result}
   zerobounce.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
@@ -636,10 +682,10 @@ adapters:
     accepts: [[email]]
     in: {email: queryParams.email}
     out: {valid: "data.status == 'valid'", status: data.status}
-    # Preserve uncertain verdict words; only explicit valid confirms deliverability.
-    # Require both a successful envelope and a nonempty verdict, using existing expressions.
-    # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
-    miss: "at_least(status_code != 200, coalesce(data.status) == null)"
+    # Only explicit valid confirms deliverability. ContactOut bills valid, invalid and accept_all;
+    # unknown and disposable are unbilled, so they are misses: settlement charges nothing and a
+    # routed call goes on. at_least takes the maximum of two 0/1 predicates, so it reads as "or".
+    miss: "at_least(at_least(status_code != 200, coalesce(data.status) == null), at_least(data.status == 'unknown', data.status == 'disposable'))"
     verdicts: {accept_all: catch_all}
   crawl4ai.people.email.verify:
     accepts: [[email]]
@@ -722,6 +768,12 @@ adapters:
           title: profile.title, company: company.summary.name, company_domain: company.link.domain,
           linkedin_url: link.linkedin, location: location.default}
     miss: "profile.full_name == null"
+  descovo.people.enrich:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: body.identifier}
+    out: {full_name: data.profile.name, first_name: data.profile.first_name, last_name: data.profile.last_name,
+          title: data.profile.current_job.title, company: data.profile.current_job.company_name,
+          linkedin_url: data.profile.url, location: data.profile.locality}
   forager.people.enrich:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: body.linkedin_public_identifier}
@@ -730,7 +782,9 @@ adapters:
           company: "get(flagged(roles, 'is_current'), 'organization.name')",
           company_domain: "get(flagged(roles, 'is_current'), 'organization.domain')",
           linkedin_url: linkedin_info.public_profile_url, location: location.name}
+  # Not a router candidate: almost no email it is sent matches a person, so it only adds a wait.
   forager.people.enrich.by_email:
+    route: false
     accepts: [[email]]
     in: {email: body.email}
     test_identity: {email: jane.doe@example.com}
@@ -746,7 +800,6 @@ adapters:
     in: {linkedin_url: body.person.linkedin, full_name: body.person.name, domain: body.company.domain}
     out: {full_name: name, first_name: firstName, last_name: lastName, title: jobTitle,
           company_domain: domain, linkedin_url: linkedinUrl, location: location}
-    miss: "name == null"
   hunter.people.enrich:
     accepts: [[email], [linkedin_handle]]
     in:  {email: queryParams.email, linkedin_handle: queryParams.linkedin_handle}
@@ -778,7 +831,6 @@ adapters:
     in:  {email: body.email}
     out: {full_name: name, first_name: first_name, last_name: last_name, title: position,
           linkedin_url: socials.linkedin_url, location: location.address}
-    miss: "name == null"
   aviato.people.enrich:
     accepts: [[linkedin_url], [email]]
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
@@ -822,14 +874,17 @@ adapters:
     accepts: [[user_id]]
     in:  {user_id: queryParams.user_id}
     out: {posts: data.items, next_cursor: data.next_max_id}
+    paging: {cursor: queryParams.max_id}
   scrapecreators.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.handle}
     out: {posts: items, next_cursor: next_max_id}
+    paging: {cursor: queryParams.next_max_id}
   justoneapi.instagram.user.posts:
     accepts: [[username]]
     in:  {username: queryParams.username}
-    out: {posts: data.data.items, next_cursor: data.data.next_page_token}
+    out: {posts: data.data.items, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.paginationToken}
 
   # ---- instagram.post.detail ----------------------------------------------------------------
   tikhub.x.instagram-v1-fetch-post-by-id:
@@ -940,10 +995,9 @@ adapters:
     in: {domain: body.domains}
     in_expr: {body.domains: "list(domain)"}
     const: {body.page: 1, body.pageSize: 10}
-    # pageSize is the price, and an empty page settles at the whole hold.
+    # pageSize is the price.
     cost_units: "10"
     out: {companies: items, count: totalItems}
-    miss: "items == []"
   oceanio.companies.lookalike:
     accepts: [[domain]]
     in: {domain: body.companiesFilters.lookalikeDomains}
@@ -952,7 +1006,6 @@ adapters:
     const: {body.size: 10}
     cost_units: "10"
     out: {companies: companies, count: total}
-    miss: "companies == []"
 
   # ---- people.search ------------------------------------------------------------------------
   dropleads.people.search:
@@ -1059,8 +1112,8 @@ adapters:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.domains, title: body.positionQuery}
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
+    max: {limit: 100}
     out: {people: items, count: totalItems}
-    miss: "items == []"
     # The employer is the experience the search matched (else the current one), as a company
     # object or a bare companyName.
     row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url,
@@ -1088,8 +1141,8 @@ adapters:
     in:  {title: body.filters.contacts.include.jobTitles}
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
-    miss: "results == []"
     position: {page0: body.pagination.page}
+    max: {limit: 100}
     row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
@@ -1098,7 +1151,6 @@ adapters:
               body.size: "at_most(limit, 100)"}
     cost_units: "at_most(limit, 100)"
     out: {people: people, count: total, next_cursor: searchAfter}
-    miss: "people == []"
     row: {name: name, title: jobTitle, company_domain: domain, location: location, profile_url: linkedinUrl, summary: headline}
 
   apollo.people.enrich:
@@ -1147,7 +1199,6 @@ adapters:
     out: {full_name: "results[0].fullName", first_name: "results[0].firstName", last_name: "results[0].lastName",
           title: "results[0].jobTitle", company: "results[0].company.name", linkedin_url: "results[0].socialLinks.linkedin",
           location: "results[0].location.raw"}
-    miss: "results[0].error != null"
   # ---- companies.enrich (batch 5, 2026-08-28) --------------------------------------------------
   orbisearch.companies.enrich:
     accepts: [[domain], [linkedin_url]]
@@ -1233,7 +1284,6 @@ adapters:
     cost_units: "3"
     out: {name: "organizations[0].attributes.name", domain: "organizations[0].attributes.url",
           employees: "organizations[0].attributes.employee_count", industry: "organizations[0].attributes.industry"}
-    miss: "matched_count == 0"
   crawl4ai.companies.enrich:
     accepts: [[domain], [linkedin_url], [linkedin_handle], [name]]
     in:  {domain: queryParams.domain, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, name: queryParams.name}
@@ -1257,13 +1307,11 @@ adapters:
     in:  {domain: queryParams.domain}
     out: {name: name, domain: domain, website: website, description: description, industry: industry,
           employees: employees, founded: founded_year}
-    miss: "name == null"
   companyenrich.companies.enrich.by_properties:
     accepts: [[name], [linkedin_url]]
     in:  {name: body.name, linkedin_url: body.linkedinUrl}
     out: {name: name, domain: domain, website: website, description: description, industry: industry,
           employees: employees, founded: founded_year}
-    miss: "name == null"
   findymail.search.company:
     accepts: [[domain]]
     in:  {domain: body.domain}
@@ -1325,7 +1373,6 @@ adapters:
     in:  {domain: pathParams.id_or_domain}
     out: {name: "data[0].attributes.friendly_company_name", domain: "data[0].attributes.domain",
           description: "data[0].attributes.description_short", location: "data[0].attributes.location"}
-    miss: "data == []"
   aviato.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.website}
@@ -1350,7 +1397,6 @@ adapters:
           employees: "results[0].employeeCount.exact", founded: "results[0].yearFounded",
           location: "join(results[0].location.city, results[0].location.country)",
           linkedin_url: "results[0].socialLinks.linkedin"}
-    miss: "results[0].name == null"
   # diffbot.companies.enrich: no adapter — its captured example truncates the entity, so `out`
   # cannot be fixture-verified. akta.companies.enrich: example carries location only (no name).
   # coresignal.companies.enrich: no example (402 at capture, empty account).
@@ -1437,7 +1483,6 @@ adapters:
     in_expr: {body.companiesFilters.includeDomains: "list(domain)", body.size: "at_most(limit, 100)"}
     cost_units: "at_most(limit, 100)"
     out: {companies: companies, count: total, next_cursor: searchAfter}
-    miss: "companies == []"
   hunter.x.discover-companies:
     accepts: [[q]]
     in:  {q: body.query}
@@ -1454,8 +1499,8 @@ adapters:
     accepts: [[technology]]
     in:  {technology: body.technologies, country: body.countries}
     in_expr: {body.technologies: "list(technology)", body.countries: "list(country)", body.pageSize: limit, body.page: "1"}
+    max: {limit: 100}
     out: {companies: items, count: totalItems}
-    miss: "items == []"
   icypeas.companies.search:
     accepts: [[domain]]
     in:  {domain: body.query.companyId.include}
@@ -1480,8 +1525,8 @@ adapters:
     in:  {domain: body.filters.companies.include.domains}
     in_expr: {body.filters.companies.include.domains: "list(domain)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {companies: results, count: pagination.total}
-    miss: "results == []"
     position: {page0: body.pagination.page}
+    max: {limit: 100}
   fiber-ai.companies.search:
     accepts: [[domain]]
     in:  {}
@@ -1542,7 +1587,6 @@ adapters:
             body.maxCrawledPlacesPerSearch: 10, body.maxCrawledPlaces: 10, body.scrapeContacts: false,
             body.scrapePlaceDetailPage: false, body.maxReviews: 0}
     out: {places: ".", count: "len(.)"}
-    miss: ". == []"
 
   # ---- tiktok.user.videos (batch 5) ------------------------------------------------------------
   justoneapi.tiktok.user.videos:
@@ -1957,7 +2001,6 @@ adapters:
     in:  {domain: pathParams.company_id_or_domain}
     in_expr: {queryParams.limit: limit}
     out: {articles: data}
-    miss: "data == []"
 
   justoneapi.x.tiktok-search-user-v1:
     accepts: [[q]]
@@ -1972,17 +2015,19 @@ adapters:
   justoneapi.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
-    const: {queryParams.offset: "0"}
     out: {videos: data.aweme_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
   scrapecreators.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.query}
     out: {videos: search_item_list, next_cursor: cursor, has_more: has_more}
+    paging: {cursor: queryParams.cursor}
   tikhub.tiktok.search.videos:
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     in_expr: {queryParams.count: limit}
     out: {videos: data.search_item_list, next_cursor: data.cursor, has_more: data.has_more}
+    paging: {cursor: queryParams.offset}
 
   justoneapi.x.instagram-get-post-comments-v1:
     accepts: [[shortcode]]
@@ -2013,7 +2058,6 @@ adapters:
     in:  {target: body.targets}
     in_expr: {body.targets: "list(target)"}
     out: {summary: "results[0]", backlinks: "results[0].external_pages_to_subdomain", referring_domains: "results[0].root_domains_to_subdomain"}
-    miss: "results == []"
 
   scrapecreators.reddit.subreddit.posts:
     accepts: [[subreddit]]
@@ -2117,6 +2161,13 @@ adapters:
     const: {queryParams.engine: bing}
     out: {results: organic_results, count: search_information.total_results}
     miss: "organic_results == []"
+  cloro.bing.serp.organic:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.country: "upper(country)"}
+    position: {offset: "zero_based(body.first)"}
+    out: {results: result.organicResults, count: "len(result.organicResults)"}
   # x.user.following, x.post.detail, youtube.video.captions, google.domain.competitors, xiaohongshu.search.notes:
   # one vendor with a usable fixture each (X's own API is an OAuth tool) — no waterfall yet.
 
@@ -2130,15 +2181,18 @@ adapters:
     in:  {user_id: queryParams.user_id}
     in_expr: {queryParams.count: limit}
     out: {reels: data.items, next_cursor: data.paging_info.max_id, has_more: data.paging_info.more_available}
+    paging: {cursor: queryParams.max_id}
   tikhub.x.instagram-v2-fetch-user-reels:
     accepts: [[username], [user_id]]
     in:  {username: queryParams.username, user_id: queryParams.user_id}
     out: {reels: data.data.items, next_cursor: data.pagination_token}
+    paging: {cursor: queryParams.pagination_token}
   tikhub.x.instagram-v3-get-user-reels:
     accepts: [[username]]
     in:  {username: queryParams.username}
     in_expr: {queryParams.page_size: limit}
-    out: {reels: data.items, next_cursor: data.next_max_id}
+    # No paging: TikHub answers a page_info.end_cursor sent as `after` with an empty page it still bills.
+    out: {reels: data.items}
 
   justoneapi.x.youtube-get-channel-videos-v1:
     accepts: [[channel_id]]
@@ -2161,9 +2215,9 @@ adapters:
     accepts: [[target]]
     in:  {target: body.target}
     in_expr: {body.limit: limit}
+    max: {limit: 50}
     const: {body.target_scope: page, body.filter: external}
     out: {backlinks: results, next_cursor: next_token}
-    miss: "results == []"
   seranking.web.backlinks.list:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -2184,7 +2238,6 @@ adapters:
     in:  {target: body.targets}
     in_expr: {body.targets: "list(target)"}
     out: {metrics: "results[0]"}
-    miss: "results == []"
   seranking.web.url.metrics:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -2413,7 +2466,6 @@ adapters:
     const: {body.mode: post, queryParams.maxTotalChargeUsd: "0.05", queryParams.timeout: "90",
             queryParams.memory: "1024"}
     out: {post: "[0]"}
-    miss: "[0] == null"
 
   predictleads.companies.job_openings:
     # One flat price for up to 1,000 rows; at most 500 keeps a large board inside the 8 MiB buffer.
@@ -2424,7 +2476,6 @@ adapters:
     in_expr: {queryParams.limit: "at_most(limit, 500)", queryParams.location: "country_name(country)"}
     const: {queryParams.active_only: "true"}
     out: {jobs: data}
-    miss: "data == []"
   # threads.user.profile / post.detail, tiktok.music.videos, x.trending.topics, weibo.search.posts (tikhub alone;
   # justoneapi needs a date window), kuaishou.search.users (truncated), instagram.reels.recommended (no identity),
   # companies/people.search.count (filter DSLs), crypto.price.history (coin naming differs per vendor): not routed.
@@ -2556,9 +2607,9 @@ adapters:
     accepts: [[target]]
     in:  {target: body.target}
     in_expr: {body.limit: limit}
+    max: {limit: 50}
     const: {body.scope: root_domain}
     out: {anchors: results, next_cursor: next_token}
-    miss: "results == []"
   seranking.web.anchors.list:
     accepts: [[target]]
     in:  {target: queryParams.target}
@@ -2995,14 +3046,17 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {posts: output.data.items, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.posts.timeline:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.tweets, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.x.user.profile:
     accepts: [[username]]
     in:  {username: body.handle}
@@ -3026,6 +3080,7 @@ adapters:
     accepts: [[q]]
     in:  {q: body.query}
     out: {videos: output.data.videos, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.tiktok.search.users:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3038,10 +3093,12 @@ adapters:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.user.reels:
     accepts: [[username]]
     in:  {username: body.handle}
     out: {reels: output.data.reels, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.post.detail:
     accepts: [[url]]
     in:  {url: body.url}
@@ -3055,6 +3112,7 @@ adapters:
     accepts: [[hashtag]]
     in:  {hashtag: body.hashtag}
     out: {posts: output.data.posts, next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   anyapi.instagram.search.reels:
     accepts: [[q]]
     in:  {q: body.query}
@@ -3526,6 +3584,7 @@ adapters:
     # Originals-only callers use this child directly and omit the flag, or pass false.
     const: {queryParams.includeReposts: "true"}
     out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
+    paging: {cursor: queryParams.paginationToken}
     miss: "posts == []"
   fetchinio.linkedin.post.comments:
     accepts: [[post_urn], [post_id]]
@@ -3547,12 +3606,14 @@ adapters:
     in: {linkedin_handle: queryParams.linkedinID}
     in_expr: {queryParams.perPage: limit}
     out: {posts: results, next_cursor: paginationToken, has_more: hasMoreResults}
+    paging: {cursor: queryParams.paginationToken}
     miss: "results == []"
   harvestapi.linkedin.user.posts:
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.profilePublicIdentifier}
     const: {queryParams.page: "1"}
-    out: {posts: elements, next_cursor: paginationToken}
+    out: {posts: elements, next_cursor: pagination.paginationToken}
+    paging: {cursor: queryParams.paginationToken}
     miss: "elements == []"
 
   # ---- influencers.club enrich tiers: cache result admission only (`routed: false` contracts) --
@@ -3758,9 +3819,8 @@ adapters:
     route: false
     accepts: [[q]]
     in: {q: body.params.keyword}
-    const: {body.id: "1", body.method: SerpstatKeywordProcedure.getKeywordTop, body.params.se: g_us, body.params.size: 3}
+    const: {body.id: "1", body.method: SerpstatKeywordProcedure.getKeywordTop, body.params.se: g_us, body.params.filters.top_size: 3}
     out: {results: result.data.top, count: "len(result.data.top)"}
-    miss: "coalesce(result.data.top, []) == []"
   octen.web.extract:
     route: false
     accepts: [[url]]
@@ -3846,11 +3906,13 @@ adapters:
     in: {page_id: body.pageId, company_name: body.companyName}
     out: {ads: output.data.ads, page_id: "output.data.ads[0].pageId", count: "len(output.data.ads)",
           next_cursor: output.data.nextCursor}
+    paging: {cursor: body.cursor}
   adyntel.meta-ads.library.advertiser:
     accepts: [[company_domain]]
     in: {company_domain: body.company_domain}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: continuation_token}
+    paging: {cursor: body.continuation_token}
     miss: "coalesce(results, []) == []"
   adyntel.google.ads.transparency:
     accepts: [[company_domain]]
@@ -3872,6 +3934,7 @@ adapters:
     in: {page_id: queryParams.pageId, company_name: queryParams.companyName}
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: cursor}
+    paging: {cursor: queryParams.cursor}
   crawl4ai.facebook.user.posts:
     accepts: [[url]]
     in: {url: body.page}
@@ -4087,7 +4150,6 @@ adapters:
     in: {q: body.jobTitles, location: body.locations}
     in_expr: {body.jobTitles: "list(q)", body.locations: "list(location)"}
     out: {jobs: "."}
-    miss: ". == []"
   crawl4ai.linkedin.search.jobs:
     route: false
     accepts: [[q]]

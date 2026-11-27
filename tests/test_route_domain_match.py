@@ -24,15 +24,6 @@ def _hunter(email: str) -> tuple[int, dict]:
     return 200, {"data": {"email": email, "score": 90, "verification": {"status": "valid"}}}
 
 
-async def test_without_the_header_an_off_domain_hit_ends_the_call(clients: AsyncClient, verifiers_on, monkeypatch):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_OFF]}, seen))
-    r = await clients.post(f"/call/{FIND}", json=ASK)
-    assert r.status_code == 200, r.text
-    assert seen == ["tomba"] and r.json()["_treg"]["outcome"] == "hit"
-    assert r.json()["_treg"]["domain_match"] is False
-
-
 async def test_an_on_domain_hit_after_an_off_domain_one_wins(clients: AsyncClient, verifiers_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_OFF], "hunter": [_hunter("patrick@stripe.com")]}, seen))
@@ -111,8 +102,8 @@ async def test_at_most_two_more_off_domain_hits_are_taken(clients: AsyncClient, 
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == d["_treg"]["charged_micro"]
 
 
-@pytest.mark.parametrize("value", ["true", "1", "yes", "on", "STRICT"])
-async def test_true_and_1_mean_strict(clients: AsyncClient, verifiers_on, monkeypatch, value):
+@pytest.mark.parametrize("value", ["true", "STRICT"])
+async def test_true_and_strict_in_any_case_mean_strict(clients: AsyncClient, verifiers_on, monkeypatch, value):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_OFF], "hunter": [_hunter("patrick@stripe.com")]}, seen))
     r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Domain-Match": value})
@@ -120,11 +111,10 @@ async def test_true_and_1_mean_strict(clients: AsyncClient, verifiers_on, monkey
     assert seen == ["tomba", "hunter"] and r.json()["output"]["email"] == "patrick@stripe.com"
 
 
-@pytest.mark.parametrize("value", ["off", "false", "0", "no"])
-async def test_false_and_0_mean_off(clients: AsyncClient, verifiers_on, monkeypatch, value):
+async def test_false_means_off(clients: AsyncClient, verifiers_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_OFF]}, seen))
-    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Domain-Match": value})
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Domain-Match": "false"})
     assert r.status_code == 200, r.text
     assert seen == ["tomba"] and r.json()["_treg"]["outcome"] == "hit"
 

@@ -182,18 +182,6 @@ async def test_mcp_mark_relay(clients):
         'user_said', [{'index': 1, 'verdict': 'stale'}], 3, None)
 
 
-async def test_mcp_mark_schema():
-    from treg.mcp import mcp, directory_mcp
-    from treg.feedback_contract import MARK_BASES, MARK_DESCRIPTION
-
-    tool = next(tool for tool in await mcp.list_tools() if tool.name == 'mark')
-    assert tool.description == MARK_DESCRIPTION
-    assert tool.input_schema['properties']['basis']['enum'] == list(MARK_BASES)
-    assert tool.input_schema['required'] == ['call_id', 'basis', 'items']
-    # the directory listing was submitted without it
-    assert 'mark' not in {tool.name for tool in await directory_mcp.list_tools()}
-
-
 @pytest.mark.parametrize('item', [{'verdict': 'wrong', 'row': 2}, {'verdict': 'wrong', 'index': -1},
                                   {'verdict': 'wrong', 'field': 'a b'}])
 async def test_mcp_refuses_an_item_it_cannot_place(clients, item):

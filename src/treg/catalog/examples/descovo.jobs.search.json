@@ -1,0 +1,65 @@
+{
+  "data": {
+    "data": [
+      {
+        "job_id": "4394673075",
+        "title": "Staff Product Manager, Orchestration Lead",
+        "company_name": "Stripe",
+        "company_logo_url": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_100_100/B56ZlyKwpUKIAQ-/0/1758557047806/stripe_logo?e=2147483647&v=beta&t=fRMcaMGPJNFUMq_l1f2zzyX4PaK3yg-MRicyUuY3qSI",
+        "posted_at": "2026-04-01T00:00:00.000Z",
+        "job_url": "https://uk.linkedin.com/jobs/view/staff-product-manager-orchestration-lead-at-stripe-4394673075?trk=public_jobs_topcard-title",
+        "applicant_range": {
+          "gte": 0,
+          "lte": 25
+        },
+        "description": "Staff Product Manager, Orchestration leadAbout StripeStripe is a financial infrastructure platform for businesses. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Our mission is to increase the GDP of the internet, and we have a staggering amount of work ahead. That means you have an unprecedented opportunity to put the global economy within everyone’s reach whi… [5237 chars total]",
+        "seniority_level": "Director",
+        "employment_type": "Full-time",
+        "job_function": [
+          "Product Management",
+          "Marketing"
+        ],
+        "job_function_v2": null,
+        "job_specialty": null,
+        "raw_industries": "Software Development, Financial Services, and Technology, Information and Internet",
+        "standard_industries": [
+          "Software",
+          "Finance",
+          "… 1 more item(s) truncated"
+        ],
+        "compensation_range": null,
+        "annual_salary_usd": null,
+        "years_of_experience": {
+          "gte": 10,
+          "lte": null
+        },
+        "standardized_location": {
+          "street_address": null,
+          "neighborhood": null,
+          "city": "London",
+          "state_name": "England",
+          "state_code": "ENG",
+          "county": "London",
+          "postal_code": null,
+          "country_code": "GBR",
+          "country_name": "United Kingdom",
+          "coordinates": {
+            "lat": 51.50015259,
+            "lon": -0.1262362
+          },
+          "timezone": "Europe/London",
+          "full_address": "London, England, United Kingdom",
+          "formatted_address": "London, London, United Kingdom"
+        },
+        "job_location_type": null,
+        "modality": null,
+        "status": "closed"
+      }
+    ],
+    "nextCursor": "gAAAAABrBIzxsXVNBgkNHO7C9YRogQoR2ehy9jtOA890JZQQ4k_-3KMxCUeTPM4dkLRfgG0gPJmaFk46foHpVzcRjNKH_6tqAw=="
+  },
+  "credits": {
+    "charged": 1,
+    "available": null
+  }
+}

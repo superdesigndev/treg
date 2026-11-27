@@ -47,6 +47,7 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "trial_allowance_reached": ("caller", "caller_balance_or_cap"),
     "platform_cap_unavailable": ("treg", "treg_capacity"),
     "money_admission_timeout": ("treg", "treg_capacity"),
+    "money_statement_timeout": ("treg", "treg_capacity"),
     "catalog_price_invalid": ("treg", "treg_error"),
     "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
     "tag_budget_unavailable": ("treg", "treg_capacity"),
@@ -97,6 +98,9 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "method_mismatch": ("caller", "caller_input"),
     "db_pool": ("treg", "treg_capacity"),
     "unexpected_exception": ("treg", "treg_error"),
+    # The caller closed its connection before treg had read the request body: nothing was sent
+    # upstream and no hold exists yet; the 499 reaches no one.
+    "client_disconnected": ("caller", "caller_disconnected"),
     "org_concurrency_limit": ("caller", "treg_policy"),
     "org_rate_limit": ("caller", "treg_policy"),
     "org_traffic_paused": ("caller", "treg_policy"),
@@ -177,6 +181,22 @@ class EmptyBody:
 
     async def read(self) -> bytes:
         return b""
+
+
+class BytesBody:
+    """The body of a call treg makes itself with a small known payload: a POSTed task poll."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    async def _once(self) -> AsyncIterator[bytes]:
+        yield self._data
+
+    def stream(self) -> AsyncIterator[bytes]:
+        return self._once()
+
+    async def read(self) -> bytes:
+        return self._data
 
 
 @dataclass(frozen=True)
@@ -302,6 +322,8 @@ class CallInput:
     client_ip: str
     # The reviewed /catalog/call surface accepts only a catalog id — team tools never shadow it.
     catalog_only: bool = False
+    # The surface the call came through when it is not `/call/`: "table" (recorded on its audit row).
+    surface: str | None = None
     # Set on every child call of a hub run: a child never resolves to a hub tool (no nested
     # runs, no undisclosed second price).
     child_of: str | None = None
@@ -333,6 +355,16 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    # Decided once by the routed call at the root and handed to every routed child: the children
+    # may take from the team's allowance (`allowance.routed_listed`, and the root marked when keyed).
+    routed_allowance: bool | None = None
+    # A routed parent handed a child's allowance charge to the charge writer: it stands even if
+    # the request is cancelled, so the idempotency claim stays pending for the stale check.
+    allowance_charged: bool = False
+    # The routed call at the root, on each of its routed descendants.
+    routed_root: Any = None
+    # The keyed routed root's in-flight mark, which every allowance charge under it keeps.
+    allowance_mark: str | None = None
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.
@@ -345,6 +377,11 @@ class CallContext:
     # A routed parent's outcome for its call event (route.py `_summarize`): identity, output,
     # served_by, tried_count, hit, verdict, check_verdict. Never read by money or relay.
     route_summary: dict | None = None
+    # A routed parent's served child (`CallRecord.served_call_ref`): set by the router before it
+    # writes the parent row; a routed `:u` upgrade's own value is read back by its parent.
+    served_call_ref: str | None = None
+    # sha256 of the bytes returned as `raw` with that child (`CallRecord.served_content_hash`).
+    served_content_hash: str | None = None
     # The request left for the provider (the relay's `ON_SEND`, past every local check), or its
     # archived answer was served.
     # A routed parent attributes its order only to children that did (route.py `_note_call`).

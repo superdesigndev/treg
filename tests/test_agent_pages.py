@@ -183,18 +183,19 @@ def test_every_workflow_step_capability_and_endpoint_exist():
             assert ep_id in {e["id"] for e in eps}, (key, name, ep_id)
 
 
-async def test_pages_off_the_shared_shell_carry_adtrack(clients: AsyncClient):
-    """Every page rendered through `_page()` must load `/adtrack.js` exactly once.
+async def test_pages_off_the_shared_shell_carry_attribution(clients: AsyncClient):
+    """Every page rendered through `_page()` loads `/sitetrack.js` and `/click-id.js` exactly once.
 
-    Without it no `treg_ad` cookie is set, so `org.ad_gclid` stays NULL and `adsconv.queue()`
-    no-ops: a paid click can sign up and make its first call and Google never hears about it,
+    Without `/click-id.js` no `treg_ad` cookie is set, so `org.ad_gclid` stays NULL and
+    `adsconv.queue()` no-ops: a paid click can sign up and make its first call and Google never
+    hears about it. Without `/sitetrack.js` a search visitor landing here sends no pageview and gets
+    no `treg_utm` cookie, and the next page they open counts them as direct traffic. Both fail
     silently. `_page()` is the one shell, so one of its callers stands for all of them.
-
-    `/sitetrack.js` is deliberately NOT asserted here; see `_page()`'s docstring.
     """
     r = await clients.get("/use-cases/verify-an-email")
     assert r.status_code == 200
-    assert r.text.count('<script src="/adtrack.js"></script>') == 1
+    assert r.text.count('<script src="/sitetrack.js"></script>') == 1
+    assert r.text.count('<script src="/click-id.js"></script>') == 1
 
 
 async def test_possessive_slug_redirects_hold_in_every_shape_they_were_live(clients: AsyncClient):

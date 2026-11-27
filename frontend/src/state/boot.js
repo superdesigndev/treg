@@ -153,7 +153,7 @@ export default async function boot(){
       if(catRoute.view==='find'){ this.view='find'; this.loadPlatforms(); } else if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='catalog'; this.loadConnections(); }
       return; }
     if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
-    if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no sandbox mint, no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)
+    if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)
     else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=) and every other logged-out flow open sign-in
     if(inv){ this.invitePrefill=inv; this.emailInput=inv; this.emailStage=false; this.demo.signin=true; }  // legacy code link while logged out: prefill + open sign-in; the invite auto-accepts after login (maybeOnboard)
   }

@@ -27,6 +27,7 @@ from treg import audit, crypto
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
 from treg.models import IdempotentCall, Membership, Org, User
+from conftest import email_code
 
 
 def _h(t: str) -> dict:
@@ -106,9 +107,7 @@ async def test_the_verify_door_is_blocked_even_if_a_code_were_obtained(env):
     valid code (dev mode returns one for a real address) an agent address cannot be signed in."""
     email = (await _agent(env, name="sneak"))["email"]
     # mint a real code for a REAL address, then try to redeem it against the agent address
-    started = await env.c.post("/auth/email/start", json={"email": "human@x.dev"})
-    code = started.json().get("dev_code")
-    assert code, "dev mode should return the code in the test env"
+    code = await email_code(env.c, "human@x.dev")
     r = await env.c.post("/auth/email/verify", json={"email": email, "code": code})
     assert r.status_code != 200, r.text
     async with session_maker() as s:

@@ -39,11 +39,7 @@ def _provider_display(service: str) -> str:
 
 
 def _run_hint(ep: dict) -> str:
-    auth = (
-        "no provider key required" if ep.get("platform_auth") == "anonymous"
-        else "key injected server-side"
-    )
-    return f"{catalog_store.call_template(ep)}   # run it — {auth}"
+    return f"{catalog_store.call_template(ep)}   # run it — {catalog_store.provider_auth_hint(ep)}"
 
 
 def _platform_rows() -> list[dict]:
@@ -576,8 +572,8 @@ def _related_capabilities(ep: dict, cat) -> list[dict]:
     `siblings` answers "who else does THIS job"; nothing answered "this is the wrong job, the one
     you want is next door". A caller that lands on `people.enrich` wanting an email gets a 200 with
     a job title and no way to learn `people.email.find` exists — the contract has no `email` field
-    at all, because every provider sells profile data and email lookup as separate products
-    (measured 2026-08-29: 0 of 403 enriched rows carried one). Discovery vocabulary fixes the
+    at all, because every provider sells profile data and email lookup as separate products.
+    Discovery vocabulary fixes the
     caller who SEARCHES; this fixes the caller who arrived by id."""
     cap = ep.get("capability") or ""
     subject = cap.split(".")[0]
@@ -605,6 +601,19 @@ async def _your_values(request: Request, db: AsyncSession, ep: dict) -> dict:
     return {"your_values": values,
             "your_values_note": "On treg's key send these exactly: the label is your team's own; "
                                 "an alert email may only be yours."}
+
+
+def _sibling_sort_key(row: dict, cat: catalog_store.Catalog) -> tuple:
+    observed = row.get("observed") or {}
+    latency = observed.get("p50_ms")
+    price = cat.advertised_usd(row.get("cost"))
+    return (
+        row.get("platform_eligible") is False and not (row.get("hub") or row.get("kind") == "hub"),
+        catalog_store.reliability_band(observed),
+        latency if latency is not None else float("inf"),
+        price if price is not None else float("inf"),
+        row["id"],
+    )
 
 
 @app.get("/catalog/endpoints/{endpoint_id}")
@@ -654,7 +663,7 @@ async def catalog_endpoint(
         view |= personal
     siblings = [
         catalog_store.sibling_view(other, _provider_display(other["provider"]), cat)
-        for other in sorted(cat.for_capability(ep["capability"]), key=lambda e: e["id"])
+        for other in cat.for_capability(ep["capability"])
         if other["id"] != ep["id"]
     ]
     example = None
@@ -683,6 +692,7 @@ async def catalog_endpoint(
     from .hub_gate import reader
     slug, email = await reader(request, db)
     siblings += await hub_app.capability_siblings(db, ep.get("capability") or "", org_slug=slug, email=email)
+    siblings.sort(key=lambda row: _sibling_sort_key(row, cat))
 
     routing = None
     if ep.get("kind") == "routed":
@@ -690,6 +700,8 @@ async def catalog_endpoint(
         # at a one-row lookup. Own keys rank first at call time (this route is open, so it cannot
         # know the caller's); nothing is reserved here.
         from ..application.call.resolve import anonymous_served
+        from ..application.call.route import const_table_price
+        from ..domain.catalog.routing.contracts import default_prefer
         from ..domain.catalog.routing.plan import Candidate, cost_at, miss_charge_micro, rank
         contract = cat.contracts.get(ep["capability"])
         kids = [cat.by_id[i] for i in ep.get("routed_children") or [] if i in cat.by_id]
@@ -700,13 +712,21 @@ async def catalog_endpoint(
             cv = cat.cost_view(k.get("cost"), k["provider"])
             # Tiered as `route.build_plan` tiers it for a team with no own key: keyless rows first, free.
             anonymous = anonymous_served(k) is not None
-            price = 0 if anonymous else cost_at(cv, {}, ad)
-            cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (),
+            variant = ad.accepts[0] if ad and ad.accepts else ()
+            # A price table the adapter's `const` always resolves to one row is quoted at that row,
+            # as `route.build_plan` ranks it; the fallback ceiling would misplace it in the order.
+            fixed = (const_table_price(cat, k, ad, dict(getattr(ad, "test_identity", None) or {}), variant)
+                     if ad is not None and not anonymous else None)
+            price = 0 if anonymous else fixed if fixed is not None else cost_at(cv, {}, ad)
+            cands.append(Candidate(k, ad, variant,
                                    "anonymous" if anonymous else "platform",
                                    price, st.get("hit_rate"),
                                    st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days"),
                                    miss_micro=0 if anonymous else
                                    miss_charge_micro(cv, {}, ad, price) if price is not None else None))
+        # The contract's own order, as a call with no X-Treg-Route-Prefer gets it.
+        order = ({"prefer": default_prefer(contract, {}), "one_subject": contract.one_subject,
+                  "last": contract.ask_last} if contract else {})
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": {
                              # `analytics` is treg's own event mapping, not part of the answer.
@@ -716,9 +736,9 @@ async def catalog_endpoint(
                          **({"complete": list(contract.complete)} if contract.complete else {})} if contract else None,
             # A child the router would not call on treg's key (`route.py` drops it the same way)
             # stays in the plan for its `accepts`, ranked after the rest and saying why.
-            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
+            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)], **order)]
                     + [_plan_row(c, cat) | {"skipped": _quote_skip(c.endpoint, cat)}
-                       for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)])],
+                       for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)], **order)],
             # The same job from providers whose adapter is not (yet) verified: not chosen by the
             # router, still callable by id — the search page groups them under this row, so the
             # page it points at must name them too.
@@ -740,6 +760,11 @@ async def catalog_endpoint(
                                                    "running also pending, call_id and async (task_id + poll) — "
                                                    "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
                            if contract and contract.check else {}),
+                        **({"X-Treg-Route-Ad-Hashes": f"true = add the hit's {contract.ad_hashes} as SHA-256 hashes ready for "
+                                                      "LinkedIn, Meta and Google audience uploads, at no extra charge; the answer "
+                                                      "is _treg.ad_hashes {hashed, linkedin, meta, google}, or {hashed: false, "
+                                                      "reason} (no_hit, no_email)"}
+                           if contract and contract.ad_hashes else {}),
                         **({"X-Treg-Route-Domain-Match": "strict (or true) = when you sent a domain, an email hit at another domain does not "
                                                          "end the call: the waterfall goes on (at most two more such hits), each "
                                                          "attempt at its own price, inside X-Treg-Route-Max-Cost; the first "
@@ -753,11 +778,13 @@ async def catalog_endpoint(
                                                      "best measured quality first, each at its own price; the answer is "
                                                      "_treg.decision {decided, decided_by, ordered_by}"} if contract and contract.verdict_decisive else {})},
         }
+    overflow_hint = catalog_store.overflow_billing_hint(ep["provider"], overflow)
     return {
         "endpoint": view | ({"routed_children": ep.get("routed_children")} if ep.get("kind") == "routed" else {}),
         "provider": {"service": ep["provider"], "display_name": _provider_display(ep["provider"]),
                      **cat.provider_meta.get(ep["provider"], {})},
         "siblings": siblings,
+        "siblings_ranked": True,
         # The observation cache had not read some of these yet: ask again shortly for the numbers.
         **({"observed_pending": True} if _observation_pending(observations, observed_ids) else {}),
         **({"related_capabilities": rel} if (rel := _related_capabilities(ep, cat)) else {}),
@@ -765,11 +792,7 @@ async def catalog_endpoint(
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
         "hints": [_run_hint(ep)]
-                 + ([f"when treg's own {ep['provider']} account is out this may be served through the "
-                     f"overflow relay ({overflow['overflow_via']}) and bill "
-                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
-                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
-                    if overflow else [])
+                 + ([overflow_hint] if overflow_hint else [])
                  + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
                     if siblings else []),
     }
@@ -820,11 +843,12 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
     capability = await hub_app.approved_capability(db, row.tool_id)
     cat = catalog_store.load()
     siblings = [catalog_store.sibling_view(o, _provider_display(o["provider"]), cat)
-                for o in sorted(cat.for_capability(capability), key=lambda e: e["id"])] if capability else []
+                for o in cat.for_capability(capability)] if capability else []
     if siblings and observations is not None:
         stats = await _observed_or_empty(observations, [s["id"] for s in siblings])
         siblings = [s | {"observed": stats.get(s["id"])} for s in siblings]
     siblings += await hub_app.capability_siblings(db, capability, exclude=row.tool_id, org_slug=org_slug, email=email)
+    siblings.sort(key=lambda row: _sibling_sort_key(row, cat))
     mine = next(iter(await hub_app.capability_siblings(db, capability, org_slug=org_slug, email=email) if capability else []), None)
     mine = mine if mine and mine["id"] == row.tool_id else None
     return {

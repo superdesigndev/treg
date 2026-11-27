@@ -465,8 +465,8 @@ def price_table_view(cost) -> dict:
             price += f" × {str(row['times']).split('.', 1)[-1]}"
             if row.get("times_min") is not None:
                 price += f" (from {row['times_min']})"
-        rows.append({"when": " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items()),
-                     "price": price})
+        when = " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items())
+        rows.append({"when": when or "any request", "price": price})
     fb = cost.get("fallback") or {}
     if isinstance(fb, dict) and fb.get("value") is not None:
         rows.append({"when": "fallback (ceiling)", "price": money(float(fb["value"]))})
@@ -488,7 +488,10 @@ def async_view(desc) -> dict | None:
     poll, status, result = desc.get("poll") or {}, desc.get("status") or {}, desc.get("result") or {}
     every = f"every ~{desc.get('interval', 10)} s"
     if poll.get("endpoint"):
-        poll_how = f"treg call {poll['endpoint']} -p {(poll.get('param') or {}).get('name')}=<task id>, {every}"
+        param = poll.get("param") or {}
+        how = (f"--data '{{\"{param.get('name')}\": \"<task id>\"}}'" if param.get("in") == "body"
+               else f"-p {param.get('name')}=<task id>")
+        poll_how = f"treg call {poll['endpoint']} {how}, {every}"
     elif poll.get("url_from"):
         poll_how = f"the URL in response field {poll['url_from']} (hosts: {', '.join(poll.get('url_hosts') or [])}), {every}"
     else:
@@ -510,8 +513,8 @@ def async_view(desc) -> dict | None:
 
 def compare_view(e: dict, body: dict, limit: int | None, pinned: Callable[[str | None], str | None]) -> dict:
     """The other ways to do this job. A routed id gets its plan and, on request (`limit`), the
-    providers it does not route to; any other id gets the job's providers, itself first, then the
-    measured ones by success rate and price, then the unmeasured, `limit` rows at most."""
+    providers it does not route to; any other id gets the job's providers, itself first, then
+    the alternatives in the server's order, up to `limit`."""
     routing = body.get("routing") or {}
     if routing.get("plan"):
         plan = [{"id": c["endpoint_id"], "price": plan_price(c),
@@ -532,7 +535,9 @@ def compare_view(e: dict, body: dict, limit: int | None, pinned: Callable[[str |
     if not sibs:
         return {"compare": f"no other provider does {e['capability']}"} if e.get("capability") else {}
     pin = pinned(e.get("capability"))
-    others = sorted((s for s in sibs if not pin or s["provider"] == pin), key=compare_rank)
+    others = [s for s in sibs if not pin or s["provider"] == pin]
+    if not body.get("siblings_ranked"):
+        others.sort(key=compare_rank)  # Older servers send the rows in ID order.
     # The routed id rides second, under any limit: it is the other way to do this job.
     routed = [s for s in others if s.get("kind") == "routed"]
     rows = [e, *routed, *(s for s in others if s.get("kind") != "routed")][:max(limit or 10, 1 + len(routed))]

@@ -25,11 +25,14 @@ Everything else in this file is guidance; these are the contract, and they win o
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
-   every path: timeout, cancellation and exceptions included. A call of a team listed in
-   `money_allowance_org_ids` may instead take its reservation from the team's allowance (one
-   standing hold, mirrored in a shared counter); that take is charged or given back exactly once
-   on the same paths, and a take that is never finished stays in the allowance hold, never spent
-   and never charged, until the hold is closed.
+   every path: timeout, cancellation and exceptions included. A call of a team the operator put on
+   the allowance (`allowance.listed`: named in `money_allowance_org_ids`, or every team under
+   `money_allowance_all_orgs`, never one in `money_allowance_excluded_org_ids`) may instead take
+   its reservation from the team's allowance (one standing hold, mirrored in a shared counter);
+   that take is charged or given back exactly once on the same paths, and a take that is never
+   finished stays in the allowance hold, never spent and never charged, until the hold is closed.
+   A routed child's take (only under `money_allowance_routed_org_ids` or
+   `money_allowance_routed_all_orgs`) is finished by its routed parent, as its hold would be.
 3. A request holds zero database connections while upstream, object-storage, KMS or payment-rail
    (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
    pointers, close the session, then fetch bytes; verify or settle a payment, then open the session;
@@ -77,7 +80,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
    call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
-   hold and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
+   reservation and charge, and reports it in `_treg.verification`; the find's answer is not altered. With
    `X-Treg-Route-Confirm`, an email find keeps asking providers after a hit until another returns the
    same address, each attempt billed as usual, and reports it in `_treg.confirmation`; the answer
    returned is the first provider's, unaltered. With `X-Treg-Route-Decisive`, an email check keeps
@@ -244,7 +247,8 @@ isolation boundary. Read the fragment before touching any of them.
 ## Development
 
 ```bash
-uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
+uv run --frozen python -m pytest -q tests/test_x.py   # while working: the files you touch
+uv run --with pytest-xdist pytest -n auto -q   # once, before opening the PR (SQLite)
 uv run --frozen python -m pytest -q            # serial: debugging one test, or order
 uv run treg --help                             # the CLI from this checkout
 uv run python -m treg                          # the server
@@ -255,9 +259,16 @@ scripts/dev-local.sh up                        # live dev stack on :18790 with i
 TREG_GO_BUILD=1 uv run --with pytest-xdist pytest tests/cli_go -n auto   # its parity with the Python CLI
 ```
 
-xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
+While working, run the test files your change touches, in seconds; run the whole suite once,
+before opening the PR. CI runs the whole suite on Postgres on every push, so a whole local run
+after each edit only repeats it, slower.
+
+xdist is pulled via `--with`, not the lockfile, as in CI. Every test process gets its own
 database (a sqlite file per pid; under `TREG_TEST_DB_URL`, a Postgres database per xdist worker),
-so parallel runs and side-by-side runs never share one.
+so parallel runs and side-by-side runs never share one. CI runs the whole suite on Postgres, where
+production runs, and only a few local-development files on SQLite: a test must pass on both, and
+Postgres enforces what SQLite lets by (foreign keys, 32-bit integers, no dev sign-in code; seed
+teams with `conftest.seed_teams`, read sign-in codes with `conftest.email_code`).
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
