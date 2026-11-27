@@ -1,0 +1,126 @@
+provider: sonny
+source:
+  docs: https://www.usesonny.com/docs/api
+  openapi: https://www.usesonny.com/openapi.json
+  curated: '2026-11-27'
+limits: "1,800 requests per minute per key"
+pricing_url: https://www.usesonny.com/pricing
+cache: forbidden
+response_retention: forbidden
+proposed_capabilities:
+  account.service.status: "Check whether the authenticated API and its database are available"
+  account.access.detail: "Read the permissions and resources accessible to a workspace credential"
+  account.support.sources.list: "List the inbox sources and channel types configured in a support workspace"
+  account.support.conversations.search: "Find customer support conversations within a workspace"
+  account.support.report.detail: "Read a support workspace report for a selected time range"
+
+defaults:
+  kind: account
+  price: {value: '0', currency: USD, unit: call, note: "Included in the Sonny Pro workspace subscription."}
+  provenance: {source: docs, source_url: 'https://www.usesonny.com/pricing', checked: '2026-11-27', confidence: documented}
+  expect: {path: response.data, op: present}
+
+endpoints:
+  - id: sonny.account.service.status
+    added: '2026-11-27'
+    capability: account.service.status
+    platform: account
+    scope: own_account
+    method: GET
+    path: /status
+    kind: utility
+    name: Check Sonny API status
+    summary: Check whether the Sonny API can reach its database.
+    note: "Requires conversations:read."
+    expect: {path: response.data.status, op: equals, value: ok}
+    test_request: {queryParams: {}}
+    docs_url: https://www.usesonny.com/docs/api
+
+  - id: sonny.account.access.detail
+    added: '2026-11-27'
+    capability: account.access.detail
+    platform: account
+    scope: own_account
+    method: GET
+    path: /connection
+    name: Read Sonny connection access
+    summary: Read the API key's effective scopes and accessible workspace sources.
+    note: "Requires conversations:read."
+    test_request: {queryParams: {}}
+    docs_url: https://www.usesonny.com/docs/api
+
+  - id: sonny.account.support.sources.list
+    added: '2026-11-27'
+    capability: account.support.sources.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /sources
+    name: List Sonny inbox sources
+    summary: List accessible inbox sources with their IDs and supported conversation channels.
+    note: "Requires conversations:read. Use the source IDs to filter conversations."
+    test_request: {queryParams: {}}
+    docs_url: https://www.usesonny.com/docs/api
+
+  - id: sonny.account.support.conversations.search
+    added: '2026-11-27'
+    capability: account.support.conversations.search
+    platform: account
+    scope: own_account
+    method: GET
+    path: /conversations
+    name: Find Sonny conversations
+    summary: Find customer support conversations by status, channel, assignment, priority and tags.
+    note: "Requires conversations:read. To find the oldest unanswered conversations, set status=open, awaitingReply=true, sort=waitingSince and direction=asc."
+    input:
+      queryParams:
+        page: {type: integer, required: false, min: 1, default: 1, example: 1}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 50, example: 10}
+        status: {type: string, required: false, enum: [all, open, pending, closed], default: all, example: open}
+        channel: {type: string, required: false, enum: [all, chat, email, whatsapp], default: all, example: email}
+        contactId: {type: string, required: false, minLength: 1, example: contact_123}
+        sourceId: {type: string, required: false, minLength: 1, note: "Use an ID from the inbox sources tool.", example: source_123}
+        activeSince: {type: string, required: false, note: "Return conversations whose latest message is after this UTC timestamp.", example: "2026-11-01T00:00:00Z"}
+        compact: {type: boolean, required: false, default: false, note: "Return the ID, status and latest-message metadata.", example: true}
+        awaitingReply: {type: boolean, required: false, note: "Match when the latest incoming or outgoing message is incoming. Internal notes are ignored.", example: true}
+        unread: {type: boolean, required: false, note: "Use the authenticated user's read receipt.", example: true}
+        unassigned: {type: boolean, required: false, note: "Match conversations without an individual agent, including team-only assignments.", example: true}
+        assigneeId: {type: string, required: false, minLength: 1, example: user_123}
+        agentGroupId: {type: string, required: false, minLength: 1, example: team_123}
+        snoozed: {type: string, required: false, enum: ['true', 'false', any], default: any, example: 'false'}
+        priority: {type: string, required: false, enum: [low, medium, high, urgent], example: high}
+        sort: {type: string, required: false, enum: [lastMessageAt, createdAt, priority, waitingSince], default: lastMessageAt, example: waitingSince}
+        direction: {type: string, required: false, enum: [asc, desc], default: desc, example: asc}
+        tagIds: {type: string, required: false, note: "Comma-separated IDs. Any matching tag qualifies.", example: "tag_123,tag_456"}
+        propertyId: {type: string, required: false, minLength: 1, note: "A select contact property ID. Use with propertyValues. Requires all-channel access.", example: property_123}
+        propertyValues: {type: array, items: {type: string}, required: false, note: "Repeat the query parameter for each exact option. Any matching option qualifies.", example: [Qualified, Won]}
+    test_request:
+      queryParams: {limit: 1, compact: true}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://www.usesonny.com/docs/api#agent-workflows
+
+  - id: sonny.account.support.report.detail
+    added: '2026-11-27'
+    capability: account.support.report.detail
+    platform: account
+    scope: own_account
+    method: GET
+    path: /reporting/{kind}
+    name: Read a Sonny support report
+    summary: Read conversation volumes, response times, team activity or customer satisfaction for a date range.
+    note: "Requires reporting:read. Knowledge reports use the date range and accessible channels."
+    input:
+      pathParams:
+        kind: {type: string, required: true, enum: [overview, volume, response-times, agents, sources, tags, csat, ai, knowledge, leads, online-hours], example: overview}
+      queryParams:
+        period: {type: integer, required: false, min: 1, max: 365, default: 30, note: "Lookback in days. An explicit from/to pair takes precedence.", example: 7}
+        from: {type: string, required: false, note: "Start date or ISO 8601 timestamp. Provide to as well.", example: '2026-11-01'}
+        to: {type: string, required: false, note: "Exclusive end date or ISO 8601 timestamp. Provide from as well.", example: '2026-11-08'}
+        granularity: {type: string, required: false, enum: [day, month], example: day}
+        source: {type: string, required: false, note: "Use all, all-chat, all-email, all-whatsapp, website:<id>, email:<id> or whatsapp:<id>.", example: all-email}
+        assigneeId: {type: string, required: false, minLength: 1, example: user_123}
+        tagId: {type: string, required: false, minLength: 1, example: tag_123}
+    test_request:
+      pathParams: {kind: overview}
+      queryParams: {period: 1}
+    docs_url: https://www.usesonny.com/docs/api#agent-workflows

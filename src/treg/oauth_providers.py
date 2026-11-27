@@ -4605,6 +4605,33 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+SONNY = OAuthProvider(
+    service="sonny",
+    display_name="Sonny",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sonny_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.usesonny.com/app/settings/developer",
+    setup_action_label="Open Sonny Developer settings",
+    setup_steps=(
+        "Sign in to Sonny as a workspace owner or admin and open Settings, then Developer.",
+        "Create an API key, set its channel access, and leave only conversations:read selected under Scopes.",
+        "Also select reporting:read if you need support reports.",
+        "Copy the key when Sonny displays it.",
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Read customer support conversations, inbox sources and reports from your Sonny workspace.",
+    base_url="https://www.usesonny.com/api/v1",
+    docs_url="https://www.usesonny.com/docs/api",
+    probe_path="/status",
+)
+
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4635,6 +4662,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Workspace tools
+        SONNY,
     )
 }
 
