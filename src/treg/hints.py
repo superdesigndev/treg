@@ -22,8 +22,6 @@ def hints_header(headers) -> str | None:
     if hasattr(headers, "getlist"):
         values = headers.getlist("X-Treg-Hints")
         return ",".join(values) if values else None
-    if hasattr(headers, "get"):
-        return headers.get("X-Treg-Hints")
     values = [bytes(v).decode("latin-1") for k, v in headers if bytes(k).lower() == b"x-treg-hints"]
     return ",".join(values) if values else None
 

@@ -187,7 +187,8 @@ spend no invitation budget. When the router attaches `X-Treg-Hint`, it emits `hi
 a review adds `budget`, `main` or `extra`, and `credited_endpoint`, the endpoint its review would
 be credited to) and adds `X-Treg-Hint-Text` for clients that sent `X-Treg-Hints`. A review also sets
 `X-Treg-Review: requested` for older clients. The CLI prints the invitation on stderr and the
-team MCP `call` renders it into the result's hint slot.
+team MCP `call` renders it into its single hint slot with priority
+replay > 402 > compare > review > mark > feedback.
 
 - **Review**: a direct catalog call on treg's platform key, or a routed parent (credited to the
   child that answered, as an uninvited routed review always was), 2xx, not replayed, not archive-served,
@@ -325,8 +326,8 @@ The value is the contract input the caller sent
 `MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
 the summary) is never marked: B would be asked page one against A's later page. Nor is a merged
 answer (`merged_from` in the summary, several vendors' rows delivered as one): no single vendor's
-answer is A. The key carries `MARKER_VERSION` so the worker reads markers from its expected version.
-A team opted out of the archive gets no
+answer is A. The key carries the marker's version (`MARKER_VERSION`), so a run never reads a
+marker an earlier build wrote under rules it no longer applies. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
 Every decision is counted by reason and `X-Treg-Client` (`marked`, `client_no_compare`, `not_sampled`,
