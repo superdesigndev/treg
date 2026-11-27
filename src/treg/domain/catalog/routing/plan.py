@@ -308,6 +308,29 @@ def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_
     return bucket < percent * 100
 
 
+# Catalog and dropped entries use these strings so a listed child and a live omission stay consistent.
+SAMPLE_ZERO_WHY = "{provider} is not in the routed provider sample on this deployment"
+SAMPLE_REQUEST_WHY = "not in this request's provider sample"
+
+
+def sampled_provider_quote_skip(provider: str, percentages: dict[str, int]) -> str | None:
+    """Why the quote skips a child the router would never call on treg's key (a 0% sample)."""
+    if percentages.get(provider) == 0:
+        return SAMPLE_ZERO_WHY.format(provider=provider)
+    return None
+
+
+def sampled_provider_refusal(provider: str, percentages: dict[str, int], *, org_id: int | None,
+                             capability: str, identity: dict[str, Any]) -> str | None:
+    """Drop why when the shared-key sample omits this provider on this question; else None."""
+    if sampled_provider_allowed(provider, percentages, org_id=org_id, capability=capability,
+                                identity=identity):
+        return None
+    if percentages.get(provider) == 0:
+        return SAMPLE_ZERO_WHY.format(provider=provider)
+    return SAMPLE_REQUEST_WHY
+
+
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
          given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
          one_subject: bool = False, caller_prefer: bool = False,

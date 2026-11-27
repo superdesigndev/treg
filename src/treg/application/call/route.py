@@ -114,7 +114,7 @@ from ...domain.catalog.routing.contracts import (canonical_identity, default_pre
                                                  flags_off, invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, miss_charge_micro, rank,
-    sampled_provider_allowed, unscoped,
+    sampled_provider_refusal, unscoped,
 )
 from ... import oauth_providers
 from .. import asynctasks as async_task_app
@@ -898,10 +898,10 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # "no credential" (a 404 the router must not treat as the caller's fault).
             dropped.append({"endpoint_id": e["id"], "why": f"no {e['provider']} key on this deployment and no own key"})
             continue
-        if tier == "platform" and not sampled_provider_allowed(
+        if tier == "platform" and (sample_why := sampled_provider_refusal(
                 e["provider"], sample_percentages, org_id=caller.org_id,
-                capability=ep["capability"], identity=flags_off(contract, identity)):
-            dropped.append({"endpoint_id": e["id"], "why": "not selected for this routed request"})
+                capability=ep["capability"], identity=flags_off(contract, identity))):
+            dropped.append({"endpoint_id": e["id"], "why": sample_why})
             continue
         if c.exhausted:
             dropped.append({"endpoint_id": e["id"], "why": "treg's account for this provider is exhausted right now"})

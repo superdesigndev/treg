@@ -238,7 +238,8 @@ def _quote_skip(ep: dict, cat) -> str | None:
         return "not platform-eligible and no own key"
     if not get_settings().platform_key_for(ep["provider"]):
         return f"no {ep['provider']} key on this deployment and no own key"
-    return None
+    from ..domain.catalog.routing.plan import sampled_provider_quote_skip
+    return sampled_provider_quote_skip(ep["provider"], get_settings().route_provider_sample_percentages)
 
 
 def _route_max_cost(contract) -> float:
