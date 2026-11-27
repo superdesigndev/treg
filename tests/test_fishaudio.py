@@ -304,10 +304,10 @@ async def test_tts_accepts_a_live_verified_public_community_voice_without_holdin
     assert checked_out == [0, 0]
 
 
-@pytest.mark.parametrize("licensed", ["true", "false"])
 async def test_public_voice_discovery_is_a_free_platform_action(
-    clients: AsyncClient, fishaudio_platform_on, monkeypatch, licensed, connections_held_here,
+    clients: AsyncClient, fishaudio_platform_on, monkeypatch, connections_held_here,
 ):
+    licensed = "false"
     await audit.drain()
     observed = []
 

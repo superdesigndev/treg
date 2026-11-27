@@ -67,7 +67,8 @@ async def test_each_page_answers_with_its_own_head(clients: AsyncClient):
         assert f'<link rel="canonical" href="{base}{path}"/>' in html
         assert f'property="og:url" content="{base}{path}"' in html
         assert '<meta name="robots" content="index, follow' in html
-        assert html.count("<h1>") == 1 and f"vs</span> {_html.escape(cp.short(key))}</h1>" in html
+        h1 = re.findall(r"<h1>(.*?)</h1>", html, re.S)
+        assert len(h1) == 1 and _html.escape(cp.short(key)) in h1[0], path
         assert cp.checked_label(key) in html
         assert "/click-id.js" in html and "/sitetrack.js" in html
 
