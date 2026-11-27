@@ -186,7 +186,7 @@ def check(spec: Mapping | None, value: object, *, text: bool = False) -> tuple[s
         return "enum", _enum_reason(spec)
     if kind == "array" and isinstance(spec.get("items"), Mapping):
         for index, item in enumerate(read if isinstance(read, list) else ()):
-            if sent(item) and (inner := check({**spec["items"], "required": False}, item, text=repeated)):
+            if item is not None and (inner := check({**spec["items"], "required": True}, item, text=repeated)):
                 return f"items:{inner[0]}", f"item {index} {inner[1]}"
     reason = _range_reason(kind, spec, read)
     return ({"string": "length", "array": "array_length"}.get(kind, "range"), reason) if reason else None

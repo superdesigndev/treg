@@ -79,7 +79,8 @@ range, and each item of an array, answering the rule broken and why (`params.ref
 alone). It does not read an object's `properties`: a row's body is checked
 field by field at the top level (a field declared by a dotted name, `pagination.limit`, reads the
 nested value), so a field nested inside a declared object is declared but not checked. A null or
-empty value is not sent and meets an optional spec. A query, path or form value is a string read by
+empty value is not sent and meets an optional spec; an array's item is only omitted when null.
+A query, path or form value is a string read by
 the declared type (ASCII digits for an integer, a decimal for a number, `true`/`false`, JSON for an
 object or array; a repeated parameter is an array); a JSON body value keeps its JSON type, except
 that an integer may be ASCII digits, as the count rule reads it. A query array that is not JSON (a
