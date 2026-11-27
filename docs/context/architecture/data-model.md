@@ -205,7 +205,8 @@ Rollups and analytics tables are optional read models: they never determine a mo
   team never makes its creator attributable again. Not unique, so a racing second team leaves a second
   row rather than failing the signup.
 - **`DenyRule`**: an empty field means any, so a rule with only `method="DELETE"` blocks every
-  delete. `delete_project` sweeps rules naming the project.
+  delete, a request that asks its upstream to run it as DELETE included ([proxy-model](proxy-model.md),
+  "Authorization and deny rules"). `delete_project` sweeps rules naming the project.
 - **`Tool.bindings`** is a list and a request applies all of them (google-ads is an OAuth bearer
   plus a `developer-token` header); injection is in [auth-secrets](auth-secrets.md).
 - **Enterprise SSO**: team deletion removes the team-scoped rows before the `Org`, and an active
