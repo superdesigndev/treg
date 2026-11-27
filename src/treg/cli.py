@@ -1065,7 +1065,15 @@ def _maybe_offer_onboarding(cfg: dict) -> None:
         return
     if me.get("onboarded"):
         return
-    ans = input(f"\n{_A}✨ New here?{_R} Want a quick setup? [{_A}Y{_R}/n] ").strip().lower()
+    try:
+        ans = input(f"\n{_A}✨ New here?{_R} Want a quick setup? [{_A}Y{_R}/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        # Agent shells often allocate a PTY, so isatty() is true; with no one to
+        # answer, input() raises. Login already saved the token — return so the
+        # command exits 0. Do not POST /onboard/skip: a later human TTY login
+        # should still be offered onboarding.
+        print()
+        return
     if ans in ("n", "no"):
         with _client(cfg) as c:
             c.post("/onboard/skip")  # remember the decline so we don't ask again
