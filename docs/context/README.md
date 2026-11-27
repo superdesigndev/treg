@@ -55,6 +55,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | App.vue, TeamShowcase.vue, TeamAvatar.vue, UserAvatarDialog.vue, … |
 | [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import - scan a .env, a skills dir or the machine's CLIs and register them as tools](interface/env-import.md) | shipped | providers.py, skills.py |
+| [/follower-analysis - who follows an X account, and the board everyone sees](interface/follower-analysis.md) | shipped | follower-analysis.html, examples.json, follower_board.py, web.py, … |
 | [Onboarding - first run in the dashboard and `treg onboard`](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, first_run.py, … |
 | [Search surfaces - robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, compare_pages.py, … |
 | [Shell mode (treg shell) - transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |

@@ -955,6 +955,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_analysis_skill_md",
+    "path": "/skills/follower-analysis/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "doomscroll_skill_md",
     "path": "/skills/doomscroll/SKILL.md"
   },
@@ -1324,6 +1333,41 @@
       "GET",
       "HEAD"
     ],
+    "name": "follower_analysis_page",
+    "path": "/follower-analysis"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "follower_board_json",
+    "path": "/follower-analysis/board.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "follower_board_entry",
+    "path": "/follower-analysis/board/{handle}.json"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "follower_board_save",
+    "path": "/follower-analysis/board"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_page",
     "path": "/jev"
   },
@@ -1573,6 +1617,15 @@
     ],
     "name": "well_known_doomscroll_md",
     "path": "/.well-known/skills/doomscroll/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_follower_analysis_md",
+    "path": "/.well-known/skills/follower-analysis/SKILL.md"
   },
   {
     "kind": "APIRoute",
