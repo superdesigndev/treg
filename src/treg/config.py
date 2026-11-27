@@ -659,6 +659,7 @@ class Settings(BaseSettings):
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
     platform_key_mapsdata: str = ""   # Bearer key (mdk_live_…); scrapes settle from the finished job's email_count
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
+    platform_key_agentline: str = ""  # Bearer al_live_ key; prepaid USD wallet, free GET /v1/billing/balance
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
     # Fish API-credit lookups need the workspace selector to read the shared workspace wallet.
     # This is account metadata, not a credential and not another platform-provider slot.

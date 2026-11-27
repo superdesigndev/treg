@@ -451,6 +451,7 @@ _UNRECORDED_SIGNATURE = {
     # Bare 402 is already the generic balance signal; the real empty-Credits body was not forced.
     "financialdatasets",
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
+    "agentline",  # prepaid wallet not emptied; its 402 insufficient_balance body was not forced (the bare 402 rule covers it)
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "fundable",  # unlimited API account; an exhausted-credit response was not forced
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
