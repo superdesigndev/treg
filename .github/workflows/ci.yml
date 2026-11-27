@@ -34,6 +34,9 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
+          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
+          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
+          enable-cache: true
       - uses: actions/setup-node@v4
         if: steps.docs.outputs.only != 'true'
         with:
@@ -142,6 +145,9 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
+          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
+          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
+          enable-cache: true
       - uses: actions/setup-node@v4
         if: steps.docs.outputs.only != 'true'
         with:
@@ -155,18 +161,25 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
       - name: Install disposable Redis test dependency
-        # A few tests start their own redis-server on a unix socket to stall it on purpose.
+        # A few tests start their own redis-server on a unix socket to stall it on purpose. The
+        # binary comes from the redis service container, not apt (whose index refresh alone takes
+        # longer than those tests); --version fails the step rather than letting them skip.
         if: steps.docs.outputs.only != 'true'
+        env:
+          REDIS_CONTAINER: ${{ job.services.redis.id }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-server
+          sudo docker cp "$REDIS_CONTAINER:/usr/local/bin/redis-server" /usr/local/bin/redis-server
+          redis-server --version
       - name: Run tests
         # Each xdist worker gets its own database (treg_test_gw0, ...; see tests/conftest.py), so
         # reset_db() in one worker never empties another's tables. TREG_TEST_SHARD picks this
-        # machine's half (tests/conftest.py). -v + faulthandler locate a stall: the fault handler
-        # dumps every thread's stack after 300s of one test.
+        # machine's half (tests/conftest.py). worksteal lets an idle worker take tests queued on a
+        # busy one, so a few slow tests at the end do not hold the shard. -v + faulthandler locate
+        # a stall: the fault handler dumps every thread's stack after 300s of one test.
         if: steps.docs.outputs.only != 'true'
-        run: uv run --frozen --with pytest-xdist python -m pytest -n auto -v -o faulthandler_timeout=300
+        run: >-
+          uv run --frozen --with pytest-xdist python -m pytest -n auto --dist worksteal -v
+          -o faulthandler_timeout=300
       - name: Dump Postgres activity on failure
         # Shows the database's view of a hang: every session, its state (idle in transaction = a
         # leaked or blocked one), what it waits on, and ungranted locks with their holders' queries.
@@ -230,6 +243,9 @@ jobs:
         if: runner.os == 'Linux'
         with:
           python-version: "3.13"
+          # "auto" turns the cache off on a self-hosted runner (CI_LINUX_RUNNER); without it every
+          # run rebuilds the packages that ship no wheel (quickjs: ~16 s).
+          enable-cache: true
       - uses: actions/setup-node@v4
         if: runner.os == 'Linux'
         with:
