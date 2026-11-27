@@ -529,8 +529,9 @@ table prices an absent field; duplicate JSON keys are rejected so validation and
 cannot disagree), the path values a row prices (a `pathParams` pin lists the models treg's key may
 run), outright refusal of options whose charge or result arrives later at a
 caller's webhook, outside settlement's reads, and refusal of a credential the caller could send
-in a second place the provider reads (a `headers.*` null pin). Own keys are unaffected: the
-provider, not treg, bears that account's exposure.
+in a second place the provider reads (Apify's run rows take only their run options and its run
+polls only their declared query options; elsewhere a `headers.*` null pin). Own keys are
+unaffected: the provider, not treg, bears that account's exposure.
 
 Tier 4 spends treg's own vendor account, which can be empty. After `_platform_offer` says yes,
 `_resolve_marketplace_call` consults the in-process capacity view (`domain.capacity.view`, loaded

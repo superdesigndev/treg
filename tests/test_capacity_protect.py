@@ -633,31 +633,14 @@ async def test_the_same_answer_on_a_teams_own_key_is_relayed_as_sent(
         get_settings.cache_clear()
 
 
-async def test_a_callers_own_apify_token_never_reaches_apify_on_tregs_key(clients: AsyncClient, monkeypatch):
-    """Apify also reads a `token` query parameter. Refusing one on treg's key, before any hold, is
-    what lets a 401 there mean treg's token: a caller's own wrong token gets the same answer."""
-    _on_tregs_key(monkeypatch, "apify")
-    try:
-        relay = _counting(_fake_relay(401, APIFY_DEAD_TOKEN))
-        monkeypatch.setattr(call_service, "relay", relay)
-        before = await _balance(clients)
-        cat = catalog_store.load()
-        rows = [ep["id"] for ep in cat.endpoints if ep["provider"] == "apify" and cat.platform_eligible(ep)]
-        for endpoint in rows:  # every row on treg's key, the free run polls and a new row included
-            r = await _test_request(clients, endpoint, token="CALLER-TOKEN")
-            assert r.status_code == 400 and r.json()["detail"]["error"] == "catalog_parameter_invalid", \
-                (endpoint, r.text)
-        assert rows and relay.calls == 0 and await _balance(clients) == before and await _lock("apify") is None
-    finally:
-        get_settings.cache_clear()
-
-
 # A credential a provider reads beside the one treg injects: (provider, headers, query, the refused
-# parameter).
+# parameter). Apify's query parser takes a `token` in more than one spelling.
 _CALLER_CREDENTIAL = [
     pytest.param("scrubby", {"Authorization": "Api-Key CALLER-KEY"}, {}, "headers.authorization",
                  id="scrubby-authorization"),
     pytest.param("openrouter", {"x-api-key": "CALLER-KEY"}, {}, "headers.x-api-key", id="openrouter-x-api-key"),
+    *(pytest.param("apify", {}, {name: "CALLER-TOKEN"}, "queryParams", id=f"apify-{name}")
+      for name in ("token", "token[]", "token[0]", "Token", "TOKEN")),
 ]
 
 
