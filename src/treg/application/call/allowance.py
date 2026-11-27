@@ -799,34 +799,57 @@ async def onto_balance(org_id: int, amount_micro: int) -> bool:
     Waits for the lease no longer than a call waits for a refill. False is a refusal, not a
     confirmed shortfall: the balance and the counter are read apart, and the lease, the store
     or the give-back may fail. Opens its own sessions: call it with none held."""
+    return (await onto_balance_or_short(org_id, amount_micro)).moved
+
+
+class Onto(NamedTuple):
+    """`onto_balance`'s answer, and whether the refusal is a confirmed shortfall (`short`): the
+    database alone said the money is not there, wherever it sits, and no counter was asked."""
+
+    moved: bool
+    short: bool = False
+
+
+async def still_short(org_id: int, amount_micro: int) -> bool:
+    """Whether the team's money, wherever it sits (`allowance.credit_bound`), is below
+    `amount_micro` now: one statement on its own session. False when it cannot be read."""
+    try:
+        async with session_maker() as db:
+            return await allowance.credit_bound(db, org_id) < amount_micro
+    except Exception:
+        log.warning("reading the credit bound of org %s failed", org_id, exc_info=True)
+        return False
+
+
+async def onto_balance_or_short(org_id: int, amount_micro: int) -> Onto:
     async with session_maker() as db:
         free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
-            return True
+            return Onto(True)
         if not enabled_for(org_id) or await allowance.credit_bound(db, org_id) < amount_micro:
-            return False
+            return Onto(False, short=True)
     async with _team_lease(org_id) as lease:
         if lease != "acquired":
-            return False
+            return Onto(False)
         async with session_maker() as db:
             free = await allowance.unheld_free(db, org_id)
         if free >= amount_micro:
-            return True
+            return Onto(True)
         state = await _counter_state(org_id)
         if state is None or not state[1] or state[0] < amount_micro - free:
-            return False
+            return Onto(False)
         try:
             returned = await _give_back(org_id, state[1])
         except money_admission.AdmissionTimeout:
-            return False
+            return Onto(False)
         except Exception:
             # The call is refused as it would have been: never an error of the give-back's own.
             log.error("returning the allowance of org %s for the exact path failed", org_id,
                       exc_info=True)
-            return False
+            return Onto(False)
     if returned:
         log.info("allowance_given_back org_id=%s returned=%s", org_id, returned)
-    return free + returned >= amount_micro
+    return Onto(free + returned >= amount_micro)
 
 
 async def balance_for(org_id: int, shown_micro: int, need_micro: int) -> int:

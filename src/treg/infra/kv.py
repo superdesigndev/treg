@@ -638,6 +638,7 @@ class LocalStore:
 
     async def clear_flag(self, key: str) -> None:
         self._values.pop(key, None)
+        self._texts.pop(key, None)
 
     async def set_text(self, key: str, value: str, ttl_s: int) -> bool:
         now = time.monotonic()

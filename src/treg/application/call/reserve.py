@@ -26,7 +26,7 @@ from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
 from ...infra.db import session_maker
-from ...infra import money_admission
+from ...infra import empty_balance, money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
@@ -565,6 +565,84 @@ def wallet_and_alternative(mk: MarketplaceCall) -> tuple[str, str]:
     return wallet, alt
 
 
+# What a 402 for the balance tells a client to wait before asking again: waiting adds no money,
+# but a loop that retries at once is the load this header is there to slow.
+INSUFFICIENT_BALANCE_RETRY_AFTER_S = 5
+_FAST_LOG_EVERY_S = 60.0
+_fast_refusals: list = [0.0, 0, set()]
+_fast_log = get_logger("treg.empty_balance")
+
+
+def _insufficient_balance(mk: MarketplaceCall, auto_on: bool, prefs: dict | None, *,
+                          required_micro: int, balance_micro: int) -> ReservationFailed:
+    wallet, alt = wallet_and_alternative(mk)
+    # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
+    # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
+    # otherwise the natural reading of "add funds" is that auto top-up is broken.
+    if auto_on:
+        cap = prefs["monthly_cap_micro"]
+        monthly = f" and ${ledger.usd(cap):g}/month" if cap else ""
+        auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
+                     f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
+                     f"{prefs['per_hour']} times per hour{monthly}. Raise the amount or the "
+                     f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
+    else:
+        auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
+    return ReservationFailed("insufficient_balance", status_code=402, detail={
+        "error": "insufficient_balance",
+        "message": (f"{mk.endpoint_id} would cost ~${ledger.usd(required_micro):g} on {wallet} "
+                    f"and this team's balance is ${ledger.usd(balance_micro):g}.\n"
+                    f"  add funds:      {get_settings().public_url}/app#billing\n"
+                    f"{auto_line}\n"
+                    + alt),
+        "balance_micro": balance_micro,
+        "estimated_cost_micro": required_micro,
+        "topup_url": "/app#billing",
+        "autotopup_enabled": auto_on,
+        "provider": mk.provider,
+        "endpoint_id": mk.endpoint_id,
+    }, retry_after_s=max(INSUFFICIENT_BALANCE_RETRY_AFTER_S, empty_balance.ttl_s()))
+
+
+async def _empty_mark(mk: MarketplaceCall, caller: Caller, meta: CallMeta,
+                      charged: int) -> empty_balance.Read:
+    """The team's balance-empty mark when it answers this call, else none and the call reserves
+    as it always did. It answers only a call the balance refusal is the first answer for: no
+    tag (a tag's own limits come first and must not show the team's figures), no member spend
+    limit, no daily spend limit on the team, no trial pool, no purchased-credit-only endpoint,
+    not a keyless wallet's request; and only for the amount the mark stands for or more."""
+    if (charged <= 0 or empty_balance.ttl_s() <= 0 or meta.tags or keyless_payer.get()
+            or budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None
+            or budget_policy._effective_daily_cap(caller.org) > 0
+            or mk.provider in catalog_store.load().trial_pools
+            or _purchased_only(mk.endpoint_id)):
+        return empty_balance.Read(None)
+    found = await empty_balance.read(caller.org_id)
+    if found.mark is not None and charged < found.mark.required_micro:
+        return empty_balance.Read(None)
+    return found
+
+
+def _note_fast_refusal(org_id: int) -> None:
+    """One `empty_balance_fast_refusals` line a minute in this process: the calls the mark
+    answered and how many teams sent them. Diagnostics never fail a call."""
+    try:
+        now = time.monotonic()
+        since, calls, orgs = _fast_refusals
+        if calls and now - since >= _FAST_LOG_EVERY_S:
+            _fast_log.info("empty_balance_fast_refusals %s", json.dumps(
+                {"calls": calls, "orgs": len(orgs), "window_s": round(now - since, 1)},
+                separators=(",", ":")))
+            calls, orgs = 0, set()
+        if not calls:
+            since = now
+        if len(orgs) < _SKIP_TEAMS_MAX:
+            orgs.add(org_id)
+        _fast_refusals[:] = [since, calls + 1, orgs]
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
                             call_ref: str | None = None, *, allow_holdless: bool = False,
                             allow_allowance: bool = False, mark_in_flight: bool = False,
@@ -618,6 +696,15 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
     mk.allowance_epoch, mk.allowance_marked = None, False
+    # Before the allowance, the money queue and the database: a team just refused for at least
+    # this much, with nothing credited since, is refused the same way from the mark alone.
+    marked = (await _empty_mark(mk, caller, meta, charged) if retry_short
+              else empty_balance.Read(None))
+    if marked.mark is not None:
+        empty_balance.suspect(caller.org_id)
+        _note_fast_refusal(caller.org_id)
+        raise _insufficient_balance(mk, auto_on, prefs, required_micro=charged,
+                                    balance_micro=marked.mark.balance_micro)
     listed = (retry_short and not keyless_payer.get()
               and allowance_runtime.listed(caller.org_id))
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
@@ -738,41 +825,24 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             billing.maybe_schedule_autotopup(refused_org)
         # The team's counter may hold what the balance is short of, or another request may just
         # have given it back: `onto_balance` puts it on the balance, or says it is not there.
-        moved = retry_short and await allowance_runtime.onto_balance(
-            caller.org_id, exc.required_micro)
-        if moved:
+        onto = (await allowance_runtime.onto_balance_or_short(caller.org_id, exc.required_micro)
+                if retry_short else allowance_runtime.Onto(False))
+        if onto.moved:
             noted = True
             return await _platform_reserve(
                 mk, caller, meta, call_ref, allow_holdless=allow_holdless,
                 mark_in_flight=mark_in_flight, retry_short=False,
                 skip_reason=note, skip_as_direct=as_direct)
-        wallet, alt = wallet_and_alternative(mk)
-        # A team that keeps hitting this by hand is the one that should hear about auto top-up; a team
-        # that already has it on needs to know it is the cooldown/cap holding, not a missing card —
-        # otherwise the natural reading of "add funds" is that auto top-up is broken.
-        if auto_on:
-            cap = prefs["monthly_cap_micro"]
-            monthly = f" and ${ledger.usd(cap):g}/month" if cap else ""
-            auto_line = (f"  auto top-up:    on — adds ${ledger.usd(prefs['amount_micro']):g} when the balance "
-                         f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
-                         f"{prefs['per_hour']} times per hour{monthly}. Raise the amount or the "
-                         f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
-        else:
-            auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
-        raise ReservationFailed("insufficient_balance", status_code=402, detail={
-            "error": "insufficient_balance",
-            "message": (f"{mk.endpoint_id} would cost ~${ledger.usd(exc.required_micro):g} on {wallet} "
-                        f"and this team's balance is ${ledger.usd(exc.balance_micro):g}.\n"
-                        f"  add funds:      {get_settings().public_url}/app#billing\n"
-                        f"{auto_line}\n"
-                        + alt),
-            "balance_micro": exc.balance_micro,
-            "estimated_cost_micro": exc.required_micro,
-            "topup_url": "/app#billing",
-            "autotopup_enabled": auto_on,
-            "provider": mk.provider,
-            "endpoint_id": mk.endpoint_id,
-        }) from exc
+        empty_balance.suspect(caller.org_id)
+        # A store that did not answer this call's read is not asked to write: one wait, not two.
+        if onto.short and marked.answered and empty_balance.ttl_s() > 0:
+            await empty_balance.remember(caller.org_id, exc.required_micro, exc.balance_micro)
+            # A credit that committed between the confirmation and the write cleared nothing:
+            # read the team's money once more, and take the mark back if it now reaches.
+            if not await allowance_runtime.still_short(caller.org_id, exc.required_micro):
+                await empty_balance.clear([caller.org_id])
+        raise _insufficient_balance(mk, auto_on, prefs, required_micro=exc.required_micro,
+                                    balance_micro=exc.balance_micro) from exc
     except DBAPIError as exc:
         # The money session's statement_timeout cancelled a statement (57014): the transaction
         # rolled back before its commit, so nothing is held and the provider was not reached.

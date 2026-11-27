@@ -178,7 +178,7 @@ treg topup            # add funds, or set up automatic top-ups
 ```
 
 Out of balance is an HTTP **402** `error: insufficient_balance` carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
-so an agent can act on it without reading prose.
+so an agent can act on it without reading prose. Its `Retry-After` header says how long to wait before asking again.
 
 **No account at all?** When the operator switches agent payments on, an agent with a stablecoin
 wallet can pay for catalog calls one at a time over HTTP, with MPP (Tempo) or x402 (Base): a

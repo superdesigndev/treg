@@ -32,6 +32,7 @@ from treg.domain import money as ledger
 from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
+from treg.infra import empty_balance
 from treg.infra import kv, money_session
 from treg.infra.db import reset_db, session_maker
 from treg.routers import billing as billing_routes
@@ -60,6 +61,17 @@ class FakeStore:
         self.renewed: list[str] = []
         self.cleared_batches: list[list[str]] = []
         self.mark_answer = True
+        self.texts: dict[str, str] = {}
+
+    async def get_text(self, key):
+        return self.texts.get(key)
+
+    async def set_text(self, key, value, ttl_s):
+        self.texts[key] = value
+        return True
+
+    async def clear_flag(self, key):
+        self.texts.pop(key, None)
 
     async def mark_call_in_flight(self, call_ref, ttl_ms):
         if self.mark_answer:
@@ -3617,6 +3629,93 @@ async def test_a_reading_or_a_give_back_leaves_a_claimed_fold_its_turn(org_id, s
     assert await runtime.onto_balance(org_id, 50_000) is False
     assert await runtime.reach(org_id, 50_000) == runtime.Reach(GRANT, False)
     assert await _given_back(org_id) == []
+
+
+async def test_a_refusal_is_a_confirmed_shortfall_only_when_the_money_is_nowhere(
+        org_id, store, monkeypatch):
+    """`onto_balance_or_short` says `short` when the database alone shows the team's money,
+    wherever it sits, below the amount. Money in the counter behind a busy lease is a refusal
+    and no shortfall: the next call may be paid from that counter."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    assert await runtime.onto_balance_or_short(org_id, GRANT + 1) == runtime.Onto(False, short=True)
+    assert await runtime.take(org_id, 1_000)
+    assert await runtime.onto_balance_or_short(org_id, GRANT + 1) == runtime.Onto(False, short=True)
+    store.leases[runtime.fold_claim_key(org_id)] = "the fold"
+    assert await runtime.onto_balance_or_short(org_id, 50_000) == runtime.Onto(False)
+
+
+@pytest.fixture
+def empty_mark(monkeypatch):
+    """The balance-empty mark on, with money admission on for every team."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_empty_mark_ttl_s", 5)
+    monkeypatch.setattr(settings, "money_admission_enabled", True)
+    monkeypatch.setattr(settings, "money_admission_org_ids", [])
+    monkeypatch.setattr(empty_balance, "_suspects", {})
+
+
+async def test_a_team_on_the_allowance_with_no_money_is_refused_from_the_mark_alone(
+        org_id, store, empty_mark, monkeypatch):
+    """The first refusal goes the whole road (the take, the refill that finds no room, the
+    refused reserve, the question whether the counter holds the difference) and leaves the
+    mark. The next one asks the store for the mark and nothing else: no take, no lease, no
+    session. A credit then opens the team's calls on the allowance again."""
+    caller = await _caller(org_id)
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "test.allowance", GRANT, call_id="all-of-it")
+    with pytest.raises(ReservationFailed) as slow:
+        await call_reserve._platform_reserve(_call(org_id), caller, call_ref="slow",
+                                             allow_allowance=True)
+    assert store.texts == {empty_balance._key(org_id): "600:0"}
+
+    noted, checkouts = _Asked(store), []
+    monkeypatch.setattr(kv, "store", lambda: noted)
+    engine = session_maker.kw["bind"].sync_engine
+
+    def checkout(*_args):
+        checkouts.append(1)
+
+    event.listen(engine, "checkout", checkout)
+    try:
+        with pytest.raises(ReservationFailed) as fast:
+            await call_reserve._platform_reserve(_call(org_id), caller, call_ref="fast",
+                                                 allow_allowance=True)
+    finally:
+        event.remove(engine, "checkout", checkout)
+    assert noted.names == ["get_text"] and checkouts == []
+    assert fast.value.detail == slow.value.detail
+    assert fast.value.retry_after_s == slow.value.retry_after_s == 5
+
+    monkeypatch.setattr(kv, "store", lambda: store)
+    monkeypatch.setattr(runtime, "_refused_until", {})
+    async with session_maker() as db:
+        await ledger.release(db, "all-of-it")
+    await asyncio.gather(*empty_balance._clears)
+    assert store.texts == {}
+    paid = _call(org_id)
+    await call_reserve._platform_reserve(paid, caller, call_ref="paid", allow_allowance=True)
+    assert paid.allowance_epoch
+
+
+async def test_money_in_the_counter_behind_a_busy_lease_leaves_no_mark(
+        org_id, store, empty_mark, monkeypatch):
+    """All of the team's money sits in its allowance hold and the lease is busy, so a call the
+    allowance cannot take right now is refused. That refusal proves no shortfall: no mark, and
+    the next call is paid from the counter."""
+    monkeypatch.setattr(get_settings(), "money_allowance_chunk_micro", GRANT)
+    monkeypatch.setattr(runtime, "_REFILL_WAIT_S", 0.01)
+    caller = await _caller(org_id)
+    assert await runtime.take(org_id, 1_000)
+    store.leases[runtime.fold_claim_key(org_id)] = "the fold"
+    with pytest.raises(ReservationFailed) as refusal:
+        await call_reserve._platform_reserve(_call(org_id), caller, call_ref="exact")
+    assert refusal.value.kind == "insufficient_balance"
+    assert store.texts == {}
+    del store.leases[runtime.fold_claim_key(org_id)]
+    paid = _call(org_id)
+    await call_reserve._platform_reserve(paid, caller, call_ref="paid", allow_allowance=True)
+    assert paid.allowance_epoch
 
 
 async def test_a_starved_team_waits_for_this_processs_money_session_within_its_turn(

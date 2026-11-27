@@ -309,6 +309,10 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Seconds a team refused for its balance is refused again from a mark in the key-value
+    # store, before any money queue or database work (money.md "The balance-empty mark"); 0 = off.
+    money_empty_mark_ttl_s: int = Field(default=0, ge=0, le=10)
+
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
     # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed
     # team's calls that keep their own hold are counted by reason (`treg.allowance_skips`); the

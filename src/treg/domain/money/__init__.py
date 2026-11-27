@@ -54,6 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
+from ...infra import empty_balance
 from ...infra.money_trace import mark_money, money_stage
 from ...models import (
     AsyncTaskRecord,
@@ -182,6 +183,8 @@ async def _add_balance(db: AsyncSession, org_id: int, delta_micro: int, *,
     if spent_delta_micro:
         values.update(_spent_today_values(spent_delta_micro))
     mark_money(db, org_id=org_id)
+    if delta_micro > 0:
+        empty_balance.credited(db, org_id)
     with money_stage(db, "update_balance"):
         await db.execute(update(Org).where(Org.id == org_id).values(**values))
 
