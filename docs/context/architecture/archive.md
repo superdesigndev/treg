@@ -214,11 +214,15 @@ land a recording; erasure removes the rest.
 **Erasure is a separate act, never a side effect of the switch.** Team deletion and
 `treg-worker admin erase-archive --org <id>` run `application/archive_erasure.erase_org`. Both
 refuse a team still in the archive: with the gate shut nothing new is recorded while rows go, so
-there is no sweep, pending state or recorder coordination. What is "the team's" is decided in
+there is no sweep, pending state or call-recorder coordination. What is "the team's" is decided in
 governance (`teams.private_archive_key_ids`, `teams.erase_archive_rows`): every key under the
 team's `org:`/`conn:` scopes with its snapshots and request shape, plus every `ArchiveKeyOrg`
-mark. Platform-key answers are public questions and stay by default. Once the marks go, the
-archive no longer names the team; `callrecord` still keeps the team's `params_hash` per call.
+mark. Erasure also deletes the team's `CallComparison` rows (`domain/feedback/comparisons.py`,
+`delete_for_org`, in the final cleanup transaction) and best-effort clears `compare-ready:<org_id>`
+after commit; `compare._claim` takes a short `FOR SHARE` lock on `Org` against `archive_opt_out_at`
+so no new comparison is claimed after opt-out. Platform-key answers are public questions and stay
+by default. Once the marks go, the archive no longer names the team; `callrecord` still keeps the
+team's `params_hash` per call.
 
 On request (`erase-archive --include-sole-public`), erasure also takes the public keys only this
 team paid for (`teams.sole_public_archive_key_ids`: marked by it and by no other team). A question
@@ -255,8 +259,9 @@ instead, and what earlier passes committed stays erased. That is why `body_of` i
 key (alembic 0094): with no index on it, Postgres checked each deleted snapshot with a scan of
 the whole table, and no batch fit the cap. `erase-archive --dry-run`
 (`archive_erasure.count_org`, with the same `--include-sole-public` switch) reads the same
-passes and deletes nothing. It reports keys, snapshots, marks and distinct bodies; the bodies
-count is an upper bound, because a shared body stays.
+archive passes and deletes nothing. It reports keys, snapshots, marks and distinct bodies (the
+bodies count is an upper bound, because a shared body stays); `CallComparison` rows are not
+included in the dry-run summary.
 
 Endpoint running totals subtract what each DELETE returned, so two erasers subtract once, and
 move in endpoint order, the order `archive.flush_stats` visits the same rows in (it holds at most
