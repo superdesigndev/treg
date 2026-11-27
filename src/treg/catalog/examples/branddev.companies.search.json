@@ -1,0 +1,133 @@
+{
+  "results": [
+    {
+      "name": "Stripe",
+      "domain": "stripe.com",
+      "socials": {
+        "linkedin": "https://www.linkedin.com/company/stripe",
+        "x": "https://x.com/stripe",
+        "instagram": null,
+        "facebook": "https://www.facebook.com/stripehq",
+        "youtube": null,
+        "github": "https://github.com/stripe",
+        "crunchbase": "https://www.crunchbase.com/organization/stripe",
+        "wellfound": "https://wellfound.com/company/stripe"
+      },
+      "description": "Stripe is a financial infrastructure platform that helps businesses of all sizes grow revenue and manage commerce. It provides tools to accept and optimize online and in-person payments worldwide, manage billing and subscriptions, reduce fraud, issue cards, move money, and embed payments in other platforms. Stripe also supports custom revenue models and offers financial tools for businesses from startups to global enterprises. Its platform processes payments across currencies and payment methods… [591 chars total]",
+      "organization_type": "privately_held",
+      "operating_status": "active",
+      "stock_symbols": [],
+      "revenue": {
+        "min_usd": 6800000000,
+        "max_usd": 6800000000
+      },
+      "industries": [
+        "Computer Software",
+        "Financial Services"
+      ],
+      "founded_year": 2010,
+      "headquarters": {
+        "country_code": "US",
+        "region": "California",
+        "city": "South San Francisco",
+        "street_address": "354 Oyster Point Blvd",
+        "postal_code": "94080"
+      },
+      "employees": {
+        "count": null,
+        "min": 5001,
+        "max": 10000
+      },
+      "funding": {
+        "total_usd": 135113643361,
+        "round_count": 13,
+        "latest_round": {
+          "type": "secondary_market",
+          "date": "2024-02-20",
+          "amount_usd": 694159778
+        },
+        "stage": "series_unknown",
+        "rounds": [
+          {
+            "type": "secondary_market",
+            "date": "2024-02-20",
+            "amount_usd": 694159778,
+            "phase": "initial"
+          },
+          {
+            "type": "angel",
+            "date": "2023-06-09",
+            "amount_usd": null,
+            "phase": "initial"
+          },
+          "… 8 more item(s) truncated"
+        ]
+      }
+    },
+    {
+      "name": "Stripe & Stare",
+      "domain": "stripeandstare.com",
+      "socials": {
+        "linkedin": "https://www.linkedin.com/company/stripe-stare",
+        "x": "https://x.com/starestripe",
+        "instagram": "https://www.instagram.com/stripeandstare/",
+        "facebook": "https://www.facebook.com/stripeandstare",
+        "youtube": null,
+        "github": null,
+        "crunchbase": "https://www.crunchbase.com/organization/stripe-stare",
+        "wellfound": null
+      },
+      "description": "Stripe & Stare is an online fashion retailer specializing in intimate apparel and sleepwear for women and men. The site offers a broad selection of knickers, bras, coordinated sets, sleep & lounge collections, as well as seasonal and sale items. With a global shipping model, customers can choose from dozens of countries and enjoy free UK delivery on orders over £50. The brand highlights its strong customer satisfaction, boasting over 65,000 five‑star reviews. Stripe & Stare focuses on stylish, c… [600 chars total]",
+      "organization_type": "privately_held",
+      "operating_status": "active",
+      "stock_symbols": [],
+      "revenue": {
+        "min_usd": 9912457,
+        "max_usd": 9912457
+      },
+      "industries": [
+        "Apparel & Fashion",
+        "Consumer Goods",
+        "… 1 more item(s) truncated"
+      ],
+      "founded_year": 2017,
+      "headquarters": {
+        "country_code": "GB",
+        "region": "England",
+        "city": "Dousland",
+        "street_address": null,
+        "postal_code": "PL206PD"
+      },
+      "employees": {
+        "count": 35,
+        "min": 35,
+        "max": 35
+      },
+      "funding": {
+        "total_usd": 3389122,
+        "round_count": 1,
+        "latest_round": {
+          "type": "seed",
+          "date": "2022-01-21",
+          "amount_usd": 3389122
+        },
+        "stage": "seed",
+        "rounds": [
+          {
+            "type": "seed",
+            "date": "2022-01-21",
+            "amount_usd": 3389122,
+            "phase": "initial"
+          }
+        ]
+      }
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "next_cursor": "bzoxMA",
+  "key_metadata": {
+    "credits_consumed": 2,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

@@ -1,0 +1,158 @@
+{
+  "status": "ok",
+  "brand": {
+    "domain": "stripe.com",
+    "title": "Stripe",
+    "description": "Stripe is a financial infrastructure platform that helps businesses of all sizes grow revenue and manage commerce. It provides tools to accept and optimize online and in-person payments worldwide, manage billing and subscriptions, reduce fraud, issue cards, move money, and embed payments in other platforms. Stripe also supports custom revenue models and offers financial tools for businesses from startups to global enterprises. Its platform processes payments across currencies and payment methods… [591 chars total]",
+    "slogan": "Building programmable financial services.",
+    "colors": [
+      {
+        "hex": "#533afd",
+        "name": "Meteor Shower",
+        "source": "site"
+      },
+      {
+        "hex": "#ae9cfc",
+        "name": "Shy Moment",
+        "source": "logo"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "logos": [
+      {
+        "url": "https://media.brand.dev/68c00b25-95dd-49dd-847c-f5456cc709ea.svg",
+        "mode": "light",
+        "colors": [
+          {
+            "hex": "#040404",
+            "name": "Armor Wash"
+          }
+        ],
+        "resolution": {
+          "width": 60,
+          "height": 25,
+          "aspect_ratio": 2.4
+        },
+        "type": "logo"
+      },
+      {
+        "url": "https://media.brand.dev/f13698ac-b0c6-4460-96b9-c8263065adfa.svg",
+        "mode": "dark",
+        "colors": [
+          {
+            "hex": "#543cfc",
+            "name": "Meteor Shower"
+          },
+          {
+            "hex": "#a494fc",
+            "name": "Cobalite"
+          }
+        ],
+        "resolution": {
+          "width": 512,
+          "height": 512,
+          "aspect_ratio": 1
+        },
+        "type": "icon"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "backdrops": [
+      {
+        "url": "https://media.brand.dev/6357970f-d3c7-4946-9216-f030586aed78.jpg",
+        "colors": [
+          {
+            "hex": "#f07b3f",
+            "name": "Debrito"
+          },
+          {
+            "hex": "#ad5cd2",
+            "name": "Teldrassil Purple"
+          },
+          "… 1 more item(s) truncated"
+        ],
+        "resolution": {
+          "width": 1000,
+          "height": 333,
+          "aspect_ratio": 3
+        }
+      },
+      {
+        "url": "https://media.brand.dev/008f0f74-f3ad-45f6-8789-0f039eaa4c6d.jpg",
+        "colors": [
+          {
+            "hex": "#f57b2d",
+            "name": "Iceland Poppy"
+          },
+          {
+            "hex": "#f4bc8c",
+            "name": "Brandy Butter"
+          }
+        ],
+        "resolution": {
+          "width": 1000,
+          "height": 169,
+          "aspect_ratio": 5.92
+        }
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "address": {
+      "street": "354 Oyster Point Blvd",
+      "city": "South San Francisco",
+      "country": "United States",
+      "country_code": "US",
+      "state_province": "California",
+      "state_code": "CA",
+      "postal_code": "94080"
+    },
+    "socials": [
+      {
+        "type": "x",
+        "url": "https://x.com/stripe"
+      },
+      {
+        "type": "github",
+        "url": "https://github.com/stripe"
+      },
+      "… 1 more item(s) truncated"
+    ],
+    "employees": {
+      "range": "5001 to 10000"
+    },
+    "email": "contact@example.com",
+    "is_nsfw": false,
+    "industries": {
+      "eic": [
+        {
+          "industry": "Finance",
+          "subindustry": "Payments & Money Movement"
+        },
+        {
+          "industry": "Finance",
+          "subindustry": "Financial Infrastructure & APIs"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    },
+    "links": {
+      "contact": "https://stripe.com/contact/sales",
+      "privacy": "https://stripe.com/privacy",
+      "blog": "https://stripe.com/blog",
+      "pricing": "https://stripe.com/pricing",
+      "careers": "https://stripe.com/careers",
+      "terms": null
+    },
+    "primary_language": "english"
+  },
+  "code": 200,
+  "cache_metadata": {
+    "status": "hit",
+    "age_ms": 83239348
+  },
+  "key_metadata": {
+    "credits_consumed": 10,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

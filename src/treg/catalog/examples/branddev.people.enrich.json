@@ -1,0 +1,97 @@
+{
+  "match": {
+    "status": "candidate",
+    "score": 100,
+    "person": {
+      "name": {
+        "full": "Satya Nadella",
+        "first": "Satya",
+        "last": "Nadella"
+      },
+      "bio": "As chairman and CEO of Microsoft, I define my mission and that of my company as empowering every person and every organization on the planet to achieve more.",
+      "location": {
+        "display": "Redmond",
+        "city": "Redmond",
+        "region": "Washington",
+        "country": "United States",
+        "country_code": "USA"
+      },
+      "social_urls": [
+        "https://www.linkedin.com/in/satyanadella"
+      ],
+      "website_urls": [
+        "https://snscratchpad.com/"
+      ],
+      "current_role": {
+        "title": "Member Board Of Trustees",
+        "organization": {
+          "name": "University of Chicago",
+          "domain": "uchicago.edu"
+        },
+        "start_date": {
+          "year": 2018
+        },
+        "is_current": true
+      },
+      "current_role_status": "present",
+      "experience": [
+        {
+          "title": "Member Board Of Trustees",
+          "organization": {
+            "name": "University of Chicago",
+            "domain": "uchicago.edu"
+          },
+          "start_date": {
+            "year": 2018
+          },
+          "is_current": true
+        },
+        {
+          "title": "Chairman and CEO",
+          "organization": {
+            "name": "Microsoft",
+            "domain": "microsoft.com"
+          },
+          "location": "Greater Seattle Area",
+          "start_date": {
+            "year": 2014,
+            "month": 2
+          },
+          "is_current": true
+        },
+        "… 3 more item(s) truncated"
+      ],
+      "education": [
+        {
+          "institution": {
+            "name": "The University of Chicago Booth School of Business",
+            "domain": "chicagobooth.edu"
+          },
+          "start_date": {
+            "year": 1994
+          },
+          "end_date": {
+            "year": 1996
+          }
+        },
+        {
+          "institution": {
+            "name": "Manipal Institute of Technology"
+          },
+          "degree": "Bachelor’s Degree",
+          "field_of_study": "Electrical Engineering"
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "skills": [],
+      "last_updated": "2026-11-15T08:01:12.336Z",
+      "checked_at": "2026-11-16T19:25:55.801Z",
+      "avatar_url": "https://media.brand.dev/pfp/a6ea8c76-a315-5ab3-b80c-802dfab15ce5.png"
+    }
+  },
+  "key_metadata": {
+    "credits_consumed": 20,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

@@ -1,0 +1,13 @@
+{
+  "json_content": {
+    "description": "IANA (Internet Assigned Numbers Authority) is a central clearinghouse that assigns and coordinates Internet protocol parameters, including IP addresses, protocol numbers, and domain names. It oversees global IP address allocation, DNS root zone management, media types, and other Internet protocol assignments."
+  },
+  "sources": [
+    "https://networking_en.en-academic.com/1525/Internet_Assigned_Numbers_Authority"
+  ],
+  "key_metadata": {
+    "credits_consumed": 10,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}
