@@ -66,6 +66,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "bravesearch": ("cash", "auto_recharge", "manual"),
     "octen": ("cash", "manual", "manual"),
     "linkup": ("cash", "manual", "api"),
+    "specstream": ("cash", "manual", "api"),
     # The balance route needs an Account API OAuth token, not the API key treg holds.
     "parallel": ("cash", "manual", "manual"),
     "you": ("cash", "auto_recharge", "api"),

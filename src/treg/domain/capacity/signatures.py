@@ -58,6 +58,9 @@ _TABLE: list[Signature] = [
     Signature("filtrat-finder", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
     Signature("corpoapi", 402, r"free_tier_exhausted", "balance", tripwire=True),
     Signature("corpoapi", 402, r"spend_cap_reached", "balance", tripwire=True),
+    Signature("specstream", 402, r"insufficient_balance", "balance", tripwire=True),
+    Signature("specstream", 403, r"spend_cap_cents", "quota", tripwire=True),
+    Signature("specstream", 503, r"", "burst"),
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     # MillionPhones documents its out-of-credits answer as a 402 carrying billing_url; no other

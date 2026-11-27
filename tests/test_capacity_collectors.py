@@ -1157,6 +1157,7 @@ async def test_getleadsio_rejects_payload_without_a_meter(payload, monkeypatch):
     ("piapi", {"equivalent_in_usd": 0}, 0, "USD"),
     ("enrow", {"credits": 10007.5, "credits_breakdown": {}}, 10007.5, "credits"),
     ("filtrat", {"balance": 9981.0}, 9981.0, "credits"),
+    ("specstream", {"data": {"available_cents": 1000, "currency": "USD", "payment_hold": False}}, 10.0, "USD"),
 ])
 async def test_documented_balance_collectors(provider, payload, value, unit, monkeypatch):
     row = await _serve_json(monkeypatch, provider, payload)
@@ -1164,7 +1165,7 @@ async def test_documented_balance_collectors(provider, payload, value, unit, mon
 
 
 @pytest.mark.parametrize("provider", ["anyapi", "reapi", "piapi",
-                                        "enrow", "filtrat"])
+                                        "enrow", "filtrat", "specstream"])
 @pytest.mark.parametrize("payload", [{}, {"usd": -1, "balance": -1, "equivalent_in_usd": -1,
                                         "credits": -1}])
 async def test_documented_balance_collectors_reject_missing_or_negative(provider, payload, monkeypatch):
