@@ -415,7 +415,8 @@ every provider.
 
 **Agent payments.** `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a
 catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
-of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED` /
+`TREG_AGENT_PAYMENTS_NANO_ENABLED` (which also needs a node URL and an XNO-per-USD rate), and each enabled rail's
 recipient address; the defaults are testnets. The web app and `treg-worker agentpay reconcile`
 refuse to start with one error naming every missing setting; other workers start without them, so
 the payment secrets belong on those two, and the Stripe key also wherever

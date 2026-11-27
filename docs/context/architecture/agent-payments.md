@@ -6,6 +6,7 @@ sources:
   - src/treg/infra/agent_payments/__init__.py
   - src/treg/infra/agent_payments/tempo.py
   - src/treg/infra/agent_payments/x402.py
+  - src/treg/infra/agent_payments/nano.py
   - src/treg/infra/agent_payments/evm.py
   - src/treg/infra/stripe.py
   - src/treg/worker.py
@@ -22,6 +23,7 @@ sources:
   - src/treg/alembic/versions/0106_agentpayer_per_network.py
   - src/treg/ratestore.py
   - tests/test_agent_payments.py
+  - tests/test_agent_payments_nano.py
   - tests/test_agentpayer_network_migration.py
 related:
   - architecture/money.md
@@ -261,6 +263,8 @@ headers (`X-Treg-Payment` among them) and no receipt.
   and is refused). One transfer pays once,
   whichever mode presents it and under whichever challenge it is wrapped.
 - x402: network, asset, payer and the EIP-3009 nonce. The token contract also refuses a reused nonce.
+- Nano: `nano:nano:mainnet:<block hash>`. One send block pays once, under whichever order it is
+  presented; `AgentPayment.proof_id` keeps the claim across restarts.
 - The proof row is committed before any settlement, so two concurrent uses of one proof settle at
   most once.
 - `MppTempoRail` passes the request to pympp (`http_request=`), which requires the
@@ -358,14 +362,28 @@ rails (an import-linter contract keeps `mpp` there, and the `x402` SDK out of `t
   request's path. Startup refuses a CDP key with any other facilitator URL. The `x402` and
   Coinbase SDKs are not used.
 
-treg holds no private key for either rail: it broadcasts the client's signed transaction or asks
+- `NanoRail` (`nano:mainnet`, scheme `exact`, off unless `agent_payments_nano_enabled`) needs no
+  SDK: standard library only, plus `httpx` for the node. The payer sends XNO itself and presents
+  `X-NANO-PAYMENT` (base64url JSON `{order, block}`), so, as MPP push mode, it is not deferrable and
+  has no zero-amount proof. The challenge (`X-NANO-PAYMENT-REQUIRED`, x402 v2 shaped) names the
+  raw amount (the offer at the operator's `..._nano_xno_per_usd`, rounded up; 10**30 raw per XNO),
+  `payTo`, and an order `nonce.expiry.HMAC(agent_payments_secret, method, resource URL, raw,
+  payTo)`. A block has no memo, so the send must set its representative to
+  `SHA256("xno-binding/v1/rep|" + order + "|" + payTo + "|" + raw)` as an account (xno-binding v1
+  option C): a block made for another request, route or price fails that check. `verify` reads
+  `block_info` from the operator's node: confirmed, a state send to `payTo`, exactly the raw, that
+  representative, and node time no later than the order's expiry (plus a minute). `settle` submits
+  nothing; `find` reads the block again. Addresses are checksum-validated; prices stay micro-USD.
+  The order binds the raw amount, so a rate change refuses the orders issued before it.
+
+treg holds no private key for any rail: it broadcasts the client's signed transaction or asks
 the facilitator. Settlement is synchronous, before the relay, to treg's own recipient address.
 
 ## Settings
 
 `agent_payments_enabled`, `agent_payments_secret` (32+ characters), `agent_payments_realm`,
 `agent_payments_min_payment_micro`, `agent_payments_fee_bps`, `agent_payments_credit_proof_max_s`,
-`agent_payments_mpp_challenge_ttl_s`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
+`agent_payments_mpp_challenge_ttl_s`; the rail switches `..._mpp_enabled`, `..._x402_enabled` and `..._nano_enabled`;
 Tempo: `..._tempo_recipient`,
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
 `..._tempo_rpc_api_key` (needs `..._tempo_rpc_url`),
@@ -374,6 +392,9 @@ default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
 `..._x402_facilitator_url`, `..._x402_max_timeout_s`, `..._x402_rpc_url` (empty: the network's
 public RPC; required on Base mainnet), `..._x402_block_tag` (`latest` | `safe` | `finalized`,
 default `finalized`), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither);
+Nano: `..._nano_pay_to` (a `nano_` address, checksum checked), `..._nano_node_url` (the
+node treg reads blocks from; no default), `..._nano_xno_per_usd` (a positive decimal),
+`..._nano_challenge_ttl_s` (600 by default); Nano needs `wallet` settlement.
 `agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_stripe_secret_key` (empty:
 `stripe_secret_key`), `agent_payments_reconcile_min_age_s`,
 `agent_payments_stuck_after_s`, `agent_payments_max_payments_per_ip_minute`,
