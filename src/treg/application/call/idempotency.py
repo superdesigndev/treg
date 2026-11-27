@@ -786,7 +786,8 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
     nor stale: its owner renews it), younger than `min_age_s`, its archive key is held by someone
     else (`FOR SHARE SKIP LOCKED` skipped it), or the budget ran out before its update. A dead claim
     no prune removes is passed over, not deleted. `on_progress(resume_after)` runs after each
-    committed page, outside its session, so a run that fails later keeps what it did. The walk stops at the first page whose rows were all
+    committed page, outside its session, so a run that fails later keeps what it did, and once at
+    the start when a stale `after` was reset. The walk stops at the first page whose rows were all
     claimed too recently (`stopped="young"`; the claim time is `expires_at` less the window, which
     a lease renewal never moves, unlike `created_at`), or once `max_seconds` have gone by, inside a
     page too (`stopped="budget"`). A row passed over while it had no archive link keeps its own copy
@@ -817,6 +818,8 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
     stale_before = cutoff - timedelta(seconds=IDEMPOTENCY_STALE_PENDING_S)
     if after > upper_id:  # a cursor from before the table was emptied or restored
         after = 0
+        if on_progress is not None:
+            await on_progress(0)
     cursor = resume_after = after
     decided = True
     examined = trimmed = freed = batches = 0
@@ -901,6 +904,7 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
         if on_progress is not None and resume_after != before:
             await on_progress(resume_after)
         if out_of_time:
+            batches += 1  # the page committed what it did before the budget ran out
             stopped = "budget"
             break
         cursor = page[-1].id

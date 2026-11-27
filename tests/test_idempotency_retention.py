@@ -454,7 +454,7 @@ async def test_the_time_budget_stops_inside_a_slow_page_and_resumes_at_the_first
         result = await idempotency.trim_archived_answers(pause_s=0, max_seconds=10, clock=clock)
     finally:
         stop()
-    assert (result.stopped, result.trimmed, result.resume_after) == ("budget", 2, ids[1])
+    assert (result.stopped, result.trimmed, result.resume_after, result.batches) == ("budget", 2, ids[1], 1)
     async with session_maker() as db:
         assert (await db.get(IdempotentCall, ids[2])).response_body is not None   # committed up to the stop
     rest = await idempotency.trim_archived_answers(pause_s=0, after=result.resume_after)
@@ -580,6 +580,22 @@ async def test_a_dry_run_never_moves_the_saved_trim_place(clients, platform_on, 
     assert await _prune_command(monkeypatch, dry_run=True) == 0
     async with session_maker() as db:
         assert await ratestore.kv_get(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY) is None
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_a_place_past_the_table_is_reset_even_when_the_pass_stops_at_once(
+        clients, platform_on, capsys, monkeypatch, dry_run):
+    from treg import ratestore
+    from treg.worker import TRIM_CURSOR_KEY, TRIM_CURSOR_NS
+
+    young = await _seed_answer(clients, "young-after-restore", ttl_s=idempotency.IDEMPOTENCY_WINDOW_S)
+    async with session_maker() as db:
+        await ratestore.kv_put(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY, {"after": young + 100}, ttl_s=3600)
+        await db.commit()
+    assert await _prune_command(monkeypatch, dry_run=dry_run) == 0
+    async with session_maker() as db:
+        saved = await ratestore.kv_get(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY)
+    assert saved == ({"after": young + 100} if dry_run else {"after": 0})
 
 
 @pytest.mark.parametrize("bad", [{"trim_after": -1}, {"trim_max_seconds": 0.0},
