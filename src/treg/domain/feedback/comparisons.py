@@ -169,3 +169,30 @@ def shown_choice(row: CallComparison) -> str | None:
     if row.choice in ("a", "b"):
         return "1" if row.choice == row.first else "2"
     return row.choice
+
+
+async def record_jev(db: AsyncSession, comparison_id: int, *, choice: str, orders: str, version: str,
+                     at: datetime) -> bool:
+    """Jev's blind verdict, written only over none or an older rubric version, and never into the
+    agent's `choice` or `status`; any back-off ends."""
+    result = await db.execute(update(CallComparison).where(
+        CallComparison.id == comparison_id,
+        or_(CallComparison.jev_version.is_(None), CallComparison.jev_version < version),
+    ).values(jev_choice=choice, jev_orders=orders, jev_version=version, jev_judged_at=at,
+             jev_retry_at=None, jev_attempts=None).execution_options(synchronize_session=False))
+    return result.rowcount == 1
+
+
+async def record_jev_retry(db: AsyncSession, comparison_id: int, version: str, seen: int | None,
+                           retry_at: datetime, *, count: bool = True) -> bool:
+    """Jev could not judge the pair now: not asked again before `retry_at`, and with `count` one
+    more failed try. Only while it is still unjudged under `version` and holds the `seen` tries
+    this run read, so two runs failing together count once."""
+    seen_now = (CallComparison.jev_attempts.is_(None) if seen is None
+                else CallComparison.jev_attempts == seen)
+    result = await db.execute(update(CallComparison).where(
+        CallComparison.id == comparison_id,
+        or_(CallComparison.jev_version.is_(None), CallComparison.jev_version < version), seen_now,
+    ).values(jev_attempts=(seen or 0) + 1 if count else seen, jev_retry_at=retry_at)
+        .execution_options(synchronize_session=False))
+    return result.rowcount == 1

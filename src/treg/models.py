@@ -2076,6 +2076,15 @@ class CallComparison(SQLModel, table=True):
     client: str = Field(default="")
     created_at: NaiveUTC = Field(default_factory=_now)
     decided_at: NaiveUTC | None = Field(default=None)
+    # Jev's blind verdict (`application.compare_judge`), apart from the agent's `choice`: a | b |
+    # tie | both_bad, or split when its two orders disagreed. `jev_orders` is its verdict with A
+    # shown first, then with B first; a pair not judged yet backs off with `jev_retry_at`.
+    jev_choice: str | None = Field(default=None)
+    jev_orders: str | None = Field(default=None)
+    jev_version: str | None = Field(default=None)
+    jev_judged_at: NaiveUTC | None = Field(default=None)
+    jev_retry_at: NaiveUTC | None = Field(default=None)
+    jev_attempts: int | None = Field(default=None)
 
 
 class CompareAttemptDay(SQLModel, table=True):

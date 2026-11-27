@@ -799,6 +799,17 @@ class Settings(BaseSettings):
     review_judge_praise: bool = True
     review_judge_praise_days: int = Field(default=28, ge=1, le=90)
     review_judge_praise_per_run: int = Field(default=1000, ge=1, le=10000)
+    # Jev's blind verdicts on stored comparisons (`application.compare_judge`), in the review judge's
+    # run. Off: no comparison is judged (its rollback switch). Only capabilities whose answers can be
+    # judged by reading them; finding or verifying emails and phones, or people, cannot be.
+    compare_judge: bool = True
+    compare_judge_capabilities: list[str] = Field(default_factory=lambda: [
+        "google.serp.organic", "google.serp.maps", "web.search", "web.extract"])
+    compare_judge_per_run: int = Field(default=200, ge=1, le=5000)
+    # Pairs per Jev request (each pair is asked in both orders, so two requests per batch), and each
+    # answer shortened to this many characters (`body_view.shrink`) for the judge.
+    compare_judge_batch: int = Field(default=4, ge=1, le=25)
+    compare_judge_answer_chars: int = Field(default=6000, ge=22, le=20000)
     # Calls before this moment are never read back as their archived answer: older call rows do not
     # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
     # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`

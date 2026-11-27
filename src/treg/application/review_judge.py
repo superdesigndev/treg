@@ -36,6 +36,7 @@ from ..infra import judge
 from ..infra.db import session_maker
 from ..models import CallReview
 from ..timeutil import utcnow_naive
+from . import compare_judge
 from .review_answers import Answer, answer_of, view
 
 log = logging.getLogger("treg.review_judge")
@@ -328,7 +329,8 @@ async def judge_answers(*, deadline: float) -> dict:
 
 async def run(*, max_seconds: float) -> dict:
     """The passes, sharing `max_seconds`: privacy first (it gates what the catalog may quote), then
-    attribution from reasons, then the upgrade with answers, then praise, with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key.
+    attribution from reasons, then the upgrade with answers, then praise, then Jev's blind verdicts on
+    stored comparisons (`compare_judge`), with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key.
 
     No lock: no connection is held across a Jev request (each pass reads its rows in a session it
     closes before asking, and each batch writes in a session of its own), and the writes in `domain.feedback.reviews` keep the first answer. An
@@ -343,6 +345,8 @@ async def run(*, max_seconds: float) -> dict:
         passes.append(("answers", judge_answers))
     if get_settings().review_judge_praise:
         passes.append(("praise", judge_praise))
+    if get_settings().compare_judge:
+        passes.append(("comparisons", compare_judge.judge_pairs))
     for name, judge_pass in passes:
         try:
             out[name] = await judge_pass(deadline=deadline)
