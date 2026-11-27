@@ -498,6 +498,13 @@ adapters:
          last_name: queryParams.last_name, domain: queryParams.company_domain}
     test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
     out: {phone: "phone_numbers[0]"}
+  upcell.people.phone.find:
+    accepts: [[linkedin_url], [email], [first_name, last_name, domain]]
+    in: {linkedin_url: body.linkedinUrl, email: body.email, first_name: body.firstName,
+         last_name: body.lastName, domain: body.companyDomain}
+    const: {body.fields: [mobile]}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/jane-doe-example"}
+    out: {phone: contact.mobilePhone}
   forager.people.phone.find:
     # most_coverage returns every verified number, the highest_quality ones included, for fewer credits.
     accepts: [[linkedin_handle]]

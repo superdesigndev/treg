@@ -1,0 +1,43 @@
+provider: upcell
+source:
+  docs: https://api.upcell.io/docs/dataenrichment/data-enrichment-api
+  openapi: null
+  curated: '2026-11-27'
+# The API answers on app.upcell.io; api.upcell.io serves only the documentation. A lookup is
+# synchronous. No number found is a 200 with {"contact": null}, or a contact whose mobilePhone is
+# "", and is not charged. An unusable combination of inputs is a free 400.
+pricing_url: https://upcell.io/pricing
+
+defaults:
+  provenance: {source: vendor_email, source_url: 'https://upcell.io/pricing', checked: '2026-11-27', confidence: documented}
+  docs_url: https://api.upcell.io/docs/dataenrichment/enrich-contact
+
+endpoints:
+  - id: upcell.people.phone.find
+    added: '2026-11-27'
+    example_response: examples/upcell.people.phone.find.json
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/enrich/contact
+    name: Find a person's mobile number
+    summary: Find a person's mobile number from a LinkedIn profile, an email, or their name and company.
+    input:
+      bodyType: json
+      body:
+        fields: {type: array, items: {type: string, enum: [mobile]}, required: true, example: [mobile]}
+        linkedinUrl: {type: string, required: false, note: "When sent, it alone identifies the person.", example: "https://www.linkedin.com/in/jane-doe-example"}
+        email: {type: string, required: false}
+        personalEmail: {type: string, required: false}
+        firstName: {type: string, required: false}
+        lastName: {type: string, required: false}
+        companyDomain: {type: string, required: false, note: "with firstName and lastName"}
+        companySocialUrl: {type: string, required: false, note: "with firstName and lastName, in place of companyDomain"}
+        title: {type: string, required: false, note: "with firstName, lastName and companyName"}
+        companyName: {type: string, required: false, note: "with firstName, lastName and title"}
+      note: "Send one of: linkedinUrl; email; personalEmail; firstName + lastName + companyDomain (or companySocialUrl); firstName + lastName + title + companyName. Any other combination is a free 400."
+    untestable: "A real answer is a person's private phone number; the example is a fixture with a reserved fake number."
+    price: {value: '0.10', currency: USD, unit: call, note: "Charged only when a mobile number is found; a lookup with no number is free."}
+    miss: {when: {any: [{path: response.contact.mobilePhone, op: absent}, {path: response.contact.mobilePhone, op: empty}]}}
