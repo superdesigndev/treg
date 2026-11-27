@@ -2365,7 +2365,8 @@ class ArchiveKey(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
     # The pre-injection request shape, stored so the refresh worker can re-ask the exact question.
     # Credentials cannot appear here: injection happens inside the relay, after this shape is
-    # fixed. Declared LAST to match the migration's ALTER TABLE append position.
+    # fixed. Declared LAST to match the migration's ALTER TABLE append position. `req_body` is
+    # read only through `archive.stored_request_body`: a large body is a marker, not the bytes.
     req_method: str = Field(default="")
     req_url: str = Field(default="")
     req_body: bytes | None = Field(default=None)

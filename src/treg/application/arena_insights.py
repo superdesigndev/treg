@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from sqlalchemy import Integer, String, case, column, delete, func, literal_column, select, true, update, values
 
 from ..domain import arena, arena_insights as rules
-from .. import archive_bodies
+from .. import archive, archive_bodies
 from ..domain import asynctasks
 from ..domain.catalog import store
 from ..infra.db import session_maker
@@ -138,7 +138,10 @@ async def _evidence(records, session_factory=session_maker):
         if k is None or k.endpoint_id != r.endpoint_id:
             continue
         query = {name: values[-1] for name, values in parse_qs(urlsplit(k.req_url).query, keep_blank_values=True).items()}
-        body = _decode(k.req_body, None) if k.req_body else {}
+        request_body, omitted = archive.stored_request_body(k.req_body)
+        if omitted is not None:
+            continue
+        body = _decode(request_body, None) if request_body else {}
         result[r.id] = (query, body or {}, bodies.get((k.id, r.archive_content_hash)))
     return result
 

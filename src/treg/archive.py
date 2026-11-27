@@ -254,6 +254,43 @@ def _body_digest(body: bytes | None) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+_REQUEST_BODY_OMITTED = b"\x00treg:request-body-omitted\x00"
+
+
+def _request_body_to_keep(caller_body: bytes) -> bytes | None:
+    """What `ArchiveKey.req_body` holds for a request body: the bytes, or, over
+    `archive_max_request_body_bytes`, a marker with only their sha256 and size. A body that
+    itself starts with the marker's prefix is never kept as bytes, so a stored value with that
+    prefix is always a marker."""
+    if not caller_body:
+        return None
+    if (len(caller_body) <= get_settings().archive_max_request_body_bytes
+            and not caller_body.startswith(_REQUEST_BODY_OMITTED)):
+        return caller_body
+    return _REQUEST_BODY_OMITTED + json.dumps(
+        {"sha256": hashlib.sha256(caller_body).hexdigest(), "size_bytes": len(caller_body)},
+        sort_keys=True, separators=(",", ":")).encode()
+
+
+def stored_request_body(req_body: bytes | None) -> tuple[bytes | None, dict | None]:
+    """Read `ArchiveKey.req_body`: `(bytes, None)` for a kept body, `(None, None)` for a request
+    without one, `(None, {"sha256", "size_bytes"})` for a body over the limit, whose bytes are not
+    on file. A marker that cannot be read still reports omitted, with both values None: the
+    readers must never take it for the request's body."""
+    if not req_body:
+        return None, None
+    if not req_body.startswith(_REQUEST_BODY_OMITTED):
+        return req_body, None
+    omitted = {"sha256": None, "size_bytes": None}
+    try:
+        parsed = json.loads(req_body[len(_REQUEST_BODY_OMITTED):])
+        if isinstance(parsed.get("sha256"), str) and isinstance(parsed.get("size_bytes"), int):
+            omitted = {"sha256": parsed["sha256"], "size_bytes": parsed["size_bytes"]}
+    except (ValueError, UnicodeDecodeError, AttributeError, RecursionError):
+        pass
+    return None, omitted
+
+
 # Body compression (zlib, stdlib). JSON bodies compress several-fold at a speed far above the
 # write path's rate, so the cost is invisible. The exact ORIGINAL bytes come back on every read:
 # hashes, dedup, and the verbatim-relay promise all operate on raw bytes only.
@@ -1237,7 +1274,7 @@ async def _store_locked(
                              last_requested_at=now if origin == "caller" else None,
                              ttl_s=ttl_for(entry),
                              req_method=method.upper(), req_url=url,
-                             req_body=caller_body or None, req_headers=kept,
+                             req_body=_request_body_to_keep(caller_body), req_headers=kept,
                              # "org" | "conn" for a private key; NULL = public (and every
                              # key from before the column). The refresh worker skips private
                              # keys: treg's platform key cannot re-ask a private question.
@@ -1521,6 +1558,7 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
             return None
         pointer = await archive_bodies.pointer(session, snap, "result")
     body = await archive_bodies.read(pointer, "result", diagnostics=diagnostics)
+    request_body, request_body_omitted = stored_request_body(key.req_body)
     if verify and body is not None and hashlib.sha256(body).hexdigest() != content_hash:
         _log.warning("archived answer does not match its hash: snapshot %s", snap.id)
         if diagnostics is not None:
@@ -1529,7 +1567,8 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
     return {
         "stored": body is not None,
         "request": {"method": key.req_method or "", "url": key.req_url or "",
-                    "body_text": _decode(key.req_body)},
+                    "body_text": _decode(request_body),
+                    **({"body_omitted": request_body_omitted} if request_body_omitted else {})},
         "response": {"status_code": snap.status_code, "media_type": snap.media_type,
                      "size_bytes": snap.size_bytes, "fetched_at": snap.fetched_at.isoformat(),
                      "origin": snap.origin, "version": snap.version,
@@ -2047,6 +2086,8 @@ async def refresh_once(client) -> int:
             continue  # a family/`*` allowlist is applied here, not in the query
         if key.scope:
             continue  # an org's or a connection's question: treg's key cannot re-ask it
+        if stored_request_body(key.req_body)[1] is not None:
+            continue  # the body's bytes are not on file: the question cannot be re-asked
         window = key.ttl_s if key.ttl_s > 0 else ttl_for(entry)
         for ceiling in (get_settings().archive_serve_max_age_s.get(key.endpoint_id),
                         volatile_max_age_s(entry)):
@@ -2093,15 +2134,18 @@ async def _refresh_call(client, key) -> bool:
                 path_values[binding.get("name", "")] = rendered
             else:
                 headers[binding.get("name", "")] = rendered
+        request_body, omitted = stored_request_body(key.req_body)
+        if omitted is not None:
+            return False
         url = pathsegment.fill(key.req_url, path_values)
         resp = await client.request(key.req_method or "GET", url, params=params or None,
-                                    headers=headers, content=key.req_body or None)
+                                    headers=headers, content=request_body)
         body = resp.content
         if not (200 <= resp.status_code < 300):
             _log.warning("archive refresh got %s for %s", resp.status_code, key.endpoint_id)
             return False
         record(method=key.req_method or "GET", endpoint_id=key.endpoint_id,
-               provider=key.provider, url=key.req_url, caller_body=key.req_body or b"",
+               provider=key.provider, url=key.req_url, caller_body=request_body or b"",
                headers=dict(key.req_headers or {}), status_code=resp.status_code,
                media_type=resp.headers.get("content-type", ""), body=body, origin="refresh",
                response_headers=resp.headers)

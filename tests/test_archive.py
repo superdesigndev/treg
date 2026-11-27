@@ -2649,3 +2649,96 @@ async def test_pruner_keeps_an_answer_a_live_retry_row_points_to(clients: AsyncC
         s.add(row)
         await s.commit()
     assert await archive.prune_once() == 1
+
+
+# ---------------------------------------------------------------------------------------------
+# A request body over archive_max_request_body_bytes: identified on the key, bytes not kept
+
+_URL = "https://api.tikhub.io/api/v1/tiktok/app/v3/fetch_post_comment"
+_ANSWER = b'{"answer": true}'
+
+
+async def _store_question(caller_body: bytes, answer: bytes = _ANSWER, method: str = "POST") -> str:
+    await archive._store(method=method, endpoint_id=EP, provider="tikhub", url=_URL,
+                         caller_body=caller_body, headers={}, status_code=200,
+                         media_type="application/json", body=answer)
+    return cache_key(method, EP, _URL, caller_body, {})
+
+
+def test_a_request_body_is_kept_up_to_the_limit_and_identified_above_it(monkeypatch):
+    import hashlib
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 8)
+    at_limit, over = b"12345678", b"123456789"
+    assert archive._request_body_to_keep(b"") is None
+    assert archive._request_body_to_keep(at_limit) == at_limit
+    assert archive.stored_request_body(at_limit) == (at_limit, None)
+    assert archive.stored_request_body(None) == (None, None)
+    kept = archive._request_body_to_keep(over)
+    assert over not in kept
+    assert archive.stored_request_body(kept) == (
+        None, {"sha256": hashlib.sha256(over).hexdigest(), "size_bytes": 9})
+
+
+def test_a_stored_marker_is_never_read_as_a_request_body(monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 1024)
+    lookalike = archive._request_body_to_keep(b"x" * 2000)
+    kept = archive._request_body_to_keep(lookalike)        # a caller sending marker-shaped bytes
+    assert kept != lookalike
+    assert archive.stored_request_body(kept)[1]["size_bytes"] == len(lookalike)
+    for unreadable in (b"not json", b"[" * 200000):
+        assert archive.stored_request_body(archive._REQUEST_BODY_OMITTED + unreadable) == (
+            None, {"sha256": None, "size_bytes": None})
+
+
+async def test_an_over_limit_question_is_still_answered_from_the_archive(clients, serve, monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 64)
+    asked, other = b'{"media": "' + b"a" * 200 + b'"}', b'{"media": "' + b"b" * 200 + b'"}'
+    kh = await _store_question(asked)
+    async with session_maker() as s:
+        key = (await s.execute(select(ArchiveKey).where(ArchiveKey.key_hash == kh))).scalars().one()
+    assert len(key.req_body) < len(asked) and archive.stored_request_body(key.req_body)[0] is None
+    common = dict(method="POST", endpoint_id=EP, url=_URL, request_headers={}, cohort="team")
+    hit = await archive.lookup(caller_body=asked, **common)
+    assert hit is not None and hit["body"] == _ANSWER
+    assert await archive.lookup(caller_body=other, **common) is None   # same size, another question
+
+
+async def test_a_result_names_an_over_limit_request_body_without_its_bytes(clients, serve, monkeypatch):
+    import hashlib
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 64)
+    small, big = b'{"q": 1}', b'{"media": "' + b"a" * 200 + b'"}'
+    found = await archive.resolve_result(await _store_question(small), archive.content_hash(_ANSWER))
+    assert found["request"] == {"method": "POST", "url": _URL, "body_text": small.decode()}
+    found = await archive.resolve_result(await _store_question(big), archive.content_hash(_ANSWER))
+    assert found["stored"] is True and found["response"]["body_text"] == _ANSWER.decode()
+    assert found["request"]["body_text"] is None
+    assert found["request"]["body_omitted"] == {
+        "sha256": hashlib.sha256(big).hexdigest(), "size_bytes": len(big)}
+
+
+async def test_refresh_never_re_asks_a_question_whose_body_is_not_on_file(clients, serve, monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 64)
+    await _store_question(b'{"media": "' + b"a" * 200 + b'"}')
+    await _age_key(days=1)
+    fake = _FakeUpstream()
+    assert await archive.refresh_once(fake) == 0 and fake.calls == []
+    async with session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalars().one()
+    assert await archive._refresh_call(fake, key) is False and fake.calls == []
+
+
+async def test_refresh_re_asks_a_question_with_its_kept_body(clients, serve):
+    body = b'{"q": 1}'
+    kh = await _store_question(body)
+    await _age_key(days=1)
+    sent = []
+
+    class Upstream(_FakeUpstream):
+        async def request(self, method, url, params=None, headers=None, content=None):
+            sent.append(content)
+            return await super().request(method, url, params=params, headers=headers)
+
+    assert await archive.refresh_once(Upstream()) == 1
+    keys, snaps = await _rows()
+    assert sent == [body] and [k.key_hash for k in keys] == [kh]
+    assert [s_.origin for s_ in snaps] == ["caller", "refresh"]

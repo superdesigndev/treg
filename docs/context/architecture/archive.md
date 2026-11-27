@@ -126,6 +126,26 @@ injection, so a credential cannot enter the key or the stored request shape from
 side. A vendor that echoes the credential in a 2xx body would have it stored on a platform-key
 call; judge `cache` per provider with that in mind.
 
+### The stored request body
+
+The key row keeps the request shape (`req_method`, `req_url`, `req_headers`, `req_body`) for the
+readers below; a lookup never reads it, because the key hash is taken from the caller's own body.
+A body within `archive_max_request_body_bytes` is kept as sent. A larger one is kept as a marker
+holding only its sha256 and its size (`archive._request_body_to_keep`): inline media in a request
+is large and rarely asked twice. `archive.stored_request_body` is the one reader of the column
+and tells the three cases apart (kept, no body, omitted); a body that itself starts with the
+marker's prefix is stored as a marker too, so a stored value with that prefix is never a caller's
+bytes. For an omitted body:
+
+- a hit answers as for any other key;
+- the refresh worker skips the key (`refresh_once`, `_refresh_call`): it cannot re-ask the question;
+- `resolve_result` returns `request.body_text: null` with `request.body_omitted: {sha256,
+  size_bytes}`, so the absence is never read as a request without a body;
+- arena and shadow evidence (`application/arena_insights._evidence`) leaves the call out, as it
+  does a call whose key is gone.
+
+Rows written before the limit keep their bytes and read as before.
+
 ## Own-key answers
 
 An own-key catalog call (tier `tool`/`credential`) is looked up before the relay and recorded
@@ -377,7 +397,8 @@ bookkeeping table can drift, and 10 per pass. Refresh spend is treg's own, attac
 absent from the ledger.
 
 The call replays the stored request shape including the keying headers (`req_headers`; without
-them the recording lands under a different key), with injection from the one authoritative
+them the recording lands under a different key), never a key whose request body was not kept
+("The stored request body"), with injection from the one authoritative
 builder `oauth_providers.platform_bindings` (outside `api.py`, which this worker must not import),
 a path binding filling its placeholder in the stored URL, and records through the same `_store`.
 

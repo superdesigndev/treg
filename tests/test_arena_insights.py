@@ -205,6 +205,22 @@ async def test_evidence_uses_exact_content_and_carrier_with_repeated_requests(cl
     assert metadata_only == {no_content: evidence[no_content]}
 
 
+async def test_evidence_leaves_out_a_call_whose_request_body_is_not_on_file(clients, monkeypatch):
+    from treg import archive
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), "archive_max_request_body_bytes", 16)
+    kept, omitted = await record("kept", response={"data": 1}), await record("omitted", response={"data": 2})
+    async with session_maker() as db:
+        records = (await db.execute(select(CallRecord).where(CallRecord.id.in_([kept, omitted])))).scalars().all()
+        for row, body in zip(sorted(records, key=lambda r: r.id), (b'{"a": 1}', b'{"media": "' + b"a" * 64 + b'"}')):
+            key = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash == row.archive_key_hash))).scalar_one()
+            key.req_body = archive._request_body_to_keep(body)
+            db.add(key)
+        await db.commit()
+    evidence = await service._evidence(records)
+    assert set(evidence) == {kept} and evidence[kept][1] == {"a": 1}
+
+
 @pytest.mark.parametrize("status",["valid","invalid"])
 def test_verification_verdict_is_an_answer(status):
     cat=store.load();ep=cat.by_id["tomba.people.email.verify"]
