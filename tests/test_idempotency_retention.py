@@ -364,9 +364,44 @@ async def test_the_trim_resumes_after_the_rows_it_decided_and_stops_at_young_one
 
 
 async def test_a_trim_with_only_young_rows_left_stops_without_reading_them(clients, platform_on):
-    await _seed_answer(clients, "only-young", body=b'{"y":2}')
+    await _seed_answer(clients, "only-young", body=b'{"y":2}', ttl_s=idempotency.IDEMPOTENCY_WINDOW_S)
     result = await idempotency.trim_archived_answers(pause_s=0)
     assert (result.stopped, result.complete, result.examined, result.resume_after) == ("young", True, 0, 0)
+
+
+async def test_a_long_call_finished_after_a_lease_renewal_does_not_end_the_walk(clients, platform_on):
+    """Its `created_at` is the last renewal, but it was claimed long ago (`expires_at` less the window)."""
+    from datetime import datetime, timedelta, timezone
+
+    finished = await _seed_answer(clients, "long-call", body=b'{"l":1}')   # claimed 23 hours ago
+    await _link(finished, call_ref="call-long-call", archived=b'{"l":1}', age_s=30)
+    behind = await _linked_answers(clients, "behind-long-call", 1)
+    result = await idempotency.trim_archived_answers(pause_s=0, batch_size=1)
+    assert (result.stopped, result.trimmed, result.resume_after) == ("end", 1, 0)
+    async with session_maker() as db:
+        assert (await db.get(IdempotentCall, behind[0])).response_body is None
+        row = await db.get(IdempotentCall, finished)
+        row.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+        await db.commit()
+    assert (await idempotency.trim_archived_answers(pause_s=0)).resume_after == behind[0]
+
+
+@pytest.mark.parametrize("dead", ["expired", "stale"])
+async def test_a_dead_pending_claim_does_not_hold_the_trim_place(clients, platform_on, dead):
+    from datetime import datetime, timedelta, timezone
+
+    claim = await _seed_answer(clients, "dead-claim", status="pending",
+                               ttl_s=-3600 if dead == "expired" else 3600)
+    async with session_maker() as db:
+        row = await db.get(IdempotentCall, claim)
+        row.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+            seconds=idempotency.IDEMPOTENCY_STALE_PENDING_S + 60)   # no renewal since: its owner stopped
+        await db.commit()
+    behind = await _linked_answers(clients, "behind-dead-claim", 1)
+    result = await idempotency.trim_archived_answers(pause_s=0, batch_size=1)
+    assert (result.trimmed, result.resume_after) == (1, behind[0])
+    async with session_maker() as db:
+        assert (await db.get(IdempotentCall, claim)).status == "pending"   # passed over, not removed
 
 
 async def _linked_answers(clients, prefix: str, count: int) -> list[int]:

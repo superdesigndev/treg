@@ -782,14 +782,15 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
 
     `after` starts the walk past an id an earlier pass already decided; `resume_after` is the last id
     up to which every row was decided here, so the next pass starts there instead of re-reading the
-    whole live day. A row is left for the next pass while it is pending, younger than `min_age_s`,
-    its archive key is held by someone else (`FOR SHARE SKIP LOCKED` skipped it), or the budget ran
-    out before its update. `on_progress(resume_after)` runs after each committed page, outside its
-    session, so a run that fails later keeps what it did. The walk stops at the first page whose
-    settled rows are all too young (`stopped="young"`; pending rows renew their `created_at` and do
-    not count), or once `max_seconds` have gone by, inside a page too (`stopped="budget"`). A row
-    passed over while it had no archive link keeps its own copy until it expires; that costs space,
-    never an answer.
+    whole live day. A row is left for the next pass while it is a live pending claim (neither expired
+    nor stale: its owner renews it), younger than `min_age_s`, its archive key is held by someone
+    else (`FOR SHARE SKIP LOCKED` skipped it), or the budget ran out before its update. A dead claim
+    no prune removes is passed over, not deleted. `on_progress(resume_after)` runs after each
+    committed page, outside its session, so a run that fails later keeps what it did. The walk stops at the first page whose rows were all
+    claimed too recently (`stopped="young"`; the claim time is `expires_at` less the window, which
+    a lease renewal never moves, unlike `created_at`), or once `max_seconds` have gone by, inside a
+    page too (`stopped="budget"`). A row passed over while it had no archive link keeps its own copy
+    until it expires; that costs space, never an answer.
     """
     if not 1 <= batch_size <= 1000 or not 1 <= max_batches <= 10000:
         raise ValueError("batch_size must be 1..1000 and max_batches must be 1..10000")
@@ -812,6 +813,8 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
         cutoff = (await db.scalar(select(func.current_timestamp()))).replace(tzinfo=None)
         upper_id = (await db.scalar(select(func.max(IdempotentCall.id)))) or 0
     settled_before = cutoff - timedelta(seconds=min_age_s)
+    claimed_before = settled_before + timedelta(seconds=IDEMPOTENCY_WINDOW_S)  # as an `expires_at`
+    stale_before = cutoff - timedelta(seconds=IDEMPOTENCY_STALE_PENDING_S)
     if after > upper_id:  # a cursor from before the table was emptied or restored
         after = 0
     cursor = resume_after = after
@@ -835,11 +838,12 @@ async def trim_archived_answers(*, batch_size: int = 200, pause_s: float = 0.25,
             if not page:
                 complete, stopped = True, "end"
                 break
-            settled = [r for r in page if r.status != "pending"]
-            if settled and all(r.created_at >= settled_before for r in settled):
+            if all(r.expires_at >= claimed_before for r in page):
                 complete, stopped = True, "young"
                 break
-            undecided = {r.id for r in page if r.status == "pending" or r.created_at >= settled_before}
+            undecided = {r.id for r in page
+                         if (r.status == "pending" and r.expires_at >= cutoff and r.created_at >= stale_before)
+                         or (r.status != "pending" and r.created_at >= settled_before)}
             rows = [r for r in page if r.status == "done" and r.has_body and r.call_ref
                     and r.archive_content_hash is None and 200 <= (r.response_status or 0) < 300
                     and r.created_at < settled_before and r.expires_at >= cutoff]

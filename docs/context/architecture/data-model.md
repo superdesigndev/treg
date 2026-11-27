@@ -409,11 +409,13 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   On PostgreSQL only one run goes at a time (`infra.db.only_one_run`). The trim does not re-read the
   live day each run: it starts after `resume_after`, the last id up to which every row was decided,
   which the worker saves in `Ephemeral` after each committed page. A row stays undecided while it
-  is pending (its lease renewal rewrites `created_at`), younger than `min_age_s`, its archive key
-  was skipped by `FOR SHARE SKIP LOCKED`, or the time budget ran out before its update. The walk
-  stops at the first page whose non-pending rows are all too young, and at the budget, checked
-  before every update. A row passed over before its archive link existed keeps its own copy until
-  it expires.
+  is a live pending claim (not expired, renewed within `IDEMPOTENCY_STALE_PENDING_S`), younger than
+  `min_age_s`, its archive key was skipped by `FOR SHARE SKIP LOCKED`, or the time budget ran out
+  before its update; a dead claim is passed over and kept. The walk stops at the first page whose
+  rows were all claimed less than `min_age_s` ago (the claim time is `expires_at` less the window:
+  a lease renewal rewrites `created_at`, never `expires_at`), and at the budget, checked before
+  every update. A row passed over before its archive link existed keeps its own copy until it
+  expires.
 
 ## Caller tags (`X-Treg-Meta`)
 
