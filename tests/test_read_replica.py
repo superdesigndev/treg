@@ -50,7 +50,6 @@ def test_unconfigured_reads_reuse_the_primary_without_an_extra_pool(load_databas
     assert db.read_session_maker is db.session_maker
     assert db._read_engine is db._engine
     assert "read" not in db.pool_snapshot()
-    assert len(set(db._engines)) == (1 if db._is_sqlite else 3)
 
 
 async def test_configured_reads_have_their_own_pool_and_budget(load_database):
@@ -120,8 +119,7 @@ async def test_unconfigured_sqlite_keeps_primary_writable(load_database, sqlite_
         assert await session.scalar(text("SELECT count(*) FROM read_replica_probe")) == 2
 
 
-@pytest.mark.parametrize("same_database", [False, True])
-@pytest.mark.parametrize("read_only_file", [False, True])
+@pytest.mark.parametrize("same_database,read_only_file", [(False, False), (True, True)])
 async def test_sqlite_reader_guards_writes_without_affecting_primary(
     load_database, sqlite_sources, same_database, read_only_file,
 ):

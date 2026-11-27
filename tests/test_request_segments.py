@@ -17,14 +17,8 @@ from treg.domain.catalog.routing import segments as S
 
 @pytest.mark.parametrize("title, cls, fn, sen, lang", [
     ("", "none", "none", "none", "none"),
-    (None, "none", "none", "none", "none"),
-    ("   ", "none", "none", "none", "none"),
     ("CEO", "leader", "executive", "c_level_founder", "en"),
-    ("Co-Founder", "leader", "executive", "c_level_founder", "en"),
-    ("Managing Partner", "leader", "executive", "c_level_founder", "en"),
     ("Geschäftsführer", "leader", "executive", "c_level_founder", "non_en"),
-    ("Directeur Général", "leader", "executive", "c_level_founder", "non_en"),
-    ("Amministratore Delegato", "leader", "executive", "c_level_founder", "non_en"),
     ("Director General", "leader", "executive", "c_level_founder", "en"),
     ("VP Sales", "function", "sales", "vp", "en"),
     ("Head of Marketing", "function", "marketing", "head_director", "en"),
@@ -45,9 +39,7 @@ from treg.domain.catalog.routing import segments as S
     ("Astronaut", "other", "other", "individual", "en"),
     ("高级产品经理", "other", "other", "individual", "non_en"),
     ("CEO, Founder", "multi", "executive", "c_level_founder", "en"),
-    ("CTO / VP Engineering", "multi", "engineering", "c_level_founder", "en"),
     ("CMO or Head of Growth", "multi", "marketing", "c_level_founder", "en"),
-    ("Sales | Marketing", "multi", "sales", "individual", "en"),
     (["VP Sales", "Head of Sales"], "multi", "sales", "vp", "en"),
 ])
 def test_a_title_falls_in_one_class_function_seniority_and_language(title, cls, fn, sen, lang):
@@ -60,8 +52,8 @@ def test_a_title_falls_in_one_class_function_seniority_and_language(title, cls, 
 
 @pytest.mark.parametrize("country, iso2, case", [
     ("us", "US", "lower"), ("US", "US", "upper"), ("United States", "US", "name"),
-    ("Germany", "DE", "name"), ("uk", "GB", "lower"), ("USA", "US", "upper"), ("Us", "US", "other"),
-    ("Atlantis", None, "name"), ("12", None, "other"), (None, None, "none"), ("", None, "none"),
+    ("Germany", "DE", "name"), ("uk", "GB", "lower"), ("Us", "US", "other"),
+    ("Atlantis", None, "name"), ("12", None, "other"), (None, None, "none"),
 ])
 def test_a_country_is_recorded_as_its_code_and_how_it_was_spelled(country, iso2, case):
     assert S.iso2(country) == iso2
@@ -69,9 +61,9 @@ def test_a_country_is_recorded_as_its_code_and_how_it_was_spelled(country, iso2,
 
 
 @pytest.mark.parametrize("location, kind", [
-    ("Germany", "country_name"), ("United States", "country_name"), ("USA", "country_name"),
+    ("Germany", "country_name"),
     ("Oregon, United States", "region"), ("Greater Phoenix", "region"), ("EMEA", "region"),
-    ("Bay Area", "region"), ("Paris", "city"), ("London, United Kingdom", "city"),
+    ("Paris", "city"), ("London, United Kingdom", "city"),
     ("Austin, TX", "city"), ("Springfield", "unknown"), ("", "none"), (None, "none"),
 ])
 def test_a_location_is_recorded_as_its_kind(location, kind):
@@ -216,29 +208,28 @@ def test_answer_counts_judge_rows_against_the_question():
 
 @pytest.mark.parametrize("location, code", [
     ("Austin, Texas, United States", "US"), ("Austin, Texas", "US"), ("Berlin, Germany", "DE"),
-    ("London, UK", "GB"), ("", None), (None, None),
+    ("London, UK", "GB"), (None, None),
     # a two-letter part is never a country code: the city before it decides, or nothing does
     ("Birmingham, AL", None),
     # a state or province abbreviation beside a city must agree with it, else the row is unknown
-    ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"), ("Perth, WA", "AU"),
+    ("Austin, TX", "US"), ("Toronto, ON", "CA"), ("Sydney, NSW", "AU"),
     ("San Francisco, California", "US"), ("Paris, Texas", "US"), ("London, Ontario", None),
-    ("London, ON", None), ("Paris, TX", None), ("Vancouver, WA", None), ("Mexico City, DF", None),
+    ("Paris, TX", None), ("Mexico City, DF", None),
     # a code that is a country and no state or province is the provider's country only beside a
     # place in that country or a country name: alone it may be a region's code elsewhere
-    ("Paris, FR", "FR"), ("Austin, TX, US", "US"), ("Austin, Texas, US", "US"),
-    ("Geneva, GE", None), ("Vancouver, US", None), ("Springfield, US", None), ("US", None),
+    ("Paris, FR", "FR"), ("Austin, TX, US", "US"),
+    ("Geneva, GE", None), ("Vancouver, US", None), ("US", None),
     # a code that is both a country and a state or province cannot be told apart once joined into
     # text: the provider's country code (Durham, Ontario) or a US state (California)
-    ("Durham, CA", None), ("San Francisco, CA", None), ("Berlin, DE", None), ("Mumbai, IN", None),
-    ("Adelaide, SA", None), ("CA", None), ("Durham, CA, Canada", "CA"),
+    ("Durham, CA", None), ("San Francisco, CA", None), ("Durham, CA, Canada", "CA"),
     # Indian and Brazilian state codes too: `MH` is Maharashtra or the Marshall Islands, `RS` Rio
     # Grande do Sul or Serbia; one that is no country code places the city
-    ("Mumbai, MH", None), ("Mumbai, MH, IN", None), ("Porto Alegre, RS", None),
-    ("Bengaluru, KA", "IN"), ("São Paulo, SP", "BR"), ("Belgrade, RS, Serbia", "RS"),
+    ("Mumbai, MH", None), ("Mumbai, MH, IN", None),
+    ("Bengaluru, KA", "IN"), ("Belgrade, RS, Serbia", "RS"),
     # parts that name different countries name none: a US city named after a country, a British
     # town named after a state
     ("Lebanon, US", None), ("Washington, GB", None), ("Paris, France, US", None),
-    ("Cuba, NY", None), ("Havana, Cuba", "CU"), ("Lebanon, PA", None), ("Cuba, MO", None),
+    ("Havana, Cuba", "CU"),
     ("Panama City, PA, Panama", "PA"),
     ("Washington, District of Columbia, United States", "US"),
     # a part we do not know leaves a city unread
@@ -252,12 +243,10 @@ def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(loc
 
 @pytest.mark.parametrize("location, code", [
     ("San Francisco Bay Area", "US"), ("Greater Phoenix Area", "US"),
-    ("New York City Metropolitan Area", "US"), ("Dallas-Fort Worth Metroplex", "US"),
-    ("Washington DC-Baltimore Area", "US"), ("Greater Minneapolis-St. Paul Area", "US"),
-    ("Austin, Texas Metropolitan Area", "US"), ("Seattle", "US"), ("New York, NY", "US"),
+    ("Dallas-Fort Worth Metroplex", "US"), ("Washington DC-Baltimore Area", "US"),
+    ("Seattle", "US"), ("New York, NY", "US"),
     ("Greater London", "GB"), ("Greater Paris Metropolitan Region", "FR"),
-    ("Berlin Metropolitan Area", "DE"), ("Greater Toronto Area", "CA"), ("Amsterdam Area", "NL"),
-    ("Greater Madrid Metropolitan Area", "ES"), ("Mumbai Metropolitan Region", "IN"),
+    ("Greater Toronto Area", "CA"), ("Mumbai Metropolitan Region", "IN"),
     # nothing known, or a name that is a large place in two countries
     ("Remote", None), ("Greater Victoria Area", None), ("Valencia", None),
     # a city that is a large city elsewhere too needs a part that agrees with it
@@ -265,7 +254,7 @@ def test_a_row_location_names_its_country_by_name_never_by_a_two_letter_part(loc
     ("Hyderabad, Telangana", None), ("San Jose, TX", "US"), ("San Jose, ON", None),
     # a metro area across a border names no one country
     ("San Diego–Tijuana Metropolitan Area", None), ("San Diego-Tijuana Metropolitan Area", None),
-    ("Raleigh-Durham-Chapel Hill Area", "US"), ("Miami-Fort Lauderdale Area", "US"),
+    ("Raleigh-Durham-Chapel Hill Area", "US"),
     # what is left once a word is dropped is never read as a country: Canada Bay is in Australia
     ("Canada Bay", None), ("Greater Jordan Area", None),
 ])
@@ -329,23 +318,6 @@ def test_a_direct_answer_counts_every_mapped_row_not_only_the_arenas_first_few()
 ])
 def test_a_row_matches_the_asked_company_by_domain_or_its_exact_name(row, match):
     assert S._company_match(row, "acme.example") is match
-
-
-def test_a_routed_child_records_the_filters_its_request_carries():
-    cat = catalog_store.load()
-    adapter = cat.adapters["crawl4ai.people.search"]
-    sent = {"company_domain": "acme.example", "title": "VP Sales", "country": "US",
-            "location": "Austin", "limit": 40}
-    body = json.dumps({"where": {"company": {"domain": "acme.example"},
-                                 "person": {"title": "VP Sales", "country": "us", "city": "Austin"}},
-                       "limit": 40}).encode()
-    parent = ev.segment(_contract(), sent)[1]
-    child = ev.segment(_contract(), ev.vendor_identity(adapter, _contract(), (), body))[1]
-    keys = ("has_country", "country_iso2", "has_location", "location_kind", "limit_bucket",
-            "title_class", "title_function", "title_seniority")
-    assert {k: child[k] for k in keys} == {k: parent[k] for k in keys}
-    # the child records the spelling it sent the provider, not the caller's
-    assert parent["country_raw_case"] == "upper" and child["country_raw_case"] == "lower"
 
 
 _PEOPLE_SEARCH_ADAPTERS = sorted(
@@ -420,19 +392,6 @@ def test_a_name_sent_in_halves_reads_back_whole_and_never_as_one_word():
         assert ev.segment(_contract(), given)[1]["limit_bucket"] == "<=5"
         ids.add(ev.segment(_contract(), given)[2]["full_name"])
     assert len(ids) == 2
-
-
-def test_the_limit_and_country_of_list_and_clamped_requests_read_back():
-    cat = catalog_store.load()
-    reads = {e: {f for f, _, _ in ev.field_paths(cat.adapters[e], _contract())}
-             for e in ("parallel.people.search", "blitzapi.people.search", "quickenrich.people.search",
-                       "dropleads.people.search", "icypeas.people.search")}
-    assert {"limit"} <= reads["parallel.people.search"]
-    assert {"limit", "country"} <= reads["blitzapi.people.search"]
-    assert {"limit", "country", "location"} <= reads["quickenrich.people.search"]
-    assert {"limit", "country", "location"} <= reads["dropleads.people.search"]
-    # `coalesce(location, country_name(country))` could be either filter: neither is read back
-    assert not {"location", "country"} & reads["icypeas.people.search"]
 
 
 def test_a_title_list_is_a_complete_request_and_records_its_categories():

@@ -102,7 +102,6 @@ sources:
   - src/treg/application/auth.py
   - tests/test_postgres_reset.py
   - tests/test_alembic_expand_safety.py
-  - tests/test_redundant_index_migration.py
   - tests/test_api_keys.py
   - tests/test_money_timing.py
   - tests/test_money_admission_reporting.py
