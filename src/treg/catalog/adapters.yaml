@@ -456,8 +456,8 @@ adapters:
   tomba.people.phone.find:
     accepts: [[email], [linkedin_url]]
     in:  {email: queryParams.email, linkedin_url: queryParams.linkedin}
-    out: {phone: "coalesce(data.e164_format, data.intl_format)", line_type: data.line_type, country_code: data.country_code}
-    miss: "data.e164_format == null"
+    out: {phone: "coalesce(data.e164_format, data.intl_format, data[0].e164_format, data[0].intl_format)", line_type: "coalesce(data.line_type, data[0].line_type)", country_code: "coalesce(data.country_code, data[0].country_code)"}
+    miss: "coalesce(data.e164_format, data[0].e164_format) == null"
   leadsforge.people.phone.find:
     accepts: [[first_name, last_name, domain], [linkedin_url]]
     in:  {first_name: body.firstName, last_name: body.lastName, domain: body.companyDomain, linkedin_url: body.linkedinURL}

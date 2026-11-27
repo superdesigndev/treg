@@ -1,0 +1,20 @@
+{
+  "data": {
+    "domain": "tomba.io",
+    "valid": true,
+    "local_format": "(850) 790-5575",
+    "intl_format": "+1 850-790-5575",
+    "e164_format": "+18507905575",
+    "rfc3966_format": "tel:+1-850-790-5575",
+    "country_code": "US",
+    "line_type": "VOIP",
+    "carrier": "ONVOY, LLC - FL",
+    "region": {
+      "name": "Florida",
+      "code": "FL"
+    },
+    "timezones": [
+      "America/New_York"
+    ]
+  }
+}
