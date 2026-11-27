@@ -6266,7 +6266,13 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-bulk-keyword-difficulty-live.json
-  price: {value: '0.01236', currency: USD, per: 1, unit: call}
+  price:
+    value: '0.01236'
+    currency: USD
+    per: 1
+    unit: call
+    display: {unit: call, variable: true}
+    note: '$0.012 per request + $0.00012 per requested keyword, so the quoted $0.01236 is the floor (the catalog example''s 3 keywords). A 200-keyword call is $0.036 and the 1000-keyword maximum is $0.132. The response `cost` is the exact charge and settles the call.'
   provenance: {source: observed, checked: '2026-07-28', confidence: verified}
 - id: dataforseo.x.dataforseo-labs-google-bulk-traffic-estimation-live
   platform: google
