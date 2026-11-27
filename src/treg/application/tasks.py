@@ -90,7 +90,7 @@ def _base(task: CallTask) -> dict:
         "task_shown": asynctasks.shown(task.task_id) if pollable(task) else None,
         "state": "pending", "status": None, "status_shown": None, "billed": None, "warning": None,
         "response": None,
-        "result": None, "result_text": None, "result_url": None, "fetch_command": None,
+        "result": None, "result_text": None, "result_url": None, "fetch": None, "fetch_command": None,
         "ttl_note": None,
         "resume": _resume(task),
         "retry_after": interval(descriptor),
@@ -137,6 +137,7 @@ def _terminal(task: CallTask, document: object, response: dict) -> dict:
             return _error(view, "result_not_retrievable",
                           f"the terminal response has no {value_from!r} for result retrieval")
         else:
+            view["fetch"] = asynctasks.fetch_arguments(found["fetch"])
             view["fetch_command"] = asynctasks.fetch_command(found["fetch"])
         view["ttl_note"] = found["ttl_note"]
         return view

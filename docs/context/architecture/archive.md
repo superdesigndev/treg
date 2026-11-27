@@ -419,9 +419,14 @@ to members of the row's org; what makes it safe is that the row belongs to the t
 bytes that team already received. A metered answer is returned as its caller received it: with
 `strip_reported_charge` on, without the provider's reported charge unless the request keeps it
 ([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the
-provider's bytes, which repeat hits settle from. A routed parent has no link of its own and lists its
-`children`, audited before the parent, so the lookup reads the hour before the parent's row. Its
-`served_call_ref` names the one child whose answer the caller received and `served_content_hash`
+provider's bytes, which repeat hits settle from. If a call has no ordinary archive link,
+`GET /calls/{id}/result` can return a metered task's terminal JSON with `origin: async_terminal`,
+including under a routed pending parent's id. The task lookup is scoped to the caller's team
+and pinned tags.
+
+For a routed parent without a stored terminal result, the route lists its `children`. The
+children are audited before the parent, so the lookup reads the hour before the parent's row.
+The parent's `served_call_ref` names the one child whose answer the caller received and `served_content_hash`
 the sha256 of the bytes it returned as `raw` ([data-model](data-model.md)). The reader, with no
 scan of the team's history: read the child row by that exact ref; its own archived answer counts
 when its `archive_content_hash` equals `served_content_hash` (a sync answer, or an async provider

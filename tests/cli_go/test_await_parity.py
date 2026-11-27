@@ -234,7 +234,7 @@ ASYNC = json.dumps({"id_from": "id", "poll": {"endpoint": "x.poll", "param": {"i
 def _task(state: str, **fields) -> Canned:
     view = {"call_id": "c1", "task_id": "t1", "task_shown": "t1", "state": state, "status": None,
             "status_shown": None, "billed": None, "warning": None, "response": None, "result": None,
-            "result_text": None, "result_url": None, "fetch_command": None, "ttl_note": None,
+            "result_text": None, "result_url": None, "fetch": None, "fetch_command": None, "ttl_note": None,
             "resume": "treg call x.poll -p id=t1", "retry_after": 0.05, "max_wait": 86400.0,
             "error": None} | fields
     return Canned(200, {"Retry-After": "1"}, json.dumps(view).encode())

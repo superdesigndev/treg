@@ -120,6 +120,9 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
 - **Deliberately not one tool per provider.** Thousands of endpoints as thousands of MCP tools would
   bury the client's tool list and force a reconnect whenever the catalog grew. `catalog_search` plus
   `call` covers all of it and stays the same size.
+- `task_status(call_id)` makes one provider poll through the [task endpoint](tasks.md). It
+  requires `treg:call` on `/mcp/`. Its MCP annotations describe a non-destructive, idempotent
+  open-world poll. The tool is exclusive to the team surface.
 - The `hub_*` tools exist only on `/mcp/`; `_HubToolsGate` hides them unless the hub is enabled for
   the caller. `catalog_search` merges visible listed hub tools (`kind: "hub"`) and `call` accepts a hub
   tool id. `/mcp/v2/` never registers them. See [hub](hub.md).

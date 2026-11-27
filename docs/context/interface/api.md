@@ -350,8 +350,9 @@ every pinned tag; foreign and unattributed ids answer 404. Tag for counting, tok
 
 `GET /calls` excludes `kind=async_poll` in SQL before pagination; it is analytics, not an
 invoice. `/calls` never selects failure evidence, and `GET /calls/{call_ref}` defers those columns
-with lazy loading forbidden: failure evidence is admin-only. Async status and final charge come from
-`async_task_app.views_for`. `GET /calls/{id}/result` is described in
+with lazy loading forbidden: failure evidence is admin-only. The async task record supplies status
+and final charge. Detail can also find the task by its routed pending parent id, even before the
+audit row arrives. `GET /calls/{id}/result` is described in
 [archive](../architecture/archive.md).
 
 ### Async tasks

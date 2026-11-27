@@ -1445,6 +1445,7 @@ async def test_a_catalog_only_grant_cannot_spend_or_read_the_team(clients):
     async with mcp_session(clients) as c:
         for name, args in (("call", {"endpoint_id": "exa.search", "params": {"query": "x"}}),
                            ("call_media", {"endpoint_id": "exa.search"}),
+                           ("task_status", {"call_id": "a-call"}),
                            ("balance", {}), ("my_tools", {}), ("resources_list", {}),
                            ("call_result", {}), ("compare", {}),
                            ("compare", {"comparison_id": 1, "choice": "1"})):

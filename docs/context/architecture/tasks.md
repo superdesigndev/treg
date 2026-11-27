@@ -60,9 +60,10 @@ anyone else gets 404 `task_not_found` with `X-Treg-Error: 1`, the answer an unkn
 - **`GET /tasks/{call_id}`** makes one poll: 409 `task_not_pollable` when the answer named no task,
   and `state: error` `expired` with no poll once the descriptor's `max_age` has passed since the
   call. Otherwise `routers.call.run_call_input` runs the `CallInput` `treg call` would send
-  (`GET /call/<poll endpoint>?<param>=<task id>`, or the provider's poll URL) with the caller's
-  headers, minus the look's own body and transport headers and its `Idempotency-Key` (a replay
-  key would answer every later poll with the first one's answer), asking for identity encoding,
+  (a path or query parameter on a GET, a JSON object containing the id on a POST, or a GET to
+  the provider's poll URL) with the caller's headers, minus the look's own body and transport
+  headers and its `Idempotency-Key` (a replay key would answer every later poll with the first
+  one's answer), asking for identity encoding,
   because the answer must be read. Gates, credential, hold, settle, audit row and owned-poll settlement are
   exactly a `/call/` poll's; `application.tasks` cannot hold, charge or refund. A poll treg itself
   refuses is audited through `_stamp_call_exit` and reported as the poll's answer. The poll's
@@ -81,7 +82,7 @@ Every key is always present (`null` when it does not apply), so the shape is sta
 | `billed` | on `failed`: a `billed_failure` word, settled rather than released |
 | `response` | the answer read: `source` (`poll` or `submission`), `http_status`, `content_type`, `body` as text, the poll's `call_id`, `cost_micro` |
 | `result`, `result_text`, `result_url` | a path-mode result, how it prints, its first URL |
-| `fetch_command`, `ttl_note` | a fetch-mode retrieval line, and how long the result lives |
+| `fetch`, `fetch_command`, `ttl_note` | fetch-mode arguments for MCP `call`, the CLI retrieval line, and how long the result lives |
 | `resume` | the `treg call` line that polls the task by hand |
 | `retry_after`, `max_wait` | seconds before the next look is worth making (the descriptor's `interval`), and the most a waiter waits (`max_age`) |
 | `error` | `kind`, `message`, `http_status`, `retryable`, `by` (`provider` or `treg`) |
@@ -90,6 +91,18 @@ Error kinds: `submission_not_json`, `submission_rejected` (no task id, or a poll
 allow-list), `result_not_retrievable` (a fetch-mode success without the value to fetch by),
 `poll_failed`, `poll_not_json`, `poll_too_large`, `expired`. `Retry-After` (whole seconds) is set
 on `pending` and on a `retryable` poll failure (a 5xx); answers are `Cache-Control: no-store`.
+
+## Team MCP
+
+Team `call` and `call_media` describe an async submission by its treg call id. The receipt
+includes `task.state`. Direct and routed pending receipts show the hold as `reserved_usd`.
+When the receipt says `pending`, wait `task.retry_after` seconds. `task_status(call_id)` checks
+once with `treg:call` permission and reports `settled_usd` once the charge is finalized.
+A fetch-mode success carries `fetch` arguments for `call` on both the task view and the activity
+record. The CLI uses `fetch_command`. Task answers keep up to 2 MiB for standard clients (192 KiB
+for hosted chat connectors) and preserve `result_url` and `fetch` values up to 8 KiB; for oversized
+results, the task view gives a preview and `call_result(call_id)` can read the archived terminal
+JSON when it is on file.
 
 ## The Go CLI
 

@@ -469,7 +469,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "call_media", "resources_list", "balance", "my_tools",
                         "catalog_request", "feedback", "review", "mark", "compare", "hub_create", "hub_update",
-                        "hub_mine", "call_result"}
+                        "hub_mine", "call_result", "task_status"}
     assert all(a.title is None for a in ann.values())
     for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools", "call_result"):
         a = ann[name]
@@ -479,6 +479,9 @@ async def test_every_tool_declares_what_it_can_do(clients):
         a = ann[name]
         assert a.read_only_hint is False
         assert a.destructive_hint is True and a.open_world_hint is True
+    poll = ann["task_status"]
+    assert poll.read_only_hint is False and poll.destructive_hint is False
+    assert poll.open_world_hint is True and poll.idempotent_hint is True
     # These write nothing upstream and spend nothing, but their text reaches the treg team (and a
     # review's reason may be quoted on a public catalog page), so they are open world.
     for name in ("catalog_request", "feedback", "review", "mark", "compare"):
@@ -568,6 +571,52 @@ async def test_the_output_schema_does_not_BREAK_the_error_paths(clients):
         out = await _call_tool(c, "balance", {}, token="not-a-real-token")
     assert out.get("error"), out
     assert "hint" in out or "detail" in out, "the recovery instruction must survive the schema"
+
+
+async def test_task_status_auth_errors_use_the_standard_shape(clients):
+    import jsonschema
+
+    from treg.mcp import mcp as server
+
+    schema = next(tool.output_schema for tool in await server.list_tools()
+                  if tool.name == "task_status")
+    token = "not-a-real-token"
+    async with mcp_session(clients) as c:
+        balance = await _call_tool(c, "balance", {}, token)
+        r = await _rpc(c, "tools/call", {
+            "name": "task_status", "arguments": {"call_id": "unknown"},
+        }, token)
+        result = r.json()["result"]
+        assert {k: v for k, v in result["structuredContent"].items() if v is not None} == balance
+        assert isinstance(balance["error"], str) and balance["hint"]
+        jsonschema.validate(result["structuredContent"], schema)
+
+
+def test_task_status_bounds_oversized_error_and_keeps_retry_after():
+    from httpx import Response
+
+    from treg import jsontext
+    from treg.mcp import _TASK_BODY_BYTES, _TASK_CHAT_BODY_BYTES, _task_answer
+
+    standard = _task_answer(Response(200, json={
+        "state": "error", "status": "\\" * 12000, "retry_after": 2,
+        "error": {"retryable": True, "message": "busy" * 600_000},
+    }), "a-call")
+    assert standard["call_id"] == "a-call" and standard["state"] == "error"
+    assert standard["retry_after"] == 2
+    assert len(jsontext.dumps_bytes(standard["error"])) <= 2048
+    assert len(jsontext.dumps_bytes(standard["status"])) <= 2048
+    assert len(jsontext.dumps_bytes(standard, separators=(",", ":"))) <= _TASK_BODY_BYTES
+
+    hosted_chat = _task_answer(Response(200, json={
+        "state": "error", "status": "\\" * 12000, "retry_after": 2,
+        "error": {"retryable": True, "message": "busy" * 55_000},
+    }), "a-call", limit=_TASK_CHAT_BODY_BYTES)
+    assert hosted_chat["call_id"] == "a-call" and hosted_chat["state"] == "error"
+    assert hosted_chat["retry_after"] == 2
+    assert len(jsontext.dumps_bytes(hosted_chat["error"])) <= 2048
+    assert len(jsontext.dumps_bytes(hosted_chat["status"])) <= 2048
+    assert len(jsontext.dumps_bytes(hosted_chat, separators=(",", ":"))) <= _TASK_CHAT_BODY_BYTES
 
 
 async def test_the_schema_tolerates_NULLS_not_just_missing_keys(clients):

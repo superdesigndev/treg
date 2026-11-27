@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -249,8 +250,41 @@ async def views_for(
                 AsyncTaskRecord.org_id == org_id,
                 *pinned_tag_predicates(AsyncTaskRecord.tags, pinned_tags),
                 AsyncTaskRecord.call_id.in_(list(call_ids))))).scalars().all()
-    if not rows:
-        return {}
+    return await _task_views(rows)
+
+
+async def record_for_call(
+    org_id: int, call_id: str, *, pinned_tags: dict | None = None,
+) -> AsyncTaskRecord | None:
+    """Find the team's metered task by its submission id or by its routed parent id."""
+    scope = (AsyncTaskRecord.org_id == org_id,
+             *pinned_tag_predicates(AsyncTaskRecord.tags, pinned_tags))
+    async with session_maker() as db:
+        row = (await db.execute(select(AsyncTaskRecord).where(
+            AsyncTaskRecord.call_id == call_id, *scope))).scalar_one_or_none()
+        if row is not None:
+            return row
+        parent = (await db.execute(select(CallTask).where(
+            CallTask.call_id == call_id, CallTask.org_id == org_id,
+            *pinned_tag_predicates(CallTask.tags, pinned_tags)))).scalar_one_or_none()
+        if parent is None or parent.submission_sha256 is not None or not parent.task_id:
+            return None
+        candidates = (await db.execute(select(AsyncTaskRecord).where(
+            AsyncTaskRecord.task_id == parent.task_id,
+            AsyncTaskRecord.endpoint_id == parent.endpoint_id, *scope))).scalars()
+        return next((row for row in candidates if row.call_id.startswith(f"{call_id}:")), None)
+
+
+async def view_for_call(
+    org_id: int, call_id: str, *, pinned_tags: dict | None = None,
+) -> dict | None:
+    row = await record_for_call(org_id, call_id, pinned_tags=pinned_tags)
+    if row is None:
+        return None
+    return (await _task_views([row]))[row.call_id]
+
+
+async def _task_views(rows: Sequence[AsyncTaskRecord]) -> dict[str, dict]:
     documents = await archive.load_terminal_responses(
         [(row.call_id, row.endpoint_id) for row in rows if row.status == asynctasks.SETTLED])
     views: dict[str, dict] = {}
@@ -261,7 +295,7 @@ async def views_for(
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "completed_at": row.completed_at.isoformat() if row.completed_at else None,
             "error": row.error or None,
-            "result_url": None, "fetch_command": None,
+            "result_url": None, "fetch": None, "fetch_command": None,
             "ttl_note": ((row.descriptor.get("result") or {}).get("ttl_note") or None),
         }
         body = documents.get(row.call_id)
@@ -273,6 +307,7 @@ async def views_for(
             view["result_url"] = found.get("result_url")
             fetch = found.get("fetch")
             if fetch:
+                view["fetch"] = asynctasks.fetch_arguments(fetch)
                 view["fetch_command"] = asynctasks.fetch_command(fetch)
         views[row.call_id] = view
     return views
