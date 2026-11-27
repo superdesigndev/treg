@@ -328,7 +328,7 @@ no JSON `detail` is never treg's.
 | a 429 or 5xx from the provider | no | Try the next provider of the job, and say which. |
 | a timeout or dropped connection on your side | maybe | The provider may have answered and been paid. Repeat with the same `Idempotency-Key`; see below. |
 | 403 `capability_pinned` | no | A team admin pinned this job to one provider. Call `use_endpoint` from the body instead. |
-| 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
+| 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`; `Retry-After` says how long to wait before asking again, and waiting adds no money. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 403 `funds_required` | no | treg's key won't pay for this tool on this team until the team adds funds. Top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 403 `own_key_required` | no | treg's key won't pay for this tool on this team. Connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |

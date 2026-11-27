@@ -605,24 +605,22 @@ def _insufficient_balance(mk: MarketplaceCall, auto_on: bool, prefs: dict | None
 
 
 async def _empty_mark(mk: MarketplaceCall, caller: Caller, meta: CallMeta,
-                      charged: int) -> empty_balance.Mark | None:
-    """The team's balance-empty mark when it answers this call, else None and the call reserves
+                      charged: int) -> empty_balance.Read:
+    """The team's balance-empty mark when it answers this call, else none and the call reserves
     as it always did. It answers only a call the balance refusal is the first answer for: no
     tag (a tag's own limits come first and must not show the team's figures), no member spend
-    limit, no trial pool, no purchased-credit-only endpoint, not a keyless wallet's request; and
-    only for the amount the mark stands for or more. A team with a daily limit is answered for
-    exactly the marked amount: that amount passed the limit when the mark was written."""
+    limit, no daily spend limit on the team, no trial pool, no purchased-credit-only endpoint,
+    not a keyless wallet's request; and only for the amount the mark stands for or more."""
     if (charged <= 0 or empty_balance.ttl_s() <= 0 or meta.tags or keyless_payer.get()
             or budget_policy.member_daily_spend_cap(caller.membership, caller.org) is not None
+            or budget_policy._effective_daily_cap(caller.org) > 0
             or mk.provider in catalog_store.load().trial_pools
             or _purchased_only(mk.endpoint_id)):
-        return None
-    mark = await empty_balance.read(caller.org_id)
-    if mark is None or charged < mark.required_micro:
-        return None
-    if charged != mark.required_micro and budget_policy._effective_daily_cap(caller.org) > 0:
-        return None
-    return mark
+        return empty_balance.Read(None)
+    found = await empty_balance.read(caller.org_id)
+    if found.mark is not None and charged < found.mark.required_micro:
+        return empty_balance.Read(None)
+    return found
 
 
 def _note_fast_refusal(org_id: int) -> None:
@@ -700,12 +698,13 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     mk.allowance_epoch, mk.allowance_marked = None, False
     # Before the allowance, the money queue and the database: a team just refused for at least
     # this much, with nothing credited since, is refused the same way from the mark alone.
-    mark = await _empty_mark(mk, caller, meta, charged) if retry_short else None
-    if mark is not None:
+    marked = (await _empty_mark(mk, caller, meta, charged) if retry_short
+              else empty_balance.Read(None))
+    if marked.mark is not None:
         empty_balance.suspect(caller.org_id)
         _note_fast_refusal(caller.org_id)
         raise _insufficient_balance(mk, auto_on, prefs, required_micro=charged,
-                                    balance_micro=mark.balance_micro)
+                                    balance_micro=marked.mark.balance_micro)
     listed = (retry_short and not keyless_payer.get()
               and allowance_runtime.listed(caller.org_id))
     skip = _allowance_skip(mk, caller, meta, call_ref, allow_allowance) if listed else "unlisted"
@@ -835,8 +834,13 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 mark_in_flight=mark_in_flight, retry_short=False,
                 skip_reason=note, skip_as_direct=as_direct)
         empty_balance.suspect(caller.org_id)
-        if onto.short:
+        # A store that did not answer this call's read is not asked to write: one wait, not two.
+        if onto.short and marked.answered and empty_balance.ttl_s() > 0:
             await empty_balance.remember(caller.org_id, exc.required_micro, exc.balance_micro)
+            # A credit that committed between the confirmation and the write cleared nothing:
+            # read the team's money once more, and take the mark back if it now reaches.
+            if not await allowance_runtime.still_short(caller.org_id, exc.required_micro):
+                await empty_balance.clear([caller.org_id])
         raise _insufficient_balance(mk, auto_on, prefs, required_micro=exc.required_micro,
                                     balance_micro=exc.balance_micro) from exc
     except DBAPIError as exc:

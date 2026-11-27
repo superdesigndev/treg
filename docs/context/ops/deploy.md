@@ -454,8 +454,9 @@ semantics are in [money](../architecture/money.md#optional-admission-before-the-
 mark: a team refused for its balance is refused again from a mark in the key-value store, before
 the admission lease and the database, until a credit clears the mark or it expires
 ([money](../architecture/money.md#the-balance-empty-mark)). It needs no migration and is safe to
-turn off at any time: marks already written expire on their own. Use a few seconds; the value is
-also the longest a team can keep being refused after money arrives if a clear is lost. Set it on
+turn off at any time: marks already written expire on their own. Use a few seconds (10 at
+most); the value is also the longest a team can keep being refused after money arrives if a
+clear is lost. Set it on
 every process that moves money (web and workers) with the same `TREG_KV_URL`: a process with it
 off credits a balance without clearing the mark, which then waits out its lifetime.
 

@@ -810,6 +810,17 @@ class Onto(NamedTuple):
     short: bool = False
 
 
+async def still_short(org_id: int, amount_micro: int) -> bool:
+    """Whether the team's money, wherever it sits (`allowance.credit_bound`), is below
+    `amount_micro` now: one statement on its own session. False when it cannot be read."""
+    try:
+        async with session_maker() as db:
+            return await allowance.credit_bound(db, org_id) < amount_micro
+    except Exception:
+        log.warning("reading the credit bound of org %s failed", org_id, exc_info=True)
+        return False
+
+
 async def onto_balance_or_short(org_id: int, amount_micro: int) -> Onto:
     async with session_maker() as db:
         free = await allowance.unheld_free(db, org_id)

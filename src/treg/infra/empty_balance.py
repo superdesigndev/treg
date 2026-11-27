@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from typing import NamedTuple
 
 from sqlalchemy import event
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from . import kv
@@ -21,6 +22,9 @@ from . import kv
 _SUSPECT_S = 60.0
 _SUSPECTS_KEPT = 10_000
 _SESSION_KEY = "treg_empty_balance_credited"
+# Below the store's own limit for optional work, so this limit is the one that ends a read of a
+# store that hangs, and the call knows the store did not answer.
+_READ_WAIT_S = 0.15
 _suspects: dict[int, float] = {}
 _clears: set[asyncio.Task] = set()
 
@@ -53,19 +57,28 @@ def suspect(org_id: int) -> None:
     _suspects[org_id] = now + _SUSPECT_S
 
 
-async def read(org_id: int) -> Mark | None:
-    """The team's mark, or None: switched off, a team this process has not seen refused lately
-    (the store is not asked), no mark, or a store that cannot answer."""
+class Read(NamedTuple):
+    """`read`'s answer. `answered` is False only when the store was asked and did not answer in
+    time or failed: the call then leaves the store alone for the rest of its reserve."""
+
+    mark: Mark | None
+    answered: bool = True
+
+
+async def read(org_id: int) -> Read:
+    """The team's mark, if any: none when switched off, for a team this process has not seen
+    refused lately (the store is not asked), with no mark, or with a store that cannot answer."""
     if ttl_s() <= 0 or _suspects.get(org_id, 0.0) <= time.monotonic():
-        return None
+        return Read(None)
     try:
-        text = await kv.store().get_text(_key(org_id))
+        async with asyncio.timeout(_READ_WAIT_S):
+            text = await kv.store().get_text(_key(org_id))
         if not text:
-            return None
+            return Read(None)
         required, balance = (int(part) for part in text.split(":"))
     except Exception:  # noqa: BLE001 - an unread mark is a missing one
-        return None
-    return Mark(required, balance) if required > 0 else None
+        return Read(None, answered=False)
+    return Read(Mark(required, balance) if required > 0 else None)
 
 
 async def remember(org_id: int, required_micro: int, balance_micro: int) -> None:
@@ -95,25 +108,25 @@ def credited(db, org_id: int) -> None:
         if ttl_s() <= 0:
             return
         sync = getattr(db, "sync_session", None)
-        if sync is None:
-            return
-        orgs = sync.info.get(_SESSION_KEY)
-        if orgs is None:
-            orgs = sync.info[_SESSION_KEY] = set()
-            event.listen(sync, "after_commit", _committed)
-            event.listen(sync, "after_rollback", _rolled_back)
-        orgs.add(org_id)
+        if sync is not None:
+            sync.info.setdefault(_SESSION_KEY, set()).add(org_id)
     except Exception:  # noqa: BLE001 - a missed clear costs the mark's lifetime, never the write
         pass
 
 
 def _committed(session) -> None:
+    """The credited teams' marks are deleted in the background, and this process stops asking
+    the store about them at once: a reserve that follows the credit in the same request (a
+    routed call's next child after a released one) must not meet a mark whose delete is still
+    on its way."""
     try:
         orgs = session.info.get(_SESSION_KEY)
         if not orgs:
             return
         credited_orgs = tuple(orgs)
         orgs.clear()
+        for org_id in credited_orgs:
+            _suspects.pop(org_id, None)
         task = asyncio.get_running_loop().create_task(
             clear(credited_orgs), name="treg-empty-balance-clear")
         _clears.add(task)
@@ -123,6 +136,15 @@ def _committed(session) -> None:
 
 
 def _rolled_back(session) -> None:
-    orgs = session.info.get(_SESSION_KEY)
-    if orgs:
-        orgs.clear()
+    try:
+        orgs = session.info.get(_SESSION_KEY)
+        if orgs:
+            orgs.clear()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# One listener for every session, registered once: a session that credited nothing costs one
+# dictionary lookup at its commit.
+event.listen(Session, "after_commit", _committed)
+event.listen(Session, "after_rollback", _rolled_back)

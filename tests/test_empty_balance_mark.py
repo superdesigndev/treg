@@ -4,8 +4,10 @@ queue and the database, for a few seconds at most, and never when the call could
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
+from pydantic import ValidationError
 from httpx import AsyncClient
 from sqlalchemy import event
 from sqlmodel import select
@@ -36,17 +38,24 @@ class MarkStore(LeaseStore):
     def __init__(self):
         super().__init__()
         self.texts: dict[str, str] = {}
-        self.failing = False
+        self.failing = self.hanging = False
+        self.clear_delay_s = 0.0
         self.reads = self.writes = self.clears = 0
 
     async def get_text(self, key):
         self.reads += 1
+        if self.hanging:
+            await asyncio.sleep(0.2)  # the store's own limit for optional work
+            return None
         if self.failing:
             raise ConnectionError("store down")
         return self.texts.get(key)
 
     async def set_text(self, key, value, ttl_s):
         self.writes += 1
+        if self.hanging:
+            await asyncio.sleep(0.2)
+            return False
         if self.failing:
             raise ConnectionError("store down")
         assert ttl_s == TTL_S
@@ -57,6 +66,7 @@ class MarkStore(LeaseStore):
         self.clears += 1
         if self.failing:
             raise ConnectionError("store down")
+        await asyncio.sleep(self.clear_delay_s)
         self.texts.pop(key, None)
 
 
@@ -113,6 +123,12 @@ async def _settle_clears() -> None:
 def test_the_mark_is_off_until_the_setting_names_a_lifetime(monkeypatch):
     monkeypatch.delenv("TREG_MONEY_EMPTY_MARK_TTL_S", raising=False)
     assert Settings(_env_file=None).money_empty_mark_ttl_s == 0
+
+
+def test_the_lifetime_is_a_few_seconds_at_most():
+    assert Settings(_env_file=None, money_empty_mark_ttl_s=10).money_empty_mark_ttl_s == 10
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, money_empty_mark_ttl_s=11)
 
 
 async def test_off_every_refusal_takes_the_database_and_carries_retry_after(money_db, store,
@@ -291,12 +307,16 @@ async def test_a_failing_store_leaves_every_call_on_the_usual_road_and_then_reco
 
 
 async def test_a_credit_whose_clear_is_lost_is_bounded_by_the_lifetime(money_db, store):
+    """The credit is committed by a process whose delete is lost. That process stops reading
+    the mark at once; another one, which saw the team refused, is the case the lifetime bounds."""
     org_id, caller = await _payer("mark-missed-clear")
     await _refused(org_id, caller, ref="short")
     store.failing = True
     await _grant(org_id)
     await _settle_clears()
     store.failing = False
+    assert empty_balance._key(org_id) in store.texts
+    empty_balance.suspect(org_id)  # as a process that did not commit the credit
     await _refused(org_id, caller, ref="still-marked")  # the few seconds the lifetime allows
     store.texts.clear()  # its lifetime ran out
     await call_reserve._platform_reserve(_call(org_id, "paid", 2_000), caller, call_ref="paid")
@@ -352,16 +372,102 @@ async def test_a_purchased_credit_only_endpoint_is_never_answered_from_the_mark(
     assert work.checkouts > 0 and refusal.value.kind == "free_credit_excludes_video"
 
 
-async def test_a_team_with_a_daily_limit_is_answered_for_the_marked_amount_only(money_db, store):
+async def test_a_team_with_a_daily_limit_is_never_answered_from_the_mark(money_db, store):
+    """The day's limit is checked before the balance, and cheaper calls paid after the mark can
+    use the day up: the answer for the marked amount is then the limit's, as without a mark."""
     org_id, caller = await _payer("mark-daily-cap")
-    caller.org.daily_cap_micro = 1_000_000
+    caller.org.daily_cap_micro = 2_500
     await _refused(org_id, caller, amount=2_000, ref="short")
     with Work(store) as same:
         await _refused(org_id, caller, amount=2_000, ref="same")
-    assert (same.checkouts, same.leases) == (0, 0)
-    with Work(store) as larger:
-        await _refused(org_id, caller, amount=3_000, ref="larger")
-    assert larger.checkouts > 0
+    assert same.checkouts > 0
+    await call_reserve._platform_reserve(_call(org_id, "cheap", 800), caller, call_ref="cheap")
+    with pytest.raises(ReservationFailed) as refusal:
+        await call_reserve._platform_reserve(_call(org_id, "again", 2_000), caller,
+                                             call_ref="again")
+    assert refusal.value.kind == "platform_daily_cap_reached"
+
+
+async def test_a_credit_that_lands_between_the_confirmation_and_the_write_leaves_no_mark(
+        money_db, store, monkeypatch):
+    """The database confirms the shortfall, a credit commits and its clear finds nothing, then
+    the refusal writes its mark. The reserve reads the team's money once more after the write
+    and takes the mark back, so the team's next call is paid."""
+    org_id, caller = await _payer("mark-race")
+    remember = empty_balance.remember
+
+    async def credit_lands_first(team, required, balance):
+        await _grant(team)
+        await _settle_clears()
+        await remember(team, required, balance)
+
+    monkeypatch.setattr(empty_balance, "remember", credit_lands_first)
+    await _refused(org_id, caller, amount=2_000, ref="first")
+    monkeypatch.setattr(empty_balance, "remember", remember)
+    assert store.writes == 1 and store.texts == {}
+    empty_balance.suspect(org_id)  # as a process that did not commit the credit
+    with Work(store) as work:
+        await call_reserve._platform_reserve(_call(org_id, "paid", 2_000), caller,
+                                             call_ref="paid")
+    assert work.checkouts > 0
+
+
+async def test_a_reserve_right_after_a_release_does_not_wait_for_the_delete(money_db, store):
+    """A routed call: one child's hold is released and the next child reserves at once, while
+    the mark's delete is still on its way to the store. The process that committed the release
+    no longer asks the store about the team, so the next child is paid."""
+    org_id, caller = await _payer("mark-routed")
+    await call_reserve._platform_reserve(_call(org_id, "child-a", 900), caller,
+                                         call_ref="child-a")
+    await _refused(org_id, caller, amount=900, ref="another-request")
+    store.clear_delay_s = 0.05
+    async with session_maker() as db:
+        await ledger.release(db, "child-a")
+    assert empty_balance._key(org_id) in store.texts, "the delete has not landed yet"
+    reads = store.reads
+    await call_reserve._platform_reserve(_call(org_id, "child-b", 900), caller,
+                                         call_ref="child-b")
+    assert store.reads == reads
+    await _settle_clears()
+    assert store.texts == {}
+
+
+async def test_a_store_that_hangs_costs_a_refused_call_one_short_wait(money_db, store):
+    """The read is cut short of the store's own limit, and a call whose read got no answer does
+    not ask the same store to write: one wait, not two."""
+    org_id, caller = await _payer("mark-hang")
+    await _refused(org_id, caller, ref="seen")
+    store.texts.clear()
+    store.hanging = True
+    writes = store.writes
+    began = time.monotonic()
+    with Work(store) as work:
+        await _refused(org_id, caller, ref="hung")
+    waited = time.monotonic() - began
+    assert work.checkouts > 0 and store.writes == writes
+    assert empty_balance._READ_WAIT_S <= waited < empty_balance._READ_WAIT_S + 0.15
+
+    store.hanging = False
+    await _refused(org_id, caller, ref="back")
+    with Work(store) as work:
+        await _refused(org_id, caller, ref="fast-again")
+    assert (work.checkouts, work.leases) == (0, 0)
+
+
+async def test_credits_leave_no_task_and_no_listener_behind(money_db, store):
+    from sqlalchemy.orm import Session
+
+    org_id, _caller = await _payer("mark-many-credits")
+    await _settle_clears()
+    before = store.clears
+    for _ in range(100):
+        await _grant(org_id)
+    await _settle_clears()
+    await asyncio.sleep(0)
+    assert not empty_balance._clears and store.clears == before + 100
+    assert event.contains(Session, "after_commit", empty_balance._committed)
+    async with session_maker() as db:
+        assert not event.contains(db.sync_session, "after_commit", empty_balance._committed)
 
 
 async def test_a_zero_price_call_is_never_answered_from_the_mark(money_db, store):

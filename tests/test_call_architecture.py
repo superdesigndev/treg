@@ -204,6 +204,8 @@ _DATAPLANE_DERIVED_WRITES = {
         (empty_balance.remember, "set_text"),
         (money._add_balance, "empty_balance.credited"),
         (empty_balance.clear, "clear_flag"),
+        # a mark written just after a credit committed is taken back by the refusal itself
+        (reserve._platform_reserve, "empty_balance.clear"),
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
@@ -249,7 +251,7 @@ _DERIVED_WRITE_FILES = {
         "ledger.reap_stale_holds", "allowance_runtime.take",
         "allowance_runtime.give_back_for_exact_path",
         "idempotency.mark_in_flight", "idempotency.clear_in_flight",
-        "empty_balance.remember",
+        "empty_balance.remember", "empty_balance.clear",
     },
     _SRC / "infra" / "empty_balance.py": {"set_text", "clear_flag"},
     _SRC / "application" / "call" / "allowance.py": {
@@ -449,6 +451,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # the balance-empty mark: written by a confirmed balance refusal, cleared once a
     # transaction that raised a balance is committed
     ("application/call/reserve.py", "_platform_reserve", "empty_balance.remember"),
+    ("application/call/reserve.py", "_platform_reserve", "empty_balance.clear"),
     ("infra/empty_balance.py", "remember", "set_text"),
     ("infra/empty_balance.py", "clear", "clear_flag"),
     ("domain/money/__init__.py", "_add_balance", "empty_balance.credited"),
