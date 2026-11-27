@@ -160,6 +160,11 @@ platforms:
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
 
+  # --- On-chain liquidity: positions and execution, not a price feed ------------------------------
+  # A platform here means the shelf an agent browses; the rows under it are positions a wallet can
+  # open and swaps it can quote against them. The read side is public and free.
+  defi: {label: "On-chain liquidity", category: "Market data", summary: "Open non-custodial market-making positions, live volume and swap quotes across EVM networks."}
+
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
   # The job-level generation capabilities are DELIBERATELY memberless: generation models are not
@@ -1310,6 +1315,16 @@ capabilities:
   stocks.company.news: "News for a specific company"
   stocks.fundamentals.metrics: "Fundamental metrics and ratios for a ticker"
   stocks.market.status: "Is the market open right now"
+
+  # --- On-chain liquidity -----------------------------------------------------------------------
+  # The job is the work an agent wants done, not the endpoint name. A position is something a
+  # wallet opens; a quote is a price for one swap against it.
+  defi.liquidity.stats: "Show live totals for on-chain liquidity positions, networks and volume"
+  defi.liquidity.chains: "List the networks where on-chain liquidity positions can be opened"
+  defi.liquidity.list: "List open on-chain liquidity positions, filtered by network and pair"
+  defi.liquidity.detail: "Show one open on-chain liquidity position by its hash"
+  defi.liquidity.quote: "Price a swap against one open on-chain liquidity position"
+  defi.liquidity.badge: "Get a shields.io badge with live on-chain liquidity metrics"
 
 # Short titles people scan on a platform shelf, only where a compared job's description runs long.
 # The description above stays whole: agents read it, and search ranks on it.

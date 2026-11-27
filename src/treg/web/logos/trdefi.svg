@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="TRDEFI">
+  <title>TRDEFI</title>
+  <rect width="512" height="512" fill="#0F0F14"/>
+  <g fill="#F59E0B">
+    <circle cx="166" cy="148" r="74"/>
+    <circle cx="346" cy="148" r="74"/>
+    <circle cx="166" cy="328" r="74"/>
+    <circle cx="346" cy="328" r="74"/>
+  </g>
+  <g fill="#0F0F14" font-family="Arial, 'Helvetica Neue', Helvetica, sans-serif" font-size="82" font-weight="700" text-anchor="middle">
+    <text x="166" y="184">T</text>
+    <text x="350" y="184">R</text>
+    <text x="168" y="364">D</text>
+    <text x="348" y="364">F</text>
+  </g>
+  <g transform="translate(251 0) scale(0.86 1) translate(-251 0)">
+    <text x="251" y="468" fill="#F0F0F5" font-family="Arial, 'Helvetica Neue', Helvetica, sans-serif" font-size="45" font-weight="700" letter-spacing="1" text-anchor="middle">TRDEFI</text>
+  </g>
+</svg>

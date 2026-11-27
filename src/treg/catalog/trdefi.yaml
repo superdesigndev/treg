@@ -1,0 +1,154 @@
+﻿# TRDEFI - non-custodial stablecoin liquidity
+#
+# The catalogue is public and read-only: the read surface needs no credential, so every row below
+# relays keylessly and costs nothing. A position it describes is a maker order a wallet opens
+# against a pool of liquidity; the money stays in that wallet and the return is the fee the
+# position's swaps collect.
+#
+# The write path - preparing a position, preparing a swap - returns unsigned transactions for the
+# caller's own wallet to sign and is paid per request. It is not part of this file.
+provider: trdefi
+source:
+  docs: https://yield.trdefi.com/docs/api
+  openapi: https://yield.trdefi.com/openapi.json
+  curated: '2026-11-25'
+pricing_url: https://yield.trdefi.com/docs/overall-scheme
+limits: "Read surface: open, no key. Every reply carries its rate-limit budget in the RateLimit-* headers."
+
+endpoints:
+  - id: trdefi.liquidity.stats
+    platform_auth: anonymous
+    capability: defi.liquidity.stats
+    platform: defi
+    domain: defi
+    scope: any_account
+    method: GET
+    path: /api/stats
+    name: Liquidity catalogue totals
+    summary: "Show the catalogue at a glance: strategies, makers, pairs and networks, plus the traded volume over the trailing day, week and month."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/trdefi.liquidity.stats.json
+    docs_url: https://yield.trdefi.com/docs/api
+
+  - id: trdefi.liquidity.chains
+    platform_auth: anonymous
+    capability: defi.liquidity.chains
+    platform: defi
+    domain: defi
+    scope: any_account
+    method: GET
+    path: /api/chains
+    name: Networks with open liquidity
+    summary: "List the networks where a liquidity position can be opened, with the registry and engine addresses and the tokens a position is built from."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/trdefi.liquidity.chains.json
+    docs_url: https://yield.trdefi.com/docs/api
+
+  - id: trdefi.liquidity.list
+    platform_auth: anonymous
+    capability: defi.liquidity.list
+    platform: defi
+    domain: defi
+    scope: any_account
+    method: GET
+    path: /api/strategies
+    name: Open liquidity positions
+    summary: "List the open maker positions: the network, the pair, the tokens, the maker's own fee and the volume the position has traded."
+    input:
+      queryParams:
+        chain: {type: string, required: false, note: "network key, as listed by the chains endpoint", example: base}
+        pair: {type: string, required: false, note: "pair key, lowercase and hyphenated", example: usdc-usdt}
+        q: {type: string, required: false, note: "substring match over the pair and the network"}
+        filter: {type: string, required: false, default: active, enum: [active, docked], note: "active positions are open, docked ones have been closed by their owner"}
+        quote_ready: {type: boolean, required: false, note: "keep only the positions this API can price a fill against"}
+        limit: {type: integer, required: false, min: 1, max: 500, default: 50}
+    test_request:
+      queryParams: {limit: 2}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    note: "quote_ready is a filter over the catalogue, not a promise of a price: a position can still be gated by its maker for the calling address."
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/trdefi.liquidity.list.json
+    docs_url: https://yield.trdefi.com/docs/api
+
+  - id: trdefi.liquidity.detail
+    platform_auth: anonymous
+    capability: defi.liquidity.detail
+    platform: defi
+    domain: defi
+    scope: any_account
+    method: GET
+    path: /api/strategy-detail
+    name: One liquidity position
+    summary: "Show one open maker position by its hash: the network, the pair, the tokens, the fee schedule, the volume and the maker's own order."
+    input:
+      queryParams:
+        hash: {type: string, required: true, note: "the position hash, 64 hex characters", example: "0x9b3fd2c6879fd320c3456a00218bf4579fedbbfcec2ed828bf13f8034123e6d8"}
+    test_request:
+      queryParams: {hash: "0x9b3fd2c6879fd320c3456a00218bf4579fedbbfcec2ed828bf13f8034123e6d8"}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    note: "The hash in the example is a live position, so the row needs a fresh hash when that position closes."
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/trdefi.liquidity.detail.json
+    docs_url: https://yield.trdefi.com/docs/api
+
+  - id: trdefi.liquidity.quote
+    platform_auth: anonymous
+    capability: defi.liquidity.quote
+    platform: defi
+    domain: defi
+    scope: any_account
+    method: GET
+    path: /api/quote
+    name: Fill quote for one liquidity position
+    summary: "Price a fill against one open position: the simulation runs on-chain and answers the output amount, the effective rate and the fee schedule behind it."
+    input:
+      queryParams:
+        hash: {type: string, required: true, note: "the position hash, 64 hex characters", example: "0x9b3fd2c6879fd320c3456a00218bf4579fedbbfcec2ed828bf13f8034123e6d8"}
+        amount: {type: string, required: true, note: "the input amount in base units, as an integer string", example: "1000000"}
+        chain: {type: string, required: false, note: "network key; the position's own network when omitted"}
+        direction: {type: string, required: false, default: aToB, enum: [aToB, bToA], note: "which side of the pair the input is on"}
+        from: {type: string, required: false, note: "the calling address; a maker can gate a position on the caller holding an access licence token"}
+        wallet: {type: string, required: false, note: "the address the fill would be prepared for"}
+    test_request:
+      queryParams: {hash: "0x9b3fd2c6879fd320c3456a00218bf4579fedbbfcec2ed828bf13f8034123e6d8", amount: "1000000", chain: robinhood-chain}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    note: "The hash in the example is a live position, so the row needs a fresh hash when that position closes. A maker can gate a position on the caller holding an access licence token; a gated position answers 422 with the gate reason instead of a price. The simulation needs the position's order data, and a position without it answers with the revert reason."
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/trdefi.liquidity.quote.json
+    docs_url: https://yield.trdefi.com/docs/api
+
+  - id: trdefi.liquidity.badge
+    platform_auth: anonymous
+    capability: defi.liquidity.badge
+    platform: defi
+    domain: defi
+    scope: any_account
+    method: GET
+    path: /api/badge
+    name: Liquidity metrics badge
+    summary: "Get a shields.io badge payload for one catalogue metric, so a project can show its live liquidity numbers in a README."
+    input:
+      queryParams:
+        metric: {type: string, required: false, default: volume30, enum: [volume30, volume7, volume1, strategies, makers, pairs, chains], note: "which metric the badge carries"}
+    test_request:
+      queryParams: {metric: volume30}
+    price: {value: '0', currency: USD, unit: call, note: "Public API, no key and no charge."}
+    verified: '2026-11-25'
+    added: '2026-11-25'
+    example_response: examples/trdefi.liquidity.badge.json
+    docs_url: https://yield.trdefi.com/docs/api

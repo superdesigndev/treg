@@ -4060,6 +4060,46 @@ COINGECKO = OAuthProvider(
 )
 
 
+TRDEFI = OAuthProvider(
+    service="trdefi",
+    display_name="TRDEFI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="trd_live_<keyId>_<secret>",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://yield.trdefi.com/docs/api#access",
+    setup_action_label="Request a TRDEFI API key",
+    setup_steps=(
+        "Request an API key at https://yield.trdefi.com/docs/api#access. Keys are issued after review.",
+        "Keep it server-side. It is only used to prepare unsigned transactions and to read the positions it prepared.",
+    ),
+    setup_note=(
+        "A TRDEFI key can prepare unsigned transactions and read the positions it prepared. It can never "
+        "sign, broadcast or move value, so holding it carries no custody risk. The read side of the "
+        "catalogue is public and needs no key; calls can also be paid per request instead of held."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Read open on-chain liquidity positions, live volume and swap quotes, and prepare the unsigned transactions that open a position or swap against one.",
+    base_url="https://yield.trdefi.com",
+    docs_url="https://yield.trdefi.com/docs/api",
+    # The read side of the catalogue is public: it answers 200 whatever the key is, so it cannot
+    # tell a good key from a pasted one. The key only matters on the write path, and there a
+    # request without a usable key answers a payment request (402) instead of a rejection - so
+    # the connect probe posts an empty body to the write path: a valid key answers 400 (the body
+    # is invalid) and an unusable one answers 402. Only 402 means "the key itself is not usable".
+    # probe_path stays the free public GET, because it is also the tool's health check.
+    probe_path="/api/stats",
+    probe_url="https://yield.trdefi.com/v1/positions",
+    probe_method="POST",
+    probe_json={},
+    probe_reject_statuses=(402,),
+)
+
+
 POLYGON = OAuthProvider(
     service="polygon",
     display_name="Polygon.io",
@@ -4632,6 +4672,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
+        # On-chain liquidity: positions, volume and quotes (the read side is public)
+        TRDEFI,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
