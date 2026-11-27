@@ -1993,6 +1993,7 @@ class CallReview(SQLModel, table=True):
     # What the codes were judged from (`application.review_judge`): NULL or "reason" (an upgrade with
     # the call's answer may follow), "answer", or "reason_final" (no answer can be shown). An answer
     # not readable yet is tried again from `answer_retry_at`, backing off with `answer_attempts`.
+    # A `useful` review, never upgraded, keeps there its back-off while Jev cannot code its reason.
     code_basis: str | None = Field(default=None)
     answer_retry_at: NaiveUTC | None = Field(default=None)
     answer_attempts: int | None = Field(default=None)

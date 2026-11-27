@@ -512,7 +512,12 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   most reviews. A blank reason is `NOREASON` without asking. Only
   the last `review_judge_praise_days` (28) are coded, newest first and at most
   `review_judge_praise_per_run` per run, which bounds the backfill when the pass is first turned
-  on or the praise codebook changes; it runs last, on the time the other passes leave.
+  on or the praise codebook changes; it runs last, on the time the other passes leave. A review Jev
+  could not code steps aside so the cap never stays stuck on the same newest rows: an unreadable
+  answer backs off from an hour to a week, a failed request waits an hour without counting a try,
+  in `answer_retry_at` / `answer_attempts` (a useful review is never upgraded, so it has no other
+  use for them; coding it clears both). The run reports `pending` (the whole window still uncoded
+  when it starts), `selected` (its share) and `retry_later`.
   `review_judge_praise` off skips it (its rollback switch; codes already written stay, and a
   reader that wants none ignores `useful` rows).
 - Upgrade with the answer (`judge_answers`): a direct call's review coded from its reason is asked

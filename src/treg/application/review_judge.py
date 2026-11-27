@@ -26,7 +26,7 @@ import logging
 import time
 from datetime import timedelta
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlmodel import select
 
 from ..config import get_settings
@@ -82,10 +82,12 @@ async def _write_codes(values: dict[int, tuple[str, str | None]], bases: dict[in
 
 
 async def _code_reasons(rows: list, *, question, codebook: dict[str, str], version: str,
-                        final: dict[int, str], deadline: float) -> dict:
+                        final: dict[int, str], deadline: float, unjudged=None) -> dict:
     """Code `rows` from their reasons under `codebook`: a blank reason is `NOREASON` without
     asking, the rest go to Jev `review_judge_batch` per request until the deadline. `final` names
-    the rows whose codes are `reason_final`; any other is `reason`."""
+    the rows whose codes are `reason_final`; any other is `reason`. `unjudged(rows, failed)`, when
+    given, is told of the rows a request left uncoded: its whole batch when the request failed,
+    else the rows whose answer was unreadable."""
     out = {"pending": len(rows), "judged": 0, "no_reason": 0, "already_judged": 0, "failed_requests": 0,
            "unreadable": 0, "tokens_in": 0}
     blank = {r.id: ("NOREASON", None) for r in rows if not (r.reason or "").strip()}
@@ -105,16 +107,21 @@ async def _code_reasons(rows: list, *, question, codebook: dict[str, str], versi
         if reply.answers is None:
             out["failed_requests"] += 1
             log.warning("review code judge abstained: %s", reply.error)
+            if unjudged is not None:
+                await unjudged(batch, True)
             continue
         out["tokens_in"] += reply.tokens_in or 0
         answers = reply.answers if isinstance(reply.answers, dict) else {}
-        values = {}
+        values, unread = {}, []
         for i, r in enumerate(batch):
             codes = review_codes.codes_from(answers.get(f"a{i}"), codebook)
             if codes is None:
                 out["unreadable"] += 1
+                unread.append(r)
                 continue
             values[r.id] = codes
+        if unread and unjudged is not None:
+            await unjudged(unread, False)
         written = await _write_codes(values, final, version)
         out["judged"] += written
         out["already_judged"] += len(values) - written
@@ -176,21 +183,42 @@ async def judge_codes(*, deadline: float) -> dict:
 async def judge_praise(*, deadline: float) -> dict:
     """Code `useful` reviews not yet coded under `PRAISE_CODEBOOK_VERSION`, newest first and at most
     `review_judge_praise_per_run`, from their reasons. Always `reason_final`: an answer upgrade
-    would cost an answer read per review for codes that mostly say the answer was fine."""
+    would cost an answer read per review for codes that mostly say the answer was fine.
+
+    A review Jev left uncoded steps aside so the next runs reach the ones behind it: an unreadable
+    answer backs off from an hour to a week (`_retry_at`), a failed request waits an hour without
+    counting a try. `pending` is the whole window still uncoded, `selected` this run's share of it,
+    and `retry_later` how many stepped aside."""
     s = get_settings()
-    since = utcnow_naive() - timedelta(days=s.review_judge_praise_days)
+    now = utcnow_naive()
+    since = now - timedelta(days=s.review_judge_praise_days)
     version = review_codes.PRAISE_CODEBOOK_VERSION
+    uncoded = (CallReview.created_at >= since, CallReview.usefulness == USEFUL,
+               or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
     async with session_maker() as db:
+        pending = (await db.execute(select(func.count()).select_from(CallReview).where(*uncoded))).scalar_one()
         rows = (await db.execute(
             select(CallReview.id, CallReview.reason, CallReview.usefulness, CallReview.endpoint_id,
-                   CallReview.routed_via)
-            .where(CallReview.created_at >= since, CallReview.usefulness == USEFUL,
-                   or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
+                   CallReview.routed_via, CallReview.answer_attempts)
+            .where(*uncoded, or_(CallReview.answer_retry_at.is_(None), CallReview.answer_retry_at <= now))
             .order_by(CallReview.created_at.desc())
             .limit(s.review_judge_praise_per_run))).all()
-    return await _code_reasons(rows, question=review_codes.praise_question, codebook=review_codes.PRAISE_CODES,
-                               version=version, final={r.id: reviews.REASON_FINAL for r in rows},
-                               deadline=deadline)
+    stepped = 0
+
+    async def unjudged(batch: list, failed: bool) -> None:
+        nonlocal stepped
+        at = utcnow_naive()
+        async with session_maker() as db:
+            for r in batch:
+                retry_at = at + timedelta(hours=1) if failed else _retry_at(at, (r.answer_attempts or 0) + 1)
+                stepped += await reviews.record_code_retry(db, r.id, version, r.answer_attempts, retry_at,
+                                                           count=not failed)
+            await db.commit()
+
+    out = await _code_reasons(rows, question=review_codes.praise_question, codebook=review_codes.PRAISE_CODES,
+                              version=version, final={r.id: reviews.REASON_FINAL for r in rows},
+                              deadline=deadline, unjudged=unjudged)
+    return out | {"pending": pending, "selected": len(rows), "retry_later": stepped}
 
 
 def _retry_at(now, attempts: int):

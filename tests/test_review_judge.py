@@ -497,8 +497,8 @@ async def test_praise_codes_useful_reviews_from_their_reasons_only(clients, monk
         return {"choice": "EMPTY"}  # a negative code is not a praise code
     seen = _fake(monkeypatch, answer)
     out = await review_judge.judge_praise(deadline=float("inf"))
-    assert out == {"pending": 4, "judged": 2, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
-                   "unreadable": 1, "tokens_in": 10}
+    assert out == {"pending": 4, "selected": 4, "judged": 2, "no_reason": 1, "already_judged": 0,
+                   "failed_requests": 0, "unreadable": 1, "tokens_in": 10, "retry_later": 1}
     assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.PRAISE_CODES)
     rows = await _all()
     assert (rows["j-0"].primary_code, rows["j-0"].secondary_code) == ("HONEST", "CHEAP")
@@ -508,7 +508,8 @@ async def test_praise_codes_useful_reviews_from_their_reasons_only(clients, monk
         assert rows[k].code_basis == "reason_final"
         assert rows[k].codebook_version == review_codes.PRAISE_CODEBOOK_VERSION
     assert rows["j-2"].code_judged_at is None  # negative reviews are the other pass's
-    assert rows["j-4"].code_judged_at is None  # unreadable: next run tries again
+    assert rows["j-4"].code_judged_at is None  # unreadable: tried again after its back-off
+    assert rows["j-4"].answer_attempts == 1 and rows["j-4"].answer_retry_at is not None
     # The negative pass never takes useful reviews, and the upgrade never reads their answers.
     assert (await review_judge.judge_codes(deadline=float("inf")))["pending"] == 1
     assert (await _all())["j-0"].primary_code == "HONEST"
@@ -521,7 +522,8 @@ async def test_praise_is_bounded_per_run_and_by_its_window(clients, monkeypatch)
     monkeypatch.setattr(get_settings(), "review_judge_praise_per_run", 3, raising=False)
     monkeypatch.setattr(get_settings(), "review_judge_praise_days", 28, raising=False)
     _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
-    assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 3
+    first = await review_judge.judge_praise(deadline=float("inf"))
+    assert (first["pending"], first["selected"], first["judged"]) == (5, 3, 3)  # the backlog, not the cap
     assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 2
     assert (await review_judge.judge_praise(deadline=float("inf")))["pending"] == 0
     assert (await _all())["j-5"].code_judged_at is None  # older than the praise window
@@ -552,3 +554,39 @@ def test_praise_codes_never_share_a_name_with_a_negative_code():
     assert not set(review_codes.PRAISE_CODES) & set(review_codes.CODES)
     assert review_codes.codes_from({"choice": "ACCURATE"}) is None
     assert review_codes.codes_from({"choice": "ACCURATE"}, review_codes.PRAISE_CODES) == ("ACCURATE", None)
+
+
+async def test_uncodable_praise_steps_aside_so_older_reviews_are_reached(clients, monkeypatch):
+    older = {"created_at": utcnow_naive() - timedelta(days=1)}
+    await _reviews(clients, [("useful", "poison " + LONG, {}), ("useful", "fine " + LONG, older)])
+    monkeypatch.setattr(get_settings(), "review_judge_praise_per_run", 1, raising=False)
+    _fake(monkeypatch, lambda q, spec, state: (
+        {"choice": "SOMETHING_ELSE"} if "poison" in state["reviews"][int(q[1:])]["reason"]
+        else {"choice": "COMPLETE"}))
+    first = await review_judge.judge_praise(deadline=float("inf"))
+    assert (first["unreadable"], first["retry_later"], first["pending"]) == (1, 1, 2)
+    second = await review_judge.judge_praise(deadline=float("inf"))
+    assert second["judged"] == 1  # the newest, backing off, no longer takes the cap
+    rows = await _all()
+    assert rows["j-1"].primary_code == "COMPLETE" and rows["j-0"].answer_attempts == 1
+    # Its time comes again: a second failure doubles the wait; coding it clears the back-off.
+    await _set("j-0", answer_retry_at=utcnow_naive() - timedelta(minutes=1))
+    third = await review_judge.judge_praise(deadline=float("inf"))
+    assert third["retry_later"] == 1 and third["pending"] == 1  # counted when the run starts
+    row = (await _all())["j-0"]
+    assert row.answer_attempts == 2 and row.answer_retry_at - utcnow_naive() > timedelta(hours=1, minutes=50)
+    await _set("j-0", answer_retry_at=None)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "HONEST"})
+    assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 1
+    row = (await _all())["j-0"]
+    assert (row.primary_code, row.answer_attempts, row.answer_retry_at) == ("HONEST", None, None)
+
+
+async def test_a_failed_praise_request_waits_an_hour_without_counting_a_try(clients, monkeypatch):
+    await _reviews(clients, [("useful", LONG, {})])
+    _fake(monkeypatch, Reply(answers=None, ms=1, error="timeout"))
+    out = await review_judge.judge_praise(deadline=float("inf"))
+    assert (out["failed_requests"], out["retry_later"]) == (1, 1)
+    row = (await _all())["j-0"]
+    assert not row.answer_attempts and row.answer_retry_at is not None
+    assert (await review_judge.judge_praise(deadline=float("inf")))["selected"] == 0
