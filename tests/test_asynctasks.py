@@ -469,6 +469,25 @@ async def test_owned_free_poll_creates_no_money_entries(
         assert (await db.get(AsyncTaskRecord, submission_ref)).status == "pending"
 
 
+@pytest.mark.parametrize("status", [200, 401])
+async def test_owned_free_poll_never_hands_back_treg_key(
+    clients: AsyncClient, monkeypatch, replicate_platform, status: int,
+):
+    """A free status read runs on treg's own key and is read whole: a key it quotes is masked,
+    in an answer as in an error."""
+    await _submit(clients, monkeypatch, {"id": "quoting-poll-task"})
+
+    async def fake_poll(*args, **kwargs):
+        return _response(status, {"id": "quoting-poll-task", "status": "processing", "urls": {
+            "get": "https://api.replicate.com/v1/predictions/quoting-poll-task?token=test-platform-token"}})
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    response = await clients.get("/call/replicate.predictions.get?id=quoting-poll-task")
+    assert response.status_code == status
+    assert "test-platform-token" not in response.text
+    assert response.json()["urls"]["get"].endswith("/quoting-poll-task?token=***")
+
+
 @pytest.mark.parametrize("status", [200, 500])
 async def test_owned_free_poll_hidden_before_activity_pagination(
     clients: AsyncClient, monkeypatch, replicate_platform, status: int,

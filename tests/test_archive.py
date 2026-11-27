@@ -631,10 +631,11 @@ async def test_a_platform_answer_serves_an_own_key_caller_free(
 async def test_an_own_key_answer_echoing_the_key_is_never_recorded(
         clients: AsyncClient, own_key_serve):
     """The echo upstream quotes `Authorization: Bearer MKKEY` back in the body. A team's own key
-    must never enter the archive - a judged provider would serve it to another team."""
+    must never enter the archive - a judged provider would serve it to another team - and the
+    caller receives it masked."""
     await _own_key(clients)
     r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
-    assert r1.status_code == 200 and r1.json()["auth"] == "Bearer MKKEY"
+    assert r1.status_code == 200 and r1.json()["auth"] == "***"
     keys, snaps = await _rows()
     assert keys == [] and snaps == []
     r2 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
@@ -917,6 +918,19 @@ async def test_refresh_worker_refreshes_a_due_demanded_key(clients: AsyncClient,
 def _qs(url: str):
     from urllib.parse import parse_qsl, urlsplit
     return parse_qsl(urlsplit(url).query)
+
+
+async def test_a_refreshed_answer_quoting_the_platform_key_is_stored_masked(
+        clients: AsyncClient, serve):
+    """The refresh re-asks on treg's key and keeps what a caller of the call path would receive."""
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
+    await archive.drain()
+    await _age_key(days=1)
+    quoting = b'{"fresh": true, "next": "https:\\/\\/api.tikhub.io\\/x?cursor=2&token=PLATFORM-TIKHUB-KEY"}'
+    assert await archive.refresh_once(_FakeUpstream(quoting)) == 1
+    _, snaps = await _rows()
+    assert snaps[-1].origin == "refresh"
+    assert snaps[-1].content_hash == archive.content_hash(quoting.replace(b"PLATFORM-TIKHUB-KEY", b"***"))
 
 
 async def test_refresh_skips_undemanded_and_fresh_keys(clients: AsyncClient, serve):

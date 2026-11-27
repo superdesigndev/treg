@@ -155,7 +155,7 @@ def _safe_secret_renderings(tool: Tool, secrets: dict[int, Secret]) -> list[str]
     try:
         return _secret_renderings(tool, secrets)
     except Exception as exc:  # noqa: BLE001 — malformed/encrypted credentials must fail closed
-        logging.getLogger("treg").warning("could not render credentials for error masking: %s", exc)
+        logging.getLogger("treg").warning("could not render credentials for masking: %s", exc)
         return None
 
 
@@ -340,6 +340,65 @@ def _redact_caller_response(body: bytes, secrets: list[str]) -> tuple[bytes, boo
     if masked == text:
         return body, False
     return masked.encode("utf-8", "surrogateescape"), True
+
+
+# An answer is data the caller asked for, so a spelling shorter than this (the decoded half of a
+# Basic credential, a numeric login) is too likely to be an ordinary value to rewrite in one.
+_ANSWER_SPELLING_MIN = 8
+
+
+def _first_spellings(needles: list[bytes]) -> list[bytes]:
+    """The spellings no shorter one is part of. When none of these occurs, no spelling does."""
+    first: list[bytes] = []
+    for needle in sorted(needles, key=len):
+        if not any(part in needle for part in first):
+            first.append(needle)
+    return first
+
+
+def mask_answer(body: bytes, secrets: list[str]) -> bytes:
+    """`body` with every spelling of an injected credential replaced by `***`; `body` itself when
+    none occurs.
+
+    For an answer that is not an error: a bytes search with no decode and no regex, and never a
+    whole-body replacement. An answer without a credential costs one search per spelling no other
+    spelling contains (`Bearer <key>` needs no search of its own once `<key>` is absent).
+    """
+    needles = [s.encode("utf-8", "replace") for s in secrets if len(s) >= _ANSWER_SPELLING_MIN]
+    if not body or not needles:
+        return body
+    found = [part for part in _first_spellings(needles) if part in body]
+    if not found:
+        return body
+    for needle in needles:  # longest first (see `_secret_renderings`)
+        if any(part in needle for part in found):
+            body = body.replace(needle, b"***")
+    return body
+
+
+def redact_answer(
+    body: bytes, tool: Tool, secrets: dict[int, Secret], *, content_encoding: str = "",
+) -> bytes:
+    """Mask injected credentials out of an answer held whole that is not an error.
+
+    Meta's Graph API, for one, writes the request's `access_token` into the `paging.next` and
+    `paging.previous` links of a successful page. Returns `body` itself when nothing was masked,
+    still in its original encoding; a masked answer is identity-encoded, so the caller must drop
+    `Content-Encoding` and recompute `Content-Length`. A gzip/deflate answer is decoded (bounded) only
+    to be searched. An answer that cannot be decoded, or whose credentials cannot be rendered, is
+    returned as it came: the relay could inject them, so the warning names a binding this function
+    has not learnt to spell.
+    """
+    if not body:
+        return body
+    renderings = _safe_secret_renderings(tool, secrets)
+    if not renderings:
+        return body
+    plain = _decompress_for_scan(body, content_encoding)
+    if plain is None:
+        return body
+    masked = mask_answer(plain, renderings)
+    return body if masked is plain else masked
 
 
 def redact_error_response(

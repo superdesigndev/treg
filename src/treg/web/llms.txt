@@ -89,7 +89,9 @@ tool is `GET {BASE}/call/<id>?key=value` with the header `X-Treg-Token: <token>`
 tools is `{BASE}/call/<tool-name>/<path>`, or its upstream URL behind the prefix:
 `{BASE}/call/https://api.stripe.com/v1/charges`. A team token (an agent token or a dashboard API
 key) carries its team; with a personal sign-in token, also send `X-Treg-Org: <team-slug>`. Method,
-path, query and body reach the provider unchanged, and its answer comes back verbatim.
+path, query and body reach the provider unchanged, and its answer comes back verbatim, save a
+credential treg injected that the provider quotes back, which can read `***` (a Graph `paging.next`
+link): ask for the next page through treg with its cursor, never by following such a link.
 A client already written against a provider can keep its paths: `{BASE}/call/<provider>/<path>`,
 with the path relative to the provider's base URL (`{BASE}/call/dataforseo/serp/google/organic/live/advanced`
 for `https://api.dataforseo.com/v3/serp/...`), runs the catalog tool on that path exactly as its id

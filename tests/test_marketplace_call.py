@@ -1453,7 +1453,9 @@ async def test_the_platform_key_never_appears_anywhere(clients: AsyncClient, pla
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200
     key = PLATFORM_KEYS["TIKHUB"]
-    assert key in r.json()["headers"]["authorization"], "the upstream did receive it"
+    # The echo upstream quotes the header it received: masked whole, so it carried the key.
+    assert r.json()["headers"]["authorization"] == "***", "the upstream did receive it"
+    assert key not in r.text, "the answer leaked the platform key"
     assert (await clients.get("/tools")).json() == [], "tier 4 must not materialize a tool row"
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     for path in ("/calls", "/tools", "/secrets", f"/orgs/{org_id}/balance", f"/catalog/endpoints/{EP}/access"):

@@ -123,8 +123,10 @@ the uppercased method, the catalog endpoint id, sorted query pairs, the canonica
 (raw hash for non-JSON), only `Accept` and `Accept-Language` from the caller, and the sharing
 scope when the answer is not public. The URL is rebuilt as the vendor sees it, before credential
 injection, so a credential cannot enter the key or the stored request shape from the request
-side. A vendor that echoes the credential in a 2xx body would have it stored on a platform-key
-call; judge `cache` per provider with that in mind.
+side. From the answer side, a platform-key answer that quotes treg's credential is stored as the
+caller receives it, masked (`evidence.redact_answer`): by the call path's recorder and by the
+refresh worker (`_refresh_call`) alike, so a refreshed version hashes like a live one
+([proxy-model](proxy-model.md), "Answers that quote a credential").
 
 ### The stored request body
 
@@ -156,7 +158,7 @@ never as a prefix. The relay asks for identity encoding (`force_identity`) and a
 compresses anyway is not recorded (`_identity_encoded`). A caller body the path never read cannot
 key the question: no lookup, no recording. **An answer that quotes the team's own credential back
 is never recorded** (`_echoes_own_credential`, failing closed when the renderings cannot be
-built). The same guard, provenance and sharing apply to a metered call riding treg's
+built); the caller receives it masked. The same guard, provenance and sharing apply to a metered call riding treg's
 pay-per-use OAuth app (`billed_oauth`): the token is the team's.
 
 **A hit on an own key is free**: nothing is reserved or settled (non-negotiable 1), and
@@ -647,4 +649,5 @@ versions in one columns-only query (`body IS NOT NULL`), never loading bodies.
 
 Balances. Archive code never imports the ledger or billing and never changes a balance; its one
 write on the money path is the `ArchiveKeyOrg` mark inside the settle transaction. Nor the
-upstream response: what it serves is byte for byte what the vendor sent.
+upstream response: what it serves is byte for byte what the vendor sent, save a credential the
+answer quoted, which it stores masked.

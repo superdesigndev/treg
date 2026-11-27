@@ -97,10 +97,10 @@ follow-up HEAD. HEAD makes one request for object size. No custom digest metadat
 required. GET enforces the size limit and checks downloaded bytes against the object's SHA-256
 hash. The bucket is not public and no object URL is exposed: call-history authorization checks
 the team's CallRecord before resolving its archive reference. A hash is an identity, not an
-access credential. Upstream answers are retained under the existing archive policy. A provider
-that echoes treg's PLATFORM credential in a 2xx body is not sanitized by these guards (judge that
-provider's `cache` with it in mind); an answer that echoes a team's OWN credential is refused by
-the recorder (`_echoes_own_credential`). An own-credential answer is stored under a cache key that
+access credential. Upstream answers are retained under the existing archive policy. An answer
+that echoes treg's PLATFORM credential is stored masked, as its caller receives it
+(`evidence.redact_answer`, on the call path and in the refresh worker); an answer that echoes a
+team's OWN credential is refused by the recorder (`_echoes_own_credential`). An own-credential answer is stored under a cache key that
 folds in the org (or the connection, on an `own_account` endpoint), so another team never computes
 the hash that would find it; only an endpoint-level `cache.sharing: public` declaration puts such an
 answer on the public key.

@@ -1,23 +1,35 @@
-"""Caller-facing response redaction: an injected credential never reaches the caller in an error body.
+"""Caller-facing response redaction: an injected credential never reaches the caller.
 
 Providers echo the request back in errors (TikHub's 402 "Insufficient balance" returns every request
 header, Authorization included). The body is redacted after settlement/capacity read it, before
 idempotent storage and before the caller sees it: exact masking of every spelling of
 every injected credential, then a fail-closed normalised re-check that replaces the whole body.
+
+Some echo it in a successful answer too (Meta's Graph API writes the request's `access_token` into
+`paging.next`). An answer the application holds whole is masked by exact match, for the caller, the
+replay and the archive alike, and is otherwise relayed byte for byte.
 """
 
 from __future__ import annotations
 
 import gzip
 import json
+import time
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
+from treg import api as A, archive, audit, oauth_providers
 from treg.application.call import evidence as call_evidence
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
+from treg.domain.catalog import store as catalog_store
+from treg.infra.db import session_maker
+from treg.models import ArchiveKey, ArchiveSnapshot
 
 EP = "tikhub.tiktok.video.comments"
 PLATFORM_KEY = "PLATFORM-TIKHUB-KEY-abc123"
@@ -394,3 +406,202 @@ class TestEvidenceModuleDirectly:
         body, was_redacted = call_evidence._redact_caller_response(original, [])
         assert body == original
         assert not was_redacted
+
+
+# ---- answers that are not errors ----------------------------------------------------------------
+META_EP = "meta-ad-library.meta-ads.library.search"
+META_TOKEN = "EAAGm0PX4ZCpsBAteamOwnAdLibraryToken42"
+META_QUERY = {"search_terms": "coffee", "ad_reached_countries": '["US"]', "fields": "id,page_name"}
+
+
+def _vendor(monkeypatch, answer, *, content_type: str = "application/json",
+            headers: dict | None = None) -> list[httpx.Request]:
+    """The real relay against a stand-in vendor: treg injects the credential the way it does in
+    production, and `answer(request)` builds the 200 body from the request the vendor received."""
+    seen: list[httpx.Request] = []
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, stream=httpx.ByteStream(answer(request)),
+                              headers={"content-type": content_type, **(headers or {})})
+
+    monkeypatch.setattr(A.app.state, "http", AsyncClient(transport=httpx.MockTransport(upstream)))
+    return seen
+
+
+def _json_escaped(document: dict) -> bytes:
+    """JSON the way Graph writes it: every `/` escaped as `\\/`."""
+    return json.dumps(document).replace("/", "\\/").encode()
+
+
+def _page_with_next_link(request: httpx.Request) -> bytes:
+    key = request.headers["authorization"].removeprefix("Bearer ")
+    return _json_escaped({"comments": [{"text": "nice"}], "cursor": 2, "next": (
+        f"https://api.tikhub.io/api/v1/tiktok/web/fetch_post_comment?aweme_id=7&cursor=2&token={key}")})
+
+
+def _meta_page(request: httpx.Request) -> bytes:
+    token = request.url.params["access_token"]
+    return _json_escaped({"data": [{"id": "1", "page_name": "Cafe"}], "paging": {
+        "cursors": {"after": "QVFIUmNh"},
+        "next": f"https://graph.facebook.com/v21.0/ads_archive?access_token={token}&limit=25&after=QVFIUmNh"}})
+
+
+@pytest.fixture
+def archive_on(platform_on, monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
+    monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
+
+
+class TestAnswersAreMaskedToo:
+    async def test_a_platform_answer_quoting_the_key_reaches_no_one_unmasked(
+        self, clients: AsyncClient, archive_on, monkeypatch,
+    ):
+        seen = _vendor(monkeypatch, _page_with_next_link)
+        live = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "page-1"})
+        assert live.status_code == 200, live.text
+        quoted = _page_with_next_link(seen[0])
+        assert PLATFORM_KEY.encode() in quoted
+        assert live.content == quoted.replace(PLATFORM_KEY.encode(), b"***")
+        assert live.json()["next"].endswith("&cursor=2&token=***")
+        assert live.headers["content-length"] == str(len(live.content))
+
+        replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "page-1"})
+        assert replay.headers["X-Treg-Idempotent-Replay"] == "true"
+        assert replay.content == live.content
+
+        await archive.drain()
+        async with session_maker() as s:
+            snaps = (await s.execute(select(ArchiveSnapshot))).scalars().all()
+        assert [snap.content_hash for snap in snaps] == [archive.content_hash(live.content)]
+        hit = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert hit.headers["X-Treg-Cache"] == "hit" and hit.content == live.content
+        assert len(seen) == 1
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        result = (await clients.get(f"/calls/{row['id']}/result")).json()
+        assert result["stored"] is True
+        assert result["response"]["body_text"] == live.content.decode()
+
+    async def test_a_plain_text_answer_quoting_the_header_is_masked(
+        self, clients: AsyncClient, platform_on, monkeypatch,
+    ):
+        _vendor(monkeypatch, lambda request: b"accepted " + request.headers["authorization"].encode()
+                + b" for this request\n", content_type="text/plain")
+        r = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert r.status_code == 200 and r.content == b"accepted *** for this request\n"
+
+    async def test_a_gzipped_answer_is_decoded_only_to_be_searched(
+        self, clients: AsyncClient, platform_on, monkeypatch,
+    ):
+        """A vendor that compresses despite `Accept-Encoding: identity`: an answer quoting the key
+        is re-sent masked and identity-encoded, one without it keeps its bytes and encoding."""
+        _vendor(monkeypatch, lambda request: gzip.compress(_page_with_next_link(request)),
+                headers={"content-encoding": "gzip"})
+        quoting = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert "content-encoding" not in quoting.headers
+        assert quoting.json()["next"].endswith("&token=***")
+
+        plain = gzip.compress(b'{"comments": []}')
+        _vendor(monkeypatch, lambda request: plain, headers={"content-encoding": "gzip"})
+        untouched = await clients.get(f"/call/{EP}?aweme_id=8")
+        assert untouched.headers["content-encoding"] == "gzip"
+        assert untouched.headers["content-length"] == str(len(plain))
+        assert untouched.json() == {"comments": []}
+
+    async def test_an_answer_without_the_key_is_relayed_byte_for_byte(
+        self, clients: AsyncClient, platform_on, monkeypatch,
+    ):
+        body = b'{ "comments" :[ {"text":"Caf\\u00e9 \\/ \\"q\\""} ],\n  "key":"uniqueId", "raw":"\xff" }'
+        _vendor(monkeypatch, lambda request: body)
+        r = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert r.status_code == 200
+        assert r.content == body and r.headers["content-length"] == str(len(body))
+
+    async def test_a_meta_paging_link_carrying_the_teams_token_is_masked(
+        self, clients: AsyncClient, monkeypatch,
+    ):
+        """The team's own Meta token, which treg injects as `access_token=`: Graph writes it into
+        `paging.next`. Held whole because the archive records own-key answers, so it is masked,
+        and an answer quoting the team's own credential is still never recorded."""
+        monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
+        r = await clients.post("/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})
+        assert r.status_code == 200, r.text
+        seen = _vendor(monkeypatch, _meta_page)
+        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+        assert r.status_code == 200, r.text
+        assert seen[0].url.params["access_token"] == META_TOKEN
+        assert META_TOKEN not in r.text
+        assert r.json()["paging"] == {"cursors": {"after": "QVFIUmNh"}, "next": (
+            "https://graph.facebook.com/v21.0/ads_archive?access_token=***&limit=25&after=QVFIUmNh")}
+        await archive.drain()
+        async with session_maker() as s:
+            assert (await s.execute(select(ArchiveKey))).scalars().all() == []
+
+
+def test_a_short_half_of_a_basic_credential_leaves_the_answer_data_alone(monkeypatch):
+    """On an error the decoded halves of a Basic credential are masked too; in an answer a 4-digit
+    login is an ordinary number, so only the spellings of 8 characters or more are rewritten."""
+    import base64
+    blob = base64.b64encode(b"4242:long-dfs-password-9x").decode()
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", blob)
+    get_settings.cache_clear()
+    try:
+        tool = SimpleNamespace(bindings=oauth_providers.platform_bindings(oauth_providers.get("dataforseo")))
+        numbers = b'{"tasks":[{"id":"4242","cost":0.4242,"result":[{"rank":4242}]}]}'
+        assert call_evidence.redact_answer(numbers, tool, {}) is numbers
+        quoting = b'{"login":"4242:long-dfs-password-9x","sent":"Basic ' + blob.encode() + b'"}'
+        assert call_evidence.redact_answer(quoting, tool, {}) == b'{"login":"***","sent":"***"}'
+        assert call_evidence.redact_error_response(numbers, tool, {})[0] != numbers
+    finally:
+        get_settings.cache_clear()
+
+
+class TestMaskingAnAnswerIsCheap:
+    """`redact_answer` runs on the event loop for every answer held whole, up to the 8 MiB
+    settlement buffer: a bytes search, never a decode or a regex over the body."""
+
+    MIB = 1024 * 1024
+
+    ACCOUNTS = {"b": "tikhub-b-9F2c71d0e4Aa", "c": "tikhub-c-31bE07f5d9Cc", "d": "tikhub-d-c84D1a6e20Ee"}
+
+    @pytest.fixture
+    def four_accounts(self, monkeypatch):
+        monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", PLATFORM_KEY)
+        monkeypatch.setenv("TREG_PLATFORM_ACCOUNTS", json.dumps({"tikhub": {
+            label: {"platform_key_tikhub": key} for label, key in self.ACCOUNTS.items()}}))
+        get_settings.cache_clear()
+        yield SimpleNamespace(bindings=oauth_providers.platform_bindings(oauth_providers.get("tikhub")))
+        get_settings.cache_clear()
+
+    def _page(self) -> bytes:
+        row = json.dumps({"id": "7301", "text": "Buy now " * 12,
+                          "url": "https://www.tiktok.com/@shop/video/7301?is_from_webapp=1"})
+        rows = ",".join([row] * (8 * self.MIB // (len(row) + 1) + 1))
+        return f'{{"comments":[{rows}]}}'.encode()[: 8 * self.MIB]
+
+    @staticmethod
+    def _best_of(runs: int, work) -> float:
+        best = float("inf")
+        for _ in range(runs):
+            started = time.perf_counter()
+            work()
+            best = min(best, time.perf_counter() - started)
+        return best
+
+    def test_an_8_mib_answer_is_searched_in_milliseconds(self, four_accounts):
+        body = self._page()
+        assert len(body) == 8 * self.MIB
+        assert call_evidence.redact_answer(body, four_accounts, {}) is body
+        clean = self._best_of(3, lambda: call_evidence.redact_answer(body, four_accounts, {}))
+        key = self.ACCOUNTS["c"].encode()
+        quoting = body[:-64] + key + body[-64 + len(key):]
+        masked = call_evidence.redact_answer(quoting, four_accounts, {})
+        assert key not in masked and masked.count(b"***") == 1
+        echo = self._best_of(3, lambda: call_evidence.redact_answer(quoting, four_accounts, {}))
+        # Generous ceilings for a slow CI runner; a decode with a normalised re-check of the same
+        # body (what the error path does) takes several times longer than either.
+        assert clean < 0.05, f"{clean * 1000:.1f} ms for an 8 MiB answer without a credential"
+        assert echo < 0.25, f"{echo * 1000:.1f} ms for an 8 MiB answer quoting one"

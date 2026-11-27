@@ -56,10 +56,14 @@ Everything else in this file is guidance; these are the contract, and they win o
    binding with `location: "json"` explicitly parses and reserializes the top-level JSON object; it
    is not byte-faithful and must never be used with an upstream that signs or hashes the raw body.
    Never add upstream-specific modeling.
-   One more rewrite, on 4xx/5xx only: every spelling of an injected credential the provider echoes
-   back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
-   row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
-   call one that cannot be scanned is replaced whole, never relayed as a prefix.
+   One more rewrite: every spelling of an injected credential the provider echoes back in a body
+   is masked (`***`) before the caller, an idempotent replay, the archive or the evidence row sees
+   it. A 4xx/5xx body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed call one
+   that cannot be scanned is replaced whole, never relayed as a prefix. Any other answer is masked
+   where the application already holds it whole (a metered or owned free-poll answer, an archive
+   hit or refresh, an own-key answer read for the archive or for its task): exact spellings of 8
+   characters or more only, never a whole-body replacement. An answer that streams or is spooled
+   is relayed untouched.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
    (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
@@ -104,7 +108,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
-   byte; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
+   byte save the credential masking above; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
    through the same road and reads the answer with the descriptor; it never changes what `/call/`
    returns (docs/context/architecture/tasks.md).
 5. Balances change only through money's six entries: grant, topup, reserve, settle, release,

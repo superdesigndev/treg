@@ -32,6 +32,7 @@ sources:
   - src/treg/application/hub/limits.py
   - tests/test_ssrf_public_addresses.py
   - tests/test_call_application_contract.py
+  - tests/test_caller_response_redaction.py
   - tests/test_call_cancellation.py
   - tests/test_call_response_limits.py
   - tests/test_error_capture.py
@@ -194,7 +195,8 @@ only: the admin-log pattern nets would rewrite ordinary fields like `"key": "uni
 normalized re-check that still finds a credential, a credential that cannot be rendered, or a body
 that cannot be decoded replaces the whole body with a `response_redacted` error. An unchanged body
 keeps its bytes and encoding; a masked one is re-sent identity-encoded with a fresh
-`Content-Length`. 2xx bodies are untouched, save the one member below.
+`Content-Length`. Answers get the same exact masking where they are held whole (next section);
+nothing else in a 2xx changes, save the one member below.
 
 A failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so masking sees
 every byte; one too large is replaced on a credentialed call and streamed untouched
@@ -202,6 +204,41 @@ every byte; one too large is replaced on a credentialed call and streamed untouc
 bodies on unmetered paths are kept for evidence only when `Content-Length` is declared and within
 `evidence._ERROR_CALLER_BODY_MAX`; larger or chunked uploads keep streaming. Redaction order,
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
+
+### Answers that quote a credential
+
+A provider can echo the injected credential in a successful answer too: Meta's Graph API writes
+the request's `access_token` into `paging.next` and `paging.previous`. `evidence.redact_answer`
+masks the same spellings in every answer (any status below 400) the application already holds
+whole, before the caller, an idempotent replay, a task record or the archive sees it:
+
+- a metered answer and an owned free poll: `service._mask_answer` at the hand-off, after
+  settlement, capacity signals, classification and the audit row have read the provider's bytes
+  (a free poll's error body takes `_redact_error_body` at the same point);
+- an archive hit, at the same hand-off, and what the archive keeps: the call path records the
+  masked answer, and the refresh worker masks before it records (`archive._refresh_call`), so
+  `GET /calls/{id}/result` reads masked bytes;
+- an own-key answer read whole for the archive (`archive_max_body_bytes`) or for its task
+  (`_TASK_ANSWER_MAX`).
+
+`mask_answer` is a bytes search with no decode and no regex. It first searches only the spellings
+no shorter one is part of (`_first_spellings`: once `<key>` is absent, `Bearer <key>` is too), so
+an answer without a credential costs one pass per such spelling and comes back as the same object;
+an answer quoting one is rewritten with only the spellings that can occur in it, longest first.
+There is no normalized re-check and no whole-body replacement: the answer is what the caller came
+for. For the same reason only spellings of at least 8 characters (`_ANSWER_SPELLING_MIN`) are
+searched: the decoded halves of a Basic credential can be a 4-digit login, an ordinary number in
+an answer, while the whole credential, `Basic <it>` and `login:password` are long enough to mask.
+A gzip/deflate answer is decoded (bounded) only to be searched, and a masked one is re-sent
+identity-encoded; one that cannot be decoded, or whose credentials cannot be rendered, is relayed
+as it came, with the rendering warning logged.
+
+Not masked, because no one holds it whole: an answer that streams (an own-key answer the archive
+does not read, whether recording is off, the row may not be stored, the team opted out, it is
+compressed or it is larger than `archive_max_body_bytes`, unless it names a task; an own-tool
+answer; a streamed free fetch) and a spooled answer. Meta's Graph read rows are own-key data rows
+with no `cache:` judgment, so their answers are held whole, and masked, while the archive records
+and the default policy stores them.
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
 sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,
@@ -223,7 +260,7 @@ separators, escapes, number spellings); an answer that is not one UTF-8 JSON doc
 selecting nothing or one ending in an index or a filter returns the bytes unchanged.
 
 `service._without_reported_charge` applies it at one place: in the metered hand-off after
-settlement, capacity signals, classification, the audit row, overflow and error masking, before
+settlement, capacity signals, classification, the audit row, overflow and credential masking, before
 the idempotent store and the task record (`POST /tasks/{call_id}` compares the answer the caller
 holds). A served archive hit and an overflow answer pass the same point; the archive recorded the
 provider's bytes earlier, so a repeat hit settles from the charge it carries. `X-Treg-Upstream-Failed`
