@@ -196,7 +196,7 @@ report how many were read.
   with `cursor` = `data.next_cursor` while `data.more_users` is true. No other query options.
   Rows: `screen_name`, `name`, `profile_image` (swap `_normal` for `_200x200`), `followers_count`,
   `location`, `blue_verified`, `created_at`, and the company badge
-  `affiliates.label.description` when `affiliates` is an object. `description` is null here.
+  (`description` under `label` inside `affiliates`) when `affiliates` is an object. `description` is null here.
   Fallback: `anyapi.twitter.followers` {"username":…}, `nextCursor`; no badge.
 - **TikTok**: `tikhub.x.tiktok-app-v3-fetch-user-follower-list` query {user_id, sec_user_id,
   count, min_time: 0}; next page with `page_token` = `data.next_page_token` while
@@ -248,9 +248,9 @@ SAMPLED: later totals scale by follower count ÷ N with "~", and say the newest 
         "criteria":{"true":"role and company or line of work are both stated","false":"one or both are missing or too vague to judge"}}}}}
   ```
 
-  Read `answers.fit.score` (0 to 2, with the probability on each level), `answers.role`,
-  `answers.seniority` and `answers.topic` (each `choice`, `probabilities`, `confidence`) and
-  `answers.enough.noul`. The questions are judged independently in one call. Confirm on the first
+  Read, under `answers`: `fit` → `score` (0 to 2, with the probability on each level), `role`,
+  `seniority` and `topic` (each `choice`, `probabilities`, `confidence`) and
+  `enough` → `noul`. The questions are judged independently in one call. Confirm on the first
   20 calls that `usage.cost` stays near the quoted price with five questions; if it does not, say
   so and ask before going on. Validate before acting: `model` starts with `typesafe/jev-1.13`,
   every choice is one you sent. A choice with confidence under 0.5 is filed as `unclear` / `other`.
