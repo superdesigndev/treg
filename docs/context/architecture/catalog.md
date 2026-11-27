@@ -482,6 +482,8 @@ cost:
   does the same for a header (it need not be declared): a second place the provider reads a
   credential from, beside the one treg injects, is refused on the shared credential, so the
   provider never answers for the caller's own account there.
+- **`platform_check`** names a plugin that checks the whole request on the shared credential when
+  pins cannot say the rule (a v2 row only; [catalog-schema](catalog-schema.md)).
   Resolution applies these and the provider-specific request guards in `resolve` only after
   selecting the platform offer and before reserve; a team's own credential keeps the upstream
   contract.

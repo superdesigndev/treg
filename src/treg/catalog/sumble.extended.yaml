@@ -9,6 +9,7 @@ limits: 10 requests/second aggregated per user; HTTP 429 when exceeded.
 pricing_url: https://sumble.com/pricing
 endpoints:
 - id: sumble.technologies.find
+  platform_check: {plugin: sumble.technologies_find_request}
   platform: companies
   scope: any_account
   method: POST
@@ -32,6 +33,7 @@ endpoints:
   added: '2026-09-10'
   example_response: examples/sumble.technologies.find.json
 - id: sumble.technologies.lookup
+  platform_check: {plugin: sumble.technologies_lookup_request}
   platform: companies
   scope: any_account
   method: POST
@@ -64,6 +66,7 @@ endpoints:
   added: '2026-09-10'
   example_response: examples/sumble.technologies.lookup.json
 - id: sumble.technologies.categories.lookup
+  platform_check: {plugin: sumble.technology_categories_lookup_request}
   platform: companies
   scope: any_account
   method: POST
@@ -95,6 +98,7 @@ endpoints:
   added: '2026-09-10'
   example_response: examples/sumble.technologies.categories.lookup.json
 - id: sumble.job_functions.lookup
+  platform_check: {plugin: sumble.job_functions_lookup_request}
   platform: companies
   scope: any_account
   method: POST
@@ -136,6 +140,7 @@ endpoints:
   added: '2026-09-10'
   example_response: examples/sumble.job_functions.lookup.json
 - id: sumble.projects.lookup
+  platform_check: {plugin: sumble.projects_lookup_request}
   platform: companies
   scope: any_account
   method: POST
@@ -167,6 +172,7 @@ endpoints:
   added: '2026-09-10'
   example_response: examples/sumble.projects.lookup.json
 - id: sumble.documentation.search
+  platform_check: {plugin: sumble.documentation_search_request}
   platform: companies
   scope: any_account
   method: GET

@@ -1052,9 +1052,10 @@ def test_openmart_settlement_rounds_three_credits_per_ten_records(endpoint, body
     ((('maxTotalChargeUsd', '0.5'), ('maxItems', '0')), None),
     ((('maxTotalChargeUsd', '0.5'), ('format', 'csv')), None),
 ])
-def test_apify_run_options_read_a_v2_row_s_spend_cap_and_floor(items, hold):
-    """On a v2 row the cap's ceiling is `reserve.money.max` and its floor the base plus one unit
-    more than `settle.hold_within_units`; the run options stay Apify's."""
+def test_a_platform_check_and_the_money_rule_bound_an_apify_run_on_treg_s_key(items, hold):
+    """The row's `platform_check` serves only Apify's bounded run options; `reserve.money` refuses a
+    cap that is missing, unreadable, above its max or below the floor (the base and one unit more
+    than `settle.hold_within_units`), and holds the cap."""
     from treg.domain.catalog.schema import V2Row, served
     keys = {"price": {"value": "0.005", "base": "0.01"},
             "provenance": {"source": "docs", "source_url": "https://example.com",
@@ -1064,14 +1065,21 @@ def test_apify_run_options_read_a_v2_row_s_spend_cap_and_floor(items, hold):
     parsed = V2Row.model_validate({"id": "apify.demo", "method": "POST", "path": "/x", **keys})
     inputs = {"queryParams": {"maxTotalChargeUsd": {"type": "number"}}}
     ep = {"id": "apify.demo", "provider": "apify", "method": "POST", "input": inputs,
-          **served(parsed, inputs)}
+          "platform_check": {"plugin": "apify.run_options"}, **served(parsed, inputs)}
     query = call_resolution.QueryValues(items)
+
+    def enforce():
+        call_resolution._enforce_platform_check(ep, b'{}', query)
+        from treg.application.call import cost as call_cost
+        from treg.domain.money import settlement
+        call_cost.require_money(ep, catalog_store.load(), settlement.request_evidence(
+            list(query.multi_items()), b''))
     if hold is None:
         with pytest.raises(ResolutionFailed) as exc:
-            call_resolution._enforce_platform_request(ep, b'{}', query=query)
-        assert exc.value.detail['parameter'] == 'queryParams'
+            enforce()
+        assert exc.value.detail['parameter'] in ('queryParams', 'query.maxTotalChargeUsd')
         return
-    call_resolution._enforce_platform_request(ep, b'{}', query=query)
+    enforce()
     assert call_resolution.price_call(ep, query, b'{}', set()).estimate_micro == hold
 
 

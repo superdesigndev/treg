@@ -543,7 +543,8 @@ to rotation ([capacity](../ops/capacity.md)).
 
 ## Platform capacity: refuse before reserve
 
-Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
+Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`, and a row's
+`platform_check` plugin, `_enforce_platform_check`) run after a
 platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
 explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
 table price row must equal its value, or be absent when its declared default is that value, as the

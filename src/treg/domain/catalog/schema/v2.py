@@ -251,6 +251,13 @@ class OutcomeRule(Model):
         return self
 
 
+class PlatformCheck(Model):
+    """A request check treg's key runs before any hold: the plugin reads the request and returns
+    None to serve it, or the reason it is refused."""
+
+    plugin: PluginName
+
+
 ClientErrors = Annotated[list[Annotated[int, Field(ge=400, le=499)]], Field(min_length=1)]
 
 
@@ -298,6 +305,7 @@ class V2Row(RowBase):
     settle: Settle | None = field(kind="P")
     bill: Bill | None = field(kind="P")
     ceiling_param: CeilingParam | None = field(kind="P")
+    platform_check: PlatformCheck | None = field(kind="A")
     async_: dict[str, Json] | None = field(alias="async", kind="P")
 
     @model_validator(mode="after")
