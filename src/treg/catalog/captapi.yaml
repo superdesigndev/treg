@@ -1,0 +1,344 @@
+provider: captapi
+source:
+  docs: https://captapi.com/docs
+  openapi: https://captapi.com/openapi.json
+  curated: '2026-11-22'
+limits: "per key, per minute: 40 requests on Free, 120 on Basic and Starter, 300 on Pro, 600 on Business"
+pricing_url: https://captapi.com/pricing
+
+# Prices are in CaptAPI credits. Each operation's credit cost is published in the OpenAPI document
+# (`x-credit-cost`), and every response states what the call was charged in the `X-Captapi-Credits`
+# header, so the header settles the call. Failed calls (4xx/5xx) cost 0 credits and cached results
+# are free; the balance check is free.
+defaults:
+  settle: {reported: {header: X-Captapi-Credits, unit: credit}}
+  provenance:
+    source: rate_card_api
+    source_url: https://captapi.com/openapi.json
+    checked: '2026-11-22'
+    confidence: documented
+
+endpoints:
+  # --- Account ------------------------------------------------------------------------------
+  - id: captapi.account.usage
+    added: '2026-11-22'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: any_account
+    method: GET
+    path: /v1/account/balance
+    name: "Check credit balance and plan"
+    summary: "Returns the key's plan, remaining subscription and top-up credits, credits used this month and the per-minute rate limit."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call}
+    settle: null
+    provenance: null
+    docs_url: https://captapi.com/apis/account-balance
+
+  # --- TikTok -------------------------------------------------------------------------------
+  - id: captapi.tiktok.user.profile
+    added: '2026-11-22'
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/channel-details
+    name: "TikTok profile by URL or handle — followers, likes, bio"
+    summary: "Gets a public TikTok profile: ids, display name, bio, follower, following, like and post counts, verified and private flags, bio link and creation date."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "profile URL, @handle or username", example: "https://www.tiktok.com/@natgeo"}
+        cache: {type: boolean, required: false, note: "true serves a cached answer when one exists, at 0 credits; default false", example: false}
+        cacheMaxAge: {type: string, required: false, enum: [1d, 3d, 7d, 14d, 30d], note: "accept a cached answer up to this age"}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@natgeo"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss:
+      status: [404]
+      means: "no public profile exists for this handle; charged 0 credits"
+    docs_url: https://captapi.com/apis/tiktok-channel-details
+
+  - id: captapi.tiktok.user.videos
+    added: '2026-11-22'
+    capability: tiktok.user.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/channel-posts
+    name: "TikTok user's latest posts by URL or handle"
+    summary: "Lists a TikTok profile's latest videos and photo posts, newest first, with caption, publish date, engagement counts, media URLs, sound and author."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "profile URL, @handle or username", example: "https://www.tiktok.com/@natgeo"}
+        limit: {type: integer, required: false, min: 1, max: 200, note: "posts per page, default 20; the price is per call, not per post", example: 5}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@natgeo", limit: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.totalReturned, op: equals, value: 0}}
+    docs_url: https://captapi.com/apis/tiktok-channel-posts
+
+  - id: captapi.tiktok.video.detail
+    added: '2026-11-22'
+    capability: tiktok.video.detail
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/video-details
+    name: "TikTok video by URL — stats, caption, author, sound"
+    summary: "Gets one TikTok video or photo post: caption, publish date, duration, view, like, comment, share and save counts, author, sound, hashtags and media URLs."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video or photo post URL", example: "https://www.tiktok.com/@khaby.lame/video/7646812028874673439"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@khaby.lame/video/7646812028874673439"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss:
+      status: [404]
+      means: "no public video exists at this URL; charged 0 credits"
+    docs_url: https://captapi.com/apis/tiktok-video-details
+
+  - id: captapi.tiktok.video.comments
+    added: '2026-11-22'
+    capability: tiktok.video.comments
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/comments
+    name: "TikTok video comments by URL"
+    summary: "Lists comments on a TikTok video with text, author, like and reply counts, publish date and comment language, plus the video's total comment count."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video or photo post URL", example: "https://www.tiktok.com/@khaby.lame/video/7646812028874673439"}
+        limit: {type: integer, required: false, min: 1, max: 500, note: "comments per page, default 50; the price is per call, not per comment", example: 5}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@khaby.lame/video/7646812028874673439", limit: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.totalReturned, op: equals, value: 0}}
+    docs_url: https://captapi.com/apis/tiktok-comments
+
+  - id: captapi.tiktok.video.captions
+    added: '2026-11-22'
+    capability: tiktok.video.captions
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/transcript
+    name: "TikTok video transcript by URL — timestamped"
+    summary: "Gets the transcript of a TikTok video as full text and timestamped segments, with the detected language."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video URL", example: "https://www.tiktok.com/@nasa/video/7697300954667994381"}
+        language: {type: string, required: false, maxLength: 8, note: "preferred language as an ISO code; default is auto-detect", example: "en"}
+        cache: {type: boolean, required: false, note: "default true on this endpoint: a transcript cached in the last 24h is served at 0 credits; false always fetches fresh", example: false}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@nasa/video/7697300954667994381", cache: false}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    docs_url: https://captapi.com/apis/tiktok-transcript
+
+  # --- Instagram ----------------------------------------------------------------------------
+  - id: captapi.instagram.user.profile
+    added: '2026-11-22'
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v1/instagram/channel-details
+    name: "Instagram profile by URL or handle — followers, bio, links"
+    summary: "Gets a public Instagram profile: ids, username, display name, bio and bio links, follower, following and post counts, verified, private and business flags."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "profile URL, @handle or username", example: "https://www.instagram.com/natgeo/"}
+        cache: {type: boolean, required: false, note: "true serves a cached answer when one exists, at 0 credits; default false", example: false}
+        cacheMaxAge: {type: string, required: false, enum: [1d, 3d, 7d, 14d, 30d], note: "accept a cached answer up to this age"}
+    test_request:
+      queryParams: {url: "https://www.instagram.com/natgeo/"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss:
+      status: [404]
+      means: "no public profile exists for this handle; charged 0 credits"
+    docs_url: https://captapi.com/apis/instagram-channel-details
+
+  - id: captapi.instagram.user.posts
+    added: '2026-11-22'
+    capability: instagram.user.posts
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v1/instagram/channel-posts
+    name: "Instagram user's latest posts by URL or handle"
+    summary: "Lists a public Instagram profile's latest posts, reels and carousels with caption, publish date, like and comment counts, media URLs and carousel slides, plus the profile block."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "profile URL, @handle or username", example: "https://www.instagram.com/nasa/"}
+        limit: {type: integer, required: false, min: 1, max: 200, note: "posts per page, default 10; the charge grows with the posts returned", example: 1}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.instagram.com/nasa/", limit: 1}
+    price: {value: '0.3', currency: credit, per: 1, unit: post, note: "0.3 credits per post returned, rounded up to a whole credit per call"}
+    reserve: {rows: {param: query.limit, default: {value: 10, source: docs}, max: 200}}
+    miss: {when: {path: response.data.totalReturned, op: equals, value: 0}}
+    docs_url: https://captapi.com/apis/instagram-channel-posts
+
+  - id: captapi.instagram.post.detail
+    added: '2026-11-22'
+    capability: instagram.post.detail
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v1/instagram/details
+    name: "Instagram post or reel by URL — stats, caption, media"
+    summary: "Gets one Instagram post, reel or carousel: caption, publish date, like, comment and view counts, media URLs, author and per-slide children."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "post or reel URL", example: "https://www.instagram.com/p/DbYaLffE2DD/"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.instagram.com/p/DbYaLffE2DD/"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    docs_url: https://captapi.com/apis/instagram-details
+
+  # --- YouTube ------------------------------------------------------------------------------
+  - id: captapi.youtube.channel.profile
+    added: '2026-11-22'
+    capability: youtube.channel.profile
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel-details
+    name: "YouTube channel by URL, handle or id — subscribers, views"
+    summary: "Gets a YouTube channel's profile: id, handle, name, description, subscriber, video and view counts, country, join date, links and tags."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "channel URL, @handle or UC… channel id", example: "https://www.youtube.com/@MrBeast"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/@MrBeast"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss:
+      status: [404]
+      means: "no channel exists for this handle or id; charged 0 credits"
+    docs_url: https://captapi.com/apis/youtube-channel-details
+
+  - id: captapi.youtube.channel.videos
+    added: '2026-11-22'
+    capability: youtube.channel.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel-videos
+    name: "YouTube channel's uploads by URL, handle or id"
+    summary: "Lists a YouTube channel's uploaded videos with title, publish date, view count, duration and thumbnail, paged by cursor."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "channel URL, @handle or UC… channel id", example: "https://www.youtube.com/@MrBeast"}
+        limit: {type: integer, required: false, min: 1, max: 200, note: "videos per page, default 20; the price is per call, not per video", example: 5}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        fast: {type: boolean, required: false, note: "true reads the channel's feed: quicker, with fewer fields per video and no cursor", example: false}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/@MrBeast", limit: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.totalReturned, op: equals, value: 0}}
+    docs_url: https://captapi.com/apis/youtube-channel-videos
+
+  - id: captapi.youtube.video.detail
+    added: '2026-11-22'
+    capability: youtube.video.detail
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video-details
+    name: "YouTube video by URL — views, likes, duration, captions list"
+    summary: "Gets one YouTube video's metadata and stats: title, description, channel, publish date, duration, view, like and comment counts, tags and available caption tracks."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss:
+      status: [404]
+      means: "no public video exists at this URL; charged 0 credits"
+    docs_url: https://captapi.com/apis/youtube-video-details
+
+  - id: captapi.youtube.video.comments
+    added: '2026-11-22'
+    capability: youtube.video.comments
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/comments
+    name: "YouTube video comments by URL"
+    summary: "Lists comments on a YouTube video with text, author, like count and approximate publish time, plus the video's total comment count."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        limit: {type: integer, required: false, min: 1, max: 500, note: "comments per page, default 50; the price is per call, not per comment", example: 5}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", limit: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.totalReturned, op: equals, value: 0}}
+    docs_url: https://captapi.com/apis/youtube-comments
+
+  - id: captapi.youtube.video.captions
+    added: '2026-11-22'
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/transcript
+    name: "YouTube video captions by URL — timestamped"
+    summary: "Gets the captions YouTube publishes for a video, manual or auto-generated, as full text and timestamped segments with the returned language."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "video URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        language: {type: string, required: false, note: "preferred caption language as an ISO code; default is auto-detect", example: "en"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    miss:
+      status: [404]
+      means: "the video is unavailable, has no caption track, or none in the requested language; charged 0 credits"
+    docs_url: https://captapi.com/apis/youtube-transcript
+
+  # --- Meta Ad Library ----------------------------------------------------------------------
+  - id: captapi.meta-ads.library.search
+    added: '2026-11-22'
+    capability: meta-ads.library.search
+    platform: meta-ads
+    scope: any_account
+    method: GET
+    path: /v1/ad-library/facebook/search
+    name: "Search the Meta Ad Library by keyword"
+    summary: "Searches publicly running Facebook and Instagram ads by keyword or brand and returns each ad's copy, creative media, advertiser, platforms, start date and landing URL."
+    input:
+      queryParams:
+        q: {type: string, required: true, minLength: 2, note: "keyword, brand or advertiser name", example: "nike"}
+        country: {type: string, required: false, note: "two-letter ISO country code, or ALL; default US", example: "US"}
+        limit: {type: integer, required: false, min: 1, max: 200, note: "ads to return, default 20; the price is per call, not per ad. Above 30 the call takes about twice as long", example: 5}
+        status: {type: string, required: false, enum: [ALL, ACTIVE, INACTIVE], note: "delivery status; default ACTIVE", example: "ACTIVE"}
+        media_type: {type: string, required: false, enum: [ALL, IMAGE, VIDEO, MEME, IMAGE_AND_MEME, NONE], note: "creative type; default ALL"}
+        search_type: {type: string, required: false, enum: [keyword_unordered, keyword_exact_phrase], note: "default keyword_unordered"}
+        start_date: {type: string, required: false, note: "YYYY-MM-DD; keeps ads delivered on or after this date"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD; keeps ads delivered on or before this date"}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        cache: {type: boolean, required: false, note: "true serves a 24h cached answer when one exists, at 0 credits; default false", example: false}
+    test_request:
+      queryParams: {q: "nike", country: "US", limit: 5}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    miss: {when: {path: response.data.totalReturned, op: equals, value: 0}}
+    docs_url: https://captapi.com/apis/facebook-ad-library-search
