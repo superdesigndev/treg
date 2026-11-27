@@ -1896,6 +1896,10 @@ adapters:
       body.job_title_or: "list(title)"
       body.job_country_code_or: "list(upper(country))"
       body.job_location_or: "list(location)"
+      # The two candidate-side filters JobsPipe alone takes: a written-in language and the
+      # sponsorship stance read from the posting. Both stay out of the body when not asked for.
+      body.language_or: "choose(language, list(lower(language)), null)"
+      body.visa_sponsorship_or: "choose(visa_sponsorship, list(lower(visa_sponsorship)), null)"
       body.remote: "choose(remote == true, true, null)"
       body.posted_at_max_age_days: posted_within_days
       body.limit: limit
