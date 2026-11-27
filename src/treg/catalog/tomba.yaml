@@ -339,17 +339,9 @@ endpoints:
       note: "a miss is a free 200 with `data: []`"
     test_request:
       queryParams: {domain: "tomba.io"}
-    cost:
-      type: per_success
-      value: 1
-      currency: credit
-      per: 1
-      unit: call
-      source: observed
-      source_url: https://docs.tomba.io/usage-and-quotas
-      checked: '2026-11-27'
-      confidence: verified
-      note: "1 credit when the request includes domain and a valid number is returned, also with full=true; a miss is free"
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit when a valid number is returned, also with full=true; a miss is free"}
+    provenance: {source: observed, source_url: https://docs.tomba.io/usage-and-quotas, checked: '2026-11-27', confidence: verified}
+    miss: {means: "Tomba has no number for this domain; free", when: [{path: response.data, op: empty}]}
     verified: '2026-11-27'
     added: '2026-11-27'
     example_response: examples/tomba.companies.phone.find.json
