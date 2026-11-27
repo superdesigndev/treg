@@ -174,9 +174,9 @@ async def test_a_transaction_pooling_pgbouncer_passes_startup():
 
 
 # Session-level state does not survive a transaction behind a transaction-pooling PgBouncer. Only
-# these places may hold it: migrations run on TREG_DATABASE_URL, and the archive retention run lock
-# is taken on the API pool, which never goes through a pooler.
-SESSION_STATE_ALLOWED = {("alembic/", None), ("application/archive_retention.py", "_only_run")}
+# these places may hold it: migrations run on TREG_DATABASE_URL, and a job's run lock
+# (`only_one_run`) is taken on the API pool, which never goes through a pooler.
+SESSION_STATE_ALLOWED = {("alembic/", None), ("infra/db.py", "only_one_run")}
 _SESSION_SQL = (
     re.compile(r"(^|;)\s*SET\s+(ROLE\b|SESSION\b|[a-z_][a-z0-9_.]*\s*(=|TO\b))", re.MULTILINE),
     re.compile(r"\bLISTEN\s+\w|\bWITH\s+HOLD\b"),
@@ -226,8 +226,8 @@ def _allowed(path: str, function: str | None) -> bool:
 
 def test_session_level_state_stays_off_the_pools_a_pooler_may_carry():
     sites = _session_state_sites()
-    assert ("application/archive_retention.py", "_only_run") in {(p, f) for p, f, _ in sites}, \
-        "the scan no longer recognizes the retention run lock"
+    assert ("infra/db.py", "only_one_run") in {(p, f) for p, f, _ in sites}, \
+        "the scan no longer recognizes the job run lock"
     stray = sorted(site for site in sites if not _allowed(site[0], site[1]))
     assert not stray, f"session-level PostgreSQL state outside {SESSION_STATE_ALLOWED}: {stray}"
 

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from functools import cache
 from importlib import import_module
 
@@ -307,6 +308,27 @@ background_session_maker = async_sessionmaker(
 # replica failing to connect/query raises normally and must never silently load the primary.
 read_session_maker = (async_sessionmaker(_read_engine, class_=AsyncSession, expire_on_commit=False)
                       if _read_db_url else session_maker)
+
+
+@asynccontextmanager
+async def only_one_run(key: int) -> AsyncIterator[bool]:
+    """Hold the session-level advisory lock `key` for a job's run on a connection of its own (idle
+    between its two statements, so it pins no snapshot) -> whether this run got it. SQLite: always.
+    The connection is the API pool's, which never goes through a transaction pooler: the lock
+    lives on the server connection that took it."""
+    async with session_maker.kw["bind"].connect() as connection:
+        if connection.dialect.name != "postgresql":
+            yield True
+            return
+        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                             {"key": key})).scalar_one())
+        await connection.commit()
+        try:
+            yield got
+        finally:
+            if got:
+                await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+                await connection.commit()
 
 
 @cache
