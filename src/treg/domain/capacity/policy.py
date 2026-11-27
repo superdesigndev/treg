@@ -277,9 +277,9 @@ _CONCURRENCY: dict[str, int] = {
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
-    # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
+    # Filtrat allows 30 verifications in progress on treg's partner key (one more waits up to 10 s,
     # then 503 SERVER_BUSY), and 40 finder searches on treg's finder key.
-    "filtrat": 10,
+    "filtrat": 30,
     "filtrat-finder": 40,
 }
 # An endpoint family whose in-progress allowance differs from its provider's has its own places
