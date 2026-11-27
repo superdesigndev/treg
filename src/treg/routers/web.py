@@ -226,7 +226,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     # The job, workflow and agent pages exist on the hosted deployment only (`_hosted`): a
     # self-hosted registry must not put three 404s in its own footer.
     hub_links = ('<a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a>'
-                 '<a href="/gtm-engineering">GTM engineering</a><a href="/showcase">Showcase</a><a href="/rankings">Rankings</a>'
+                 '<a href="/gtm-engineering">GTM engineering</a><a href="/ai-ads">AI ads</a><a href="/showcase">Showcase</a><a href="/rankings">Rankings</a>'
                  '<a href="/agents">Agents</a><a href="/blog">Blog</a>' if _hosted() else "")
     return HTMLResponse(f"""<!doctype html>
 <html lang="en">
