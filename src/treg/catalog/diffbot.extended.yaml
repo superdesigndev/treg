@@ -432,6 +432,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/event
 
   - id: diffbot.x.crawl-create
+    echoes_credential: true  # the job object's downloadJson and downloadUrls links carry the account token
     added: '2026-07-28'
     kind: account
     tier: extended
@@ -473,6 +474,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/create-a-crawl
 
   - id: diffbot.x.crawl-manage
+    echoes_credential: true  # the job object's downloadJson and downloadUrls links carry the account token
     kind: account
     tier: extended
     capability: web.scrape.job.status
@@ -518,6 +520,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/retrieve-crawl-job-data
 
   - id: diffbot.x.bulk-create
+    echoes_credential: true  # the job object's downloadJson and downloadUrls links carry the account token
     added: '2026-07-28'
     kind: account
     tier: extended
@@ -612,6 +615,7 @@ endpoints:
     docs_url: https://docs.diffbot.com/reference/introduction-to-natural-language-api
 
   - id: diffbot.x.account
+    echoes_credential: true  # the answer's token member is the account token
     kind: account
     tier: extended
     platform: web
