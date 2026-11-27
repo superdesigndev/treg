@@ -2685,8 +2685,9 @@ def test_a_stored_marker_is_never_read_as_a_request_body(monkeypatch):
     kept = archive._request_body_to_keep(lookalike)        # a caller sending marker-shaped bytes
     assert kept != lookalike
     assert archive.stored_request_body(kept)[1]["size_bytes"] == len(lookalike)
-    assert archive.stored_request_body(archive._REQUEST_BODY_OMITTED + b"not json") == (
-        None, {"sha256": None, "size_bytes": None})
+    for unreadable in (b"not json", b"[" * 200000):
+        assert archive.stored_request_body(archive._REQUEST_BODY_OMITTED + unreadable) == (
+            None, {"sha256": None, "size_bytes": None})
 
 
 async def test_an_over_limit_question_is_still_answered_from_the_archive(clients, serve, monkeypatch):

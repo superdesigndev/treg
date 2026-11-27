@@ -286,7 +286,7 @@ def stored_request_body(req_body: bytes | None) -> tuple[bytes | None, dict | No
         parsed = json.loads(req_body[len(_REQUEST_BODY_OMITTED):])
         if isinstance(parsed.get("sha256"), str) and isinstance(parsed.get("size_bytes"), int):
             omitted = {"sha256": parsed["sha256"], "size_bytes": parsed["size_bytes"]}
-    except (ValueError, UnicodeDecodeError, AttributeError):
+    except (ValueError, UnicodeDecodeError, AttributeError, RecursionError):
         pass
     return None, omitted
 
