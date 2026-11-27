@@ -1,0 +1,59 @@
+{
+  "data": {
+    "uuid": "00000l1",
+    "employee_reviews": {
+      "overall_rating": {
+        "glassdoor": 3.8
+      },
+      "other_ratings": [
+        {
+          "type": "business_outlook",
+          "provider": "glassdoor",
+          "value": 0.61
+        },
+        {
+          "type": "ceo",
+          "provider": "glassdoor",
+          "value": 0.86
+        },
+        "… 6 more item(s) truncated"
+      ],
+      "reviews": {
+        "data": [
+          {
+            "id": 106067565,
+            "summary": "get in, learn what you can, move on",
+            "pros": "* remote work... though with early signs of getting wound down\n* some great ICs around ... if they havent disappeared overnight\n* still decent perks and okay pay",
+            "cons": "* rate of people disappearing and accounts deactivated has been increasing. have to keep an eye on canvaworld farewell section to see who got purged this week\n* performance culture squeeze is increasing. its an employers market and everyone is aware of it. faang bar without faang pay\n* remuneration is okay but has been stagnant for some time. missed the boat to ipo and no liquidity event on the horizon.\n* most of the orgs feel rudderless. middle management doing their best Elaine dance to the AI… [560 chars total]",
+            "rating": 2,
+            "review_link": "https://www.glassdoor.com/Reviews/Employee-Review--RVW106067565.htm",
+            "job_title": "Staff Software Engineer",
+            "review_date": "2026-10-22T16:58:01.360000+00:00",
+            "employment_status": "REGULAR",
+            "is_current_employee": false,
+            "years_of_employment": 6,
+            "location": "",
+            "helpful_count": 0,
+            "not_helpful_count": 0,
+            "career_opportunities_rating": 2.0,
+            "ceo_rating": "NO_OPINION",
+            "compensation_and_benefits_rating": 3.0,
+            "culture_and_values_rating": 3.0,
+            "diversity_and_inclusion_rating": 3.0,
+            "senior_management_rating": 1.0,
+            "work_life_balance_rating": 2.0,
+            "language": "eng",
+            "provider": "glassdoor"
+          }
+        ],
+        "total": 1142,
+        "total_by_provider": {
+          "glassdoor": 1142
+        }
+      }
+    }
+  },
+  "limit": 1,
+  "offset": 0,
+  "credits_consumed": 1.5
+}
