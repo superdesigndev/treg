@@ -84,7 +84,13 @@ endpoints:
       note: "the preferred lookup — one domain maps to exactly one company. A domain with no company behind it returns HTTP 404, not an empty body. The response carries firmographics, description, industries, NAICS, socials, technologies and funding."
     test_request:
       queryParams: {domain: "stripe.com"}
-    price: {value: '1', currency: credit, unit: call, note: "1 credit per call; `expand=workforce` adds 5. A 404 (no company) is free."}
+    price:
+      table:
+        - {when: [{path: query.expand, op: absent}], value: '1'}
+      fallback: {value: '6', note: "with expand=workforce"}
+      currency: credit
+      unit: call
+      note: "1 credit per call; `expand=workforce` adds 5. A 404 (no company) is free."
     miss: {status: [404], ok_when: {path: response.name, op: absent}, means: "`Company could not be found`: no company behind this domain; free"}
     docs_url: https://docs.companyenrich.com/reference/get_companies-enrich
     verified: '2026-08-20'
@@ -116,7 +122,13 @@ endpoints:
       note: "at least ONE of the seven properties must be supplied. Use this only when you do not have a domain — the domain route is deterministic, this one is a best-match and can resolve to the wrong company for a generic name. Supplying both a name and a social URL narrows it considerably."
     test_request:
       body: {name: "Anthropic", linkedinUrl: "https://www.linkedin.com/company/anthropicresearch"}
-    price: {value: '1', currency: credit, unit: call, note: "1 credit per call; `expand=workforce` adds 5. A 404 is free."}
+    price:
+      table:
+        - {when: [{path: query.expand, op: absent}], value: '1'}
+      fallback: {value: '6', note: "with expand=workforce"}
+      currency: credit
+      unit: call
+      note: "1 credit per call; `expand=workforce` adds 5. A 404 is free."
     miss: {status: [404], ok_when: {path: response.name, op: absent}, means: "`Company could not be found`: free"}
     docs_url: https://docs.companyenrich.com/reference/post_companies-enrich
     verified: '2026-08-20'
@@ -140,7 +152,13 @@ endpoints:
       note: "returns a plain ARRAY of company objects (not an envelope). This is the synchronous batch — it answers in the same request. For more than 50 domains use the async bulk job (companyenrich.companies.enrich.bulk.start), which takes up to 10,000."
     test_request:
       body: {domains: ["stripe.com", "anthropic.com"]}
-    price: {value: '1', currency: credit, unit: record, note: "1 credit per unique company found; a domain with no company (null) is free, and a repeated domain is charged once. `expand=workforce` adds 5 per company."}
+    price:
+      table:
+        - {when: [{path: query.expand, op: absent}], value: '1'}
+      fallback: {value: '6', note: "with expand=workforce"}
+      currency: credit
+      unit: record
+      note: "1 credit per unique company found; a domain with no company (null) is free, and a repeated domain is charged once. `expand=workforce` adds 5 per company."
     reserve: {entities: {from: body.domains, max: 50}}
     docs_url: https://docs.companyenrich.com/reference/post_companies-enrich-batch
     verified: '2026-08-20'
@@ -163,7 +181,13 @@ endpoints:
       note: "re-fetching by id costs the same 1 credit as enriching by domain, so cache the enrich response rather than round-tripping ids."
     test_request:
       queryParams: {id: "0192577c-1d7a-715c-a5b7-1b9b530445e0"}
-    price: {value: '1', currency: credit, unit: call, note: "1 credit per call; `expand=workforce` adds 5. A 404 is free."}
+    price:
+      table:
+        - {when: [{path: query.expand, op: absent}], value: '1'}
+      fallback: {value: '6', note: "with expand=workforce"}
+      currency: credit
+      unit: call
+      note: "1 credit per call; `expand=workforce` adds 5. A 404 is free."
     docs_url: https://docs.companyenrich.com/reference/get_companies
     verified: '2026-08-20'
     added: '2026-08-20'
@@ -264,7 +288,13 @@ endpoints:
       note: "ALWAYS call companyenrich.companies.search.count first: it is free and tells you the match total, so you never buy an unexpectedly large page. An empty result set still bills the 1-credit minimum. Deep pagination past 10,000 rows requires the scroll route."
     test_request:
       body: {pageSize: 1, page: 1, technologies: ["stripe"], countries: ["US"]}
-    price: {value: '1', currency: credit, unit: record, note: "1 credit per company returned (`pageSize` is the price), and one company's credits on an empty page. A `semanticQuery` search is 2 credits per company; `expand=workforce` adds 5 per company."}
+    price:
+      table:
+        - {when: [{path: query.expand, op: absent}], value: '1'}
+      fallback: {value: '6', note: "with expand=workforce"}
+      currency: credit
+      unit: record
+      note: "1 credit per company returned (`pageSize` is the price), and one company's credits on an empty page. A `semanticQuery` search is 2 credits per company; `expand=workforce` adds 5 per company."
     reserve: {rows: {param: body.pageSize, default: {value: 10, source: observed}, max: 100}}
     miss: {when: [{path: response.items, op: present}, {path: response.items, op: empty}], means: "an empty page; CompanyEnrich bills it one row's credits"}
     bill: {miss: 1}
