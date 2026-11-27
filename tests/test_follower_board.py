@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from conftest import email_code
 from httpx import ASGITransport, AsyncClient
 
 from treg.api import app
@@ -10,7 +11,7 @@ from treg.api import app
 async def _browser(clients: AsyncClient) -> AsyncClient:
     """The board saves from a signed-in browser: a session cookie, not an API key."""
     clients.headers.pop("X-Treg-Token", None)
-    code = (await clients.post("/auth/email/start", json={"email": "tim@superdesign.dev"})).json()["dev_code"]
+    code = await email_code(clients, "tim@superdesign.dev")
     assert (await clients.post("/auth/email/verify", json={"email": "tim@superdesign.dev", "code": code})).status_code == 200
     return clients
 
