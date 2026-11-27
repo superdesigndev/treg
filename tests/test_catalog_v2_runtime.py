@@ -673,6 +673,8 @@ def test_a_bill_within_the_declared_units_of_the_hold_is_the_hold():
     assert call(ep, query=query, answer=[1] * 7)[1].actual_micro == 7500
     assert call(ep, query=query, answer=[1] * 8)[1].actual_micro == 10500  # 8,500 + 2 units reaches it
     assert call(ep, query=query, answer=[1] * 30)[1].actual_micro == 10500  # never above the hold
+    assert call(capped(settle={"count": {"path": "response"}, "hold_within_units": 20}),
+                query=query, answer=[])[1].actual_micro == 500             # no row: the base, not the hold
     plain = capped()
     assert call(plain, query=query, answer=[1] * 8)[1].actual_micro == 8500
     with pytest.raises(ValueError, match="hold_within_units belongs beside"):
@@ -688,7 +690,8 @@ def test_a_settle_plugin_may_bill_the_base_more_than_once(monkeypatch):
     query = [("cap", "0.01")]
     assert call(ep, {"runs": 3}, query=query, answer=[1, 2])[1].actual_micro == 3500
     assert call(ep, {"runs": 16}, query=query, answer=[])[1].actual_micro == 8000
-    assert call(ep, {"runs": 17}, query=query, answer=[])[1].actual_micro == 10500   # 8,500 + 2 units
+    assert call(ep, {"runs": 17}, query=query, answer=[])[1].actual_micro == 8500    # no row: never the hold
+    assert call(ep, {"runs": 16}, query=query, answer=[1])[1].actual_micro == 10500  # 8,500 + 2 units
     bad = capped(settle={"plugin": "demo.bad"})
     assert call(bad, {"runs": 1}, query=query, answer=[1])[1].actual_micro == 10500  # not a quantity
     with pytest.raises(ValueError, match="price.base needs a unit price"):

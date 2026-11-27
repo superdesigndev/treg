@@ -467,18 +467,20 @@ def _evidence(terms: dict, hold: int, doc: object, request: plugins.Request | No
               answer: plugins.Answer | None) -> int | None:
     """What a `count` or `plugin` settle reads off this answer, capped at the row's declared
     maximum (its `reserve` max at the unit price), or at the hold when the row declares none."""
-    found = _uncapped(terms, doc, request, answer)
-    if found is None:
+    read = _uncapped(terms, doc, request, answer)
+    if read is None:
         return None
+    found, units = read
     within = (terms.get("settle") or {}).get("hold_within_units")
-    if within and found + amount(terms, int(within)) >= hold:
+    if within and units and found + amount(terms, int(within)) >= hold:
         return hold
     cap = terms.get("count_max_micro")
     return min(found, hold if cap is None else int(cap))
 
 
 def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
-              answer: plugins.Answer | None) -> int | None:
+              answer: plugins.Answer | None) -> tuple[int, float] | None:
+    """The bill a `count` or `plugin` settle reads off this answer, and how many units it counts."""
     settle = terms.get("settle") or {}
     if "count" in settle:
         path = settle["count"]["path"]
@@ -490,10 +492,20 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
             return None
         else:
             found = found[0]
-        return amount(terms, sum(item is not None for item in found)) + _base(terms)
+        units = sum(item is not None for item in found)
+        return amount(terms, units) + _base(terms), units
     if "plugin" in settle:
-        return _priced(terms, plugins.call(settle["plugin"], terms["provider"], request, answer))
+        quantity = plugins.call(settle["plugin"], terms["provider"], request, answer)
+        found = _priced(terms, quantity)
+        return None if found is None else (found, _units(quantity))
     return None
+
+
+def _units(quantity: object) -> float:
+    """How many units a plugin quantity `_priced` accepted counts, the base aside."""
+    if isinstance(quantity, dict):
+        return quantity["units"] if set(quantity) == {"units", "base"} else sum(quantity.values())
+    return quantity
 
 
 def _lists_readable(path: str, doc: object) -> bool:
