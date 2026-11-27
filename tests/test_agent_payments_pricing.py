@@ -538,6 +538,43 @@ async def test_a_kept_transfer_s_recovery_runs_one_call_however_many_proofs(
     assert len(calls) == 1
 
 
+async def test_a_recovery_proof_repriced_again_keeps_its_recovery(
+        wallet: AsyncClient, payments_on, terms_on, chain, monkeypatch):
+    """The price rose again between the kept 402 and its proof: the new challenge offers only a
+    proof on the same recovery terms, so the call it runs claims the recovery, and the transfer
+    sent again after that answer was lost runs no second call."""
+    from mpp import Credential
+
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    chain.payer = account.address.lower()
+    challenge = await wallet.get(f"/call/{EP}?aweme_id=7")
+    echo = next(c for c in _mpp_challenges(challenge) if c.request["amount"] != "0").to_echo()
+    pushed = Credential(challenge=echo,
+                        payload={"type": "hash", "hash": "0x" + "fa" * 32}).to_authorization()
+    _raise_margin(monkeypatch)
+    kept = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert kept.status_code == 402, kept.text
+    proof = await _mpp_proof(kept, account)
+    monkeypatch.setenv("TREG_PLATFORM_MARGIN", "2.0")
+    get_settings.cache_clear()
+    repriced = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": proof})
+    assert repriced.status_code == 402, repriced.text
+    assert repriced.json()["detail"]["reason"] == "price_changed"
+    assert {c.request["amount"] for c in _mpp_challenges(repriced)} == {"0"}
+    assert "payment-required" not in repriced.headers
+    run = await wallet.get(f"/call/{EP}?aweme_id=7",
+                           headers={"Authorization": await _mpp_proof(repriced, account)})
+    assert run.status_code == 200, run.text
+    resent = await wallet.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed})
+    assert resent.status_code == 402, resent.text
+    again = await wallet.get(f"/call/{EP}?aweme_id=7",
+                             headers={"Authorization": await _mpp_proof(resent, account)})
+    assert again.status_code == 409 and again.json()["detail"]["reason"] == "challenge_used"
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("switch", [False, True], ids=["switch-off", "switch-on"])
 async def test_a_challenge_issued_with_the_configured_realm_still_pays(
         wallet: AsyncClient, payments_on, chain, monkeypatch, switch):

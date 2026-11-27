@@ -349,8 +349,11 @@ headers (`X-Treg-Payment` among them) and no receipt.
   so every proof offered for one kept transfer shares it, and only the first proof under it runs
   a call (`spent:<nonce>`); another answers 409 `challenge_used`, checked before price, credit
   or a replay could ask for a payment (the nonce is read from a token treg issued, expired or
-  not). A kept transfer has one recovery deadline, its receipt's week from when it was kept,
-  stored with the receipt so a resent answer carries the same one; every recovery term expires by
+  not). A recovery proof signed on terms that no longer buy the call (the price rose again, or its
+  challenge expired) is offered only the paying rail's proof on the same recovery terms, never
+  ordinary terms that would run a call without claiming the recovery. A kept transfer has one recovery deadline, its receipt's week from when it was kept,
+  stored with the receipt (and in every recovery token, `k<nonce>d<deadline>`) so a resent answer
+  carries the same one; every recovery term expires by
   it whatever a challenge's lifetime is, and the spent mark, claimed after the transfer was kept
   and kept a week, outlives them all. The 409 for another host carries `recovery`, an HMAC'd
   reference to that nonce, the deadline and this request; sent to `proof_url` in
