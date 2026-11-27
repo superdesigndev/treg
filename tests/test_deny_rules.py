@@ -7,6 +7,8 @@ relay: host + path + method.
 Proves: an empty field means "any"; the path match can't be dodged by a lookalike prefix; a rule
 aimed at one member leaves the rest of the team alone; it applies to the OWNER too (a guardrail, not
 a permission tier); both run tiers are gated; and no rules = byte-for-byte the previous behavior.
+A method rule also matches the method a request asks its upstream to run instead (`?method=post`,
+`X-HTTP-Method-Override`), so an override cannot carry a write past a rule on writes.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from conftest import make_upstream
 
 from treg import crypto
 from treg.api import app
+from treg.domain.governance.access import method_overrides
 from treg.routers.orgs import _deny_match
 from treg.infra.db import reset_db, session_maker
 from treg.models import DenyRule, Membership, Org, User
@@ -96,6 +99,74 @@ def _r(**kw) -> DenyRule:
 ])
 def test_deny_match(rule, host, path, method, denied):
     assert (_deny_match([_r(**rule)], host, path, method) is not None) is denied
+
+
+# ---- a method override is matched as the method it asks for --------------------------------
+@pytest.mark.parametrize(("headers", "query", "overrides"), [
+    ((), (("method", "post"),), ("POST",)),                                  # Graph's GET ?method=post
+    ((), (("Method", " Delete "), ("_method", "put")), ("DELETE", "PUT")),   # names and values, any case
+    (((b"X-HTTP-Method-Override", b"post"),), (), ("POST",)),
+    (((b"X_HTTP_METHOD_OVERRIDE", b"post"),), (), ("POST",)),                # Rack/CGI fold `_` and `-`
+    (((b"x-method-override", b"PATCH"), (b"X-HTTP-Method", b"MERGE")), (), ("PATCH", "MERGE")),
+    (((b"x-http-method-override", b"GET, DELETE"),), (), ("GET", "DELETE")),  # a list is several
+    (((b"x-http-method-override", b"POST"),), (("method", "post"),), ("POST",)),
+    (((b"x-other", b"POST"),), (("q", "post"), ("method", "")), ()),          # nothing else counts
+])
+def test_method_overrides(headers, query, overrides):
+    assert method_overrides(headers, query) == overrides
+
+
+@pytest.mark.parametrize(("rule", "method", "overrides", "denied"), [
+    ({"method": "POST"}, "GET", ("POST",), True),
+    ({"method": "POST"}, "GET", (), False),
+    ({"method": "DELETE"}, "POST", ("DELETE",), True),
+    # The sent method still matches: an override can add a refusal, never remove one.
+    ({"method": "GET"}, "GET", ("POST",), True),
+    # A value that names no rule's method (an RPC API's `method=photos.search`) changes nothing.
+    ({"method": "POST"}, "GET", ("PHOTOS.SEARCH",), False),
+    ({"host": "h", "method": "post"}, "get", ("post",), True),
+])
+def test_an_override_adds_a_match_and_never_removes_one(rule, method, overrides, denied):
+    assert (_deny_match([_r(**rule)], "h", "/x", method, overrides) is not None) is denied
+
+
+async def test_a_post_rule_blocks_a_get_that_asks_to_run_as_post(env):
+    await _rule(env, method="POST", note="no writes from agents")
+    asks = [("?method=post", {}), ("?Method=POST", {}), ("?_method=post", {}),
+            ("", {"X-HTTP-Method-Override": "POST"}), ("", {"X-Method-Override": "post"}),
+            ("", {"X-HTTP-Method": "POST"})]
+    for query, override in asks:
+        r = await env.c.get(f"/call/alpha/thing{query}", headers={**_h(env.member), **override})
+        assert r.status_code == 403, (query, override, r.text)
+        assert "no writes from agents" in r.text and "asks the upstream to run it as POST" in r.text
+    passthrough = await env.c.get("/call/http://upstream/thing?method=post", headers=_h(env.member))
+    assert passthrough.status_code == 403, passthrough.text
+    assert (await env.c.get("/call/alpha/thing", headers=_h(env.member))).status_code == 200
+
+
+async def test_a_get_rule_is_unaffected_by_an_override(env):
+    await _rule(env, method="GET")
+    assert (await env.c.get("/call/alpha/thing?method=post", headers=_h(env.member))).status_code == 403
+    assert (await env.c.get("/call/alpha/thing", headers=_h(env.member))).status_code == 403
+    assert (await env.c.post("/call/alpha/thing", headers=_h(env.member))).status_code == 200
+
+
+async def test_a_delete_rule_blocks_a_post_that_tunnels_a_delete(env):
+    await _rule(env, method="DELETE")
+    r = await env.c.post("/call/alpha/thing", headers={**_h(env.member), "X-HTTP-Method-Override": "DELETE"})
+    assert r.status_code == 403, r.text
+    assert (await env.c.post("/call/alpha/thing?_method=delete", headers=_h(env.member))).status_code == 403
+    assert (await env.c.post("/call/alpha/thing", headers=_h(env.member))).status_code == 200
+
+
+async def test_an_override_no_rule_refuses_is_relayed_as_sent(env):
+    await _rule(env, method="DELETE")
+    r = await env.c.get("/call/alpha/thing?method=post",
+                        headers={**_h(env.member), "X-HTTP-Method-Override": "PATCH"})
+    assert r.status_code == 200, r.text
+    echo = r.json()
+    assert echo["query"] == {"method": "post"}
+    assert echo["headers"]["x-http-method-override"] == "PATCH"
 
 
 async def test_a_method_rule_blocks_that_method_only(env):

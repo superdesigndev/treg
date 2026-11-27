@@ -41,6 +41,7 @@ sources:
   - tests/test_tag_billing.py
   - tests/test_tag_billing_adversarial.py
   - tests/test_call_architecture.py
+  - tests/test_deny_rules.py
   - tests/test_asynctasks.py
   - tests/test_relay_content_length.py
 related:
@@ -384,6 +385,27 @@ anchored at a segment boundary. Rules apply to every role including owner (a gua
 permission tier). A rule with `project_id` fires only on that project's tools; host/path/method,
 member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mirrors
 `localrun.check_deny` (argv instead of URL).
+
+A method rule matches the method the request was sent with **and** every method the request asks
+its upstream to run instead (`access.method_overrides`), so an override can add a refusal and never
+remove one: a POST rule refuses a GET carrying one, and a GET rule still refuses that GET. The
+signals are ones real upstreams honour, names and values case-insensitive, a comma list read as
+several, each value as sent:
+
+- query `method`: Meta's Graph API runs `GET ?method=post` or `?method=delete` as that method;
+- query `_method`: Laravel, Symfony, Spring and Express apps (Rails reads `_method` only from a
+  POST form body: see the limit below);
+- headers `X-HTTP-Method-Override` (Google's APIs, most web frameworks), `X-Method-Override` (a
+  common variant) and `X-HTTP-Method` (OData), each also spelled with `_` for `-`, since Rack and
+  CGI servers fold both spellings into one key.
+
+A query value that names no rule's method (an RPC API's `method=photos.search`) refuses nothing.
+A value that does name one is refused even where the upstream means something else by it (a
+parameter that happens to be called `method`, such as a shipping method `method=post`).
+The refusal says which method the request asked for. Nothing relayed changes: the parameter and the
+header reach the upstream as sent. A `_method` field in a request body is not read here, because
+the body is read only after these gates (and only when small or metered); a team that denies a
+method on an upstream reading `_method` from POST bodies (Rails, Laravel) also denies POST there.
 
 ### Call-time SSRF guard
 

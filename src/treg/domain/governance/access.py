@@ -1,5 +1,6 @@
 """Tool, project, and upstream deny policy shared by call, run, and resource surfaces."""
 
+from collections.abc import Iterable
 from urllib.parse import urlsplit
 
 from sqlalchemy import or_
@@ -78,19 +79,47 @@ def _require_tool_use(caller: Caller, tool: Tool) -> None:
             "(dashboard → Team, or `treg org access <you> --projects …`)")
 
 
-def _deny_match(rules: list[DenyRule], host: str, path: str, method: str) -> DenyRule | None:
+# Request parts an upstream may read as the method to run instead of the one the request was sent
+# with: Meta's Graph API runs `GET ?method=post` (or `delete`) as that method; Laravel, Symfony,
+# Spring and Express apps take a query `_method` (Rails reads `_method` only from a POST form
+# body); `X-HTTP-Method-Override` is the header Google's APIs and most web frameworks honour,
+# `X-Method-Override` a common variant, and `X-HTTP-Method` the OData one. Rack and CGI servers
+# fold `_` and `-` in a header name into one key, so either spelling counts.
+_OVERRIDE_PARAMS = frozenset({"method", "_method"})
+_OVERRIDE_HEADERS = frozenset({b"x-http-method-override", b"x-method-override", b"x-http-method"})
+
+
+def method_overrides(
+    headers: Iterable[tuple[bytes, bytes]], query: Iterable[tuple[str, str]],
+) -> tuple[str, ...]:
+    """Every method a request asks its upstream to run in place of the one it was sent with,
+    uppercased: each override header and query parameter, names and values case-insensitive (a
+    header name with `_` for `-` included), a comma list read as several. Nothing here changes
+    what is relayed."""
+    values = [value.decode("latin-1") for name, value in headers
+              if name.lower().replace(b"_", b"-") in _OVERRIDE_HEADERS]
+    values += [value for name, value in query if name.lower() in _OVERRIDE_PARAMS]
+    return tuple(dict.fromkeys(
+        part.strip().upper() for value in values for part in value.split(",") if part.strip()))
+
+
+def _deny_match(rules: list[DenyRule], host: str, path: str, method: str,
+                overrides: Iterable[str] = ()) -> DenyRule | None:
     """The FIRST rule that matches — pure, so it unit-tests without a DB (like `localrun.check_deny`).
 
     An empty field on a rule means "any", so `{method: "DELETE"}` blocks every delete and
     `{host: "api.stripe.com"}` blocks that upstream entirely. Host is compared case-insensitively;
     the path match is a prefix, anchored at `/` so `/v1/charges` cannot be dodged by `/v1/chargesX`.
+    A method rule matches the method the request was sent with and each of its `overrides`
+    (`method_overrides`), so an override can add a refusal and never remove one.
     """
-    host, method = host.lower(), method.upper()
+    host = host.lower()
+    methods = {m.upper() for m in (method, *overrides)}
     path = path or "/"
     for r in rules:
         if r.host and r.host.lower() != host:
             continue
-        if r.method and r.method.upper() != method:
+        if r.method and r.method.upper() not in methods:
             continue
         if r.path_prefix:
             p = (r.path_prefix if r.path_prefix.startswith("/") else "/" + r.path_prefix).rstrip("/")
@@ -110,7 +139,8 @@ async def _org_deny_rules(caller: Caller, db: AsyncSession) -> list[DenyRule]:
 
 
 async def enforce_deny(
-    caller: Caller, url: str, method: str, db: AsyncSession, tool_project_id: int | None = None
+    caller: Caller, url: str, method: str, db: AsyncSession, tool_project_id: int | None = None,
+    *, overrides: tuple[str, ...] = (),
 ) -> None:
     """Block a call the org's policy forbids. Deliberately applies to EVERY role including owner: a
     deny rule is a guardrail, not a permission tier — an owner who disagrees deletes the rule rather
@@ -128,12 +158,14 @@ async def enforce_deny(
         parts = urlsplit(url)
     except ValueError:
         return
-    rule = _deny_match(rules, parts.netloc, parts.path, method)
+    rule = _deny_match(rules, parts.netloc, parts.path, method, overrides)
     if rule is None:
         return
     why = f" ({rule.note})" if rule.note else ""
     scope = "this team" if rule.user_id is None else "you"
     in_proj = " in this project" if rule.project_id is not None else ""
+    asked = (f" (this {method.upper()} asks the upstream to run it as {rule.method.upper()})"
+             if rule.method and rule.method.upper() != method.upper() else "")
     raise AccessPolicyError(
         f"blocked by a policy rule on {scope}{in_proj}{why} — "
-        f"{rule.method or 'any'} {rule.host or 'any host'}{rule.path_prefix or ''}")
+        f"{rule.method or 'any'} {rule.host or 'any host'}{rule.path_prefix or ''}{asked}")
