@@ -505,9 +505,12 @@ Jev's judgements are written to the review row by `treg-worker reviews judge`, a
   report card can set a praise and a complaint about the same thing side by side: ACCURATE with
   ACCURACY and RISKY, FRESH with STALE, RELEVANT with WRONG and PARAM, COMPLETE with PARTIAL and
   COVER, STRUCTURED with FORMAT, ACCESS with BLOCK and JS, CHEAP with PRICE; HONEST (a plain miss
-  instead of a guess), FAST and GENERIC (useful, nothing specific praised) have no pair. Generated
+  instead of a guess), FAST and GENERIC (useful, nothing specific praised) have no pair. GENERIC
+  stands alone: it is never a second code nor takes one, and GENERIC with a named quality likely
+  beside it is coded as that quality (`review_codes.NO_SECONDARY`). Generated
   media has no code of its own: following the prompt is RELEVANT and a faithful output ACCURATE,
-  the axes its complaints are coded on (PARAM, ACCURACY). Praise is coded from the reason only and
+  the axes its complaints are coded on (PARAM, ACCURACY), and never HONEST, which is only for a
+  miss or an uncertainty flag. Praise is coded from the reason only and
   is always `reason_final`: an upgrade would read an answer per review, and useful reviews are
   most reviews. A blank reason is `NOREASON` without asking. Only
   the last `review_judge_praise_days` (28) are coded, newest first and at most
