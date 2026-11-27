@@ -128,10 +128,10 @@ _QUOTAS: dict[str, dict] = {
 _RATE_LIMITS: dict[str, dict] = {
     "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
     "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
-    # treg's partner key is limited to 600 verifications a minute (429 with Retry-After: 60 above that).
-    "filtrat": {"limit": 600, "window_s": 60, "source": "docs"},
-    # treg's finder key (its own Filtrat account) is limited to 110 searches a minute.
-    "filtrat-finder": {"limit": 110, "window_s": 60, "source": "docs"},
+    # treg's partner key is limited to 900 verifications a minute (429 with Retry-After: 60 above that).
+    "filtrat": {"limit": 900, "window_s": 60, "source": "docs"},
+    # treg's finder key (its own Filtrat account) is limited to 250 searches a minute.
+    "filtrat-finder": {"limit": 250, "window_s": 60, "source": "docs"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
@@ -270,9 +270,9 @@ _CONCURRENCY: dict[str, int] = {
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
     # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
-    # then 503 SERVER_BUSY), and 20 finder searches on treg's finder key.
+    # then 503 SERVER_BUSY), and 40 finder searches on treg's finder key.
     "filtrat": 10,
-    "filtrat-finder": 20,
+    "filtrat-finder": 40,
 }
 # An endpoint family whose in-progress allowance differs from its provider's has its own places
 # here, shared by every endpoint listed. They replace the provider's places for those endpoints and
