@@ -347,3 +347,100 @@ async def test_a_trimmed_replay_reads_the_archive_with_no_db_connection_held(
     replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "pool-check"})
     assert replay.status_code == 200 and replay.content == body
     assert held == [0], held
+
+
+async def test_the_trim_resumes_after_the_rows_it_decided_and_stops_at_young_ones(clients, platform_on):
+    old_a = await _seed_answer(clients, "resume-a", body=b'{"a":1}')
+    await _link(old_a, call_ref="call-resume-a", archived=b'{"a":1}')
+    young = await _seed_answer(clients, "resume-young", body=b'{"y":1}')
+    await _link(young, call_ref="call-resume-young", archived=b'{"y":1}', age_s=60)
+    old_c = await _seed_answer(clients, "resume-c", body=b'{"c":1}')
+    await _link(old_c, call_ref="call-resume-c", archived=b'{"c":1}')
+    first = await idempotency.trim_archived_answers(pause_s=0)
+    assert (first.trimmed, first.resume_after) == (2, old_a)   # c is trimmed, but the young row pins the place
+    again = await idempotency.trim_archived_answers(pause_s=0, after=first.resume_after)
+    assert (again.start_after, again.examined, again.trimmed) == (old_a, 0, 0)
+    assert (await idempotency.trim_archived_answers(pause_s=0, after=young)).stopped == "end"
+
+
+async def test_a_trim_with_only_young_rows_left_stops_without_reading_them(clients, platform_on):
+    await _seed_answer(clients, "only-young", body=b'{"y":2}')
+    result = await idempotency.trim_archived_answers(pause_s=0)
+    assert (result.stopped, result.complete, result.examined, result.resume_after) == ("young", True, 0, 0)
+
+
+async def test_the_trim_stops_at_its_time_budget_and_keeps_its_place(clients, platform_on):
+    ids = []
+    for n in range(3):
+        row_id = await _seed_answer(clients, f"budget-{n}", body=b'{"n":%d}' % n)
+        await _link(row_id, call_ref=f"call-budget-{n}", archived=b'{"n":%d}' % n)
+        ids.append(row_id)
+    ticks = iter([0.0, 5.0, 11.0, 99.0])
+    result = await idempotency.trim_archived_answers(pause_s=0, batch_size=1, max_seconds=10,
+                                                     clock=lambda: next(ticks))
+    assert (result.stopped, result.complete, result.batches, result.trimmed) == ("budget", False, 2, 2)
+    assert result.resume_after == ids[1]
+    rest = await idempotency.trim_archived_answers(pause_s=0, after=result.resume_after)
+    assert (rest.trimmed, rest.resume_after) == (1, ids[2])
+
+
+async def test_a_cursor_past_the_table_starts_the_trim_from_the_front(clients, platform_on):
+    row_id = await _seed_answer(clients, "restored", body=b'{"r":1}')
+    await _link(row_id, call_ref="call-restored", archived=b'{"r":1}')
+    result = await idempotency.trim_archived_answers(pause_s=0, after=row_id + 1000)
+    assert (result.start_after, result.trimmed) == (0, 1)
+
+
+async def _prune_command(monkeypatch, **args):
+    from types import SimpleNamespace
+
+    from cryptography.fernet import Fernet
+
+    from treg.config import get_settings
+    from treg.worker import _idempotency_prune
+
+    # The real worker verifies production key configuration, including on Postgres CI.
+    monkeypatch.setenv("TREG_SECRET_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    try:
+        return await _idempotency_prune(SimpleNamespace(
+            batch_size=200, max_batches=10000, pause_seconds=0, dry_run=False, **args))
+    finally:
+        # Restore the environment first, then drop the cached settings (see the sweep test above).
+        monkeypatch.undo()
+        get_settings.cache_clear()
+
+
+async def test_the_prune_command_saves_the_trim_place_for_the_next_run(clients, platform_on, capsys, monkeypatch):
+    import json
+
+    from treg import ratestore
+    from treg.worker import TRIM_CURSOR_KEY, TRIM_CURSOR_NS
+
+    row_id = await _seed_answer(clients, "saved-place", body=b'{"s":1}')
+    await _link(row_id, call_ref="call-saved-place", archived=b'{"s":1}')
+    assert await _prune_command(monkeypatch) == 0
+    first = json.loads(capsys.readouterr().out.splitlines()[-1])["trim"]
+    assert (first["trimmed"], first["resume_after"]) == (1, row_id)
+    async with session_maker() as db:
+        assert await ratestore.kv_get(db, TRIM_CURSOR_NS, TRIM_CURSOR_KEY) == {"after": row_id}
+    assert await _prune_command(monkeypatch) == 0
+    second = json.loads(capsys.readouterr().out.splitlines()[-1])["trim"]
+    assert (second["start_after"], second["examined"]) == (row_id, 0)
+
+
+async def test_a_prune_run_that_finds_another_running_does_nothing(clients, capsys, monkeypatch):
+    import json
+    from contextlib import asynccontextmanager
+
+    from treg.infra import db as infra_db
+
+    @asynccontextmanager
+    async def taken(key):
+        yield False
+    monkeypatch.setattr(infra_db, "only_one_run", taken)
+    await _seed_answer(clients, "left-alone", ttl_s=-3600)
+    assert await _prune_command(monkeypatch) == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[-1]) == {"stopped": "busy"}
+    async with session_maker() as db:
+        assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1

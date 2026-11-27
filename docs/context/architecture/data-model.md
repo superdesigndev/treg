@@ -406,6 +406,11 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   LOCKED` and re-checks the answer in its UPDATE, so row retention cannot remove it meanwhile. The row keeps `archive_key_hash` /
   `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
   closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
+  Only one run goes at a time (`infra.db.only_one_run`). The trim does not re-read the live day each
+  run: it starts after `resume_after`, the last id up to which every row was old enough
+  (`min_age_s`) to be decided, kept by the worker in `Ephemeral`; it stops at the first page with no
+  such row and after a time budget. A row passed over before its archive link existed keeps its own
+  copy until it expires.
 
 ## Caller tags (`X-Treg-Meta`)
 

@@ -683,8 +683,10 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   `TREG_MEDIA_PUBLIC_BUCKET` are set (SECURITY.md, "Picture storage"); `TREG_MEDIA_BASE_URL` empty
   means treg serves the bucket at `/media-files/`.
 - **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
-  row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
-  incomplete run; run one instance at a time.
+  row's copy of an answer the archive holds (`--skip-trim` keeps copies). A second instance answers
+  `busy` and does nothing (a session advisory lock, as for `archive retain`). The trim stops after
+  `--trim-max-seconds` (1500 s) and the next run resumes after the last row it decided (`Ephemeral`
+  namespace `idempotency`; `--trim-after` overrides). Exits nonzero only on an incomplete prune.
 - **`archive retain`**: does nothing until `TREG_ARCHIVE_RETENTION_ENABLED=true`; `--dry-run` counts
   what it would delete either way. Each run stops at `TREG_ARCHIVE_RETENTION_MAX_SECONDS` and the
   next resumes from its cursor (also after `TREG_ARCHIVE_RETENTION_MAX_KEYS` deletions); a second
