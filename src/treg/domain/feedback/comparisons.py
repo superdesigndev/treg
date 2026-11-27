@@ -84,11 +84,11 @@ async def get(db: AsyncSession, comparison_id: int, org_id: int) -> CallComparis
 
 
 async def next_ready(db: AsyncSession, org_id: int, since: datetime) -> CallComparison | None:
-    """The team's oldest comparison still waiting for a verdict, created at or after `since`."""
+    """The team's newest comparison still waiting for a verdict, created at or after `since`."""
     return (await db.execute(select(CallComparison).where(
         CallComparison.org_id == org_id, CallComparison.status == READY,
         CallComparison.created_at >= since,
-    ).order_by(CallComparison.created_at.asc(), CallComparison.id.asc()).limit(1))).scalar_one_or_none()
+    ).order_by(CallComparison.created_at.desc(), CallComparison.id.desc()).limit(1))).scalar_one_or_none()
 
 
 async def counted(db: AsyncSession, org_id: int, capability: str, pair: tuple[str, str], *,
