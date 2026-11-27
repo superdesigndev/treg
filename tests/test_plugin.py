@@ -394,6 +394,21 @@ def test_the_copilot_manifest_keeps_to_the_agent_plugins_schema():
     assert frontmatter(COPILOT_SKILL)["name"] == "treg" == COPILOT_SKILL.parent.name
 
 
+def test_hermes_reporting_is_opt_in_only_in_the_portable_package():
+    skill = COPILOT_SKILL.read_text()
+    hermes, copilot = skill.split("### Hermes\n", 1)[1].split("### GitHub Copilot only\n", 1)
+    assert "only when the user explicitly asks" in hermes
+    for name in ("feedback", "review", "mark", "compare", "prior", "initialize", "hint"):
+        assert f"`{name}`" in hermes
+    assert "feedback.md" not in hermes
+    assert "Report problems and suggestions about treg as you meet them" in copilot
+    assert "have the human run both commands" in skill and "Do not run these commands yourself" in skill
+    assert "Call at the listed price without asking" not in skill
+    for name, path in ALL_SKILLS.items():
+        if name != "copilot":
+            assert "hermes config set" not in path.read_text()
+
+
 def test_the_copilot_mcp_config_is_the_url_alone():
     """URL-only, no headers: Copilot runs OAuth itself, and a header would put a credential (or a
     variable the user must set before sign-in) into a public package."""

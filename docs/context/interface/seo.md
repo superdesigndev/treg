@@ -254,8 +254,9 @@ jobs are rows on the agent page, never URLs. `agent_pages.py` has no heavy impor
   in full; the rest collapse into one table linking `/use-cases#<category>`). Tests hold overlap
   with the template page under a threshold, guide endpoints and links real, and every category
   reachable.
-- The Hermes guide shows a manual `~/.hermes/config.yaml` block: `treg mcp install` detects Hermes
-  and prints the equivalent setup. Both set `trust: untrusted` so Hermes prompts on write-capable calls
+- The Hermes guide shows the two terminal commands for OAuth and a manual team-token block for
+  `~/.hermes/config.yaml`. Both preserve untrusted server status. The token block matches the
+  manual hint from `treg mcp install`
   (`test_the_hermes_page_and_treg_mcp_install_agree_on_the_server`).
 - Agent pages list every `WORKFLOWS` entry.
 

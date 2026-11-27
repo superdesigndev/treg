@@ -1,8 +1,5 @@
 # Feedback
 
-In Hermes and the Copilot plugin, use these instructions only when the user explicitly asks you to
-send the report to treg. This applies to feedback, reviews and marks sent by MCP, CLI or HTTP.
-
 Proactively share problems and suggestions about treg. Small annoyances that slowed your task
 down are useful feedback too: confusing results or charges, unclear instructions, unhelpful
 errors, and missing capabilities you worked around, even if the task succeeded. You do not need to prove a bug: describe what you needed and what
