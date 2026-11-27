@@ -586,5 +586,132 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  # ---- Reddit (leado~reddit-scraper-pro: pay-per-event, no start fee) -------------------------
+  - id: apify.reddit.subreddit.posts
+    capability: reddit.subreddit.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/leado~reddit-scraper-pro/run-sync-get-dataset-items
+    name: "List a subreddit's posts (newest or top)"
+    summary: "Extract posts from one or more subreddits with full Markdown text, scores, comment counts, timestamps and optional top comments"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pair with maxTotalChargeUsd", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.25}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up", example: 90}
+      body:
+        subreddits: {type: "array[string]", required: true, note: "subreddit names without r/ prefix (e.g. ['SaaS', 'startups'])", example: ["SaaS"]}
+        sort: {type: string, required: false, note: "new (default) | top | hot", example: "new"}
+        maxPostsPerSource: {type: integer, required: false, note: "max posts per subreddit (1-500, default 25)", example: 25}
+        timeWindow: {type: string, required: false, note: "all (default) | 1h | 4h | 24h | 7d | 30d", example: "24h"}
+        includeComments: {type: boolean, required: false, note: "also extract top comments per post (billed at comment event rate); default false", example: false}
+        maxCommentsPerPost: {type: integer, required: false, note: "max comments per post when includeComments is true (1-100, default 10)", example: 5}
+        excludeRemoved: {type: boolean, required: false, note: "skip [removed] and [deleted] posts before billing; default true", example: true}
+        includeNSFW: {type: boolean, required: false, note: "include 18+ posts; default false", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Automatically filters [removed] and [deleted] posts before billing when excludeRemoved is true"
+    platform_request: {queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {subreddits: ["SaaS"], sort: "new", maxPostsPerSource: 1, includeComments: false}
+    cost: {type: per_result, value: 0.0009, currency: USD, per: 1, unit: post, source: observed, source_url: 'https://api.apify.com/v2/acts/leado~reddit-scraper-pro', checked: '2026-11-17', confidence: verified, note: 'pay-per-event, TIERED by the caller''s Apify plan — one `post` event per post: FREE 0.001, BRONZE 0.0009 (the value here), SILVER 0.0008, GOLD 0.0007. No start event ($0.00 run start fee). OBSERVED 2026-11-17: 1 post billed chargedEventCounts {post: 1, comment: 0}. When includeComments is true, each comment returned bills one `comment` event (FREE 0.0005, BRONZE 0.00045, SILVER 0.0004, GOLD 0.00035)'}
+    verified: 2026-11-17
+    added: '2026-11-17'
+    example_response: examples/apify.reddit.subreddit.posts.json
+    docs_url: https://apify.com/leado/reddit-scraper-pro
+
+  - id: apify.reddit.search.posts
+    capability: reddit.search.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/leado~reddit-scraper-pro/run-sync-get-dataset-items
+    name: "Search Reddit posts by keyword"
+    summary: "Search Reddit posts by keyword or phrase across all of Reddit or scoped to specific subreddits"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pair with maxTotalChargeUsd", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.25}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90", example: 90}
+      body:
+        searchQueries: {type: "array[string]", required: true, note: "one or more search keywords or phrases", example: ["cold email software"]}
+        subreddits: {type: "array[string]", required: false, note: "optional subreddit scope (leave empty to search all of Reddit)", example: ["SaaS", "b2bmarketing"]}
+        sort: {type: string, required: false, note: "new (default) | top | hot", example: "new"}
+        maxPostsPerSource: {type: integer, required: false, note: "max posts per query (1-500, default 25)", example: 25}
+        timeWindow: {type: string, required: false, note: "1h | 4h | 24h | 7d (recommended for search) | 30d | all", example: "7d"}
+        includeComments: {type: boolean, required: false, note: "also extract top comments per post; default false", example: false}
+        excludeRemoved: {type: boolean, required: false, note: "skip [removed] and [deleted] posts before billing; default true", example: true}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Searches across all of Reddit or inside the listed subreddits in a single synchronous call"
+    platform_request: {queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {searchQueries: ["SaaS"], subreddits: ["SaaS"], timeWindow: "7d", maxPostsPerSource: 1, includeComments: false}
+    cost: {type: per_result, value: 0.0009, currency: USD, per: 1, unit: post, source: observed, source_url: 'https://api.apify.com/v2/acts/leado~reddit-scraper-pro', checked: '2026-11-17', confidence: verified, note: 'pay-per-event, TIERED by the caller''s Apify plan — one `post` event per post: FREE 0.001, BRONZE 0.0009 (the value here), SILVER 0.0008, GOLD 0.0007. No start event'}
+    verified: 2026-11-17
+    added: '2026-11-17'
+    example_response: examples/apify.reddit.search.posts.json
+    docs_url: https://apify.com/leado/reddit-scraper-pro
+
+  - id: apify.reddit.post.comments
+    capability: reddit.post.comments
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/leado~reddit-scraper-pro/run-sync-get-dataset-items
+    name: "List a Reddit post's comments"
+    summary: "Extract top comments and parent post metadata for one or more Reddit post URLs"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pair with maxTotalChargeUsd", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.25}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90", example: 90}
+      body:
+        urls: {type: "array[string]", required: true, note: "one or more full Reddit post URLs (https://www.reddit.com/r/<sub>/comments/<id>/...)", example: ["https://www.reddit.com/r/SaaS/comments/1xti7e3/people_can_love_your_product_and_still_never_buy/"]}
+        includeComments: {type: boolean, required: false, note: "extract comments for the given post URLs; default true for post URLs", example: true}
+        maxCommentsPerPost: {type: integer, required: false, note: "max comments per post (1-100, default 10)", example: 10}
+        excludeRemoved: {type: boolean, required: false, note: "skip [removed] and [deleted] comments before billing; default true", example: true}
+      bodyType: json
+      note: "returns the parent post record (`type: 'post'`) followed by up to maxCommentsPerPost comment records (`type: 'comment'`) sorted by score"
+    platform_request: {queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 3, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {urls: ["https://www.reddit.com/r/SaaS/comments/1xti7e3/people_can_love_your_product_and_still_never_buy/"], includeComments: true, maxCommentsPerPost: 2}
+    cost: {type: per_result, value: 0.00045, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/leado~reddit-scraper-pro', checked: '2026-11-17', confidence: verified, note: 'pay-per-event, TIERED by the caller''s Apify plan — one `comment` event per comment (FREE 0.0005, BRONZE 0.00045, SILVER 0.0004, GOLD 0.00035) plus one `post` event per parent post URL (FREE 0.001, BRONZE 0.0009). No start event'}
+    verified: 2026-11-17
+    added: '2026-11-17'
+    example_response: examples/apify.reddit.post.comments.json
+    docs_url: https://apify.com/leado/reddit-scraper-pro
+
+  - id: apify.reddit.user.posts
+    capability: reddit.user.posts
+    platform: reddit
+    scope: any_account
+    method: POST
+    path: /actors/leado~reddit-scraper-pro/run-sync-get-dataset-items
+    name: "List a Reddit user's recent posts"
+    summary: "Extract posts submitted by one or more Reddit usernames"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pair with maxTotalChargeUsd", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.25}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90", example: 90}
+      body:
+        usernames: {type: "array[string]", required: true, note: "Reddit usernames without u/ prefix", example: ["spez"]}
+        maxPostsPerSource: {type: integer, required: false, note: "max posts per user (1-500, default 25)", example: 25}
+        excludeRemoved: {type: boolean, required: false, note: "skip [removed] and [deleted] posts before billing; default true", example: true}
+      bodyType: json
+      note: "returns posts authored by the specified Reddit users, newest first"
+    platform_request: {queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {usernames: ["spez"], maxPostsPerSource: 1}
+    cost: {type: per_result, value: 0.0009, currency: USD, per: 1, unit: post, source: observed, source_url: 'https://api.apify.com/v2/acts/leado~reddit-scraper-pro', checked: '2026-11-17', confidence: verified, note: 'pay-per-event, TIERED by the caller''s Apify plan — one `post` event per post: FREE 0.001, BRONZE 0.0009, SILVER 0.0008, GOLD 0.0007. No start event'}
+    verified: 2026-11-17
+    added: '2026-11-17'
+    example_response: examples/apify.reddit.user.posts.json
+    docs_url: https://apify.com/leado/reddit-scraper-pro
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
