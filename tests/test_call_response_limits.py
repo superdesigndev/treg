@@ -79,7 +79,8 @@ async def wire(clients, monkeypatch):
         do_POST = do_GET
 
     upstream = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    thread = Thread(target=upstream.serve_forever, daemon=True)
+    # serve_forever's default 0.5 s poll is how long shutdown() waits; a short one keeps teardown fast.
+    thread = Thread(target=upstream.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
     thread.start()
 
     class RecordedStream(httpx.AsyncByteStream):

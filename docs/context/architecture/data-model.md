@@ -64,7 +64,6 @@ sources:
   - src/treg/alembic/versions/0116_stamped_baseline_indexes.py
   - tests/test_stamped_baseline_indexes_migration.py
   - src/treg/alembic/versions/0117_callrecord_drop_unused_indexes.py
-  - tests/test_callrecord_drop_unused_indexes_migration.py
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py

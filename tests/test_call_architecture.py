@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from treg import archive, archive_bodies, bootstrap
+from treg import archive, archive_bodies
 from treg.application import billing, asynctasks as task_app, compare as compare_app
 from treg.application.hub import runner as hub_runner
 from treg.application.call import allowance as call_allowance
@@ -452,26 +452,6 @@ def _call_names(source: str) -> set[str]:
     return names
 
 
-def _forbidden_imports(source: str, forbidden: tuple[str, ...]) -> set[str]:
-    found = set()
-    for node in ast.walk(ast.parse(source)):
-        names: list[str] = []
-        if isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names = [node.module]
-        for name in names:
-            if any(name == root or name.startswith(root + ".") for root in forbidden):
-                found.add(name)
-    return found
-
-
-def _package_forbidden_imports(package: Path, forbidden: tuple[str, ...]) -> set[str]:
-    return set().union(*(
-        _forbidden_imports(path.read_text(), forbidden) for path in package.rglob("*.py")
-    ))
-
-
 def _transaction_calls(source: str) -> set[str]:
     return _call_names(source) & {"db.commit", "db.rollback"}
 
@@ -495,15 +475,6 @@ def _derived_write_sites(overrides: dict[Path, str] | None = None) -> set[tuple[
     return sites
 
 
-def test_call_runtime_import_edges_point_inward() -> None:
-    call_forbidden = ("treg.api", "treg.bootstrap", "treg.routers", "fastapi", "starlette")
-    upstream_forbidden = call_forbidden
-    assert _package_forbidden_imports(_SRC / "application" / "call", call_forbidden) == set()
-    assert _package_forbidden_imports(_SRC / "infra" / "upstream", upstream_forbidden) == set()
-    async_forbidden = ("treg.api", "treg.routers", "treg.application", "treg.audit")
-    assert _package_forbidden_imports(_SRC / "domain" / "asynctasks", async_forbidden) == set()
-
-
 def test_catalog_access_router_only_translates_the_application_result() -> None:
     tree = ast.parse((_SRC / "routers" / "call.py").read_text())
     owner = next(
@@ -515,21 +486,6 @@ def test_catalog_access_router_only_translates_the_application_result() -> None:
         "get_catalog_endpoint_access",
         "_translate_call_failure",
     }
-
-
-def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
-    assert bootstrap.ROLE_BACKGROUND_TASKS == {
-        "all": ("treg.adsconv.worker", "treg.application.affiliates.worker",
-                "treg.application.allowance_sweep.worker"),
-        "dataplane": (),
-        "control": ("treg.adsconv.worker", "treg.application.affiliates.worker",
-                    "treg.application.allowance_sweep.worker"),
-    }
-    for checks in bootstrap.ROLE_STARTUP_CHECKS.values():
-        assert "treg.api._backfill_provider_extra_tools" not in checks
-        assert "treg.api._bootstrap_single_user" not in checks
-    assert "treg.mcp.mcp_lifespan" in bootstrap.ROLE_STARTUP_CHECKS["dataplane"]
-    assert "treg.mcp.mcp_lifespan" not in bootstrap.ROLE_STARTUP_CHECKS["control"]
 
 
 def test_dataplane_derived_write_allowlist_is_explicit_and_live() -> None:

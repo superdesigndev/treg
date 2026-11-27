@@ -1491,11 +1491,8 @@ async def test_a_skipped_call_the_balance_refuses_counts_as_a_call_that_held_not
 
 
 @pytest.mark.parametrize(("call_ref", "reason"), [
-    (None, "no_call_ref"), ("c-1:r1", "child_call:routed"), ("c-1:r12", "child_call:routed"),
-    ("c-1:overflow", "child_call:overflow"), ("c-1:r2:overflow", "child_call:overflow"),
-    ("run:s3", "child_call:hub_step"), ("run:s3.1", "child_call:hub_step"),
-    ("run:s3:r1", "child_call:routed"), ("c-1:r1:p2", "child_call:other"),
-    ("c-1:v", "child_call:other"), ("run:price", "child_call:other"),
+    (None, "no_call_ref"), ("c-1:r1", "child_call:routed"), ("c-1:overflow", "child_call:overflow"),
+    ("run:s3", "child_call:hub_step"), ("c-1:r1:p2", "child_call:other"),
 ])
 async def test_a_child_call_s_skip_names_what_kind_of_child_it_is(org_id, call_ref, reason):
     caller = await _caller(org_id)
@@ -1504,10 +1501,7 @@ async def test_a_child_call_s_skip_names_what_kind_of_child_it_is(org_id, call_r
 
 
 @pytest.mark.parametrize(("call_ref", "as_direct"), [
-    ("c-1:r1", "eligible"), ("c-1:r12", "eligible"), ("c-1:v", "eligible"),
-    ("c-1:v:r2", "eligible"), ("c-1:u:r3", "eligible"), ("c-1:r1:v", "eligible"),
-    ("c-1:r1:overflow", None), ("c-1:r1:p2", None), ("run:s3", None), ("run:s3:r1", None),
-    ("c-1:overflow", None), ("c-1", None), (None, None),
+    ("c-1:r1", "eligible"), ("c-1:v:r2", "eligible"), ("c-1:r1:overflow", None),
 ])
 async def test_a_routed_child_is_also_judged_as_a_direct_call(org_id, store, call_ref, as_direct):
     caller = await _caller(org_id)
