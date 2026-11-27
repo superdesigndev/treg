@@ -1031,12 +1031,12 @@ def test_openmart_settlement_rounds_three_credits_per_ten_records(endpoint, body
 
 
 @pytest.mark.parametrize(('items', 'hold'), [
-    ((('maxTotalChargeUsd', '0.04'), ('timeout', '60')), 50_000),
-    ((('maxTotalChargeUsd', '0.025'), ('timeout', '90')), 35_000),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '60')), 40_000),
+    ((('maxTotalChargeUsd', '0.025'), ('timeout', '90')), 25_000),
     ((('maxTotalChargeUsd', '0.024'), ('timeout', '60')), None),
     ((('maxTotalChargeUsd', '0.6'), ('timeout', '60')), None),
     ((('maxTotalChargeUsd', '0.04'), ('timeout', '91')), None),
-    ((('maxTotalChargeUsd', '0.5'), ('maxItems', '3'), ('memory', '1024'), ('timeout', '90')), 510_000),
+    ((('maxTotalChargeUsd', '0.5'), ('maxItems', '3'), ('memory', '1024'), ('timeout', '90')), 500_000),
     ((('maxTotalChargeUsd', '0.04'), ('limit', '1'), ('timeout', '60')), None),
     ((('timeout', '60'),), None),
     ((('maxTotalChargeUsd', '0.04'),), None),
