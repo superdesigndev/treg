@@ -56,6 +56,8 @@ source:
 
 limits: "standard Graph API rate limits per app"
 pricing_url: https://www.facebook.com/ads/library/api  # No charge; access is gated on identity verification, not payment.
+defaults:
+  echoes_credential: true  # Graph writes the request's access_token into paging.next and paging.previous
 endpoints:
   - id: meta-ad-library.meta-ads.library.search
     added: '2026-07-28'

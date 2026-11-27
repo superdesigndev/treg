@@ -4,7 +4,6 @@ import json
 import httpx
 import pytest
 
-from conftest import auth_digest
 from treg.config import get_settings
 from treg.domain.capacity import collectors
 from test_marketplace_call import _balance, _entries, platform_on  # noqa: F401 - pytest fixtures
@@ -29,7 +28,7 @@ async def test_byok_can_call_blocked_search_tools_without_treg_meter(clients, mo
         )
         assert response.status_code == 200, response.text
         echoed = response.json()
-        assert echoed["auth_sha256"] == auth_digest("Bearer OWN-MOLTSETS")
+        assert echoed["auth"] == "Bearer OWN-MOLTSETS"
         assert echoed["headers"]["user-agent"] == "treg/1.0 (+https://treg.to)"
         assert json.loads(echoed["body"]) == body
     assert await _balance(clients) == before

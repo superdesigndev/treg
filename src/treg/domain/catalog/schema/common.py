@@ -139,6 +139,7 @@ class RowBase(Model):
 
     cache: str | dict[str, Json] | None = field(kind="P")
     spooled_response: bool | None = field(kind="P")
+    echoes_credential: bool | None = field(kind="P")
     resource_ownership: dict[str, Json] | None = field(kind="P")
     managed_resource: dict[str, Json] | None = field(kind="P")
     response_retention: str | None = field(kind="P")

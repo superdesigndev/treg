@@ -124,12 +124,13 @@ the uppercased method, the catalog endpoint id, sorted query pairs, the canonica
 (raw hash for non-JSON), only `Accept` and `Accept-Language` from the caller, and the sharing
 scope when the answer is not public. The URL is rebuilt as the vendor sees it, before credential
 injection, so a credential cannot enter the key or the stored request shape from the request
-side. From the answer side, a platform-key answer that quotes treg's credential is stored as the
-caller receives it, masked (`evidence.AnswerMask`): by the call path's recorder and by the
-refresh worker (`_refresh_call`, with `platform_answer_mask`) alike, so a refreshed version hashes
-like a live one. A hit, and `GET /calls/{id}/result`, are masked again with treg's credentials for
-the provider, which covers a copy kept before ([proxy-model](proxy-model.md), "Answers that quote
-a credential").
+side. From the answer side, on a row marked `echoes_credential` a platform-key answer that quotes
+treg's credential is stored as the caller receives it, masked (`evidence.AnswerMask`), by the call
+path's recorder; the refresh worker (`_refresh_call`, with `platform_answer_mask`) masks treg's
+credentials in every row's refreshed answer, so on a marked row a refreshed version hashes like a
+live one. A hit on a marked row is masked again with the call's credentials and treg's for the
+provider, and `GET /calls/{id}/result` masks treg's on every row, which covers a copy kept before
+([proxy-model](proxy-model.md), "Answers that quote a credential").
 
 ### The stored request body
 
@@ -161,9 +162,9 @@ never as a prefix. The relay asks for identity encoding (`force_identity`) and a
 compresses anyway is not recorded (`_identity_encoded`). A caller body the path never read cannot
 key the question: no lookup, no recording. **An answer that quotes the team's own credential back
 is never recorded** (`_echoes_own_credential`, failing closed when the renderings cannot be
-built); the caller receives it masked. Masking does not depend on the archive: an own-key catalog
-answer carrying a credential is read the same bounded way when nothing will be recorded, if it is
-JSON or text; media, an event stream or an answer of no stated type then streams as it comes
+built); on a row marked `echoes_credential` the caller receives it masked. Masking does not
+depend on the archive: on such a row an own-key answer is read the same bounded way when nothing
+will be recorded, while every other row's answer then streams as it comes
 ([proxy-model](proxy-model.md), "Answers that quote a credential").
 The same guard, provenance and sharing apply to a metered call riding treg's
 pay-per-use OAuth app (`billed_oauth`): the token is the team's.

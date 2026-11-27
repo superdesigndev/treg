@@ -470,13 +470,19 @@ async def test_owned_free_poll_creates_no_money_entries(
         assert (await db.get(AsyncTaskRecord, submission_ref)).status == "pending"
 
 
-@pytest.mark.parametrize("status", [200, 401])
-async def test_owned_free_poll_never_hands_back_treg_key(
-    clients: AsyncClient, monkeypatch, replicate_platform, status: int,
+@pytest.mark.parametrize(("status", "flagged", "masked"), [
+    (401, False, True),    # an error body, on every row
+    (200, True, True),     # an answer, on a row marked `echoes_credential`
+    (200, False, False),   # an answer on any other row is relayed as it came
+])
+async def test_owned_free_poll_masks_treg_key_by_the_rule(
+    clients: AsyncClient, monkeypatch, replicate_platform, status: int, flagged: bool, masked: bool,
 ):
-    """A free status read runs on treg's own key and is read whole: a key it quotes is masked,
-    in an answer as in an error."""
+    """A free status read runs on treg's own key and is read whole: a key an error quotes is
+    masked, and a key an answer quotes on a row whose provider writes it there."""
     await _submit(clients, monkeypatch, {"id": "quoting-poll-task"})
+    if flagged:
+        monkeypatch.setitem(catalog_store.load().by_id["replicate.predictions.get"], "echoes_credential", True)
 
     async def fake_poll(*args, **kwargs):
         return _response(status, {"id": "quoting-poll-task", "status": "processing", "urls": {
@@ -485,8 +491,9 @@ async def test_owned_free_poll_never_hands_back_treg_key(
     monkeypatch.setattr(call_service, "relay", fake_poll)
     response = await clients.get("/call/replicate.predictions.get?id=quoting-poll-task")
     assert response.status_code == status
-    assert "test-platform-token" not in response.text
-    assert response.json()["urls"]["get"].endswith("/quoting-poll-task?token=***")
+    assert ("test-platform-token" not in response.text) is masked
+    assert response.json()["urls"]["get"].endswith(
+        "/quoting-poll-task?token=***" if masked else "/quoting-poll-task?token=test-platform-token")
 
 
 _QUOTING_TERMINAL = {"id": "quoting-terminal", "status": "succeeded",
@@ -500,8 +507,7 @@ async def _end_task_with_a_quoting_poll(clients: AsyncClient, monkeypatch) -> st
         return _response(200, _QUOTING_TERMINAL)
 
     monkeypatch.setattr(call_service, "relay", fake_poll)
-    polled = await clients.get("/call/replicate.predictions.get?id=quoting-terminal")
-    assert polled.status_code == 200 and "test-platform-token" not in polled.text
+    assert (await clients.get("/call/replicate.predictions.get?id=quoting-terminal")).status_code == 200
     return call_id
 
 

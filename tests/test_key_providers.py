@@ -15,7 +15,6 @@ import pytest
 
 from httpx import AsyncClient
 
-from conftest import auth_digest
 from treg import oauth_providers as P
 
 
@@ -368,8 +367,8 @@ async def test_secret_add_already_encoded_basic_credential_not_double_encoded(cl
     r = await clients.post("/secrets", json={"name": "dataforseo", "value": blob})
     assert r.status_code == 200, r.text
     # Call a DataForSEO catalog endpoint to trigger marketplace resolution with the named secret
-    echoed = (await clients.get("/call/dataforseo.account.usage")).json()["auth_sha256"]
-    assert echoed == auth_digest("Basic " + blob), "already-encoded secret must not be double-encoded"
+    echoed = (await clients.get("/call/dataforseo.account.usage")).json()["auth"]
+    assert echoed == "Basic " + blob, f"already-encoded secret must not be double-encoded, got {echoed!r}"
 
 
 async def test_probe_parses_json_body_labelled_text_plain(clients: AsyncClient, monkeypatch):

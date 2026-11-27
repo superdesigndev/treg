@@ -6,8 +6,9 @@ idempotent storage and before the caller sees it: exact masking of every spellin
 every injected credential, then a fail-closed normalised re-check that replaces the whole body.
 
 Some echo it in a successful answer too (Meta's Graph API writes the request's `access_token` into
-`paging.next`). An answer the application holds whole is masked by exact match, for the caller, the
-replay and the archive alike, and is otherwise relayed byte for byte.
+`paging.next`). On a catalog row marked `echoes_credential` such an answer is held whole and masked
+by exact match, for the caller, the replay and the archive alike; every other row's answer is
+relayed as it comes, byte for byte.
 """
 
 from __future__ import annotations
@@ -492,6 +493,13 @@ def _timed_delivery(monkeypatch) -> dict:
 
 
 @pytest.fixture
+def echoing(monkeypatch):
+    """TikHub's comments row marked `echoes_credential`, as Meta's rows are in their files: the
+    call path then holds and masks its answers. Without it the row is relayed as it comes."""
+    monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
+
+
+@pytest.fixture
 def archive_on(platform_on, monkeypatch):
     monkeypatch.setattr(get_settings(), "archive_mode", "serve")
     monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
@@ -501,7 +509,7 @@ def archive_on(platform_on, monkeypatch):
 
 class TestAnswersAreMaskedToo:
     async def test_a_platform_answer_quoting_the_key_reaches_no_one_unmasked(
-        self, clients: AsyncClient, archive_on, monkeypatch,
+        self, clients: AsyncClient, archive_on, echoing, monkeypatch,
     ):
         seen = _vendor(monkeypatch, _page_with_next_link)
         live = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "page-1"})
@@ -530,7 +538,7 @@ class TestAnswersAreMaskedToo:
         assert result["response"]["body_text"] == live.content.decode()
 
     async def test_a_plain_text_answer_quoting_the_header_is_masked(
-        self, clients: AsyncClient, platform_on, monkeypatch,
+        self, clients: AsyncClient, platform_on, echoing, monkeypatch,
     ):
         _vendor(monkeypatch, lambda request: b"accepted " + request.headers["authorization"].encode()
                 + b" for this request\n", content_type="text/plain")
@@ -538,7 +546,7 @@ class TestAnswersAreMaskedToo:
         assert r.status_code == 200 and r.content == b"accepted *** for this request\n"
 
     async def test_a_gzipped_answer_is_decoded_only_to_be_searched(
-        self, clients: AsyncClient, platform_on, monkeypatch,
+        self, clients: AsyncClient, platform_on, echoing, monkeypatch,
     ):
         """A vendor that compresses despite `Accept-Encoding: identity`: an answer quoting the key
         is re-sent masked and identity-encoded, one without it keeps its bytes and encoding."""
@@ -628,23 +636,7 @@ class TestAnswersAreMaskedToo:
         await clients.get(f"/call/{META_EP}", params=META_QUERY, headers={"accept-encoding": "br"})
         assert seen[0].headers["accept-encoding"] == "identity"
 
-    @pytest.mark.parametrize("content_type", [
-        "application/json; charset=UTF-8", "application/problem+json", "text/javascript",
-        "TEXT/PLAIN", "application/x-www-form-urlencoded",
-    ])
-    async def test_a_json_or_text_answer_quoting_the_token_is_masked(
-        self, clients: AsyncClient, monkeypatch, content_type,
-    ):
-        """JSON and text are held whole to be masked when the archive does not read them; media
-        type and parameters are read case-insensitively (some Graph versions say text/javascript)."""
-        assert (await clients.post(
-            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
-        _vendor(monkeypatch, _meta_page, content_type=content_type)
-        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
-        assert r.status_code == 200
-        assert META_TOKEN not in r.text and "access_token=***" in r.text
-
-    async def test_a_json_answer_is_held_until_its_last_byte(self, clients: AsyncClient, monkeypatch):
+    async def test_a_flagged_answer_is_held_until_its_last_byte(self, clients: AsyncClient, monkeypatch):
         assert (await clients.post(
             "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
         stream = _SlowStream([b'{"data":[', b'{"id":"1"}', b"]}"], delay=0.1)
@@ -654,24 +646,66 @@ class TestAnswersAreMaskedToo:
         assert r.status_code == 200 and r.json() == {"data": [{"id": "1"}]}
         assert marks["headers"] >= stream.marks["last"]
 
-    @pytest.mark.parametrize("content_type", [
-        "audio/mpeg", "text/event-stream", "application/octet-stream", "image/png", None,
-    ])
-    async def test_media_and_event_streams_stream_as_they_come(
+    @pytest.mark.parametrize("content_type", ["application/json", "audio/mpeg"])
+    async def test_an_unflagged_answer_streams_untouched(
         self, clients: AsyncClient, monkeypatch, content_type,
     ):
-        """Not JSON or text, or of no stated type: the answer streams untouched exactly as before,
-        its headers and first chunk handed on before the provider has sent the rest."""
-        assert (await clients.post(
-            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
-        chunks = [b"ID3\x04first-frame", b"second-frame", b"last-frame"]
+        """A row not marked `echoes_credential` is relayed as on main: nothing held, searched or
+        rewritten, so even a key it quotes passes, and its headers and first chunk go out before
+        the provider has sent the rest. The request keeps the caller's `Accept-Encoding`."""
+        assert (await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-TIKHUB-KEY"})).status_code == 200
+        chunks = [b"ID3\x04first-frame", b"token=OWN-TIKHUB-KEY ", b"last-frame"]
         stream = _SlowStream(chunks, delay=0.2)
-        _slow_vendor(monkeypatch, stream, {"content-type": content_type} if content_type else {})
+        seen: list[httpx.Request] = []
+
+        def upstream(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, stream=stream, headers={"content-type": content_type})
+
+        monkeypatch.setattr(A.app.state, "http", AsyncClient(transport=httpx.MockTransport(upstream)))
         marks = _timed_delivery(monkeypatch)
-        r = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+        r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"accept-encoding": "gzip, br"})
         assert r.status_code == 200 and r.content == b"".join(chunks)
-        assert marks["headers"] < stream.marks["last"]
-        assert marks["first_chunk"] < stream.marks["last"]
+        assert marks["headers"] < stream.marks["last"] and marks["first_chunk"] < stream.marks["last"]
+        assert seen[0].headers["accept-encoding"] == "gzip, br"
+
+    async def test_an_unflagged_long_lived_stream_is_untouched(self, clients: AsyncClient, monkeypatch):
+        """An event stream that stays open: its first event reaches the caller while the provider
+        is still sending, and nothing waits for an end that may never come."""
+        assert (await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-TIKHUB-KEY"})).status_code == 200
+        first, rest = b"data: first\n\n", b"data: last\n\n"
+        release, delivered = asyncio.Event(), asyncio.Event()
+
+        class Open(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield first
+                await release.wait()
+                yield rest
+
+        monkeypatch.setattr(A.app.state, "http", AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=Open(), headers={"content-type": "text/event-stream"}))))
+        real = call_routes.execute_call
+
+        async def watched(context, client):
+            out = await real(context, client)
+            body = out.body_stream
+
+            async def noting():
+                async for chunk in body:
+                    delivered.set()
+                    yield chunk
+            out.body_stream = noting()
+            return out
+
+        monkeypatch.setattr(call_routes, "execute_call", watched)
+        call = asyncio.create_task(clients.get(f"/call/{EP}?aweme_id=7"))
+        try:
+            # Handed on while the provider still holds the stream open: nothing waits for its end.
+            await asyncio.wait_for(delivered.wait(), 5)
+        finally:
+            release.set()
+        r = await call
+        assert r.status_code == 200 and r.content == first + rest
 
     async def test_an_own_key_page_past_the_hold_streams_as_it_came(
         self, clients: AsyncClient, monkeypatch,
@@ -687,7 +721,7 @@ class TestAnswersAreMaskedToo:
 
 
 async def test_a_hit_on_a_copy_kept_before_masking_is_masked_and_so_is_its_result(
-    clients: AsyncClient, archive_on, monkeypatch,
+    clients: AsyncClient, archive_on, echoing, monkeypatch,
 ):
     """A snapshot recorded before the archive masked answers still holds treg's key: the hit,
     `GET /calls/{id}/result` and the staff archive panel mask it all the same."""
@@ -716,7 +750,7 @@ async def test_a_hit_on_a_copy_kept_before_masking_is_masked_and_so_is_its_resul
 
 
 async def test_an_own_key_hit_on_a_public_copy_kept_before_masking_is_masked(
-    clients: AsyncClient, archive_on, monkeypatch,
+    clients: AsyncClient, archive_on, echoing, monkeypatch,
 ):
     """An own-key caller may be answered from treg's public copy, which may predate masking: its
     hit is masked with treg's own credentials for the provider too."""
@@ -732,6 +766,31 @@ async def test_an_own_key_hit_on_a_public_copy_kept_before_masking_is_masked(
     hit = await clients.get(f"/call/{EP}?aweme_id=7")
     assert hit.headers.get("X-Treg-Cache") == "hit"
     assert PLATFORM_KEY not in hit.text and hit.json()["next"].endswith("&token=***")
+
+
+async def test_a_meta_hit_quoting_the_teams_token_is_masked(clients: AsyncClient, monkeypatch):
+    """Meta's rows carry `echoes_credential` in their provider files, so a hit is searched like a
+    live page: a stored page quoting the team's token (stored here with the recorder's guard and
+    the mask off) reaches the caller masked."""
+    assert catalog_store.load().by_id[META_EP]["echoes_credential"] is True
+    monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", META_EP)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
+    monkeypatch.setitem(catalog_store.load().by_id[META_EP], "cache", "transient")
+    assert (await clients.post(
+        "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
+    seen = _vendor(monkeypatch, _meta_page)
+    with monkeypatch.context() as unguarded:
+        unguarded.setattr(call_evidence.AnswerMask, "answer", lambda self, body, encoding="": body)
+        unguarded.setattr(call_service, "_echoes_own_credential", lambda tool, secrets, body: False)
+        stored = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+    assert stored.status_code == 200 and META_TOKEN in stored.text
+    await archive.drain()
+    hit = await clients.get(f"/call/{META_EP}", params=META_QUERY)
+    assert hit.headers["X-Treg-Cache"] == "hit" and len(seen) == 1
+    assert META_TOKEN not in hit.text
+    assert hit.json()["paging"]["next"] == (
+        "https://graph.facebook.com/v21.0/ads_archive?access_token=***&limit=25&after=QVFIUmNh")
 
 
 def test_a_short_half_of_a_basic_credential_leaves_the_answer_data_alone(monkeypatch):
@@ -767,7 +826,7 @@ def test_a_numeric_credential_leaves_json_numbers_alone(monkeypatch):
 
 
 async def test_the_archive_copy_and_the_callers_are_searched_once(
-    clients: AsyncClient, archive_on, monkeypatch,
+    clients: AsyncClient, archive_on, echoing, monkeypatch,
 ):
     searched = []
     real = call_evidence.AnswerMask.mask

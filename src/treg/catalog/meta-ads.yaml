@@ -21,6 +21,8 @@ source:
 
 limits: "per-app and per-ad-account rate limiting; read X-Business-Use-Case-Usage"
 pricing_url: https://developers.facebook.com/docs/marketing-apis/  # The Graph API is free; the ad spend it manages is not.
+defaults:
+  echoes_credential: true  # Graph writes the request's access_token into paging.next and paging.previous
 endpoints:
   - id: meta-ads.accounts
     capability: meta-ads.accounts

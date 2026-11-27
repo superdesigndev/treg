@@ -135,14 +135,8 @@ def _gated(body_started, proceed, closed, *, fail=False, headers=()):
 
 
 async def own_key(clients):
-    """A team's own key is never metered, so nothing is buffered to settle. Its answer is read whole
-    up to `archive_max_body_bytes` to be masked; `streams_past_the_hold` makes it stream instead."""
+    """A team's own key is never metered, so its answer streams instead of being buffered to settle."""
     assert (await clients.post("/secrets", json={"name": "tikhub", "value": "OWN-KEY"})).status_code < 300
-
-
-def streams_past_the_hold(monkeypatch):
-    """`_gated`'s first chunk passes the own-key hold, so the answer streams from there."""
-    monkeypatch.setattr(get_settings(), "archive_max_body_bytes", 4)
 
 
 async def _never_ending_body():
@@ -664,7 +658,6 @@ async def test_stream_owns_slot_through_completion(clients, platform_on, gate, m
         clients, gate, limit=None if policy == "rate" else 1,
         rate={"rps": 1, "burst": 2} if policy != "concurrency" else None)
     await own_key(clients)
-    streams_past_the_hold(monkeypatch)
     started, proceed = asyncio.Event(), asyncio.Event()
     closed = AsyncMock()
     _upstream(monkeypatch, _gated(started, proceed, closed, fail=ending == "stream_error"))
@@ -700,8 +693,10 @@ async def test_stream_owns_slot_through_completion(clients, platform_on, gate, m
 
 
 async def test_an_own_key_answer_that_fails_while_held_closes_its_upstream(clients, platform_on, monkeypatch):
-    """Held whole to be masked, the answer has no response to carry its close yet: a read that
-    fails closes the upstream itself, once."""
+    """On a row marked `echoes_credential` the answer is held whole to be masked and has no
+    response to carry its close yet: a read that fails closes the upstream itself, once."""
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setitem(catalog_store.load().by_id[EP], "echoes_credential", True)
     await own_key(clients)
     started, proceed = asyncio.Event(), asyncio.Event()
     proceed.set()

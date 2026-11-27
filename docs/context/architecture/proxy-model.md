@@ -106,12 +106,12 @@ Inside `relay()`:
 3. **`Accept-Encoding`** becomes `identity` when the caller sent none (the body is relayed raw with
    `aiter_raw`, and httpx would otherwise add its own `gzip`). With `force_identity` it is
    overridden to `identity` wherever the application will parse the body: metered settlement, an
-   owned free poll and an archivable own-key answer. An own-key catalog call carrying a credential
-   on a row the archive does not record ([below](#answers-that-quote-a-credential)) keeps the
-   caller's codings save the ones the search cannot decode (`relay.readable_encodings_only` with
-   `evidence.READABLE_ENCODINGS`: gzip and deflate; `identity` when nothing is left), so a clean
-   answer keeps its compression. This is decided before the answer's type is known, so it holds
-   for an answer that then streams too.
+   owned free poll and an archivable own-key answer. An own-key call to a catalog row marked
+   `echoes_credential` that the archive does not record ([below](#answers-that-quote-a-credential))
+   keeps the caller's codings save the ones the search cannot decode
+   (`relay.readable_encodings_only` with `evidence.READABLE_ENCODINGS`: gzip and deflate;
+   `identity` when nothing is left), so a clean answer keeps its compression. Every other request
+   carries the caller's value as sent.
 4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
    query.
 5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
@@ -200,8 +200,8 @@ only: the admin-log pattern nets would rewrite ordinary fields like `"key": "uni
 normalized re-check that still finds a credential, a credential that cannot be rendered, or a body
 that cannot be decoded replaces the whole body with a `response_redacted` error. An unchanged body
 keeps its bytes and encoding; a masked one is re-sent identity-encoded with a fresh
-`Content-Length`. Answers get the same exact masking where they are held whole (next section);
-nothing else in a 2xx changes, save the one member below.
+`Content-Length`. Answers of a row marked `echoes_credential` get the same exact masking where
+they are held whole (next section); nothing else in a 2xx changes, save the one member below.
 
 A failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so masking sees
 every byte; one too large is replaced on a credentialed call and streamed untouched
@@ -213,42 +213,42 @@ access and retention: [data-model](data-model.md#audit-writer-auditpy).
 ### Answers that quote a credential
 
 A provider can echo the injected credential in a successful answer too: Meta's Graph API writes
-the request's `access_token` into `paging.next` and `paging.previous`. `evidence.AnswerMask`
-masks the same spellings in every answer (any status below 400) the application holds whole,
-before the caller, an idempotent replay, a task record or the archive sees it. `_execute_call`
-builds one per call (`answer_mask`), after the OAuth refresh, and uses it at every point below:
+the request's `access_token` into `paging.next` and `paging.previous`. A catalog row says so with
+`echoes_credential: true` ([catalog schema](catalog-schema.md#a-row-whose-answers-quote-the-credential));
+Meta's Graph files (`facebook`, `instagram`, `meta-ads`, `meta-ad-library`) set it in their
+provider `defaults:`. Only such a row's answers are held and searched: `_execute_call` reads the
+flag once per call (`echoes`) and gives every other row an empty `evidence.AnswerMask`, so its
+answer is relayed as before, nothing held, searched or re-encoded for it, its first byte never
+waiting for the last. On a marked row the mask (`answer_mask`, built after the OAuth refresh)
+covers every answer (any status below 400) the application holds whole, before the caller, an
+idempotent replay, a task record or the archive sees it:
 
 - a metered answer and an owned free poll: `service._mask_answer` at the hand-off, after
   settlement, capacity signals, classification and the audit row have read the provider's bytes
-  (a free poll's error body takes `_redact_error_body` at the same point). The archive's copy of a
-  metered answer is the same masked bytes: the mask remembers its last answer, so the body is
-  searched once per call;
-- an own-key catalog 2xx (tier `tool` or `credential`) carrying an injected credential
-  (`own_key_masked`), read whole up to `archive_max_body_bytes` (the larger of that and
-  `_TASK_ANSWER_MAX` when it names a task). Where the archive reads it to record it, that is the
-  archive's read, as before: any type, asked for identity. Where the archive does not (recording
-  off, a licence or row kind it may not store, a team's opt-out), the answer is held only when it
-  is JSON or text (`service._held_to_mask`: `application/json`, a `+json` type, `text/*` save
-  `text/event-stream`, `application/x-www-form-urlencoded`, the media type read case-insensitively
-  without its parameters; Graph answers `text/javascript` on some versions) in a coding the search
-  can decode. A client reads such an answer whole anyway, so holding it costs it only the time to
-  the last byte. Media (`audio/*`, `video/*`, `image/*`, `application/octet-stream`), an event
-  stream and an answer of no stated type stream as they come, untouched, their first byte never
-  waiting for the last. On such a row the request keeps the caller's gzip or deflate (relay rule
-  3 above), and a clean held answer goes out as it came, compressed bytes and `Content-Encoding`
-  alike. The archive's own recording is gated exactly as before and stores an own-key answer as
-  received, which is safe because an answer quoting the team's own credential is never recorded
-  (`_echoes_own_credential`);
+  (a free poll's error body takes `_redact_error_body` at the same point, on every row). The
+  archive's copy of a metered answer is the same masked bytes: the mask remembers its last answer,
+  so the body is searched once per call;
+- an own-key catalog 2xx (tier `tool` or `credential`; `own_key_masked`). Where the archive reads
+  it to record it, that is the archive's read, as before: up to `archive_max_body_bytes`, asked
+  for identity. Where the archive does not (recording off, a licence or row kind it may not store,
+  a team's opt-out), the answer is held whatever its type, up to the larger of
+  `archive_max_body_bytes` and `_TASK_ANSWER_MAX` when it names a task: a Graph page is JSON its
+  client reads whole anyway, so holding it costs only the time to the last byte. The request keeps
+  the caller's gzip or deflate there (relay rule 3 above), and a clean held answer goes out as it
+  came, compressed bytes and `Content-Encoding` alike. The archive's own recording is gated
+  exactly as before and stores an own-key answer as received, which is safe because an answer
+  quoting the team's own credential is never recorded (`_echoes_own_credential`);
 - an archive hit, masked where it is materialized with the call's spellings and treg's own for
   the provider (`answer_mask(..., provider=)`): a hit can be a public answer treg's key fetched,
   served to an own-key caller, or a copy kept before the archive masked answers.
 
 What the archive keeps from treg's key is masked with treg's own credentials for the provider,
-every account's (`platform_answer_mask`): the call path records the masked answer, the refresh
-worker masks before it records (`archive._refresh_call`), and terminal task evidence is stored
-masked (`asynctasks._finish_terminal`, whose settlement still reads the provider's bytes). Every
-reader that shows stored bytes masks them on the way out as well, which covers copies kept before
-this: `GET /calls/{id}/result` (`service.stored_answer_for_caller`, then the reported-charge strip
+every account's (`platform_answer_mask`): on a marked row the call path records the masked
+answer; on every row, at no cost to the relay, the refresh worker masks before it records
+(`archive._refresh_call`) and terminal task evidence is stored masked
+(`asynctasks._finish_terminal`, whose settlement still reads the provider's bytes). Every reader
+that shows stored bytes masks them on the way out as well, on every row, which covers copies kept
+before this: `GET /calls/{id}/result` (`service.stored_answer_for_caller`, then the reported-charge strip
 for a metered row), the activity feed's task view (`asynctasks.views_for`), the review judge,
 whose answer goes to a model outside treg (`review_answers.as_delivered`, before its own
 reported-charge strip), and the staff archive panel (`admin_archive_body`). A reader that pages
@@ -267,16 +267,18 @@ the caller came for. For the same reason a spelling shorter than 8 characters or
 only (`_ANSWER_SPELLING_MIN`) is not used: the decoded half of a Basic credential can be a 4-digit
 login, and a numeric credential inside a JSON number would break the document, while the whole
 credential, `Basic <it>` and `login:password` are masked. A gzip/deflate answer is decoded
-(bounded) only to be searched, and a masked one is re-sent identity-encoded; one that cannot be
-decoded, or whose credentials cannot be rendered, is relayed as it came, with the rendering
-warning logged.
+(bounded) only to be searched, and a masked one is re-sent identity-encoded; one it cannot decode
+whole (a multi-member gzip, or one past 8 MiB decoded: both held first, as their headers allow),
+or whose credentials cannot be rendered, is relayed as it came, with the rendering warning logged
+in the second case.
 
-Not masked, because no one holds it whole: an own-tool answer (no catalog row), an own-key 1xx or
-3xx answer, an own-key answer larger than the hold (it streams on, untouched and never cut, from
-the first byte past it), an own-key answer the archive does not record that is not JSON or text,
-a streamed free fetch and a spooled answer; nor an answer in a coding the search cannot decode or
-one whose credentials cannot be rendered. Meta's Graph read rows are own-key catalog rows that
-answer JSON (or `text/javascript`), so their pages are held and masked on every archive setting.
+Not masked: any answer, error bodies aside, of a row not marked `echoes_credential` or of an own
+tool (no catalog row). On a marked row, because no one holds it whole: an own-key 1xx or 3xx
+answer, an own-key answer larger than the hold (it streams on, untouched and never cut, from the
+first byte past it), a streamed free fetch and a spooled answer; nor one the search cannot decode
+whole (br, zstd, a multi-member gzip, or one past 8 MiB decoded) or one whose credentials cannot
+be rendered. Meta's Graph read rows are own-key catalog rows, so their pages are held and masked on
+every archive setting.
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
 sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,

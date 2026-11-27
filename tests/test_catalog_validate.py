@@ -1223,6 +1223,36 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
     assert errors == []
 
 
+def test_echoes_credential_is_accepted_in_provider_defaults_and_on_one_endpoint(
+    tmp_path, monkeypatch, capsys,
+):
+    """Graph's files set `echoes_credential` in `defaults:`; a provider can also set it on one
+    row, and a row's `false` opts out of the default."""
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {web: Web}\ncapabilities: {web.read: Read a page}\n")
+    (tmp_path / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    row = ("  - id: {provider}.web.{name}\n    capability: web.read\n    platform: web\n"
+           "    method: GET\n    path: /{name}\n    summary: Read a page\n    added: '2026-11-27'\n"
+           "    cost: {{type: free, value: 0, currency: USD, unit: call}}\n")
+    (tmp_path / "facebook.yaml").write_text(
+        "provider: facebook\nsource: {docs: https://example.com/docs}\n"
+        "defaults:\n  echoes_credential: true\nendpoints:\n"
+        + row.format(provider="facebook", name="page")
+        + row.format(provider="facebook", name="raw") + "    echoes_credential: false\n")
+    (tmp_path / "tikhub.yaml").write_text(
+        "provider: tikhub\nsource: {docs: https://example.com/docs}\nendpoints:\n"
+        + row.format(provider="tikhub", name="page") + "    echoes_credential: true\n"
+        + row.format(provider="tikhub", name="plain"))
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+
+    assert validator.main(["facebook", "tikhub"]) == 0
+    assert "0 error(s)" in capsys.readouterr().out
+    rows = catalog_store.load(directory=tmp_path).by_id
+    assert {endpoint: row["echoes_credential"] for endpoint, row in rows.items()} == {
+        "facebook.web.page": True, "facebook.web.raw": False, "tikhub.web.page": True,
+        "tikhub.web.plain": False}
+
+
 def test_the_catalog_loader_keeps_dates_as_strings(tmp_path):
     from treg.domain.catalog.schema import files
     (tmp_path / "row.yaml").write_text("checked: 2026-09-01\n")

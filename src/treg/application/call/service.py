@@ -569,23 +569,6 @@ def _redact_error_body(
     return _with_body(response, redacted), redacted
 
 
-_HELD_MEDIA_TYPES = frozenset({"application/json", "application/x-www-form-urlencoded"})
-
-
-def _held_to_mask(response: UpstreamResponse) -> bool:
-    """Whether an own-key answer the archive does not read is held whole to be masked: JSON or
-    text (`application/json`, a `+json` type, `text/*` save `text/event-stream`, a form body) in a
-    coding the mask can decode. Media, an event stream and an answer of no stated type stream as
-    they come, their first byte never waiting for the last."""
-    encoding = _response_header(response, "content-encoding").strip().lower()
-    if encoding not in ("", "identity") and encoding not in READABLE_ENCODINGS:
-        return False
-    media = _response_header(response, "content-type").split(";", 1)[0].strip().lower()
-    if media == "text/event-stream":
-        return False
-    return media in _HELD_MEDIA_TYPES or media.endswith("+json") or media.startswith("text/")
-
-
 def _mask_answer(
     response: UpstreamResponse, body: bytes, masks: AnswerMask,
 ) -> tuple[UpstreamResponse, bytes]:
@@ -1647,8 +1630,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             own_key_archivable = (
                 own_key_cacheable and archive.recording()
                 and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id)))
-            # After the OAuth refresh above, so a replaced token is the one masked.
-            answer_masks = answer_mask(tool, secrets)
+            # Only a row marked `echoes_credential` (its provider writes the injected credential
+            # into a successful answer) is held whole and searched; every other answer is relayed
+            # as it comes. After the OAuth refresh above, so a replaced token is the one masked.
+            echoes = mk is not None and bool(
+                (catalog_store.load().by_id.get(mk.endpoint_id) or {}).get("echoes_credential"))
+            answer_masks = answer_mask(tool, secrets) if echoes else AnswerMask(())
             own_key_masked = (
                 mk is not None and not mk.metered and mk.tier in ("tool", "credential")
                 and not mk.free_owned_poll and bool(answer_masks))
@@ -1687,8 +1674,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         (time.monotonic() - lookup_started) * 1000, 3)
             if served is not None:
                 await _admit_org_endpoint(request, mk.endpoint_id)
-                answer_masks = answer_mask(tool, secrets, provider=mk.provider)
-                body = answer_masks.answer(served["body"])
+                body = served["body"]
+                if echoes:
+                    answer_masks = answer_mask(tool, secrets, provider=mk.provider)
+                    body = answer_masks.answer(body)
                 served_hit = True
                 served_repeat = bool(served.get("repeat_for_org"))
                 served_headers = served.get("reported_headers")
@@ -1899,8 +1888,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         scope=cache_scopes[0], response_headers=response.raw_headers)
                 if whole is not None:
                     response, task_answer = _mask_answer(response, whole, answer_masks)
-            elif (served is None and own_key_masked and 200 <= response.status < 300
-                  and _held_to_mask(response)):
+            elif served is None and own_key_masked and 200 <= response.status < 300:
                 response, whole = await _read_whole_if_small(response, max(
                     get_settings().archive_max_body_bytes,
                     _TASK_ANSWER_MAX if _names_task(mk, call_ref) else 0))

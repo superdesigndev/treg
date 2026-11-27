@@ -220,6 +220,19 @@ in at most one of the provider's two files. Per top-level key: a row's value win
 (`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
 files.
 
+## A row whose answers quote the credential
+
+`echoes_credential: true` is a provider fact on the endpoint row (`RowBase`, both spellings): the
+provider writes the credential treg injected into a successful answer, as Meta's Graph API writes
+the request's `access_token` into `paging.next` and `paging.previous`. Set it in the provider's
+`defaults:` when every row of the provider does so (each Graph file: `facebook`, `instagram`,
+`meta-ads`, `meta-ad-library`), or on one endpoint; under a default a row's `false` or `null` opts
+out. The loader serves a plain boolean (`True` only for a literal `true`, else `False`). On the
+call path only a marked row's answers are held whole and searched for the credential; every other
+row's answer is relayed as it comes ([proxy-model](proxy-model.md#answers-that-quote-a-credential)).
+Mark a row only on evidence that its provider quotes the credential in a 2xx, since holding an
+answer delays its first byte to its last.
+
 ## Summary and note
 
 A row has two prose fields, and each caveat has one home.

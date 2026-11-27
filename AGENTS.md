@@ -56,27 +56,28 @@ Everything else in this file is guidance; these are the contract, and they win o
    binding with `location: "json"` explicitly parses and reserializes the top-level JSON object; it
    is not byte-faithful and must never be used with an upstream that signs or hashes the raw body.
    Never add upstream-specific modeling.
-   One more rewrite: every spelling of an injected credential the provider echoes back in a body
-   is masked (`***`) before the caller, an idempotent replay, the archive or the evidence row sees
-   it. A 4xx/5xx body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed call one
-   that cannot be scanned is replaced whole, never relayed as a prefix. Any other answer is masked
-   where the application holds it whole: a metered or owned free-poll answer; an own-key catalog
-   2xx carrying an injected credential, read whole up to `archive_max_body_bytes` (the larger of
-   that and 2 MiB when it names a task) when the archive reads it to record it (asked for
-   identity), while on a row the archive does not record the request keeps only the caller's gzip
-   and deflate and the answer is read whole only when it is JSON or text (`application/json`, a
-   `+json` type, `text/*` save `text/event-stream`, `application/x-www-form-urlencoded`; the media
-   type read case-insensitively, without its parameters) in a coding treg can decode; and an
-   archive hit, also masked with treg's own credentials for its provider. Only spellings of 8 or
-   more characters that are not all digits, never a whole-body replacement. A platform-key answer
-   the archive records or refreshes, and terminal task evidence, are stored masked with treg's own
-   credentials; a recording on a team's own credential is stored as received, since an answer
-   holding a spelling of it is never recorded. `GET /calls/{id}/result`, Activity, the review
-   judge and the staff archive panel mask a copy kept before. Relayed untouched: an own-tool
-   answer; an own-key 1xx or 3xx answer, one past that bound, or one the archive does not record
-   that is not JSON or text (media, `application/octet-stream`, an event stream, no stated type),
-   which streams as it comes; a free answer that streams in full (below); a spooled answer; one in
-   an encoding treg cannot decode; and one whose credentials cannot be rendered.
+   One more rewrite: every spelling of an injected credential the provider echoes back in an error
+   body is masked (`***`) before the caller, an idempotent replay or the evidence row sees it, on
+   every row, owned free polls included. The error body is read whole (gzip/deflate decoded) up to
+   8 MiB; on a credentialed call one that cannot be scanned is replaced whole, never relayed as a
+   prefix. A 2xx is masked the same way only on a catalog row marked `echoes_credential` (a
+   provider that writes the credential into successful answers: Meta's Graph rows, whose paging
+   links carry `access_token`), before the caller, an idempotent replay, a task record or the
+   archive sees it, and only where the application holds it whole: a metered answer or an owned
+   free poll, both read whole already; an own-key answer, read whole up to
+   `archive_max_body_bytes`, asked for identity when the archive records the row, otherwise with
+   the request keeping only the caller's gzip and deflate and up to the larger of that and 2 MiB
+   when it names a task; and an archive hit, also masked with treg's own credentials for its
+   provider. Only spellings of 8 or more characters that are not all digits, never a whole-body
+   replacement. Relayed exactly as without this rewrite: every answer of a row not so marked, and
+   on a marked row an own-key 1xx or 3xx answer, one past that bound (it streams on, never cut), a
+   free answer that streams in full (below), a spooled answer, one treg cannot decode whole (br,
+   zstd, a multi-member gzip, or one past 8 MiB decoded) and one whose credentials cannot be
+   rendered. Stored copies are masked with treg's own credentials for the provider on every row, at
+   no cost to the relay: the archive refresh worker and terminal task evidence store them masked,
+   and `GET /calls/{id}/result`, Activity, the review judge and the staff archive panel mask a copy
+   kept before when they read it. A recording on a team's own credential is stored as received,
+   since an answer holding a spelling of it is never recorded.
    One more, on a metered 2xx and only while the deploy switch `TREG_STRIP_REPORTED_CHARGE` is on
    (off by default): the member the row's settlement reads the provider's own charge from
    (`settle.reported.path`, or `cost.reported_charge.path` in today's spelling) is removed after
@@ -121,9 +122,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
    A 2xx async answer is read whole (bounded) to record the task it names, then relayed byte for
-   byte save the credential masking above; one too large streams untouched and is not recorded. `/tasks/{call_id}` polls that task
-   through the same road and reads the answer with the descriptor; it never changes what `/call/`
-   returns (docs/context/architecture/tasks.md).
+   byte save the credential masking above on a marked row; one too large streams untouched and is
+   not recorded. `/tasks/{call_id}` polls that task through the same road and reads the answer
+   with the descriptor; it never changes what `/call/` returns (docs/context/architecture/tasks.md).
 5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
    revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
    bonus, in proportion), never another payment's block and never below the unheld balance.

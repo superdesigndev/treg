@@ -15,7 +15,6 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
-from conftest import auth_digest
 from treg import archive, audit, ratestore
 from treg.config import get_settings
 from treg.application.call import resolve as call_resolve
@@ -141,7 +140,7 @@ async def test_own_key_is_never_affected_by_an_exhausted_platform_account(client
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})  # tier 2
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
-    assert r.json()["auth_sha256"] == auth_digest("Bearer MKKEY")
+    assert r.json()["auth"] == "Bearer MKKEY"
 
 
 async def test_a_stale_or_ok_view_never_refuses(clients: AsyncClient, platform_on, monkeypatch):

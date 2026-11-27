@@ -39,9 +39,10 @@ after the answer is read whole, so no connection is held while the provider is t
 - **treg's key.** The body settlement already read (overflow-served and spooled answers excepted),
   as the caller receives it ([proxy-model](proxy-model.md), "The provider's reported charge").
 - **A team's own key.** The answer is read whole up to `_TASK_ANSWER_MAX` (gzip or deflate decoded
-  for reading only) and relayed byte for byte, save a credential it quotes, which is masked for the
-  caller and the record alike ([proxy-model](proxy-model.md), "Answers that quote a credential");
-  a larger one streams untouched and gets no record.
+  for reading only) and relayed byte for byte, save, on a row marked `echoes_credential`, a
+  credential it quotes, which is masked for the caller and the record alike
+  ([proxy-model](proxy-model.md), "Answers that quote a credential"); a larger one streams
+  untouched and gets no record.
 - **A routed pending answer** (202). The parent's call id names the child's task: its endpoint,
   descriptor and task id. There is no digest, because that body is treg's own envelope.
 

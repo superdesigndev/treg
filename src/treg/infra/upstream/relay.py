@@ -34,9 +34,11 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      customer is, and two providers' codes for one team do not match. Any value the caller sent
      under that name is replaced. A team's own key relays the caller's headers verbatim.
   7. `Accept-Encoding`, a transport header: `identity` when the caller sent none or the application
-     parses the answer (`force_identity`), and, for an own-key answer the application reads whole
-     to mask an echoed credential, only the codings it can decode (`readable_encodings_only`), so
-     a clean answer keeps the caller's compression.
+     parses the answer (`force_identity`); and, on a team's own credential to a catalog row marked
+     `echoes_credential` that the archive does not record, only the codings the application can
+     decode (`readable_encodings_only`), since it reads that answer whole to mask the credential
+     the provider writes into it: a caller offering br gets gzip there, or no compression from a
+     provider that offers only br. Every other request carries the caller's value as sent.
 
 Except for that explicit JSON-binding contract, it never buffers the body (rule 5: stream, don't
 duplicate) and uses the shared long-lived httpx client (rule 1: keepalive). Secrets are passed
@@ -115,9 +117,9 @@ def readable_encodings_only(
     raw_headers: tuple[tuple[bytes, bytes], ...], codings: frozenset[str],
 ) -> tuple[tuple[bytes, bytes], ...]:
     """Rewrite 7 of the faithfulness contract: the caller's `Accept-Encoding` keeping only `codings`
-    and `identity` (`identity` when none is left), for an answer the call application reads whole: a
-    coding it cannot decode would hide what it must search. No header is left as none: the relay
-    then asks for identity."""
+    and `identity` (`identity` when none is left), for a request whose answer the call application
+    reads whole to search: a coding it cannot decode would hide what it must search. No header is
+    left as none: the relay then asks for identity."""
     values = [v.decode("latin-1") for k, v in raw_headers if k.lower() == b"accept-encoding"]
     if not values:
         return raw_headers

@@ -758,6 +758,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # A metered 2xx too large to buffer (inline media): read to disk and settled from the
         # keys its usage terms read (application/call/settle.py `_spool_response`).
         "spooled_response": raw.get("spooled_response") is True,
+        # The provider writes the credential treg injected into a successful answer (Meta's Graph
+        # API puts `access_token` in its paging links): the call path masks this row's answers.
+        "echoes_credential": raw.get("echoes_credential") is True,
         "platform_request": raw.get("platform_request") or None,
         **({"platform_check": raw["platform_check"]} if raw.get("platform_check") else {}),
         **({"platform_query": raw["platform_query"]} if raw.get("platform_query") else {}),
