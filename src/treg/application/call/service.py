@@ -906,6 +906,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # archive records or serves; kept on the audit row so `/calls/{id}/result` can find it.
     archive_key_hash: str | None = None
     archive_content_hash: str | None = None
+    # Settlement's question identity, kept when result-link hashes are cleared because the
+    # on-request fallback write failed: the team still paid for this question.
+    paid_question_key: str | None = None
     smoothed: list[str] = []  # what burst smoothing did (`wait=<ms>`, `retry=1`) - set on the relay path
     mk: MarketplaceCall | None = None
     own_tool_miss: dict | None = None
@@ -1548,6 +1551,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         share_slot = NO_SLOT
         inflight_slot = None
         rl = None
+        archive_deferred = None
         try:
             platform_tier = mk is not None and mk.tier == "platform"
             raw_headers = tuple(request.headers.raw)
@@ -1804,6 +1808,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     body_observation = archive.archive_bodies.StorageReport(
                         call_ref=call_ref, emit=lambda props: analytics.capture(
                             audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
+                    archive_deferred = body_observation
                     archive_key_hash, archive_content_hash = archive.record(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
@@ -1814,7 +1819,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation,
                         origin_org_id=caller.org_id if own_credential else None,
-                        scope=cache_scopes[0], response_headers=response.raw_headers)
+                        scope=cache_scopes[0], response_headers=response.raw_headers,
+                        defer_shed=True)
             elif (served is None and own_key_archivable and 200 <= response.status < 300
                   and _identity_encoded(response)):
                 # An own-key answer: read whole when it fits the archive's cap (bounded, before
@@ -1831,6 +1837,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     body_observation = archive.archive_bodies.StorageReport(
                         call_ref=call_ref, emit=lambda props: analytics.capture(
                             audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
+                    archive_deferred = body_observation
                     archive_key_hash, archive_content_hash = archive.record(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
@@ -1840,7 +1847,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation, origin_org_id=caller.org_id,
-                        scope=cache_scopes[0], response_headers=response.raw_headers)
+                        scope=cache_scopes[0], response_headers=response.raw_headers,
+                        defer_shed=True)
             elif response.status >= 400:
                 # A provider can echo the injected credential anywhere in an error body, so the
                 # caller receives only a body scanned whole (bounded). One too large to scan streams
@@ -1866,6 +1874,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             share_slot.release()
             if inflight_slot is not None:
                 inflight_slot.release()
+        paid_question_key = archive_key_hash
+        if archive_deferred is not None:
+            # A caller-facing answer the archive queue would have shed is written on the request
+            # (archive.md), only after the provider slots above are free: archive backpressure
+            # must not hold upstream concurrency other teams are waiting for.
+            archive_key_hash, archive_content_hash = await archive.persist_deferred(
+                archive_deferred, archive_key_hash, archive_content_hash)
     except asyncio.CancelledError:
         await _finish_cancelled_call(request, mk, call_ref, response, sent=sent)
         raise
@@ -1992,8 +2007,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # metered 2xx (the phase-0 statistics count actions and forbidden providers
                     # too), and a mark for an answer that can never be a hit is a wasted write on
                     # the money path.
-                    archive_use=((caller.org_id, archive_key_hash)
-                                 if archive_key_hash and 200 <= response.status < 300
+                    archive_use=((caller.org_id, paid_question_key)
+                                 if paid_question_key and 200 <= response.status < 300
                                  and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id))
                                  else None),
                     cached_hit=served_hit, cached_repeat=served_repeat,

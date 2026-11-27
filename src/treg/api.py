@@ -782,6 +782,7 @@ async def get_call_result(
         return out
     key_hash, body_hash = row.archive_key_hash, row.archive_content_hash
     await db.close()
+    await archive.await_pending(key_hash)
     found = await archive.resolve_result(key_hash, body_hash)
     if found is None:
         out["note"] = "expired: this answer is no longer on file"

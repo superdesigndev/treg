@@ -1149,6 +1149,218 @@ async def test_a_hash_only_answer_says_so(clients: AsyncClient, shadow, monkeypa
     assert d["request"]["method"] == "GET"            # the question is still on file
 
 
+async def _fill_archive_queue(monkeypatch):
+    """Hold the pending budget with tasks that never call `_store`, so a later persist can.
+
+    `record()` sheds when the next body would exceed the cap. Dummy tasks stay blocked
+    until the caller sets the returned event; they do not complete just because `_store`
+    itself is unpatched.
+    """
+    import asyncio as aio
+
+    release = aio.Event()
+
+    async def linger():
+        await release.wait()
+
+    monkeypatch.setattr(archive, "_pending_bytes", 0)
+    archive._pending.clear()
+    for n in (400, 400):
+        task = aio.create_task(linger())
+        archive._pending.add(task)
+        archive._pending_bytes += n
+    assert archive._pending_bytes == 800
+    monkeypatch.setattr(archive, "_MAX_PENDING_BYTES", 800)
+    return release
+
+
+async def test_a_shed_recording_is_still_retrievable_on_result(clients: AsyncClient, shadow,
+                                                                monkeypatch):
+    """A caller-facing metered 2xx whose in-process archive queue is full must still land on
+    GET /calls/{id}/result. Hashes without a key make has_result look true and the route reports
+    expired, which is the defect: the identities are computed even when the write is shed."""
+    release = await _fill_archive_queue(monkeypatch)
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r.status_code == 200, r.text
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        assert row["has_result"] is True
+        got = (await clients.get(f"/calls/{row['id']}/result")).json()
+        assert got["stored"] is True, got
+        assert got["note"] is None, got
+        assert got["response"]["body_text"] == r.text
+        async with session_maker() as s:
+            keys = (await s.execute(select(ArchiveKey))).scalars().all()
+        assert keys, "the shed caller answer must still write an ArchiveKey"
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+
+
+async def test_a_failed_fallback_write_does_not_advertise_a_result(clients: AsyncClient, shadow,
+                                                                   monkeypatch):
+    """If the on-request fallback cannot land, the call row must not claim has_result."""
+    release = await _fill_archive_queue(monkeypatch)
+
+    async def boom(**kw):
+        raise RuntimeError("store failed")
+
+    monkeypatch.setattr(archive, "_store", boom)
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r.status_code == 200, r.text
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        assert row["has_result"] is False
+        got = (await clients.get(f"/calls/{row['id']}/result")).json()
+        assert got["stored"] is False
+        assert "expired" not in (got["note"] or "")
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+
+
+async def test_a_failed_fallback_write_still_marks_the_paid_question(
+        clients: AsyncClient, serve, monkeypatch):
+    """Storage failure must not drop the question key used for settlement.
+
+    The team still paid for this question. After another caller records it, this
+    team's next cache hit must settle at the repeat price, not full price.
+    Result-link hashes stay omitted: the call row must not advertise has_result.
+    """
+    from conftest import verified_signup
+    from treg.models import ArchiveKeyOrg
+
+    max_pending_bytes = archive._MAX_PENDING_BYTES
+    real_store = archive._store
+    release = await _fill_archive_queue(monkeypatch)
+
+    async def boom(**kw):
+        raise RuntimeError("store failed")
+
+    monkeypatch.setattr(archive, "_store", boom)
+    try:
+        r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r1.status_code == 200, r1.text
+        live = int(r1.headers["X-Treg-Cost-Micro"])
+        assert live > 0
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        assert row["has_result"] is False
+        async with session_maker() as s:
+            marks = (await s.execute(select(ArchiveKeyOrg))).scalars().all()
+        assert len(marks) == 1 and marks[0].calls == 1, marks
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+        monkeypatch.setattr(archive, "_MAX_PENDING_BYTES", max_pending_bytes)
+        monkeypatch.setattr(archive, "_store", real_store)
+
+    other = await verified_signup(clients, json={"email": "second-team@example.com"})
+    headers = {"X-Treg-Token": other.json()["token"]}
+    b1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5", headers=headers)
+    assert b1.status_code == 200, b1.text
+    assert "x-treg-cache" not in {k.lower() for k in b1.headers}
+    assert int(b1.headers["X-Treg-Cost-Micro"]) == live
+    await archive.drain()
+    a2 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert a2.status_code == 200, a2.text
+    assert a2.headers["X-Treg-Cache"] == "hit"
+    assert int(a2.headers["X-Treg-Cost-Micro"]) == live * 10 // 100
+
+
+async def test_the_fallback_write_runs_after_the_provider_slots_are_free(
+        clients: AsyncClient, shadow, monkeypatch):
+    """Archive backpressure must not hold upstream concurrency: the on-request fallback write
+    starts only once the call has released its in-flight (and fair-share) slots."""
+    from treg.infra.upstream.inflight import inflight
+
+    release = await _fill_archive_queue(monkeypatch)
+    seen = []
+    real_store = archive._store
+
+    async def watch(**kw):
+        seen.append(sum(inflight._active.values()))
+        return await real_store(**kw)
+
+    monkeypatch.setattr(archive, "_store", watch)
+    try:
+        r = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r.status_code == 200, r.text
+        assert seen == [0], seen
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+
+
+async def test_the_fallback_write_is_bounded_by_the_store_deadline(monkeypatch):
+    """`_store`'s inner timeout does not cover compare_sem_wait or observe_sem_wait.
+    The on-request fallback must still give up and omit hashes when the whole write
+    exceeds `_STORE_TIMEOUT_S`, rather than delaying the caller for as long as the
+    archive backlog holds the write semaphore."""
+    import asyncio as aio
+    import time
+
+    observation = archive.archive_bodies.StorageReport()
+    sem = archive._get_sem()
+    held = archive._MAX_CONCURRENT_WRITES
+    for _ in range(held):
+        await sem.acquire()
+    monkeypatch.setattr(archive, "_STORE_TIMEOUT_S", 0.05)
+    observation.persist_args = dict(
+        method="GET", endpoint_id="treg.test.ep", provider="tikhub",
+        url="https://example.com/x", caller_body=b"", headers={}, status_code=200,
+        media_type="application/json", body=b'{"ok":true}', origin="caller",
+        key_hash="k", body_hash="c", observation=observation,
+        plan=archive.archive_bodies.WritePlan("db"),
+    )
+    try:
+        started = time.monotonic()
+        hashes = await aio.wait_for(
+            archive.persist_deferred(observation, "k", "c"), timeout=1.0)
+        elapsed = time.monotonic() - started
+        assert hashes == (None, None)
+        assert elapsed < 0.5, elapsed
+    finally:
+        for _ in range(held):
+            sem.release()
+
+
+async def test_a_cancelled_result_reader_does_not_cancel_the_recording(monkeypatch):
+    """`await_pending` shields the shared recording: cancelling one reader leaves the write running."""
+    import asyncio as aio
+
+    gate = aio.Event()
+
+    async def store():
+        await gate.wait()
+        return "stored"
+
+    task = aio.create_task(store())
+    monkeypatch.setitem(archive._pending_by_key, "k", task)
+    reader = aio.create_task(archive.await_pending("k"))
+    await aio.sleep(0)
+    reader.cancel()
+    with pytest.raises(aio.CancelledError):
+        await reader
+    assert not task.cancelled()
+    gate.set()
+    assert await task == "stored"
+
+
 async def test_a_result_is_scoped_to_the_team(clients: AsyncClient, shadow):
     assert (await clients.get(f"/call/{EP}?aweme_id=7&count=5")).status_code == 200
     await archive.drain()
@@ -2608,7 +2820,6 @@ async def test_a_direct_call_the_route_cannot_pick_names_no_routed_tool(clients:
                                                                         monkeypatch):
     """An endpoint of the job the route does not pick is only listed beside it; naming the route
     would send the agent away from the provider it chose."""
-    from treg.domain.catalog import store as catalog_store
     route = catalog_store.load().by_id["treg.tiktok.video.comments"]
     monkeypatch.setitem(route, "routed_children",
                         [c for c in route.get("routed_children") or [] if c != EP])

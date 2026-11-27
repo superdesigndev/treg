@@ -112,6 +112,8 @@ class StorageReport:
         if self.finished:
             return
         self.finished = True
+        self.storage = storage
+        self.drop_reason = reason
         outcomes[reason or storage or "none"] += 1
         data = {"call_ref": self.call_ref, "storage": storage or "none",
                 "upload_status": self.props["archive_body_upload_status"],
