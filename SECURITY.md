@@ -100,8 +100,9 @@ the team's CallRecord before resolving its archive reference. A hash is an ident
 access credential. Upstream answers are retained under the existing archive policy. An answer
 that echoes treg's PLATFORM credential is stored masked, as its caller receives it
 (`evidence.AnswerMask`: on the call path, in the refresh worker and for terminal task evidence),
-and `GET /calls/{id}/result` and Activity mask it again on read; an answer that echoes a team's OWN
-credential is refused by the recorder (`_echoes_own_credential`). An own-credential answer is stored under a cache key that
+and `GET /calls/{id}/result`, Activity, the review judge (whose reads go to a model outside treg)
+and the staff archive panel mask it again on read; an answer that echoes a team's OWN credential is
+refused by the recorder (`_echoes_own_credential`) and the rest are stored as received. An own-credential answer is stored under a cache key that
 folds in the org (or the connection, on an `own_account` endpoint), so another team never computes
 the hash that would find it; only an endpoint-level `cache.sharing: public` declaration puts such an
 answer on the public key.

@@ -105,9 +105,11 @@ Inside `relay()`:
    Try-it would otherwise leak the session.
 3. **`Accept-Encoding`** becomes `identity` when the caller sent none (the body is relayed raw with
    `aiter_raw`, and httpx would otherwise add its own `gzip`). With `force_identity` it is
-   overridden to `identity` wherever the application will read the body: metered settlement, an
-   owned free poll, an archivable own-key answer, and an own-key catalog answer held to be masked
-   ([below](#answers-that-quote-a-credential)).
+   overridden to `identity` wherever the application will parse the body: metered settlement, an
+   owned free poll and an archivable own-key answer. An own-key catalog answer held only to be
+   masked ([below](#answers-that-quote-a-credential)) keeps the caller's codings save the ones the
+   search cannot decode (`relay.readable_encodings_only` with `evidence.READABLE_ENCODINGS`:
+   gzip and deflate; `identity` when nothing is left), so a clean answer keeps its compression.
 4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
    query.
 5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
@@ -219,24 +221,30 @@ builds one per call (`answer_mask`), after the OAuth refresh, and uses it at eve
   (a free poll's error body takes `_redact_error_body` at the same point). The archive's copy of a
   metered answer is the same masked bytes: the mask remembers its last answer, so the body is
   searched once per call;
-- an own-key catalog answer (tier `tool` or `credential`) carrying an injected credential
-  (`own_key_masked`): read whole up to `archive_max_body_bytes` (or `_TASK_ANSWER_MAX` when it
-  names a task) and asked for identity encoding (`force_identity`) whatever the archive does with
-  it, so archive mode, licence, row kind or a team's opt-out never decide whether it is masked.
-  The archive's own recording is gated exactly as before, and an answer quoting the team's own
-  credential is still never recorded;
+- an own-key catalog 2xx (tier `tool` or `credential`) carrying an injected credential
+  (`own_key_masked`): read whole up to `archive_max_body_bytes` (the larger of that and
+  `_TASK_ANSWER_MAX` when it names a task) whatever the archive does with it, so archive mode,
+  licence, row kind or a team's opt-out never decide whether it is masked. Where the archive does
+  not record it, its `Accept-Encoding` keeps the caller's gzip or deflate (relay rule 3 above):
+  the search decodes it and a clean answer goes out as it came, compressed bytes and
+  `Content-Encoding` alike. The archive's own recording is gated exactly as before and stores an
+  own-key answer as received, which is safe because an answer quoting the team's own credential
+  is never recorded (`_echoes_own_credential`);
 - an archive hit, masked where it is materialized with the call's spellings and treg's own for
   the provider (`answer_mask(..., provider=)`): a hit can be a public answer treg's key fetched,
   served to an own-key caller, or a copy kept before the archive masked answers.
 
-What the archive keeps is masked with treg's own credentials for the provider, every account's
-(`platform_answer_mask`): the call path records the masked answer, the refresh worker masks before
-it records (`archive._refresh_call`), and terminal task evidence is stored masked
-(`asynctasks._finish_terminal`, whose settlement still reads the provider's bytes). Two readers
-mask on the way out as well, which covers copies kept before this: `GET /calls/{id}/result`
-(`service.stored_answer_for_caller`, then the reported-charge strip for a metered row) and the
-activity feed's task view (`asynctasks.views_for`). An idempotent replay stored before then is
-returned as stored until it expires.
+What the archive keeps from treg's key is masked with treg's own credentials for the provider,
+every account's (`platform_answer_mask`): the call path records the masked answer, the refresh
+worker masks before it records (`archive._refresh_call`), and terminal task evidence is stored
+masked (`asynctasks._finish_terminal`, whose settlement still reads the provider's bytes). Every
+reader that shows stored bytes masks them on the way out as well, which covers copies kept before
+this: `GET /calls/{id}/result` (`service.stored_answer_for_caller`, then the reported-charge strip
+for a metered row), the activity feed's task view (`asynctasks.views_for`), the review judge,
+whose answer goes to a model outside treg (`review_answers.as_delivered`, before its own
+reported-charge strip), and the staff archive panel (`admin_archive_body`). A reader that pages
+or cuts a stored answer must do so after this masking, never before. An idempotent replay stored
+before then is returned as stored until it expires.
 
 The search is bytes only, with no decode of the body and no regex over it. Each spelling is found
 through its probe (`_probe`): its longest run of the characters percent-encoding, JSON escaping
@@ -254,10 +262,11 @@ credential, `Basic <it>` and `login:password` are masked. A gzip/deflate answer 
 decoded, or whose credentials cannot be rendered, is relayed as it came, with the rendering
 warning logged.
 
-Not masked, because no one holds it whole: an own-tool answer (no catalog row), an own-key answer
-larger than the hold (it streams on, untouched and never cut, from the first byte past it), a
-streamed free fetch and a spooled answer. Meta's Graph read rows are own-key catalog rows, so
-their answers are held and masked on every archive setting.
+Not masked, because no one holds it whole: an own-tool answer (no catalog row), an own-key 1xx or
+3xx answer, an own-key answer larger than the hold (it streams on, untouched and never cut, from
+the first byte past it), a streamed free fetch and a spooled answer; nor an answer in a coding
+the search cannot decode or one whose credentials cannot be rendered. Meta's Graph read rows are
+own-key catalog rows, so their answers are held and masked on every archive setting.
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
 sent: its payment credential or wallet proof (`Authorization: Payment …`, `PAYMENT-SIGNATURE`,

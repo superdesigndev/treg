@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import time
@@ -37,7 +38,8 @@ from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.inflight import RETRY_AFTER_S as RETRY_AFTER_INFLIGHT_S
 from ...infra.upstream.inflight import UpstreamBusy, inflight as upstream_inflight
 from ...infra.upstream.limiter import limiter as provider_limiter
-from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
+from ...infra.upstream.relay import (
+    identify_as_treg, readable_encodings_only, relay, scope_shared_idempotency_key, tag_shared_client)
 from ...infra.upstream import relay as relay_module
 from ...infra import org_traffic
 from .. import asynctasks as async_task_app
@@ -58,6 +60,7 @@ from .evidence import (
     UNSCANNABLE_ERROR_BODY,
     _safe_secret_renderings,
     AnswerMask,
+    READABLE_ENCODINGS,
     answer_mask,
     platform_answer_mask,
     redact_error_response,
@@ -1743,6 +1746,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     relay_options["before_outbound"] = admit_outbound
                 else:
                     await admit_outbound()
+                if own_key_masked and not own_key_archivable:
+                    upstream_request = dataclasses.replace(
+                        upstream_request, raw_headers=readable_encodings_only(
+                            upstream_request.raw_headers, READABLE_ENCODINGS))
                 upstream_started = _now_ms()
                 reached = relay_module.ON_SEND.set(_reached_provider(request.context))
                 try:
@@ -1753,8 +1760,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         # Identity encoding wherever the body will be READ: the settle's cost
                         # evidence, and the archive's recording of an own-key answer.
                         force_identity=mk is not None and (
-                            mk.metered or mk.free_owned_poll or own_key_archivable
-                            or own_key_masked),
+                            mk.metered or mk.free_owned_poll or own_key_archivable),
                         **relay_options,
                     )
                 finally:

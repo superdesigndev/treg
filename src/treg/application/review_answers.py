@@ -14,6 +14,7 @@ from urllib.parse import parse_qsl
 from sqlmodel import select
 
 from .. import archive
+from .call.evidence import platform_answer_mask
 from ..config import get_settings
 from ..domain.catalog import reported_charge
 from ..domain.catalog import store as catalog_store
@@ -72,19 +73,25 @@ async def answer_of(r) -> Answer:
         if text is None or "\x00" in text:  # not UTF-8 text, or text in another encoding
             return ABSENT
         return Answer("read", as_delivered(found, record.status_code, record.endpoint_id,
-                                           record.cost_charged_micro))
+                                           record.cost_charged_micro, provider=record.provider))
     except Exception:  # tried again later; the reason codes stand after the last try
         log.warning("review answer not read: review %s", r.id, exc_info=True)
         return UNREADABLE
 
 
-def as_delivered(found: dict, status_code: int, endpoint_id: str | None, charged: int | None) -> dict:
+def as_delivered(found: dict, status_code: int, endpoint_id: str | None, charged: int | None, *,
+                 provider: str | None = None) -> dict:
     """The archived answer as the reviewed call delivered it: that call's own status (one stored
-    body can answer several calls with different statuses) and, for a metered 2xx answer, without
-    the provider's reported charge the endpoint declares. Whether this call's delivery kept it
-    depended on settings and a request header that are not on file, so it is always left out: a
-    field the caller may not have seen never takes part in a judgement."""
+    body can answer several calls with different statuses), treg's own credentials for `provider`
+    masked as every reader of the archive masks them (a copy kept before the archive did, sent to
+    an outside judge model), and, for a metered 2xx answer, without the provider's reported charge
+    the endpoint declares. Whether this call's delivery kept it depended on settings and a request
+    header that are not on file, so it is always left out: a field the caller may not have seen
+    never takes part in a judgement."""
     response = dict(found["response"], status_code=status_code)
+    if response.get("body_text") is not None:
+        response["body_text"] = platform_answer_mask(provider).answer(
+            response["body_text"].encode("utf-8")).decode("utf-8")
     if charged is not None and 200 <= status_code < 300:
         path = reported_charge.path_of(catalog_store.load().by_id.get(endpoint_id or ""))
         response["body_text"] = reported_charge.without(path, response["body_text"].encode("utf-8")).decode("utf-8")

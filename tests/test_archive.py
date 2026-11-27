@@ -688,7 +688,7 @@ async def test_own_key_recording_asks_for_identity_encoding(clients: AsyncClient
     assert seen["force_identity"] is True
     monkeypatch.setattr(get_settings(), "archive_mode", "off")
     await clients.get(f"/call/{EP}?aweme_id=9")
-    assert seen["force_identity"] is True        # nothing to record, but held whole to be masked
+    assert seen["force_identity"] is False                      # nothing to record: untouched
 
 
 @pytest.mark.parametrize("cache_header", [True, False])

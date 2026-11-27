@@ -557,6 +557,34 @@ class TestAnswersAreMaskedToo:
         async with session_maker() as s:
             assert (await s.execute(select(ArchiveKey))).scalars().all() == []
 
+    async def test_a_clean_own_key_answer_keeps_its_compression(
+        self, clients: AsyncClient, monkeypatch,
+    ):
+        """Held whole to be masked, an own-key answer the caller asked gzip for is searched decoded
+        and relayed as it came: the same compressed bytes and `Content-Encoding` on the wire. Only
+        codings treg cannot decode to search are dropped from the request."""
+        assert (await clients.post(
+            "/secrets", json={"name": "meta-ad-library", "value": META_TOKEN})).status_code == 200
+        clean = gzip.compress(b'{"data":[{"id":"1"}],"paging":{"cursors":{"after":"QVFIUmNh"}}}')
+        seen = _vendor(monkeypatch, lambda request: clean,
+                       headers={"content-encoding": "gzip", "content-length": str(len(clean))})
+        async with clients.stream("GET", f"/call/{META_EP}", params=META_QUERY,
+                                  headers={"accept-encoding": "gzip, br"}) as r:
+            sent = b"".join([chunk async for chunk in r.aiter_raw()])
+        assert seen[0].headers["accept-encoding"] == "gzip"
+        assert r.status_code == 200 and r.headers["content-encoding"] == "gzip" and sent == clean
+
+        _vendor(monkeypatch, lambda request: gzip.compress(_meta_page(request)),
+                headers={"content-encoding": "gzip"})
+        quoting = await clients.get(f"/call/{META_EP}", params=META_QUERY,
+                                    headers={"accept-encoding": "gzip"})
+        assert "content-encoding" not in quoting.headers
+        assert META_TOKEN not in quoting.text and "access_token=***" in quoting.text
+
+        seen = _vendor(monkeypatch, _meta_page)
+        await clients.get(f"/call/{META_EP}", params=META_QUERY, headers={"accept-encoding": "br"})
+        assert seen[0].headers["accept-encoding"] == "identity"
+
     async def test_an_own_key_page_past_the_hold_streams_as_it_came(
         self, clients: AsyncClient, monkeypatch,
     ):
@@ -573,14 +601,21 @@ class TestAnswersAreMaskedToo:
 async def test_a_hit_on_a_copy_kept_before_masking_is_masked_and_so_is_its_result(
     clients: AsyncClient, archive_on, monkeypatch,
 ):
-    """A snapshot recorded before the archive masked answers still holds treg's key: the hit and
-    `GET /calls/{id}/result` mask it all the same."""
+    """A snapshot recorded before the archive masked answers still holds treg's key: the hit,
+    `GET /calls/{id}/result` and the staff archive panel mask it all the same."""
     _vendor(monkeypatch, _page_with_next_link)
     with monkeypatch.context() as before_masking:
         before_masking.setattr(call_evidence.AnswerMask, "answer", lambda self, body, encoding="": body)
         old = await clients.get(f"/call/{EP}?aweme_id=7")
     assert PLATFORM_KEY in old.text
     await archive.drain()
+    async with session_maker() as s:
+        key_hash = (await s.execute(select(ArchiveKey))).scalars().one().key_hash
+    monkeypatch.setattr(get_settings(), "admin_token", "ADM-TOKEN")
+    staff = (await clients.get(f"/admin/archive/body?key_hash={key_hash}&version=1",
+                               headers={"X-Treg-Token": "ADM-TOKEN"})).json()
+    assert staff["stored"] is True and PLATFORM_KEY not in staff["body_text"]
+    assert staff["body_text"].endswith('&token=***"}')
     hit = await clients.get(f"/call/{EP}?aweme_id=7")
     assert hit.headers["X-Treg-Cache"] == "hit"
     assert PLATFORM_KEY not in hit.text and hit.json()["next"].endswith("&token=***")

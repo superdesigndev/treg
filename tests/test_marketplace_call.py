@@ -845,14 +845,14 @@ def test_fiber_ai_people_search_does_not_add_the_interpretation_fee():
     assert (estimate, unit) == (5 * credit, credit)
 
 
-async def test_unmetered_call_keeps_the_callers_encoding_unless_its_answer_is_held(clients: AsyncClient):
+async def test_unmetered_call_keeps_the_callers_encoding_treg_can_read(clients: AsyncClient):
     """Tier 2 (org's own key) carries an injected credential, so its answer is read whole to be
-    masked and asked for identity; a team's own tool streams, and the caller's own compression
-    choice travels upstream untouched."""
+    masked: the caller's codings travel upstream save the ones treg cannot decode to search (br).
+    A team's own tool streams, and the caller's own compression choice travels untouched."""
     await clients.post("/secrets", json={"name": "tikhub", "value": "MKKEY"})
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"accept-encoding": "gzip, br"})
     assert r.status_code == 200, r.text
-    assert r.json()["headers"]["accept-encoding"] == "identity"
+    assert r.json()["headers"]["accept-encoding"] == "gzip"
     sid = (await clients.post("/secrets", json={"name": "own", "value": "OWN"})).json()["id"]
     await clients.post("/tools", json={"name": "own-tool", "base_url": "http://upstream", "secret_id": sid})
     r = await clients.get("/call/own-tool/x", headers={"accept-encoding": "gzip, br"})

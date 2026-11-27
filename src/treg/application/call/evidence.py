@@ -298,6 +298,10 @@ UNSCANNABLE_ERROR_BODY = (b'{"error":"response_redacted",'
                           b'"message":"upstream error response could not be scanned for credentials"}')
 
 
+# The content codings `_decompress_for_scan` reads, so the only ones a body to be searched may use.
+READABLE_ENCODINGS = frozenset({"gzip", "x-gzip", "deflate"})
+
+
 def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
     """The identity bytes of `raw`, or None when they cannot be had whole within `_ERROR_SCAN_MAX`.
 
@@ -307,7 +311,7 @@ def _decompress_for_scan(raw: bytes, content_encoding: str) -> bytes | None:
     enc = content_encoding.strip().lower()
     if enc in ("", "identity"):
         return raw
-    if enc not in ("gzip", "x-gzip", "deflate"):
+    if enc not in READABLE_ENCODINGS:
         return None
     # 32+MAX_WBITS auto-detects a gzip or zlib header; raw deflate is the other "deflate" in the wild.
     for wbits in (32 + zlib.MAX_WBITS, -zlib.MAX_WBITS):

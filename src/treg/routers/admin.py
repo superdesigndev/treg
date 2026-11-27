@@ -663,6 +663,7 @@ async def admin_archive_body(
     from ..models import ArchiveKey as AK
     from ..models import ArchiveSnapshot as AS
     from .. import archive_bodies
+    from ..application.call.evidence import platform_answer_mask
 
     key = (await db.execute(select(AK).where(AK.key_hash == key_hash))).scalars().one_or_none()
     if key is None:
@@ -681,6 +682,7 @@ async def admin_archive_body(
     body = await archive_bodies.read(pointer, "admin")
     text = None
     if body is not None:
+        body = platform_answer_mask(key.provider).answer(body)
         try:
             text = body.decode("utf-8")
         except UnicodeDecodeError:

@@ -33,6 +33,10 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      split usage, errors and cost per customer on treg's one account without learning who the
      customer is, and two providers' codes for one team do not match. Any value the caller sent
      under that name is replaced. A team's own key relays the caller's headers verbatim.
+  7. `Accept-Encoding`, a transport header: `identity` when the caller sent none or the application
+     parses the answer (`force_identity`), and, for an own-key answer the application reads whole
+     to mask an echoed credential, only the codings it can decode (`readable_encodings_only`), so
+     a clean answer keeps the caller's compression.
 
 Except for that explicit JSON-binding contract, it never buffers the body (rule 5: stream, don't
 duplicate) and uses the shared long-lived httpx client (rule 1: keepalive). Secrets are passed
@@ -105,6 +109,23 @@ def identify_as_treg(raw_headers: tuple[tuple[bytes, bytes], ...]) -> tuple[tupl
     treg's own (see the module docstring for the providers that blocked library defaults)."""
     kept = tuple((k, v) for k, v in raw_headers if k.lower() != b"user-agent")
     return kept + ((b"user-agent", TREG_USER_AGENT.encode()),)
+
+
+def readable_encodings_only(
+    raw_headers: tuple[tuple[bytes, bytes], ...], codings: frozenset[str],
+) -> tuple[tuple[bytes, bytes], ...]:
+    """Rewrite 7 of the faithfulness contract: the caller's `Accept-Encoding` keeping only `codings`
+    and `identity` (`identity` when none is left), for an answer the call application reads whole: a
+    coding it cannot decode would hide what it must search. No header is left as none: the relay
+    then asks for identity."""
+    values = [v.decode("latin-1") for k, v in raw_headers if k.lower() == b"accept-encoding"]
+    if not values:
+        return raw_headers
+    allowed = codings | {"identity"}
+    kept = [part.strip() for value in values for part in value.split(",")
+            if part.strip() and part.split(";", 1)[0].strip().lower() in allowed]
+    rest = tuple((k, v) for k, v in raw_headers if k.lower() != b"accept-encoding")
+    return rest + ((b"accept-encoding", (", ".join(kept) or "identity").encode("latin-1")),)
 
 
 def shared_client_code(secret: str, provider: str, org_id: int) -> str:
