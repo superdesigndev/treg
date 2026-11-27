@@ -783,6 +783,13 @@ class Settings(BaseSettings):
     review_judge_answer_attempts: int = Field(default=10, ge=1)
     # Off: the review judge codes from reasons only, as before the answer upgrade (its rollback switch).
     review_judge_answers: bool = True
+    # Off: `useful` reviews are not coded with the praise codebook (`review_codes.PRAISE_CODES`), its
+    # rollback switch. On, each run codes at most `review_judge_praise_per_run` of them, newest first,
+    # from their reasons only, within the last `review_judge_praise_days`: the cap bounds the first
+    # runs' backfill, and the window is what the report cards read.
+    review_judge_praise: bool = True
+    review_judge_praise_days: int = Field(default=28, ge=1, le=90)
+    review_judge_praise_per_run: int = Field(default=1000, ge=1, le=10000)
     # Calls before this moment are never read back as their archived answer: older call rows do not
     # say whether they came through `/table/`, whose caller got a reshaped answer. A deployment that
     # had `/table/` on sets it to when the last instance of a build before `callrecord.surface`

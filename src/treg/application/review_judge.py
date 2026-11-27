@@ -11,6 +11,9 @@ pass.
   optional `secondary_code` under `CODEBOOK_VERSION` from its reason (`code_basis`), and a direct
   call's review is then upgraded with the call's answer in view when it can be read
   (`judge_answers`). A review without a reason is `NOREASON` without asking.
+- Praise: every `useful` review in the last `review_judge_praise_days` gets a code from
+  `PRAISE_CODES` under `PRAISE_CODEBOOK_VERSION`, from its reason only and never upgraded
+  (`reason_final`), at most `review_judge_praise_per_run` per run (`review_judge_praise`).
 
 Run by `treg-worker reviews judge`. The table is small (one row per rated call), so each pass reads
 its whole window's unjudged rows and writes back in batches of `review_judge_batch`.
@@ -38,6 +41,7 @@ from .review_answers import Answer, answer_of, view
 log = logging.getLogger("treg.review_judge")
 
 NEGATIVE = ("partly", "not_useful")
+USEFUL = "useful"
 _wait_for = asyncio.wait_for  # a seam for tests that run on a fake clock
 BUDGET_CUT_DELAY = timedelta(hours=6)
 
@@ -169,6 +173,26 @@ async def judge_codes(*, deadline: float) -> dict:
                                version=version, final=final, deadline=deadline)
 
 
+async def judge_praise(*, deadline: float) -> dict:
+    """Code `useful` reviews not yet coded under `PRAISE_CODEBOOK_VERSION`, newest first and at most
+    `review_judge_praise_per_run`, from their reasons. Always `reason_final`: an answer upgrade
+    would cost an answer read per review for codes that mostly say the answer was fine."""
+    s = get_settings()
+    since = utcnow_naive() - timedelta(days=s.review_judge_praise_days)
+    version = review_codes.PRAISE_CODEBOOK_VERSION
+    async with session_maker() as db:
+        rows = (await db.execute(
+            select(CallReview.id, CallReview.reason, CallReview.usefulness, CallReview.endpoint_id,
+                   CallReview.routed_via)
+            .where(CallReview.created_at >= since, CallReview.usefulness == USEFUL,
+                   or_(CallReview.codebook_version.is_(None), CallReview.codebook_version < version))
+            .order_by(CallReview.created_at.desc())
+            .limit(s.review_judge_praise_per_run))).all()
+    return await _code_reasons(rows, question=review_codes.praise_question, codebook=review_codes.PRAISE_CODES,
+                               version=version, final={r.id: reviews.REASON_FINAL for r in rows},
+                               deadline=deadline)
+
+
 def _retry_at(now, attempts: int):
     """An hour, doubling with each failed read, up to a week."""
     return now + min(timedelta(hours=2 ** (attempts - 1)), timedelta(days=7))
@@ -276,7 +300,7 @@ async def judge_answers(*, deadline: float) -> dict:
 
 async def run(*, max_seconds: float) -> dict:
     """The passes, sharing `max_seconds`: privacy first (it gates what the catalog may quote), then
-    attribution from reasons, then the upgrade with answers, with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key.
+    attribution from reasons, then the upgrade with answers, then praise, with whatever time is left. Off (`{"skipped": "no_judge_key"}`) without a key.
 
     No lock: no connection is held across a Jev request (each pass reads its rows in a session it
     closes before asking, and each batch writes in a session of its own), and the writes in `domain.feedback.reviews` keep the first answer. An
@@ -289,6 +313,8 @@ async def run(*, max_seconds: float) -> dict:
     passes = [("privacy", judge_privacy), ("codes", judge_codes)]
     if get_settings().review_judge_answers:
         passes.append(("answers", judge_answers))
+    if get_settings().review_judge_praise:
+        passes.append(("praise", judge_praise))
     for name, judge_pass in passes:
         try:
             out[name] = await judge_pass(deadline=deadline)

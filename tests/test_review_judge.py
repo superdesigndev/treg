@@ -475,3 +475,80 @@ async def test_tries_running_out_never_ends_a_back_off_another_run_moved_on(clie
         assert await reviews_domain.record_answer_final(db, review_id, v)
         await db.commit()
     assert (await _all())["limits"].code_basis == "reason_final"
+
+
+async def test_praise_codes_useful_reviews_from_their_reasons_only(clients, monkeypatch):
+    await _reviews(clients, [
+        ("useful", "Clean miss with no charge for a domain not in the index.", {}),
+        ("useful", None, {}),
+        ("partly", LONG, {}),
+        ("useful", "Returned the full profile and the email verified.", {"routed_via": "email.find"}),
+        ("useful", "It was fine, really, nothing more to say about it.", {}),
+    ])
+
+    def answer(q, spec, state):
+        review = state["reviews"][int(q[1:])]
+        if review["usefulness"] != "useful":
+            return None
+        if "Clean miss" in review["reason"]:
+            return {"choice": "HONEST", "probabilities": {"HONEST": 0.6, "CHEAP": 0.35}}
+        if "full profile" in review["reason"]:
+            return {"choice": "COMPLETE", "probabilities": {"COMPLETE": 0.9, "ACCURATE": 0.1}}
+        return {"choice": "EMPTY"}  # a negative code is not a praise code
+    seen = _fake(monkeypatch, answer)
+    out = await review_judge.judge_praise(deadline=float("inf"))
+    assert out == {"pending": 4, "judged": 2, "no_reason": 1, "already_judged": 0, "failed_requests": 0,
+                   "unreadable": 1, "tokens_in": 10}
+    assert set(seen[0][1]["a0"]["criteria"]) == set(review_codes.PRAISE_CODES)
+    rows = await _all()
+    assert (rows["j-0"].primary_code, rows["j-0"].secondary_code) == ("HONEST", "CHEAP")
+    assert (rows["j-3"].primary_code, rows["j-3"].secondary_code) == ("COMPLETE", None)
+    assert rows["j-1"].primary_code == "NOREASON"
+    for k in ("j-0", "j-1", "j-3"):  # never upgraded with the answer, direct or routed
+        assert rows[k].code_basis == "reason_final"
+        assert rows[k].codebook_version == review_codes.PRAISE_CODEBOOK_VERSION
+    assert rows["j-2"].code_judged_at is None  # negative reviews are the other pass's
+    assert rows["j-4"].code_judged_at is None  # unreadable: next run tries again
+    # The negative pass never takes useful reviews, and the upgrade never reads their answers.
+    assert (await review_judge.judge_codes(deadline=float("inf")))["pending"] == 1
+    assert (await _all())["j-0"].primary_code == "HONEST"
+    assert (await review_judge.judge_answers(deadline=float("inf")))["pending"] == 0
+
+
+async def test_praise_is_bounded_per_run_and_by_its_window(clients, monkeypatch):
+    old = {"created_at": utcnow_naive() - timedelta(days=29)}
+    await _reviews(clients, [("useful", f"{LONG} {i}", {}) for i in range(5)] + [("useful", LONG, old)])
+    monkeypatch.setattr(get_settings(), "review_judge_praise_per_run", 3, raising=False)
+    monkeypatch.setattr(get_settings(), "review_judge_praise_days", 28, raising=False)
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
+    assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 3
+    assert (await review_judge.judge_praise(deadline=float("inf")))["judged"] == 2
+    assert (await review_judge.judge_praise(deadline=float("inf")))["pending"] == 0
+    assert (await _all())["j-5"].code_judged_at is None  # older than the praise window
+
+
+async def test_a_new_praise_codebook_version_judges_old_praise_again(clients, monkeypatch):
+    old = {"primary_code": "GENERIC", "codebook_version": "2000-01-01", "code_judged_at": utcnow_naive()}
+    current = old | {"codebook_version": review_codes.PRAISE_CODEBOOK_VERSION}
+    await _reviews(clients, [("useful", LONG, old), ("useful", LONG, current)])
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
+    out = await review_judge.judge_praise(deadline=float("inf"))
+    assert out["pending"] == 1 and out["judged"] == 1
+    assert (await _all())["j-0"].primary_code == "COMPLETE"
+
+
+async def test_the_praise_pass_can_be_switched_off(clients, monkeypatch):
+    await _reviews(clients, [("useful", LONG, {})])
+    _fake(monkeypatch, lambda q, spec, state: {"choice": "COMPLETE"})
+    monkeypatch.setattr(get_settings(), "review_judge_answers", False, raising=False)
+    monkeypatch.setattr(get_settings(), "review_judge_praise", False, raising=False)
+    assert "praise" not in await review_judge.run(max_seconds=5)
+    assert (await _all())["j-0"].code_judged_at is None
+    monkeypatch.setattr(get_settings(), "review_judge_praise", True, raising=False)
+    assert (await review_judge.run(max_seconds=5))["praise"]["judged"] == 1
+
+
+def test_praise_codes_never_share_a_name_with_a_negative_code():
+    assert not set(review_codes.PRAISE_CODES) & set(review_codes.CODES)
+    assert review_codes.codes_from({"choice": "ACCURATE"}) is None
+    assert review_codes.codes_from({"choice": "ACCURATE"}, review_codes.PRAISE_CODES) == ("ACCURATE", None)

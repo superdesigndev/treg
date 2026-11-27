@@ -1,9 +1,13 @@
-"""What Jev is asked about a review's reason: whether it names a person, and what it blames.
+"""What Jev is asked about a review's reason: whether it names a person, what it blames, and what
+it praises.
 
 The privacy question gates public quotes (`verdicts.quotable`); the codebook question attributes a
-`partly` or `not_useful` review to one of a fixed set of codes, which the vendor report cards
-aggregate per endpoint. Codes are stored as strings with `CODEBOOK_VERSION`: adding or redefining a
-code bumps the version, and only reviews judged under an older version are judged again.
+`partly` or `not_useful` review to one of a fixed set of codes, and the praise question a `useful`
+review to one of `PRAISE_CODES`, which the vendor report cards aggregate per endpoint. Codes are
+stored as strings with their codebook's version (`CODEBOOK_VERSION`, `PRAISE_CODEBOOK_VERSION`):
+adding or redefining a code bumps that version, and only reviews judged under an older version of
+the same codebook are judged again. A review's usefulness never changes, so it says which codebook
+its codes are from.
 """
 from __future__ import annotations
 
@@ -61,6 +65,50 @@ RULES = (
     "charged for a miss."
 )
 
+PRAISE_CODEBOOK_VERSION = "2026-11-27.1"
+
+# What a `useful` review praises. Most codes pair with a negative one, so a report card can tell a
+# praise and a complaint about the same thing apart: ACCURATE with ACCURACY and RISKY, FRESH with
+# STALE, RELEVANT with WRONG and PARAM, COMPLETE with PARTIAL and COVER, STRUCTURED with FORMAT,
+# ACCESS with BLOCK and JS, CHEAP with PRICE. HONEST, FAST and GENERIC have no pair. Generated media
+# has no code of its own: following the prompt is RELEVANT and a faithful, artifact-free output is
+# ACCURATE, the axes its complaints are coded on (PARAM, ACCURACY).
+PRAISE_CODES = {
+    "ACCURATE": "The values are right and can be trusted: they matched another source, the official site or "
+                "a later check; a decisive verification verdict (valid, invalid, deliverable) with a high "
+                "score and no catch-all doubt; a phone or email that verified. For generated media: faithful "
+                "output that kept the reference identity, realistic, sharp, with no artifacts.",
+    "FRESH": "The data is current: today's or recent posts, current title and employer, live counts, newest "
+             "results first, recent dates.",
+    "RELEVANT": "On target for the request as written: the right person, company, page or product; results on "
+                "topic for the query; the filters, operators and parameters (site:, location, language, date, "
+                "sort, limit) were respected. For generated media: it followed the prompt and settings "
+                "(aspect ratio, duration, voice, style, what to leave out).",
+    "COMPLETE": "Everything asked for came back: all the fields, the full profile, page, text or transcript, "
+                "every item of a batch, history or pagination to get the rest.",
+    "STRUCTURED": "The response is clean and easy to use: structured fields, parsed rows, consistent schema, "
+                  "readable markdown, explicit flags or status fields.",
+    "ACCESS": "It reached content that is hard to get: a page behind anti-bot, a login wall or JavaScript "
+              "rendering, a source other tools failed on, or it worked where an earlier attempt was blocked "
+              "or rate limited.",
+    "CHEAP": "The praise is about cost: low price, unbilled or uncharged, many results for one charge, within "
+             "the cost cap.",
+    "HONEST": "An honest miss or a clear negative: it said plainly that nothing was found (often without a "
+              "charge) instead of guessing, or flagged its own uncertainty, so the agent could move on.",
+    "FAST": "The praise is about speed: fast, quick, returned in seconds, one call instead of several.",
+    "GENERIC": "Useful, but the reason names no specific quality: 'worked', 'good', 'returned the data', or "
+               "it only describes what the agent did with the result.",
+}
+
+PRAISE_RULES = (
+    "Code what the agent praises about the vendor's result, not what the agent did with it. Prefer the most "
+    "specific praise; GENERIC only when the reason names none. A caveat in a useful review (a few fields "
+    "missing, some noise) is not the praise: code what made it useful. 'Found the right person / page' = "
+    "RELEVANT; 'its values agreed with a second source / verified valid' = ACCURATE. 'Returned in full' = "
+    "COMPLETE. 'Clean miss, no charge' = HONEST first, CHEAP second. A reason that only lists the fields that "
+    "came back = COMPLETE when it says all or full, else GENERIC."
+)
+
 # Below this a second code is noise, not a second problem.
 SECONDARY_MIN_P = 0.25
 
@@ -88,6 +136,16 @@ def code_question(i: int) -> dict:
                         f"Which code names the main problem its `reason` describes? `routed` says whether treg "
                         f"picked the vendor. {RULES} {_EVIDENCE}",
         "criteria": dict(CODES),
+    }
+
+
+def praise_question(i: int) -> dict:
+    return {
+        "type": "choice",
+        "instructions": f"`reviews[{i}]` is an agent's review of one vendor result it rated `useful`. Which "
+                        f"code names the main thing its `reason` praises? `routed` says whether treg picked "
+                        f"the vendor. {PRAISE_RULES} {_EVIDENCE}",
+        "criteria": dict(PRAISE_CODES),
     }
 
 
