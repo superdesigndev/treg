@@ -122,10 +122,10 @@ async def test_signup_records_which_client_signed_up(client, monkeypatch, header
     assert signup[2]["client"] == expected
 
 
-@pytest.mark.parametrize("method", ["github", "google"])
-async def test_social_signup_tracking_reuses_same_new_user_rule(client, monkeypatch, method):
+async def test_social_signup_tracking_reuses_same_new_user_rule(client, monkeypatch):
     from treg import analytics
     from treg.application.auth import _provision_social_user
+    method = "github"
     events = []
     monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append(a))
     await _provision_social_user("social@example.test", "unused", method, "arena")

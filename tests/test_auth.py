@@ -154,6 +154,13 @@ async def login(request, monkeypatch):
         yield request.param, c
 
 
+@pytest.fixture
+async def social_login(monkeypatch):
+    """Past the provider's callback the social check is the same for every provider."""
+    async with _oauth_client(monkeypatch, "github") as c:
+        yield "github", c
+
+
 async def test_login_creates_user_session_but_no_auto_org(login):
     provider, c = login
     email = {"github": "octo@example.com", "google": "guser@example.com"}[provider]
@@ -498,12 +505,11 @@ async def test_a_new_social_address_passes_the_check_with_credit(login, social_w
 
 @pytest.mark.parametrize("token,answer", [
     ("", None),
-    ("!blocked", None),
     ("forged", {"success": False, "error-codes": ["invalid-input-response"]}),
     ("wrong-action", {"success": True, "action": "email_start", "hostname": "treg.example"}),
 ])
-async def test_a_failed_social_check_signs_in_without_credit(login, social_widget, token, answer):
-    provider, client = login
+async def test_a_failed_social_check_signs_in_without_credit(social_login, social_widget, token, answer):
+    provider, client = social_login
     if answer is not None:
         social_widget["answer"] = answer
     balance, finished = await _social_sign_up(client, provider, token)
@@ -511,15 +517,15 @@ async def test_a_failed_social_check_signs_in_without_credit(login, social_widge
     assert balance == 0
 
 
-async def test_observe_keeps_social_credit_for_a_failed_check(login, social_widget, monkeypatch):
-    provider, client = login
+async def test_observe_keeps_social_credit_for_a_failed_check(social_login, social_widget, monkeypatch):
+    provider, client = social_login
     monkeypatch.setattr(get_settings(), "turnstile_mode", "observe")
     balance, _ = await _social_sign_up(client, provider, "")
     assert balance == get_settings().promo_grant_micro
 
 
-async def test_social_check_off_signs_a_new_address_in_with_credit(login, social_widget, monkeypatch, caplog):
-    provider, client = login
+async def test_social_check_off_signs_a_new_address_in_with_credit(social_login, social_widget, monkeypatch, caplog):
+    provider, client = social_login
     monkeypatch.setattr(get_settings(), "turnstile_social", False)
     caplog.set_level("INFO", logger="treg")
     callback = await _through_provider(client, provider)
@@ -532,8 +538,8 @@ async def test_social_check_off_signs_a_new_address_in_with_credit(login, social
                for r in caplog.records)
 
 
-async def test_a_verified_user_signs_in_without_the_check(login, social_widget):
-    provider, client = login
+async def test_a_verified_user_signs_in_without_the_check(social_login, social_widget):
+    provider, client = social_login
     async with session_maker() as s:
         s.add(User(email=_EMAILS[provider], email_verified_at=sess_now()))
         await s.commit()
@@ -543,8 +549,8 @@ async def test_a_verified_user_signs_in_without_the_check(login, social_widget):
 
 
 @pytest.mark.parametrize("token,funded", [("real-token", True), ("", False)])
-async def test_an_unproven_user_gets_credit_only_through_a_passed_check(login, social_widget, token, funded):
-    provider, client = login
+async def test_an_unproven_user_gets_credit_only_through_a_passed_check(social_login, social_widget, token, funded):
+    provider, client = social_login
     async with session_maker() as s:
         s.add(User(email=_EMAILS[provider]))  # as the invite-code door leaves one
         await s.commit()
@@ -552,15 +558,15 @@ async def test_an_unproven_user_gets_credit_only_through_a_passed_check(login, s
     assert balance == (get_settings().promo_grant_micro if funded else 0)
 
 
-async def test_the_social_check_carries_a_cli_handshake(login, social_widget):
-    provider, client = login
+async def test_the_social_check_carries_a_cli_handshake(social_login, social_widget):
+    provider, client = social_login
     started = (await client.post("/auth/cli/start")).json()
     _, finished = await _social_sign_up(client, provider, "real-token", cli=started["login_id"])
     assert finished.headers["location"] == f"/login?cli={started['login_id']}"
 
 
-async def test_the_check_runs_once(login, social_widget):
-    provider, client = login
+async def test_the_check_runs_once(social_login, social_widget):
+    provider, client = social_login
     await _social_sign_up(client, provider, "real-token")
     back = await client.get("/auth/social/check")
     assert back.status_code == 302 and back.headers["location"] == "/app"

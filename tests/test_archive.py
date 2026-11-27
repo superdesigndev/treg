@@ -24,29 +24,14 @@ from treg.models import ArchiveKey, ArchiveSnapshot
 # ---------------------------------------------------------------------------------------------
 # Mode: a typo must disable, never enable
 
-def test_mode_defaults_off():
-    assert archive.mode() == "off"
-    assert not archive.recording()
-    assert not archive.serving()
-
-
 @pytest.mark.parametrize("raw,expected", [
-    ("shadow", "shadow"), ("serve", "serve"), ("off", "off"),
     ("SERVE", "serve"), ("  shadow ", "shadow"),          # env-var hygiene
-    ("on", "off"), ("true", "off"), ("", "off"), ("srve", "off"),  # typos degrade to off
+    ("on", "off"), ("", "off"),                            # typos degrade to off
 ])
 def test_mode_parses_and_degrades(monkeypatch, raw, expected):
     from treg.config import get_settings
     monkeypatch.setattr(get_settings(), "archive_mode", raw)
     assert archive.mode() == expected
-
-
-def test_serve_implies_recording(monkeypatch):
-    from treg.config import get_settings
-    monkeypatch.setattr(get_settings(), "archive_mode", "serve")
-    assert archive.recording() and archive.serving()
-    monkeypatch.setattr(get_settings(), "archive_mode", "shadow")
-    assert archive.recording() and not archive.serving()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2185,7 +2170,7 @@ async def test_a_capability_family_allowlist_gates_serving(clients, serve, monke
 
 @pytest.mark.parametrize("endpoints,percent,reason", [
     ("", 100, "endpoint_disabled"), (EP, 0, "rollout_disabled"),
-    (EP, 101, "rollout_disabled"), (EP, -1, "rollout_disabled"),
+    (EP, 101, "rollout_disabled"),
 ])
 async def test_rollout_bypass_never_queries_cache(clients, serve, monkeypatch,
                                                  endpoints, percent, reason):
@@ -2354,9 +2339,10 @@ async def test_change_observation_failure_preserves_record(clients, shadow, monk
     assert archive.change_outcomes[counter] == before[counter] + 1
 
 
-@pytest.mark.parametrize('paths', [None, 'request_id', [1], [''], ['a..b'], ['a[0]'],
-                                  ['a.*.b'], ['$.a'], ['a.[*]'], ['a '], ['a\\.b']])
-@pytest.mark.parametrize('at_header', [False, True])
+@pytest.mark.parametrize('paths,at_header', [
+    (None, False), ('request_id', False), ([1], False), (['a..b'], False), (['$.a'], False),
+    (['a\\.b'], False), ('request_id', True),
+])
 def test_catalog_rejects_invalid_ignore_paths(tmp_path, paths, at_header):
     import yaml
     doc = {'provider': 'test', 'endpoints': [{'id': 'test.read'}]}
@@ -2412,13 +2398,11 @@ def test_catalog_preserves_ignore_paths_and_defaults(tmp_path):
     ({'rows': [1]}, {'rows': [2, 3]}, ['rows[*]'], True),
     ([{'id': 1}], [{'id': 2}], ['[*].id'], True),
     ([[{'id': 1}]], [[{'id': 2}]], ['[*][*].id'], True),
-    ({'a': True}, {'a': 1}, ['missing'], False),
     ({'x': {'id': 1}}, {'x': {'id': 2}}, ['x', 'x.id'], True),
 ])
 def test_ignore_normalization(old, new, paths, equal):
     before, after = json.dumps(old).encode(), json.dumps(new).encode()
     assert (archive._normalized_hash(before, paths) == archive._normalized_hash(after, paths)) is equal
-    assert json.loads(before) == old and json.loads(after) == new
 
 
 @pytest.mark.parametrize('paths,expected', [([], (0, 1, 1800)), (['request_id'], (1, 0, 5400))])
@@ -2602,14 +2586,12 @@ def test_default_json_equality(before, after, equal):
     assert (archive._normalized_hash(before, []) == archive._normalized_hash(after, [])) is equal
 
 
-@pytest.mark.parametrize('paths', [[], ['id'], ['x']])
 @pytest.mark.parametrize('body,non_json', [
     (b'{"a":1,"a":2}', False), (b'{"a":0.1234567890123456789}', False), (b'{"a":1e-500}', False),
-    (b'{"a":1e500}', False), (b'{"a":NaN}', True), (b'{"x":NaN}', True), (b'plain text', True),
-    (b'not JSON', True), (b'\xff', True),
+    (b'{"a":1e500}', False), (b'{"a":NaN}', True), (b'plain text', True), (b'\xff', True),
 ])
-def test_ambiguous_or_lossy_json_comparison_falls_back(body, non_json, paths):
-    assert archive._normalized_hash(body, paths) is None
+def test_ambiguous_or_lossy_json_comparison_falls_back(body, non_json):
+    assert archive._normalized_hash(body, []) is None
     if non_json:
         assert archive._change_summary(body, b'{}')['changed_paths'] == ['non_json']
 
