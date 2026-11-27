@@ -13,7 +13,7 @@ source:
 #
 # Billing is a published per-endpoint credit rate card (pricing_url) and it was confirmed against
 # Tomba's own /v1/logs, which reports the credits billed for each call: finder/verifier/
-# domain-search/linkedin/enrich/similar/phone-validator/reveal = 1 credit, phone-finder = 5,
+# domain-search/linkedin/enrich/similar/phone-validator/reveal = 1 credit, phone-finder = 5 (1 with domain),
 # location = 0. Those endpoints carry confidence `verified` with source `observed`; the routes the
 # rate card is silent about carry the honest `inferred`.
 #
@@ -38,6 +38,7 @@ proposed_capabilities:
   web.domain.disposable: "Is a domain disposable or a free webmail host"
   account.rate_limits: "Per-route rate limits and current usage"
   account.logs: "Recent API calls with the credits each one cost"
+  companies.phone.find: "Find a company's phone number from its domain"
 endpoints:
   - id: tomba.people.email.find
     cache:
@@ -296,14 +297,14 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/phone-finder
-    name: "Find a direct phone number by email, domain or LinkedIn"
-    summary: "Email, domain or LinkedIn URL → a direct phone number with country, line type, carrier, region and timezone"
+    name: "Find a person's phone numbers by email or LinkedIn"
+    summary: "Work or personal email, or LinkedIn URL → a direct phone number with country, line type, carrier, region and timezone; full=true returns every number found"
     input:
       queryParams:
-        email: {type: string, required: false, note: "look the number up from a work email", example: "patrick@stripe.com"}
-        domain: {type: string, required: false, note: "look the number up from a company domain"}
+        email: {type: string, required: false, note: "look the number up from an email; a personal webmail address such as gmail.com is accepted", example: "patrick@stripe.com"}
         linkedin: {type: string, required: false, note: "look the number up from a LinkedIn profile URL"}
-      note: "supply exactly one of email / domain / linkedin. THE MOST EXPENSIVE ROUTE HERE at 5 credits"
+        full: {type: boolean, required: false, default: false, note: "true returns `data` as an array of every number found (people change numbers over the years) instead of the single best one; same 5 credits"}
+      note: "send email, linkedin or both; the numbers found for each are merged without duplicates. For a company's own number use tomba.companies.phone.find (1 credit). A miss is a free 200 with `data: []`."
     test_request:
       queryParams: {email: "patrick@stripe.com"}
     cost:
@@ -313,14 +314,46 @@ endpoints:
       per: 1
       unit: call
       source: observed
-      source_url: https://tomba.io/pricing
-      checked: '2026-08-20'
+      source_url: https://docs.tomba.io/usage-and-quotas
+      checked: '2026-11-27'
       confidence: verified
-      note: "rate card: 5 credits per phone lookup; /v1/logs reported cost=5 for the live call"
-    verified: '2026-08-20'
+      note: "5 credits when a valid number is returned, also with full=true; a miss is free. Tomba bills 1 when `domain` is sent, which this row does not price: use tomba.companies.phone.find"
+    verified: '2026-11-27'
     added: '2026-08-20'
     example_response: examples/tomba.people.phone.find.json
-    docs_url: https://docs.tomba.io/cli/phone-finder
+    docs_url: https://docs.tomba.io/api/phone#phone-finder
+
+  - id: tomba.companies.phone.find
+    domain: companies
+    capability: companies.phone.find
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/phone-finder
+    name: "Find a company's phone number by domain"
+    summary: "Company domain → the company's phone number with country, line type, carrier, region and timezone; full=true returns every number found"
+    input:
+      queryParams:
+        domain: {type: string, required: true, note: "the company's website domain", example: "tomba.io"}
+        full: {type: boolean, required: false, default: false, note: "true returns `data` as an array of every number found instead of the single best one"}
+      note: "a miss is a free 200 with `data: []`"
+    test_request:
+      queryParams: {domain: "tomba.io"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.tomba.io/usage-and-quotas
+      checked: '2026-11-27'
+      confidence: verified
+      note: "1 credit when the request includes domain and a valid number is returned, also with full=true; a miss is free"
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/tomba.companies.phone.find.json
+    docs_url: https://docs.tomba.io/api/phone#phone-finder
 
   - id: tomba.people.phone.verify
     domain: people
