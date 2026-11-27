@@ -2709,6 +2709,31 @@ AVIATO = OAuthProvider(
     probe_path="/billing/balance",
 )
 
+DATALEGION = OAuthProvider(
+    service="datalegion",
+    display_name="Data Legion",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="legion_…",
+    token_header="API-Key",
+    token_format="{secret}",
+    setup_url="https://www.datalegion.ai/dashboard/api-keys",
+    setup_action_label="Get your Data Legion API key",
+    setup_steps=(
+        "Sign up at datalegion.ai and open Dashboard → API Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note="Enrichment, Search and Discover spend one credit per record returned; a no-match and the account check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Enrich people and companies from any identifier, search them with filters or SQL, or describe a list in plain words.",
+    base_url="https://api.datalegion.ai",
+    docs_url="https://www.datalegion.ai/docs/api-reference/overview",
+    probe_path="/credits",  # free — shows the key's contracts and usage
+)
+
 EXA = OAuthProvider(
     service="exa",
     display_name="Exa",
@@ -4624,7 +4649,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO, DATALEGION,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
