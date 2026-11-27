@@ -175,7 +175,7 @@ async def test_a_transaction_pooling_pgbouncer_passes_startup():
 
 # Session-level state does not survive a transaction behind a transaction-pooling PgBouncer. Only
 # these places may hold it: migrations run on TREG_DATABASE_URL, and a job's run lock
-# (`only_one_run`) is taken on the API pool, which never goes through a pooler.
+# (`only_one_run`) is taken on its own connection to the API URL, which never goes through a pooler.
 SESSION_STATE_ALLOWED = {("alembic/", None), ("infra/db.py", "only_one_run")}
 _SESSION_SQL = (
     re.compile(r"(^|;)\s*SET\s+(ROLE\b|SESSION\b|[a-z_][a-z0-9_.]*\s*(=|TO\b))", re.MULTILINE),

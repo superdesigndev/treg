@@ -404,7 +404,7 @@ async def _prune_command(monkeypatch, **args):
     get_settings.cache_clear()
     try:
         return await _idempotency_prune(SimpleNamespace(
-            batch_size=200, max_batches=10000, pause_seconds=0, dry_run=False, **args))
+            **{"batch_size": 200, "max_batches": 10000, "pause_seconds": 0, "dry_run": False, **args}))
     finally:
         # Restore the environment first, then drop the cached settings (see the sweep test above).
         monkeypatch.undo()
@@ -444,3 +444,51 @@ async def test_a_prune_run_that_finds_another_running_does_nothing(clients, caps
     assert json.loads(capsys.readouterr().out.splitlines()[-1]) == {"stopped": "busy"}
     async with session_maker() as db:
         assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1
+
+
+def _postgres_only():
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("advisory locks and row locks need PostgreSQL")
+
+
+async def test_the_run_lock_takes_no_slot_of_a_one_connection_pool(clients, monkeypatch):
+    _postgres_only()
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from treg.infra import db as infra_db
+
+    await _seed_answer(clients, "one-slot", ttl_s=-3600)
+    one = create_async_engine(session_maker.kw["bind"].url, pool_size=1, max_overflow=0, pool_timeout=2)
+    try:
+        one_slot = async_sessionmaker(one, expire_on_commit=False)
+        monkeypatch.setattr(infra_db, "session_maker", one_slot)   # the API pool, configured to one slot
+        async with infra_db.only_one_run(0x74657374) as alone:
+            assert alone
+            pruned = await idempotency.prune_expired_idempotency(pause_s=0, make_session=one_slot)
+            trimmed = await idempotency.trim_archived_answers(pause_s=0, make_session=one_slot)
+    finally:
+        await one.dispose()
+    assert (pruned.deleted, pruned.complete, trimmed.complete) == (1, True, True)
+
+
+async def test_a_second_prune_run_on_postgres_answers_busy_and_deletes_nothing(clients, capsys, monkeypatch):
+    _postgres_only()
+    import json
+
+    from sqlalchemy import text
+
+    from treg.worker import IDEMPOTENCY_RUN_LOCK_KEY
+
+    await _seed_answer(clients, "busy-on-pg", ttl_s=-3600)
+    async with session_maker.kw["bind"].connect() as other:
+        assert (await other.execute(text("SELECT pg_try_advisory_lock(:k)"),
+                                    {"k": IDEMPOTENCY_RUN_LOCK_KEY})).scalar_one()
+        try:
+            assert await _prune_command(monkeypatch) == 0
+        finally:
+            await other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": IDEMPOTENCY_RUN_LOCK_KEY})
+    assert json.loads(capsys.readouterr().out.splitlines()[-1]) == {"stopped": "busy"}
+    async with session_maker() as db:
+        assert await db.scalar(select(func.count()).select_from(IdempotentCall)) == 1
+
+

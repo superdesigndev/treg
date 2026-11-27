@@ -15,6 +15,7 @@ from sqlalchemy import bindparam, event, inspect, text
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
 
 from ..config import get_settings
@@ -312,23 +313,31 @@ read_session_maker = (async_sessionmaker(_read_engine, class_=AsyncSession, expi
 
 @asynccontextmanager
 async def only_one_run(key: int) -> AsyncIterator[bool]:
-    """Hold the session-level advisory lock `key` for a job's run on a connection of its own (idle
-    between its two statements, so it pins no snapshot) -> whether this run got it. SQLite: always.
-    The connection is the API pool's, which never goes through a transaction pooler: the lock
-    lives on the server connection that took it."""
-    async with session_maker.kw["bind"].connect() as connection:
-        if connection.dialect.name != "postgresql":
-            yield True
-            return
-        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
-                                             {"key": key})).scalar_one())
-        await connection.commit()
-        try:
-            yield got
-        finally:
-            if got:
-                await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
-                await connection.commit()
+    """Hold the session-level advisory lock `key` for a job's run -> whether this run got it.
+
+    PostgreSQL: the lock lives on one server session for the whole run, a connection of its own
+    opened outside every pool (idle between its two statements, so it pins no snapshot), so the
+    job's own work keeps every slot of a one-connection pool. It goes to the API URL, which never
+    goes through a transaction pooler. SQLite has no such lock: always True, and only the scheduler
+    keeps two runs apart."""
+    bind = session_maker.kw["bind"]
+    if bind.dialect.name != "postgresql":
+        yield True
+        return
+    engine = create_async_engine(bind.url, poolclass=NullPool)
+    try:
+        async with engine.connect() as connection:
+            got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                                 {"key": key})).scalar_one())
+            await connection.commit()
+            try:
+                yield got
+            finally:
+                if got:
+                    await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+                    await connection.commit()
+    finally:
+        await engine.dispose()
 
 
 @cache
