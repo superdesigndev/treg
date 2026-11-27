@@ -45,10 +45,12 @@ contracts:
     # pattern-guessed hits without verifying and bounced on most of them.
     advice_unverified: "This address was found, not confirmed deliverable (verified != true). Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes."
     # Attached as `_treg.advice` when the hit's mailbox domain differs from the domain the caller
-    # sent (`_treg.domain_match: false`). LinkedIn-only children ignore the domain and often return
-    # a former employer; the flag discloses it, the answer is not altered. Its presence also opens
-    # `X-Treg-Route-Domain-Match: strict` (route.py), which keeps looking past such a hit.
-    advice_domain_mismatch: "The address is at a different domain than the one you sent (_treg.domain_match: false). A LinkedIn-only provider often returns a former employer. Treat this as a possible stale hit: prefer a provider that takes domain, or re-ask with X-Treg-Route-Prefer naming one that does."
+    # sent (`_treg.domain_match: false`). The comparison is exact normalized-host equality, so a
+    # staff, brand, or sibling mail domain of the same company is also a mismatch; so is a former
+    # employer from a LinkedIn-only child. The flag discloses it, the answer is not altered. Its
+    # presence also opens `X-Treg-Route-Domain-Match: strict` (route.py), which keeps looking past
+    # such a hit.
+    advice_domain_mismatch: "The address is at a different domain than the one you sent (_treg.domain_match: false). That difference can be a staff, brand, or sibling mail domain of the same company, or a former employer or stale profile. Inspect the mailbox domain before treating this as a miss."
     # `X-Treg-Route-Verify`: checks every hit, a finder's own `verified` included; BounceBan first here only.
     # The check wins over the finder's claim: a `verified: true` hit it does not find valid says so.
     check:
