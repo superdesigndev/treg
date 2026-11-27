@@ -164,7 +164,7 @@ endpoints:
       body:
         model: {type: string, required: true, enum: [gpt-image-2.5-flare-official, gpt-image-2.5-sunburst-official, gpt-image-2.5-flare, gpt-image-2.5-sunburst, gpt-image-2.6-flare-official, gpt-image-2.6-sunburst-official], example: gpt-image-2.5-flare-official}
         prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane.", note: "Up to 32,000 characters."}
-        size: {type: string, required: false, default: 1024x1024, example: 1024x1024, note: "auto, 1024x1024, 1024x1536, 1536x1024, or a custom WIDTHxHEIGHT: both edges divisible by 16, aspect ratio between 1:3 and 3:1, neither edge over 3840, total pixels from 655,360 to 8,294,400."}
+        size: {type: string, required: false, default: 1024x1024, example: 1024x1024, note: "auto, a listed size, or a custom WIDTHxHEIGHT within reAPI limits: edges divisible by 16, max edge 3840, ratio 1:3 to 3:1."}
         quality: {type: string, required: false, default: low, enum: [low, medium, high], example: low, note: "Quality is the biggest cost lever on the official channel; xhigh/max are not listed."}
         n: {type: integer, required: false, default: 1, min: 1, max: 10, example: 1}
         image_urls: {type: array, items: {type: string}, required: false, note: "Up to 16 public image URLs to edit. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
@@ -175,6 +175,10 @@ endpoints:
       body: {model: gpt-image-2.5-flare-official, prompt: "A clean editorial illustration of a paper airplane.", size: 1024x1024, quality: low, n: 1}
     cost:
       type: per_success
+      # Hold cells: official GPT Image 2.5 rows with a size are the credits one image costs; GPT Image 2.6
+      # rows are reAPI's measured output tokens at the 2.5 output rate ($22.50 per 1M), rounded up to whole
+      # credits, plus two credits for the prompt; a row without a size holds n images at the largest frame
+      # (3840x2160) at that quality.
       table:
         - {when: {body.model: gpt-image-2.5-flare, body.quality: low}, value: 0.0173, times: body.n}
         - {when: {body.model: gpt-image-2.5-flare, body.quality: medium}, value: 0.0173, times: body.n}
@@ -218,7 +222,7 @@ endpoints:
         - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: medium}, value: 0.26, times: body.n}
         - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: high, body.size: 1024x1024}, value: 0.042, times: body.n}
         - {when: {body.model: gpt-image-2.6-sunburst-official, body.quality: high}, value: 0.32, times: body.n}
-      fallback: {value: 3.21, note: "Ten high-quality images at the largest frame on the official channel ($3.20), rounded up a cent to clear float comparison. The table is the hold only; the credits reAPI reports settle."}
+      fallback: {value: 3.21, note: "Ten high-quality images at the largest frame on the official channel ($3.20), rounded up a cent to clear float comparison."}
       currency: USD
       settle: usage
       usage: {path: usage.credits, unit: credit}
@@ -226,7 +230,7 @@ endpoints:
       source_url: https://reapi.ai/models/gpt-image-2-5
       checked: 2026-11-26
       confidence: verified
-      note: "Every task settles at the credits reAPI reports on the completed task (usage.credits); failed tasks are refunded. The table is the hold, by model, quality, size and n: official GPT Image 2.5 rows with a size are the credits one image costs; official GPT Image 2.6 rows are reAPI's measured output tokens at the GPT Image 2.5 output rate ($22.50 per 1M), rounded up to whole credits, plus two credits for the prompt's text tokens; an official row without a size holds n images at the largest frame (3840x2160) at that quality, so a custom size holds more than it is charged. The table has no term for reference images: on every official GPT Image 2.5 and 2.6 id, a call with image_urls or a long prompt adds input tokens, can settle above its hold, and the caller pays the difference. Flat-rate channel rows ($0.0173 Flare / $0.023 Sunburst per image) are documented only: both answered 'No available channel' upstream at listing time and charged nothing."
+      note: "Every task settles at the credits reAPI reports on the completed task (usage.credits); failed tasks are refunded. The table is only the hold: a call with image_urls or a long prompt can settle above it, and the caller pays the difference. Flat-rate channel rows ($0.0173 Flare / $0.023 Sunburst per image) are documented only: both answered 'No available channel' upstream at listing time and charged nothing."
     verified: 2026-09-14
     added: '2026-09-14'
     example_response: examples/reapi.image-gen.gpt-image-2-5.json
