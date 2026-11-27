@@ -1241,6 +1241,59 @@ async def test_a_failed_fallback_write_does_not_advertise_a_result(clients: Asyn
         archive._pending.clear()
         monkeypatch.setattr(archive, "_pending_bytes", 0)
 
+
+async def test_a_failed_fallback_write_still_marks_the_paid_question(
+        clients: AsyncClient, serve, monkeypatch):
+    """Storage failure must not drop the question key used for settlement.
+
+    The team still paid for this question. After another caller records it, this
+    team's next cache hit must settle at the repeat price, not full price.
+    Result-link hashes stay omitted: the call row must not advertise has_result.
+    """
+    from conftest import verified_signup
+    from treg.models import ArchiveKeyOrg
+
+    max_pending_bytes = archive._MAX_PENDING_BYTES
+    real_store = archive._store
+    release = await _fill_archive_queue(monkeypatch)
+
+    async def boom(**kw):
+        raise RuntimeError("store failed")
+
+    monkeypatch.setattr(archive, "_store", boom)
+    try:
+        r1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+        assert r1.status_code == 200, r1.text
+        live = int(r1.headers["X-Treg-Cost-Micro"])
+        assert live > 0
+        await audit.drain()
+        row = (await clients.get("/calls")).json()[0]
+        assert row["has_result"] is False
+        async with session_maker() as s:
+            marks = (await s.execute(select(ArchiveKeyOrg))).scalars().all()
+        assert len(marks) == 1 and marks[0].calls == 1, marks
+    finally:
+        release.set()
+        import asyncio as aio
+        await aio.gather(*archive._pending, return_exceptions=True)
+        archive._pending.clear()
+        monkeypatch.setattr(archive, "_pending_bytes", 0)
+        monkeypatch.setattr(archive, "_MAX_PENDING_BYTES", max_pending_bytes)
+        monkeypatch.setattr(archive, "_store", real_store)
+
+    other = await verified_signup(clients, json={"email": "second-team@example.com"})
+    headers = {"X-Treg-Token": other.json()["token"]}
+    b1 = await clients.get(f"/call/{EP}?aweme_id=7&count=5", headers=headers)
+    assert b1.status_code == 200, b1.text
+    assert "x-treg-cache" not in {k.lower() for k in b1.headers}
+    assert int(b1.headers["X-Treg-Cost-Micro"]) == live
+    await archive.drain()
+    a2 = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert a2.status_code == 200, a2.text
+    assert a2.headers["X-Treg-Cache"] == "hit"
+    assert int(a2.headers["X-Treg-Cost-Micro"]) == live * 10 // 100
+
+
 async def test_the_fallback_write_runs_after_the_provider_slots_are_free(
         clients: AsyncClient, shadow, monkeypatch):
     """Archive backpressure must not hold upstream concurrency: the on-request fallback write

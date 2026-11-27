@@ -906,6 +906,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # archive records or serves; kept on the audit row so `/calls/{id}/result` can find it.
     archive_key_hash: str | None = None
     archive_content_hash: str | None = None
+    # Settlement's question identity, kept when result-link hashes are cleared because the
+    # on-request fallback write failed: the team still paid for this question.
+    paid_question_key: str | None = None
     smoothed: list[str] = []  # what burst smoothing did (`wait=<ms>`, `retry=1`) - set on the relay path
     mk: MarketplaceCall | None = None
     own_tool_miss: dict | None = None
@@ -1871,6 +1874,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             share_slot.release()
             if inflight_slot is not None:
                 inflight_slot.release()
+        paid_question_key = archive_key_hash
         if archive_deferred is not None:
             # A caller-facing answer the archive queue would have shed is written on the request
             # (archive.md), only after the provider slots above are free: archive backpressure
@@ -2003,8 +2007,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # metered 2xx (the phase-0 statistics count actions and forbidden providers
                     # too), and a mark for an answer that can never be a hit is a wasted write on
                     # the money path.
-                    archive_use=((caller.org_id, archive_key_hash)
-                                 if archive_key_hash and 200 <= response.status < 300
+                    archive_use=((caller.org_id, paid_question_key)
+                                 if paid_question_key and 200 <= response.status < 300
                                  and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id))
                                  else None),
                     cached_hit=served_hit, cached_repeat=served_repeat,
