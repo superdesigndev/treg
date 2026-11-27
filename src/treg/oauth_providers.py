@@ -4605,6 +4605,31 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+RIVALADS = OAuthProvider(
+    service="rivalads",
+    display_name="Rival Ads",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Rival Ads API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.rivalads.io/dashboard/settings?tab=developer",
+    setup_action_label="Get your Rival Ads API key",
+    setup_steps=(
+        "Open Settings → Developer as the owner of a Rival Ads workspace with an active plan.",
+        "Create and copy a read-only API key.",
+    ),
+    setup_note="API requests are included in the workspace plan.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Search competitor ads and landing pages, list monitors, and read alerts from your Rival Ads workspace.",
+    base_url="https://www.rivalads.io/api/v1",
+    docs_url="https://www.rivalads.io/api/docs",
+    probe_path="/workspace",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4633,7 +4658,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
-        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
+        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC, RIVALADS,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
     )
 }
