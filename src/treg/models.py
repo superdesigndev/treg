@@ -2659,7 +2659,7 @@ class ArenaInsightState(SQLModel, table=True):
     cursor: int = Field(default=0, sa_type=BigInteger)
     # Where the next cycle starts when the rewind finds no recent row: the cycle's starting
     # cursor, moved up only to rows it collected. None (rows from before it existed): `cursor`.
-    resume_cursor: int | None = None
+    resume_cursor: int | None = Field(default=None, sa_type=BigInteger)
     scan_until: NaiveUTC
     updated_at: NaiveUTC | None = None
     payload: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))

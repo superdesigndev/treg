@@ -1,4 +1,4 @@
-"""The partitioned call record table is prepared beside the live one (alembic 0124 and 0125).
+"""The partitioned call record table is prepared beside the live one (alembic 0140 and 0141).
 
 The PostgreSQL cases run against a real server (`TREG_TEST_DB_URL`, the Postgres CI job): the
 backfill copies history newest first into `callrecord_partitioned`, resumes, notes when it first
@@ -42,13 +42,13 @@ async def _scalar(sql: str, **params):
 
 @pytest.fixture
 async def before_swap(monkeypatch):
-    """A database at 0125 with one team and 40 calls, one per hour, the newest a minute old."""
+    """A database at 0141 with one team and 40 calls, one per hour, the newest a minute old."""
     if db._engine.dialect.name != "postgresql":
         pytest.skip("requires an isolated PostgreSQL database via TREG_TEST_DB_URL")
     await audit.drain()
     await _drop_everything()
     try:
-        await _upgrade_to("0125")
+        await _upgrade_to("0141")
         async with db.session_maker() as session:
             session.add(org := Org(name="swap", slug="swap"))
             await session.flush()

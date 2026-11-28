@@ -1,14 +1,14 @@
 """columns that hold a call record id become BIGINT, before the id itself does
 
-Revision ID: 0124
-Revises: 0123
+Revision ID: 0140
+Revises: 0139
 Create Date: 2026-11-18
 
-`callrecord.id` moves to 64 bits in 0125 and the swap revision after it. Every column that stores one of its ids must
+`callrecord.id` moves to 64 bits in 0141 and the swap revision after it. Every column that stores one of its ids must
 hold the larger value first, or the first id past 2,147,483,647 fails that column's writer:
 
 - `callusagecursor.cursor_id`, `endpointstatcursor.cursor_id`, `shadowcursor.cursor_id`
-- `webarenacallcursor.call_id`, `arenainsightstate.cursor`
+- `webarenacallcursor.call_id`, `arenainsightstate`: `cursor`, `resume_cursor`
 - `webarenaseedprogress`: `first_id`, `highwater_id`, `last_id`
 - `shadowpair.call_id`
 
@@ -31,8 +31,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0124"
-down_revision: str | Sequence[str] | None = "0123"
+revision: str = "0140"
+down_revision: str | Sequence[str] | None = "0139"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # column type change; see the rollback floor note
@@ -42,10 +42,12 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
     "endpointstatcursor": ("cursor_id",),
     "shadowcursor": ("cursor_id",),
     "webarenacallcursor": ("call_id",),
-    "arenainsightstate": ("cursor",),
+    "arenainsightstate": ("cursor", "resume_cursor"),
     "webarenaseedprogress": ("first_id", "highwater_id", "last_id"),
     "shadowpair": ("call_id",),
 }
+
+_NULLABLE = {("arenainsightstate", "resume_cursor")}
 
 _TYPES = sa.text(
     "SELECT column_name, data_type FROM information_schema.columns "
@@ -67,7 +69,8 @@ def _retype(old: type[sa.types.TypeEngine], new: type[sa.types.TypeEngine], sql_
     for table, columns in _COLUMNS.items():
         with op.batch_alter_table(table) as batch:
             for name in columns:
-                batch.alter_column(name, existing_type=old(), type_=new(), existing_nullable=False)
+                batch.alter_column(name, existing_type=old(), type_=new(),
+                                   existing_nullable=(table, name) in _NULLABLE)
 
 
 def upgrade() -> None:

@@ -1,7 +1,7 @@
 """an empty call record table, partitioned by month, with a 64-bit id
 
-Revision ID: 0125
-Revises: 0124
+Revision ID: 0141
+Revises: 0140
 Create Date: 2026-11-18
 
 `callrecord` cannot change in place: `ALTER COLUMN id TYPE bigint` rewrites the whole table under
@@ -36,8 +36,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0125"
-down_revision: str | Sequence[str] | None = "0124"
+revision: str = "0141"
+down_revision: str | Sequence[str] | None = "0140"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # pro forma, see the rollback floor note: the operations add a table

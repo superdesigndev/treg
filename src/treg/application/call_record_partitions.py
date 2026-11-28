@@ -1,6 +1,6 @@
 """The month partitions of a partitioned `callrecord`: create the coming ones, drop the expired
 ones; and copy history from the plain `callrecord` into `callrecord_partitioned`, the partitioned
-table alembic 0125 builds beside it (docs/context/architecture/data-model.md).
+table alembic 0141 builds beside it (docs/context/architecture/data-model.md).
 
 A row whose month has no partition cannot be inserted, so once `callrecord` is partitioned the
 coming months must exist before they start: `maintain()` runs at every release
@@ -36,7 +36,7 @@ from ..infra.db import session_maker
 from ..timeutil import utcnow_naive
 
 TABLE = "callrecord"
-STAGED = "callrecord_partitioned"   # the partitioned table alembic 0125 builds, filled by `backfill`
+STAGED = "callrecord_partitioned"   # the partitioned table alembic 0141 builds, filled by `backfill`
 MONTHS_AHEAD = 3
 LOCK_TIMEOUT = "3s"
 DETACH_TIMEOUT = "60s"
