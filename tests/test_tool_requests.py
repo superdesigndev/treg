@@ -164,6 +164,47 @@ def test_a_long_text_searches_a_bounded_number_of_words(monkeypatch):
     assert catalog_store.content_words(query) == [f"word{i}" for i in range(search_app.REQUEST_TERMS)]
 
 
+@pytest.mark.parametrize("text, right", [
+    ("Zillow property listings", lambda i: "zillow" in i),
+    ("text to speech in Persian", lambda i: "instagram" not in i and "transcript" not in i),
+    ("generate image from text prompt", lambda i: "video" not in i),
+    ("domain WHOIS lookup", lambda i: "whois" in i),
+], ids=["zillow", "tts", "image", "whois"])
+def test_a_row_that_misses_a_word_does_not_point_the_wrong_way(text, right):
+    """Search admits a row missing one word in three; the reply keeps only rows holding every
+    word, or else the rows tied at the top."""
+    ids = [ep["id"] for ep, _ in search_app.request_matches(text, catalog_store.load())]
+    assert ids and all(right(i) for i in ids), ids
+
+
+@pytest.mark.parametrize("text, word", [("TikTok comments", "comments"), ("YouTube transcript", "youtube")])
+def test_a_plain_request_still_finds_its_tools(text, word):
+    ids = [ep["id"] for ep, _ in search_app.request_matches(text, catalog_store.load())]
+    assert len(ids) >= 2 and all(word in i for i in ids), ids
+
+
+async def test_the_search_that_came_up_empty_is_searched_too(clients: AsyncClient):
+    r = await clients.post("/tool-requests", json={"capability": "zzzz-no-such-capability", "query": "backlinks"})
+    assert r.status_code == 200 and r.json()["matches"], r.text
+
+
+async def test_the_directory_surface_skips_the_matcher(clients: AsyncClient, monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("the matcher ran for a reply that drops it")
+    monkeypatch.setattr(search_app, "request_matches", boom)
+    r = await clients.post("/tool-requests", json={"capability": "backlinks", "source": "claude-connector"})
+    assert r.status_code == 200 and "matches" not in r.json()
+    assert len(await _fetch_rows()) == 1
+
+
+async def test_the_matcher_runs_on_its_own_pool(monkeypatch):
+    import threading
+    seen = []
+    monkeypatch.setattr(search_app, "request_reply", lambda *_a: seen.append(threading.current_thread().name) or {})
+    await search_app.request_reply_off_loop("backlinks")
+    assert seen and seen[0].startswith("treg-request-match")
+
+
 async def test_a_failing_matcher_still_files_the_request(clients: AsyncClient, monkeypatch):
     def boom(*_a, **_k):
         raise RuntimeError("matcher down")

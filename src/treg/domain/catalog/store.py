@@ -1540,6 +1540,21 @@ def score_extra(query: str, cat: Catalog,
     return out
 
 
+def matches_every_word(query: str, ep: dict, cat: Catalog) -> bool:
+    """Whether `ep`'s searched fields hold every word `search` scores for `query`, matched as
+    `search` matches them (word starts, aliases). `search` itself admits a row that misses one
+    word in three."""
+    raw = _tokens(query)
+    tokens = [t for t in raw if t not in _STOPWORDS and len(t) > 1] or raw
+    if not tokens:
+        return False
+    short = _short_provider_names(cat)
+    fields = [_padded(text) for _, text in _haystacks(ep, cat)]
+    return all(any(v in text for text in fields
+                   for v in _needles([tok, *cat.aliases.get(tok, ())], whole=tok in short))
+               for tok in tokens)
+
+
 def merge_by_score(primary: list[tuple[dict, float]], extra: list[tuple[dict, float]]) -> list[tuple[dict, float]]:
     """Merge a second ranked list into the first by descending score. On a tie the primary (catalog)
     rows stay first: a hub tool gets no boost."""

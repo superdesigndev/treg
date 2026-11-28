@@ -11,7 +11,6 @@ scoped to the caller's org; `owner` (creator email) drives the member-vs-admin r
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import re
@@ -316,20 +315,24 @@ async def create_tool_request(
         user = await _user_from_session(treg_session, db)
         if user is not None:
             user_email = user.email
+    query = body.query.strip()[:300]
+    source = body.source if body.source in TOOLREQ_SOURCES else "api"
     row = ToolRequest(
         org_id=org_id,
         user_email=user_email,
         capability=capability,
-        query=body.query.strip()[:300],
+        query=query,
         note=body.note.strip()[:2000],
         contact=body.contact.strip()[:200],
-        source=body.source if body.source in TOOLREQ_SOURCES else "api",
+        source=source,
     )
     db.add(row)
     await db.commit()
     filed = row.id
     await db.close()
-    matches = await asyncio.to_thread(search_app.request_reply, capability, catalog_store.load())
+    # The Claude directory surface drops the matches (its schema is the submitted one).
+    matches = ({} if source == "claude-connector"
+               else await search_app.request_reply_off_loop(capability, query))
     return {"id": filed, "status": "received",
             "note": "logged — requests steer which provider gets keyed next", **matches}
 
