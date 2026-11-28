@@ -147,7 +147,9 @@ Codex plugin review reads that hint.
 
 **`catalog_request`** relays to `POST /tool-requests` so rate limits and field caps live in one place,
 carrying the caller's address as `_bearer` resolved it (`client_ip.py`, never client-written
-`X-Forwarded-For`); otherwise every MCP caller would share one rate-limit bucket.
+`X-Forwarded-For`); otherwise every MCP caller would share one rate-limit bucket. The reply's
+`matches` (existing tools the text finds, [find.md](find.md) "A catalog request's matches") reach
+the team surface only; V2 drops them, keeping its submitted output schema.
 `catalog_search` reads the catalog in-process, so it logs its own `SearchMiss` (`source="mcp"` or
 `"claude-connector"`) and runs the [discovery experiment](find.md) with the caller's
 `Context`; the anonymous HTTP route is not part of that experiment.

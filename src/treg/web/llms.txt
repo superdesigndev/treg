@@ -116,7 +116,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   folder, and later sessions load it on their own.
 - Search by the job you want done. When the catalog has no tool for it (`verdict: none`), file the
   need with `treg catalog request "<what you need>"` (MCP `catalog_request`) instead of rephrasing
-  the search: requests steer what gets added next.
+  the search: requests steer what gets added next. The reply's `matches` lists existing tools the
+  request's text finds; check them with `catalog_get`, since one may already do the job.
 <!--routed-->
 - For a common job (scraping a page, web search, Google results, finding or verifying an email, a
   social profile), call the routed `treg.<capability>` tool rather than a provider you remember:

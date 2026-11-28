@@ -3,7 +3,7 @@
 The lexical page is the shipped ranker: `store.rank_band` over a band wider than the page (so a
 routed group can collapse without starving it), the evidence rerank, the listed hub tools merged by
 score with no boost, routed parents grouped with their children, cut
-to the page. Nothing here touches `store.search` or its scoring; the MCP layer only shapes the rows
+to the page. Nothing here changes `store.search` or its scoring; the MCP layer only shapes the rows
 this returns.
 
 What the caller sees is the discovery experiment's say (`search_experiment`, one setting):
@@ -125,6 +125,40 @@ async def lexical(query: str, cat: catalog_store.Catalog, limit: int, *, observe
         total += len(hub_ranked)
     rows, hidden = _group(ranked, limit)
     return Page(rows, total, tie_truncated, stats, hidden, steer)
+
+
+REQUEST_MATCHES = 5        # existing tools a catalog request's reply names
+REQUEST_TERMS = 6          # words of the request searched: each is one pass over the catalog
+REQUEST_MATCHES_NOTE = ("these existing tools may already do this - catalog_get(endpoint_id) shows "
+                        "parameters and price; your request is recorded either way")
+
+
+def request_matches(text: str, cat: catalog_store.Catalog, limit: int = REQUEST_MATCHES) -> Rows:
+    """The existing tools a catalog request's text finds: the shipped ranker's first rows, routed
+    groups collapsed as on the search page. A text longer than REQUEST_TERMS words is searched by
+    its first REQUEST_TERMS distinct words, which bounds the cost. No hub rows, no judge, no
+    observed stats: nothing here reads a database or calls out."""
+    words = catalog_store.content_words(text)
+    if not words:
+        return []
+    query = text if len(words) <= REQUEST_TERMS else " ".join(words[:REQUEST_TERMS])
+    rows, _ = catalog_store.search(query, cat, limit * 4)
+    return _group(rows, limit)[0]
+
+
+def request_reply(text: str, cat: catalog_store.Catalog) -> dict:
+    """The fields a catalog request's reply adds: `matches` (possibly empty), and a note when any."""
+    try:
+        rows = request_matches(text, cat)
+    except Exception:
+        log.warning("catalog request matching failed; replying without matches", exc_info=True)
+        rows = []
+    matches = [{"endpoint_id": ep["id"],
+                "name": ep.get("name") or (ep.get("summary") or "")[:70],
+                "provider": ep.get("provider"),
+                "summary": " ".join((ep.get("summary") or "").split())[:160]}
+               for ep, _ in rows]
+    return {"matches": matches, **({"matches_note": REQUEST_MATCHES_NOTE} if matches else {})}
 
 
 async def added_page(query: str, cat: catalog_store.Catalog, limit: int, opts: catalog_store.AddedOptions, *,

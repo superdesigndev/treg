@@ -1188,6 +1188,12 @@ _STOPWORDS = frozenset("""a an and are as at be by can do does for from how i in
     of on or that the this to was what when where which who will with you your""".split())
 
 
+def content_words(text: str) -> list[str]:
+    """The distinct words of `text` that search would score, in order: no function words, no
+    single letters. Each one costs search a pass over the catalog."""
+    return list(dict.fromkeys(t for t in _tokens(text) if t not in _STOPWORDS and len(t) > 1))
+
+
 def _haystacks(ep: dict, cat: Catalog) -> list[tuple[int, str]]:
     plat = cat.platforms.get(ep["platform"], {})
     return [

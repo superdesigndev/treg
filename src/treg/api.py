@@ -11,6 +11,7 @@ scoped to the caller's org; `owner` (creator email) drives the member-vs-admin r
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import re
@@ -29,6 +30,7 @@ from sqlmodel import select
 
 from . import archive, crypto, localrun, oauth_providers, ratestore
 from .application import asynctasks as async_task_app
+from .application import catalog_search as search_app
 from .application.call import service as call_service
 from .caller_metadata import _client_of
 from .config import get_settings
@@ -325,8 +327,11 @@ async def create_tool_request(
     )
     db.add(row)
     await db.commit()
-    return {"id": row.id, "status": "received",
-            "note": "logged — requests steer which provider gets keyed next"}
+    filed = row.id
+    await db.close()
+    matches = await asyncio.to_thread(search_app.request_reply, capability, catalog_store.load())
+    return {"id": filed, "status": "received",
+            "note": "logged — requests steer which provider gets keyed next", **matches}
 
 
 view_routes.renders(create_tool_request)(catalog_routes.tool_request_view)

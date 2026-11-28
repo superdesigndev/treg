@@ -32,6 +32,7 @@ sources:
   - tests/test_search_experiment.py
   - tests/test_catalog_search.py
   - tests/test_search_agent_bench.py
+  - tests/test_tool_requests.py
 related:
   - architecture/catalog.md
   - interface/dashboard.md
@@ -258,6 +259,19 @@ identical pages contribute nothing.
 
 A recently-added search (`added_within_days`, `sort=newest`) bypasses the experiment entirely: no
 judge, no record.
+
+### A catalog request's matches
+
+`POST /tool-requests` files the request first, then answers with `matches`: the existing tools the
+request's text finds, which may already do the job (`request_reply`, a note says the request is
+recorded either way). `request_matches` is the shipped ranker alone (`store.search`, routed groups
+collapsed by `_group`, at most `REQUEST_MATCHES` rows): no judge, no hub rows, no observed stats, no
+database read. Each searched word is one pass over the catalog, so a text with more than
+`REQUEST_TERMS` distinct words (`store.content_words`) is searched by its first `REQUEST_TERMS`. It
+runs in a worker thread after the request session is closed, and a failure answers `matches: []`,
+never a refused request. The team `/mcp/` `catalog_request` passes the fields on; `/mcp/v2/` strips
+them (`_TEAM_ONLY_REQUEST_FIELDS`), since its schema is the submitted one. The CLI's text view is
+unchanged; `--json` shows them.
 
 ## What is recorded
 
