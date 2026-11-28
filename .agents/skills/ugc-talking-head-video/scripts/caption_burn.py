@@ -64,6 +64,20 @@ def header_img(lines, sz=62):
     for r in rows: out.paste(r, ((w - r.width) // 2, y), r); y += r.height - 6
     return out
 
+
+def ffmpeg_filter_file(path):
+    """Load a complex filtergraph from a file on this ffmpeg.
+
+    -filter_complex_script was deprecated in FFmpeg 7.1 and removed in 9.
+    The replacement, -/filter_complex, does not exist before 7.1, so older
+    builds keep the original flag.
+    """
+    p = subprocess.run(["ffmpeg", "-h", "full"], capture_output=True, text=True)
+    text = (p.stdout or "") + (p.stderr or "")
+    if "filter_complex_script" in text and "use -/filter_complex instead" not in text:
+        return ["-filter_complex_script", path]
+    return ["-/filter_complex", path]
+
 def whisper_words(video):
     wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video, "-vn", "-ac", "1", "-ar", "16000", wav], check=True)
@@ -117,7 +131,7 @@ def main():
         s = c[0]["start"]; e = (chunks[k + 1][1][0]["start"] if k + 1 < len(chunks) else c[-1]["end"] + 0.3) - 0.002
         parts.append(f"[v{k}][{k+2}:v]overlay=(W-w)/2:{int(H*CAPTION_Y)}-h/2:enable='between(t,{s:.3f},{max(e, s+0.15):.3f})'[v{k+1}]")
     open(f"{tmp}/filter.txt", "w").write(";".join(parts))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.video, *inputs, "-filter_complex_script", f"{tmp}/filter.txt",
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.video, *inputs, *ffmpeg_filter_file(f"{tmp}/filter.txt"),
                     "-map", f"[v{len(chunks)}]", "-map", "0:a", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
                     "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", a.out], check=True)
     print(f"[captions] {len(chunks)} chunks -> {a.out}", file=sys.stderr)
