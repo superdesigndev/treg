@@ -204,6 +204,55 @@ async def test_the_observation_read_survives_a_cursor_type_change_behind_the_poo
             await session.commit()
 
 
+async def test_audit_writes_survive_a_call_record_id_type_change_behind_the_pooler(caplog):
+    """The swap (alembic 0142) changes `callrecord.id` to bigint while the build before it still
+    serves. Its pooled audit writers prepared the INSERT before that; behind a pooler the server
+    keeps that statement, so it must not return the id, or every later run is refused."""
+    if not infra_db._background_url:
+        pytest.skip("requires a PgBouncer via TREG_TEST_POOLER_URL")
+    import asyncio
+
+    from treg import audit
+    from treg.models import CallRecord
+
+    writers = 6
+    fields = dict(user_email="w@example.test", tool_name="id-type-change", method="GET", path="/",
+                  status_code=200)
+
+    async def write_at_once() -> list[bool]:
+        # Several sessions open together, so the writes below land on several server connections.
+        opened = asyncio.Barrier(writers)
+
+        async def hold() -> None:
+            async with infra_db.background_session_maker() as session:
+                await session.execute(text("SELECT 1"))
+                await opened.wait()
+
+        await asyncio.gather(*(hold() for _ in range(writers)))
+        return await asyncio.gather(*(audit._write_batch([(CallRecord, dict(fields))])
+                                      for _ in range(writers)))
+
+    await infra_db.reset_db()
+    try:
+        assert await write_at_once() == [True] * writers
+        async with infra_db.session_maker() as session:
+            await session.execute(text("ALTER TABLE callrecord ALTER COLUMN id TYPE bigint"))
+            await session.commit()
+        caplog.clear()
+        for _ in range(3):
+            assert await write_at_once() == [True] * writers
+        assert "audit write dropped" not in caplog.text
+        async with infra_db.session_maker() as session:
+            assert (await session.execute(text(
+                "SELECT count(*) FROM callrecord WHERE tool_name = 'id-type-change'"))).scalar() \
+                == 4 * writers
+    finally:
+        async with infra_db.session_maker() as session:
+            await session.execute(text("DELETE FROM callrecord"))
+            await session.execute(text("ALTER TABLE callrecord ALTER COLUMN id TYPE integer"))
+            await session.commit()
+
+
 # Session-level state does not survive a transaction behind a transaction-pooling PgBouncer. Only
 # these places may hold it: migrations run on TREG_DATABASE_URL, and a job's run lock
 # (`only_one_run`) is taken on its own connection to the API URL, which never goes through a pooler.

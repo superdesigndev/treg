@@ -576,7 +576,11 @@ timed out ([deploy](../ops/deploy.md), PostgreSQL lock queueing).
 `record_call` and `record_run` schedule best-effort writes on `background_session_maker`; they
 never delay or fail a proxied response. A loop-bound semaphore limits active writes and
 `_MAX_PENDING` sheds excess rows. Write failures and shed rows log at ERROR. `drain` loops until the
-queue is empty, including tasks added during shutdown. `_known_fields` filters telemetry against
+queue is empty, including tasks added during shutdown. Call records go in through `_insert`, one Core INSERT with
+`inline()` that returns nothing: an ORM insert would return the new `id`, and a prepared statement
+whose result changes type (the swap to a 64-bit id) is refused on every later run behind a
+transaction pooler, which keeps one server statement per query text. The other models go through
+the session. `_known_fields` filters telemetry against
 model fields so one new field cannot discard a row; schema and telemetry changes still land
 together. Audit is lossy analytics and diagnostics: money must use the synchronous ledger.
 
