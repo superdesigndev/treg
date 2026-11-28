@@ -2968,6 +2968,7 @@ adapters:
     accepts: [[email]]
     in:  {email: body.email}
     out: {linkedin_url: linkedin_url}
+    miss: "coalesce(linkedin_url, username, fullName) == null"
   # Still out: apollo.people.search / coresignal.people.search (no fixture; apollo's `person_titles[]` keys need a
   # bracket-safe target), crustdata/diffbot people.enrich and diffbot.people.search (truncated examples), icypeas
   # email find/verify and the *.bulk jobs (async: the answer arrives by polling), companyenrich by numeric id.

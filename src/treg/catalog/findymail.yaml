@@ -249,20 +249,19 @@ endpoints:
       note: "returns {linkedin_url} by default, or an extended profile object when with_profile is true"
     test_request:
       body: {email: "patrick@stripe.com"}
-    price:
+    cost:
+      type: per_success
       table:
-        - {when: [{path: body.with_profile, op: equals, value: false}], value: '1'}
-      fallback: {value: '2', note: "with the full profile"}
+        - {when: {body.with_profile: false}, value: 1}
+      fallback: {value: 2, note: "with the full profile"}
       currency: credit
       per: 1
       unit: call
-      note: "1 finder credit for the profile URL, 2 with with_profile=true; a miss is free."
-    provenance:
       source: docs
       source_url: https://app.findymail.com/docs/
       checked: '2026-11-28'
       confidence: documented
-    miss: {when: [{path: response.linkedin_url, op: absent}, {path: response.username, op: absent}, {path: response.fullName, op: absent}]}
+      note: "1 finder credit for the profile URL, 2 with with_profile=true; a miss is free."
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.verify
