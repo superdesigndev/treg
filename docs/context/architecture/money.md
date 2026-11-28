@@ -1163,7 +1163,9 @@ it is on only while a trigger is set and the shared store is configured.
   list for its share as one self-expiring text (`infra/team_backpressure.py`,
   `treg:team-backpressure:v1:<index>/<count>`, `:all` for a pass over every team), replacing the
   last; an unchanged list is written again only after a third of `money_backpressure_mark_ttl_s`.
-  A pass that stopped early (its share's lease lost) publishes nothing.
+  A pass that stopped early (its share's lease lost) publishes nothing, and so does a pass whose
+  process has neither backlog trigger set (`fold_lists_enabled`): it would otherwise publish an
+  empty list over one another process published.
 - **Or the admission queue itself.** A team can jam its money admission queue with no backlog in
   the charge queue: its refills (`call/allowance._refill`) are turned away by its own traffic, the
   counter's deadline passes, every take is refused, and each call then waits for the queue alone

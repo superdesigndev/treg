@@ -49,9 +49,20 @@ class Throttled(Exception):
 
 def enabled(settings=None) -> bool:
     settings = settings or get_settings()
-    return kv.configured() and (settings.money_backpressure_oldest_s is not None
-                                or settings.money_backpressure_lease_held_skips is not None
+    return kv.configured() and (backlog_triggers_set(settings)
                                 or settings.money_backpressure_admission_timeouts is not None)
+
+
+def fold_lists_enabled(settings=None) -> bool:
+    """Whether a fold pass publishes its share's list: only a backlog trigger produces one, so a
+    process with only the admission trigger never replaces a list another process published."""
+    settings = settings or get_settings()
+    return kv.configured() and backlog_triggers_set(settings)
+
+
+def backlog_triggers_set(settings) -> bool:
+    return (settings.money_backpressure_oldest_s is not None
+            or settings.money_backpressure_lease_held_skips is not None)
 
 
 def share_key(shard: tuple[int, int] | None) -> str:

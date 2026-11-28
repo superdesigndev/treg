@@ -322,6 +322,16 @@ async def test_a_slow_store_never_delays_the_refusal_and_counts_stay_bounded(
     assert not gate._pending
 
 
+async def test_a_fold_with_only_the_admission_trigger_never_replaces_a_backlog_list(
+        admission_trigger):
+    """Processes can briefly run different settings during a rollout: a fold pass whose
+    process has only the admission trigger produces no backlog list, so it must not publish
+    the empty one that would delete another process's."""
+    await gate.publish((0, 1), [5], 15)
+    await producer.publish((0, 1), [(5, 999)], starved_after_s=30, complete=True)
+    assert await admission_trigger.get_text(gate.share_key((0, 1))) == "5"
+
+
 async def test_the_admission_trigger_off_counts_and_reads_nothing(store, monkeypatch):
     monkeypatch.setattr(store, "take", pytest.fail)
     monkeypatch.setattr(store, "set_text", pytest.fail)

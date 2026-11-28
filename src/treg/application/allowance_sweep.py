@@ -420,7 +420,7 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     total, worked, after, queued_before = 0, 0, None, utcnow_naive()
     starved: list = []
     # Every team's wait as the pages read it, for the teams to throttle (`allowance_backpressure`).
-    waits: list[tuple[int, int]] | None = [] if team_backpressure.enabled() else None
+    waits: list[tuple[int, int]] | None = [] if team_backpressure.fold_lists_enabled() else None
     if waits is not None:
         allowance_backpressure.begin_pass()
     behind: tuple | None = None
