@@ -67,9 +67,9 @@ sources:
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
-  - src/treg/alembic/versions/0124_call_record_id_references_bigint.py
-  - src/treg/alembic/versions/0125_call_record_partitioned_table.py
-  - src/treg/alembic/versions/0126_call_record_swap.py
+  - src/treg/alembic/versions/0140_call_record_id_references_bigint.py
+  - src/treg/alembic/versions/0141_call_record_partitioned_table.py
+  - src/treg/alembic/versions/0142_call_record_swap.py
   - src/treg/application/call_record_partitions.py
   - tests/test_call_record_partitions.py
   - tests/test_call_record_swap.py
@@ -386,7 +386,7 @@ Redaction in `application.call.evidence` is security-sensitive and order matters
 ## `CallRecord`: monthly partitions and a 64-bit id
 
 On PostgreSQL `callrecord` is partitioned by month on `created_at`, and its id is `bigint`
-(alembic `0124` to `0126`). Two limits of the plain table are the reason: a 32-bit id ends at
+(alembic `0140` to `0142`). Two limits of the plain table are the reason: a 32-bit id ends at
 2,147,483,647, and changing its type in place rewrites the table under an ACCESS EXCLUSIVE lock;
 and a plain table gives space back only through `DELETE`, which leaves the files as large as they
 were. A month partition is dropped whole. SQLite keeps one plain table (its ids are 64-bit
@@ -407,7 +407,7 @@ already), as does a PostgreSQL database built from the models, and the code belo
 - `CREATE INDEX CONCURRENTLY` does not work on a partitioned table. A new index is built
   concurrently on each partition, then attached to an index created `ON ONLY callrecord`.
 - Columns that store a call record id are `bigint`: the rollup cursors (`callusagecursor`,
-  `endpointstatcursor`, `shadowcursor`, `webarenacallcursor`, `arenainsightstate`,
+  `endpointstatcursor`, `shadowcursor`, `webarenacallcursor`, `arenainsightstate` (both cursors),
   `webarenaseedprogress`, `showcasecursor`) and `shadowpair.call_id`. `arenaobservation.id` is
   still `integer`; it must be widened before call record ids pass the 32-bit range.
 
@@ -436,8 +436,8 @@ built: the place for it is between the detach and the drop in `drop_expired`.
 **The swap** from the plain table. The history is copied first and the tables trade names last,
 so no reader ever sees a table with part of its history, and only the rename blocks anyone:
 
-1. `0124` widens the columns that store a call record id.
-2. `0125` creates the empty partitioned table `callrecord_partitioned` beside the live one, on
+1. `0140` widens the columns that store a call record id.
+2. `0141` creates the empty partitioned table `callrecord_partitioned` beside the live one, on
    the same id sequence (changed to `bigint`), so ids continue and every cursor stays valid.
 3. `treg-worker admin callrecord-backfill --days N` copies the last `N` days into it, newest
    first, in bounded transactions beside live traffic, for as long as that takes; run again, it
@@ -465,9 +465,9 @@ so no reader ever sees a table with part of its history, and only the rename blo
      one short pass up to the top id copied meanwhile. It writes its cursor (`resync_pass`) to the
      note after each batch, so a stopped run resumes, and on completion `resynced_upto` and
      `resynced_at` (when the pass began), which the swap reads.
-   - Run it once more just before the deploy. A small table skips this step: `0126` copies it
+   - Run it once more just before the deploy. A small table skips this step: `0142` copies it
      whole.
-4. `0126` refuses at once, changing nothing, when more than `_MAX_CATCH_UP_IDS` ids were written
+4. `0142` refuses at once, changing nothing, when more than `_MAX_CATCH_UP_IDS` ids were written
    since the last backfill run, or more than `_MAX_RESYNC_IDS` ids lie above its `resynced_upto`,
    or its last resync did not finish. Otherwise, without a lock, it copies what was written since,
    resyncs only the rows above `resynced_upto` (noting progress after each batch, so a stopped
@@ -502,12 +502,12 @@ concurrently per partition and attached). `test_the_staged_table_has_the_live_ta
 `test_the_staged_table_has_the_live_tables_indexes` fail until it does They build their database with every revision (`upgrade head`), so a later revision
 that changes `callrecord` alone fails them; they skip once `callrecord` is partitioned.
 
-`0126` refuses to swap a large table whose copy does not reach back 31 days (or to the first row)
+`0142` refuses to swap a large table whose copy does not reach back 31 days (or to the first row)
 and changes nothing. The reason is the readers that count "today" or rebuild a recent window from
 call records: the trial allowance (`_trial_calls_today`), the spend recount, a catalog day repair
 (`_repair_bucket`), a new usage or Arena cursor. On a table holding only its newest rows they
-would give wrong answers without an error. To copy before the release that carries `0126` is
-deployed, apply the first two revisions alone (`alembic upgrade 0125`) and run the backfill from
+would give wrong answers without an error. To copy before the release that carries `0142` is
+deployed, apply the first two revisions alone (`alembic upgrade 0141`) and run the backfill from
 a checkout of that release; older code serves unchanged on that schema.
 
 Why a copy and not a view or two reads: a view over both tables must cast the legacy `integer` id

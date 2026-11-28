@@ -4,7 +4,7 @@ Revision ID: 0126
 Revises: 0125
 Create Date: 2026-11-18
 
-After this revision `callrecord` is the monthly-partitioned, 64-bit table that 0125 built, and the
+After this revision `callrecord` is the monthly-partitioned, 64-bit table that 0141 built, and the
 table it replaces is `callrecord_legacy`, which nothing writes any more. No reader changes: the
 name, the columns and the index names are the same, and the new table already holds the history
 the readers use.
@@ -74,8 +74,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.exc import DBAPIError
 
-revision: str = "0126"
-down_revision: str | Sequence[str] | None = "0125"
+revision: str = "0142"
+down_revision: str | Sequence[str] | None = "0141"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # replaces a table; see the rollback floor note

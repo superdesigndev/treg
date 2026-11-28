@@ -1,4 +1,4 @@
-"""The swap: the partitioned table takes the name `callrecord` (alembic 0126).
+"""The swap: the partitioned table takes the name `callrecord` (alembic 0142).
 
 The PostgreSQL cases run against a real server (`TREG_TEST_DB_URL`, the Postgres CI job): the swap
 keeps ids, cursors, grants and concurrent audit writes; a large table is swapped only after its
@@ -32,7 +32,7 @@ from tests.test_alembic_baseline import _drop_everything, _upgrade_to
 
 
 
-swap = import_module("treg.alembic.versions.0126_call_record_swap")
+swap = import_module("treg.alembic.versions.0142_call_record_swap")
 INT4_MAX = 2_147_483_647
 
 _ROWS = text("""
@@ -45,13 +45,13 @@ _ROWS = text("""
 
 
 async def _swap_in_process() -> None:
-    """Run 0126 here, not through Alembic's own loader, so a test can change its constants."""
+    """Run 0142 here, not through Alembic's own loader, so a test can change its constants."""
     def run(connection):
         context = MigrationContext.configure(connection)
         with context.begin_transaction(), Operations.context(context):
             swap.upgrade()
 
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     async with db._engine.connect() as connection:
         await connection.run_sync(run)
         await connection.commit()
@@ -65,13 +65,13 @@ async def _scalar(sql: str, **params):
 
 @pytest.fixture
 async def before_swap(monkeypatch):
-    """A database at 0124 with one team and 40 calls, one per hour, the newest a minute old."""
+    """A database at 0140 with one team and 40 calls, one per hour, the newest a minute old."""
     if db._engine.dialect.name != "postgresql":
         pytest.skip("requires an isolated PostgreSQL database via TREG_TEST_DB_URL")
     await audit.drain()
     await _drop_everything()
     try:
-        await _upgrade_to("0124")
+        await _upgrade_to("0140")
         async with db.session_maker() as session:
             session.add(org := Org(name="swap", slug="swap"))
             await session.flush()
@@ -178,7 +178,7 @@ async def test_rows_written_or_changed_after_the_copy_reach_the_new_table(before
     monkeypatch.setattr(swap, "_INLINE_IDS", 10)
     monkeypatch.setattr(swap, "_COMMIT_MARGIN", 2)
     monkeypatch.setattr(partitions, "COMMIT_MARGIN", 2)
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     assert (await partitions.backfill(31, batch_rows=10, pause=0))["copied"] == 40
 
     async with db.session_maker() as session:
@@ -220,7 +220,7 @@ async def test_downgrade_puts_a_plain_table_back_with_every_row(before_swap):
                                path="/", status_code=200))
         await session.commit()
     await db._engine.dispose()
-    await asyncio.to_thread(command.downgrade, _alembic_config(), "0124")
+    await asyncio.to_thread(command.downgrade, _alembic_config(), "0140")
 
     assert await _scalar("SELECT relkind::text FROM pg_class WHERE oid = 'callrecord'::regclass") == "r"
     assert await _scalar("SELECT count(*) FROM callrecord") == 41
@@ -233,7 +233,7 @@ async def test_downgrade_puts_a_plain_table_back_with_every_row(before_swap):
 async def test_older_history_can_follow_after_the_swap(before_swap, monkeypatch):
     monkeypatch.setattr(swap, "_INLINE_IDS", 10)
     monkeypatch.setattr(swap, "_MIN_HISTORY_DAYS", 1)
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     await partitions.backfill(1, batch_rows=100, pause=0)
     await _swap_in_process()
     assert await _scalar("SELECT count(*) FROM callrecord") == 40   # one batch, taken whole
@@ -332,7 +332,7 @@ async def test_a_stale_backfill_is_refused_until_it_runs_again(before_swap, monk
     at once, changing nothing, and asks for the backfill again."""
     monkeypatch.setattr(swap, "_INLINE_IDS", 10)
     monkeypatch.setattr(swap, "_MAX_CATCH_UP_IDS", 5)
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     await partitions.backfill(31, batch_rows=10, pause=0)
     async with db.session_maker() as session:
         await session.execute(_ROWS, {"org_id": before_swap, "count": 10, "step": timedelta(seconds=1),
@@ -348,7 +348,7 @@ async def test_a_stale_backfill_is_refused_until_it_runs_again(before_swap, monk
 
 
 async def test_rows_of_teams_deleted_during_the_copy_go_in_committed_batches(before_swap):
-    """Not in the upgrade: a large deleted team must never keep 0126 running after its swap."""
+    """Not in the upgrade: a large deleted team must never keep 0142 running after its swap."""
     async with db.session_maker() as session:
         session.add(gone := Org(name="gone", slug="gone"))
         await session.flush()
@@ -421,7 +421,7 @@ async def test_the_backfill_resyncs_late_verdicts_and_the_swap_only_what_came_af
     """A verdict that lands after its row was copied reaches the copy at the next backfill run;
     the swap resyncs only above where the last run got, and refuses when that is too far."""
     monkeypatch.setattr(swap, "_INLINE_IDS", 10)
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     first = await partitions.backfill(31, batch_rows=10, pause=0)
     note = json.loads(await _scalar("SELECT obj_description('callrecord_partitioned'::regclass, 'pg_class')"))
     assert note["resynced_upto"] == 40 and "resync_pass" not in note and first["done"]
@@ -446,7 +446,7 @@ async def test_the_backfill_resyncs_late_verdicts_and_the_swap_only_what_came_af
 
 async def test_an_unfinished_backfill_resync_is_refused(before_swap, monkeypatch):
     monkeypatch.setattr(swap, "_INLINE_IDS", 10)
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     assert (await partitions.backfill(31, batch_rows=10, pause=0))["done"] is True
     async with db.session_maker() as session:     # as if the run stopped inside its resync
         await session.execute(text(
@@ -672,9 +672,9 @@ async def test_late_values_landing_during_the_quiet_wait_are_resynced_before_the
 
 
 async def test_the_upkeep_leaves_the_staged_table_to_the_swap(before_swap):
-    """Before the swap the staged table is analyzed by 0126 itself; the cron analyzes only the
+    """Before the swap the staged table is analyzed by 0142 itself; the cron analyzes only the
     live `callrecord` once it is partitioned."""
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     await partitions.backfill(31, batch_rows=10, pause=0)
     async with db.session_maker() as session:
         for name in (await session.execute(text(
@@ -706,7 +706,7 @@ def test_drop_legacy_takes_a_window(monkeypatch):
 
 
 async def test_the_swap_resync_reads_only_its_id_range_of_the_new_table(before_swap):
-    await _upgrade_to("0125")
+    await _upgrade_to("0141")
     await partitions.backfill(31, batch_rows=10, pause=0)
     compiled = str(swap._RESYNC.compile())
     async with db.session_maker() as session:
