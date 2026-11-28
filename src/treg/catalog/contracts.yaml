@@ -525,6 +525,7 @@ contracts:
     filters:
       country: {type: string, default: null, note: "ISO country code, where the provider supports it", analytics: value}
       limit: {type: integer, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       companies: {type: array, items: {type: object}, required: true, note: "the provider's own company rows (name, domain, industry, size, location…) — shapes differ per provider; raw is the same body"}
       count: {type: integer}
@@ -551,6 +552,7 @@ contracts:
       - {sec_uid: string}
     filters:
       limit: {type: integer, default: 10, note: "videos per page where the provider takes a count"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true, note: "the provider's own aweme objects; raw is the same body"}
       next_cursor: {type: string}
@@ -656,6 +658,7 @@ contracts:
       - {url: {type: string, format: url}}
     filters:
       limit: {type: integer, default: 10, note: "comments per page where the provider takes a count"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -695,7 +698,8 @@ contracts:
     summary: "Search YouTube videos by keyword — provider-native video rows in `videos`"
     identity:
       - {q: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -743,7 +747,8 @@ contracts:
       - {q: string}
     identity_notes:
       q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. Rows from directory pages carry no follower count: check a handle with treg.instagram.user.profile"
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       users: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -899,7 +904,8 @@ contracts:
       - {q: string}
     identity_notes:
       q: "words an account's name or bio would carry: a topic, niche or place ('specialty coffee roaster Melbourne'); for people described by role or audience, treg.people.search's q answers better. For a niche's best-known creators: find list articles with treg.web.search ('top B2B sales influencers on TikTok'), read one with treg.web.extract, then check each handle with treg.tiktok.user.profile"
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       users: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -953,7 +959,8 @@ contracts:
     summary: "Recent posts in a subreddit — provider-native post rows in `posts`"
     identity:
       - {subreddit: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -984,7 +991,8 @@ contracts:
     identity:
       - {post_id: string}
       - {url: {type: string, format: url}}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1067,7 +1075,8 @@ contracts:
     summary: "A YouTube channel's recent videos by channel id — provider-native video rows in `videos`"
     identity:
       - {channel_id: string}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1080,6 +1089,7 @@ contracts:
       - {target: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       backlinks: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -1114,7 +1124,8 @@ contracts:
     identity:
       - {video_id: string}
       - {url: {type: string, format: url}}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1151,7 +1162,8 @@ contracts:
     identity:
       - {profile_id: string}
       - {url: {type: string, format: url}}
-    filters: {}
+    filters:
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       posts: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1217,6 +1229,7 @@ contracts:
     filters:
       limit: {type: integer, default: 5, note: "reviews to return; a provider that returns fewer is skipped for a bigger request"}
       sort: {type: string, default: null, note: "newest, or the provider's relevant order when empty"}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       reviews: {type: array, items: {type: object}, required: true, note: "the provider's own review rows (stars, text, date, reviewer…) — shapes differ per provider; raw is the same body"}
       count: {type: integer}
@@ -1243,6 +1256,7 @@ contracts:
       - {q: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1256,6 +1270,7 @@ contracts:
       - {q: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       users: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1290,6 +1305,7 @@ contracts:
       - {video_id: string, comment_id: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       replies: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -1365,6 +1381,7 @@ contracts:
       - {video_id: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -1379,6 +1396,7 @@ contracts:
       - {sec_uid: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       videos: {type: array, items: {type: object}, required: true}
       next_cursor: {type: string}
@@ -1429,6 +1447,7 @@ contracts:
       - {post_id: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       comments: {type: array, items: {type: object}, required: true}
       count: {type: integer}
@@ -1441,6 +1460,7 @@ contracts:
       - {target: string}
     filters:
       limit: {type: integer, default: 10}
+      cursor: {type: string, default: null, note: "the next page: the previous answer's output.next_cursor, sent with the same body otherwise. The page comes from the provider that served the first one; null there means no next page"}
     output:
       anchors: {type: array, items: {type: object}, required: true}
       count: {type: integer}
