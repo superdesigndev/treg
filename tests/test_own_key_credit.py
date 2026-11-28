@@ -44,11 +44,11 @@ class Provider:
 
 @pytest.fixture(autouse=True)
 def _fresh():
-    own_key_credit._streaks.clear()
-    own_key_credit._suspects.clear()
+    for table in (own_key_credit._streaks, own_key_credit._suspects, own_key_credit._armed):
+        table.clear()
     yield
-    own_key_credit._streaks.clear()
-    own_key_credit._suspects.clear()
+    for table in (own_key_credit._streaks, own_key_credit._suspects, own_key_credit._armed):
+        table.clear()
     get_settings.cache_clear()
 
 
@@ -141,6 +141,25 @@ async def test_a_still_empty_account_is_held_again_after_one_probe(clients: Asyn
     monkeypatch.setattr(own_key_credit.time, "time", lambda: clock[0])
     probe = await clients.get(f"/call/{EP}?aweme_id=7")
     assert probe.headers.get("x-treg-error") is None and provider.calls == 3
+    again = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert again.json()["detail"]["error"] == "own_key_out_of_credit" and provider.calls == 3
+
+
+async def test_a_failed_probe_holds_again_even_where_the_count_went_stale(
+        clients: AsyncClient, monkeypatch):
+    """Long holds let a process's own count age out; the probe after a hold must still re-arm."""
+    _hold(monkeypatch, seconds=10, streak=2)
+    await _own_key(clients)
+    provider = Provider(402, OUT)
+    monkeypatch.setattr(call_service, "relay", provider.relay)
+    for _ in range(2):
+        await clients.get(f"/call/{EP}?aweme_id=7")
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).headers["x-treg-error"] == "1"
+    own_key_credit._streaks.clear()  # as if the count had aged out in this process
+    clock = [own_key_credit.time.time() + 11]
+    monkeypatch.setattr(own_key_credit.time, "time", lambda: clock[0])
+    await clients.get(f"/call/{EP}?aweme_id=7")  # the probe, sent
+    assert provider.calls == 3
     again = await clients.get(f"/call/{EP}?aweme_id=7")
     assert again.json()["detail"]["error"] == "own_key_out_of_credit" and provider.calls == 3
 

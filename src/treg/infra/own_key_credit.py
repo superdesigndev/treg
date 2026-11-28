@@ -28,6 +28,9 @@ _READ_WAIT_S = 0.15
 _EXCERPT_CHARS = 300
 _streaks: dict[Key, tuple[int, float]] = {}
 _suspects: dict[Key, float] = {}
+# Keys this process found held: the next out-of-credit answer on one is a failed probe and holds
+# it again at once, whatever this process's own count.
+_armed: dict[Key, float] = {}
 _tasks: set[asyncio.Task] = set()
 
 
@@ -97,7 +100,12 @@ async def read(key: Key | None) -> Held | None:
                     float(data["at"]), float(data["until"]))
     except Exception:  # noqa: BLE001 - an unread mark is a missing one
         return None
-    return held if held.until > time.time() else None
+    if held.until <= time.time():
+        return None
+    now_m = time.monotonic()
+    _bounded(_armed, now_m)
+    _armed[key] = now_m + hold_s() + _gap_s()
+    return held
 
 
 async def observe(key: Key | None, *, out_of_credit: bool, status: int, answer_text: str) -> None:
@@ -110,8 +118,10 @@ async def observe(key: Key | None, *, out_of_credit: bool, status: int, answer_t
         now_m = time.monotonic()
         if not out_of_credit:
             _streaks.pop(key, None)
-            if status < 400 and _suspects.pop(key, None) is not None:
-                _spawn(_clear(key))
+            if status < 400:
+                _armed.pop(key, None)
+                if _suspects.pop(key, None) is not None:
+                    _spawn(_clear(key))
             return
         count, last = _streaks.get(key, (0, 0.0))
         count = count + 1 if now_m - last <= _gap_s() else 1
@@ -119,7 +129,7 @@ async def observe(key: Key | None, *, out_of_credit: bool, status: int, answer_t
         _streaks[key] = (count, now_m)
         _bounded(_suspects, now_m)
         _suspects[key] = now_m + _gap_s()
-        if count < streak_needed():
+        if count < streak_needed() and _armed.get(key, 0.0) <= now_m:
             return
         now = time.time()
         value = json.dumps({"streak": count, "status": int(status), "excerpt": excerpt(answer_text),
