@@ -146,9 +146,96 @@ KEEP_OR_REMOVE = [
     ("Mongolia", "Minneapolis, MN", "remove"),
     ("California", "Hamburg, Germany", "remove"),
 ]
-# Clear to a reader, not to the test: a city asked with nothing around it, and a row whose
-# two-letter code is a US state and also the country asked.
-NOT_JUDGED = {("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN")}
+KEEP_OR_REMOVE += [
+    # state-named cities, other forms
+    ("Washington DC", "Washington, DC, USA", "keep"),
+    ("Washington DC", "Washington, District of Columbia, United States", "keep"),
+    ("Washington, D.C.", "Washington, DC", "keep"),
+    ("Washington, D.C.", "Washington, D.C., United States", "keep"),
+    ("Washington, D.C.", "Seattle, WA", "remove"),
+    ("Washington, DC", "Seattle, Washington, United States", "remove"),
+    ("Washington, DC", "Arlington, VA", "remove"),
+    ("Kansas City, Kansas", "Kansas City, KS", "keep"),
+    ("Kansas City, Kansas", "Kansas City, Kansas, United States", "keep"),
+    ("Kansas City, Kansas", "Kansas City, MO", "remove"),
+    ("Kansas City, MO", "Kansas City Metropolitan Area", "keep"),
+    ("Kansas City, MO", "Wichita, Kansas", "remove"),
+    ("Oklahoma City", "Oklahoma City, OK", "keep"),
+    ("Oklahoma City", "Oklahoma City, Oklahoma, United States", "keep"),
+    ("Oklahoma City, OK", "Tulsa, Oklahoma", "remove"),
+    ("Oklahoma City, OK", "Oklahoma", "keep"),
+    ("Indianapolis, Indiana", "Indianapolis, IN", "keep"),
+    # New York city vs state
+    ("New York", "New York, NY", "keep"),
+    ("New York", "New York City Metropolitan Area", "keep"),
+    ("New York", "Brooklyn, New York, United States", "keep"),
+    ("New York, NY", "New York, New York, United States", "keep"),
+    ("New York, NY", "Buffalo, NY", "remove"),
+    ("New York, NY", "Jersey City, NJ", "remove"),
+    ("New York City", "New York, NY 10001", "keep"),
+    ("New York", "London, United Kingdom", "remove"),
+    ("New York", "Los Angeles, California", "remove"),
+    # Georgia country vs state
+    ("Georgia", "Atlanta, GA", "keep"),
+    ("Georgia", "Tbilisi, Georgia", "keep"),
+    ("Atlanta, Georgia", "Atlanta, GA, United States", "keep"),
+    ("Atlanta, Georgia", "Savannah, Georgia", "remove"),
+    ("Tbilisi, Georgia", "Tbilisi, Georgia", "keep"),
+    ("Tbilisi, Georgia", "Tbilisi", "keep"),
+    ("Atlanta, GA", "Tbilisi, Georgia", "remove"),
+    # three-part asks
+    ("Austin, Texas, United States", "Austin, TX", "keep"),
+    ("Austin, Texas, United States", "Austin, Texas Metropolitan Area", "keep"),
+    ("Austin, Texas, United States", "Dallas, TX", "remove"),
+    ("Austin, Texas, United States", "Austin, Minnesota, United States", "remove"),
+    ("Austin, Texas, United States", "Berlin, Germany", "remove"),
+    ("Portland, Oregon, USA", "Portland, ME", "remove"),
+    ("Portland, Oregon, USA", "Portland, OR 97201", "keep"),
+    # US cities without a state
+    ("Chicago", "Chicago, IL", "keep"),
+    ("Chicago", "Chicago, Illinois, United States", "keep"),
+    ("Chicago", "Greater Chicago Area", "keep"),
+    ("Seattle", "Seattle, WA 98101", "keep"),
+    ("Boston", "Boston, MA, US", "keep"),
+    ("Denver", "Denver Metropolitan Area", "keep"),
+    # non-US with regions
+    ("Toronto, Ontario", "Toronto, ON, Canada", "keep"),
+    ("Toronto, Ontario", "Toronto, Ontario, Canada", "keep"),
+    ("Toronto, Ontario", "Vancouver, British Columbia, Canada", "keep"),  # other city, judged only by country: unchecked ok
+    ("Toronto, Ontario, Canada", "Austin, Texas", "remove"),
+    ("Toronto, Ontario, Canada", "London, United Kingdom", "remove"),
+    ("Manchester, UK", "Manchester, England, United Kingdom", "keep"),
+    ("Manchester, UK", "Manchester, Greater Manchester, UK", "keep"),
+    ("Manchester, UK", "Manchester, NH", "remove"),
+    ("Manchester, UK", "Paris, France", "remove"),
+    ("Sydney, NSW", "Sydney, New South Wales, Australia", "keep"),
+    ("Sydney, NSW", "Sydney NSW 2000", "keep"),
+    ("Sydney, NSW, Australia", "Sydney, Nova Scotia, Canada", "remove"),
+    ("Sydney, NSW, Australia", "Melbourne, Victoria, Australia", "keep"),
+    ("Munich, Germany", "München, Bayern, Deutschland", "keep"),
+    # clear mismatches
+    ("Germany", "Paris, France", "remove"),
+    ("France", "Lyon, France", "keep"),
+    ("United States", "Toronto, Canada", "remove"),
+    ("California", "Austin, Texas", "remove"),
+    ("California", "Los Angeles, CA", "keep"),
+    ("Texas", "Houston, Texas, United States", "keep"),
+    ("Illinois", "Chicago, IL", "keep"),
+    ("Illinois", "Milwaukee, WI", "remove"),
+    ("San Diego, CA", "San Diego, California, United States", "keep"),
+    ("San Diego, CA", "London, England", "remove"),
+    ("Lima, Ohio", "Lima, Peru", "remove"),
+    ("Lima, Peru", "Lima, OH", "remove"),
+    ("Paris, Texas", "Paris, France", "remove"),
+    ("Paris, France", "Paris, TX", "remove"),
+    ("Paris", "Paris, Île-de-France, France", "keep"),
+    ("Remote", "Austin, TX", "keep"),
+]
+# Clear to a reader, not to the test: a city asked with nothing around it, a row whose
+# two-letter code is a US state and also the country asked, and two cities in Georgia, which may
+# be the country.
+NOT_JUDGED = {("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN"),
+              ("Atlanta, Georgia", "Savannah, Georgia")}
 
 
 @pytest.mark.parametrize("asked,row,want", KEEP_OR_REMOVE)
@@ -166,10 +253,14 @@ def test_a_place_always_matches_itself(name):
     assert R.place(name, name) is True
 
 
-def test_a_code_after_a_city_in_the_ask_is_the_us_state():
+def test_an_ask_that_reads_two_ways_removes_a_row_only_when_both_readings_do():
     assert R.place("San Francisco, CA", "Paris, France") is False
-    assert R.place("San Francisco, CA", "Los Angeles, CA") is False
+    assert R.place("San Francisco, CA", "Los Angeles, CA") is None      # California, or Canada
     assert R.place("San Francisco, CA", "San Francisco, CA, US") is True
+    assert R.place("Mumbai, IN", "Mumbai, Maharashtra, India") is True
+    assert R.place("Toronto, CA", "Toronto, Ontario, Canada") is True
+    assert R.place("Tbilisi, GE", "Tbilisi, Georgia") is True and R.place("Georgia", "Tbilisi, GE") is not False
+    assert R.place("Oklahoma City, OK", "Tulsa, Oklahoma") is False      # the asked city against the row's city
 
 
 def test_place_counts_rows_removed_and_unchecked():

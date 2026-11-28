@@ -21,7 +21,7 @@ _PLACE_NOISE = frozenset({"greater", "area", "metropolitan", "metro", "region", 
 _COUNTRY_ALIASES = {"usa": "us", "u s": "us", "u s a": "us", "england": "gb", "scotland": "gb",
                     "wales": "gb", "northern ireland": "gb", "great britain": "gb"}
 _US_STATES = {
-    "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",
+    "d c": "dc", "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",
     "colorado": "co", "connecticut": "ct", "delaware": "de", "district of columbia": "dc",
     "florida": "fl", "georgia": "ga", "hawaii": "hi", "idaho": "id", "illinois": "il",
     "indiana": "in", "iowa": "ia", "kansas": "ks", "kentucky": "ky", "louisiana": "la",
@@ -76,12 +76,19 @@ def _country(text: str) -> str | None:
     return _COUNTRY_ALIASES.get(text) or P.iso_country(text)
 
 
+# A name that is a US state and a country: never read as one of them alone.
+_STATE_OR_COUNTRY = {"georgia": ("ga", "ge")}
+
+
 @dataclass
 class _Place:
     city: str = ""
     state: str = ""
     country: str = ""
-    either: frozenset[str] = frozenset()   # a row's two-letter code that is a US state and a country ('IN', 'CA')
+    # What one part could be either way: a two-letter code that is a state and a country ('IN',
+    # 'CA'), or 'Georgia' (state GA, country GE).
+    either_states: frozenset[str] = frozenset()
+    either_countries: frozenset[str] = frozenset()
 
 
 def _code(segment: str) -> str:
@@ -89,18 +96,26 @@ def _code(segment: str) -> str:
     return tokens[0] if len(tokens) <= 2 and len(tokens[0]) == 2 else ""
 
 
-def _read_place(segments: list[str], *, asked: bool) -> _Place:
+def _read_place(segments: list[str]) -> _Place:
     """The city, US state and country a place names. The first part is a state only when no later
-    part names a state, else a country when it is the only part, else the city. A later part is a
-    state by name or code ('TX', 'NY 14607'), else a country. A code that is both a state and a
-    country is the state when the caller wrote it after a city, or when a country follows it in a
-    row; otherwise a row's code is either. A state names its country."""
+    part names one, a country when it is the only part, else the city. A later part is a state by
+    name or code ('TX', 'NY 14607'), else a country. A code that is both a state and a country is
+    the state when a country follows it, else either; 'Georgia' is always either. A state names
+    its country."""
     out = _Place()
-    either: set[str] = set()
+    states: set[str] = set()
+    countries: set[str] = set()
+
+    def both(state: str, country: str) -> None:
+        states.add(state)
+        countries.add(country)
+
     later_state = any(_state_name(seg) or (_code(seg) in _STATE_CODES) for seg in segments[1:])
     for i, seg in enumerate(segments):
         if i == 0:
-            if (state := _state_name(seg)) and not later_state:
+            if (pair := _STATE_OR_COUNTRY.get(_bare(seg))) and not later_state and len(segments) == 1:
+                both(*pair)
+            elif (state := _state_name(seg)) and not later_state:
                 out.state = state
             elif len(segments) == 1 and (code := _country(_bare(seg))):
                 out.country = code
@@ -108,30 +123,67 @@ def _read_place(segments: list[str], *, asked: bool) -> _Place:
                 out.city = _bare(seg)
             continue
         code = _code(seg)
-        if state := _state_name(seg):
+        if pair := _STATE_OR_COUNTRY.get(_bare(seg)):
+            both(*pair)
+        elif state := _state_name(seg):
             out.state = out.state or state
-        elif code in _STATE_CODES and _country(code) and not asked:
+        elif code in _STATE_CODES and _country(code):
             if any(_country(_bare(later)) for later in segments[i + 1:]):
                 out.state = out.state or code
             else:
-                either.add(code)
+                both(code, code)
         elif code in _STATE_CODES:
             out.state = out.state or code
         elif country := _country(_bare(seg)):
             out.country = out.country or country
     if out.state and not out.country:
         out.country = "us"
-    out.either = frozenset(either)
+    if out.state or out.country:
+        states, countries = set(), set()   # a confident reading settles the other part
+    out.either_states, out.either_countries = frozenset(states), frozenset(countries)
     return out
+
+
+def _readings(asked: _Place) -> list[_Place]:
+    """An ask whose part is either way ('Mumbai, IN', 'Georgia') is judged under each reading."""
+    if not (asked.either_states or asked.either_countries):
+        return [asked]
+    return ([_Place(city=asked.city, state=s, country="us") for s in asked.either_states]
+            + [_Place(city=asked.city, country=c) for c in asked.either_countries])
+
+
+def _judge(asked: _Place, row: _Place) -> bool | None:
+    if asked.country and row.country and asked.country != row.country:
+        return False
+    if asked.state and row.state and asked.state != row.state:
+        return False
+    # A row's either part ('MN', 'Georgia') breaks the ask only when it is neither the state asked
+    # nor, read as a country, the country asked.
+    if (row.either_states or row.either_countries) and not row.state and not row.country and (
+            (asked.state and asked.state not in row.either_states)
+            or (asked.country and asked.country != "us" and asked.country not in row.either_countries)):
+        return False
+    if asked.city:
+        if row.city and f" {asked.city} " in f" {row.city} ":
+            return True
+        # A row's either code that is the asked state: as a state it is the same state, as a
+        # country it is another country, so another city there is a mismatch both ways.
+        same_state = bool(asked.state) and (row.state == asked.state
+                                            or (not row.state and asked.state in row.either_states))
+        return False if row.city and same_state and row.city != asked.city else None
+    if asked.state:
+        return True if row.state == asked.state else None
+    return True if row.country and row.country == asked.country else None
 
 
 def place(sent: Any, value: Any) -> bool | None:
     """False only when the row clearly names another place than the one asked: another country,
-    another US state, or another city in the same US state. True when it names the asked place at
-    its most specific level ('Austin, TX, US' for 'Austin, Texas'). Anything else is not judged: a
-    row naming only a larger place ('Texas' for Austin), another city outside the US (a city's
-    other-language name reads as another city), a city asked with nothing around it, and a row
-    whose two-letter code could be the place asked ('Indianapolis, IN' for India)."""
+    another US state, or another city in the same US state. True when the row's city, state or
+    country is the asked place at its most specific level ('Austin, TX, US' for 'Austin, Texas').
+    An ask that reads two ways ('Toronto, CA') removes a row only when both readings do. Anything
+    else is not judged: a row naming only a larger place ('Texas' for Austin), another city outside
+    the US (a city's other-language name reads as another city), a city asked with nothing around
+    it, and a row whose part could be the place asked ('Indianapolis, IN' for India)."""
     if not isinstance(sent, str):
         return None
     asked_segs = [f for part in sent.split(",") if (f := P._fold(part))]
@@ -140,28 +192,11 @@ def place(sent: Any, value: Any) -> bool | None:
         return None
     if asked_segs == segs:
         return True
-    asked, row = _read_place(asked_segs, asked=True), _read_place(segs, asked=False)
-    if asked.country and row.country and asked.country != row.country:
+    row = _read_place(segs)
+    verdicts = [_judge(a, row) for a in _readings(_read_place(asked_segs))]
+    if all(v is False for v in verdicts):
         return False
-    if asked.state and row.state and asked.state != row.state:
-        return False
-    # A row's code that is a state and a country ('MN') breaks the ask when it is neither the
-    # state asked nor, read as a country, the country asked.
-    if row.either and not row.state and not row.country and (
-            (asked.state and asked.state not in row.either)
-            or (asked.country and asked.country != "us" and asked.country not in row.either)):
-        return False
-    if asked.city:
-        if f" {asked.city} " in " " + " ".join(_bare(s) for s in segs) + " ":
-            return True
-        # A row's either-code that is the asked state: as a state it is the same state, as a
-        # country it is another country, so another city there is a mismatch both ways.
-        same_state = bool(asked.state) and (row.state == asked.state
-                                            or (not row.state and asked.state in row.either))
-        return False if row.city and same_state and row.city != asked.city else None
-    if asked.state:
-        return True if row.state == asked.state else None
-    return True if row.country and row.country == asked.country else None
+    return True if any(verdicts) else None
 
 
 def _host(value: Any) -> str | None:

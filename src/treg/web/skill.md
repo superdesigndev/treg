@@ -151,8 +151,9 @@ How a routed call works:
   city, company or site, or an older date) leaves `output`, and `_treg.strict_filtered` says
   `{removed, kept, by, unchecked}`. A row that names no place, company or date, only a larger
   place than you asked, or a city when you sent a city with no state or country, is kept and
-  counted `unchecked`. Outside the US only the country is compared. `raw` keeps every row, and the provider is
-  billed as usual. When no row is left it asks at most 2 more providers, each billed as usual;
+  counted `unchecked`. Outside the US only the country is compared; a code that may be a US state or
+  a country (`Toronto, CA`) counts both ways, and a bare `Washington` is the state. `raw` keeps
+  every row, and the provider is billed as usual. When no row is left it asks at most 2 more providers, each billed as usual;
   `X-Treg-Route-Max-Cost` caps the total.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former

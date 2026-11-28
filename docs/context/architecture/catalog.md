@@ -1421,16 +1421,18 @@ an invalid extra never disables the primary.
   is returned as the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what
   `min_results`, fill and merge count. `place` reads a city, a US state (name or code) and a
   country from both places. The same folded text always matches. It removes a row only when the
-  row names another country, another US state, or another city in the same US state; outside the
-  US only the country is judged, since a city's other-language name (München, Köln) reads as
-  another city. The first part is a state only when no later part names one, and "city" stays in
-  a state reading ("Kansas City" is no state). In the ask, a two-letter code after a city is the
-  US state ("San Francisco, CA"). In a row, a code that is both a state and a country (`IN`, `CA`)
-  is the state when a country follows it; alone it is either: it never counts as a match, it
-  removes the row only when neither reading is the place asked, and a city other than the one
-  asked in the state asked is removed under both readings. A row naming only a larger place than
-  asked, a city asked with nothing around it ("Berlin" against "Toronto, Canada"), or nothing
-  comparable is unchecked. Noise words go first ("Greater … Area", "New York City" is "New York").
+  row names another country, another US state, or another city in the same US state (the asked
+  city against the row's city part); outside the US only the country is judged, since a city's
+  other-language name (München, Köln) reads as another city. The first part is a state only when
+  no later part names one, and "city" stays in a state reading ("Kansas City" is no state), so a
+  bare "Washington" is the state and "Washington, D.C." the district. A code that is both a state
+  and a country (`IN`, `CA`) is the state when a country follows it, else either, and the name
+  "Georgia" is always either. An ask that reads two ways ("Toronto, CA", "Mumbai, IN") is judged
+  under each reading and removes a row only when both do. In a row an either part never counts as a
+  match and removes the row only when neither reading is the place asked. A row naming only a
+  larger place than asked, a city asked with nothing around it ("Berlin" against "Toronto,
+  Canada"), or nothing comparable is unchecked. Noise words go first ("Greater … Area", "New York
+  City" is "New York").
   `domain` takes the domain or a subdomain, the part after `@` of an address, a port and a
   trailing dot aside; `site` reads `site:`
   from `q` (`on_site`, as `no_result_on_site`) and judges nothing it cannot read (`site:.edu`,
