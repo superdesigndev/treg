@@ -711,17 +711,26 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   "Row retention").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
-- **Call record partitions** (PostgreSQL). `usage rollup` creates the coming month partitions of a
-  partitioned `callrecord` before it folds, and every release does the same; while `callrecord`
-  is the plain table both are no-ops. A `usage rollup` run whose partition upkeep failed still
-  folds, logs "callrecord partition upkeep failed" as an error and exits 1, so alert on either.
-  `admin callrecord-partitions` does only that step. `admin callrecord-backfill --days N` copies
-  call records into `callrecord_partitioned` beside live traffic and resumes when run again
-  (`--max-replica-lag S` waits while the replica is more than `S` seconds behind, and refuses
-  with exit 2 when the read pool reaches no replica); it needs only
-  the database, not `verify_db()`. Until the swap, a migration that adds a column or an index to
-  `callrecord` must add it to `callrecord_partitioned` too
-  ([data model](../architecture/data-model.md), "preparing monthly partitions and a 64-bit id").
+- **Call record partitions** (PostgreSQL). `usage rollup` creates the coming month partitions of
+  `callrecord` before it folds, and every release does the same, so a deployment needs one of the
+  two at least once every three months; without a partition for the month, audit rows are refused
+  and logged. A `usage rollup` run whose partition upkeep failed still folds, logs
+  "callrecord partition upkeep failed" as an error and exits 1, so alert on either. The upkeep
+  also runs `ANALYZE` on the partitioned table when its row estimate falls below 90 % of its
+  partitions' (autovacuum never analyzes a partitioned parent).
+  `admin callrecord-partitions` does only that step. With `TREG_CALLRECORD_RETENTION_MONTHS` set,
+  the same step drops expired months. The upgrade that partitions the table refuses a large
+  `callrecord` until `admin callrecord-backfill --days N` (N of 31 or more) has copied its
+  history, and again when the last run left more than a million ids to catch up or to resync,
+  so run it once more just before the deploy; that command needs only the database, not
+  `verify_db()`, and `--max-replica-lag S` makes it wait while the replica is more than `S`
+  seconds behind (it refuses with exit 2 when the read pool reaches no replica). Until the swap, a
+  migration that adds a column or an index to `callrecord` must add
+  it to `callrecord_partitioned` too. Pause the crons that read `callrecord` during that deploy: the
+  swap waits for long statements on the table to end before it takes its lock. Afterwards
+  `admin callrecord-drop-legacy` deletes the rows of teams deleted during the copy, in batches,
+  and removes the old table
+  ([data model](../architecture/data-model.md), "monthly partitions and a 64-bit id").
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker
   (spending the maker's balance); health is derived from the last three runs.
 - **`jev xboost`** needs `TREG_JEV_TREG_TOKEN` (a member token, so its spend is an ordinary bill) and

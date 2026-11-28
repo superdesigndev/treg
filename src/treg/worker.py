@@ -629,6 +629,16 @@ async def _admin_callrecord_backfill(args) -> int:
     return 0
 
 
+async def _admin_callrecord_drop_legacy(args) -> int:
+    from .application import call_record_partitions
+    from .infra.db import verify_db
+
+    await verify_db()
+    result = await call_record_partitions.drop_legacy(window_s=args.window_s)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result["error"] else 0
+
+
 async def _admin_purge_ad_clicks(args) -> int:
     """Delete email-to-click stash rows past the 90-day lookup window (application/signup)."""
     from .application import signup
@@ -1134,7 +1144,7 @@ def main(argv: list[str] | None = None) -> int:
                                 help="create the coming month partitions of callrecord; drop the expired when retention is on")
     parts.set_defaults(fn=_admin_callrecord_partitions)
     backfill = adminsub.add_parser("callrecord-backfill",
-                                   help="copy recent call records into callrecord_partitioned; run again to resume")
+                                   help="copy recent call records into the partitioned table, before or after the swap; run again to resume")
     backfill.add_argument("--days", type=_positive_int, required=True, help="how many days of history to copy")
     backfill.add_argument("--batch-rows", type=_positive_int, default=5_000,
                           help="rows per transaction (default 5000)")
@@ -1145,6 +1155,14 @@ def main(argv: list[str] | None = None) -> int:
     backfill.add_argument("--max-seconds", type=float, default=None,
                           help="stop after this long; the next run resumes")
     backfill.set_defaults(fn=_admin_callrecord_backfill)
+    drop_legacy = adminsub.add_parser(
+        "callrecord-drop-legacy",
+        help="delete rows of teams deleted during the copy, then drop callrecord_legacy")
+    drop_legacy.add_argument(
+        "--window-s", type=float, default=120.0,
+        help="how long to keep trying to drop the foreign key to org (default 120); "
+             "run it in a quiet hour and again on dropped: false")
+    drop_legacy.set_defaults(fn=_admin_callrecord_drop_legacy)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
     erase.add_argument("--dry-run", action="store_true",

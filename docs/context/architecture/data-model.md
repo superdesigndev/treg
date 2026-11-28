@@ -69,8 +69,10 @@ sources:
   - src/treg/alembic/versions/0073_org_flow_control_version.py
   - src/treg/alembic/versions/0140_call_record_id_references_bigint.py
   - src/treg/alembic/versions/0141_call_record_partitioned_table.py
+  - src/treg/alembic/versions/0142_call_record_swap.py
   - src/treg/application/call_record_partitions.py
   - tests/test_call_record_partitions.py
+  - tests/test_call_record_swap.py
   - tests/test_org_flow_control_schema.py
   - src/treg/alembic/versions/0096_route_rule_version.py
   - src/treg/alembic/versions/0097_referral_affiliate.py
@@ -279,8 +281,8 @@ Each drop takes ACCESS EXCLUSIVE on the child table and on `org`, bounded by the
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
 `CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables.
-`LedgerEntry` and `CallRecord` only grow (a partitioned replacement for `CallRecord` is being
-prepared, next section). Every time-window question needs an index whose leading columns match the filter and
+`LedgerEntry` only grows. `CallRecord` grows until an operator turns its retention on (next
+section). Every time-window question needs an index whose leading columns match the filter and
 end in `created_at`; otherwise the planner picks an index on the other column and filters the date
 in memory, reading a team's or an endpoint's whole history. All pools share one Postgres, so one
 such scan queues every other query and the API pool empties into `503 treg_saturated`
@@ -381,24 +383,62 @@ Redaction in `application.call.evidence` is security-sensitive and order matters
    A rendering failure or surviving secret replaces the whole snippet.
 4. Truncate only after masking, so a partial credential cannot escape exact matching.
 
-## `CallRecord`: preparing monthly partitions and a 64-bit id
+## `CallRecord`: monthly partitions and a 64-bit id
 
-`callrecord` is a plain table with a 32-bit id. Two limits of that shape show on a large table: a
-32-bit id ends at 2,147,483,647, and changing its type in place rewrites the table under an ACCESS
-EXCLUSIVE lock; and a plain table gives space back only through `DELETE`, which leaves the files
-as large as they were. The replacement is a table partitioned by month on `created_at` with a
-`bigint` id, built beside the live one and filled before anything reads it. Readers still read
-the plain `callrecord`; this section is the preparation only.
+On PostgreSQL `callrecord` is partitioned by month on `created_at`, and its id is `bigint`
+(alembic `0140` to `0142`). Two limits of the plain table are the reason: a 32-bit id ends at
+2,147,483,647, and changing its type in place rewrites the table under an ACCESS EXCLUSIVE lock;
+and a plain table gives space back only through `DELETE`, which leaves the files as large as they
+were. A month partition is dropped whole. SQLite keeps one plain table (its ids are 64-bit
+already), as does a PostgreSQL database built from the models, and the code below is a no-op there.
 
-1. `0140` widens the columns that store a call record id to `bigint`: the rollup cursors
-   (`callusagecursor`, `endpointstatcursor`, `shadowcursor`, `webarenacallcursor`,
-   `arenainsightstate` both cursors, `webarenaseedprogress`) and `shadowpair.call_id`. `arenaobservation.id`
-   is still `integer`; it must be widened before call record ids pass the 32-bit range.
-2. `0141` creates the empty partitioned table `callrecord_partitioned` with the same columns,
-   `id bigint` on the same id sequence (changed to `bigint`, so ids continue and every cursor
-   stays valid), primary key `(id, created_at)` (a unique constraint on a partitioned table must
-   include the partition column), the same indexes, and no foreign key to `org` (it would lock
-   the `org` row on every audit insert). It has no partition yet. PostgreSQL 14 or newer.
+**Shape.**
+
+- The primary key is `(id, created_at)`, because a unique constraint on a partitioned table must
+  include the partition column. Every id comes from one sequence, so `id` alone still names one
+  row; that, not a constraint, is what the model's `primary_key` on `id` and `db.get(CallRecord, id)`
+  rest on. Never insert an explicit id.
+- The table has the same name, columns and index names as before, so readers did not change. Each
+  index exists once per partition. A read bounded by `created_at` touches only its months. A read
+  by `id`, `call_ref` or `(org_id, id)` probes that index in every partition and merges them,
+  which stays cheap while each probe is bounded: keep the `LIMIT` or the id range such reads have.
+- There is no foreign key to `org`: it would lock the `org` row on every audit insert. Team
+  deletion removes a team's rows itself (`ORG_SCOPED_MODELS`).
+- `CREATE INDEX CONCURRENTLY` does not work on a partitioned table. A new index is built
+  concurrently on each partition, then attached to an index created `ON ONLY callrecord`.
+- Columns that store a call record id are `bigint`: the rollup cursors (`callusagecursor`,
+  `endpointstatcursor`, `shadowcursor`, `webarenacallcursor`, `arenainsightstate` (both cursors),
+  `webarenaseedprogress`, `showcasecursor`) and `shadowpair.call_id`. `arenaobservation.id` is
+  still `integer`; it must be widened before call record ids pass the 32-bit range.
+
+**Partition upkeep** (`application/call_record_partitions.py`, the only writer of partitions). A
+row whose month has no partition is refused, and the audit writer then drops it and logs an error,
+so the coming months must exist first. `maintain()` creates the current month and the next
+`MONTHS_AHEAD`; it runs at every release (`maintenance.RELEASE_TASKS`), in the
+`treg-worker usage rollup` cron, and as `treg-worker admin callrecord-partitions`. A partition is
+created as a plain table and attached, which takes SHARE UPDATE EXCLUSIVE on `callrecord`, so
+inserts and reads do not wait; `CREATE TABLE ... PARTITION OF` would take ACCESS EXCLUSIVE. There
+is no default partition for the same reason: every attach would lock and scan it, and
+`DETACH ... CONCURRENTLY` refuses to run beside one. Autovacuum analyzes each partition but
+never the partitioned parent, so `analyze_if_stale` (in `maintain()`) runs `ANALYZE` on the live
+`callrecord` when its row estimate falls below 90 % of its partitions' (the staged table is
+analyzed by the swap).
+
+**Retention** is `TREG_CALLRECORD_RETENTION_MONTHS`, 0 by default, which keeps every month. With
+`N`, `maintain()` detaches (`DETACH PARTITION ... CONCURRENTLY`) and drops each partition older
+than the `N` full months before the current one. What goes with a month: its rows in Activity and
+`/calls`, the link behind `GET /calls/{id}/result`, and its failure evidence. What stays: the
+rollups (`CallUsageDay`, `EndpointDayStat`, `ApiKeySpendDay`) and the ledger. The readers that
+rebuild from call records look back 31 days at most, and `N` = 1 always keeps more than that, so
+`N` below 1 is not offered. Writing a detached month to object storage before dropping it is not
+built: the place for it is between the detach and the drop in `drop_expired`.
+
+**The swap** from the plain table. The history is copied first and the tables trade names last,
+so no reader ever sees a table with part of its history, and only the rename blocks anyone:
+
+1. `0140` widens the columns that store a call record id.
+2. `0141` creates the empty partitioned table `callrecord_partitioned` beside the live one, on
+   the same id sequence (changed to `bigint`), so ids continue and every cursor stays valid.
 3. `treg-worker admin callrecord-backfill --days N` copies the last `N` days into it, newest
    first, in bounded transactions beside live traffic, for as long as that takes; run again, it
    resumes, and first copies what was written since. Each batch creates the month partitions its
@@ -408,9 +448,10 @@ the plain `callrecord`; this section is the preparation only.
    seconds behind, `pg_last_xact_replay_timestamp()`; without a replica behind the read pool it
    refuses and exits 2, since the primary's lag always reads 0), so the copy leaves the primary and its
    replicas room. The new table grows by about the size of the rows copied and the WAL by as much,
-   so check disk headroom and watch replica lag while it runs. The first run notes when it started
-   (`NOTE_BACKFILL_STARTED`, in a JSON comment on the table). One run works at a time: it holds a
-   session advisory lock (`BACKFILL_LOCK_KEY`), and a second run returns `busy` and does nothing.
+   and the legacy table keeps its space until step 5, so check disk headroom and watch replica
+   lag while it runs. The first run notes when it started (`NOTE_BACKFILL_STARTED`, in a JSON
+   comment on the table). One run works at a time: it holds a session advisory lock
+   (`BACKFILL_LOCK_KEY`), and a second run returns `busy` and does nothing.
    - Each run first deletes the copied rows of teams that no longer exist
      (`delete_rows_of_deleted_teams`: the distinct teams walked through the `(org_id, id)` index,
      each kept only `NOT EXISTS` in `org`, deleted in committed batches with the same pause and
@@ -424,6 +465,38 @@ the plain `callrecord`; this section is the preparation only.
      one short pass up to the top id copied meanwhile. It writes its cursor (`resync_pass`) to the
      note after each batch, so a stopped run resumes, and on completion `resynced_upto` and
      `resynced_at` (when the pass began), which the swap reads.
+   - Run it once more just before the deploy. A small table skips this step: `0142` copies it
+     whole.
+4. `0142` refuses at once, changing nothing, when more than `_MAX_CATCH_UP_IDS` ids were written
+   since the last backfill run, or more than `_MAX_RESYNC_IDS` ids lie above its `resynced_upto`,
+   or its last resync did not finish. Otherwise, without a lock, it copies what was written since,
+   resyncs only the rows above `resynced_upto` (noting progress after each batch, so a stopped
+   upgrade resumes there), copies again what came in meanwhile and runs `ANALYZE` on the new
+   table (with a 15-minute statement timeout for that statement only). Month partitions start at
+   the oldest `created_at` still to copy, not the lowest id's month: ids are handed out before
+   their rows commit. Then, within `_QUIET_WAIT_S`: it waits without queuing until no visible session has run
+   a statement on `callrecord`, or kept a transaction open, for longer than
+   `_QUIET_STATEMENT_S` (each poll first runs `pg_stat_clear_snapshot()`: inside a transaction
+   PostgreSQL otherwise keeps serving the first `pg_stat_activity` it read); copies what came in
+   during the wait and resyncs the rows above `resynced_upto` again; and tries the locks with a
+   `_LOCK_TRY` lock timeout inside a savepoint, starting over on a timeout, so a lock request
+   never queues inserts for longer than that. It refuses if the window ends first. Holding both
+   locks, it copies the last rows and resyncs the late values of that range (`_RESYNC`, since a
+   row the copy skips was copied before the lock), trades the table and index names, moves the sequence and
+   repeats the old table's grants. Audit inserts wait for that transaction and land in the new
+   table. A statement prepared before the swap whose result includes `id` is refused from then on
+   (its result changed type), and behind a transaction pooler that keeps one server statement per
+   query text it stays refused until that server connection closes; so the background pool reads
+   and writes no `id` (see "Audit writer"). The old table stays as `callrecord_legacy`; an empty one is dropped. A late verdict on a
+   row the last backfill run already resynced, landing between that run and the swap, stays in
+   the legacy table only.
+5. `treg-worker admin callrecord-drop-legacy` deletes the rows of teams deleted while the copy ran
+   (`delete_rows_of_deleted_teams`, committed batches, never in the upgrade), drops the legacy
+   table's foreign key to `org` the way the swap takes its lock (wait for quiet on `org`, then
+   `_LOCK_TRY` attempts inside a savepoint, within `--window-s`, 120 s by default; run it in a quiet
+   hour and again when it answers `dropped: false`), so an `org` read never
+   queues behind it for long, then drops the table, so the file deletion holds no lock on `org`. Before that, the same backfill command
+   copies still older history from it into `callrecord` if it is wanted.
 
 **Columns and indexes move together.** The copy names the live table's columns and the swap
 gives the staged table the live table's index names, so until the swap any migration that adds a
@@ -433,23 +506,29 @@ concurrently per partition and attached). `test_the_staged_table_has_the_live_ta
 `test_the_staged_table_has_the_live_tables_indexes` fail until it does They build their database with every revision (`upgrade head`), so a later revision
 that changes `callrecord` alone fails them; they skip once `callrecord` is partitioned.
 
-While `callrecord_partitioned` exists, team deletion also deletes the team's rows from it
-(`cascade_delete_org`); with no foreign key, nothing else would.
+`0142` refuses to swap a large table whose copy does not reach back 31 days (or to the first row)
+and changes nothing. The reason is the readers that count "today" or rebuild a recent window from
+call records: the trial allowance (`_trial_calls_today`), the spend recount, a catalog day repair
+(`_repair_bucket`), a new usage or Arena cursor. On a table holding only its newest rows they
+would give wrong answers without an error. Calls older than the copy leave every reader of
+`callrecord` (Activity, `/calls`, `GET /calls/{id}/result`) at the swap, until the backfill copies
+them back from `callrecord_legacy`. A rollback of `0142` is code only, to the build before it,
+which runs on the partitioned table unchanged; its downgrade copies every row back in one
+statement that blocks every audit insert. To copy before the release that carries `0142` is
+deployed, apply the first two revisions alone (`alembic upgrade 0141`) and run the backfill from
+a checkout of that release; older code serves unchanged on that schema.
 
-**Partition upkeep** (`application/call_record_partitions.py`, the only writer of partitions):
-`maintain()` creates the current month and the next `MONTHS_AHEAD` of a partitioned
-`callrecord`, and with `TREG_CALLRECORD_RETENTION_MONTHS` (0 by default, keeping every month)
-detaches and drops older months. It runs at every release (`maintenance.RELEASE_TASKS`), in the
-`treg-worker usage rollup` cron and as `treg-worker admin callrecord-partitions`, and is a no-op
-while `callrecord` is the plain table, as it is on SQLite. A partition is created as a plain table
-and attached, which takes SHARE UPDATE EXCLUSIVE on its parent, so inserts and reads do not wait;
-`CREATE TABLE ... PARTITION OF` would take ACCESS EXCLUSIVE. There is no default partition: every
-attach would lock and scan it, and `DETACH ... CONCURRENTLY` refuses to run beside one.
+Why a copy and not a view or two reads: a view over both tables must cast the legacy `integer` id
+to `bigint`, and a cast column cannot use the legacy indexes, so every read by id would scan the
+legacy table; reading both tables in code would change every reader and writer of the table. The
+copy keeps one table and one read path, and the legacy table is only a source.
 
-Why a copy and not a view or two reads: a view over both tables must cast the plain table's
-`integer` id to `bigint`, and a cast column cannot use its indexes, so every read by id would scan
-it; reading both tables in code would change every reader and writer. The copy keeps one table and
-one read path.
+Before the swap, team deletion also deletes the team's rows from `callrecord_partitioned`. While
+`callrecord_legacy` exists: nothing writes it; team deletion deletes the team's rows from it
+(`cascade_delete_org`), which its foreign key to `org` requires; the admin total adds its row
+estimate to the partitions' (the copied window counts twice until it is dropped); and dropping it takes a brief
+ACCESS EXCLUSIVE lock on `org` to remove that foreign key, which `drop_legacy` bounds with a lock
+timeout and retries.
 
 ## `IdempotentCall`
 

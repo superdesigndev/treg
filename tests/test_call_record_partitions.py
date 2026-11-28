@@ -104,7 +104,7 @@ async def test_team_deletion_clears_the_team_rows_the_backfill_copied(before_swa
 async def test_without_partitions_every_step_is_a_no_op():
     """SQLite, and a PostgreSQL database built from the models (as the other tests use)."""
     await db.reset_db()
-    assert await partitions.maintain() == {"created": [], "dropped": []}
+    assert await partitions.maintain() == {"created": [], "dropped": [], "analyzed": []}
     assert await partitions.drop_expired(1) == []
     assert (await partitions.backfill(30))["copied"] == 0
     async with db.session_maker() as session:
