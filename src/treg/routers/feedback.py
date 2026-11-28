@@ -201,7 +201,7 @@ async def admin_marks(
 
 @app.get("/comparisons/next")
 async def next_comparison(caller: Caller = Depends(require_member), compact: bool = False):
-    """The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.
+    """The team's newest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.
     `compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the
     words that ask for the verdict (`how_to_vote`), so they change without a CLI release."""
     pair = await compare_app.next_for(caller.org_id, pinned=caller.membership.pinned_tags is not None)
