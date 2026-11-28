@@ -805,14 +805,54 @@ class LocalStore:
         return None
 
 
+def _idle_closing_pool(url: str, *, max_connections: int, wait_s: float, idle_close_s: float):
+    """A bounded pool that waits for a free connection and closes the ones left idle.
+
+    redis-py's default asyncio pool raises at 100 connections per process and never closes an idle
+    one, so a peak's connections stay open until the process exits.
+    """
+    import redis.asyncio as redis  # server extra; imported here so the light CLI never loads it
+
+    class IdleClosingPool(redis.BlockingConnectionPool):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self._released_at: dict[object, float] = {}
+
+        async def release(self, connection) -> None:
+            self._released_at[connection] = _clock()
+            await super().release(connection)
+            await self.close_idle()
+
+        async def close_idle(self) -> int:
+            # get_available_connection pops from the end, so the front was released longest ago.
+            cutoff = _clock() - idle_close_s
+            available, stale = self._available_connections, []
+            while available and self._released_at.get(available[0], cutoff) <= cutoff:
+                connection = available.pop(0)
+                self._released_at.pop(connection, None)
+                stale.append(connection)
+            for connection in stale:
+                try:
+                    await connection.disconnect(nowait=True)
+                except Exception:  # noqa: BLE001 - a socket already gone is the goal
+                    pass
+            return len(stale)
+
+    return IdleClosingPool.from_url(
+        url, max_connections=max_connections, timeout=wait_s,
+        socket_timeout=_TIMEOUT_S, socket_connect_timeout=_TIMEOUT_S, decode_responses=True,
+    )
+
+
 class RedisStore:
     def __init__(self, url: str) -> None:
         import redis.asyncio as redis  # server extra; imported here so the light CLI never loads it
 
-        self._client = redis.Redis.from_url(
-            url, socket_timeout=_TIMEOUT_S, socket_connect_timeout=_TIMEOUT_S,
-            decode_responses=True,
-        )
+        settings = get_settings()
+        self._client = redis.Redis.from_pool(_idle_closing_pool(
+            url, max_connections=settings.kv_max_connections,
+            wait_s=settings.kv_pool_wait_s, idle_close_s=settings.kv_idle_close_s,
+        ))
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         try:
