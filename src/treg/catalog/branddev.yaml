@@ -96,6 +96,8 @@ endpoints:
       note: "a name shorter than 3 characters is refused free. This family answers bad input with a plain-text 405 rather than a JSON 400 — treat both as free validation failures, not as outages"
     test_request: {queryParams: {name: "Anthropic"}}
     cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: "https://www.context.dev/pricing", checked: '2026-08-20', confidence: verified, note: "observed credits_consumed = 10"}
+    # A name it cannot resolve answers 400 NOT_FOUND, free; the waterfall should ask the next provider.
+    miss: {status: 400, when: "error_code == 'NOT_FOUND'", means: "no brand for that name — a normal outcome (and free), not a request error (400 with error_code NOT_FOUND; other 400 bodies are real request errors)"}
     verified: '2026-08-20'
     added: '2026-08-20'
     example_response: examples/branddev.brand.retrieve-by-name.json
