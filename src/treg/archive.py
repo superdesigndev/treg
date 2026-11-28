@@ -1579,21 +1579,28 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
 async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
     """Which `(key_hash, content_hash)` answers still carry their bytes: in object storage, in the
     row, or through a `body_of` carrier. A hash-only version (licence or size refused the bytes) is
-    not on file. Metadata only: no body is read. For retry rows dropping their own copy."""
+    not on file. Metadata only: no body is read. For retry rows dropping their own copy.
+
+    Keys first, then their snapshots by `key_id`; the content hash is compared here, never in SQL.
+    A common answer (an empty result) is shared by a large part of `archivesnapshot`, and a
+    `content_hash IN` filter lets the planner walk every snapshot of it."""
     from sqlalchemy import or_, select
 
     from .models import ArchiveKey, ArchiveSnapshot
 
     if not pairs:
         return set()
-    rows = (await session.execute(
-        select(ArchiveKey.key_hash, ArchiveSnapshot.content_hash)
-        .join(ArchiveSnapshot, ArchiveSnapshot.key_id == ArchiveKey.id)
-        .where(ArchiveKey.key_hash.in_({k for k, _ in pairs}),
-               ArchiveSnapshot.content_hash.in_({c for _, c in pairs}),
+    keys = dict((await session.execute(
+        select(ArchiveKey.id, ArchiveKey.key_hash)
+        .where(ArchiveKey.key_hash.in_({k for k, _ in pairs})))).tuples().all())
+    if not keys:
+        return set()
+    found = {(keys[key_id], content) for key_id, content in (await session.execute(
+        select(ArchiveSnapshot.key_id, ArchiveSnapshot.content_hash)
+        .where(ArchiveSnapshot.key_id.in_(keys),
                or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
-                   ArchiveSnapshot.body_of.is_not(None))))).all()
-    return {(k, c) for k, c in rows} & pairs
+                   ArchiveSnapshot.body_of.is_not(None))))).tuples().all()}
+    return found & pairs
 
 
 def answer_on_file(key_hash: str, body_hash: str):

@@ -301,6 +301,44 @@ async def test_a_copy_is_kept_unless_the_archive_holds_the_same_bytes(clients, p
         assert (await db.get(IdempotentCall, row_id)).response_body == body
 
 
+async def test_bytes_on_file_reads_snapshots_by_key_never_by_a_shared_answer_hash(clients):
+    """One common answer is shared by a large part of archivesnapshot, so a `content_hash IN`
+    filter let the planner walk every snapshot of it and the trim page hit statement_timeout.
+    The lookup goes through the keys and still matches each key to its own hash."""
+    from treg import archive
+    from treg.models import ArchiveKey, ArchiveSnapshot
+
+    shared = archive.content_hash(b"[]")
+    async with session_maker() as db:
+        for n, storage in enumerate(["db", "r2", "both", "db", None]):
+            key = ArchiveKey(key_hash=f"k{n}", endpoint_id=EP)
+            db.add(key)
+            await db.flush()
+            db.add(ArchiveSnapshot(key_id=key.id, version=1, content_hash=shared, size_bytes=2,
+                                   body=b"[]" if storage == "db" else None, body_storage=storage))
+            db.add(ArchiveSnapshot(key_id=key.id, version=2, content_hash=f"own-{n}", size_bytes=1,
+                                   body=b"x"))
+        await db.commit()
+        engine = db.bind.sync_engine
+    asked = {(f"k{n}", shared) for n in range(5)} | {("k0", "own-1"), ("k1", "own-1"), ("missing", shared)}
+
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        if "archivesnapshot" in statement.lower():
+            seen.append(statement.lower())
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        async with session_maker() as db:
+            on_file = await archive.bytes_on_file(db, asked)
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert on_file == {("k0", shared), ("k1", shared), ("k2", shared), ("k3", shared), ("k1", "own-1")}
+    assert seen and not any("content_hash in" in sql for sql in seen)
+
+
 async def test_a_trimmed_answer_the_archive_lost_answers_410_and_never_runs_again(clients, platform_on):
     from treg.models import ArchiveSnapshot
 
