@@ -47,6 +47,15 @@ test('a slow answer for the team you left never replaces the team you switched t
 
 test('a member with no daily cap reads as no limit, a cap can be set and cleared, spend waits for the rollup, and tabs live in the address', async ({ page }) => {
   await signIn(page, 'team-cap')
+  // The team's settings answer redraws the page. Hold it until a cap is typed, so the redraw lands
+  // while the box still has focus, as a slow answer can: what was typed must survive it.
+  let holding = true
+  const held: (() => void)[] = []
+  const settings = (url: URL) => /^\/orgs\/\d+\/settings$/.test(url.pathname)
+  await page.route(settings, async route => {
+    if (holding && route.request().method() === 'GET') await new Promise<void>(release => held.push(release))
+    await route.fallback()
+  })
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Team', exact: true }).click()
   const cap = page.getByRole('spinbutton', { name: /^Calls per day for / })
   await expect(cap).toHaveValue('')
@@ -54,7 +63,14 @@ test('a member with no daily cap reads as no limit, a cap can be set and cleared
   await page.getByRole('button', { name: '＋ Add agent' }).click()
   await expect(page.getByRole('spinbutton', { name: 'Daily call cap' })).toHaveValue('')
   for (const value of ['25', '']) {
+    await expect.poll(() => held.length).toBeGreaterThan(0)
     await cap.fill(value)
+    // The settings answer is drawn once the budgets it leads to are asked for.
+    const redrawn = page.waitForRequest(request => new URL(request.url()).pathname.endsWith('/budgets'))
+    held.splice(0).forEach(release => release())
+    await redrawn
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))))
+    await expect(cap).toHaveValue(value)
     const saved = page.waitForResponse(response => /\/members\/\d+\/cap$/.test(new URL(response.url()).pathname)
       && response.request().method() === 'PATCH')
     await cap.press('Tab')
@@ -62,6 +78,8 @@ test('a member with no daily cap reads as no limit, a cap can be set and cleared
     await page.reload()
     await expect(cap).toHaveValue(value)
   }
+  holding = false
+  held.splice(0).forEach(release => release())
 
   // The team's daily spend default lives behind the Spend / day header, in a dialog.
   const setAll = page.getByRole('button', { name: 'Set for all' })
