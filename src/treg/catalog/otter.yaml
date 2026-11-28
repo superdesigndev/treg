@@ -1,0 +1,105 @@
+provider: otter
+source:
+  docs: https://www.otterab.com/api-docs
+  openapi: https://www.otterab.com/openapi.json
+  curated: '2026-11-27'
+limits: "100 requests per minute per account on Starter, 500 on Growth, and 2,000 on Scale."
+pricing_url: https://www.otterab.com/pricing
+defaults:
+  provenance: {source: docs, source_url: 'https://www.otterab.com/pricing', checked: '2026-11-27', confidence: documented}
+proposed_capabilities:
+  web.experiment_project.list: "List website projects in an Otter account"
+  web.experiment_type.list: "List supported Otter A/B test types"
+  web.experiment_goal_type.list: "List supported Otter conversion goal types"
+  web.experiment_targeting_field.list: "Read the Otter audience targeting schema"
+  web.experiment_visual_change_action.list: "List supported Otter visual change actions"
+  web.experiment_lifecycle_transition.list: "List supported Otter experiment lifecycle transitions"
+endpoints:
+  - id: otter.web.experiment_project.list
+    added: '2026-11-27'
+    capability: web.experiment_project.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /projects
+    name: "List projects"
+    summary: "List the website projects accessible to your Otter key, with IDs for experiment and reporting requests."
+    input:
+      queryParams:
+        page: {type: integer, required: false, min: 1, default: 1, example: 1}
+        per_page: {type: integer, required: false, min: 1, max: 100, default: 25, example: 1}
+    test_request:
+      queryParams: {per_page: 1}
+    price: {value: '0', currency: USD, unit: call}
+    miss: {when: {path: response.data, op: empty}}
+    docs_url: https://www.otterab.com/api-docs
+
+  - id: otter.web.experiment_type.list
+    added: '2026-11-27'
+    capability: web.experiment_type.list
+    platform: web
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /capabilities/experiment_types
+    name: "List experiment types"
+    summary: "List the experiment types accepted when creating an A/B test."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.otterab.com/api-docs
+
+  - id: otter.web.experiment_goal_type.list
+    added: '2026-11-27'
+    capability: web.experiment_goal_type.list
+    platform: web
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /capabilities/goal_types
+    name: "List goal types"
+    summary: "List the conversion goal types accepted in an experiment."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.otterab.com/api-docs
+
+  - id: otter.web.experiment_targeting_field.list
+    added: '2026-11-27'
+    capability: web.experiment_targeting_field.list
+    platform: web
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /capabilities/targeting_fields
+    name: "List targeting fields"
+    summary: "Read the schema for audience targeting, including fields, operators, and accepted values."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.otterab.com/api-docs
+
+  - id: otter.web.experiment_visual_change_action.list
+    added: '2026-11-27'
+    capability: web.experiment_visual_change_action.list
+    platform: web
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /capabilities/visual_change_actions
+    name: "List visual change actions"
+    summary: "List the actions a visual experiment can apply to a page."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.otterab.com/api-docs
+
+  - id: otter.web.experiment_lifecycle_transition.list
+    added: '2026-11-27'
+    capability: web.experiment_lifecycle_transition.list
+    platform: web
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /capabilities/lifecycle
+    name: "List lifecycle transitions"
+    summary: "List the actions available for managing an experiment's lifecycle."
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.otterab.com/api-docs
