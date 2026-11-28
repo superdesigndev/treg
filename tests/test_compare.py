@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 import json
 import uuid
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock
 from urllib.parse import urlencode
 
 import httpx
@@ -32,6 +33,9 @@ from treg.timeutil import utcnow_naive
 
 TAVILY_HIT = {"results": [{"title": "Tavily says", "url": "https://example.com/t"}], "usage": {"credits": 1}}
 EXA_HIT = {"results": [{"title": "Exa says", "url": "https://example.com/e"}], "costDollars": {"total": 0.007}}
+COMPARE_HINTS = "review,mark,feedback,compare"
+COMPARE_HEADER = {"X-Treg-Hints": COMPARE_HINTS}
+COMPARE_RAW_HEADERS = [(b"x-treg-hints", COMPARE_HINTS.encode())]
 
 
 @pytest.fixture
@@ -652,6 +656,94 @@ async def test_compare_invitations_are_rationed_and_review_falls_through(clients
     assert kinds == ["compare", "review"]
 
 
+@pytest.mark.parametrize("tool,path,ua,scope,expect_kind", [
+    ("call", "/mcp/", "openai-mcp/test", None, None),
+    ("call", "/mcp/", "Codex-MCP-Client/test", None, None),
+    ("catalog_call_read", "/mcp/v2/", None, None, None),
+    ("call_media", "/mcp/", None, None, None),
+    ("call", "/mcp/", None, "treg:call", None),
+    ("call", "/mcp/", None, "treg:catalog treg:call", "review"),
+    ("call", "/mcp/", None, "treg:call treg:read", "compare"),
+])
+async def test_mcp_spends_only_the_invitation_budget_it_can_show(
+        clients, monkeypatch, tool, path, ua, scope, expect_kind):
+    from treg import analytics
+    from treg.application import review_targets
+    from treg.application.call import invite
+    from test_hints import _platform_call
+    from test_mcp_directory import _call_tool, paired_mcp_session
+    from test_mcp_oauth import _grant
+
+    if scope:
+        token, org_id = await _grant(clients, "compare-scope@example.test", scope=scope)
+    else:
+        token, org_id = clients.headers["X-Treg-Token"], await _org_id(clients)
+    _compare_on(monkeypatch)
+    _platform_call(monkeypatch)
+    monkeypatch.setattr(review_targets, "sampled", lambda *_: True)
+    monkeypatch.setattr(hints, "sampled", lambda *_: True)
+    store = kv.store()
+    await store.set_flag(compare.ready_key(org_id), 60)
+    cid = await _seed(org_id, first="a", call_ref="waiting-pair")
+    take = AsyncMock(wraps=store.take)
+    monkeypatch.setattr(store, "take", take)
+    attached = []
+
+    def capture(_distinct_id, event, props, **_):
+        if event == "hint_attached":
+            attached.append(props["kind"])
+
+    monkeypatch.setattr(analytics, "capture", capture)
+    args = {"endpoint_id": "example.search", "headers": {"x-TrEg-HiNtS": COMPARE_HINTS}}
+    if tool == "call_media":
+        args["body"] = {}
+    async with paired_mcp_session() as client:
+        result = await _call_tool(client, tool, args, token,
+                                  {"User-Agent": ua} if ua else None, path=path)
+
+    assert result["status"] == 200, result
+    review_budget = invite.budget_key(org_id)
+    compare_budget = compare.hint_budget_key(org_id)
+    budgets = {compare_budget, review_budget, invite.mark_budget_key(org_id)}
+    spent = [entry.args[0] for entry in take.await_args_list if entry.args[0] in budgets]
+    if expect_kind == "review":
+        assert "compare" not in result
+        assert result["hint"] == hints.review_hint(result["call_id"])
+        assert attached == ["review"]
+        assert spent == [review_budget]
+    elif expect_kind == "compare":
+        assert result["compare"]["comparison_id"] == cid
+        assert result["hint"] == hints.compare_inline_hint(cid)
+        assert attached == ["compare"]
+        assert spent == [compare_budget]
+    else:
+        assert "compare" not in result
+        assert "hint" not in result
+        assert not attached
+        assert not spent
+
+
+async def test_repeated_hints_headers_are_joined(clients, monkeypatch):
+    _compare_on(monkeypatch, compare_rate=1)
+    assert compare._mark_reason(
+        "web.search",
+        [(b"x-treg-hints", b"review"), (b"X-Treg-Hints", b"compare")],
+        {"identity": {"query": "ada"}},
+        False,
+        "call-multi-hints",
+    ) is None
+
+    _flagged_call(monkeypatch)
+    await kv.store().set_flag(compare.ready_key(await _org_id(clients)), 60)
+    resp = await clients.get(
+        "/call/example.search",
+        headers=[("x-treg-hints", "review"), ("X-Treg-Hints", "compare")],
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("X-Treg-Hint") == "compare"
+    assert resp.headers.get("X-Treg-Hint-Text") == hints.COMPARE_CLI_HINT
+
+
 async def test_team_mcp_renders_the_compare_hint_and_the_directory_never_asks(clients, monkeypatch):
     from test_marketplace_call import _fake_relay
     from test_mcp_directory import _call_tool, paired_mcp_session
@@ -966,7 +1058,7 @@ async def test_a_routed_call_is_marked_only_without_route_headers(clients, searc
         {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
     value = "0.5" if header == "X-Treg-Route-Max-Cost" else "x"
     response = await clients.post("/call/treg.web.search", json={"q": f"marked {header}"},
-                                  headers={header: value} if header else {})
+                                  headers=COMPARE_HEADER | ({header: value} if header else {}))
     assert response.status_code == 200, response.text
     assert "compare" not in response.text
     marker = await kv.store().get_text(compare.marker_key(response.headers["X-Treg-Call-Id"]))
@@ -1099,11 +1191,12 @@ async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch
     monkeypatch.setattr(compare, "_mark_counts", {})
     monkeypatch.setattr(compare, "MARK_LOG_EVERY_S", 3600)
     monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
-    mcp = [(b"x-treg-client", b"mcp")]
+    mcp = [(b"x-treg-client", b"mcp"), *COMPARE_RAW_HEADERS]
     await compare.mark_eligible("m1", "web.search", mcp, {"identity": {"q": "a"}})
     await compare.mark_eligible("m2", "web.search", mcp + [(b"X-Treg-Route-Max-Cost", b"1")],
                                 {"identity": {"q": "b"}})
-    await compare.mark_eligible("m3", "web.search", [], {"identity": {"q": "c"}, "cursor": "p2"})
+    await compare.mark_eligible("m3", "web.search", COMPARE_RAW_HEADERS,
+                                {"identity": {"q": "c"}, "cursor": "p2"})
     await compare.mark_eligible("m4", "people.email.find", mcp, {"identity": {"q": "d"}})
     await compare.mark_eligible("m5", "web.search", mcp, {"identity": {"q": "e"}}, archive_opted_out=True)
     assert compare._mark_counts == {"marked/mcp": 1, "route_header/mcp": 1, "page_continuation/-": 1,
@@ -1114,6 +1207,39 @@ async def test_every_marker_decision_is_counted_by_reason_and_client(monkeypatch
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("compare markers"))
     assert '"marked/mcp": 2' in line and "q" not in line.replace("compare markers", "")
     assert compare._mark_counts == {}
+
+
+@pytest.mark.parametrize("declaration,expected_reason", [
+    (None, "client_no_compare"),
+    (b"", "client_no_compare"),
+    (b"review,mark,feedback", "client_no_compare"),
+    (b"review, CoMpArE ,feedback", "marked"),
+])
+async def test_marker_requires_a_compare_declaration(monkeypatch, declaration, expected_reason):
+    _compare_on(monkeypatch)
+    monkeypatch.setattr(compare, "_mark_counts", {})
+    monkeypatch.setattr(compare, "_mark_logged_at", compare.time.monotonic())
+    samples = []
+
+    def sampled(*args):
+        samples.append(args)
+        return True
+
+    monkeypatch.setattr(hints, "sampled_at", sampled)
+    raw_headers = [(b"x-treg-client", b"mcp")]
+    if declaration is not None:
+        raw_headers.append((b"X-Treg-Hints", declaration))
+    identity = {"q": "example"}
+    await compare.mark_eligible("sample", "web.search", raw_headers, {"identity": identity})
+
+    assert compare._mark_counts == {f"{expected_reason}/mcp": 1}
+    marker = await kv.store().get_text(compare.marker_key("sample"))
+    if expected_reason == "marked":
+        assert json.loads(marker) == identity
+        assert samples == [("compare", "sample", get_settings().compare_rate)]
+    else:
+        assert marker is None
+        assert not samples
 
 
 async def test_a_rejected_marker_write_is_counted_as_store_failed(monkeypatch):
@@ -1127,7 +1253,7 @@ async def test_a_rejected_marker_write_is_counted_as_store_failed(monkeypatch):
         return False
 
     monkeypatch.setattr(kv.store(), "set_text", refuse)
-    await compare.mark_eligible("lost", "web.search", [(b"x-treg-client", b"mcp")],
+    await compare.mark_eligible("lost", "web.search", [(b"x-treg-client", b"mcp"), *COMPARE_RAW_HEADERS],
                                 {"identity": {"q": "a"}})
     assert compare._mark_counts == {"store_failed/mcp": 1}
 
@@ -1136,9 +1262,9 @@ async def test_a_page_continuation_gets_no_marker(monkeypatch):
     """A continuation resumes a later page; B would be asked page one, so it is never marked."""
     _compare_on(monkeypatch)
     monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
-    await compare.mark_eligible("page-two", "web.search", [],
+    await compare.mark_eligible("page-two", "web.search", COMPARE_RAW_HEADERS,
                                 {"identity": {"q": "paged"}, "cursor": "c2"})
-    await compare.mark_eligible("page-one", "web.search", [], {"identity": {"q": "paged"}})
+    await compare.mark_eligible("page-one", "web.search", COMPARE_RAW_HEADERS, {"identity": {"q": "paged"}})
     assert await kv.store().get_text(compare.marker_key("page-two")) is None
     assert json.loads(await kv.store().get_text(compare.marker_key("page-one"))) == {"q": "paged"}
 
@@ -1155,7 +1281,7 @@ async def test_an_archive_opted_out_team_gets_no_marker(clients, search_on, monk
         org = await db.get(Org, org_id)
         org.archive_opt_out_at = utcnow_naive()
         await db.commit()
-    response = await clients.post("/call/treg.web.search", json={"q": "opted out"})
+    response = await clients.post("/call/treg.web.search", json={"q": "opted out"}, headers=COMPARE_HEADER)
     assert response.status_code == 200, response.text
     assert await kv.store().get_text(compare.marker_key(response.headers["X-Treg-Call-Id"])) is None
 
@@ -1178,10 +1304,10 @@ async def test_the_marker_is_off_with_the_feature_and_follows_the_sample(clients
 
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tavily": [(200, TAVILY_HIT)] * 3, "exa": [(200, EXA_HIT)] * 3}, []))
-    off = await clients.post("/call/treg.web.search", json={"q": "feature off"})
+    off = await clients.post("/call/treg.web.search", json={"q": "feature off"}, headers=COMPARE_HEADER)
     assert await kv.store().get_text(compare.marker_key(off.headers["X-Treg-Call-Id"])) is None
     _compare_on(monkeypatch, compare_rate=0.0)
-    unsampled = await clients.post("/call/treg.web.search", json={"q": "not sampled"})
+    unsampled = await clients.post("/call/treg.web.search", json={"q": "not sampled"}, headers=COMPARE_HEADER)
     assert await kv.store().get_text(compare.marker_key(unsampled.headers["X-Treg-Call-Id"])) is None
 
 
@@ -1201,7 +1327,7 @@ async def test_a_store_fault_on_the_marker_never_touches_the_answer(clients, sea
         return await real_set_text(key, *a, **kw)
     real_set_text = kv.store().set_text
     monkeypatch.setattr(kv.store(), "set_text", broken)
-    response = await clients.post("/call/treg.web.search", json={"q": "store down"})
+    response = await clients.post("/call/treg.web.search", json={"q": "store down"}, headers=COMPARE_HEADER)
     assert response.status_code == 200 and response.json()["output"]["results"]
     assert faults, "the marker write was attempted and failed"
 
@@ -1638,7 +1764,7 @@ async def test_a_merged_answer_is_never_marked(monkeypatch):
     _compare_on(monkeypatch)
     monkeypatch.setattr(compare, "_mark_counts", {})
     monkeypatch.setattr(hints, "sampled_at", lambda *_: True)
-    await compare.mark_eligible("merged-1", "web.search", [(b"x-treg-client", b"mcp")],
+    await compare.mark_eligible("merged-1", "web.search", [(b"x-treg-client", b"mcp"), *COMPARE_RAW_HEADERS],
                                 {"identity": {"q": "a"}, "merged_from": ["parallel.web.search", "exa.web.search"]})
     assert compare._mark_counts == {"merged/mcp": 1}
     assert await kv.store().get_text(compare.marker_key("merged-1")) is None

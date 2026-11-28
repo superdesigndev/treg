@@ -19,30 +19,16 @@ from typing import Literal
 from ... import hints
 from .. import compare, review_targets
 from ...config import get_settings
+from ...hints import (
+    LEGACY_KINDS as LEGACY_KINDS,
+    UNNAMED_KINDS as UNNAMED_KINDS,
+    accepted_kinds as accepted_kinds,
+)
 from ...infra import kv
 from .types import CallContext
 
 Kind = Literal["compare", "review", "mark", "feedback"]
 BUDGET_WINDOW_S = 3600
-# What a client that does not say (`X-Treg-Hints`) can show: every CLI released before the
-# header existed renders review and feedback, and drops anything else in silence.
-LEGACY_KINDS: frozenset[str] = frozenset({"review", "feedback"})
-
-
-# What a caller that names no runtime (`X-Treg-Client`) and declares nothing is assumed to show: a
-# script or backend calling the API directly, with no agent reading the hint header. It is never
-# asked for a review, so a team's review budget goes to its agents' calls; the feedback hint asks
-# for nothing and stays.
-UNNAMED_KINDS: frozenset[str] = LEGACY_KINDS - {"review"}
-
-
-def accepted_kinds(header: str | None, client: str = "") -> frozenset[str]:
-    """The invitations a client says it shows (`X-Treg-Hints: review,mark,feedback,compare`).
-    Without the header, a named runtime (`client`, from `X-Treg-Client`) gets `LEGACY_KINDS`
-    and an unnamed caller `UNNAMED_KINDS`."""
-    if header is None:
-        return LEGACY_KINDS if client else UNNAMED_KINDS
-    return frozenset(k.strip().lower() for k in header.split(",") if k.strip())
 
 
 def budget_key(org_id: int) -> str:

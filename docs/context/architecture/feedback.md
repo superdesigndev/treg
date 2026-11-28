@@ -171,22 +171,26 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 ## Review and feedback invitations
 
 `application.call.invite.invitation(context, status, replayed, accepts)` runs in
-`routers.call.call_tool` after the response is built and before it streams, and returns `compare`,
-`review`, `mark`, `feedback` or nothing, in that order of precedence. `accepts` is what the client says it
-shows (`X-Treg-Hints: review,mark,feedback`, parsed by `accepted_kinds`); a client that does not
-send the header gets `LEGACY_KINDS` (review and feedback), since released CLIs drop any other kind
-in silence. A kind outside `accepts` is skipped before its budget is spent, so the call falls
-through to the next. The team `/mcp/` and the binary CLI send all four (`review,mark,feedback,compare`);
-`/mcp/v2/` sends the first three. The router sends
-`X-Treg-Hint: compare|review|mark|feedback` with its words in `X-Treg-Hint-Text` (`hints.header_text`, only
-to a client that sent `X-Treg-Hints`, since the words name flags an older release lacks; plus
-`X-Treg-Review: requested` on a review, read by CLI releases up to 0.18) and emits one
-`hint_attached` event per invitation sent (`kind`, `call_id`, `client`, `endpoint_id`, which is
-`treg.<capability>` for a routed parent; a review adds `budget`, `main` or `extra`, and
-`credited_endpoint`, the endpoint its review would be credited to). Surfaces only translate
-the header: the CLI prints a stderr line, the team `/mcp/` renders it into its single hint slot with
-priority replay > 402 > compare > review > mark > feedback. `/mcp/v2/` and OpenAI's clients on `/mcp/` render none,
-so for them `hint_attached` counts an invitation the agent never saw.
+`routers.call._relay_answer` before the response streams. The router skips invitation selection
+on `X-Treg-Upstream-Failed` and `X-Treg-Served-Via: overflow:*` responses, so failed upstream
+envelopes and overflow-relayed calls spend no invitation budget and never collide with MCP's
+single hint slot.
+`hints.accepted_kinds` parses the invitation kinds a client displays from `X-Treg-Hints`.
+An omitted header selects `LEGACY_KINDS` (review and feedback) for a named runtime and
+`UNNAMED_KINDS` (feedback) for an unnamed caller. An empty header opts out of every kind.
+The selection checks `compare`, `review`, `mark` and `feedback` in that order, skipping any
+undeclared kind before spending its budget.
+
+The team MCP `call` declares only the invitation kinds the caller's scopes permit (`review`, `mark`,
+and `feedback` need `treg:catalog`; `compare` needs `treg:read`; team and identity tokens declare
+all four). `/mcp/v2/`, OpenAI clients and `call_media` send an empty `X-Treg-Hints` and
+spend no invitation budget. When the router attaches `X-Treg-Hint`, it emits `hint_attached`
+(`kind`, `call_id`, `client`, `endpoint_id`, which is `treg.<capability>` for a routed parent;
+a review adds `budget`, `main` or `extra`, and `credited_endpoint`, the endpoint its review would
+be credited to) and adds `X-Treg-Hint-Text` for clients that sent `X-Treg-Hints`. A review also sets
+`X-Treg-Review: requested` for older clients. The CLI prints the invitation on stderr and the
+team MCP `call` renders it into its single hint slot with priority
+replay > 402 > compare > review > mark > feedback.
 
 - **Review**: a direct catalog call on treg's platform key, or a routed parent (credited to the
   child that answered, as an uninvited routed review always was), 2xx, not replayed, not archive-served,
@@ -195,7 +199,7 @@ so for them `hint_attached` counts an invitation the agent never saw.
   with volume, so the budget caps how often a busy team is asked. There is deliberately no
   per-endpoint cooldown. An own tool never qualifies, even if its name matches a catalog endpoint.
   A caller that names no runtime (`X-Treg-Client`) and sends no `X-Treg-Hints` is a script or
-  backend with no agent reading the header: it is never asked (`invite.UNNAMED_KINDS`) and spends
+  backend with no agent reading the header: it is never asked (`hints.UNNAMED_KINDS`) and spends
   no budget, which stays for the team's agents' calls; it still gets the feedback hint. `invited`
   on a review does not recompute this, so such a review, rare, can still read as invited.
   With `review_target_reviews` > 0 the draw is targeted (`application/review_targets.py`): the
@@ -238,10 +242,8 @@ so for them `hint_attached` counts an invitation the agent never saw.
   (the `compare-ready:<org_id>` flag the worker run sets; see "Pairwise comparisons"), from a client
   that lists `compare` in `X-Treg-Hints` and is not pinned to tags, at most
   `compare_budget_per_hour` a team per hour (`compare-hint-budget:<org_id>`); past that the call falls
-  through to review. It precedes review. The team `/mcp/` and the binary CLI send `compare`;
-  `/mcp/v2/` and the Python CLI never receive it. Both show the pair itself, since an agent judges
-  answers in front of it and rarely fetches them: the team `/mcp/` puts it in the call result
-  (`compare`, compacted by `compare.compact_pair`) with `hints.compare_inline_hint`, and the binary
+  through to review. The team MCP puts the pair in the call result (`compare`, compacted by
+  `compare.compact_pair`) with `hints.compare_inline_hint`, and the binary CLI
   reads `GET /comparisons/next?compact=true` (the same compaction plus `how_to_vote`,
   `hints.compare_cli_hint`) within two seconds and prints it on stderr, or under `--json`
   as `_treg.compare`. A failed read prints `X-Treg-Hint-Text` (`hints.COMPARE_CLI_HINT`) alone.
@@ -318,9 +320,10 @@ calls `compare.mark_eligible(call_ref, capability, raw_headers, route_summary, a
 when the feature is configured (`compare_capabilities` listed, `compare_max_per_day` and
 `compare_daily_usd` above 0), the capability is comparable (`compare.comparable()`: listed, with a
 contract and at least two providers with a verified adapter), the request carried no `X-Treg-Route-*` header (a caller that chose vendors or
-routing is left alone), the team keeps an archive and `hints.sampled_at("compare", call_ref,
-compare_rate)` samples it in, it writes `compare-ok:v2:<call_ref>` in the shared store for two hours
-(`MARKER_TTL_S`), inside a short timeout. The value is the contract input the caller sent
+routing is left alone), the team keeps an archive, the client declares `compare` in `X-Treg-Hints`,
+and `hints.sampled_at("compare", call_ref, compare_rate)` samples it in, it writes
+`compare-ok:v2:<call_ref>` in the shared store with `MARKER_TTL_S` and a short write timeout.
+The value is the contract input the caller sent
 (`route_summary["identity"]`, the body minus a page cursor) as JSON, at most
 `MARKER_INPUT_MAX_BYTES`; a larger input writes no marker. A page continuation (a `cursor` in
 the summary) is never marked: B would be asked page one against A's later page. Nor is a merged
@@ -329,8 +332,8 @@ answer is A. The key carries the marker's version (`MARKER_VERSION`), so a run n
 marker an earlier build wrote under rules it no longer applies. A team opted out of the archive gets no
 marker, so its input never sits in the store. No database, no change to the answer, nothing raised: a lost marker only means the call is
 never compared. It is the only work on the call path.
-Every decision is counted by reason and `X-Treg-Client` (`marked`, `not_sampled`, `route_header`,
-`page_continuation`, `not_listed`, ...) and logged per process every `MARK_LOG_EVERY_S` as one
+Every decision is counted by reason and `X-Treg-Client` (`marked`, `client_no_compare`, `not_sampled`,
+`route_header`, `page_continuation`, `not_listed`, ...) and logged per process every `MARK_LOG_EVERY_S` as one
 `compare markers {...}` line of counts; a run reports its `no_marker` calls by client too.
 
 **The run.** `treg-worker compare collect` (`application.compare.collect`), meant for an hourly

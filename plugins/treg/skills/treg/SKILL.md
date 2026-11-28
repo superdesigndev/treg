@@ -483,6 +483,10 @@ When a result invites a review, rate that call after using it: `treg review CALL
 [--reason "..."]` or MCP `review`, with `useful`, `partly`, `not_useful` or `not_sure`. A reason may
 be quoted on the tool's catalog page without naming your team, so write about the tool.
 
+When invited to compare, judge which anonymous answer better serves the input. Use `treg compare`
+in the binary CLI to see the pair and `treg compare ID 1|2|tie|both_bad --reason "..."` to vote, or
+use the `compare` tool on team MCP. Voting is free. Then continue the task.
+
 When you learn a result was wrong, or confirm it was right, mark that call: an email bounced,
 another source disagreed, the user corrected it. `treg mark CALL_ID 2/email:wrong --basis bounced`
 in the binary CLI, or the `mark` tool where your MCP connection lists it. Each item is

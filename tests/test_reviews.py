@@ -141,16 +141,46 @@ async def test_admin_review_pagination(clients, monkeypatch):
     assert (await clients.get('/admin/reviews', headers=headers, params={'limit': 101})).status_code == 422
 
 
-async def test_mcp_review_relay(clients):
+async def test_mcp_review_relay(clients, monkeypatch):
+    from treg.application import compare, review_targets
+    from treg.infra import kv
     from test_mcp import _call_tool as team_call, mcp_session
 
-    org = await seed(clients)
+    monkeypatch.setattr(review_targets, 'sampled', lambda *_: True)
+    org = await seed(clients, credential_tier='platform')
     async with mcp_session(clients) as client:
         result = await team_call(client, 'review', {'call_id': 'review-call', 'usefulness': 'partly',
                                              'reason': 'Some results helped.'}, token=org['token'])
     row, = await rows()
     assert result == {'review_id': row.id, 'status': 'received'}
     assert row.usefulness == 'partly'
+    assert await kv.store().get_text(compare.answering_key(org['org_id']))
+
+
+async def test_mcp_review_without_compare_scope_does_not_mark_answering(clients, monkeypatch):
+    from treg.application import compare, review_targets
+    from treg.infra import kv
+    from test_mcp_directory import _call_tool, paired_mcp_session
+    from test_mcp_oauth import _grant
+
+    monkeypatch.setattr(review_targets, 'sampled', lambda *_: True)
+    token, org_id = await _grant(clients, 'review-no-compare@example.test', scope='treg:catalog treg:call')
+    async with session_maker() as db:
+        db.add(CallRecord(
+            org_id=org_id, user_email='review-no-compare@example.test',
+            tool_name='example', method='GET', path='/', status_code=200,
+            call_ref='review-oauth-no-read', endpoint_id='example.search',
+            credential_tier='platform',
+        ))
+        await db.commit()
+    async with paired_mcp_session() as client:
+        result = await _call_tool(
+            client, 'review',
+            {'call_id': 'review-oauth-no-read', 'usefulness': 'useful'},
+            token, path='/mcp/',
+        )
+    assert result['status'] == 'received'
+    assert await kv.store().get_text(compare.answering_key(org_id)) is None
 
 
 async def test_mcp_review_schema():

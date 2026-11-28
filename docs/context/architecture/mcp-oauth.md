@@ -128,15 +128,15 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
   latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`, in
   pages of `max_chars` characters (`MCP_RESULT_PAGE_CHARS`) with `page` (total, next offset)
   ahead of the body, because clients cut long tool replies.
-- `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`, so V2 never renders the invitation
-  `/call/` decided on (`_SurfacePolicy.invites`); `/call/` still decides and records it
-  ([feedback](feedback.md)). Only the team surface lists `compare` in `X-Treg-Hints`, so `/call/`
-  never decides a comparison invitation for V2. `compare` needs `treg:read`: it shows the team's
-  past inputs and answers, as `call_result` does.
+- `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`. The directory surface and
+  `call_media` send an empty `X-Treg-Hints` to opt out of invitations. Team MCP `call` declares
+  only the invitation kinds the caller's scopes allow (`review`, `mark` and `feedback` need
+  `treg:catalog`; `compare` needs `treg:read`, because it shows the team's past inputs and answers,
+  like `call_result`). See [feedback](feedback.md).
 - **OpenAI clients** (`openai-mcp/` for ChatGPT and its plugin reviewer, `codex-mcp-client/` for Codex,
   by User-Agent) are not offered `review`, `mark` or `compare`: `_OpenAIClientGate` drops them from `tools/list` and the
-  instructions, and their call results carry no invitation, because that review reads
-  agent-initiated rating as analytics collection.
+  instructions. Their tool calls also send an empty `X-Treg-Hints` because OpenAI's review treats
+  agent-initiated ratings as analytics collection.
 
 **Annotations.** `call` is destructive, open-world and non-idempotent: treg relays to somebody else's
 API and cannot know whether that endpoint charges, writes or deletes; claiming otherwise would be a

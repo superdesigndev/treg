@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import hints
 from ..application import compare as compare_app
 from ..application import feedback as feedback_app
-from ..application.call.invite import accepted_kinds
 from ..domain import feedback
 from ..domain.feedback import marks, reviews
 from ..domain.governance.access import pinned_tag_predicates
@@ -117,7 +116,7 @@ async def submit_review(
         review_id, inserted, mark_id = await feedback_app.submit_review(
             org_id=caller.org_id, user_email=caller.email,
             client=request.headers.get("X-Treg-Client", ""),
-            shows_compare="compare" in accepted_kinds(request.headers.get("X-Treg-Hints")),
+            shows_compare="compare" in hints.accepted_kinds(hints.hints_header(request.headers)),
             pinned_tags=caller.membership.pinned_tags, **values,
         )
     except feedback_app.ReviewCallNotFound:

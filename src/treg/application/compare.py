@@ -161,6 +161,8 @@ def _mark_reason(capability: str | None, raw_headers, summary: dict, archive_opt
         return "no_input"
     if any(bytes(name).lower().startswith(_ROUTE_HEADER_PREFIX) for name, _ in raw_headers):
         return "route_header"
+    if "compare" not in hints.accepted_kinds(hints.hints_header(raw_headers)):
+        return "client_no_compare"
     if not hints.sampled_at("compare", call_ref, settings.compare_rate):
         return "not_sampled"
     return None
@@ -169,7 +171,8 @@ def _mark_reason(capability: str | None, raw_headers, summary: dict, archive_opt
 async def mark_eligible(call_ref: str, capability: str | None, raw_headers,
                         route_summary: dict | None = None, *, archive_opted_out: bool = False) -> None:
     """On the call path, after a successful routed answer: mark the call for a comparison run when
-    it samples in, its capability is listed (`comparable`), the caller sent no `X-Treg-Route-*` header (a caller
+    it samples in, its capability is listed (`comparable`), the caller declares `compare` in
+    `X-Treg-Hints`, the caller sent no `X-Treg-Route-*` header (a caller
     that chose vendors or routing is left alone) and its team keeps an archive. The marker holds
     the contract input the caller sent (`route_summary["identity"]`, at most
     `MARKER_INPUT_MAX_BYTES`), so the run asks B exactly that question instead of reading it back
