@@ -1588,7 +1588,8 @@ async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, 
     A common answer (an empty result) is shared by a large part of `archivesnapshot`, and a
     `content_hash IN` filter lets the planner walk every snapshot of it. Each statement names at
     most `_ON_FILE_CHUNK` keys, so one page's lookup is several short statements under the trim's
-    per-statement timeout, not one long one."""
+    per-statement timeout, not one long one, and keeps only the asked pairs it returned, so a
+    key's long history is not carried from one chunk to the next."""
     from sqlalchemy import or_, select
 
     from .models import ArchiveKey, ArchiveSnapshot
@@ -1604,12 +1605,16 @@ async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, 
     key_ids = sorted(keys)
     found: set[tuple[str, str]] = set()
     for start in range(0, len(key_ids), _ON_FILE_CHUNK):
-        found |= {(keys[key_id], content) for key_id, content in (await session.execute(
+        rows = await session.stream(
             select(ArchiveSnapshot.key_id, ArchiveSnapshot.content_hash)
             .where(ArchiveSnapshot.key_id.in_(key_ids[start:start + _ON_FILE_CHUNK]),
                    or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
-                       ArchiveSnapshot.body_of.is_not(None))))).tuples().all()}
-    return found & pairs
+                       ArchiveSnapshot.body_of.is_not(None)))
+            .execution_options(yield_per=1000))
+        async for key_id, content in rows:
+            if (pair := (keys[key_id], content)) in pairs:
+                found.add(pair)
+    return found
 
 
 def answer_on_file(key_hash: str, body_hash: str):
