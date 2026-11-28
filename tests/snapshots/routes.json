@@ -1333,6 +1333,24 @@
       "GET",
       "HEAD"
     ],
+    "name": "ai_ads_page",
+    "path": "/ai-ads"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "ai_ads_md",
+    "path": "/ai-ads.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "follower_analysis_page",
     "path": "/follower-analysis"
   },

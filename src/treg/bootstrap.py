@@ -267,6 +267,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/doomscroll', ('GET',), 'doomscroll_page'),
     ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
     ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
+    ('/ai-ads', ('GET',), 'ai_ads_page'),
+    ('/ai-ads.md', ('GET',), 'ai_ads_md'),
     ('/follower-analysis', ('GET',), 'follower_analysis_page'),
     ('/follower-analysis/board.json', ('GET',), 'follower_board_json'),
     ('/follower-analysis/board/{handle}.json', ('GET',), 'follower_board_entry'),
