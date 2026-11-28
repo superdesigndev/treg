@@ -1322,6 +1322,122 @@ async def test_a_take_refused_after_a_refill_it_did_not_run_was_turned_away_is_n
     assert skip_lines() == [_skip(org_id, "take_refused", 1)]
 
 
+def _admission_on(monkeypatch, wait_s: float) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_admission_enabled", True)
+    monkeypatch.setattr(settings, "money_admission_org_ids", [])
+    monkeypatch.setattr(settings, "money_admission_wait_s", wait_s)
+
+
+async def _exact_reserve(org_id: int, entered: list[float], hold_s: float = 0.02) -> None:
+    """One exact-path reserve of the team: it holds the team's money admission for a while."""
+    try:
+        async with runtime.money_admission.admit([org_id], operation="reserve"):
+            entered.append(time.monotonic())
+            await asyncio.sleep(hold_s)
+    except runtime.money_admission.ReserveAdmissionTimeout:
+        pass
+
+
+async def test_a_refill_takes_its_turn_ahead_of_the_teams_queued_exact_reserves(
+        org_id, store, monkeypatch):
+    """A hundred exact-path reserves of the team queue for its money admission, two seconds of
+    turns in all. The refill they wait on does not join the end of that line: it has the next
+    turn, well inside its own wait."""
+    _admission_on(monkeypatch, 1.0)
+    entered: list[float] = []
+    queued = [asyncio.create_task(_exact_reserve(org_id, entered)) for _ in range(100)]
+    while not entered:
+        await asyncio.sleep(0.001)
+    started = time.monotonic()
+    assert await runtime._refill(org_id, 0, 0)
+    assert time.monotonic() - started < 0.25
+    assert sum(at < started + 0.25 for at in entered) <= 3, "one or two turns, not the queue"
+    await asyncio.gather(*queued)
+    assert store.counters[org_id]["avail"] == CHUNK
+    assert not any(key.endswith(":claim") for key in store.leases)
+
+
+async def test_a_refill_and_a_starved_fold_both_claiming_the_next_turn_each_get_one(
+        org_id, store, monkeypatch):
+    """Another process's waiters of the team take its lease the moment it is free. A refill here
+    and a starved fold elsewhere both claim the next turn at once: one holds the claim, the other
+    waits as an ordinary waiter does, and each still gets the lease within its budget."""
+    _admission_on(monkeypatch, 1.0)
+    key, stop, claims, most = f"money-admission:org:{org_id}", asyncio.Event(), set(), [0]
+    acquire, release = store.acquire_lease, store.release_lease
+
+    async def counted_acquire(lease, token, ttl_ms, **kwargs):
+        result = await acquire(lease, token, ttl_ms, **kwargs)
+        if lease == f"{key}:claim" and result == "acquired":
+            claims.add(token)
+            most[0] = max(most[0], len(claims))
+        return result
+
+    async def counted_release(lease, token):
+        if lease == f"{key}:claim":
+            claims.discard(token)
+        return await release(lease, token)
+
+    async def hog() -> int:
+        turns = 0
+        while not stop.is_set():
+            token = f"other-{turns}"
+            if await acquire(key, token, 1000, unless=f"{key}:claim") == "acquired":
+                turns += 1
+                await asyncio.sleep(0.03)
+                await release(key, token)
+            else:
+                await asyncio.sleep(0.001)
+        return turns
+
+    async def starved_fold() -> float:
+        async with runtime.money_admission.admit(
+                [org_id], operation="close", max_wait_s=0.5, refuse_on_timeout=True,
+                priority=True):
+            entered = time.monotonic()
+            await asyncio.sleep(0.03)
+        return entered
+
+    monkeypatch.setattr(store, "acquire_lease", counted_acquire)
+    monkeypatch.setattr(store, "release_lease", counted_release)
+    other = asyncio.create_task(hog())
+    await asyncio.sleep(0.005)
+    started = time.monotonic()
+    try:
+        fold_entered, refilled = await asyncio.gather(
+            starved_fold(), runtime._refill(org_id, 0, 0))
+        refill_done = time.monotonic()
+    finally:
+        stop.set()
+        turns = await other
+    assert refilled and refill_done - started < 1.0
+    assert fold_entered - started < 0.5
+    assert most == [1], "the claim is one waiter's at a time"
+    assert turns >= 1 and not claims
+
+
+async def test_a_frozen_counters_refill_waits_its_turn_without_a_claim(
+        org_id, store, monkeypatch):
+    """A frozen counter's refill folds the whole queue under the lease, so it waits in line as
+    the team's other money work does; the ordinary refill claims the next turn."""
+    _admission_on(monkeypatch, 1.0)
+    admit, asked = runtime.money_admission.admit, []
+
+    def recorded(org_ids, *args, operation, priority=False, **kwargs):
+        if operation == "reserve":
+            asked.append(priority)
+        return admit(org_ids, *args, operation=operation, priority=priority, **kwargs)
+
+    monkeypatch.setattr(runtime.money_admission, "admit", recorded)
+    assert await runtime._refill(org_id, 0, 0)
+    await store.allowance_freeze(org_id)
+    assert await runtime._refill(org_id, 0, 0)
+    assert asked == [True, False]
+    counter = store.counters[org_id]
+    assert counter["frozen"] == counter["thawed"], "the frozen refill thawed the counter"
+
+
 @pytest.fixture
 def skip_lines(monkeypatch, caplog):
     """`skip_lines()` is every skip line the default sink wrote, as raw text."""
