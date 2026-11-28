@@ -425,3 +425,32 @@ def test_classify_config_file_cli():
 def test_classify_device_cli_is_unsupported_even_if_installed():
     d = prov.classify_cli(_DEVICE_CLI, installed=True, secret_present=True, logged_in=True)
     assert d["status"] == "unsupported" and "device" in d["reason"]
+
+
+def test_ample_token_matches_ample_computer(tmp_path):
+    env = _write_env(tmp_path, "AMPLE_TOKEN=amp_x\nAMPLE_API_URL=https://api.ample.computer\nSAMPLE_RATE=0.1\n")
+    d = _by_var(prov.scan_env(env))
+    assert d["AMPLE_TOKEN"].kind == "matched" and d["AMPLE_TOKEN"].provider == "Ample Computer"
+    assert d["AMPLE_TOKEN"].probe == "v1/auth/whoami"
+    assert d["AMPLE_API_URL"].kind == "config"          # the API address is not a credential
+    assert d.get("SAMPLE_RATE") is None or d["SAMPLE_RATE"].provider != "Ample Computer"
+
+
+def test_ample_cli_denies_commands_that_copy_or_hand_off_the_credential():
+    from treg import localrun
+    [entry] = [p for p in prov.CATALOG if p["provider"] == "Ample Computer"]
+    assert prov.match_skill("ample") is entry
+    cli = entry["cli"]
+    localrun.validate_cli_profile(cli)
+    assert prov.cli_env_var(cli) == "AMPLE_TOKEN"
+    for argv in (["auth", "token", "create", "--name", "ci", "--scope", "apps:read"],
+                 ["auth", "--format", "json", "token", "create", "--name", "ci"],
+                 ["auth", "token", "--format=table", "create"], ["--format", "json", "auth", "agent", "create"],
+                 ["auth", "token", "revoke", "tok_a1b2c3d4"], ["auth", "claim", "--email", "x@example.com"],
+                 ["auth", "login", "--token", "t"], ["auth", "logout"], ["auth", "signup"],
+                 ["auth", "redeem", "ample_onb_sk_x"], ["bucket", "credentials", "b"], ["bucket", "rotate-key", "b"],
+                 ["mcp"], ["--format", "json", "mcp"], ["worker", "invoke"], ["--format=json", "worker", "invoke"]):
+        assert localrun.check_deny(cli, argv), argv
+    for argv in (["deploy"], ["auth", "whoami"], ["auth", "token", "list"], ["app", "list"],
+                 ["bucket", "list"], ["service", "restart", "worker"], ["logs", "dep_1", "--kind", "build"]):
+        assert localrun.check_deny(cli, argv) is None, argv

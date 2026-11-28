@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 28  # v28: JobsPipe and Hirebase
+CATALOG_VERSION = 29  # v29: Ample Computer
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -130,6 +130,25 @@ CATALOG: list[dict] = [
                                          "~/.local/share/com.vercel.cli/auth.json"]},
              "inject": [{"via": "argv", "argv": ["--token", "{secret}"], "env_from": "VERCEL_TOKEN"}], "errors": _ERR_AUTH,
              "warnings": ["the token is passed as a --token flag (visible in `ps` on shared machines)"]}},
+    {"provider": "Ample Computer", "tokens": ["AMPLE"],           "base_url": "https://api.ample.computer",                      "auth": {"shape": "bearer"}, "probe": "v1/auth/whoami",
+     "skills": ["ample", "ample-cli"],
+     "cli": {"bin": "ample", "login_cmd": "ample auth login",
+             "install": "curl -fsSL https://get.ample.computer/install.sh | sh", "auth_mechanism": "env", "beta": True,
+             # AMPLE_TOKEN wins over a saved token or browser sign-in.
+             "detect": {"config_paths": ["~/Library/Application Support/ample/config.json",
+                                         "~/.config/ample/config.json"]},
+             # Deny commands that mint, print or revoke a credential, sign this machine in or out, or
+             # hand the account to someone else: a run should use the org's token, not copy it.
+             # --format is global, so it may sit between the words. `mcp` and the hidden
+             # `worker invoke` run any command (these included) from stdin. check_deny also tests each
+             # argument alone, so any argument that is exactly `mcp` (`docs mcp`, an app named mcp) is
+             # refused too: a bare `ample mcp` cannot be told apart from it.
+             "deny": [r"(^|\s)auth\s(.*\s)?(token|agent)\s(.*\s)?(create|revoke)(\s|$)",
+                      r"(^|\s)auth\s(.*\s)?(claim|login|logout|signup|redeem)(\s|$)",
+                      r"(^|\s)bucket\s(.*\s)?(credentials|rotate-key)(\s|$)",
+                      r"^(--format(=\S+|\s+\S+)\s+)?mcp(\s|$)",
+                      r"^(--format(=\S+|\s+\S+)\s+)?worker\s"],
+             "inject": [{"via": "env", "name": "AMPLE_TOKEN"}], "errors": _ERR_AUTH}},
     {"provider": "Ahrefs",      "tokens": ["AHREFS"],              "base_url": "https://api.ahrefs.com/v3",                       "auth": {"shape": "bearer"}},
     {"provider": "Apify",       "tokens": ["APIFY"],               "base_url": "https://api.apify.com/v2",                        "auth": {"shape": "bearer"}, "probe": "users/me"},
     {"provider": "ScrapeCreators", "tokens": ["SCRAPECREATORS"],   "base_url": "https://api.scrapecreators.com",                  "auth": {"shape": "api_key_header", "header": "x-api-key"}},

@@ -1,5 +1,5 @@
 {
- "version": 28,
+ "version": 29,
  "providers": [
   {
    "provider": "Google Ads",
@@ -630,6 +630,54 @@
     ],
     "warnings": [
      "the token is passed as a --token flag (visible in `ps` on shared machines)"
+    ]
+   }
+  },
+  {
+   "provider": "Ample Computer",
+   "tokens": [
+    "AMPLE"
+   ],
+   "base_url": "https://api.ample.computer",
+   "auth": {
+    "shape": "bearer"
+   },
+   "probe": "v1/auth/whoami",
+   "skills": [
+    "ample",
+    "ample-cli"
+   ],
+   "cli": {
+    "bin": "ample",
+    "login_cmd": "ample auth login",
+    "install": "curl -fsSL https://get.ample.computer/install.sh | sh",
+    "auth_mechanism": "env",
+    "beta": true,
+    "detect": {
+     "config_paths": [
+      "~/Library/Application Support/ample/config.json",
+      "~/.config/ample/config.json"
+     ]
+    },
+    "deny": [
+     "(^|\\s)auth\\s(.*\\s)?(token|agent)\\s(.*\\s)?(create|revoke)(\\s|$)",
+     "(^|\\s)auth\\s(.*\\s)?(claim|login|logout|signup|redeem)(\\s|$)",
+     "(^|\\s)bucket\\s(.*\\s)?(credentials|rotate-key)(\\s|$)",
+     "^(--format(=\\S+|\\s+\\S+)\\s+)?mcp(\\s|$)",
+     "^(--format(=\\S+|\\s+\\S+)\\s+)?worker\\s"
+    ],
+    "inject": [
+     {
+      "via": "env",
+      "name": "AMPLE_TOKEN"
+     }
+    ],
+    "errors": [
+     {
+      "pattern": "(?i)\\b401\\b|unauthorized|invalid.{0,10}(api.)?key|authentication",
+      "verdict": "credential_invalid",
+      "message": "the org's credential is invalid or expired"
+     }
     ]
    }
   },
