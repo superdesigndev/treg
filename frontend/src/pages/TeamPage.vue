@@ -20,7 +20,7 @@ const TIPS = {
 }
 export default {
   components: { InfoTip, Money, Avatar, TeamShowcase, TeamAvatar, EnterpriseSSO },
-  data: () => ({ NO_KEY, TIPS, stripeSlate, stripeWhite, memberSsoReady: false, spendCustom: {}, spendDraft: {}, spendToast: null, memberMenu: null, memberConfirm: null }),
+  data: () => ({ NO_KEY, TIPS, stripeSlate, stripeWhite, memberSsoReady: false, capDraft: {}, spendCustom: {}, spendDraft: {}, spendToast: null, memberMenu: null, memberConfirm: null }),
   computed: {
     // Every daily limit resets at 00:00 UTC; the viewer also sees that moment in their own time.
     resetNote() {
@@ -111,6 +111,15 @@ export default {
       // "No limit" with no team amount stores "follow the team", so a later team amount applies.
       const err = await this.setSpendCap(m, mode === 'none' && this.spendFollowsTeam(m) ? 'none' : '')
       this.toastSpend(m, err)
+    },
+    // The calls-per-day box keeps what is being typed until it saves, so a redraw never resets it.
+    capShown(m) {
+      return m.user_id in this.capDraft ? this.capDraft[m.user_id] : this.capField(m.daily_call_cap)
+    },
+    async saveCap(m, value) {
+      await this.setCap(m, value)
+      const { [m.user_id]: _, ...rest } = this.capDraft
+      this.capDraft = rest
     },
     spendAmount(m) {
       const cap = m.daily_spend_cap_micro
@@ -346,7 +355,7 @@ export default {
                     <span v-else class="role" :class="m.role">{{m.role}}</span>
                   </td>
                   <td style="text-align:right" class="muted">{{m.used_today}}</td>
-                  <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capField(m.daily_call_cap)" placeholder="No limit" @change="setCap(m,$event.target.value)" :aria-label="'Calls per day for '+(m.email||m.name)" title="Calls + runs per day. Empty = no limit."/></td>
+                  <td><input class="msel" type="number" min="0" step="1" style="width:78px" :value="capShown(m)" placeholder="No limit" @input="capDraft = { ...capDraft, [m.user_id]: $event.target.value }" @change="saveCap(m,$event.target.value)" :aria-label="'Calls per day for '+(m.email||m.name)" title="Calls + runs per day. Empty = no limit."/></td>
                   <td><div class="spend-pick">
                       <select class="msel" :value="spendMode(m)" @change="pickSpendMode(m,$event.target.value)" :aria-label="'Daily spend limit for '+(m.email||m.name)">
                         <option v-if="spendFollowsTeam(m)" value="team">{{spendDefaultLabel(m)}}</option>
