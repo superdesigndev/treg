@@ -168,7 +168,7 @@ async def test_dormant_low_balance_teams_do_not_crowd_out_a_refused_one(c):
     for i in range(3):
         await _team(c, f"dormant{i}@x.dev", refused=0)
     refused = await _team(c, "refused@x.dev", refused=50, autotopup_failures=3)
-    assert [b.org_id for b in await watch.find_blocked(min_refusals=20)] == [refused]
+    assert [b.org_id for b in await watch.find_blocked(min_refusals=20, page=2)] == [refused]
 
 
 async def test_a_team_below_the_floor_the_hour_before_is_still_new(c):
@@ -181,3 +181,9 @@ async def test_a_card_without_consent_is_named_as_such(c):
     await _team(c, "noconsent@x.dev", refused=30, autotopup_consented_at=None)
     [b] = await watch.find_blocked(min_refusals=20)
     assert b.limit == watch.LIMIT_NO_CONSENT
+
+
+async def test_a_team_that_never_turned_auto_top_up_on_is_named_as_paying_by_hand(c):
+    await _team(c, "manual@x.dev", refused=30, autotopup_enabled=False, autotopup_consented_at=None)
+    [b] = await watch.find_blocked(min_refusals=20)
+    assert b.limit == watch.LIMIT_OFF and "never turned on" in b.detail

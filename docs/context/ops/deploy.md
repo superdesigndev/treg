@@ -694,8 +694,7 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   it hourly with `TREG_OPS_SLACK_WEBHOOK_URL` set. It reads `callrecord` outside the rollup cursors,
   but only per team through `(org_id, created_at)`, two hours of each team already below its
   threshold, so a run reads no more rows than those teams sent. It reads the replica when the
-  read database URL is set, one short transaction per team, and logs a warning when the candidate
-  list reaches `max_teams`.
+  read database URL is set, pages the candidates by id, and takes one short transaction per team.
 - **`arena insights`** needs the archive object-store settings when R2 reads are on.
 - **`showcase activity`** is needed only where the showcase leaderboard is served.
 - **`media sweep`** deletes unreferenced public pictures (only `img/`, older than a day). Pictures are
