@@ -102,7 +102,8 @@ Gmail dots) share it.
 **Over MCP** (`https://treg.to/mcp/`), tools replace the CLI, and everything here maps onto them:
 
 - search the catalog → `catalog_search`, then `catalog_get` for the exact parameters and price. On
-  `verdict: none`, file `catalog_request` rather than rephrasing.
+  `verdict: none`, file `catalog_request` rather than rephrasing. Its reply's `matches` names
+  existing tools the text finds; one may already do the job.
 - what is new → `catalog_search` with `added_within_days` (30 is a good default) or
   `sort: "newest"`; `query` may then be empty.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;

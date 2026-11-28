@@ -521,12 +521,13 @@ async def test_v2_search_and_catalog_request_keep_directory_attribution(clients)
             "query": "zzzz-directory-only-miss",
         }, token)
         request = await _call_tool(client, "catalog_request", {
-            "capability": "directory attribution test",
+            "capability": "backlinks",   # a text the team surface answers with matches
         }, token)
     await audit.drain()
 
     assert miss["count"] == 0
     assert request["status"] == "received"
+    assert "matches" not in request and "matches_note" not in request   # the submitted schema
     async with session_maker() as db:
         search_row = (await db.execute(select(SearchMiss))).scalars().one()
         request_row = (await db.execute(select(ToolRequest))).scalars().one()

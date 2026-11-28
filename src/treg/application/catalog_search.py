@@ -3,7 +3,7 @@
 The lexical page is the shipped ranker: `store.rank_band` over a band wider than the page (so a
 routed group can collapse without starving it), the evidence rerank, the listed hub tools merged by
 score with no boost, routed parents grouped with their children, cut
-to the page. Nothing here touches `store.search` or its scoring; the MCP layer only shapes the rows
+to the page. Nothing here changes `store.search` or its scoring; the MCP layer only shapes the rows
 this returns.
 
 What the caller sees is the discovery experiment's say (`search_experiment`, one setting):
@@ -25,8 +25,10 @@ session before any judge request, so no connection is held while the judge think
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -125,6 +127,59 @@ async def lexical(query: str, cat: catalog_store.Catalog, limit: int, *, observe
         total += len(hub_ranked)
     rows, hidden = _group(ranked, limit)
     return Page(rows, total, tie_truncated, stats, hidden, steer)
+
+
+REQUEST_MATCHES = 5        # existing tools a catalog request's reply names
+REQUEST_TERMS = 6          # words of the request searched: each is one pass over the catalog
+REQUEST_MATCHES_NOTE = ("these existing tools may already do this - look one up by its id to see its "
+                        "parameters and price; your request is recorded either way")
+# The matcher is CPU work; its own small pool keeps a burst of requests off the shared default pool.
+_REQUEST_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="treg-request-match")
+
+
+def request_matches(text: str, cat: catalog_store.Catalog, limit: int = REQUEST_MATCHES) -> Rows:
+    """The existing tools a catalog request's text finds: the shipped ranker's first rows, routed
+    groups collapsed as on the search page. A text longer than REQUEST_TERMS words is searched by
+    its first REQUEST_TERMS distinct words, which bounds the cost. No hub rows, no judge, no
+    observed stats: nothing here reads a database or calls out.
+
+    The floor: search admits a row that misses one word in three, and on a request that is how a
+    wrong job gets in ("text to speech in Persian" admitting a speech-to-text row). So only rows
+    holding every searched word are kept; when none does, only the rows tied with the top score."""
+    words = catalog_store.content_words(text)
+    if not words:
+        return []
+    query = text if len(words) <= REQUEST_TERMS else " ".join(words[:REQUEST_TERMS])
+    rows, _ = catalog_store.search(query, cat, limit * 4)
+    if not rows:
+        return []
+    kept = ([r for r in rows if catalog_store.matches_every_word(query, r[0], cat)]
+            or [r for r in rows if r[1] >= rows[0][1]])
+    return _group(kept, limit)[0]
+
+
+def request_reply(text: str, cat: catalog_store.Catalog, query: str = "") -> dict:
+    """The fields a catalog request's reply adds: `matches` (possibly empty), and a note when any.
+    The request's text is searched first, then the search the caller says came up empty."""
+    try:
+        rows = request_matches(text, cat)
+        if not rows and query.strip() and query.strip().lower() != text.strip().lower():
+            rows = request_matches(query, cat)
+    except Exception:
+        log.warning("catalog request matching failed; replying without matches", exc_info=True)
+        rows = []
+    matches = [{"endpoint_id": ep["id"],
+                "name": ep.get("name") or (ep.get("summary") or "")[:70],
+                "provider": ep.get("provider"),
+                "summary": " ".join((ep.get("summary") or "").split())[:160]}
+               for ep, _ in rows]
+    return {"matches": matches, **({"matches_note": REQUEST_MATCHES_NOTE} if matches else {})}
+
+
+async def request_reply_off_loop(text: str, query: str = "") -> dict:
+    """`request_reply` over the shipped catalog, on the matcher's own pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_REQUEST_POOL, request_reply, text, catalog_store.load(), query)
 
 
 async def added_page(query: str, cat: catalog_store.Catalog, limit: int, opts: catalog_store.AddedOptions, *,

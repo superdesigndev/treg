@@ -15,7 +15,9 @@ from sqlmodel import select
 
 from treg import audit
 from treg.api import TOOLREQ_RATE_MAX, app
+from treg.application import catalog_search as search_app
 from treg.config import get_settings
+from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import SearchMiss, ToolRequest
 
@@ -124,3 +126,89 @@ async def test_an_exempt_address_is_not_rate_limited(clients: AsyncClient, monke
         r = await clients.post("/tool-requests", json={"capability": f"thing {i}"})
         assert r.status_code == 200, r.text
     assert len(await _fetch_rows()) == TOOLREQ_RATE_MAX + 1
+
+
+# ---- the reply names existing tools that may already do the job ----------------------------
+
+async def test_the_reply_names_existing_tools_the_text_matches(clients: AsyncClient):
+    """The ids are the shipped ranker's for the same text; the reply's old fields are unchanged."""
+    r = await clients.post("/tool-requests", json={"capability": "backlinks"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "received" and body["id"] and body["note"].startswith("logged")
+    expected = [ep["id"] for ep, _ in search_app.request_matches("backlinks", catalog_store.load())]
+    assert expected and [m["endpoint_id"] for m in body["matches"]] == expected
+    assert len(expected) <= search_app.REQUEST_MATCHES
+    assert all(set(m) == {"endpoint_id", "name", "provider", "summary"} for m in body["matches"])
+    assert "recorded either way" in body["matches_note"]
+    assert len(await _fetch_rows()) == 1
+
+
+@pytest.mark.parametrize("capability", ["!!! ???", "zzzz-no-such-capability", "a " * 99],
+                         ids=["punctuation", "no-match", "function-words"])
+async def test_text_that_finds_nothing_files_with_an_empty_list(clients: AsyncClient, capability):
+    r = await clients.post("/tool-requests", json={"capability": capability})
+    assert r.status_code == 200, r.text
+    assert r.json()["matches"] == [] and "matches_note" not in r.json()
+    assert len(await _fetch_rows()) == 1
+
+
+def test_a_long_text_searches_a_bounded_number_of_words(monkeypatch):
+    """Each searched word is one pass over the catalog, so the words searched are capped."""
+    searched: list[str] = []
+    real = catalog_store.search
+    monkeypatch.setattr(catalog_store, "search", lambda q, *a, **k: (searched.append(q), real(q, *a, **k))[1])
+    text = " ".join(f"word{i}" for i in range(60))
+    assert search_app.request_matches(text, catalog_store.load()) == []
+    (query,) = searched
+    assert catalog_store.content_words(query) == [f"word{i}" for i in range(search_app.REQUEST_TERMS)]
+
+
+@pytest.mark.parametrize("text, right", [
+    ("Zillow property listings", lambda i: "zillow" in i),
+    ("text to speech in Persian", lambda i: "instagram" not in i and "transcript" not in i),
+    ("generate image from text prompt", lambda i: "video" not in i),
+    ("domain WHOIS lookup", lambda i: "whois" in i),
+], ids=["zillow", "tts", "image", "whois"])
+def test_a_row_that_misses_a_word_does_not_point_the_wrong_way(text, right):
+    """Search admits a row missing one word in three; the reply keeps only rows holding every
+    word, or else the rows tied at the top."""
+    ids = [ep["id"] for ep, _ in search_app.request_matches(text, catalog_store.load())]
+    assert ids and all(right(i) for i in ids), ids
+
+
+@pytest.mark.parametrize("text, word", [("TikTok comments", "comments"), ("YouTube transcript", "youtube")])
+def test_a_plain_request_still_finds_its_tools(text, word):
+    ids = [ep["id"] for ep, _ in search_app.request_matches(text, catalog_store.load())]
+    assert len(ids) >= 2 and all(word in i for i in ids), ids
+
+
+async def test_the_search_that_came_up_empty_is_searched_too(clients: AsyncClient):
+    r = await clients.post("/tool-requests", json={"capability": "zzzz-no-such-capability", "query": "backlinks"})
+    assert r.status_code == 200 and r.json()["matches"], r.text
+
+
+async def test_the_directory_surface_skips_the_matcher(clients: AsyncClient, monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("the matcher ran for a reply that drops it")
+    monkeypatch.setattr(search_app, "request_matches", boom)
+    r = await clients.post("/tool-requests", json={"capability": "backlinks", "source": "claude-connector"})
+    assert r.status_code == 200 and "matches" not in r.json()
+    assert len(await _fetch_rows()) == 1
+
+
+async def test_the_matcher_runs_on_its_own_pool(monkeypatch):
+    import threading
+    seen = []
+    monkeypatch.setattr(search_app, "request_reply", lambda *_a: seen.append(threading.current_thread().name) or {})
+    await search_app.request_reply_off_loop("backlinks")
+    assert seen and seen[0].startswith("treg-request-match")
+
+
+async def test_a_failing_matcher_still_files_the_request(clients: AsyncClient, monkeypatch):
+    def boom(*_a, **_k):
+        raise RuntimeError("matcher down")
+    monkeypatch.setattr(search_app, "request_matches", boom)
+    r = await clients.post("/tool-requests", json={"capability": "backlinks"})
+    assert r.status_code == 200 and r.json()["status"] == "received" and r.json()["matches"] == []
+    assert len(await _fetch_rows()) == 1
