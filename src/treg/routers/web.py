@@ -273,7 +273,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
   <div class="foot-in">
     <div class="foot-brand">
       <div class="brand">{_GLYPH} treg</div>
-      <div class="note">100% open source</div>
+      <div class="note">Source available</div>
     </div>
     <nav class="foot-cols" aria-label="Site">
       <div class="foot-col"><div class="lab">Explore</div>
