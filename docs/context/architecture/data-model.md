@@ -509,7 +509,11 @@ that changes `callrecord` alone fails them; they skip once `callrecord` is parti
 and changes nothing. The reason is the readers that count "today" or rebuild a recent window from
 call records: the trial allowance (`_trial_calls_today`), the spend recount, a catalog day repair
 (`_repair_bucket`), a new usage or Arena cursor. On a table holding only its newest rows they
-would give wrong answers without an error. To copy before the release that carries `0142` is
+would give wrong answers without an error. Calls older than the copy leave every reader of
+`callrecord` (Activity, `/calls`, `GET /calls/{id}/result`) at the swap, until the backfill copies
+them back from `callrecord_legacy`. A rollback of `0142` is code only, to the build before it,
+which runs on the partitioned table unchanged; its downgrade copies every row back in one
+statement that blocks every audit insert. To copy before the release that carries `0142` is
 deployed, apply the first two revisions alone (`alembic upgrade 0141`) and run the backfill from
 a checkout of that release; older code serves unchanged on that schema.
 

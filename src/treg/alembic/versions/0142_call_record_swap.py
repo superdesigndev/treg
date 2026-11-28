@@ -1,7 +1,7 @@
 """the partitioned call record table takes the name `callrecord`
 
-Revision ID: 0126
-Revises: 0125
+Revision ID: 0142
+Revises: 0141
 Create Date: 2026-11-18
 
 After this revision `callrecord` is the monthly-partitioned, 64-bit table that 0141 built, and the
@@ -52,17 +52,23 @@ An empty `callrecord` (a new database) is dropped instead of kept as `callrecord
 evidence blanked in the old table after its row was copied is blanked again by the next
 `treg-worker admin purge-evidence` run, which selects by age.
 
-A connection that prepared a statement returning `callrecord.id` before the swap gets
-"cached statement plan is invalid" once, because the column type changed; the driver then
-prepares it again. The audit writer retries a failed batch row by row, so it loses nothing.
+A statement prepared before the swap whose result includes `callrecord.id` is refused from then
+on ("cached statement plan is invalid"), because that column changed type. On a direct connection
+the driver prepares it again after the first refusal; behind a transaction pooler that keeps one
+server statement per query text, as the background pool may be, it stays refused until that
+server connection closes. So the audit writer inserts call records without returning the id, from
+the release before this one (alembic 0140 and 0141), and no background-pool query reads
+`callrecord.id`.
 
 SQLite has no partitions and its ids are 64-bit already. There the revision only drops the
 foreign key to `org`, so both databases agree with the model.
 
-Rollback floor: older code runs on the partitioned table unchanged, so a code rollback does not
-need the downgrade. The downgrade puts a plain `integer` table back under the name `callrecord`
-and copies into it every row the partitioned table holds, in one statement; it is meant for a
-small database and fails with "integer out of range" once an id has passed 2,147,483,647.
+Rollback floor: the build before this revision (the one that carries 0140 and 0141) runs on the
+partitioned table unchanged, so a rollback is code only, to that build; never the downgrade on a
+large table. The downgrade puts a plain `integer` table back under the name `callrecord` and
+copies into it every row the partitioned table holds, in one statement that blocks every audit
+insert while it runs; it is meant for a small database and fails with "integer out of range" once
+an id has passed 2,147,483,647.
 """
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
