@@ -742,6 +742,67 @@ def test_every_adapter_const_passes_its_child_body_allowlist():
     assert failures == {}, failures
 
 
+def _fixture_identity(cat, adapter, ep):
+    """The identity the endpoint's own test_request stands for, read back the way `verify` reads it."""
+    tr = ep.get("test_request") or {}
+    body = tr.get("body") or {}
+    doc = {"queryParams": tr.get("queryParams") or {}, "body": body[0] if isinstance(body, list) else body,
+           "pathParams": tr.get("pathParams") or {}}
+    ident = {k: v[0] if isinstance(v, list) and len(v) == 1 else v
+             for k, t in adapter.in_map.items() if (v := P.get_path(doc, t)) not in (None, "")}
+    return canonical_identity(cat.contracts[ep["capability"]], dict(adapter.test_identity) or ident)
+
+
+def test_every_routed_list_adapter_pages_through_a_treg_cursor():
+    """Page one's provider token leaves a routed call only inside a `trg1.` cursor, and that cursor,
+    sent back to the same routed tool, puts the token where the provider row says it takes it."""
+    cat = catalog_store.load()
+    routed = {ep["capability"]: ep for ep in cat.by_id.values() if ep.get("kind") == "routed"}
+    checked, failures = 0, {}
+    for eid, adapter in sorted(cat.adapters.items()):
+        ep = cat.by_id[eid]
+        caps = [c for c in (ep["capability"], *adapter.verified_capabilities) if c in routed]
+        if not adapter.route or not adapter.verified or "next_cursor" not in adapter.out_map or not caps:
+            continue
+        if not adapter.paging:
+            failures[eid] = "maps out.next_cursor without paging: the provider's own token leaks"
+            continue
+        path = adapter.paging["cursor"]
+        loc, name = path.split(".", 1)
+        params = (ep.get("input") or {}).get(loc) or {}
+        params = params.get("properties", params) if params.get("type") == "object" else params
+        if name.split(".")[0] not in params or adapter.body_array:
+            failures[eid] = f"paging.cursor {path} is not a parameter of the provider row"
+            continue
+        token = f"tok-{eid}"
+        example = deepcopy(json.loads(catalog_store.example_path(eid).read_text()))
+        out_path = adapter.out_map["next_cursor"].removeprefix("coalesce(").split(",")[0].rstrip(")")
+        P.set_path(example, out_path, token)
+        if adapter.from_upstream(example).get("next_cursor") != token:
+            failures[eid] = f"out.next_cursor {out_path} does not read the token back"
+            continue
+        identity, variant = _fixture_identity(cat, adapter, ep)
+        for cap in caps:
+            given = {**identity, "limit": 2}
+            cursor = call_route._next_cursor(SimpleNamespace(endpoint=ep), token, given)
+            if not cursor or not cursor.startswith("trg1.") or token in cursor:
+                failures[eid] = f"{cap}: page one did not carry a treg cursor"
+                continue
+            try:
+                served, value = call_route._read_cursor(routed[cap], cursor, dict(given))
+            except ResolutionFailed as exc:
+                failures[eid] = f"{cap}: its own cursor was refused: {exc.detail}"
+                continue
+            query, body = adapter.to_upstream(identity, variant)
+            call_route._resume_at(adapter, query, body, value)
+            sent = P.get_path({"queryParams": query, "body": body}, path)
+            if served != eid or sent != token:
+                failures[eid] = f"{cap}: page two went to {served} with {path}={sent!r}"
+            checked += 1
+    assert failures == {}, failures
+    assert checked >= 90
+
+
 def test_every_routed_adapter_sends_its_rows_platform_request_pins():
     """A shared-key pin (`platform_request`) is enforced, not injected: a routed child whose adapter
     does not send the pinned value is a 400 on treg's key, and the router reads a 400 as the

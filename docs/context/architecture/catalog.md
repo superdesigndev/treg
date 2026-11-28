@@ -1197,7 +1197,11 @@ to a mapped word. `cost_units` gives an upper bound in catalog-priced units, use
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
 request (a number, or a string of ASCII digits) rather than letting it answer less than asked.
 `paging: {cursor: <body. or queryParams. path>}` (beside `out.next_cursor`) lets a routed answer
-continue on this child ([proxy-model](proxy-model.md) § Routed endpoints). A
+continue on this child ([proxy-model](proxy-model.md) § Routed endpoints). A routed adapter maps
+`out.next_cursor` only with `paging` naming a parameter of its provider row: without it the
+provider's own token reaches the caller and is refused when sent back
+(`test_every_routed_list_adapter_pages_through_a_treg_cursor` holds every routed list adapter to
+it). A
 routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
 whole number from 1 to that child's max: otherwise the routed call is refused (400
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
