@@ -245,21 +245,23 @@ endpoints:
     input:
       body:
         email: {type: string, required: true, note: "the email address to resolve", example: "patrick@stripe.com"}
-        with_profile: {type: boolean, required: false, note: "true returns the enriched profile instead of just the profile URL — and DOUBLES the price to 2 credits", example: false}
+        with_profile: {type: boolean, required: false, default: false, note: "true returns the enriched profile instead of just the profile URL — and DOUBLES the price to 2 credits", example: false}
       note: "returns {linkedin_url} by default, or an extended profile object when with_profile is true"
     test_request:
       body: {email: "patrick@stripe.com"}
     cost:
       type: per_success
-      value: 1
+      table:
+        - {when: {body.with_profile: false}, value: 1}
+      fallback: {value: 2, note: "with the full profile"}
       currency: credit
       per: 1
       unit: call
       source: docs
       source_url: https://app.findymail.com/docs/
-      checked: '2026-08-20'
+      checked: '2026-11-28'
       confidence: documented
-      note: "1 finder credit for the profile URL, 2 when with_profile=true. Nothing on a miss. The 1-vs-2 split is stated in the API docs, not on the pricing page (which only publishes the flat 1 credit = 1 verified email rate)."
+      note: "1 finder credit for the profile URL, 2 with with_profile=true; a miss is free."
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.verify
