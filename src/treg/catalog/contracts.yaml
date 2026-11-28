@@ -60,6 +60,8 @@ contracts:
     # Finders that guess from the same name patterns can still agree on a wrong one.
     confirm: email
     ad_hashes: email
+    # Slow finders that rarely hit, asked after the faster ones so a call another finder answers never waits on them.
+    ask_last: [limadata, anymailfinder, sixtyfour, fiber-ai, descovo]
 
   people.email.find.personal:
     summary: "Find someone's personal email from their LinkedIn URL or work email — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
@@ -182,7 +184,8 @@ contracts:
     check: {endpoint: hlrlookup.people.phone.verify, field: phone, when: "e164_digits(phone) != null", skip_reason: not_international,
             skip_advice: "This number has no country code, so it was not checked: a live lookup would read its first digits as a country code. Add the country code (+ and the digits), or call hlrlookup.people.phone.verify with input_format set to the ISO3 country code (for example USA)."}
     # LeadOcean returned the most wrong-person numbers in a 110-person benchmark; asked first on price, it answers before more accurate providers.
-    ask_last: [leadocean]
+    # Fiber AI and Sixtyfour answer in seconds to tens of seconds and rarely hit here; asked last, they still catch what the others miss.
+    ask_last: [leadocean, fiber-ai, sixtyfour]
 
   people.phone.live:
     summary: "Check whether a phone number is live on its network — a live network lookup, not a format check"
@@ -319,6 +322,8 @@ contracts:
       location: {type: string, analytics: value}
     miss: "full_name == null"
     idempotent: true
+    # Hunter and Tomba rarely find the person here (Hunter answers an error on part of the calls); asked after the others, they still catch what the others miss.
+    ask_last: [hunter, tomba]
 
   # ---- batch 3: social + keywords (2026-08-28) ------------------------------------------------
   instagram.user.posts:
