@@ -3434,7 +3434,7 @@ adapters:
     max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.max_num_results: limit}
-    const: {body.search_type: web, body.max_price: 5, body.response_length: short}
+    const: {body.search_type: web, body.max_price: 6.25, body.response_length: short}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   tinyfish.web.search:
