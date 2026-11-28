@@ -220,7 +220,13 @@ team's `org:`/`conn:` scopes with its snapshots and request shape, plus every `A
 mark. Erasure also deletes the team's `CallComparison` rows (`domain/feedback/comparisons.py`,
 `delete_for_org`, in the final cleanup transaction) and best-effort clears `compare-ready:<org_id>`
 after commit; `compare._claim` takes a short `FOR SHARE` lock on `Org` against `archive_opt_out_at`
-so no new comparison is claimed after opt-out. Platform-key answers are public questions and stay
+so no new comparison is claimed after opt-out, the worker waits `CALL_GAP_S` before the final
+eligibility check and claim, and `compare._ready_to_dispatch` rechecks team eligibility and the
+pending row immediately before calling provider B. Because no database lock is held across
+outbound HTTP (non-negotiable 3), an opt-out landing between that pre-dispatch recheck and the HTTP
+send — or while provider B's request is already in flight — cannot cancel the outbound request;
+`compare._finish` drops the answer without storing a `ready` row or setting `compare-ready:<org_id>`.
+Platform-key answers are public questions and stay
 by default. Once the marks go, the archive no longer names the team; `callrecord` still keeps the
 team's `params_hash` per call.
 

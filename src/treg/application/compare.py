@@ -600,16 +600,47 @@ async def _claim(session_factory, values: dict, limit: int, *, spend_limit_micro
     return "claimed"
 
 
-async def _finish(session_factory, org_id: int, call_ref: str, values: dict) -> bool:
-    """Settle the claimed row; take it back if its team was deleted meanwhile (team deletion itself
-    removes a row it finds, and the next run removes any it missed)."""
+async def _ready_to_dispatch(session_factory, org_id: int, call_ref: str) -> bool:
+    """Final check immediately before asking B: the team is still active and opted into the
+    archive, and the claimed pending row has not been erased. Removes a still-pending row when
+    the team opted out or was suspended/deleted after claim."""
     async with session_factory() as db:
+        org = await db.get(Org, org_id)
+        row = await comparisons.by_call_ref(db, call_ref)
+        if row is None or row.status != comparisons.PENDING:
+            return False
+        if org is None or org.suspended or org.archive_opt_out_at is not None:
+            await db.execute(delete(CallComparison).where(
+                CallComparison.call_ref == call_ref,
+                CallComparison.status == comparisons.PENDING,
+            ))
+            await db.commit()
+            return False
+    return True
+
+
+async def _finish(session_factory, org_id: int, call_ref: str, values: dict) -> bool:
+    """Settle the claimed row; drop it if the team was deleted or opted out of the archive
+    meanwhile (team deletion and archive erasure remove rows they find, and the next run
+    removes any orphan)."""
+    async with session_factory() as db:
+        org = (await db.execute(select(Org.archive_opt_out_at).where(
+            Org.id == org_id,
+        ).with_for_update(read=True))).first()
+        if org is None or org.archive_opt_out_at is not None:
+            await db.execute(delete(CallComparison).where(
+                CallComparison.call_ref == call_ref,
+                CallComparison.status == comparisons.PENDING,
+            ))
+            await db.commit()
+            return False
         settled = await comparisons.finish(db, call_ref, **values)
         await db.commit()
     if not settled:
         return False
     async with session_factory() as db:
-        if await db.get(Org, org_id) is None:
+        org = await db.get(Org, org_id)
+        if org is None or org.archive_opt_out_at is not None:
             await db.execute(delete(CallComparison).where(CallComparison.call_ref == call_ref))
             await db.commit()
             return False
@@ -919,6 +950,9 @@ async def _one(served: Served, cat, now, session_factory, client, store, totals,
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     if a_output is None:
         return "skipped:a_output_unreadable"
+    # Wait before the final eligibility check and claim so opt-out during pacing never claims or dispatches.
+    if totals["called"]:
+        await asyncio.sleep(CALL_GAP_S)
     if not await _still_eligible(session_factory, parent.org_id):
         return "skipped:team_no_longer_eligible"
     claimed = await _claim(session_factory, dict(
@@ -935,12 +969,14 @@ async def _one(served: Served, cat, now, session_factory, client, store, totals,
         return "skipped:day_spend_cap"
     if claimed != "claimed":
         return f"skipped:claim_{claimed}"
+    # No DB lock spans outbound HTTP (non-negotiable 3); recheck right before dispatch, and let
+    # `_finish` discard any in-flight answer whose team opted out or left before settlement.
+    if not await _ready_to_dispatch(session_factory, parent.org_id, parent.call_ref):
+        return "skipped:opted_out_before_dispatch"
     key = (cand.capability, a_ep["provider"], b_provider)
     tally[key] = tally.get(key, 0) + 1
     by = totals["called_by"]
     by["/".join(key)] = by.get("/".join(key), 0) + 1
-    if totals["called"]:
-        await asyncio.sleep(CALL_GAP_S)
     totals["called"] += 1
     totals["estimate_micro"] += target.price_micro
     try:

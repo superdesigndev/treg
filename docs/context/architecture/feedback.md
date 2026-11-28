@@ -422,16 +422,22 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
    flow-control pause (`org_flow_control.confirmed_unpaused`: a fresh read; a read that fails, an
    invalid publication or a pause in force all skip, unlike admission, which allows on failure),
    and still has no access policy and no archive opt-out.
-10. The claim, in one short transaction: one attempt and B's price on the current UTC day's
-   `compareattemptday` row, read at the claim, so a run crossing midnight counts on the new day
-   (one conditional `UPDATE ... SET attempts = attempts + 1, spent_micro = spent_micro + price
-   WHERE attempts < limit AND spent_micro + price <= spend limit`, the day's first row inserted on
-   conflict do nothing; at the call limit nothing is written and the run stops, over the spend
-   nothing is written and the call is skipped as `day_spend_cap`). The claim rechecks the archive
-   setting and the pair cap, then inserts the `pending` row. The transaction orders the claim
-   against an opt-out update so erasure can find the row. The unique `call_ref` stops a second run.
-   A crash after the claim leaves `pending`: it still counts and is never
-   resent. The day's counts are no team's row, so deleting a team gives no quota and no spend back.
+10. After pacing (`CALL_GAP_S` between calls) and the final eligibility recheck, the claim runs in
+    one short transaction: one attempt and B's price on the current UTC day's
+    `compareattemptday` row, read at the claim, so a run crossing midnight counts on the new day
+    (one conditional `UPDATE ... SET attempts = attempts + 1, spent_micro = spent_micro + price
+    WHERE attempts < limit AND spent_micro + price <= spend limit`, the day's first row inserted on
+    conflict do nothing; at the call limit nothing is written and the run stops, over the spend
+    nothing is written and the call is skipped as `day_spend_cap`). The claim rechecks the archive
+    setting and the pair cap, then inserts the `pending` row. The transaction orders the claim
+    against an opt-out update so erasure can find the row; immediately before dispatching B,
+    `_ready_to_dispatch` rechecks that the team is still active and opted into the archive and that
+    the `pending` row still exists (removing it if the team opted out after claim). Because no DB
+    lock spans outbound HTTP, an opt-out between that check and dispatch or while B is in flight
+    cannot cancel the outbound request, and `_finish` discards the result instead of settling it to
+    `ready`. The unique `call_ref` stops a second run.
+    A crash after the claim leaves `pending`: it still counts and is never
+    resent. The day's counts are no team's row, so deleting a team gives no quota and no spend back.
 11. One request, through the relay alone (`infra.upstream.relay.relay`) on treg's primary key
     (`platform_bindings`): the request the router's first child call on treg's key sends for the
     team's question. The adapter's values go to the relay unformatted (a `false` reaches the vendor
@@ -447,7 +453,8 @@ cron. A listed capability short of two verified vendors is logged and skipped. E
     `site:` the question names, is a miss), so both are contract `output`; the log line names the
     outcome and its reasons, never the body. The row is settled to
     `ready` only on a hit; anything else (an error, no answer, a miss) settles it `failed`, with no
-    bodies, and nothing else is called. If the team was deleted meanwhile, the row is taken back.
+    bodies, and nothing else is called. If the team was deleted or opted out of the archive
+    meanwhile, the row is dropped and `compare-ready:<org_id>` is not set.
 
 **Spend and capacity.** A day's spend is at most `compare_daily_usd` of B's catalog prices, no one
 request above `compare_max_b_micro`, and that holds only where the catalog price is the request's

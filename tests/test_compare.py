@@ -547,6 +547,71 @@ async def test_a_worker_cannot_claim_a_pair_after_archive_erasure(clients, searc
         assert not await comparisons.attempts(db, compare._day())
 
 
+@pytest.mark.parametrize("erase", [True, False])
+async def test_opt_out_after_claim_and_before_dispatch_skips_b(clients, search_on, monkeypatch, erase):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(org_id, "opt out after claim")
+    claim = compare._claim
+
+    async def claim_then_opt_out(*args, **kwargs):
+        outcome = await claim(*args, **kwargs)
+        assert outcome == "claimed"
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+        if erase:
+            await archive_erasure.erase_org(org_id)
+        return outcome
+
+    monkeypatch.setattr(compare, "_claim", claim_then_opt_out)
+    result = await _collect()
+    assert result["called"] == 0 and result["skip_reasons"] == {"opted_out_before_dispatch": 1}, result
+    assert sent == [] and await _rows() == []
+    assert not await kv.store().has_flag(compare.ready_key(org_id))
+
+
+async def test_pacing_wait_runs_before_final_eligibility_check_and_claim(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(org_id, "first call")
+    await _routed_call(org_id, "second call")
+    monkeypatch.setattr(compare, "CALL_GAP_S", 0.5)
+    slept: list[float] = []
+
+    async def sleep_and_opt_out(delay: float):
+        slept.append(delay)
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+        await archive_erasure.erase_org(org_id)
+
+    monkeypatch.setattr(compare.asyncio, "sleep", sleep_and_opt_out)
+    result = await _collect()
+    assert slept == [0.5]
+    assert result["called"] == 1 and len(sent) == 1, result
+    assert result["skip_reasons"] == {"team_no_longer_eligible": 1}, result
+    assert await _rows() == []
+    async with session_maker() as db:
+        assert await comparisons.attempts(db, compare._day()) == 1
+
+
+async def test_opt_out_while_b_is_in_flight_drops_the_result(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+
+    async def opt_out_in_flight():
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+
+    sent = _relay_b(monkeypatch, before=opt_out_in_flight)
+    await _routed_call(org_id, "opt out in flight")
+    result = await _collect()
+    assert len(sent) == 1 and result["ready"] == 0, result
+    assert await _rows() == []
+    assert not await kv.store().has_flag(compare.ready_key(org_id))
+
+
 async def test_a_row_settled_as_the_team_goes_is_taken_back(clients, monkeypatch):
     from contextlib import asynccontextmanager
     from treg.domain.governance import teams
