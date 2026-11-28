@@ -9,6 +9,7 @@ import re
 import asyncpg
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
 from tests.conftest import ensure_postgres_database
@@ -171,6 +172,36 @@ async def test_a_transaction_pooling_pgbouncer_passes_startup():
     if not infra_db._background_url:
         pytest.skip("requires a PgBouncer via TREG_TEST_POOLER_URL")
     await infra_db.verify_background_database()
+
+
+async def test_the_observation_read_survives_a_cursor_type_change_behind_the_pooler():
+    """Behind a pooler with prepared statement support the server keeps one statement per query
+    text, and PostgreSQL refuses every later run of a statement whose result changed type. Alembic
+    0140 widens `endpointstatcursor.cursor_id`, so the background pool's observation read must not
+    return that column."""
+    if not infra_db._background_url:
+        pytest.skip("requires a PgBouncer via TREG_TEST_POOLER_URL")
+    from treg.infra.catalog_observations import PostgresEndpointObservationReader
+    from treg.models import EndpointStatCursor
+    from treg.timeutil import utcnow_naive
+
+    await infra_db.reset_db()
+    reader = PostgresEndpointObservationReader(infra_db.background_session_maker)
+    async with infra_db.session_maker() as session:
+        await session.execute(text("ALTER TABLE endpointstatcursor ALTER COLUMN cursor_id TYPE integer"))
+        session.add(EndpointStatCursor(id="callrecord", caught_up_at=utcnow_naive()))
+        await session.commit()
+    try:
+        before = await reader.get_many(["any.endpoint"])
+        async with infra_db.session_maker() as session:
+            await session.execute(text("ALTER TABLE endpointstatcursor ALTER COLUMN cursor_id TYPE bigint"))
+            await session.commit()
+        for _ in range(5):   # each read may land on another server connection
+            assert await reader.get_many(["any.endpoint"]) == before
+    finally:
+        async with infra_db.session_maker() as session:
+            await session.execute(text("ALTER TABLE endpointstatcursor ALTER COLUMN cursor_id TYPE bigint"))
+            await session.commit()
 
 
 # Session-level state does not survive a transaction behind a transaction-pooling PgBouncer. Only
