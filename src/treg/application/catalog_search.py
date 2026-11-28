@@ -131,6 +131,7 @@ async def lexical(query: str, cat: catalog_store.Catalog, limit: int, *, observe
 
 REQUEST_MATCHES = 5        # existing tools a catalog request's reply names
 REQUEST_TERMS = 6          # words of the request searched: each is one pass over the catalog
+REQUEST_JUDGE_WORDS = 7    # a request this long is a sentence, which the word search misses: the judge picks
 REQUEST_MATCHES_NOTE = ("these existing tools may already do this - look one up by its id to see its "
                         "parameters and price; your request is recorded either way")
 # The matcher is CPU work; its own small pool keeps a burst of requests off the shared default pool.
@@ -158,11 +159,43 @@ def request_matches(text: str, cat: catalog_store.Catalog, limit: int = REQUEST_
     return _group(kept, limit)[0]
 
 
-def request_reply(text: str, cat: catalog_store.Catalog, query: str = "") -> dict:
-    """The fields a catalog request's reply adds: `matches` (possibly empty), and a note when any.
-    The request's text is searched first, then the search the caller says came up empty."""
+async def _judge_request(text: str, cat: catalog_store.Catalog, provider_display, limit: int) -> Rows:
+    r = await find.recall_with_meaning(text, cat, provider_display)
+    found = await find.judge_and_decide(text, r.cands, cat, provider_display,
+                                        timeout_s=float(get_settings().typesafe_timeout_s), not_task=find.KEYWORD,
+                                        focus=r.focus)
+    await find.lay_out(found, text, cat, keyword_rows=False)
+    served = serve(found, cat, limit, hub=[], steer=catalog_store.routed_discovery_on())
+    return [(row["ep"], 0.0) for row in served[0]] if served else []
+
+
+async def judged_request_matches(text: str, cat: catalog_store.Catalog, provider_display=lambda s: s,
+                                 limit: int = REQUEST_MATCHES) -> Rows:
+    """A long request's matches as an agent's v2 search picks them: recall by job and meaning, one
+    judge request on the search's budget, the page `serve` lays out, with no hub rows and no
+    observed stats. Only for a text of REQUEST_JUDGE_WORDS words or more, and only while the search
+    judge runs (`search_experiment` at `v2`). The whole of it is bounded by the embedding's and
+    the judge's timeouts together. Empty when it did not run or gave no rows (abstained, timed
+    out, failed, kept nothing); the caller then runs the word search. Never raises."""
+    if len(catalog_store.content_words(text)) < REQUEST_JUDGE_WORDS or search_experiment.mode() != "v2":
+        return []
+    s = get_settings()
     try:
-        rows = request_matches(text, cat)
+        return await asyncio.wait_for(_judge_request(text, cat, provider_display, limit),
+                                      float(s.typesafe_timeout_s) + float(s.find_embed_timeout_s))
+    except TimeoutError:
+        return []
+    except Exception:
+        log.warning("catalog request judging failed; matching by words", exc_info=True)
+        return []
+
+
+def request_reply(text: str, cat: catalog_store.Catalog, query: str = "", judged: Rows | None = None) -> dict:
+    """The fields a catalog request's reply adds: `matches` (possibly empty), and a note when any.
+    The judge's rows when it gave some; else the request's text is searched first, then the search
+    the caller says came up empty."""
+    try:
+        rows = judged or request_matches(text, cat)
         if not rows and query.strip() and query.strip().lower() != text.strip().lower():
             rows = request_matches(query, cat)
     except Exception:
@@ -176,10 +209,13 @@ def request_reply(text: str, cat: catalog_store.Catalog, query: str = "") -> dic
     return {"matches": matches, **({"matches_note": REQUEST_MATCHES_NOTE} if matches else {})}
 
 
-async def request_reply_off_loop(text: str, query: str = "") -> dict:
-    """`request_reply` over the shipped catalog, on the matcher's own pool."""
+async def request_reply_off_loop(text: str, query: str = "", provider_display=lambda s: s) -> dict:
+    """`request_reply` over the shipped catalog, on the matcher's own pool, with a long text's
+    judged rows (`judged_request_matches`, awaited here) when there are any."""
+    cat = catalog_store.load()
+    judged = await judged_request_matches(text, cat, provider_display)
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_REQUEST_POOL, request_reply, text, catalog_store.load(), query)
+    return await loop.run_in_executor(_REQUEST_POOL, request_reply, text, cat, query, judged)
 
 
 async def added_page(query: str, cat: catalog_store.Catalog, limit: int, opts: catalog_store.AddedOptions, *,

@@ -9,15 +9,20 @@ its hint, in the API and over MCP.
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
+from tests.test_catalog_find import _abstain, _fake_v2, _on
 from treg import audit
 from treg.api import TOOLREQ_RATE_MAX, app
 from treg.application import catalog_search as search_app
 from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
+from treg.infra import judge as judge_infra
 from treg.infra.db import session_maker
 from treg.models import SearchMiss, ToolRequest
 
@@ -212,3 +217,104 @@ async def test_a_failing_matcher_still_files_the_request(clients: AsyncClient, m
     r = await clients.post("/tool-requests", json={"capability": "backlinks"})
     assert r.status_code == 200 and r.json()["status"] == "received" and r.json()["matches"] == []
     assert len(await _fetch_rows()) == 1
+
+
+# ---- a long request's matches are the search judge's -----------------------------------------
+
+LONG = "find the verified work email address of a person from their name and company"
+JOB = "people.email.find"
+
+
+def _word_rows(monkeypatch) -> list[str]:
+    """The word search answers one known row, so a reply built from it is told apart."""
+    ep = next(e for e in catalog_store.load().by_id.values() if e.get("capability") == "web.crawl")
+    monkeypatch.setattr(search_app, "request_matches", lambda *_a, **_k: [(ep, 1.0)])
+    return [ep["id"]]
+
+
+def test_the_long_request_is_long_and_a_short_one_is_not():
+    assert len(catalog_store.content_words(LONG)) >= search_app.REQUEST_JUDGE_WORDS
+    assert len(catalog_store.content_words("TikTok comments")) < search_app.REQUEST_JUDGE_WORDS
+
+
+async def test_a_long_request_is_matched_by_one_judge_request(clients: AsyncClient, monkeypatch):
+    _on(monkeypatch, search_experiment="v2")
+    seen = []
+    monkeypatch.setattr(judge_infra, "judge", _fake_v2({JOB: 0.92}, seen))
+    words = _word_rows(monkeypatch)
+    r = await clients.post("/tool-requests", json={"capability": LONG})
+    assert r.status_code == 200 and r.json()["status"] == "received", r.text
+    ids = [m["endpoint_id"] for m in r.json()["matches"]]
+    cat = catalog_store.load()
+    assert ids and ids != words and all(cat.by_id[i].get("capability") == JOB for i in ids), ids
+    assert len(ids) <= search_app.REQUEST_MATCHES
+    (query, _, kw), = seen
+    assert query == LONG and kw["timeout_s"] == get_settings().typesafe_timeout_s
+    assert len(await _fetch_rows()) == 1
+
+
+async def test_a_short_request_never_asks_the_judge(clients: AsyncClient, monkeypatch):
+    _on(monkeypatch, search_experiment="v2")
+    seen = []
+    monkeypatch.setattr(judge_infra, "judge", _fake_v2({JOB: 0.92}, seen))
+    r = await clients.post("/tool-requests", json={"capability": "backlinks"})
+    expected = [ep["id"] for ep, _ in search_app.request_matches("backlinks", catalog_store.load())]
+    assert r.status_code == 200 and [m["endpoint_id"] for m in r.json()["matches"]] == expected
+    assert seen == []
+
+
+async def _raises(*_a, **_k):
+    raise RuntimeError("judge down")
+
+
+async def _bad_body(*_a, **_k):
+    return judge_infra.Reply(answers={"c0": {"noul": "not a number"}}, ms=5)
+
+
+async def _keeps_nothing(query, cands, **kw):
+    return await _fake_v2({}, plat=("people", 0.9))(query, cands, **kw)
+
+
+@pytest.mark.parametrize("case", ["abstains", "raises", "bad_body", "keeps_nothing", "judge_off", "no_key"])
+async def test_a_judge_that_gives_no_rows_falls_back_to_the_word_search(clients: AsyncClient, monkeypatch, case):
+    _on(monkeypatch, search_experiment="v2")
+    asked = []
+    if case == "bad_body":
+        judge_infra.clear_cache()
+        monkeypatch.setattr(judge_infra, "ask", _bad_body)
+    elif case in ("judge_off", "no_key"):
+        monkeypatch.setattr(judge_infra, "judge", _fake_v2({JOB: 0.92}, asked))
+        monkeypatch.setattr(get_settings(), *(("search_experiment", "shadow") if case == "judge_off"
+                                              else ("typesafe_api_key", "")))
+    else:
+        monkeypatch.setattr(judge_infra, "judge", {"abstains": _abstain, "raises": _raises,
+                                                    "keeps_nothing": _keeps_nothing}[case])
+    words = _word_rows(monkeypatch)
+    r = await clients.post("/tool-requests", json={"capability": LONG})
+    assert r.status_code == 200 and r.json()["status"] == "received", r.text
+    assert [m["endpoint_id"] for m in r.json()["matches"]] == words
+    assert asked == [] and len(await _fetch_rows()) == 1
+
+
+async def test_a_slow_judge_is_cut_off_and_the_word_search_answers(clients: AsyncClient, monkeypatch):
+    """The judge's own timeout is per network phase; the whole judged road is bounded as well."""
+    _on(monkeypatch, search_experiment="v2", typesafe_timeout_s=0.05, find_embed_timeout_s=0.05)
+
+    async def hangs(*_a, **_k):
+        await asyncio.sleep(30)
+    monkeypatch.setattr(judge_infra, "judge", hangs)
+    words = _word_rows(monkeypatch)
+    t0 = time.perf_counter()
+    r = await clients.post("/tool-requests", json={"capability": LONG})
+    assert time.perf_counter() - t0 < 5
+    assert r.status_code == 200 and [m["endpoint_id"] for m in r.json()["matches"]] == words
+    assert len(await _fetch_rows()) == 1
+
+
+async def test_the_directory_surface_never_asks_the_judge(clients: AsyncClient, monkeypatch):
+    _on(monkeypatch, search_experiment="v2")
+    seen = []
+    monkeypatch.setattr(judge_infra, "judge", _fake_v2({JOB: 0.92}, seen))
+    r = await clients.post("/tool-requests", json={"capability": LONG, "source": "claude-connector"})
+    assert r.status_code == 200 and "matches" not in r.json()
+    assert seen == [] and len(await _fetch_rows()) == 1
