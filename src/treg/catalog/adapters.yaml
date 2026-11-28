@@ -3427,7 +3427,9 @@ adapters:
     in_expr: {body.count: limit}
     out: {results: results.web, count: "len(results.web)"}
     miss: "coalesce(results.web, []) == []"
+  # Out of routing: Valyu now refuses the fixed max_price 1.5 (400 "Search requires max_price >= 5.00").
   valyu.web.search:
+    route: false
     accepts: [[q]]
     max: {limit: 10}
     in: {q: body.query}
