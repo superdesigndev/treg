@@ -55,6 +55,7 @@ async def reserve_admission(org_id: int) -> AsyncIterator[None]:
         ):
             yield
     except money_admission.ReserveAdmissionTimeout as exc:
+        team_backpressure.note_admission_timeout(org_id)
         # Money admission owns its retry floor, with integer-second jitter for Retry-After.
         retry_base_s = get_settings().money_admission_retry_after_s
         retry_after_s = random.randint(retry_base_s, 2 * retry_base_s)

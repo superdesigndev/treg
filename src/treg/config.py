@@ -359,11 +359,18 @@ class Settings(BaseSettings):
     money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
     # Per-team backpressure (money.md "Team backpressure"): a team whose queued charges the fold
     # is behind on gets at most `money_backpressure_max_in_flight` metered calls at once, the rest
-    # a fast 429 `team_backpressure`, until the fold catches up. Off while both triggers are None.
+    # a fast 429 `team_backpressure`, until the fold catches up. Off while every trigger is None.
     # A team's oldest queued charge has waited at least this many seconds:
     money_backpressure_oldest_s: PositiveInt | None = Field(default=None, le=86400)
     # Or the fold found a starved team's lease held by another process this many times in a row:
     money_backpressure_lease_held_skips: PositiveInt | None = Field(default=None, le=10000)
+    # Or the money admission queue turned away this many of the team's reserves (its own call's
+    # or its allowance refill's) inside `money_backpressure_admission_window_s`:
+    money_backpressure_admission_timeouts: PositiveInt | None = Field(default=None, le=100000)
+    money_backpressure_admission_window_s: int = Field(default=10, ge=1, le=600)
+    # The places a team throttled by that trigger alone gets; None = `money_backpressure_max_in_flight`.
+    # A team a fold list also names keeps `money_backpressure_max_in_flight`.
+    money_backpressure_admission_max_in_flight: PositiveInt | None = Field(default=None, le=100000)
     money_backpressure_max_in_flight: PositiveInt = Field(default=10, le=100000)
     # How long a published list of throttled teams lives unless the fold publishes it again.
     money_backpressure_mark_ttl_s: int = Field(default=15, ge=2, le=600)

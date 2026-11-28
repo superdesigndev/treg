@@ -87,7 +87,7 @@ async def publish(shard, waits: Iterable[tuple[int, int]], *, starved_after_s: i
     """Publish one share's list after a pass that read its whole queue. Never raises."""
     try:
         settings = get_settings()
-        if not team_backpressure.enabled(settings):
+        if not team_backpressure.fold_lists_enabled(settings):
             return
         teams = choose(waits, starved_after_s=starved_after_s, shard=shard, complete=complete)
         key = team_backpressure.share_key(shard)

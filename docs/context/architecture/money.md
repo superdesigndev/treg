@@ -1163,10 +1163,34 @@ it is on only while a trigger is set and the shared store is configured.
   list for its share as one self-expiring text (`infra/team_backpressure.py`,
   `treg:team-backpressure:v1:<index>/<count>`, `:all` for a pass over every team), replacing the
   last; an unchanged list is written again only after a third of `money_backpressure_mark_ttl_s`.
-  A pass that stopped early (its share's lease lost) publishes nothing.
+  A pass that stopped early (its share's lease lost) publishes nothing, and so does a pass whose
+  process has neither backlog trigger set (`fold_lists_enabled`): it would otherwise publish an
+  empty list over one another process published.
+- **Or the admission queue itself.** A team can jam its money admission queue with no backlog in
+  the charge queue: its refills (`call/allowance._refill`) are turned away by its own traffic, the
+  counter's deadline passes, every take is refused, and each call then waits for the queue alone
+  as an exact-path reserve, which queues no charge. So every reserve the queue turns away, the
+  call's (`reserve.reserve_admission`) or its refill's, also counts in a self-expiring window of
+  `money_backpressure_admission_window_s` for its team
+  (`team_backpressure.note_admission_timeout`, `treg:team-backpressure-admission-timeouts:v1:<org>`).
+  The count is written by a background task, at most `_PENDING_MAX` at once, so the refusal is
+  returned and the refill's money released without waiting on the store; a count past the bound
+  is dropped, not queued.
+  From `money_backpressure_admission_timeouts` on, each one writes the team's own mark
+  (`treg:team-backpressure-admission:v1:<org>`, living `money_backpressure_mark_ttl_s`). A store
+  that cannot count the timeout may write the mark, as `take` spends a budget it cannot check.
+  A team marked this way and named by no fold list gets
+  `money_backpressure_admission_max_in_flight` places (unset: `money_backpressure_max_in_flight`):
+  the mark only has to keep the team's admission queue short enough for its refill to get in,
+  so it may allow more than a fold backlog does.
 - **The call reads it once per process per refresh.** A request process reads every share's key in
   one round trip at most every `money_backpressure_refresh_s`, joined by all its calls; a team not
-  on the list costs nothing more per call.
+  on the list costs nothing more per call. With the admission trigger set, the same read also
+  fetches up to `_MAX_TEAMS` marks: the asking team's, every team's the last read found marked
+  (looked up again until its mark is gone, so a marked team whose calls are all still running
+  stays throttled), and the teams whose calls asked since they were last looked up, oldest
+  first; a full read leaves the rest at the front for the next. A mark thus reaches every
+  process serving the team within one refresh.
 - **The gate.** A metered call of a listed team, after its dependency session ended and before
   `_platform_reserve` (`reserve.backpressure_admit`, from `_execute_call`), takes one of
   `money_backpressure_max_in_flight` places shared by every process (the provider concurrency
@@ -1185,7 +1209,9 @@ it is on only while a trigger is set and the shared store is configured.
   all that apply.
 - **It ends with its cause.** A pass that finds the team's oldest charge below the thresholds
   leaves it off the list (an empty list deletes the key), and every process lets the team through
-  within one refresh. Refused calls write nothing, so they never keep a team listed. A fold that
+  within one refresh. An admission mark expires `money_backpressure_mark_ttl_s` after the last
+  timeout past the count. Refused calls reach neither the fold nor the admission queue and write
+  nothing, so they never keep a team listed or marked. A fold that
   stops publishing (worker down) lets its list expire after `money_backpressure_mark_ttl_s`.
 - **A store that cannot answer throttles nobody.** An unreadable list reads as empty until the
   next refresh; a place that cannot be taken lets the call through; a list that cannot be written
@@ -1193,8 +1219,10 @@ it is on only while a trigger is set and the shared store is configured.
 
 `team_backpressure rejected` (one line per process every 5 s, with the count suppressed) names
 the team and its limit. Settings: `TREG_MONEY_BACKPRESSURE_OLDEST_S`,
-`TREG_MONEY_BACKPRESSURE_LEASE_HELD_SKIPS` (both unset = off), `…_MAX_IN_FLIGHT` (10),
-`…_MARK_TTL_S` (15), `…_REFRESH_S` (2).
+`TREG_MONEY_BACKPRESSURE_LEASE_HELD_SKIPS`, `TREG_MONEY_BACKPRESSURE_ADMISSION_TIMEOUTS` (all
+unset = off), `…_ADMISSION_WINDOW_S` (10), `…_ADMISSION_MAX_IN_FLIGHT` (unset), `…_MAX_IN_FLIGHT`
+(10), `…_MARK_TTL_S` (15),
+`…_REFRESH_S` (2).
 
 ## Signup credit eligibility
 
