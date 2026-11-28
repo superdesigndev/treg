@@ -22,7 +22,7 @@ _PLACE_NOISE = frozenset({"greater", "area", "metropolitan", "metro", "region", 
 _COUNTRY_ALIASES = {"usa": "us", "u s": "us", "u s a": "us", "england": "gb", "scotland": "gb",
                     "wales": "gb", "northern ireland": "gb", "great britain": "gb"}
 _US_STATES = {
-    "d c": "dc", "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",
+    "d c": "dc", "columbia district": "dc", "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",
     "colorado": "co", "connecticut": "ct", "delaware": "de", "district of columbia": "dc",
     "florida": "fl", "georgia": "ga", "hawaii": "hi", "idaho": "id", "illinois": "il",
     "indiana": "in", "iowa": "ia", "kansas": "ks", "kentucky": "ky", "louisiana": "la",
@@ -166,6 +166,7 @@ def _read_row(segments: list[str]) -> _Place:
     states: set[str] = set()
     countries: set[str] = set()
     codes: set[str] = set()
+    washington = False
     if len(segments) == 1:
         seg = segments[0]
         bare = _bare(seg)
@@ -189,6 +190,9 @@ def _read_row(segments: list[str]) -> _Place:
         out.city = "" if (_state_name(segments[0]) and not later_state) else _bare(segments[0])
         if not out.city:
             out.state = _state_name(segments[0]) or ""
+        if out.state == "wa" and _bare(segments[0]) == "washington":
+            # 'Washington, United States': the state or the district, as a lone 'Washington'.
+            out.state, out.city, washington = "", "washington", True
         for i, seg in enumerate(segments[1:], start=1):
             code = _code(_bare(seg))
             if pair := _STATE_OR_COUNTRY.get(_bare(seg)):
@@ -207,6 +211,8 @@ def _read_row(segments: list[str]) -> _Place:
         out.country = "us"
     if out.state or out.country:
         states, countries = set(), set()
+    if washington and not out.state:
+        states = {"wa", "dc"}
     out.either_states, out.either_countries, out.codes = frozenset(states), frozenset(countries), frozenset(codes)
     return out
 
@@ -238,9 +244,10 @@ def _judge(asked: _Place, row: _Place) -> bool | None:
         return False
     # A row's either part ('Georgia', a lone 'Washington') breaks the ask only when it is neither
     # the state asked nor, read as a country, the country asked.
-    if (row.either_states or row.either_countries) and not row.state and not row.country and (
-            (asked.state and asked.state not in row.either_states)
-            or (asked.country and asked.country != "us" and asked.country not in row.either_countries)):
+    if row.either_states and not row.state and asked.state and asked.state not in row.either_states:
+        return False
+    if (row.either_countries and not row.state and not row.country and asked.country and asked.country != "us"
+            and asked.country not in row.either_countries):
         return False
     state_codes = row.codes & _STATE_CODES
     in_us = asked.country == "us"

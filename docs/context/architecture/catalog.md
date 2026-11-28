@@ -1430,7 +1430,8 @@ an invalid extra never disables the primary.
   only for an ask in a US state, and only as a US state code other than the one asked ("Perth, WA"
   for Texas); otherwise it can only confirm the place asked, and a code that is both a state and
   a country confirms only a US ask. A country in another language ("Kanada") is not read. A lone
-  "Washington" in a row is the state or the district. A one-part row that names the asked
+  "Washington" in a row, or one followed by no state ("Washington, United States"), is the state
+  or the district ("Columbia District" names DC). A one-part row that names the asked
   place's first part is a match ("Lebanon" for "Lebanon, PA"). A US territory (`pr`, `vi`, `gu`,
   `as`, `mp`) is no other country than the US but is in no US state, and the two Congos are not
   told apart (`_other_country`). A value naming several places (a list, or parts joined by `;` or `|`) is removed only

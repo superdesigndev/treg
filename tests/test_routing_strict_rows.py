@@ -505,6 +505,14 @@ def test_a_two_letter_code_removes_a_row_only_for_an_ask_in_the_us():
     assert R.place("Canada", "CA") is None and R.place("California", "CA") is True
 
 
+def test_washington_rows_read_as_the_state_or_the_district():
+    assert R.place("Washington, DC", "Washington, Columbia District, United States") is True
+    assert R.place("Seattle, WA", "Washington, Columbia District, United States") is False
+    assert R.place("Washington, DC", "Washington, United States") is True
+    assert R.place("Seattle, WA", "Washington, United States") is not False
+    assert R.place("Texas", "Washington, United States") is False
+
+
 def test_territories_and_one_part_rows():
     assert R.place("United States", "San Juan, Puerto Rico") is not False
     assert R.place("Austin, TX", "San Juan, Puerto Rico") is False      # a territory is in no state
