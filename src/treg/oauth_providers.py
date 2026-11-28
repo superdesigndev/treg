@@ -4626,6 +4626,31 @@ LEVER = OAuthProvider(
     docs_url="https://github.com/lever/postings-api",
 )
 
+CHUNKIFY = OAuthProvider(
+    service="chunkify",
+    display_name="Chunkify",
+    auth_kind="key",
+    token_label="Project access token",
+    token_placeholder="sk_project_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://chunkify.dev/signup",
+    setup_action_label="Get your Chunkify project token",
+    setup_steps=(
+        "Sign up at chunkify.dev and finish onboarding; a Project and its access token are created for you.",
+        "Open the Project settings and copy the token under Project access token (or create a new one for treg).",
+    ),
+    setup_note="Transcoding, streaming preparation and thumbnails spend credit; reads and status checks are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Developer",
+    summary="Transcode video files, prepare HLS streaming and generate thumbnails, with outputs in your own storage.",
+    base_url="https://api.chunkify.dev/v1",
+    docs_url="https://chunkify.dev/docs",
+    probe_path="/sources?limit=1",  # free read; a bad or missing token gets HTTP 401
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4650,6 +4675,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
+        # Video processing
+        CHUNKIFY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

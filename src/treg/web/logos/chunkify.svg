@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Chunkify">
+  <!-- Neutral lettermark, as treg asks (docs/VENDORS.md): not the Chunkify brand mark. -->
+  <rect width="64" height="64" rx="14" fill="#111827"/>
+  <text x="32" y="43" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-size="34" font-weight="700" fill="#ffffff">C</text>
+</svg>
