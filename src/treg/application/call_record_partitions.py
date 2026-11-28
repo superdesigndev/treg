@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
 import logging
 import re
 import time
@@ -32,7 +31,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import text
 
 from ..config import get_settings
-from ..infra.db import session_maker
+from ..infra.db import only_one_run, own_connection, session_maker
 from ..timeutil import utcnow_naive
 
 TABLE = "callrecord"
@@ -153,19 +152,14 @@ async def drop_expired(retention_months: int, *, session_factory=session_maker) 
         if not expired:
             return dropped
         # DETACH ... CONCURRENTLY runs as two transactions of its own, so it cannot run in one.
-        connection = await db.connection(execution_options={"isolation_level": "AUTOCOMMIT"})
-        try:
-            await connection.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
-            await connection.execute(text(f"SET statement_timeout = '{DETACH_TIMEOUT}'"))
+        async with own_connection(session_factory.kw["bind"].url, lock_timeout=LOCK_TIMEOUT,
+                                  statement_timeout=DETACH_TIMEOUT) as connection:
             for _, name, attached, pending in expired:
                 if attached:
                     how = "FINALIZE" if pending else "CONCURRENTLY"
                     await connection.execute(text(f"ALTER TABLE {TABLE} DETACH PARTITION {name} {how}"))
                 await connection.execute(text(f"DROP TABLE {name}"))
                 dropped.append(name)
-        finally:
-            await connection.execute(text("RESET lock_timeout"))
-            await connection.execute(text("RESET statement_timeout"))
     return dropped
 
 
@@ -310,32 +304,12 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     def spent() -> bool:
         return max_seconds is not None and time.monotonic() - started >= max_seconds
 
-    async with _only_backfill(session_factory) as alone:
+    async with only_one_run(BACKFILL_LOCK_KEY) as alone:
         if not alone:
             return {**out, "done": False, "busy": True}
         return await _backfill(out, cutoff=cutoff, run_started=run_started, batch_rows=batch_rows,
                                pause=pause, max_replica_lag=max_replica_lag, spent=spent,
                                session_factory=session_factory)
-
-
-@asynccontextmanager
-async def _only_backfill(session_factory):
-    """One backfill at a time: a session-level advisory lock on a connection of its own (idle
-    between its statements, so it holds no snapshot) -> whether this run got it."""
-    async with session_factory.kw["bind"].connect() as connection:
-        if connection.dialect.name != "postgresql":
-            yield True
-            return
-        got = bool((await connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
-                                             {"key": BACKFILL_LOCK_KEY})).scalar_one())
-        await connection.commit()
-        try:
-            yield got
-        finally:
-            if got:
-                await connection.execute(text("SELECT pg_advisory_unlock(:key)"),
-                                         {"key": BACKFILL_LOCK_KEY})
-                await connection.commit()
 
 
 async def _backfill(out: dict, *, cutoff, run_started, batch_rows: int, pause: float,
