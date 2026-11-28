@@ -2191,9 +2191,11 @@ adapters:
     out: {video_id: data.videoDetails.videoId, title: data.videoDetails.title, channel: data.videoDetails.author,
           channel_id: data.videoDetails.channelId, description: data.videoDetails.shortDescription,
           views: data.videoDetails.viewCount, duration_seconds: data.videoDetails.lengthSeconds}
+  # The row takes only a URL; a video id is sent as its watch URL, so id requests reach it too.
   scrapecreators.youtube.video.detail:
-    accepts: [[url]]
+    accepts: [[url], [video_id]]
     in:  {url: queryParams.url}
+    in_expr: {queryParams.url: "coalesce(url, fmt('https://www.youtube.com/watch?v={}', video_id))"}
     out: {video_id: id, title: title, description: description, views: viewCountInt, published: publishDateText}
   # tiktok.search.hashtags, google.domain.overview: one verifiable provider each — no waterfall yet.
   # reddit.post.comments: tikhub's commentForest.trees and justoneapi's postInfoById are truncated/null in
