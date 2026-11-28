@@ -1174,6 +1174,10 @@ it is on only while a trigger is set and the shared store is configured.
   From `money_backpressure_admission_timeouts` on, each one writes the team's own mark
   (`treg:team-backpressure-admission:v1:<org>`, living `money_backpressure_mark_ttl_s`). A store
   that cannot count the timeout may write the mark, as `take` spends a budget it cannot check.
+  A team marked this way and named by no fold list gets
+  `money_backpressure_admission_max_in_flight` places (unset: `money_backpressure_max_in_flight`):
+  the mark only has to keep the team's admission queue short enough for its refill to get in,
+  so it may allow more than a fold backlog does.
 - **The call reads it once per process per refresh.** A request process reads every share's key in
   one round trip at most every `money_backpressure_refresh_s`, joined by all its calls; a team not
   on the list costs nothing more per call. With the admission trigger set, the same read also
@@ -1208,7 +1212,8 @@ it is on only while a trigger is set and the shared store is configured.
 `team_backpressure rejected` (one line per process every 5 s, with the count suppressed) names
 the team and its limit. Settings: `TREG_MONEY_BACKPRESSURE_OLDEST_S`,
 `TREG_MONEY_BACKPRESSURE_LEASE_HELD_SKIPS`, `TREG_MONEY_BACKPRESSURE_ADMISSION_TIMEOUTS` (all
-unset = off), `…_ADMISSION_WINDOW_S` (10), `…_MAX_IN_FLIGHT` (10), `…_MARK_TTL_S` (15),
+unset = off), `…_ADMISSION_WINDOW_S` (10), `…_ADMISSION_MAX_IN_FLIGHT` (unset), `…_MAX_IN_FLIGHT`
+(10), `…_MARK_TTL_S` (15),
 `…_REFRESH_S` (2).
 
 ## Signup credit eligibility

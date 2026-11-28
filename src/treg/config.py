@@ -368,6 +368,9 @@ class Settings(BaseSettings):
     # or its allowance refill's) inside `money_backpressure_admission_window_s`:
     money_backpressure_admission_timeouts: PositiveInt | None = Field(default=None, le=100000)
     money_backpressure_admission_window_s: int = Field(default=10, ge=1, le=600)
+    # The places a team throttled by that trigger alone gets; None = `money_backpressure_max_in_flight`.
+    # A team a fold list also names keeps `money_backpressure_max_in_flight`.
+    money_backpressure_admission_max_in_flight: PositiveInt | None = Field(default=None, le=100000)
     money_backpressure_max_in_flight: PositiveInt = Field(default=10, le=100000)
     # How long a published list of throttled teams lives unless the fold publishes it again.
     money_backpressure_mark_ttl_s: int = Field(default=15, ge=2, le=600)

@@ -207,6 +207,27 @@ async def test_marks_are_read_with_the_lists_in_one_round_trip(admission_trigger
     assert admission_trigger.reads == 2
 
 
+async def test_a_team_marked_by_admission_alone_gets_its_own_places(admission_trigger, monkeypatch):
+    """The admission trigger only has to keep the team's money queue short enough for its refill
+    to get in, so it may allow more places than a fold backlog does; a team on a fold list keeps
+    the fold's limit."""
+    monkeypatch.setattr(get_settings(), "money_backpressure_admission_max_in_flight", 3)
+    for team in (5, 7):
+        for _ in range(3):
+            await gate.note_admission_timeout(team)
+    await gate.publish((0, 1), [7], 15)
+    marked = [await gate.admit(5) for _ in range(3)]
+    with pytest.raises(gate.Throttled) as refused:
+        await gate.admit(5)
+    assert refused.value.max_in_flight == 3
+    listed = [await gate.admit(7) for _ in range(2)]
+    with pytest.raises(gate.Throttled) as refused:
+        await gate.admit(7)
+    assert refused.value.max_in_flight == 2
+    for lease in marked + listed:
+        lease.release()
+
+
 async def test_the_admission_trigger_off_counts_and_reads_nothing(store, monkeypatch):
     monkeypatch.setattr(store, "take", pytest.fail)
     monkeypatch.setattr(store, "set_text", pytest.fail)

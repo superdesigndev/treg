@@ -115,6 +115,9 @@ def _parse(text: str | None) -> set[int]:
 class _Reader:
     def __init__(self) -> None:
         self.teams: frozenset[int] = frozenset()
+        # The teams a fold list names: they keep `money_backpressure_max_in_flight` even when also
+        # marked by the admission trigger.
+        self.listed: frozenset[int] = frozenset()
         self.next_refresh = 0.0
         self.lock = asyncio.Lock()
         # Teams whose calls asked since the last read: the marks the next read looks up.
@@ -139,12 +142,13 @@ class _Reader:
                 teams: set[int] = set()
                 for text in texts[:len(share_keys)]:
                     teams |= _parse(text)
+                self.listed = frozenset(teams)
                 teams |= {team for team, text in zip(asked, texts[len(share_keys):]) if text}
                 self.teams = frozenset(teams)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - an unread list throttles nobody
-                self.teams = frozenset()
+                self.teams = self.listed = frozenset()
             self.next_refresh = time.monotonic() + settings.money_backpressure_refresh_s
             return self.teams
 
@@ -189,6 +193,9 @@ async def admit(org_id: int) -> provider_concurrency.Lease | None:
         return None
     settings = get_settings()
     limit = settings.money_backpressure_max_in_flight
+    if (org_id not in _reader.listed
+            and settings.money_backpressure_admission_max_in_flight is not None):
+        limit = settings.money_backpressure_admission_max_in_flight
     lease = await provider_concurrency.try_acquire_slot(f"{_SLOTS}:{org_id}", limit)
     if lease == provider_concurrency.BUSY:
         _rejected(org_id, limit)
