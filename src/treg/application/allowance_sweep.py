@@ -424,6 +424,7 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     if waits is not None:
         allowance_backpressure.begin_pass()
     behind: tuple | None = None
+    complete = False  # every page of the share was read, so a team not listed has no queue
     stop = asyncio.Event()
     lane: asyncio.Task | None = None
     try:
@@ -456,6 +457,7 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
                 if len(page) == _TEAMS_LISTED:
                     after = page[-1]
                     continue
+                complete = True
             break
         if lane is not None:
             stop.set()
@@ -474,7 +476,8 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
             if folded is not None:
                 total += folded
         if waits is not None and keep_going():
-            await allowance_backpressure.publish(shard, waits, starved_after_s=_STARVED_AFTER_S)
+            await allowance_backpressure.publish(shard, waits, starved_after_s=_STARVED_AFTER_S,
+                                                 complete=complete)
         return total
     finally:
         if lane is not None:

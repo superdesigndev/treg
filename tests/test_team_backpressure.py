@@ -93,10 +93,23 @@ def test_lease_held_names_a_starved_team_only_after_enough_skips_in_a_row(store,
     assert producer.choose([(7, 31), (8, 5)], starved_after_s=30) == {7}
     producer.note_folded(7)
     assert producer.choose([(7, 31)], starved_after_s=30) == frozenset()
-    # a team with nothing queued any more starts its count again
+    # a team with nothing queued any more starts its count again, once a whole read shows it
     producer.note_lease_held(8)
     producer.choose([], starved_after_s=30)
+    assert 8 in producer._lease_held          # a partial read proves nothing
+    producer.choose([], starved_after_s=30, complete=True)
     assert 8 not in producer._lease_held
+
+
+def test_a_pass_over_one_share_keeps_the_counts_of_another(store, monkeypatch):
+    """One process may pass over share 0, then share 1: the second pass does not see share 0's
+    teams, and must not take their streaks for drained."""
+    monkeypatch.setattr(get_settings(), "money_backpressure_oldest_s", None)
+    monkeypatch.setattr(get_settings(), "money_backpressure_lease_held_skips", 2)
+    for _ in range(2):
+        producer.note_lease_held(4)               # share 0 of 2
+        assert producer.choose([], starved_after_s=30, shard=(1, 2), complete=True) == frozenset()
+    assert producer.choose([(4, 40)], starved_after_s=30, shard=(0, 2), complete=True) == {4}
 
 
 async def test_a_share_publishes_its_list_and_an_empty_list_deletes_it(store):

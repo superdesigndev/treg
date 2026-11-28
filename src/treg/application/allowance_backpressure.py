@@ -51,8 +51,17 @@ def note_drained(org_id: int) -> None:
     _drained.add(org_id)
 
 
-def choose(waits: Iterable[tuple[int, int]], *, starved_after_s: int) -> frozenset[int]:
-    """The teams to throttle among `waits`, (team, seconds its oldest queued charge waited)."""
+def _in_share(org_id: int, shard) -> bool:
+    """`allowance.queued_teams`' rule: a share holds the teams whose number leaves its index."""
+    return shard is None or shard[1] <= 1 or org_id % shard[1] == shard[0]
+
+
+def choose(waits: Iterable[tuple[int, int]], *, starved_after_s: int, shard=None,
+           complete: bool = False) -> frozenset[int]:
+    """The teams to throttle among `waits`, (team, seconds its oldest queued charge waited), as
+    one pass over `shard` read them. Only a `complete` read (every page of the share) shows that
+    a team of the share it does not list has nothing queued, and only then is its count of
+    `lease_held` skips dropped; a team of another share keeps its count."""
     settings = get_settings()
     oldest_s = settings.money_backpressure_oldest_s
     skips = settings.money_backpressure_lease_held_skips
@@ -66,18 +75,21 @@ def choose(waits: Iterable[tuple[int, int]], *, starved_after_s: int) -> frozens
         elif (skips is not None and waited_s >= starved_after_s
               and _lease_held.get(org_id, 0) >= skips):
             chosen.add(org_id)
-    for org_id in [team for team in _lease_held if team not in queued]:
-        del _lease_held[org_id]  # nothing queued any more: the next backlog counts afresh
+    if complete:
+        for org_id in [team for team in _lease_held
+                       if team not in queued and _in_share(team, shard)]:
+            del _lease_held[org_id]  # nothing queued any more: the next backlog counts afresh
     return frozenset(chosen)
 
 
-async def publish(shard, waits: Iterable[tuple[int, int]], *, starved_after_s: int) -> None:
+async def publish(shard, waits: Iterable[tuple[int, int]], *, starved_after_s: int,
+                  complete: bool = False) -> None:
     """Publish one share's list after a pass that read its whole queue. Never raises."""
     try:
         settings = get_settings()
         if not team_backpressure.enabled(settings):
             return
-        teams = choose(waits, starved_after_s=starved_after_s)
+        teams = choose(waits, starved_after_s=starved_after_s, shard=shard, complete=complete)
         key = team_backpressure.share_key(shard)
         last = _published.get(key)
         now = time.monotonic()
