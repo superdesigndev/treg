@@ -710,6 +710,27 @@ async def test_late_values_landing_during_the_quiet_wait_are_resynced_before_the
         assert (row.hit, row.verdict) == (True, "valid")
 
 
+async def test_a_late_charge_is_resynced_by_the_swap_like_a_late_verdict(before_swap, monkeypatch):
+    """An async call's settled charge lands on its record late, as its verdict does; the swap's
+    own resync carries it to the new table."""
+    real_wait, done = swap._wait_until_quiet, []
+
+    def charge_lands_while_waiting(bind, table, deadline):
+        if not done:
+            done.append(1)
+            bind.execute(_ROWS, {"org_id": before_swap, "count": 1, "step": timedelta(seconds=1),
+                                 "newest": utcnow_naive()})
+            bind.execute(text("INSERT INTO callrecord_partitioned SELECT * FROM callrecord WHERE id = 41"))
+            bind.execute(text("UPDATE callrecord SET cost_charged_micro = 1234 WHERE id = 41"))
+        real_wait(bind, table, deadline)
+    monkeypatch.setattr(swap, "_wait_until_quiet", charge_lands_while_waiting)
+
+    await _swap_in_process()
+
+    async with db.session_maker() as session:
+        assert (await session.get(CallRecord, 41)).cost_charged_micro == 1234
+
+
 async def test_the_upkeep_leaves_the_staged_table_to_the_swap(before_swap):
     """Before the swap the staged table is analyzed by 0142 itself; the cron analyzes only the
     live `callrecord` once it is partitioned."""

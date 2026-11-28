@@ -20,7 +20,7 @@ usage rollup); a table that started with only its newest rows would give them wr
   while more than `_MAX_CATCH_UP_IDS` ids were written since the last backfill run: run the
   backfill again just before the deploy, so the catch-up below is short.
 
-Late `hit`/`verdict` values (written up to a day after the row) are resynced by the backfill,
+Late `hit`/`verdict`/`cost_charged_micro` values (written up to a day after the row) are resynced by the backfill,
 each run from where the run before began; this revision resyncs only the rows above the
 `resynced_upto` the last run noted on the new table. It refuses, changing nothing, when that range
 is over `_MAX_RESYNC_IDS` ids or the backfill's last resync did not finish: run the backfill again.
@@ -247,10 +247,12 @@ def _write_note(bind, note: dict) -> None:
 
 # Bounded on both sides, so a batch probes its id range of the new table, not all of it.
 _RESYNC = sa.text(
-    f"UPDATE {NEW} n SET hit = o.hit, verdict = o.verdict FROM {LIVE} o "
+    f"UPDATE {NEW} n SET hit = o.hit, verdict = o.verdict, "
+    f"cost_charged_micro = o.cost_charged_micro FROM {LIVE} o "
     "WHERE o.id > :after AND o.id <= :upto AND n.id > :after AND n.id <= :upto "
     "AND n.id = o.id AND n.created_at = o.created_at "
-    "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict)")
+    "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict "
+    "OR n.cost_charged_micro IS DISTINCT FROM o.cost_charged_micro)")
 
 
 def _resync_verdicts(bind, reached: int) -> None:
