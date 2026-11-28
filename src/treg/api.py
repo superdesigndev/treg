@@ -332,7 +332,9 @@ async def create_tool_request(
     await db.close()
     # The Claude directory surface drops the matches (its schema is the submitted one).
     matches = ({} if source == "claude-connector"
-               else await search_app.request_reply_off_loop(capability, query, catalog_routes._provider_display))
+               else await search_app.request_reply_off_loop(
+                   capability, query, catalog_routes._provider_display,
+                   cap_key=search_app.request_cap_key(org_id, user_email, _client_ip(request))))
     return {"id": filed, "status": "received",
             "note": "logged — requests steer which provider gets keyed next", **matches}
 

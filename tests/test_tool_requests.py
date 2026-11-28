@@ -311,6 +311,28 @@ async def test_a_slow_judge_is_cut_off_and_the_word_search_answers(clients: Asyn
     assert len(await _fetch_rows()) == 1
 
 
+async def test_an_exempt_address_stays_within_the_judge_cap(clients: AsyncClient, monkeypatch, connections_held_here):
+    """An exempt address has no filing limit, so the search's per-caller judge cap bounds its
+    judging; past it the word search answers, and every filing is still filed."""
+    _on(monkeypatch, search_experiment="v2", search_judge_max_per_caller_hour=5, rate_limit_exempt_ips="127.0.0.1")
+    seen, held = [], []
+    fake = _fake_v2({JOB: 0.92}, seen)
+
+    async def judge(query, cands, **kw):
+        held.append(connections_held_here())
+        return await fake(query, cands, **kw)
+    monkeypatch.setattr(judge_infra, "judge", judge)
+    words = _word_rows(monkeypatch)
+    rs = await asyncio.gather(*(clients.post("/tool-requests", json={"capability": f"{LONG} number {i}"})
+                                for i in range(40)))
+    assert all(r.status_code == 200 and r.json()["status"] == "received" for r in rs)
+    replies = [[m["endpoint_id"] for m in r.json()["matches"]] for r in rs]
+    assert 0 < len(seen) <= 5 and sum(ids != words for ids in replies) == len(seen)
+    assert sum(ids == words for ids in replies) == 40 - len(seen)
+    assert held == [0] * len(seen)
+    assert len(await _fetch_rows()) == 40
+
+
 async def test_the_directory_surface_never_asks_the_judge(clients: AsyncClient, monkeypatch):
     _on(monkeypatch, search_experiment="v2")
     seen = []

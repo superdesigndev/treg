@@ -282,8 +282,12 @@ matches are the judge's first (`judged_request_matches`): the agent search's v2 
 `serve` with no hub rows and no observed stats), awaited on the event loop after the request is
 committed. `asyncio.wait_for` bounds the whole of it by `typesafe_timeout_s` plus
 `find_embed_timeout_s`, since the HTTP clients' timeouts are per network phase. One judge request
-at most per request, and only past the per-address filing limit. Any answer without rows (an
-abstaining, failing, slow or unconfigured judge, or one that kept nothing) falls back to the word
+at most per request, only past the per-address filing limit, and only within the caller's
+`search_judge_max_per_caller_hour` (`_judge_cap`, shared with search, keyed by `request_cap_key`:
+team and email, else `ip:<address>`), checked atomically so concurrent filings count every hit,
+in its own session closed before the judge. That cap is what bounds an address exempt from the
+filing limit. Any answer without rows (an
+capped, abstaining, failing, slow or unconfigured judge, or one that kept nothing) falls back to the word
 search above, then the `query`. A short request never reaches the judge. The team `/mcp/` `catalog_request` passes the fields on; a
 `claude-connector` filing skips the matcher and the judge, and `/mcp/v2/` strips the fields
 (`_TEAM_ONLY_REQUEST_FIELDS`), since its schema is the submitted one. The CLI's text view is
