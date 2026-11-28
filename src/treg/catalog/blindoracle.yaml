@@ -1,0 +1,262 @@
+provider: blindoracle
+source:
+  docs: https://api.craigmbrown.com/v1/skill.md
+  openapi: https://api.craigmbrown.com/v1/openapi.json
+  curated: 2026-11-28
+limits: "Per-call; a no-charge result is refunded to the prepaid balance"
+pricing_url: https://craigmbrown.com/blindoracle/pricing.html
+defaults:
+  provenance: {source: rate_card_api, source_url: 'https://api.craigmbrown.com/v1/services', checked: '2026-11-28', confidence: documented}
+endpoints:
+  - id: blindoracle.web.search.news
+    added: '2026-11-28'
+    capability: web.search.news
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/services/research.topic-news-scanner
+    name: "News scan"
+    summary: "Up to five ranked recent news items on a topic, each with its source"
+    input:
+      body:
+        prompt: {type: string, required: true, note: "the topic to scan", example: "stablecoin regulation"}
+        pay_from: {type: string, required: true, enum: [balance], note: "debit the prepaid balance", example: "balance"}
+    test_request:
+      body: {prompt: "stablecoin regulation", pay_from: "balance"}
+    price: {value: '0.02', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.web.answer.research
+    added: '2026-11-28'
+    capability: web.answer.research
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/services/research.topic-deep-researcher
+    name: "Cited research brief"
+    summary: "Structured research brief with executive summary, alternatives, risks and numbered citations"
+    input:
+      body:
+        prompt: {type: string, required: true, note: "the research question", example: "How do x402 payments settle on Base?"}
+        urls: {type: array, items: {type: string}, required: false, note: "up to 8 pages to fetch and cite", example: ["https://docs.cdp.coinbase.com/x402/welcome"]}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "How do x402 payments settle on Base?", pay_from: "balance"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.web.answer.status
+    added: '2026-11-28'
+    capability: web.answer.status
+    platform: web
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /v1/services/result/{job_id}
+    name: "Get a background result"
+    summary: "Fetch the deliverable of a background call that answered 202 with a job_id"
+    input:
+      pathParams:
+        job_id: {type: string, required: true, example: "9317d04d10c1"}
+    test_request: {pathParams: {job_id: "9317d04d10c1"}}
+    price: {value: '0', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.web.extract
+    added: '2026-11-28'
+    capability: web.extract
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/services/data.web-extract
+    name: "Extract a page"
+    summary: "Clean main-content extraction of one URL, with a content hash"
+    input:
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        only_main_content: {type: boolean, required: false, default: true, example: true}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {url: "https://example.com", pay_from: "balance"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.web.sentiment.topic
+    added: '2026-11-28'
+    capability: web.sentiment.topic
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/services/research.topic-sentiment-analyzer
+    name: "Topic sentiment"
+    summary: "Opinion and sentiment across social, expert and community channels for a named topic, sourced"
+    input:
+      body:
+        prompt: {type: string, required: true, example: "Model Context Protocol"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "Model Context Protocol", pay_from: "balance"}
+    price: {value: '0.03', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.youtube.video.research
+    added: '2026-11-28'
+    capability: youtube.video.research
+    platform: youtube
+    scope: any_account
+    method: POST
+    path: /v1/services/content.youtube-research
+    name: "Research YouTube videos from their transcripts"
+    summary: "Breakdown of one or more videos from their real transcripts: hook, structure, claims, takeaways"
+    input:
+      body:
+        prompt: {type: string, required: true, note: "video URLs plus what you want to know", example: "https://www.youtube.com/watch?v=jNQXAC9IVRw summarise the hook"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "https://www.youtube.com/watch?v=jNQXAC9IVRw summarise the hook", pay_from: "balance"}
+    price: {value: '0.03', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.companies.filings.list
+    added: '2026-11-28'
+    capability: companies.filings.list
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/services/data.sec-edgar-filing
+    name: "Recent SEC filings"
+    summary: "Recent 10-K, 10-Q or 8-K filings for a ticker or CIK, with links"
+    input:
+      body:
+        ticker: {type: string, required: false, note: "ticker or cik is required", example: "AAPL"}
+        cik: {type: string, required: false, example: "0000320193"}
+        form: {type: string, required: false, example: "10-K"}
+        count: {type: integer, required: false, min: 1, max: 10, example: 1}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {ticker: "AAPL", form: "10-K", count: 1, pay_from: "balance"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call, note: "An unknown ticker is not charged."}
+    # An unknown ticker answers 200 {"status": "execution_failed", "error": "...ticker_not_found..."} and charges $0.
+    miss: {when: {path: response.status, op: equals, value: execution_failed}}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.companies.due_diligence
+    added: '2026-11-28'
+    capability: companies.due_diligence
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/services/ops.due-diligence-scan
+    name: "Due-diligence scan"
+    summary: "Financials, litigation, key people, IP, media sentiment and red flags for a named company, cited"
+    note: "Answers 202 with a job_id; fetch the report with blindoracle.web.answer.status."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "Stripe, Inc."}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "Stripe, Inc.", pay_from: "balance"}
+    price: {value: '1.00', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.web.links.check
+    added: '2026-11-28'
+    capability: web.links.check
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/services/ops.link-integrity
+    name: "Check links"
+    summary: "HEAD then GET every URL you list; PASS/FAIL with status per URL"
+    input:
+      body:
+        prompt: {type: string, required: true, example: "Check these links: https://example.com https://api.craigmbrown.com/v1/health"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "Check these links: https://example.com https://api.craigmbrown.com/v1/health", pay_from: "balance"}
+    price: {value: '0.01', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.research.agent.reputation
+    added: '2026-11-28'
+    capability: research.agent.reputation
+    platform: research
+    scope: any_account
+    method: POST
+    path: /v1/services/reputation.lookup
+    name: "Agent reputation"
+    summary: "An AI agent's BlindOracle reputation score, level and badge before you transact with it"
+    input:
+      body:
+        task: {type: string, required: true, example: "agent_id: blindoracle"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {task: "agent_id: blindoracle", pay_from: "balance"}
+    price: {value: '0.01', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.research.agent.prehire_check
+    added: '2026-11-28'
+    capability: research.agent.prehire_check
+    platform: research
+    scope: any_account
+    method: POST
+    path: /v1/services/agent.prehire-check
+    name: "Pre-hire check on an agent"
+    summary: "Settlement history, trust record and red flags on an agent before you give it spend authority"
+    input:
+      body:
+        agent_name: {type: string, required: false, note: "agent_name or wallet is required", example: "blindoracle"}
+        wallet: {type: string, required: false, note: "the agent's EVM wallet address on Base"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {agent_name: "blindoracle", pay_from: "balance"}
+    price: {value: '0.25', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.crypto.receipt.verify
+    added: '2026-11-28'
+    capability: crypto.receipt.verify
+    platform: crypto
+    scope: any_account
+    method: POST
+    path: /v1/services/trust.receipt-verify
+    name: "Verify a receipt"
+    summary: "Check a BlindOracle receipt or Base tx against the chain and the content hash"
+    input:
+      body:
+        prompt: {type: string, required: true, note: "JSON with proof_id, tx and/or content_sha256", example: "{\"proof_id\": \"so-30120-3c7157051b4f\"}"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "{\"proof_id\": \"so-30120-3c7157051b4f\"}", pay_from: "balance"}
+    price: {value: '0.01', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+  - id: blindoracle.web.translate.zh_en
+    added: '2026-11-28'
+    capability: web.translate
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/services/translation.zh-en
+    name: "Translate Chinese and English"
+    summary: "Simplified Chinese to English or English to Simplified Chinese, language auto-detected"
+    input:
+      body:
+        prompt: {type: string, required: true, example: "你好，世界"}
+        pay_from: {type: string, required: true, enum: [balance], example: "balance"}
+    test_request:
+      body: {prompt: "你好，世界", pay_from: "balance"}
+    price: {value: '0.05', currency: USD, per: 1, unit: call}
+    docs_url: https://api.craigmbrown.com/v1/skill.md
+
+proposed_capabilities:
+  web.sentiment.topic: "Sentiment and opinion on a topic across social, expert and community sources"
+  youtube.video.research: "Analyse one or more videos from their transcripts"
+  companies.filings.list: "List a public company's regulatory filings"
+  companies.due_diligence: "Due-diligence report on a company"
+  web.links.check: "Check whether a list of URLs resolve"
+  research.agent.reputation: "Reputation of an AI agent from its settlement history"
+  research.agent.prehire_check: "Background check on an AI agent before delegating to it"
+  crypto.receipt.verify: "Verify a payment receipt against the chain"
+  web.translate: "Translate text between languages"
