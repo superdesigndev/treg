@@ -129,11 +129,12 @@ How a routed call works:
   `X-Treg-Route-Strict-Filters: 1` skips it.
 - `X-Treg-Route-Strict-Filters: 1` also judges the rows on people search (`location`,
   `company_domain`), job search (`location`, `posted_within_days`) and web or Google search
-  (`site:` in `q`): a row whose own field clearly breaks what you sent (another country, state or
-  city, company or site, or an older date) leaves `output`, and `_treg.strict_filtered` says
-  `{removed, kept, by, unchecked}`. A row that names no place, company or date, only a larger
-  place than you asked, or a city when you sent a city with no state or country, is kept and
-  counted `unchecked`. Outside the US only the country is compared; a code that may be a US state or
+  (`site:` in `q`): a row whose own field clearly breaks what you sent (another company or site, an
+  older date; for a place, within the US another state or country, abroad another country) leaves
+  `output`, and `_treg.strict_filtered` says `{removed, kept, by, unchecked}`. Another city is never
+  judged. A row that names no place, company or date, only a larger place than you asked, or
+  another city, is kept and counted `unchecked`; a row naming several places is removed only when
+  every one is elsewhere. Outside the US only the country is compared; a code that may be a US state or
   a country (`Toronto, CA`) counts both ways, and a bare `Washington` is the state. `raw` keeps
   every row, and the provider is billed as usual. When no row is left it asks at most 2 more providers, each billed as usual;
   `X-Treg-Route-Max-Cost` caps the total.

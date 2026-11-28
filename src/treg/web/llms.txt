@@ -124,7 +124,7 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   best-effort: check the rows against your filters, or send `X-Treg-Route-Strict-Filters: 1`. It
   skips providers known to take a sent filter only as a hint, and on people search (place, company
   domain), job search (place, posted within days) and web or Google search (`site:`) it removes from
-  `output` the rows whose own field clearly breaks the filter (another country, state or city; a row
+  `output` the rows whose own field clearly breaks the filter (another state or country, never another city; a row
   naming only a larger place than asked is kept, unchecked): `_treg.strict_filtered` counts them,
   `raw` keeps them, and the provider is billed as usual. When no row is left it asks at most 2 more
   providers, each billed as usual; `X-Treg-Route-Max-Cost` caps the total.

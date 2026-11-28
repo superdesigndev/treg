@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -134,7 +135,8 @@ def _read_place(segments: list[str]) -> _Place:
                 both(code, code)
         elif code in _STATE_CODES:
             out.state = out.state or code
-        elif country := _country(_bare(seg)):
+        elif (len(_bare(seg)) > 2 or i == len(segments) - 1) and (country := _country(_bare(seg))):
+            # A two-letter part before the last is a region ('Saskatoon, SK, Canada'), not a country.
             out.country = out.country or country
     if out.state and not out.country:
         out.country = "us"
@@ -164,36 +166,49 @@ def _judge(asked: _Place, row: _Place) -> bool | None:
             or (asked.country and asked.country != "us" and asked.country not in row.either_countries)):
         return False
     if asked.city:
-        if row.city and f" {asked.city} " in f" {row.city} ":
-            return True
-        # A row's either code that is the asked state: as a state it is the same state, as a
-        # country it is another country, so another city there is a mismatch both ways.
-        same_state = bool(asked.state) and (row.state == asked.state
-                                            or (not row.state and asked.state in row.either_states))
-        return False if row.city and same_state and row.city != asked.city else None
+        # Another city part in the same state is not judged: a borough, a county, a metro area or
+        # an address reads as another city.
+        return True if row.city and f" {asked.city} " in f" {row.city} " else None
     if asked.state:
         return True if row.state == asked.state else None
     return True if row.country and row.country == asked.country else None
 
 
-def place(sent: Any, value: Any) -> bool | None:
-    """False only when the row clearly names another place than the one asked: another country,
-    another US state, or another city in the same US state. True when the row's city, state or
-    country is the asked place at its most specific level ('Austin, TX, US' for 'Austin, Texas').
-    An ask that reads two ways ('Toronto, CA') removes a row only when both readings do. Anything
-    else is not judged: a row naming only a larger place ('Texas' for Austin), another city outside
-    the US (a city's other-language name reads as another city), a city asked with nothing around
-    it, and a row whose part could be the place asked ('Indianapolis, IN' for India)."""
-    if not isinstance(sent, str):
+@lru_cache(maxsize=256)
+def _asked(sent: str) -> tuple[tuple[str, ...], tuple[_Place, ...]]:
+    segs = tuple(f for part in sent.split(",") if (f := P._fold(part)))
+    return segs, tuple(_readings(_read_place(list(segs)))) if segs else ()
+
+
+def _one_place(asked_segs: tuple[str, ...], readings: tuple[_Place, ...], text: str) -> bool | None:
+    segs = [f for part in text.split(",") if (f := P._fold(part))]
+    if not segs:
         return None
-    asked_segs = [f for part in sent.split(",") if (f := P._fold(part))]
-    segs = _segments(value)
-    if not asked_segs or not segs:
-        return None
-    if asked_segs == segs:
+    if tuple(segs) == asked_segs:
         return True
     row = _read_place(segs)
-    verdicts = [_judge(a, row) for a in _readings(_read_place(asked_segs))]
+    verdicts = [_judge(a, row) for a in readings]
+    if all(v is False for v in verdicts):
+        return False
+    return True if any(verdicts) else None
+
+
+def place(sent: Any, value: Any) -> bool | None:
+    """False only when the row clearly names another place than the one asked: within the US
+    another state or country, abroad another country. True when the row's city, state or country
+    is the asked place at its most specific level ('Austin, TX, US' for 'Austin, Texas'). An ask
+    that reads two ways ('Toronto, CA') removes a row only when both readings do, and a row naming
+    several places ('New York, NY; San Francisco, CA', a list) only when every one does. Anything
+    else is not judged: another city part (a borough, a county, an address), a row naming only a
+    larger place ('Texas' for Austin), a city asked with nothing around it, and a row whose part
+    could be the place asked ('Indianapolis, IN' for India)."""
+    if not isinstance(sent, str):
+        return None
+    asked_segs, readings = _asked(sent)
+    places = [t for s in P._strings(value) for t in re.split(r"[;|]", s) if t.strip()]
+    if not asked_segs or not places:
+        return None
+    verdicts = [_one_place(asked_segs, readings, t) for t in places]
     if all(v is False for v in verdicts):
         return False
     return True if any(verdicts) else None

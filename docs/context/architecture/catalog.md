@@ -1420,10 +1420,13 @@ an invalid extra never disables the primary.
   at most `MAX_WEAK_FALLBACKS` more providers); when nothing better turns up, the first such answer
   is returned as the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what
   `min_results`, fill and merge count. `place` reads a city, a US state (name or code) and a
-  country from both places. The same folded text always matches. It removes a row only when the
-  row names another country, another US state, or another city in the same US state (the asked
-  city against the row's city part); outside the US only the country is judged, since a city's
-  other-language name (München, Köln) reads as another city. The first part is a state only when
+  country from both places. The same folded text always matches. Within the US a row is removed
+  only when it names another state or country, abroad only when it names another country; another
+  city is never judged, since plain text cannot tell it from a borough, a county, a metro area, an
+  address or another-language name (München, Köln). The asked city matches the row's city part
+  only. A two-letter part before a row's last part is a region, never a country ("Saskatoon, SK,
+  Canada"). A value naming several places (a list, or parts joined by `;` or `|`) is removed only
+  when every place is; the ask is read once per answer (`_asked`). The first part is a state only when
   no later part names one, and "city" stays in a state reading ("Kansas City" is no state), so a
   bare "Washington" is the state and "Washington, D.C." the district. A code that is both a state
   and a country (`IN`, `CA`) is the state when a country follows it, else either, and the name

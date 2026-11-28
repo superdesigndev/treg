@@ -63,7 +63,7 @@ PLACES = [
     ("Germany", "Austin, TX, US", False),
     ("California", "Austin, Texas, United States", False),
     ("California", "Austin, TX", False),
-    ("Austin, Texas", "Dallas, Texas, United States", False),
+    ("Austin, Texas", "Dallas, Texas, United States", None),   # another city part: never judged
     ("Austin, Texas", "Austin, MN", False),
     ("London, United Kingdom", "Manchester, England", None),  # outside the US only the country is judged
     ("Paris, France", "Lyon, France", None),
@@ -231,17 +231,124 @@ KEEP_OR_REMOVE += [
     ("Paris", "Paris, Île-de-France, France", "keep"),
     ("Remote", "Austin, TX", "keep"),
 ]
-# Clear to a reader, not to the test: a city asked with nothing around it, a row whose
-# two-letter code is a US state and also the country asked, and two cities in Georgia, which may
-# be the country.
-NOT_JUDGED = {("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN"),
-              ("Atlanta, Georgia", "Savannah, Georgia")}
+KEEP_OR_REMOVE += [
+    # city-part rule: regions, counties, neighbourhoods, spellings
+    ("Santa Monica, California", "Los Angeles Metropolitan Area, California", "keep"),
+    ("San Jose, California", "San Francisco Bay Area, CA", "keep"),
+    ("San Francisco, California", "Bay Area, CA", "keep"),
+    ("Reston, VA", "Fairfax County, Virginia", "keep"),
+    ("Austin, TX", "Travis County, TX", "keep"),
+    ("Austin, TX", "Austin, Travis County, TX", "keep"),
+    ("New York, NY", "Brooklyn, NY", "keep"),
+    ("New York, NY", "Manhattan, New York, United States", "keep"),
+    ("Manhattan, New York", "New York, NY", "keep"),
+    ("Los Angeles, CA", "Hollywood, California", "keep"),
+    ("St. Louis, MO", "Saint Louis, Missouri", "keep"),
+    ("Saint Paul, MN", "St Paul, Minnesota, United States", "keep"),
+    ("Fort Worth, TX", "Ft. Worth, TX", "keep"),
+    ("Mount Pleasant, SC", "Mt Pleasant, South Carolina", "keep"),
+    ("Salt Lake City, UT", "SLC, Utah", "keep"),
+    ("Winston-Salem, NC", "Winston Salem, North Carolina", "keep"),
+    ("Durham, NC", "Raleigh-Durham-Chapel Hill Area", "keep"),
+    ("Wilkes-Barre, PA", "Wilkes Barre, Pennsylvania, US", "keep"),
+    ("Dallas, TX", "Fort Worth, Texas", "remove"),
+    ("Cambridge, MA", "Somerville, Massachusetts", "remove"),
+    ("San Diego, California", "Sacramento, CA", "remove"),
+    ("Phoenix, AZ", "Tucson, Arizona, United States", "remove"),
+    # extra parts, postal codes, reversed order
+    ("Austin, TX", "Austin, Texas Metropolitan Area, US", "keep"),
+    ("Austin, TX", "US, Texas, Austin", "keep"),
+    ("San Francisco, CA", "United States, California, San Francisco", "keep"),
+    ("Austin, TX", "78701", "keep"),
+    ("Austin, TX", "78701, TX", "keep"),
+    ("Austin, TX", "1100 Congress Ave, Austin, TX 78701", "keep"),
+    ("Austin, TX", "Downtown, Austin, Texas", "keep"),
+    ("Austin, TX", "Houston, TX 77002", "remove"),
+    ("Columbus, Ohio", ["Ohio - Columbus, Three Nationwide Plaza"], "keep"),
+    # several places in one value (job postings)
+    ("San Francisco, California", "New York, NY (HQ); San Francisco, CA", "keep"),
+    ("New York, NY", "New York, NY (HQ); San Francisco, CA", "keep"),
+    ("Dallas, TX", ["Austin, TX", "Dallas, TX"], "keep"),
+    ("New York, NY", ["San Francisco, CA", "New York, NY"], "keep"),
+    ("Seattle, WA", ["Portland, OR", "Denver, CO"], "remove"),
+    # province / region codes that are ISO country codes
+    ("Saskatoon, Canada", "Saskatoon, SK, Canada", "keep"),
+    ("Canada", "Regina, SK, Canada", "keep"),
+    ("St. John's, Newfoundland, Canada", "St. John's, NL, Canada", "keep"),
+    ("Monterrey, Mexico", "Monterrey, NL, Mexico", "keep"),
+    ("Pune, India", "Pune, MH, India", "keep"),
+    ("India", "Gurugram, HR, India", "keep"),
+    ("Brazil", "Curitiba, PR, Brazil", "keep"),
+    ("Belo Horizonte, Brazil", "Belo Horizonte, MG, Brazil", "keep"),
+    ("Adelaide, Australia", "Adelaide, SA, Australia", "keep"),
+    ("Italy", "Torino, TO, Italy", "keep"),
+    ("Chennai, India", "Chennai, TN, India", "keep"),
+    ("Toronto, Canada", "Toronto, ON, Canada", "keep"),
+    # non-Latin and mixed case
+    ("Moscow, Russia", "Москва, Россия", "keep"),
+    ("Moscow, Russia", "Москва, Russia", "keep"),
+    ("Tokyo, Japan", "東京都, Japan", "keep"),
+    ("Beijing, China", "北京市 100000, China", "keep"),
+    ("Tokyo, Japan", "Seoul, South Korea", "remove"),
+    ("AUSTIN, TEXAS", "austin, tx, united states", "keep"),
+    ("austin, tx", "DALLAS, TEXAS", "remove"),
+    ("Zürich, Switzerland", "ZURICH, CH", "keep"),
+    ("Łódź, Poland", "Lodz, Poland", "keep"),
+    # codes shared by a state and a country
+    ("Bogota, CO", "Bogotá, Colombia", "keep"),
+    ("Bogota, CO", "Denver, CO", "keep"),
+    ("Denver, CO", "Medellín, Colombia", "keep"),
+    ("Denver, Colorado", "Boulder, CO", "remove"),
+    ("Buenos Aires, AR", "Buenos Aires, Argentina", "keep"),
+    ("Little Rock, AR", "Little Rock, Arkansas", "keep"),
+    ("Berlin, DE", "Berlin, Germany", "keep"),
+    ("Berlin, Germany", "Berlin, DE", "keep"),
+    ("Dover, DE", "Wilmington, Delaware", "remove"),
+    ("Savannah, GA", "Savannah, Georgia, US", "keep"),
+    ("Libreville, GA", "Libreville, Gabon", "keep"),
+    ("Atlanta, GA", "Kutaisi, Georgia", "remove"),
+    ("Rabat, MA", "Rabat, Morocco", "keep"),
+    ("Boston, MA", "Boston, Massachusetts", "keep"),
+    ("Boston, Massachusetts", "Worcester, MA", "remove"),
+    ("Chisinau, MD", "Chișinău, Moldova", "keep"),
+    ("Baltimore, MD", "Baltimore, Maryland, USA", "keep"),
+    ("Podgorica, ME", "Portland, Maine", "remove"),
+    ("Portland, ME", "Portland, Maine, United States", "keep"),
+    ("Ulaanbaatar, MN", "Minneapolis, Minnesota", "remove"),
+    ("Minneapolis, MN", "Minneapolis, Minnesota", "keep"),
+    ("Panama City, PA", "Panama City, Panama", "keep"),
+    ("Pittsburgh, PA", "Pittsburgh, Pennsylvania", "keep"),
+    ("Panama City, Florida", "Panama City, Panama", "remove"),
+    ("Victoria, SC", "Victoria, Seychelles", "keep"),
+    ("Columbia, SC", "Columbia, Missouri", "remove"),
+    ("Montgomery, AL", "Tirana, Albania", "keep"),
+    ("Tirana, Albania", "Montgomery, AL", "keep"),
+    ("Baku, AZ", "Baku, Azerbaijan", "keep"),
+    ("Phoenix, AZ", "Phoenix, Arizona", "keep"),
+    ("Omaha, NE", "Omaha, Nebraska", "keep"),
+    ("Niamey, NE", "Niamey, Niger", "keep"),
+    ("Richmond, VA", "Richmond, Virginia, US", "keep"),
+    ("Richmond, VA", "Richmond, British Columbia, Canada", "remove"),
+]
+# Clear to a reader, not judged by the test: another city in the same state (plain text cannot
+# tell it from a borough, a county or an address), a city asked with nothing around it, and a
+# place that may be a US state or a country ('IN', 'MN', 'Georgia').
+NOT_JUDGED = {
+    ("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN"),
+    ("Atlanta, Georgia", "Savannah, Georgia"), ("Atlanta, GA", "Tbilisi, Georgia"), ("Austin, TX", "Dallas, TX"),
+    ("Oklahoma City, OK", "Tulsa, Oklahoma"), ("New York, NY", "Buffalo, NY"), ("Austin, Texas, United States", "Dallas, TX"),
+    ("Dallas, TX", "Fort Worth, Texas"), ("Cambridge, MA", "Somerville, Massachusetts"),
+    ("San Diego, California", "Sacramento, CA"), ("Phoenix, AZ", "Tucson, Arizona, United States"),
+    ("Austin, TX", "Houston, TX 77002"), ("austin, tx", "DALLAS, TEXAS"), ("Denver, Colorado", "Boulder, CO"),
+    ("Dover, DE", "Wilmington, Delaware"), ("Atlanta, GA", "Kutaisi, Georgia"), ("Boston, Massachusetts", "Worcester, MA"),
+    ("Podgorica, ME", "Portland, Maine"), ("Ulaanbaatar, MN", "Minneapolis, Minnesota"),
+}
 
 
 @pytest.mark.parametrize("asked,row,want", KEEP_OR_REMOVE)
 def test_place_never_removes_a_row_in_the_place_asked(asked, row, want):
     got = R.place(asked, row)
-    if (asked, row) in NOT_JUDGED:
+    if isinstance(row, str) and (asked, row) in NOT_JUDGED:
         assert got is None
     else:
         assert (got is False) == (want == "remove"), got
@@ -260,7 +367,19 @@ def test_an_ask_that_reads_two_ways_removes_a_row_only_when_both_readings_do():
     assert R.place("Mumbai, IN", "Mumbai, Maharashtra, India") is True
     assert R.place("Toronto, CA", "Toronto, Ontario, Canada") is True
     assert R.place("Tbilisi, GE", "Tbilisi, Georgia") is True and R.place("Georgia", "Tbilisi, GE") is not False
-    assert R.place("Oklahoma City, OK", "Tulsa, Oklahoma") is False      # the asked city against the row's city
+    assert R.place("Oklahoma City, OK", "Tulsa, Oklahoma") is None       # another city part: never judged
+
+
+def test_a_row_naming_several_places_is_removed_only_when_every_one_is_elsewhere():
+    assert R.place("San Francisco, CA", "New York, NY (HQ); San Francisco, CA") is True
+    assert R.place("Austin, TX", ["Berlin, Germany", "Remote"]) is None
+    assert R.place("Austin, TX", "Berlin, Germany | Paris, France") is False
+
+
+def test_a_two_letter_region_before_the_country_is_no_country():
+    assert R.place("Canada", "Saskatoon, SK, Canada") is True
+    assert R.place("Netherlands", "St. John's, NL, Canada") is False
+    assert R.place("United Kingdom", "London, UK") is True
 
 
 def test_place_counts_rows_removed_and_unchecked():
@@ -268,8 +387,9 @@ def test_place_counts_rows_removed_and_unchecked():
             {"location": "Greater Austin Area"}, {"location": "Berlin, Germany"}, {"location": "Texas"},
             {"name": "no place"}]
     r = _apply("location", "place", ["location"], "Austin, Texas", rows)
-    assert [x.get("location") for x in r.rows] == ["Austin, TX, US", "Greater Austin Area", "Texas", None]
-    assert r.removed == 2 and r.unchecked == 2 and r.by == {"location": 2}
+    assert [x.get("location") for x in r.rows] == ["Austin, TX, US", "Dallas, Texas, United States",
+                                                   "Greater Austin Area", "Texas", None]
+    assert r.removed == 1 and r.unchecked == 3 and r.by == {"location": 1}
 
 
 def test_domain_keeps_the_company_and_its_subdomains():
