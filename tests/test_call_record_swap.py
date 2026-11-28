@@ -451,7 +451,8 @@ async def test_a_stopped_upgrade_resumes_the_resync_where_it_stopped(before_swap
         await _swap_in_process()
     finally:
         sqlalchemy_event.remove(db._engine.sync_engine, "before_cursor_execute", count)
-    assert len(resyncs) == 2            # ids 31 to 40, not 16 to 40 again
+    assert len(resyncs) == 3            # ids 31 to 40 in two batches, not 16 to 40 again, then
+                                        # the locked copy's range under the lock
     assert await _scalar("SELECT relkind::text FROM pg_class WHERE oid = 'callrecord'::regclass") == "p"
     assert await _scalar("SELECT obj_description('callrecord'::regclass, 'pg_class')") is None
 
@@ -729,6 +730,27 @@ async def test_a_late_charge_is_resynced_by_the_swap_like_a_late_verdict(before_
 
     async with db.session_maker() as session:
         assert (await session.get(CallRecord, 41)).cost_charged_micro == 1234
+
+
+async def test_late_values_landing_just_before_the_lock_reach_the_new_table(before_swap, monkeypatch):
+    """A row already in the new table gets its late verdict and charge after the last resync and
+    before the lock is granted. The locked copy skips rows already copied, so the swap resyncs the
+    range it copies, under the lock."""
+    real_try, done = swap._try_locks, []
+
+    def values_land_before_the_lock(bind):
+        if not done:
+            done.append(1)
+            bind.execute(text("UPDATE callrecord SET hit = true, verdict = 'valid', "
+                              "cost_charged_micro = 77 WHERE id = 40"))
+        return real_try(bind)
+    monkeypatch.setattr(swap, "_try_locks", values_land_before_the_lock)
+
+    await _swap_in_process()
+
+    async with db.session_maker() as session:
+        row = await session.get(CallRecord, 40)
+        assert (row.hit, row.verdict, row.cost_charged_micro) == (True, "valid", 77)
 
 
 def test_a_refusal_names_a_vacuum_that_holds_the_table():

@@ -481,7 +481,8 @@ so no reader ever sees a table with part of its history, and only the rename blo
    during the wait and resyncs the rows above `resynced_upto` again; and tries the locks with a
    `_LOCK_TRY` lock timeout inside a savepoint, starting over on a timeout, so a lock request
    never queues inserts for longer than that. It refuses if the window ends first. Holding both
-   locks, it copies the last rows, trades the table and index names, moves the sequence and
+   locks, it copies the last rows and resyncs the late values of that range (`_RESYNC`, since a
+   row the copy skips was copied before the lock), trades the table and index names, moves the sequence and
    repeats the old table's grants. Audit inserts wait for that transaction and land in the new
    table. A statement prepared before the swap whose result includes `id` is refused from then on
    (its result changed type), and behind a transaction pooler that keeps one server statement per

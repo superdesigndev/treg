@@ -40,8 +40,9 @@ The steps, of which only the last blocks anyone:
    during the wait; then ask for ACCESS EXCLUSIVE on both tables with a `_LOCK_TRY` lock timeout
    inside a savepoint, and start over on a timeout, so a waiting lock request never stalls inserts
    for longer than that. It refuses if the window ends first. Holding both locks, it copies the
-   last rows, the tables and their indexes trade names, the id sequence moves to the new table and
-   the old table's grants are repeated on it. Audit inserts wait for this transaction and then
+   last rows and resyncs the late values of the range it copied (a row it skips was copied before
+   the lock), the tables and their indexes trade names, the id sequence moves to the new table
+   and the old table's grants are repeated on it. Audit inserts wait for this transaction and then
    land in the new table.
 
 Rows of teams deleted while the copy ran are removed after the swap by
@@ -296,7 +297,9 @@ _VACUUMS = sa.text(
 
 def _vacuum_note(bind, table: str) -> str:
     """The refusal's hint when a VACUUM of `table` runs: an autovacuum that prevents wraparound is
-    not cancelled by a waiting lock request, so the swap must wait for it to finish."""
+    not cancelled by a waiting lock request, so the swap must wait for it to finish. Without
+    `pg_read_all_stats` PostgreSQL hides the `relid` of other roles' rows, autovacuum's included,
+    so no hint does not mean no vacuum: checking for one stays an operator step."""
     vacuums = bind.execute(_VACUUMS, {"name": table}).all()
     if not vacuums:
         return ""
@@ -382,10 +385,16 @@ def _try_locks(bind) -> bool:
 
 
 def _copy_under_lock(bind, columns: str, reached: int) -> None:
+    after = reached - _COMMIT_MARGIN
     # ON CONFLICT, not an anti-join: a row already copied costs one probe of the primary key.
     bind.execute(sa.text(
         f"INSERT INTO {NEW} ({columns}) SELECT {columns} FROM {LIVE} WHERE id > :after "
-        "ON CONFLICT DO NOTHING"), {"after": reached - _COMMIT_MARGIN})
+        "ON CONFLICT DO NOTHING"), {"after": after})
+    # A row it skips was copied before the lock and may have got a late value since: resync the
+    # same range, now that no writer can change it.
+    top = _scalar(bind, f"SELECT coalesce(max(id), 0) FROM {LIVE} WHERE id > :after", after=after)
+    if top > after:
+        bind.execute(_RESYNC, {"after": after, "upto": top})
 
 
 def _swap(bind, columns: str, reached: int) -> None:
