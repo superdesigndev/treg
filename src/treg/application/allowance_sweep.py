@@ -427,7 +427,7 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
             if shard is not None and after is None and page and _starved(page[0][1]):
                 behind = page[0]
                 lane = asyncio.create_task(_fold_behind(
-                    session_maker, *behind,
+                    session_maker, *behind, first_visit=keep_going,
                     keep_going=lambda: not stop.is_set() and keep_going()))
             for org_id, oldest in page:
                 if worked >= _TEAMS_PER_PASS:
@@ -477,22 +477,26 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
 
 
 async def _fold_behind(session_maker, org_id: int, oldest, *,
+                       first_visit: Callable[[], bool],
                        keep_going: Callable[[], bool]) -> _Visit:
     """Fold the stalest starved team of a pass beside the pass, visit after visit, until its
     queue is empty or `keep_going` says the pass is over. A team that queues faster than one
     visit a pass applies is otherwise folded only while the pass is at it, a few batches in
     a pass that spends the rest of its time on the share's other teams. A visit that commits
     nothing (the team's own requests hold its lease, its lock or its admission) is not
-    counted as a skip; the lane tries again after `_BEHIND_RETRY_S`. A fold that failed ends
+    counted as a skip; the lane tries again after `_BEHIND_RETRY_S`. The first visit is the
+    try the team had in its place, whole however soon the rest of the pass is over (only the
+    pass's own `first_visit` stops it), so a short pass never folds less of it than that try
+    did; the visits after it stop with the pass. A fold that failed ends
     the lane. A team whose queue the lane did not empty gets its starved turn after the pass.
     The visits are the pass's own: one at a time, each a batch per transaction under the
     team's lease, so the lane adds one connection to the pass's one. One
     `allowance_fold_behind` line per lane that made a visit."""
     total, committed, visits, last = 0, False, 0, _Visit()
     try:
-        while keep_going():
+        while first_visit() if not visits else keep_going():
             last = await _visit_team(session_maker, org_id, oldest, note=False,
-                                     keep_going=keep_going)
+                                     keep_going=first_visit if not visits else keep_going)
             visits += 1
             total += last.calls
             committed = committed or last.committed

@@ -738,8 +738,10 @@ past the bound do not make every new team scan them.
   starved, is not folded in its place: a lane
   (`_fold_behind`) folds it visit after visit, as a plain try (no claim, a short admission wait,
   skips not counted), for as long as the pass runs, pausing `_BEHIND_RETRY_S` after a visit
-  that committed nothing. The lane stops between batches once the pass is over (or its lease is
-  lost) and is over before the starved turns begin; a cancelled pass cancels it. A team whose
+  that committed nothing. Its first visit is the whole try the team had in its place, so a pass
+  over before the lane begins (the team alone in its share) still folds that much of it; later
+  visits stop between batches once the pass is over (or its lease is lost), and the lane is
+  over before the starved turns begin; a cancelled pass cancels it. A team whose
   queue the lane did not empty takes the first starved turn, as it would have without the lane.
   It logs one `allowance_fold_behind` line per lane that made a visit (charges folded, visits,
   whether the queue emptied). The lane is one team at a time, each batch under the team's lease

@@ -3636,6 +3636,32 @@ async def test_a_pass_cancelled_while_its_lane_folds_leaves_no_lease_and_no_lane
     assert balance == GRANT - (5 - queued) * 400, "every folded charge settled once"
 
 
+async def test_a_short_pass_still_gives_its_one_hot_team_the_whole_try_it_had_in_place(
+        org_id, store, monkeypatch, caplog):
+    """The hot team is alone in its share, so the pass is over before its lane begins. The
+    lane's first visit is still the whole try the team had in its place, and the starved turn
+    after the pass comes on top: never less than before the lane."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 2)
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCHES_PER_PASS", 5)
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.05)
+    for index in range(30):
+        await _queue_charge(org_id, f"alone-{index}", 900)
+    fold = allowance.fold_charges_in_transaction
+
+    async def slow_fold(db, team, **kwargs):  # a busy database: the turn fits a batch or two
+        await asyncio.sleep(0.04)
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        folded = await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE)
+    assert folded >= 10, "at least the five batches of two the try in place folded"
+    assert await _queued(org_id) == 30 - folded
+    [line] = [r.getMessage() for r in caplog.records
+              if r.getMessage().startswith("allowance_fold_behind")]
+    assert "folded=10 visits=1 " in line
+
+
 async def test_a_pass_over_every_team_while_the_store_cannot_answer_starts_no_lane(
         org_id, store, monkeypatch, caplog):
     """The store cannot answer, so every process runs a pass over every team, and each would
