@@ -49,8 +49,14 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
         used |= _carried(contract, k, identity)
     soft = set(getattr(adapter, "soft", None) or ()) if soft else set()
     keys = (*(contract.filters or ()), *(k for k in contract.scoping if k in soft))
+    # A restated contract default is the same question as omitting the key: identity already
+    # fills that default, so ranking a child down for not mapping it would hide a cheaper
+    # child whenever a client echoes documented defaults (language: en on keyword volume).
+    defaults = {k: (spec or {}).get("default") for k, spec in (contract.filters or {}).items()}
     return tuple(k for k in dict.fromkeys(keys) if k != "limit"
-                 and identity.get(k) not in (None, "") and (given is None or k in given)
+                 and identity.get(k) not in (None, "")
+                 and identity.get(k) != defaults.get(k)
+                 and (given is None or k in given)
                  and (k not in used or k in soft or _unmappable(adapter, k, identity)))
 
 
@@ -156,16 +162,23 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
 def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapter | None = None) -> int | None:
     """Micro-USD this request will cost at its requested size (plan §3, bench 08-27): per-result
     prices × the requested `limit` (default 1 for a lookup); flat per-call/per-success as listed;
-    a credit-with-minimum (`per: N`) is one whole unit. None when unpriced."""
+    a credit-with-minimum (`per: N`) is one whole unit. None when unpriced.
+
+    When the adapter names `cost_units` and the expression yields a non-negative int, that is
+    the unit count. An expression that cannot be evaluated on this request (a keyword-list
+    length on a catalog quote with no body) falls through to the one-unit lookup default,
+    the same as a `per_result` row with no `cost_units`. An expression that yields a value
+    that is not a non-negative int stays unpriced."""
     if not cost_view or cost_view.get("usd") is None:
         return None
     usd = float(cost_view["usd"])
     fee = _call_fee_micro(cost_view)
     if adapter and adapter.cost_units:
         units = P.evaluate(adapter.cost_units, request or {})
-        if type(units) is not int or units < 0:
-            return None
-        return int(round(usd * units * 1_000_000)) + fee
+        if units is not None:
+            if type(units) is not int or units < 0:
+                return None
+            return int(round(usd * units * 1_000_000)) + fee
     t = cost_view.get("type")
     per = cost_view.get("per") or 1
     if t == "per_result":
