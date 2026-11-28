@@ -855,8 +855,14 @@ def pytest_runtest_teardown(item, nextitem):
     """Every test ends in the directory the run started in. A test that changes it (a bare
     `os.chdir`, or product code that chdirs while a stub stands in for `exec`) makes later tests
     fail on relative paths, far from the cause and only in some orders. Runs after every fixture
-    has torn down, so `monkeypatch.chdir` restores first; the leaking test errors here instead."""
+    has torn down, so `monkeypatch.chdir` restores first; the leaking test errors here instead.
+
+    The next test also starts from the settings the environment gives. A test that sets a variable
+    and rebuilds `get_settings()` gets the variable restored by monkeypatch, but the cached Settings
+    would keep its value, and the next test in that process would see a platform key it never
+    configured. The environment is back by now, so the next `get_settings()` reads it afresh."""
     result = yield
+    get_settings.cache_clear()
     if os.getcwd() != _SESSION_CWD:
         leaked = os.getcwd()
         os.chdir(_SESSION_CWD)
