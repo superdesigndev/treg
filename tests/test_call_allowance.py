@@ -1300,7 +1300,7 @@ async def test_a_take_whose_refill_money_admission_turns_away_is_counted_as_such
     caller, mk = await _caller(org_id), _call(org_id)
     noted: list[int] = []
 
-    async def note(team):
+    def note(team):
         noted.append(team)
 
     monkeypatch.setattr(team_backpressure, "note_admission_timeout", note)

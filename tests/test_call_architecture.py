@@ -147,13 +147,13 @@ _DATAPLANE_DERIVED_WRITES = {
         (team_backpressure.admit, "provider_concurrency.try_acquire_slot"),
     ),
     # A reserve the money admission queue turned away (the call's own, or its allowance refill's)
-    # counts once in a self-expiring per-team window (Redis, no session open); past the count it
-    # writes the team's self-expiring throttle mark.
+    # counts once in a self-expiring per-team window (Redis, in a bounded background task, no
+    # session open); past the count it writes the team's self-expiring throttle mark.
     "team_backpressure_admission_mark": (
         (reserve.reserve_admission, "team_backpressure.note_admission_timeout"),
         (call_allowance._refill, "team_backpressure.note_admission_timeout"),
-        (team_backpressure.note_admission_timeout, "store.take"),
-        (team_backpressure.note_admission_timeout, "store.set_text"),
+        (team_backpressure._count_timeout, "store.take"),
+        (team_backpressure._count_timeout, "store.set_text"),
     ),
     # A shared rate window: a platform call about to go upstream takes a self-expiring member of its
     # bucket's window (Redis, after the DB phase ended), given back when it is refused before sending.
@@ -470,8 +470,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("infra/team_backpressure.py", "admit", "provider_concurrency.try_acquire_slot"),
     ("application/call/reserve.py", "reserve_admission", "team_backpressure.note_admission_timeout"),
     ("application/call/allowance.py", "_refill", "team_backpressure.note_admission_timeout"),
-    ("infra/team_backpressure.py", "note_admission_timeout", "store.take"),
-    ("infra/team_backpressure.py", "note_admission_timeout", "store.set_text"),
+    ("infra/team_backpressure.py", "_count_timeout", "store.take"),
+    ("infra/team_backpressure.py", "_count_timeout", "store.set_text"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
     ("application/call/service.py", "_execute_call", "rate_observe.observe"),
     ("application/call/service.py", "admit_outbound", "rate_observe.observe"),

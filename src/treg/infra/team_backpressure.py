@@ -32,6 +32,9 @@ _READ_WAIT_S = 0.15
 _MAX_TEAMS = 1000
 # Teams kept waiting for a look-up at most, so a burst of new teams cannot grow the map unbounded.
 _ASKED_KEPT = 4 * _MAX_TEAMS
+# Timeout counts being written at once at most; past it a count is dropped, never queued.
+_PENDING_MAX = 256
+_pending: set[asyncio.Task] = set()
 _LOG_EVERY_S = 5.0
 
 
@@ -82,16 +85,28 @@ def mark_key(org_id: int) -> str:
     return f"{_MARK}:{org_id}"
 
 
-async def note_admission_timeout(org_id: int) -> None:
+def note_admission_timeout(org_id: int) -> None:
     """Count one of the team's reserves the money admission queue turned away; at
     `money_backpressure_admission_timeouts` inside `money_backpressure_admission_window_s`, mark
-    the team for `money_backpressure_mark_ttl_s`, renewed by every timeout past the count. Never
-    raises; a store that cannot count may mark the team, as `take` spends a budget it cannot
-    check."""
+    the team for `money_backpressure_mark_ttl_s`, renewed by every timeout past the count.
+
+    The count is written in the background, at most `_PENDING_MAX` at once: the refusal it
+    follows is returned, and a refill's money released, without waiting on the store, and a
+    count that would exceed the bound is dropped rather than queued. Never raises."""
     settings = get_settings()
     count = settings.money_backpressure_admission_timeouts
-    if count is None or not kv.configured():
+    if count is None or not kv.configured() or len(_pending) >= _PENDING_MAX:
         return
+    try:
+        task = asyncio.get_running_loop().create_task(_count_timeout(org_id, count, settings))
+    except RuntimeError:  # no running loop: nothing to count on
+        return
+    _pending.add(task)
+    task.add_done_callback(_pending.discard)
+
+
+async def _count_timeout(org_id: int, count: int, settings) -> None:
+    """A store that cannot count may mark the team, as `take` spends a budget it cannot check."""
     try:
         async with asyncio.timeout(_READ_WAIT_S):
             store = kv.store()
@@ -103,6 +118,12 @@ async def note_admission_timeout(org_id: int) -> None:
         raise
     except Exception:  # noqa: BLE001 - an unmarked team is only not throttled
         pass
+
+
+async def drain() -> None:
+    """Wait for the counts in flight (tests, shutdown)."""
+    while running := [task for task in _pending if not task.done()]:
+        await asyncio.gather(*running, return_exceptions=True)
 
 
 def _parse(text: str | None) -> set[int]:
@@ -181,6 +202,7 @@ _suppressed = 0
 def reset() -> None:
     global _reader
     _reader = _Reader()
+    _pending.clear()
 
 
 async def throttled(org_id: int) -> bool:

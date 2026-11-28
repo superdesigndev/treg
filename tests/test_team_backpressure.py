@@ -146,13 +146,26 @@ async def test_switched_off_nothing_is_read_or_written(store, monkeypatch):
     assert store.reads == 0
 
 
+class Counting(Store):
+    """Every timeout count is waited for before the next read, as a later refresh would."""
+
+    async def get_texts(self, keys):
+        await gate.drain()
+        return await super().get_texts(keys)
+
+
 @pytest.fixture
 def admission_trigger(store, monkeypatch):
     settings = get_settings()
+    counting = Counting()
+    monkeypatch.setattr(kv, "store", lambda: counting)
     monkeypatch.setattr(settings, "money_backpressure_oldest_s", None)
     monkeypatch.setattr(settings, "money_backpressure_admission_timeouts", 3)
     monkeypatch.setattr(settings, "money_backpressure_admission_window_s", 10)
-    return store
+    yield counting
+    for task in tuple(gate._pending):
+        task.cancel()
+    gate._pending.clear()
 
 
 async def test_a_team_whose_reserves_keep_timing_out_is_throttled(admission_trigger, monkeypatch):
@@ -161,12 +174,12 @@ async def test_a_team_whose_reserves_keep_timing_out_is_throttled(admission_trig
     Enough timeouts inside the window throttle that team, and only it."""
     now = _clock(monkeypatch)
     for _ in range(2):
-        await gate.note_admission_timeout(5)
-    await gate.note_admission_timeout(6)
+        gate.note_admission_timeout(5)
+    gate.note_admission_timeout(6)
     assert not await gate.throttled(5)             # first read: 5 asks for the first time
     now[0] += get_settings().money_backpressure_refresh_s
     assert not await gate.throttled(5)             # two timeouts are below the count
-    await gate.note_admission_timeout(5)
+    gate.note_admission_timeout(5)
     now[0] += get_settings().money_backpressure_refresh_s
     assert await gate.throttled(5)
     assert not await gate.throttled(6)
@@ -182,7 +195,7 @@ async def test_the_admission_mark_lifts_once_the_timeouts_stop(admission_trigger
     expires `money_backpressure_mark_ttl_s` after the last timeout."""
     now = _clock(monkeypatch)
     for _ in range(3):
-        await gate.note_admission_timeout(5)
+        gate.note_admission_timeout(5)
     assert await gate.throttled(5)                 # a team's first call reads its mark
     held = [await gate.admit(5), await gate.admit(5)]
     for _ in range(20):
@@ -198,7 +211,7 @@ async def test_the_admission_mark_lifts_once_the_timeouts_stop(admission_trigger
 async def test_marks_are_read_with_the_lists_in_one_round_trip(admission_trigger, monkeypatch):
     now = _clock(monkeypatch)
     for _ in range(3):
-        await gate.note_admission_timeout(5)
+        gate.note_admission_timeout(5)
     await gate.publish((0, 1), [7], 15)
     await asyncio.gather(*(gate.throttled(team) for team in (5, 6, 7) for _ in range(5)))
     assert admission_trigger.reads == 1
@@ -214,7 +227,7 @@ async def test_a_team_marked_by_admission_alone_gets_its_own_places(admission_tr
     monkeypatch.setattr(get_settings(), "money_backpressure_admission_max_in_flight", 3)
     for team in (5, 7):
         for _ in range(3):
-            await gate.note_admission_timeout(team)
+            gate.note_admission_timeout(team)
     await gate.publish((0, 1), [7], 15)
     marked = [await gate.admit(5) for _ in range(3)]
     with pytest.raises(gate.Throttled) as refused:
@@ -234,7 +247,7 @@ async def test_a_refresh_another_team_ran_keeps_a_marked_team_throttled(
     another team's call starts must still look its mark up, or its next call runs unthrottled."""
     now = _clock(monkeypatch)
     for _ in range(3):
-        await gate.note_admission_timeout(5)
+        gate.note_admission_timeout(5)
     held = [await gate.admit(5), await gate.admit(5)]
     for _ in range(2):                              # reads 6 starts, 5 asking nothing
         now[0] += get_settings().money_backpressure_refresh_s
@@ -250,7 +263,7 @@ async def test_a_full_batch_reads_the_asking_team_and_rotates_the_rest(
     now = _clock(monkeypatch)
     monkeypatch.setattr(gate, "_MAX_TEAMS", 3)
     for _ in range(3):
-        await gate.note_admission_timeout(9)
+        gate.note_admission_timeout(9)
     asked: list[list[str]] = []
     real = admission_trigger.get_texts
 
@@ -272,10 +285,47 @@ async def test_a_full_batch_reads_the_asking_team_and_rotates_the_rest(
     assert teams[2] == [8, 9, 4]
 
 
+async def test_a_slow_store_never_delays_the_refusal_and_counts_stay_bounded(
+        admission_trigger, monkeypatch):
+    """Recording the timeout must not spend the caller's deadline: the 429 comes back at once
+    however long the store takes, and counts past the bound are dropped, not queued."""
+    from contextlib import asynccontextmanager
+
+    from treg.application.call import reserve as call_reserve
+    from treg.application.call.types import ReservationFailed
+    from treg.infra import money_admission
+
+    stuck = asyncio.Event()
+
+    async def slow_take(*args, **kwargs):
+        await stuck.wait()
+        return False
+
+    monkeypatch.setattr(admission_trigger, "take", slow_take)
+
+    @asynccontextmanager
+    async def refuse(*args, **kwargs):
+        raise money_admission.ReserveAdmissionTimeout("wait_timeout")
+        yield  # pragma: no cover - makes this an async context manager
+
+    monkeypatch.setattr(money_admission, "admit", refuse)
+    async with asyncio.timeout(0.05):
+        with pytest.raises(ReservationFailed) as refused:
+            async with call_reserve.reserve_admission(9):
+                pytest.fail("refusal entered reserve")
+    assert refused.value.detail["error"] == "money_admission_timeout"
+    for _ in range(2 * gate._PENDING_MAX):
+        gate.note_admission_timeout(9)
+    assert len(gate._pending) == gate._PENDING_MAX
+    stuck.set()
+    await gate.drain()
+    assert not gate._pending
+
+
 async def test_the_admission_trigger_off_counts_and_reads_nothing(store, monkeypatch):
     monkeypatch.setattr(store, "take", pytest.fail)
     monkeypatch.setattr(store, "set_text", pytest.fail)
-    await gate.note_admission_timeout(5)
+    gate.note_admission_timeout(5)
     assert await gate.throttled(5) is False
     assert not gate._reader.asked
 

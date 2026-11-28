@@ -1171,6 +1171,9 @@ it is on only while a trigger is set and the shared store is configured.
   call's (`reserve.reserve_admission`) or its refill's, also counts in a self-expiring window of
   `money_backpressure_admission_window_s` for its team
   (`team_backpressure.note_admission_timeout`, `treg:team-backpressure-admission-timeouts:v1:<org>`).
+  The count is written by a background task, at most `_PENDING_MAX` at once, so the refusal is
+  returned and the refill's money released without waiting on the store; a count past the bound
+  is dropped, not queued.
   From `money_backpressure_admission_timeouts` on, each one writes the team's own mark
   (`treg:team-backpressure-admission:v1:<org>`, living `money_backpressure_mark_ttl_s`). A store
   that cannot count the timeout may write the mark, as `take` spends a budget it cannot check.

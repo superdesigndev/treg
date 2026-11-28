@@ -423,7 +423,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         _refill_turned_away.set(True)
         log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
                  org_id, need_micro, available)
-        await team_backpressure.note_admission_timeout(org_id)
+        team_backpressure.note_admission_timeout(org_id)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
