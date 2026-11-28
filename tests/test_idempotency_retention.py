@@ -339,34 +339,51 @@ async def test_bytes_on_file_reads_snapshots_by_key_never_by_a_shared_answer_has
     assert seen and not any("content_hash in" in sql for sql in seen)
 
 
-async def test_bytes_on_file_asks_a_bounded_number_of_keys_per_statement(clients, monkeypatch):
+async def test_bytes_on_file_binds_each_chunk_of_keys_and_only_those(clients, monkeypatch):
+    """Every statement binds its own chunk: the asked key hashes, then the ids of the keys found,
+    two at a time, never the whole page and never a key nobody asked about. A version whose bytes
+    live only in its `body_of` carrier is on file; a hash-only one is not."""
     from treg import archive
     from treg.models import ArchiveKey, ArchiveSnapshot
 
     monkeypatch.setattr(archive, "_ON_FILE_CHUNK", 2)
+    ids: dict[str, int] = {}
     async with session_maker() as db:
-        for n in range(5):
-            key = ArchiveKey(key_hash=f"c{n}", endpoint_id=EP)
+        for name in ["c0", "c1", "c2", "c3", "c4", "unasked"]:
+            key = ArchiveKey(key_hash=name, endpoint_id=EP)
             db.add(key)
             await db.flush()
-            db.add(ArchiveSnapshot(key_id=key.id, version=1, content_hash=f"h{n}", size_bytes=1, body=b"x"))
+            ids[name] = key.id
+            db.add(ArchiveSnapshot(key_id=key.id, version=1, content_hash="hot" if name == "unasked" else f"h{name}",
+                                   size_bytes=1, body=b"x", body_storage="db"))
+        await db.flush()
+        carrier = (await db.execute(select(ArchiveSnapshot.id).where(ArchiveSnapshot.key_id == ids["c4"]))).scalar_one()
+        db.add(ArchiveSnapshot(key_id=ids["c4"], version=2, content_hash="carried", size_bytes=1, body_of=carrier))
+        db.add(ArchiveSnapshot(key_id=ids["c3"], version=2, content_hash="hash-only", size_bytes=1))
         await db.commit()
         engine = db.bind.sync_engine
-    statements: list[str] = []
+    asked = {(f"c{n}", f"hc{n}") for n in range(5)} | {
+        ("c0", "hot"), ("c4", "carried"), ("c3", "hash-only"), ("missing", "hot")}
+    key_hash_batches: list[set] = []
+    key_id_batches: list[set] = []
 
     def record(conn, cursor, statement, parameters, context, executemany):
-        if "archivekey" in statement.lower() or "archivesnapshot" in statement.lower():
-            statements.append(statement.lower())
+        sql, bound = statement.lower(), set(parameters or ())
+        if "from archivesnapshot" in sql:
+            key_id_batches.append(bound & set(ids.values()))
+        elif "from archivekey" in sql:
+            key_hash_batches.append(bound)
 
     event.listen(engine, "before_cursor_execute", record)
     try:
         async with session_maker() as db:
-            on_file = await archive.bytes_on_file(db, {(f"c{n}", f"h{n}") for n in range(5)} | {("c0", "h1")})
+            on_file = await archive.bytes_on_file(db, asked)
     finally:
         event.remove(engine, "before_cursor_execute", record)
 
-    assert on_file == {(f"c{n}", f"h{n}") for n in range(5)}
-    assert [("from archivesnapshot" in sql) for sql in statements] == [False] * 3 + [True] * 3
+    assert on_file == {(f"c{n}", f"hc{n}") for n in range(5)} | {("c4", "carried")}
+    assert key_hash_batches == [{"c0", "c1"}, {"c2", "c3"}, {"c4", "missing"}]
+    assert key_id_batches == [{ids["c0"], ids["c1"]}, {ids["c2"], ids["c3"]}, {ids["c4"]}]
 
 
 async def test_a_trimmed_answer_the_archive_lost_answers_410_and_never_runs_again(clients, platform_on):
