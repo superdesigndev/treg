@@ -339,6 +339,36 @@ async def test_bytes_on_file_reads_snapshots_by_key_never_by_a_shared_answer_has
     assert seen and not any("content_hash in" in sql for sql in seen)
 
 
+async def test_bytes_on_file_asks_a_bounded_number_of_keys_per_statement(clients, monkeypatch):
+    from treg import archive
+    from treg.models import ArchiveKey, ArchiveSnapshot
+
+    monkeypatch.setattr(archive, "_ON_FILE_CHUNK", 2)
+    async with session_maker() as db:
+        for n in range(5):
+            key = ArchiveKey(key_hash=f"c{n}", endpoint_id=EP)
+            db.add(key)
+            await db.flush()
+            db.add(ArchiveSnapshot(key_id=key.id, version=1, content_hash=f"h{n}", size_bytes=1, body=b"x"))
+        await db.commit()
+        engine = db.bind.sync_engine
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        if "archivekey" in statement.lower() or "archivesnapshot" in statement.lower():
+            statements.append(statement.lower())
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        async with session_maker() as db:
+            on_file = await archive.bytes_on_file(db, {(f"c{n}", f"h{n}") for n in range(5)} | {("c0", "h1")})
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert on_file == {(f"c{n}", f"h{n}") for n in range(5)}
+    assert [("from archivesnapshot" in sql) for sql in statements] == [False] * 3 + [True] * 3
+
+
 async def test_a_trimmed_answer_the_archive_lost_answers_410_and_never_runs_again(clients, platform_on):
     from treg.models import ArchiveSnapshot
 
