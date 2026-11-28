@@ -31,7 +31,7 @@ endpoints:
   body_allowlist: true
   platform_request:
     body.search_type: web
-    body.max_price: 1.5
+    body.max_price: 6.25
     body.response_length: short
   name: Search the open web
   summary: Return ranked live web results.
@@ -57,7 +57,7 @@ endpoints:
         type: number
         required: true
         enum:
-        - 1.5
+        - 6.25
       response_length:
         type: string
         required: true
@@ -69,7 +69,7 @@ endpoints:
       query: What is example.com?
       max_num_results: 1
       search_type: web
-      max_price: 1.5
+      max_price: 6.25
       response_length: short
   example_response: examples/valyu.web.search.json
   cost:
@@ -79,20 +79,20 @@ endpoints:
     table:
     - when:
         body.search_type: web
-      value: 0.0015
+      value: 0.000625
       times: body.max_num_results
     fallback:
-      value: 0.015
+      value: 0.00625
       note: Ten requested results at the highest source rate for this view.
     settle: usage
     usage:
       path: total_deduction_dollars
       unit: credit
     source: observed
-    source_url: https://api.valyu.ai/v1/datasources
-    checked: '2026-09-30'
+    source_url: https://docs.valyu.ai/pricing
+    checked: '2026-11-28'
     confidence: verified
-    note: Web costs one and a half credits per 1,000 results; settle the reported deduction.
+    note: Web costs $0.625 per 1,000 results (0.1 Valyu credits each); settle the reported deduction.
   docs_url: https://docs.valyu.ai/api-reference/endpoint/search
 - id: valyu.research.papers.search
   added: '2026-09-29'

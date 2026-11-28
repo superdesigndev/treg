@@ -3427,14 +3427,14 @@ adapters:
     in_expr: {body.count: limit}
     out: {results: results.web, count: "len(results.web)"}
     miss: "coalesce(results.web, []) == []"
-  # Out of routing: Valyu now refuses the fixed max_price 1.5 (400 "Search requires max_price >= 5.00").
+  # Out of routing: priced per result, a call at the contract's default limit costs more than most rows here.
   valyu.web.search:
     route: false
     accepts: [[q]]
     max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.max_num_results: limit}
-    const: {body.search_type: web, body.max_price: 1.5, body.response_length: short}
+    const: {body.search_type: web, body.max_price: 6.25, body.response_length: short}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   tinyfish.web.search:
