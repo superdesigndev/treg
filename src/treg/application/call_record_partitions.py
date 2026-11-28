@@ -237,6 +237,17 @@ async def replica_lag_seconds() -> float:
     return max(float(lag or 0), 0.0)
 
 
+async def reads_a_replica() -> bool:
+    """Whether the read pool reaches a server in recovery (a replica). Without one it is the
+    primary, whose replay lag always reads 0, so a lag brake would never wait."""
+    from ..infra.db import read_session_maker
+
+    async with read_session_maker() as db:
+        if db.get_bind().dialect.name != "postgresql":
+            return False
+        return bool((await db.execute(text("SELECT pg_is_in_recovery()"))).scalar())
+
+
 async def delete_rows_of_deleted_teams(*, table: str = STAGED, batch: int = DELETED_TEAM_BATCH,
                                        between_batches=None, session_factory=session_maker) -> int:
     """Delete from a partitioned `table` the rows of teams that no longer exist, `batch` rows per
@@ -291,7 +302,7 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     Each run first deletes the copied rows of teams deleted since (`delete_rows_of_deleted_teams`),
     and last resyncs late `hit`/`verdict`/`cost_charged_micro` values (`_resync_late_verdicts`). With
     `max_replica_lag` (seconds), it waits between batches while the read replica is further behind
-    than that.
+    than that; without a replica behind the read pool it refuses (`refused`) and copies nothing.
     """
     if days < 1 or batch_rows < 1:
         raise ValueError("days and batch_rows must be >= 1")
@@ -304,6 +315,9 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     def spent() -> bool:
         return max_seconds is not None and time.monotonic() - started >= max_seconds
 
+    if max_replica_lag is not None and not await reads_a_replica():
+        return {**out, "done": False, "refused": "--max-replica-lag needs a read replica "
+                "(TREG_READ_DATABASE_URL); the read pool reaches the primary, whose lag reads 0"}
     async with only_one_run(BACKFILL_LOCK_KEY) as alone:
         if not alone:
             return {**out, "done": False, "busy": True}

@@ -212,12 +212,24 @@ async def test_the_backfill_waits_while_the_replica_lags(before_swap, monkeypatc
     async def lag() -> float:
         asked.append(1)
         return next(lags, 0.0)
+    async def a_replica() -> bool:
+        return True
     monkeypatch.setattr(partitions, "replica_lag_seconds", lag)
+    monkeypatch.setattr(partitions, "reads_a_replica", a_replica)
     monkeypatch.setattr(partitions, "REPLICA_LAG_POLL_SECONDS", 0)
     out = await partitions.backfill(31, batch_rows=10, pause=0, max_replica_lag=5)
     assert out["replica_waits"] == 2 and out["done"] is True
     assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 40
     assert (await partitions.backfill(31, batch_rows=10, pause=0))["replica_waits"] == 0
+
+
+async def test_a_replica_lag_brake_without_a_replica_is_refused(before_swap):
+    """Without a replica the read pool is the primary, whose lag always reads 0: the brake would
+    never wait, so the run refuses instead of copying unbraked."""
+    assert not await partitions.reads_a_replica()
+    out = await partitions.backfill(31, batch_rows=10, pause=0, max_replica_lag=5)
+    assert out["done"] is False and "read replica" in out["refused"]
+    assert await _scalar("SELECT count(*) FROM callrecord_partitioned") == 0
 
 
 async def test_the_staged_table_has_the_live_tables_indexes(at_head):
@@ -311,7 +323,11 @@ async def test_a_column_added_during_a_run_is_copied_from_the_next_batch_on(befo
                 await session.execute(text("ALTER TABLE callrecord_partitioned ADD COLUMN extra text"))
                 await session.commit()
         return 0.0
+
+    async def a_replica() -> bool:
+        return True
     monkeypatch.setattr(partitions, "replica_lag_seconds", lag)
+    monkeypatch.setattr(partitions, "reads_a_replica", a_replica)
     out = await partitions.backfill(31, batch_rows=10, pause=0, max_replica_lag=5)
     assert out["done"] and added
     assert await _scalar("SELECT count(*) FROM callrecord_partitioned WHERE extra = 'x'") == 30
@@ -358,6 +374,14 @@ async def test_a_resync_batch_reads_only_its_id_range_of_the_staged_table(before
     staged_conditions = [lines[i + 1] for i, line in enumerate(lines[:-1])
                          if "Scan" in line and " on callrecord_y" in line]
     assert staged_conditions and all("id > 10" in c for c in staged_conditions), plan
+
+
+def test_a_refused_backfill_exits_2(monkeypatch, capsys):
+    async def refused(days, **options):
+        return {"phase": None, "copied": 0, "done": False, "refused": "--max-replica-lag needs a read replica"}
+    monkeypatch.setattr(partitions, "backfill", refused)
+    assert worker.main(["admin", "callrecord-backfill", "--days", "31", "--max-replica-lag", "5"]) == 2
+    assert "needs a read replica" in capsys.readouterr().err
 
 
 def test_a_busy_backfill_exits_nonzero(monkeypatch, capsys):

@@ -405,7 +405,8 @@ the plain `callrecord`; this section is the preparation only.
    rows need and reads the column list again, so a column added meanwhile is copied from the next
    batch on. By default a batch is 5,000 rows followed by a 0.5 s pause (`--batch-rows`,
    `--pause-seconds`; `--max-replica-lag S` also waits while the read replica is more than `S`
-   seconds behind, `pg_last_xact_replay_timestamp()`), so the copy leaves the primary and its
+   seconds behind, `pg_last_xact_replay_timestamp()`; without a replica behind the read pool it
+   refuses and exits 2, since the primary's lag always reads 0), so the copy leaves the primary and its
    replicas room. The new table grows by about the size of the rows copied and the WAL by as much,
    so check disk headroom and watch replica lag while it runs. The first run notes when it started
    (`NOTE_BACKFILL_STARTED`, in a JSON comment on the table). One run works at a time: it holds a
