@@ -391,8 +391,7 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
     the waiter claims its next turn, so every other waiter, here or in another process, is
     turned away until the claim's owner has the lease or its wait runs out, and it does not
     queue behind this process's waiters. Those waiters keep their own budgets; a reserve's can
-    run out meanwhile. One waiter holds the claim at a time: another priority waiter is turned
-    away like the rest and asks for the claim again once it is given back."""
+    run out meanwhile."""
     raw = list(org_ids)
     if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
         # Do not yield. `async with admit(), session()` must not open the session.

@@ -1016,11 +1016,10 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   (`kv.acquire_lease(unless=…)`, one script), so every other waiter of the team, in any process,
   is turned away until the claimant has the lease; it gives the claim back at once on entry, and
   on timeout, cancellation or a store fault (the TTL bounds one not given back). Their own budgets
-  keep running meanwhile, so a reserve behind it can shed load as above. Two claimants at once (a
-  refill here, a starved fold elsewhere) share the one claim key: the one that does not get it is
-  turned away like any other waiter, asks for the claim again once it is given back, on its own
-  budget. A process still running without `unless` ignores claims: priority is then lost, not
-  isolation.
+  keep running meanwhile, so a reserve behind it can shed load as above. A refill and a fold of
+  one team never claim at once: both hold the team's allowance lease first (§ Allowance), where a
+  starved fold's own claim orders them. A process still running without `unless` ignores claims:
+  priority is then lost, not isolation.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before

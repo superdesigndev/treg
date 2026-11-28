@@ -1358,63 +1358,35 @@ async def test_a_refill_takes_its_turn_ahead_of_the_teams_queued_exact_reserves(
     assert not any(key.endswith(":claim") for key in store.leases)
 
 
-async def test_a_refill_and_a_starved_fold_both_claiming_the_next_turn_each_get_one(
+async def test_a_call_waiting_on_a_refill_and_a_starved_fold_each_get_their_turn(
         org_id, store, monkeypatch):
-    """Another process's waiters of the team take its lease the moment it is free. A refill here
-    and a starved fold elsewhere both claim the next turn at once: one holds the claim, the other
-    waits as an ordinary waiter does, and each still gets the lease within its budget."""
+    """The whole road of both: a call's refill and the fold of a starved queue meet first at the
+    team's allowance lease, where the fold's claim orders them, then each takes its admission
+    turn ahead of the team's queued exact-path reserves. The call gets its money within its
+    refill wait and the queue is folded within the fold's turn; no claim is left behind."""
     _admission_on(monkeypatch, 1.0)
-    key, stop, claims, most = f"money-admission:org:{org_id}", asyncio.Event(), set(), [0]
-    acquire, release = store.acquire_lease, store.release_lease
-
-    async def counted_acquire(lease, token, ttl_ms, **kwargs):
-        result = await acquire(lease, token, ttl_ms, **kwargs)
-        if lease == f"{key}:claim" and result == "acquired":
-            claims.add(token)
-            most[0] = max(most[0], len(claims))
-        return result
-
-    async def counted_release(lease, token):
-        if lease == f"{key}:claim":
-            claims.discard(token)
-        return await release(lease, token)
-
-    async def hog() -> int:
-        turns = 0
-        while not stop.is_set():
-            token = f"other-{turns}"
-            if await acquire(key, token, 1000, unless=f"{key}:claim") == "acquired":
-                turns += 1
-                await asyncio.sleep(0.03)
-                await release(key, token)
-            else:
-                await asyncio.sleep(0.001)
-        return turns
-
-    async def starved_fold() -> float:
-        async with runtime.money_admission.admit(
-                [org_id], operation="close", max_wait_s=0.5, refuse_on_timeout=True,
-                priority=True):
-            entered = time.monotonic()
-            await asyncio.sleep(0.03)
-        return entered
-
-    monkeypatch.setattr(store, "acquire_lease", counted_acquire)
-    monkeypatch.setattr(store, "release_lease", counted_release)
-    other = asyncio.create_task(hog())
-    await asyncio.sleep(0.005)
+    await _queue_charge(org_id, "queued", 60)
+    entered: list[float] = []
+    queued = [asyncio.create_task(_exact_reserve(org_id, entered)) for _ in range(100)]
+    while not entered:
+        await asyncio.sleep(0.001)
     started = time.monotonic()
-    try:
-        fold_entered, refilled = await asyncio.gather(
-            starved_fold(), runtime._refill(org_id, 0, 0))
-        refill_done = time.monotonic()
-    finally:
-        stop.set()
-        turns = await other
-    assert refilled and refill_done - started < 1.0
-    assert fold_entered - started < 0.5
-    assert most == [1], "the claim is one waiter's at a time"
-    assert turns >= 1 and not claims
+
+    async def call() -> tuple[int | None, float]:
+        epoch = await runtime.take(org_id, 600)
+        return epoch, time.monotonic() - started
+
+    async def fold() -> tuple[int, float]:
+        folded = await allowance_sweep.fold_queued_once(session_maker)
+        return folded, time.monotonic() - started
+
+    (epoch, call_s), (folded, fold_s) = await asyncio.gather(call(), fold())
+    await asyncio.gather(*queued)
+    assert epoch and call_s < runtime._REFILL_WAIT_S
+    assert folded == 1 and await _queued(org_id) == 0
+    assert fold_s < allowance_sweep._STARVED_TURN_S
+    assert runtime.fold_claim_key(org_id) not in store.leases
+    assert not any(key.endswith(":claim") for key in store.leases)
 
 
 async def test_a_frozen_counters_refill_waits_its_turn_without_a_claim(
