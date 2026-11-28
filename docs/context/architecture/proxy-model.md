@@ -712,8 +712,10 @@ itself for a short hold instead of sending it (`infra/own_key_credit.py`).
 - **How it ends.** The mark has a fixed lifetime and nothing renews it: a held call reaches no
   provider, so it is never counted. After the hold the next call is sent; if the account is still
   empty, that one answer writes the mark again in a process that found the key held (a failed
-  probe, whatever that process's own count); a success ends the count, disarms the key and
-  clears the mark. Connecting
+  probe, whatever that process's own count); a success ends the count and disarms the key, and
+  in a process that saw the streak it also clears the mark (elsewhere the mark ends at its
+  lifetime, so after a top-up calls are held for at most one hold). The mark's write and clear
+  run in the background, so no answer waits on the store. Connecting
   another key gives other secret ids, so its calls are never held. A store that is slow or down
   reads as no mark.
 - **Why it keeps the relay faithful.** A held call is treg's own refusal, marked as treg's, before

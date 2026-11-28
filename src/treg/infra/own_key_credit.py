@@ -111,7 +111,8 @@ async def read(key: Key | None) -> Held | None:
 async def observe(key: Key | None, *, out_of_credit: bool, status: int, answer_text: str) -> None:
     """After the provider answered a call on `key`: count an out-of-credit answer, and write the
     mark once the streak is long enough; any other answer ends the streak, and a success clears a
-    mark this process may have seen. Never raises."""
+    mark this process may have seen. Store writes run in the background, so the answer never
+    waits on the store. Never raises."""
     if key is None:
         return
     try:
@@ -134,9 +135,14 @@ async def observe(key: Key | None, *, out_of_credit: bool, status: int, answer_t
         now = time.time()
         value = json.dumps({"streak": count, "status": int(status), "excerpt": excerpt(answer_text),
                             "at": now, "until": now + hold_s()})
-        await kv.store().set_text(_store_key(key), value, hold_s())
-    except asyncio.CancelledError:
-        raise
+        _spawn(_write(key, value, hold_s()))
+    except Exception:  # noqa: BLE001 - the next out-of-credit answer writes it again
+        pass
+
+
+async def _write(key: Key, value: str, ttl: int) -> None:
+    try:
+        await kv.store().set_text(_store_key(key), value, ttl)
     except Exception:  # noqa: BLE001 - the next out-of-credit answer writes it again
         pass
 
@@ -149,7 +155,7 @@ async def _clear(key: Key) -> None:
 
 
 def _spawn(coro) -> None:
-    task = asyncio.get_running_loop().create_task(coro, name="treg-own-key-credit-clear")
+    task = asyncio.get_running_loop().create_task(coro, name="treg-own-key-credit")
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
 

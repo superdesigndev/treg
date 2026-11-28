@@ -221,7 +221,7 @@ _DATAPLANE_DERIVED_WRITES = {
     # the shared store (after the answer, no database); a success clears it.
     "own_key_credit_mark": (
         (service._execute_call, "own_key_credit.observe"),
-        (own_key_credit.observe, "set_text"),
+        (own_key_credit._write, "set_text"),
         (own_key_credit._clear, "clear_flag"),
     ),
 }
@@ -481,7 +481,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     # the own-key out-of-credit mark: written after a streak of out-of-credit answers, cleared by
     # a success on the same key
     ("application/call/service.py", "_execute_call", "own_key_credit.observe"),
-    ("infra/own_key_credit.py", "observe", "set_text"),
+    ("infra/own_key_credit.py", "_write", "set_text"),
     ("infra/own_key_credit.py", "_clear", "clear_flag"),
 }
 
