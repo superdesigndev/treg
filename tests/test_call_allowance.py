@@ -452,22 +452,31 @@ async def test_a_write_that_committed_but_reported_failure_is_charged_and_not_gi
 
 async def test_a_charge_the_database_refused_is_written_once_the_database_is_back(
         org_id, store, monkeypatch):
-    write, attempts = runtime._ChargeWriter._write, []
+    """The database refuses every write until it is back: meanwhile the call is answered and its
+    charge is not there; once it is back, the background retry writes it."""
+    write, down = runtime._ChargeWriter._write, [True]
 
-    async def down_then_up(rows, **kwargs):
-        attempts.append(len(rows))
-        if len(attempts) <= 3:
+    async def maybe(rows, **kwargs):
+        if down[0]:
             raise ConnectionError("database down")
         return await write(rows, **kwargs)
 
-    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(down_then_up))
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(maybe))
     epoch = await runtime.take(org_id, 600)
-    await _instantly(monkeypatch)
+    real_sleep = asyncio.sleep
+
+    async def retry_waits(delay):
+        await real_sleep(0 if delay < 1 else 0.02)
+
+    monkeypatch.setattr(runtime.asyncio, "sleep", retry_waits)
     assert await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=450) == 450
     assert store.counters[org_id]["avail"] == CHUNK - 450
     async with session_maker() as db:
         assert (await db.execute(select(CallCharge))).first() is None
+    assert runtime._charges.behind(), "still unconfirmed while the database is down"
+    down[0] = False
     await runtime._charges._retry_task
+    assert not runtime._charges.behind()
     assert (await _fold(org_id)).consumed_micro == 450
 
 
@@ -3592,7 +3601,18 @@ async def test_the_stalest_starved_team_is_folded_beside_the_pass_until_its_queu
     for index in range(20):
         await _queue_charge(org_id, f"behind-{index}", 900)
     await _queue_charge(other, "fresh", 5)
-    _slow_for(monkeypatch, other, 0.3)
+    real = allowance_sweep._fold_team
+
+    async def busy_until_the_lane_is_over(session_maker, team, *args, **kwargs):
+        """The pass stays on the other team for as long as the lane runs beside it."""
+        if team == other:
+            async with asyncio.timeout(10):
+                while not any(r.getMessage().startswith("allowance_fold_behind")
+                              for r in caplog.records):
+                    await asyncio.sleep(0.01)
+        return await real(session_maker, team, *args, **kwargs)
+
+    monkeypatch.setattr(allowance_sweep, "_fold_team", busy_until_the_lane_is_over)
     with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
         assert await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE) == 21
     assert await _queued(org_id) == 0 and await _queued(other) == 0
