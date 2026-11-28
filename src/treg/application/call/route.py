@@ -219,6 +219,12 @@ def _read_cursor(ep: dict, token, given: dict) -> tuple[str, object]:
     return eid, value
 
 
+def _resume_at(adapter, query: dict, body, value) -> None:
+    """Put the provider's page token where the adapter's `paging` says, over anything `to_upstream` wrote."""
+    path = next(iter(adapter.paging.values()))
+    P.set_path({"queryParams": query, "body": body}, path, value if path.startswith("body.") else str(value))
+
+
 def _next_cursor(cand, provider_cursor, given: dict) -> str | None:
     """The treg cursor for the page after this answer, when its provider gave one treg can carry."""
     ok = isinstance(provider_cursor, (str, int)) and provider_cursor != "" and len(str(provider_cursor)) <= CURSOR_MAX
@@ -255,7 +261,7 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "free_credit_excludes_vide
                               "member_spend_cap_reached", "daily_cap_reached"})
 # treg's own transient refusals for the whole team (or tag), answered before any hold: every
 # candidate on treg's key meets the same busy money queue or the same unreadable spend ceiling.
-_TEAM_BUSY = frozenset({"money_admission_timeout", "money_statement_timeout",
+_TEAM_BUSY = frozenset({"money_admission_timeout", "money_statement_timeout", "team_backpressure",
                         "platform_cap_unavailable", "tag_budget_unavailable",
                         "member_spend_cap_unavailable"})
 
@@ -1515,9 +1521,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         try:
             query, body = cand.adapter.to_upstream(plan.identity, cand.variant)
             if resume:
-                path = next(iter(cand.adapter.paging.values()))
-                P.set_path({"queryParams": query, "body": body}, path,
-                           resume[1] if path.startswith("body.") else str(resume[1]))
+                _resume_at(cand.adapter, query, body, resume[1])
         except Exception as exc:  # noqa: BLE001 — adapter threw; record error and try next candidate
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", None, 0,

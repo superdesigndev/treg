@@ -17,7 +17,7 @@ from treg.application.call import authorize, idempotency, overflow, reserve, rou
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
-from treg.infra import empty_balance, provider_concurrency, provider_rate
+from treg.infra import empty_balance, provider_concurrency, provider_rate, team_backpressure
 
 
 _SRC = Path(__file__).parents[1] / "src" / "treg"
@@ -132,9 +132,17 @@ _DATAPLANE_DERIVED_WRITES = {
     "provider_concurrency_lease": (
         (service._execute_call, "fair_share.acquire"),
         (fair_share._Pool._ask, "provider_concurrency.try_acquire"),
-        (provider_concurrency.try_acquire, "store.acquire_slot"),
+        (provider_concurrency.try_acquire_slot, "store.acquire_slot"),
         (provider_concurrency.Lease._renew, "self.store.renew_slot"),
         (provider_concurrency.Lease._release, "self.store.release_slot"),
+    ),
+    # A metered call of a team the fold is behind on takes one of the team's places (Redis, after
+    # the DB phase ended, before the reserve), released when the call ends; expiry frees a
+    # crashed holder's. A team that is not throttled writes nothing.
+    "team_backpressure_slot": (
+        (service._execute_call, "backpressure_admit"),
+        (reserve.backpressure_admit, "team_backpressure.admit"),
+        (team_backpressure.admit, "provider_concurrency.try_acquire_slot"),
     ),
     # A shared rate window: a platform call about to go upstream takes a self-expiring member of its
     # bucket's window (Redis, after the DB phase ended), given back when it is refused before sending.
@@ -227,6 +235,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "member_daily_cap_slot",
     "member_spend_attribution",
     "provider_concurrency_lease",
+    "team_backpressure_slot",
     "provider_rate_window",
     "allowance_counter",
     "allowance_hold_refill",
@@ -281,6 +290,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "infra" / "provider_concurrency.py": {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
     },
+    _SRC / "infra" / "team_backpressure.py": {"provider_concurrency.try_acquire_slot"},
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
     _SRC / "application" / "compare.py": {"store.set_flag", "store.set_text"},
@@ -429,8 +439,9 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_execute_call", "fair_share.acquire"),
     ("domain/capacity/fair_share.py", "_ask", "provider_concurrency.try_acquire"),
     ("domain/capacity/fair_share.py", "_team_place", "provider_concurrency.try_acquire"),
-    ("infra/provider_concurrency.py", "try_acquire", "store.acquire_slot"),
+    ("infra/provider_concurrency.py", "try_acquire_slot", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
+    ("infra/team_backpressure.py", "admit", "provider_concurrency.try_acquire_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
     ("application/call/service.py", "_execute_call", "rate_observe.observe"),
     ("application/call/service.py", "admit_outbound", "rate_observe.observe"),

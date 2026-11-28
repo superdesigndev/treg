@@ -1197,7 +1197,11 @@ to a mapped word. `cost_units` gives an upper bound in catalog-priced units, use
 and the plan through `routing/plan.py::cost_at`. `max` (`{limit: 8}`) drops the child for a larger
 request (a number, or a string of ASCII digits) rather than letting it answer less than asked.
 `paging: {cursor: <body. or queryParams. path>}` (beside `out.next_cursor`) lets a routed answer
-continue on this child ([proxy-model](proxy-model.md) § Routed endpoints). A
+continue on this child ([proxy-model](proxy-model.md) § Routed endpoints). A routed adapter maps
+`out.next_cursor` only with `paging` naming a parameter of its provider row: without it the
+provider's own token reaches the caller and is refused when sent back
+(`test_every_routed_list_adapter_pages_through_a_treg_cursor` holds every routed list adapter to
+it). A
 routed call's own filter that a remaining v2 child maps into its `reserve.rows` count must be a
 whole number from 1 to that child's max: otherwise the routed call is refused (400
 `catalog_parameter_invalid`, naming its own parameter, never the child) when the route is planned,
@@ -1285,7 +1289,8 @@ an invalid extra never disables the primary.
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
     refusals (`_GLOBAL_REFUSALS`) are terminal. treg's own team-level transient refusals
-    (`_TEAM_BUSY`: a busy money queue, an unreadable daily-cap or tag budget) are `skipped`, spend
+    (`_TEAM_BUSY`: a busy money queue, a throttled team (`team_backpressure`), an unreadable
+    daily-cap or tag budget) are `skipped`, spend
     no error allowance, and are tried on at most `MAX_TEAM_BUSY_TRIES` candidates; when only they
     stopped the call the caller gets treg's refusal with its `Retry-After`, never `route_failed`.
     Provider-level ones (`share_busy`, `provider_rate_limited`, `trial_allowance_unavailable`)

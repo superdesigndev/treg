@@ -450,7 +450,11 @@ hashes depend on.
 snapshot with that content hash, `body_of` carrier, and returns the pre-injection request shape
 plus the answer; a hash-only version reports `stored: false`, and a key or answer no longer on
 file (erasure, row retention) returns None, which the route reports as `expired`. `GET /calls/{id}/result` exposes it
-to members of the row's org; what makes it safe is that the row belongs to the team and names
+to members of the row's org, whole: the route reads the pointer, closes its session, and the bytes
+come from object storage or the row with no connection held. `offset`/`limit` (`_page_result`) cut
+a page of characters after masking, so pages join into the masked whole; MCP clients cut long
+tool replies, so the MCP `call_result` always pages and puts `page` (total, next offset) before
+the body; what makes it safe is that the row belongs to the team and names
 bytes that team already received. A metered answer is returned as its caller received it: with
 `strip_reported_charge` on, without the provider's reported charge unless the request keeps it
 ([proxy-model](proxy-model.md), "The provider's reported charge"); the snapshot itself keeps the

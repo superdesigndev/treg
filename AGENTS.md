@@ -212,6 +212,7 @@ agents then built against a constitution that was wrong.
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, durable provider-resource ownership, the task an async answer names,
   Redis org/endpoint quota admission counters, the shared provider rate window's members, a
+  throttled team's shared in-flight places (money.md "Team backpressure"), a
   sampled routed call's short-lived pairwise-comparison marker, and the short-lived per-team
   balance-empty mark a confirmed balance refusal leaves in the shared store). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.

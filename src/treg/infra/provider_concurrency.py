@@ -38,9 +38,9 @@ def _background(coro) -> None:
 class Lease:
     """One place on one account. `release()` is sync and idempotent; the store write runs behind."""
 
-    def __init__(self, store: kv.Store, account: str) -> None:
+    def __init__(self, store: kv.Store, key: str) -> None:
         self.store = store
-        self.key = f"treg:provider-concurrency:v1:{account}"
+        self.key = key
         self.token = uuid.uuid4().hex
         self.ttl_ms = int(_LEASE_S * 1000)
         # Local clock bound for the Redis-time deadline: set from before the write was sent.
@@ -128,11 +128,16 @@ async def _drain() -> None:
 async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
     """One attempt at a place on `account` among `cap` shared by every process: a renewed `Lease`,
     `BUSY` when every place is taken, `None` when the store does not answer."""
+    return await try_acquire_slot(f"treg:provider-concurrency:v1:{account}", cap)
+
+
+async def try_acquire_slot(key: str, cap: int) -> Lease | None | Literal["busy"]:
+    """`try_acquire` on any sorted set of places: `key` names it whole."""
     try:
         store = kv.store()
     except Exception:  # noqa: BLE001 - a store that cannot initialize reads as unavailable
         return None
-    lease = Lease(store, account)
+    lease = Lease(store, key)
     attempt = asyncio.ensure_future(store.acquire_slot(lease.key, lease.token, lease.ttl_ms, cap))
     try:
         outcome = await asyncio.shield(attempt)

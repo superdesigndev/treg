@@ -749,6 +749,31 @@ async def test_a_hit_on_a_copy_kept_before_masking_is_masked_and_so_is_its_resul
         assert result["stored"] is True and PLATFORM_KEY not in json.dumps(result)
 
 
+async def test_pages_of_a_copy_kept_before_masking_are_cut_after_the_mask(
+    clients: AsyncClient, archive_on, echoing, monkeypatch,
+):
+    """A page boundary inside treg's key must not leave either half readable: the whole stored
+    answer is masked first, then cut."""
+    def large(request: httpx.Request) -> bytes:
+        key = request.headers["authorization"].removeprefix("Bearer ")
+        return json.dumps({"pad": "p" * 100_000, "next": f"https://api.tikhub.io/x?token={key}"}).encode()
+
+    _vendor(monkeypatch, large)
+    with monkeypatch.context() as before_masking:
+        before_masking.setattr(call_evidence.AnswerMask, "answer", lambda self, body, encoding="": body)
+        old = await clients.get(f"/call/{EP}?aweme_id=7")
+    split = old.text.index(PLATFORM_KEY) + 5
+    await archive.drain()
+    await audit.drain()
+    row = (await clients.get("/calls")).json()[0]
+    pages = [(await clients.get(f"/calls/{row['id']}/result", params=p)).json()["response"]
+             for p in ({"limit": split}, {"offset": split})]
+    joined = "".join(p["body_text"] for p in pages)
+    assert joined == old.text.replace(PLATFORM_KEY, "***") and joined.endswith('token=***"}')
+    assert PLATFORM_KEY[:5] not in pages[0]["body_text"] and PLATFORM_KEY[5:] not in pages[1]["body_text"]
+    assert pages[0]["total_chars"] == len(joined)
+
+
 async def test_an_own_key_hit_on_a_public_copy_kept_before_masking_is_masked(
     clients: AsyncClient, archive_on, echoing, monkeypatch,
 ):
