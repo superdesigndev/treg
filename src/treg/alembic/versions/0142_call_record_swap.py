@@ -284,6 +284,21 @@ _LONG_STATEMENTS = sa.text("""
 """)
 
 
+_VACUUMS = sa.text(
+    "SELECT pid, phase FROM pg_stat_progress_vacuum WHERE relid = to_regclass(:name) ORDER BY pid")
+
+
+def _vacuum_note(bind, table: str) -> str:
+    """The refusal's hint when a VACUUM of `table` runs: an autovacuum that prevents wraparound is
+    not cancelled by a waiting lock request, so the swap must wait for it to finish."""
+    vacuums = bind.execute(_VACUUMS, {"name": table}).all()
+    if not vacuums:
+        return ""
+    running = ", ".join(f"pid {pid} ({phase})" for pid, phase in vacuums)
+    return (f" A VACUUM of {table} is running ({running}); let it finish (pg_stat_progress_vacuum) "
+            "before upgrading again.")
+
+
 def _wait_until_quiet(bind, table: str, deadline: float) -> None:
     """Return once no visible session holds a lock on `table` through a statement or a
     transaction older than `_QUIET_STATEMENT_S`; refuse at `deadline`. Sessions of other roles
@@ -300,7 +315,7 @@ def _wait_until_quiet(bind, table: str, deadline: float) -> None:
                 f"Refusing the callrecord swap: sessions {sorted(busy)} kept a statement on {table} "
                 f"open for more than {_QUIET_STATEMENT_S} s throughout {_QUIET_WAIT_S:.0f} s; a "
                 "lock request would queue every audit insert behind them. Pause the jobs that read "
-                "callrecord (rollups, reports) and upgrade again.")
+                "callrecord (rollups, reports) and upgrade again." + _vacuum_note(bind, table))
         time.sleep(_QUIET_POLL_S)
 
 
@@ -381,7 +396,8 @@ def _swap(bind, columns: str, reached: int) -> None:
         if time.monotonic() >= deadline:
             raise RuntimeError(
                 f"Refusing the callrecord swap: its lock was not granted within {_QUIET_WAIT_S:.0f} s "
-                f"of {_LOCK_TRY} attempts. Pause the jobs that read callrecord and upgrade again.")
+                f"of {_LOCK_TRY} attempts. Pause the jobs that read callrecord and upgrade again."
+                + _vacuum_note(bind, LIVE))
         time.sleep(_LOCK_RETRY_PAUSE_S)
     bind.execute(sa.text("SELECT set_config('lock_timeout', :value, true)"), {"value": lock_timeout})
     _copy_under_lock(bind, columns, reached)

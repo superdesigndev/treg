@@ -731,6 +731,27 @@ async def test_a_late_charge_is_resynced_by_the_swap_like_a_late_verdict(before_
         assert (await session.get(CallRecord, 41)).cost_charged_micro == 1234
 
 
+def test_a_refusal_names_a_vacuum_that_holds_the_table():
+    class Rows:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def all(self):
+            return self.rows
+
+    class Bind:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def execute(self, statement, params):
+            return Rows(self.rows)
+
+    assert swap._vacuum_note(Bind([]), "callrecord") == ""
+    note = swap._vacuum_note(Bind([(4242, "scanning heap")]), "callrecord")
+    assert "VACUUM of callrecord is running (pid 4242 (scanning heap))" in note
+    assert "pg_stat_progress_vacuum" in note
+
+
 async def test_the_upkeep_leaves_the_staged_table_to_the_swap(before_swap):
     """Before the swap the staged table is analyzed by 0142 itself; the cron analyzes only the
     live `callrecord` once it is partitioned."""
