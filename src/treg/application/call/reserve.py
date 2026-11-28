@@ -26,7 +26,7 @@ from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
 from ...infra.db import session_maker
-from ...infra import empty_balance, money_admission
+from ...infra import empty_balance, money_admission, team_backpressure
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
@@ -68,6 +68,23 @@ async def reserve_admission(org_id: int) -> AsyncIterator[None]:
             "error": "money_admission_timeout",
             "message": "the team's money queue is busy; retry shortly. Nothing was reserved or charged.",
         }, retry_after_s=retry_after_s) from exc
+
+
+async def backpressure_admit(org_id: int):
+    """A place for one metered call while the team is throttled (money.md "Team backpressure"),
+    or None. Refuses at once, before any money work, when every place is taken."""
+    try:
+        return await team_backpressure.admit(org_id)
+    except team_backpressure.Throttled as exc:
+        raise ReservationFailed("team_backpressure", status_code=429, detail={
+            "error": "team_backpressure",
+            "message": (f"this team's calls are arriving faster than treg can settle their "
+                        f"charges, so it runs at most {exc.max_in_flight} paid calls at once "
+                        f"until it catches up. Send fewer at once and retry after "
+                        f"{exc.retry_after_s} s. Nothing was reserved or charged."),
+            "max_in_flight": exc.max_in_flight,
+            "retry_after_s": exc.retry_after_s,
+        }, retry_after_s=exc.retry_after_s) from None
 
 
 async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: str,

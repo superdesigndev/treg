@@ -67,7 +67,7 @@ from .evidence import (
 )
 from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
 from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_intake
-from .reserve import _enforce_tag_budgets, _platform_reserve
+from .reserve import _enforce_tag_budgets, _platform_reserve, backpressure_admit
 from .resolve import (
     AUTHORIZATION_METHOD_HEADER,
     MarketplaceCall,
@@ -134,6 +134,7 @@ class _ApplicationRequest:
         )
         self.db = session_maker()
         self.lease: asyncio.Task | None = None
+        self.backpressure = None  # the team's place while it is throttled, released at the end
 
 
 _TASK_ANSWER_MAX = 2 * 1024 * 1024
@@ -195,6 +196,8 @@ async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient)
     finally:
         if request.lease is not None:
             request.lease.cancel()
+        if request.backpressure is not None:
+            request.backpressure.release()
         context.idempotency = request.state.idem_claim
         context.audited = request.state.call_audited
         context.cost_micro = request.state.call_cost_micro
@@ -1528,6 +1531,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         refusal_secrets = _safe_secret_renderings(tool, secrets)
         request.context.finalization = FinalizationState.PENDING
         try:
+            if request.backpressure is None:
+                request.backpressure = await backpressure_admit(caller.org_id)
             await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True,
                                     allow_allowance=True, mark_in_flight=bool(idem_key))
             request.context.finalization = FinalizationState.OPEN

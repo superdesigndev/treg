@@ -1285,7 +1285,8 @@ an invalid extra never disables the primary.
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
     child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
     refusals (`_GLOBAL_REFUSALS`) are terminal. treg's own team-level transient refusals
-    (`_TEAM_BUSY`: a busy money queue, an unreadable daily-cap or tag budget) are `skipped`, spend
+    (`_TEAM_BUSY`: a busy money queue, a throttled team (`team_backpressure`), an unreadable
+    daily-cap or tag budget) are `skipped`, spend
     no error allowance, and are tried on at most `MAX_TEAM_BUSY_TRIES` candidates; when only they
     stopped the call the caller gets treg's refusal with its `Retry-After`, never `route_failed`.
     Provider-level ones (`share_busy`, `provider_rate_limited`, `trial_allowance_unavailable`)

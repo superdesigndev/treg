@@ -48,6 +48,7 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "platform_cap_unavailable": ("treg", "treg_capacity"),
     "money_admission_timeout": ("treg", "treg_capacity"),
     "money_statement_timeout": ("treg", "treg_capacity"),
+    "team_backpressure": ("treg", "treg_capacity"),
     "catalog_price_invalid": ("treg", "treg_error"),
     "platform_daily_cap_reached": ("caller", "caller_balance_or_cap"),
     "tag_budget_unavailable": ("treg", "treg_capacity"),

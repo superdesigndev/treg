@@ -31,10 +31,11 @@ from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.money import allowance
 from ..infra import db as infra_db
-from ..infra import kv, money_admission
+from ..infra import kv, money_admission, team_backpressure
 from ..infra.db import background_session_maker
 from ..infra.money_session import bound_lock_wait, lock_timed_out, money_session
 from ..infra.structured_logging import get_logger
+from . import allowance_backpressure
 from .call.allowance import acquire_money_lease, fold_claim_key, money_key, money_lock
 from ..timeutil import utcnow_naive
 
@@ -104,6 +105,8 @@ def _note_skip(kind: str, org_id: int, reason: str, oldest=None) -> None:
         team[0] += 1
         if age_s is not None:
             team[1] = max(team[1] or 0, age_s)
+        if kind == "fold" and reason == "lease_held":
+            allowance_backpressure.note_lease_held(org_id)
         _log_due_skips(now)
     except Exception:  # noqa: BLE001
         pass
@@ -405,11 +408,15 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     of it, so the stalest cannot use it up and every starved team gets a turn each pass."""
     total, worked, after, queued_before = 0, 0, None, utcnow_naive()
     starved: list = []
+    # Every team's wait as the pages read it, for the teams to throttle (`allowance_backpressure`).
+    waits: list[tuple[int, int]] | None = [] if team_backpressure.enabled() else None
     try:
         while True:
             async with session_maker() as db:
                 page = await allowance.queued_teams(
                     db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
+            if waits is not None:
+                waits.extend((org_id, _waited_s(oldest) or 0) for org_id, oldest in page)
             for org_id, oldest in page:
                 if worked >= _TEAMS_PER_PASS:
                     break
@@ -437,6 +444,8 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
             folded = await _fold_team(session_maker, org_id, oldest, until)
             if folded is not None:
                 total += folded
+        if waits is not None and keep_going():
+            await allowance_backpressure.publish(shard, waits, starved_after_s=_STARVED_AFTER_S)
         return total
     finally:
         _log_due_skips(time.monotonic())
@@ -496,6 +505,7 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
                                 db, org_id, limit=_FOLD_BATCH)
                             await db.commit()
                             committed = True
+                            allowance_backpressure.note_folded(org_id)
                     finally:
                         lock.release()
                 total += folded.calls

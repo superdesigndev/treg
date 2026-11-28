@@ -40,6 +40,9 @@ sources:
   - src/treg/application/call/reserve.py
   - src/treg/infra/empty_balance.py
   - tests/test_empty_balance_mark.py
+  - src/treg/application/allowance_backpressure.py
+  - src/treg/infra/team_backpressure.py
+  - tests/test_team_backpressure.py
   - src/treg/application/call/settle.py
   - src/treg/application/call/cost.py
   - tests/test_catalog_v2_runtime.py
@@ -1114,6 +1117,59 @@ is the mark's lifetime in seconds, 0 = off, 10 at most.
 
 Without a shared store (`TREG_KV_URL` unset) the mark lives in each process, so a credit handled
 by one process clears it there and the other processes wait out the lifetime.
+
+### Team backpressure
+
+One fold settles a team's queued charges at a time (§ Allowance), so a team whose paid calls
+arrive faster than that fold settles them queues without bound: its allowance hold fills with
+queued charges, its takes are refused, its calls fall back to their own holds and to the money
+admission queue, wait out `money_admission_wait_s`, and come back as 429
+`money_admission_timeout`, while every one of them loads the shared database. Backpressure turns
+that slow refusal into a fast one, for that team alone, until the fold catches up. Off by default:
+it is on only while a trigger is set and the shared store is configured.
+
+- **The signal costs no read.** Each fold pass already lists its share's teams with queued charges
+  and when each one's oldest was written (`allowance.queued_teams`), and counts the teams it
+  skipped because another process held their lease (`_note_skip` `lease_held`).
+  `application/allowance_backpressure.py` names, from those alone, the teams to throttle: a team
+  whose oldest charge has waited `money_backpressure_oldest_s` or more, or a starved team (oldest
+  at least `_STARVED_AFTER_S`) found `lease_held` `money_backpressure_lease_held_skips` times in a
+  row with no fold of it committed between. A pass that read its share's whole queue publishes the
+  list for its share as one self-expiring text (`infra/team_backpressure.py`,
+  `treg:team-backpressure:v1:<index>/<count>`, `:all` for a pass over every team), replacing the
+  last; an unchanged list is written again only after a third of `money_backpressure_mark_ttl_s`.
+  A pass that stopped early (its share's lease lost) publishes nothing.
+- **The call reads it once per process per refresh.** A request process reads every share's key in
+  one round trip at most every `money_backpressure_refresh_s`, joined by all its calls; a team not
+  on the list costs nothing more per call.
+- **The gate.** A metered call of a listed team, after its dependency session ended and before
+  `_platform_reserve` (`reserve.backpressure_admit`, from `_execute_call`), takes one of
+  `money_backpressure_max_in_flight` places shared by every process (the provider concurrency
+  lease on `treg:team-backpressure-slots:v1:<org>`, renewed, released when `execute_call` ends,
+  freed by expiry if its process dies). With every place taken the call is refused at once: 429
+  `team_backpressure` (blame `treg`, `refused_by: cap`) with `max_in_flight`, `retry_after_s` and
+  a `Retry-After` between `money_admission_retry_after_s` and twice it. No allowance take, hold,
+  admission lease, session or upstream request starts, and no org/endpoint quota unit is used:
+  that admission comes after the reserve. Routed children, hub steps and retries of the same
+  request go through the same gate (one place per request); a routed call treats the refusal as
+  `_TEAM_BUSY`. An overflow rung reserves from `overflow.py` directly and is not gated.
+- **Never a team's own key.** A call on the team's own credential, its own tools, a free endpoint
+  or a free archive hit is not metered and never reaches the gate. Neither published org flow
+  control ([org-flow-control.md](org-flow-control.md), which counts every tier) nor the
+  operator's org/endpoint call allowance changes: each applies on its own, and a call must pass
+  all that apply.
+- **It ends with its cause.** A pass that finds the team's oldest charge below the thresholds
+  leaves it off the list (an empty list deletes the key), and every process lets the team through
+  within one refresh. Refused calls write nothing, so they never keep a team listed. A fold that
+  stops publishing (worker down) lets its list expire after `money_backpressure_mark_ttl_s`.
+- **A store that cannot answer throttles nobody.** An unreadable list reads as empty until the
+  next refresh; a place that cannot be taken lets the call through; a list that cannot be written
+  expires. The money admission queue and its `money_admission_timeout` remain the bound behind it.
+
+`team_backpressure rejected` (one line per process every 5 s, with the count suppressed) names
+the team and its limit. Settings: `TREG_MONEY_BACKPRESSURE_OLDEST_S`,
+`TREG_MONEY_BACKPRESSURE_LEASE_HELD_SKIPS` (both unset = off), `…_MAX_IN_FLIGHT` (10),
+`…_MARK_TTL_S` (15), `…_REFRESH_S` (2).
 
 ## Signup credit eligibility
 

@@ -347,6 +347,18 @@ class Settings(BaseSettings):
     # How many processes may fold queued charges at once, each for its own share of the teams
     # (money.md "One place folds the queue"). 1 = one process folds for every team.
     money_allowance_fold_shards: int = Field(default=4, ge=1, le=64)
+    # Per-team backpressure (money.md "Team backpressure"): a team whose queued charges the fold
+    # is behind on gets at most `money_backpressure_max_in_flight` metered calls at once, the rest
+    # a fast 429 `team_backpressure`, until the fold catches up. Off while both triggers are None.
+    # A team's oldest queued charge has waited at least this many seconds:
+    money_backpressure_oldest_s: PositiveInt | None = Field(default=None, le=86400)
+    # Or the fold found a starved team's lease held by another process this many times in a row:
+    money_backpressure_lease_held_skips: PositiveInt | None = Field(default=None, le=10000)
+    money_backpressure_max_in_flight: PositiveInt = Field(default=10, le=100000)
+    # How long a published list of throttled teams lives unless the fold publishes it again.
+    money_backpressure_mark_ttl_s: int = Field(default=15, ge=2, le=600)
+    # How often a request process reads that list, joined by every call of the process.
+    money_backpressure_refresh_s: float = Field(default=2.0, ge=0.2, le=10)
 
     # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
     holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
