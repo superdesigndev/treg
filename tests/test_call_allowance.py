@@ -3532,6 +3532,10 @@ async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_
     assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
 
 
+# The share a pass holds the lease of: a lane starts only in such a pass.
+_ONE_SHARE = (0, 1)
+
+
 async def _team_beside(org_id: int) -> int:
     other = org_id + 1
     async with session_maker() as db:
@@ -3568,7 +3572,7 @@ async def test_the_stalest_starved_team_is_folded_beside_the_pass_until_its_queu
     await _queue_charge(other, "fresh", 5)
     _slow_for(monkeypatch, other, 0.3)
     with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
-        assert await allowance_sweep.fold_queued_once(session_maker) == 21
+        assert await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE) == 21
     assert await _queued(org_id) == 0 and await _queued(other) == 0
     assert store.leases == {}
     [line] = [r.getMessage() for r in caplog.records
@@ -3591,7 +3595,7 @@ async def test_a_team_the_lane_cannot_have_gets_its_starved_turn_and_the_lane_en
     store.leases[runtime.money_key(org_id)] = "a session that never ends"
     _slow_for(monkeypatch, other, 0.2)
     with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
-        assert await allowance_sweep.fold_queued_once(session_maker) == 1
+        assert await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE) == 1
     assert await _queued(org_id) == 1
     assert not [t for t in asyncio.all_tasks()
                 if "_fold_behind" in repr(t.get_coro())], "the lane does not outlive its pass"
@@ -3620,7 +3624,7 @@ async def test_a_pass_cancelled_while_its_lane_folds_leaves_no_lease_and_no_lane
         return await fold(db, team, **kwargs)
 
     monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
-    task = asyncio.create_task(allowance_sweep.fold_queued_once(session_maker))
+    task = asyncio.create_task(allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE))
     await asyncio.sleep(0.05)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -3630,6 +3634,37 @@ async def test_a_pass_cancelled_while_its_lane_folds_leaves_no_lease_and_no_lane
     queued = await _queued(org_id)
     balance, _hold = await _state(org_id)
     assert balance == GRANT - (5 - queued) * 400, "every folded charge settled once"
+
+
+async def test_a_pass_over_every_team_while_the_store_cannot_answer_starts_no_lane(
+        org_id, store, monkeypatch, caplog):
+    """The store cannot answer, so every process runs a pass over every team, and each would
+    see the same stalest team first: a lane in each would hold a background connection apiece
+    on that one team's row locks, the bound of one more fold per share gone at the moment the
+    store is failing. Such a pass folds the team in its place, as before the lane."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 2)
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCHES_PER_PASS", 2)
+    monkeypatch.setattr(allowance_sweep, "_row_locks", lambda: True)
+    other = await _team_beside(org_id)
+    for index in range(20):
+        await _queue_charge(org_id, f"behind-{index}", 900)
+    await _queue_charge(other, "fresh", 5)
+    _slow_for(monkeypatch, other, 0.1)
+    lanes: list = []
+
+    async def no_lane(*args, **kwargs):
+        lanes.append(args)
+        raise AssertionError("a lane in a pass over every team")
+
+    monkeypatch.setattr(allowance_sweep, "_fold_behind", no_lane)
+    store.lease_answer = "unavailable"
+    async with allowance_sweep._pass_lease() as turn:
+        assert turn.mine and turn.shard is None
+        with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+            assert await allowance_sweep.fold_queued_once(
+                session_maker, keep_going=turn.holding, shard=turn.shard) == 5
+    assert lanes == [] and await _queued(org_id) == 16 and await _queued(other) == 0
+    assert not any(r.getMessage().startswith("allowance_fold_behind") for r in caplog.records)
 
 
 async def test_a_reading_cancelled_while_the_store_grants_its_lease_gives_the_lease_back(

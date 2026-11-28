@@ -409,9 +409,11 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     `_STARVED_TURN_S` per pass, the stalest first, each at most an equal share of what is left
     of it, so the stalest cannot use it up and every starved team gets a turn each pass.
 
-    The stalest team, when it is starved, is not folded in its place: it is folded beside the
-    pass for as long as the pass runs (`_fold_behind`), and takes the first starved turn after
-    it unless that emptied its queue."""
+    In a pass over a share whose lease this process holds, the stalest team, when it is
+    starved, is not folded in its place: it is folded beside the pass for as long as the pass
+    runs (`_fold_behind`), and takes the first starved turn after it unless that emptied its
+    queue. A pass over every team (`shard` None: the store cannot answer, so every process runs
+    one and each would see the same stalest team) starts no lane."""
     total, worked, after, queued_before = 0, 0, None, utcnow_naive()
     starved: list = []
     behind: tuple | None = None
@@ -422,7 +424,7 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
             async with session_maker() as db:
                 page = await allowance.queued_teams(
                     db, queued_before, limit=_TEAMS_LISTED, shard=shard, after=after)
-            if after is None and page and _starved(page[0][1]):
+            if shard is not None and after is None and page and _starved(page[0][1]):
                 behind = page[0]
                 lane = asyncio.create_task(_fold_behind(
                     session_maker, *behind,
