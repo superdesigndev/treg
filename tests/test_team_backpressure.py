@@ -202,11 +202,11 @@ async def test_the_fold_pass_publishes_from_the_queue_it_read(store, monkeypatch
     async def queued_teams(db, queued_before, *, limit, shard, after):
         return [] if after is not None else [(5, old), (6, young)]
 
-    async def fold_team(*args, **kwargs):
-        return 0
+    async def visit_team(*args, **kwargs):
+        return allowance_sweep._Visit(drained=True)
 
     monkeypatch.setattr(allowance_sweep.allowance, "queued_teams", queued_teams)
-    monkeypatch.setattr(allowance_sweep, "_fold_team", fold_team)
+    monkeypatch.setattr(allowance_sweep, "_visit_team", visit_team)
 
     class Session:
         async def __aenter__(self):
