@@ -376,10 +376,74 @@ KEEP_OR_REMOVE += [
     ("Portland, OR", ["Portland, ME", "Portland, OR"], "keep"), ("Chicago, IL", "Chicago, IL; Toronto, ON", "keep"),
     ("Toronto, Canada", "Buffalo, NY; Detroit, MI", "remove"), ("Austin, TX", ["Remote", "Dallas, TX"], "keep"),
 ]
+KEEP_OR_REMOVE += [
+    # full country names that are also US places
+    ("Atlanta, Georgia", "Georgia", "keep"), ("Tbilisi, Georgia", "Georgia", "keep"), ("Georgia", "Batumi, Georgia", "keep"),
+    ("Georgia", "Macon, GA", "keep"), ("Georgia", "Georgia, United States", "keep"), ("Savannah, Georgia", "Batumi, Georgia", "keep"),
+    ("Jordan, MN", "Jordan, Minnesota", "keep"), ("Minneapolis, MN", "Jordan, MN", "keep"), ("Jordan, MN", "Jordan", "keep"),
+    ("Amman, Jordan", "Jordan, MN", "remove"), ("Jordan", "Jordan, MN", "remove"),
+    ("Lebanon, PA", "Lebanon, Pennsylvania", "keep"), ("Lebanon, PA", "Lebanon", "keep"), ("Beirut, Lebanon", "Lebanon, PA", "remove"),
+    ("Lebanon, PA", "Lebanon, United States", "keep"),
+    ("Peru, IN", "Peru, Indiana", "keep"), ("Peru, IN", "Peru", "keep"), ("Lima, Peru", "Peru, IN", "remove"),
+    ("Peru, Indiana", "Peru, Indiana, United States", "keep"),
+    ("Mexico, MO", "Mexico, Missouri", "keep"), ("Mexico, MO", "Mexico", "keep"), ("Mexico City, Mexico", "Mexico, MO", "remove"),
+    ("Mexico", "Mexico, MO", "remove"), ("Mexico, MO", "Albuquerque, New Mexico", "remove"), ("Mexico", "Albuquerque, New Mexico", "remove"),
+    ("Panama City, FL", "Panama City, Florida", "keep"), ("Panama City, FL", "Panama City", "keep"), ("Panama City, FL", "Panama City, Panama", "remove"),
+    ("Panama City, Panama", "Panama City, FL", "remove"), ("Panama City, FL", "Panama City Beach, FL", "keep"),
+    ("Paris, TX", "Paris, Texas", "keep"), ("Paris, TX", "Paris", "keep"), ("Paris, TX", "Paris, France", "remove"), ("Lyon, France", "Paris, TX", "remove"),
+    ("Paris, France", "Paris, Texas, United States", "remove"),
+    ("Jersey City, NJ", "Jersey City", "keep"), ("Brazil, IN", "Brazil", "keep"), ("Norway, ME", "Norway", "keep"),
+    ("Holland, MI", "Holland, Michigan", "keep"), ("Amsterdam, Netherlands", "Holland, MI", "remove"),
+    # full US state names used abroad
+    ("Melbourne, Victoria", "Melbourne, VIC, Australia", "keep"), ("Victoria, BC", "Victoria, British Columbia, Canada", "keep"),
+    ("Victoria, Canada", "Victoria, BC", "keep"), ("Victoria", "Victoria, Australia", "keep"), ("Melbourne, Australia", "Melbourne, Victoria", "keep"),
+    ("Victoria, Australia", "Victoria, TX", "remove"), ("Melbourne, Australia", "Melbourne, Florida", "remove"),
+    ("Washington, Tyne and Wear, UK", "Washington, England", "keep"), ("Washington, Tyne and Wear, UK", "Sunderland, UK", "keep"),
+    ("Washington, Tyne and Wear, UK", "Washington", "keep"), ("Sunderland, UK", "Washington, Tyne and Wear, UK", "keep"),
+    ("Seattle, WA", "Washington, Tyne and Wear, UK", "remove"), ("Seattle, Washington", "Washington, UK", "remove"),
+    ("Indiana, Pennsylvania", "Indiana, PA", "keep"), ("Pittsburgh, PA", "Indiana, Pennsylvania", "keep"),
+    ("Indianapolis, Indiana", "Indiana, PA", "remove"), ("Indiana, PA", "Indianapolis, IN", "remove"), ("Indiana", "Indiana, Pennsylvania", "remove"),
+    # country names inside city names
+    ("Kuwait City, Kuwait", "Kuwait City", "keep"), ("Kuwait", "Kuwait City, Kuwait", "keep"), ("Kuwait City, Kuwait", "Kuwait", "keep"),
+    ("Kuwait City", "Kuwait City, KW", "keep"), ("Austin, TX", "Kuwait City", "remove"),
+    ("Mexico City, Mexico", "Mexico City", "keep"), ("Mexico City", "Mexico City, CDMX", "keep"), ("Mexico City, Mexico", "Mexico City, Mexico City, Mexico", "keep"),
+    ("Guatemala City, Guatemala", "Guatemala City", "keep"), ("Guatemala City", "Guatemala", "keep"), ("Guatemala City, Guatemala", "Guatemala City, GT", "keep"),
+    ("Luxembourg City", "Luxembourg", "keep"), ("Luxembourg", "Luxembourg City, Luxembourg", "keep"),
+    ("Panama City, Panama", "Panama City", "keep"), ("Panama", "Panama City", "keep"),
+    # near-identical country names
+    ("Dublin, Ireland", "Belfast, Northern Ireland", "remove"), ("Belfast, Northern Ireland", "Belfast, UK", "keep"),
+    ("Belfast, UK", "Belfast, Northern Ireland", "keep"), ("Dublin, Ireland", "Dublin, Republic of Ireland", "keep"),
+    ("Ireland", "Northern Ireland", "remove"), ("Northern Ireland", "Ireland", "remove"),
+    ("Brazzaville, Congo", "Kinshasa, DR Congo", "remove"), ("Kinshasa, DR Congo", "Kinshasa, Democratic Republic of the Congo", "keep"),
+    ("Kinshasa, Congo", "Kinshasa, DR Congo", "keep"), ("Kinshasa, Congo", "Kinshasa, Democratic Republic of the Congo", "keep"),
+    ("Seoul, Korea", "Seoul, South Korea", "keep"), ("Korea", "Busan, Republic of Korea", "keep"), ("Seoul, Korea", "Seoul, KR", "keep"),
+    ("Seoul, South Korea", "Pyongyang, North Korea", "remove"), ("Seoul, South Korea", "Seoul, Korea", "keep"),
+    ("Niamey, Niger", "Lagos, Nigeria", "remove"), ("Nigeria", "Niger", "remove"), ("Lagos, Nigeria", "Lagos, NG", "keep"), ("Niger", "Niamey, NE", "keep"),
+    ("Roseau, Dominica", "Santo Domingo, Dominican Republic", "remove"), ("Santo Domingo, Dominican Republic", "Santo Domingo, DR", "keep"),
+    ("Dominican Republic", "Dominica", "remove"),
+    ("Conakry, Guinea", "Bissau, Guinea-Bissau", "remove"), ("Port Moresby, Papua New Guinea", "Port Moresby, PNG", "keep"),
+    ("Guinea", "Port Moresby, Papua New Guinea", "remove"), ("Bissau, Guinea-Bissau", "Bissau, Guinea Bissau", "keep"),
+    ("Khartoum, Sudan", "Juba, South Sudan", "remove"), ("South Sudan", "Juba", "keep"), ("Juba, South Sudan", "Juba, Sudan", "remove"),
+    # US territories
+    ("San Juan, Puerto Rico", "San Juan, PR, United States", "keep"), ("San Juan, Puerto Rico", "San Juan, Puerto Rico, United States", "keep"),
+    ("Puerto Rico", "San Juan, PR", "keep"), ("Austin, TX", "San Juan, Puerto Rico", "remove"), ("United States", "San Juan, Puerto Rico", "keep"),
+    ("San Juan, PR", "San Juan, Puerto Rico", "keep"), ("San Juan, PR", "San Juan, United States", "keep"),
+    ("Charlotte Amalie, US Virgin Islands", "Charlotte Amalie, VI, United States", "keep"), ("United States", "St. Thomas, US Virgin Islands", "keep"),
+    ("US Virgin Islands", "St. Thomas, USVI", "keep"), ("Charlotte Amalie, US Virgin Islands", "Charlotte Amalie, Virgin Islands, U.S.", "keep"),
+    # UK nations, other names for one country
+    ("London, England", "London, UK", "keep"), ("Edinburgh, UK", "Edinburgh, Scotland", "keep"), ("Cardiff, Wales", "Cardiff, United Kingdom", "keep"),
+    ("England", "Glasgow, Scotland", "remove"), ("Wales", "Cardiff, Great Britain", "keep"), ("Scotland", "Glasgow, GB", "keep"),
+    ("Amsterdam, Netherlands", "Amsterdam, Holland", "keep"), ("Holland", "Rotterdam, Netherlands", "keep"), ("Rotterdam, Holland", "Rotterdam, Netherlands", "keep"),
+    ("Prague, Czechia", "Prague, Czech Republic", "keep"), ("Czech Republic", "Brno, Czechia", "keep"),
+    ("Istanbul, Türkiye", "Istanbul, Turkey", "keep"), ("Turkey", "Ankara, Türkiye", "keep"), ("Istanbul, Turkey", "Istanbul, Turkiye", "keep"),
+    ("Abidjan, Ivory Coast", "Abidjan, Côte d'Ivoire", "keep"), ("Côte d'Ivoire", "Abidjan, Ivory Coast", "keep"), ("Ivory Coast", "Abidjan, Cote d'Ivoire", "keep"),
+]
 # Clear to a reader, kept by the test: another city in the same state (plain text cannot tell
 # it from a borough, a county or an address), a city asked with nothing around it, a place that
 # may be a US state or a country ('IN', 'MN', 'Georgia'), a country in another language
-# ('Kanada'), and a two-letter code in a row for an ask abroad, which never removes.
+# ('Kanada'), a two-letter code in a row for an ask abroad, which never removes, the two Congos,
+# a country inside another (Guinea, Guinea-Bissau; England, Scotland), and a one-part row that
+# names the asked place's first part ('Jordan' as a town).
 NOT_JUDGED = {
     ("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN"),
     ("Atlanta, Georgia", "Savannah, Georgia"), ("Atlanta, GA", "Tbilisi, Georgia"), ("Austin, TX", "Dallas, TX"),
@@ -392,6 +456,11 @@ NOT_JUDGED = {
     ("Canada", "Seattle, WA"), ("Paris, France", "Paris, TX"), ("Lima, Peru", "Lima, OH"),
     ("Manchester, UK", "Manchester, NH"), ("Austin, TX", "Toronto, Ontario, Kanada"),
     ("Toronto, Canada", "Buffalo, NY; Detroit, MI"),
+    ("Amman, Jordan", "Jordan, MN"), ("Jordan", "Jordan, MN"), ("Beirut, Lebanon", "Lebanon, PA"),
+    ("Lima, Peru", "Peru, IN"), ("Mexico City, Mexico", "Mexico, MO"), ("Mexico", "Mexico, MO"),
+    ("Panama City, Panama", "Panama City, FL"), ("Lyon, France", "Paris, TX"), ("Amsterdam, Netherlands", "Holland, MI"),
+    ("Victoria, Australia", "Victoria, TX"), ("Indiana, PA", "Indianapolis, IN"), ("Brazzaville, Congo", "Kinshasa, DR Congo"),
+    ("Conakry, Guinea", "Bissau, Guinea-Bissau"), ("England", "Glasgow, Scotland"),
 }
 
 
@@ -431,8 +500,16 @@ def test_a_two_letter_code_removes_a_row_only_for_an_ask_in_the_us():
     assert R.place("Australia", "Adelaide, SA") is None and R.place("Germany", "Munich, BY") is None
     assert R.place("Austin, TX", "London, UK") is False                  # UK is a name, not a code
     assert R.place("Seattle, Washington", "Washington, DC Metro Area") is False
-    assert R.place("Washington, DC", "Washington") is None               # the state or the district
+    assert R.place("Washington, DC", "Washington") is True               # the asked place's own first part
+    assert R.place("Texas", "Washington") is False and R.place("District of Columbia", "Washington") is None
     assert R.place("Canada", "CA") is None and R.place("California", "CA") is True
+
+
+def test_territories_and_one_part_rows():
+    assert R.place("United States", "San Juan, Puerto Rico") is not False
+    assert R.place("Austin, TX", "San Juan, Puerto Rico") is False      # a territory is in no state
+    assert R.place("Lebanon, PA", "Lebanon") is True and R.place("Panama City, FL", "Panama City") is True
+    assert R.place("Washington, Tyne and Wear, UK", "Washington") is True
 
 
 def test_a_two_letter_region_before_the_country_is_no_country():

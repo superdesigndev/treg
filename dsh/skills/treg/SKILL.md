@@ -173,7 +173,7 @@ How a routed call works:
   `output`, and `_treg.strict_filtered` says `{removed, kept, by, unchecked}`. Another city is never
   judged. A row that names no place, company or date, only a larger place than you asked, or
   another city, is kept and counted `unchecked`; a row naming several places is removed only when
-  every one is elsewhere. Abroad, a row is removed only when it names another country in full; a two-letter code never removes a row outside a US ask. A code
+  every one is elsewhere. Abroad, a row is removed only when it names another country, or a US state, in full; a two-letter code never removes a row outside a US ask. A code
   you send that may be a US state or a country (`Toronto, CA`) counts both ways, and a bare
   `Washington` is the state. `raw` keeps
   every row, and the provider is billed as usual. When no row is left it asks at most 2 more providers, each billed as usual;

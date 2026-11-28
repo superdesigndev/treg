@@ -219,8 +219,20 @@ def _readings(asked: _Place) -> list[_Place]:
             + [_Place(city=asked.city, country=c) for c in asked.either_countries])
 
 
+_US_TERRITORIES = frozenset({"pr", "vi", "gu", "as", "mp"})
+
+
+def _other_country(a: str, r: str) -> bool:
+    """Two different countries, a US territory and the US aside, and the two Congos (their codes
+    are mixed up as often as not)."""
+    pair = {a, r}
+    return a != r and pair != {"cg", "cd"} and not ("us" in pair and pair - {"us"} <= _US_TERRITORIES)
+
+
 def _judge(asked: _Place, row: _Place) -> bool | None:
-    if asked.country and row.country and asked.country != row.country:
+    if asked.state and row.country in _US_TERRITORIES:
+        return False   # a territory is in no US state
+    if asked.country and row.country and _other_country(asked.country, row.country):
         return False
     if asked.state and row.state and asked.state != row.state:
         return False
@@ -260,7 +272,8 @@ def _one_place(asked_segs: tuple[str, ...], readings: tuple[_Place, ...], text: 
     segs = [f for part in text.split(",") if (f := P._fold(part))]
     if not segs:
         return None
-    if tuple(segs) == asked_segs:
+    # The asked place itself, or a one-part row naming its first part ('Lebanon' for 'Lebanon, PA').
+    if tuple(segs) == asked_segs or (len(segs) == 1 and _bare(segs[0]) == _bare(asked_segs[0])):
         return True
     row = _read_row(segs)
     verdicts = [_judge(a, row) for a in readings]

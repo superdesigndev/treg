@@ -1424,13 +1424,16 @@ an invalid extra never disables the primary.
   only when it names another state or country, abroad only when it names another country; another
   city is never judged, since plain text cannot tell it from a borough, a county, a metro area, an
   address or another-language name (München, Köln). The asked city matches the row's city part
-  only. Abroad, a row is removed only when it names another country in full; a two-letter code never removes a row outside a US ask. In a row (`_read_row`) only a full name, or the names
+  only. Abroad, a row is removed only when it names another country, or a US state, in full; a two-letter code never removes a row outside a US ask. In a row (`_read_row`) only a full name, or the names
   `UK` and `US`, settles a state or a country; any other two-letter code ("Regina, SK", "Perth,
   WA", "Munich, BY") stays a code, a US state only before "United States". A code removes a row
   only for an ask in a US state, and only as a US state code other than the one asked ("Perth, WA"
   for Texas); otherwise it can only confirm the place asked, and a code that is both a state and
   a country confirms only a US ask. A country in another language ("Kanada") is not read. A lone
-  "Washington" in a row is the state or the district. A value naming several places (a list, or parts joined by `;` or `|`) is removed only
+  "Washington" in a row is the state or the district. A one-part row that names the asked
+  place's first part is a match ("Lebanon" for "Lebanon, PA"). A US territory (`pr`, `vi`, `gu`,
+  `as`, `mp`) is no other country than the US but is in no US state, and the two Congos are not
+  told apart (`_other_country`). A value naming several places (a list, or parts joined by `;` or `|`) is removed only
   when every place is; the ask is read once per answer (`_asked`). The first part is a state only when
   no later part names one, and "city" stays in a state reading ("Kansas City" is no state), so a
   bare "Washington" is the state and "Washington, D.C." the district. A code that is both a state
