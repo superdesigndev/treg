@@ -1,0 +1,138 @@
+# TariffsAPI: US import duties by HTS code and country of origin. Each answer is a transparent
+# breakdown (base duty, Section 301 / 232 / 338 and other Chapter 99 measures, each kept separate and
+# never summed for the caller) with the matched HTS line, confidence scores and warnings. Read-only:
+# it does not classify a product into an HTS code, files no customs entry, and leaves antidumping and
+# countervailing duties out of every total (every answer says so in adcvd_status / adcvd_notice).
+#
+# Auth: `Authorization: Bearer <key>` (the vendor also takes `X-API-Key`, and its OpenAPI lists an
+# api_key query parameter; neither is used here, so the key never rides in a URL). A bad key answers
+# 401 {"error": {"code": "UNAUTHORIZED", ...}} on every route; GET /ping is open and checks no key.
+#
+# THE METER: a monthly call allowance per plan (Starter 1,000, Developer 10,000). One HTTP request is
+# one call, and a batch of up to 200 lines is still one call. There are no credits and no overage
+# charge; the vendor contacts an account that nears its cap. The price here is one call, converted by
+# the fx.yaml `tariffsapi` rate (Developer plan, the one that serves the batch route).
+#
+# Plans: the batch route needs Developer. The vendor's OpenAPI still says "Pro" (a retired plan) for
+# it; the pricing page and the API docs say Developer, and those are followed here.
+#
+# Eligibility: resolve and batch are documented as calls on the pricing page. The HTS lookup and the
+# schedule search are not mentioned there, so their price is inferred and they stay on a team's own
+# key until the vendor confirms how they meter.
+#
+# Not catalogued (see the PR body): the HTS change timeline, base-rate lists, the newsletter feed and
+# API-key management are outside the agent job set; list-agreements exists on the MCP server only.
+provider: tariffsapi
+source:
+  docs: https://tariffsapi.com/api-documentation
+  openapi: https://tariffsapi.com/openapi.yaml
+  curated: '2026-11-28'
+limits: "Per key: 300 requests a minute on /resolve per the docs page (the OpenAPI says 60), and a monthly allowance of 1,000 calls on Starter or 10,000 on Developer. A 429 answers RATE_LIMITED with Retry-After."
+pricing_url: https://tariffsapi.com/pricing
+
+# No other provider in the catalog lists customs duty data, so these four are single-provider for now.
+proposed_capabilities:
+  trade.tariffs.resolve: "Get the US import duty for a product by HTS code and country of origin"
+  trade.tariffs.resolve.batch: "Get US import duties for up to 200 HTS lines in one request"
+  trade.hts.get: "Get the duty rates and additional measures on one US HTS code"
+  trade.hts.search: "Search the US tariff schedule by keyword to find HTS codes"
+
+defaults:
+  provenance: {source: docs, source_url: 'https://tariffsapi.com/pricing', checked: '2026-11-28', confidence: documented}
+  bill: {miss: charged, error: free}
+  docs_url: https://tariffsapi.com/api-documentation
+
+endpoints:
+  - id: tariffsapi.tariffs.resolve
+    added: '2026-11-28'
+    domain: duties
+    capability: trade.tariffs.resolve
+    platform: trade
+    scope: any_account
+    method: GET
+    path: /tariffs/resolve
+    name: "Get the US import duty for an HTS code and origin"
+    summary: "Resolve the full US duty picture for an HTS code and country of origin: base duty, Section 301, 232 and 338 and other Chapter 99 measures, each listed separately, with the matched HTS line and confidence."
+    input:
+      queryParams:
+        hts: {type: string, required: true, example: "8471.30.01.00", note: "Any length; a code with no line of its own resolves to its nearest parent, and resolved_hts says which line matched"}
+        origin: {type: string, required: true, example: "CN", note: "ISO-3166 alpha-2 country of origin, uppercase"}
+        as_of: {type: string, required: false, example: "2026-11-28", note: "YYYY-MM-DD. Leave it out for today's rates; a past date always returns that day's rates, not current ones"}
+        include_unknown_effective_dates: {type: boolean, required: false, default: true, note: "false drops measures whose start date is not on record"}
+        resolve_chapter_99: {type: boolean, required: false, default: false, note: "true turns a reference-only measure (\"See 9903.91.05\") into a numeric rate from the Chapter 99 line"}
+        include_inapplicable_measures: {type: boolean, required: false, default: false, note: "true also lists Chapter 99 measures that do not apply to this origin, each tagged applies_to_origin; totals are unchanged"}
+      note: "Totals never include antidumping or countervailing duties: adcvd_status says whether the orders were screened. A 404 HTS_NOT_FOUND lists suggested_codes, the sibling lines under the same six-digit heading."
+    test_request: {queryParams: {hts: "8471.30.01.00", origin: "CN"}}
+    price: {value: '1', currency: credit, unit: call, note: "One call against the plan's monthly allowance. The pricing page counts one request to /resolve as one call."}
+    miss: {status: [404], when: {path: response.error.code, op: equals, value: HTS_NOT_FOUND}, means: "No line in the tariff schedule matches the code; suggested_codes lists sibling lines."}
+    docs_url: https://tariffsapi.com/api-documentation#resolve
+
+  - id: tariffsapi.tariffs.resolve_batch
+    added: '2026-11-28'
+    domain: duties
+    capability: trade.tariffs.resolve.batch
+    platform: trade
+    scope: any_account
+    method: POST
+    path: /tariffs/resolve_batch
+    name: "Get US import duties for up to 200 HTS lines"
+    summary: "Resolve the US duty for up to 200 HTS code and origin pairs in one request, in request order; each result carries ok, outcome and its own breakdown or error."
+    input:
+      bodyType: json
+      body:
+        requests: {type: array, items: {type: object}, required: true, example: [{hts: "8471.30.01.00", origin: "CN"}, {hts: "8703.23.00.10", origin: "MX"}], note: "1 to 200 objects, each with hts and origin (ISO alpha-2, uppercase) and an optional as_of that overrides the batch date"}
+        as_of: {type: string, required: false, note: "YYYY-MM-DD default for every item; leave it out for today's rates"}
+        include_unknown_effective_dates: {type: boolean, required: false, default: true}
+        resolve_chapter_99: {type: boolean, required: false, default: false, note: "true turns reference-only measures into numeric rates for every item"}
+      note: "Needs the Developer plan: other plans are refused with 403. One bad line fails only its own result (ok false, an error object); the request is still a 200 and still one call. Results carry index, the position in requests."
+    test_request: {body: {requests: [{hts: "8471.30.01.00", origin: "CN"}]}}
+    price: {value: '1', currency: credit, unit: call, note: "One call however many lines it carries, up to 200."}
+    expect: {path: response.results, op: present}
+    docs_url: https://tariffsapi.com/api-documentation#batch
+
+  - id: tariffsapi.hts.get
+    added: '2026-11-28'
+    domain: schedule
+    capability: trade.hts.get
+    platform: trade
+    scope: any_account
+    method: GET
+    path: /tariffs/by_hts/{hts_number}
+    name: "Get the duty rates on one US HTS code"
+    summary: "Get one US HTS code's base duties and additional measures, with the matched line, rate types and data sources; add an origin to keep only the measures that apply to it."
+    input:
+      pathParams:
+        hts_number: {type: string, required: true, example: "8471.30.01.00", note: "Digits and dots only; a code with no duty records resolves to its nearest parent"}
+      queryParams:
+        origin: {type: string, required: false, example: "CN", note: "ISO alpha-2 country; without it every country's additional measures are listed"}
+        as_of: {type: string, required: false, note: "YYYY-MM-DD; leave it out for today's rates"}
+        include_unknown_effective_dates: {type: boolean, required: false, default: true}
+        page: {type: integer, required: false, default: 1, min: 1}
+        per_page: {type: integer, required: false, default: 25, min: 1, max: 100, example: 1}
+      note: "Use tariffsapi.tariffs.resolve for a single total picture of one code and origin; this route returns the rate tables behind it."
+    test_request: {pathParams: {hts_number: "8471.30.01.00"}, queryParams: {origin: "CN", per_page: 1}}
+    price: {value: '1', currency: credit, unit: call, note: "One call. The published docs do not say whether this route counts against the monthly allowance; it is priced as a call, the dearer reading."}
+    provenance: {source: inferred, source_url: 'https://tariffsapi.com/api-documentation', checked: '2026-11-28', confidence: inferred}
+    miss: {status: [404], when: {path: response.error.code, op: equals, value: HTS_NOT_FOUND}, means: "No line in the tariff schedule matches the code."}
+    docs_url: https://tariffsapi.com/api-documentation#by-hts
+
+  - id: tariffsapi.hts.search
+    added: '2026-11-28'
+    domain: schedule
+    capability: trade.hts.search
+    platform: trade
+    scope: any_account
+    method: GET
+    path: /products/search
+    name: "Search the US tariff schedule by keyword"
+    summary: "Search the published US tariff schedule by keyword, HS code or HTS number, and get the matching products with their HTS numbers and general duty rates."
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "laptop", note: "Matches official code names and descriptions"}
+        page: {type: integer, required: false, default: 1, min: 1}
+        per_page: {type: integer, required: false, default: 25, min: 1, max: 100, example: 3}
+      note: "Schedule navigation only: it names the lines a word appears in and does not decide which code a product belongs under."
+    test_request: {queryParams: {q: "laptop", per_page: 3}}
+    price: {value: '1', currency: credit, unit: call, note: "One call. The published docs do not say whether this route counts against the monthly allowance; it is priced as a call, the dearer reading."}
+    provenance: {source: inferred, source_url: 'https://tariffsapi.com/openapi.yaml', checked: '2026-11-28', confidence: inferred}
+    docs_url: https://tariffsapi.com/openapi.yaml

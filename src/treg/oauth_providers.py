@@ -2972,6 +2972,39 @@ BRAVESEARCH = OAuthProvider(
     probe_path="/v1/web/search?q=example.com&count=1",
 )
 
+TARIFFSAPI = OAuthProvider(
+    service="tariffsapi",
+    display_name="TariffsAPI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your TariffsAPI API key",
+    # `Authorization: Bearer <key>`. The vendor also takes X-API-Key and an api_key query parameter;
+    # only the header is used, so a key never rides in a URL.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://tariffsapi.com/api-documentation",
+    setup_action_label="Get your TariffsAPI API key",
+    setup_steps=(
+        "Create an account at tariffsapi.com. Every new account gets 50 free API calls, then a 14-day trial.",
+        "Create an API key in your account and copy it.",
+    ),
+    setup_note=(
+        "Each plan has a monthly call allowance: Starter 1,000, Developer 10,000. One request is one call "
+        "and a batch of up to 200 lines is one call. Batch lookups and the MCP server need the Developer "
+        "plan. Rates are advisory and leave out antidumping and countervailing duties."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Get the US import duty for an HTS code and country of origin, including Section 301, 232 and 338 measures, and search the tariff schedule.",
+    base_url="https://tariffsapi.com/api/v1",
+    docs_url="https://tariffsapi.com/api-documentation",
+    # Lists the caller's own API keys; no tariff data, so it is not a lookup. A bogus key answers 401
+    # {"error":{"code":"UNAUTHORIZED",...}} on this route. GET /ping is open and checks no key.
+    probe_path="/api_keys",
+)
+
 LOCALFALCON = OAuthProvider(
     service="localfalcon", display_name="Local Falcon", auth_kind="key",
     token_label="API key", token_placeholder="your Local Falcon API key",
@@ -4648,6 +4681,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
         INFLUENCERSCLUB, VILLAGE,
+        # Trade and tariff data API-key providers
+        TARIFFSAPI,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers

@@ -159,6 +159,7 @@ platforms:
   research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
+  trade: {label: "Trade & tariffs", category: "Research & public data", summary: "US import duty rates and the tariff schedule, by HTS code and country of origin."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
