@@ -1359,17 +1359,35 @@ async def test_a_refill_takes_its_turn_ahead_of_the_teams_queued_exact_reserves(
 
 
 async def test_a_call_waiting_on_a_refill_and_a_starved_fold_each_get_their_turn(
-        org_id, store, monkeypatch):
+        org_id, store, monkeypatch, caplog):
     """The whole road of both: a call's refill and the fold of a starved queue meet first at the
     team's allowance lease, where the fold's claim orders them, then each takes its admission
-    turn ahead of the team's queued exact-path reserves. The call gets its money within its
-    refill wait and the queue is folded within the fold's turn; no claim is left behind."""
+    turn ahead of the team's queued exact-path reserves. Another session holds the lease until
+    the fold has claimed it, so the fold's ordinary visit is skipped and its starved turn runs.
+    The call gets its money within its refill wait and the queue is folded within the fold's
+    turn; no claim is left behind."""
     _admission_on(monkeypatch, 1.0)
     await _queue_charge(org_id, "queued", 60)
+    admit, asked = runtime.money_admission.admit, []
+
+    def recorded(org_ids, *args, operation, priority=False, **kwargs):
+        asked.append((operation, priority))
+        return admit(org_ids, *args, operation=operation, priority=priority, **kwargs)
+
+    monkeypatch.setattr(runtime.money_admission, "admit", recorded)
+    lease, claim = runtime.money_key(org_id), runtime.fold_claim_key(org_id)
+    store.leases[lease] = "another session"
+
+    async def give_back_once_claimed() -> None:
+        while claim not in store.leases:
+            await asyncio.sleep(0.001)
+        del store.leases[lease]
+
     entered: list[float] = []
     queued = [asyncio.create_task(_exact_reserve(org_id, entered)) for _ in range(100)]
     while not entered:
         await asyncio.sleep(0.001)
+    holder = asyncio.create_task(give_back_once_claimed())
     started = time.monotonic()
 
     async def call() -> tuple[int | None, float]:
@@ -1380,12 +1398,16 @@ async def test_a_call_waiting_on_a_refill_and_a_starved_fold_each_get_their_turn
         folded = await allowance_sweep.fold_queued_once(session_maker)
         return folded, time.monotonic() - started
 
-    (epoch, call_s), (folded, fold_s) = await asyncio.gather(call(), fold())
-    await asyncio.gather(*queued)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        (epoch, call_s), (folded, fold_s) = await asyncio.gather(call(), fold())
+    await asyncio.gather(holder, *queued)
     assert epoch and call_s < runtime._REFILL_WAIT_S
     assert folded == 1 and await _queued(org_id) == 0
     assert fold_s < allowance_sweep._STARVED_TURN_S
-    assert runtime.fold_claim_key(org_id) not in store.leases
+    assert any(r.getMessage().startswith(f"allowance_fold_starved org_id={org_id} ")
+               for r in caplog.records), "folded in its starved turn"
+    assert ("close", True) in asked and ("reserve", True) in asked
+    assert claim not in store.leases
     assert not any(key.endswith(":claim") for key in store.leases)
 
 
