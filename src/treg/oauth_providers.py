@@ -2284,6 +2284,32 @@ JUSTONEAPI = OAuthProvider(
     probe_path="/api/tiktok/get-user-detail/v1?uniqueId=tiktok",
 )
 
+ORIANE = OAuthProvider(
+    service="oriane",
+    display_name="Oriane",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Oriane Connect API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.oriane.xyz/billing/subscription?tab=api",
+    setup_action_label="Get your Oriane API key",
+    setup_steps=(
+        "Sign in to app.oriane.xyz and open Billing, then the API tab.",
+        "Create an API key and copy it.",
+    ),
+    setup_note="Searches are billed in credits per row returned (2 basic, 24 default, 48 full); an asset is 2 credits. The wallet check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Search indexed Instagram, TikTok and YouTube profiles and posts by text, transcript, on-screen text, visual similarity and engagement.",
+    base_url="https://connect.oriane.xyz",
+    docs_url="https://connect.oriane.xyz/rest/docs",
+    probe_path="/rest/wallet",  # free; an invalid key gets a 401 here
+)
+
+
 SCRAPECREATORS = OAuthProvider(
     service="scrapecreators",
     display_name="ScrapeCreators",
@@ -4640,7 +4666,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, ORIANE,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,

@@ -1,0 +1,111 @@
+provider: oriane
+source:
+  docs: https://connect.oriane.xyz/rest/docs
+  openapi: null # the spec is inlined in the Scalar page at /rest/docs; no standalone document is served
+  curated: 2026-11-28
+pricing_url: https://www.oriane.xyz/pricing
+proposed_capabilities:
+  creators.search.posts: "Search creators' posts and videos across Instagram, TikTok and YouTube by caption, transcript, on-screen text, visual similarity and metrics"
+  creators.search.asset.create: "Create a text or image asset to search creators' posts by visual similarity"
+defaults:
+  provenance: {source: rate_card_api, source_url: 'https://connect.oriane.xyz/rest/wallet/pricing', checked: '2026-11-28', confidence: verified}
+endpoints:
+  - id: oriane.creators.search
+    added: '2026-11-28'
+    capability: creators.search
+    platform: creators
+    domain: search
+    scope: any_account
+    method: POST
+    path: /rest/profiles/search
+    name: "Search Instagram, TikTok and YouTube profiles"
+    summary: "Find creator profiles on Instagram, TikTok and YouTube by handle, name, bio, language, location, email and follower, post or like counts, with follower totals and profile ids"
+    input:
+      queryParams:
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, note: "profiles per page; billed per profile returned", example: 1}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+        projection: {type: string, required: false, default: default, enum: [basic, default, full], note: "basic: id, handle, name, followers, picture; default adds bio, counts and aggregations; full adds every field. Sets the price per row", example: basic}
+        sort: {type: string, required: false, default: createdAt, note: "comma-separated followersCount, createdAt, updatedAt, each with an optional :asc or :desc (default :desc)", example: "followersCount:desc"}
+      body:
+        operator: {type: string, required: true, enum: [and, or], note: "and: every filter and nested query must match; or: at least one", example: and}
+        filters: {type: object, required: false, note: "field filters: id, platform, platformId, handle, displayName, bio, language, isPrivate, isVerified, postsCount, likesCount, followersCount, followingCount, emails, locationPlatformId, locationCompleteAddress, locationCoordinates, createdAt, updatedAt. Text fields take exactMatch, includesExactly, includesFuzzy, excludesExactly or excludesFuzzy {values: [...]}; counts take {min, max}; platform takes includes [instagram, tiktok, youtube]. At most 500 filter values in all", example: {platform: {includes: [instagram]}, handle: {exactMatch: {values: [nike]}}}}
+        queries: {type: array, items: {type: object}, required: false, note: "nested query groups of the same shape as the body, at most two levels deep"}
+    test_request:
+      queryParams: {limit: 1, projection: basic}
+      body: {operator: and, filters: {platform: {includes: [instagram]}, handle: {exactMatch: {values: [nike]}}}}
+    price:
+      table:
+        - {when: [{path: query.projection, op: equals, value: basic}], value: '2'}
+        - {when: [{path: query.projection, op: equals, value: default}], value: '24'}
+        - {when: [{path: query.projection, op: equals, value: full}], value: '48'}
+      fallback: {value: '48', note: "the full projection rate"}
+      currency: credit
+      per: 1
+      unit: row
+      note: "Per profile returned: 2 credits basic, 24 default, 48 full. A page with no profiles is free."
+    reserve: {rows: {param: query.limit, default: {value: 20, source: docs}, max: 100}}
+    settle: {count: {path: response.data.results}}
+    miss: {when: {path: response.data.results, op: empty}}
+    docs_url: https://connect.oriane.xyz/rest/docs
+
+  - id: oriane.creators.search.posts
+    added: '2026-11-28'
+    capability: creators.search.posts
+    platform: creators
+    domain: search
+    scope: any_account
+    method: POST
+    path: /rest/contents/search
+    name: "Search Instagram, TikTok and YouTube posts and videos"
+    summary: "Find posts, reels and videos on Instagram, TikTok and YouTube by caption, hashtags, mentions, transcript, on-screen text, audio, location, sentiment, visual similarity and views or engagement, with metrics, media and author"
+    input:
+      queryParams:
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, note: "posts per page; billed per post returned", example: 1}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+        projection: {type: string, required: false, default: default, enum: [basic, default, full], note: "basic: ids, caption, counts, hashtags, mentions, thumbnail; default and full add media detail, transcripts and frames. Sets the price per row", example: basic}
+        sort: {type: string, required: false, default: publishedAt, note: "comma-separated visualSimilarity, transcriptRelevance, viewsCount, likesCount, sharesCount, commentsCount, interactionsCount, engagementRatePerViews, engagementRatePerFollowers, viewsRatePerFollowers, profileFollowersCount, publishedAt, each with an optional :asc or :desc (default :desc)", example: "viewsCount:desc"}
+        aiSearchAnchor: {type: string, required: false, note: "the metadata.pagination.aiSearchAnchor of the first page of a visual similarity search; send it on later offset pages of that search to keep scores consistent"}
+      body:
+        operator: {type: string, required: true, enum: [and, or], note: "and: every filter and nested query must match; or: at least one", example: and}
+        name: {type: string, required: false, note: "a query name echoed in each result's matchedQueries"}
+        filters: {type: object, required: false, note: "field filters, among them platform, profileHandle, caption, hashtags, mentionHandles, transcript, onScreenText, audioTitle, captionLanguage, locationCountryCode, viewsCount, interactionsCount, engagementRatePerViews, publishedAt {after, before}, commentsGlobalSentimentPolarity and visualSimilarity {includes: {values: [{assetId, minScore}]}} with an id from oriane.creators.search.asset.create. Text fields take exactMatch, includesExactly, includesFuzzy, excludesExactly or excludesFuzzy {values: [...]}; counts take {min, max}. At most 500 filter values and 10 visual similarity values in all", example: {platform: {includes: [instagram]}, profileHandle: {exactMatch: {values: [nike]}}}}
+        queries: {type: array, items: {type: object}, required: false, note: "nested query groups of the same shape as the body, at most two levels deep"}
+    test_request:
+      queryParams: {limit: 1, projection: basic}
+      body: {operator: and, filters: {platform: {includes: [instagram]}, profileHandle: {exactMatch: {values: [nike]}}}}
+    price:
+      table:
+        - {when: [{path: query.projection, op: equals, value: basic}], value: '2'}
+        - {when: [{path: query.projection, op: equals, value: default}], value: '24'}
+        - {when: [{path: query.projection, op: equals, value: full}], value: '48'}
+      fallback: {value: '48', note: "the full projection rate"}
+      currency: credit
+      per: 1
+      unit: row
+      note: "Per post returned: 2 credits basic, 24 default, 48 full. A page with no posts is free."
+    reserve: {rows: {param: query.limit, default: {value: 20, source: docs}, max: 100}}
+    settle: {count: {path: response.data.results}}
+    miss: {when: {path: response.data.results, op: empty}}
+    note: "A page with more results after it answers 206, not 200; read metadata.pagination.totalCount to page on."
+    docs_url: https://connect.oriane.xyz/rest/docs
+
+  - id: oriane.creators.search.asset.create
+    added: '2026-11-28'
+    capability: creators.search.asset.create
+    platform: creators
+    domain: search
+    kind: utility
+    scope: any_account
+    method: POST
+    path: /rest/assets
+    name: "Create a visual search asset from text or an image"
+    summary: "Turn a short text description or an image URL into an asset id that oriane.creators.search.posts matches posts against by visual similarity"
+    input:
+      body:
+        type: {type: string, required: true, enum: [text, image], example: text}
+        text: {type: string, required: false, maxLength: 300, note: "with type text: what the posts should show", example: "a red running shoe on a track"}
+        image: {type: object, required: false, note: "with type image: {type: url, url} for a public HTTPS JPEG, PNG or WebP of at most 20 MiB, or {type: base64, ...}", example: {type: url, url: "https://assets.oriane.xyz/narcissus.webp"}}
+    test_request:
+      body: {type: text, text: "a red running shoe on a track"}
+    price: {value: '2', currency: credit, per: 1, unit: call}
+    docs_url: https://connect.oriane.xyz/rest/docs
