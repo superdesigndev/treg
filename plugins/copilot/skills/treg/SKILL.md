@@ -153,8 +153,9 @@ How a routed call works:
   `company_domain`), job search (`location`, `posted_within_days`) and web or Google search
   (`site:` in `q`): a row whose own field clearly breaks what you sent (another country, state or
   city, company or site, or an older date) leaves `output`, and `_treg.strict_filtered` says
-  `{removed, kept, by, unchecked}`. A row that names no place, company or date, or only a larger
-  place than you asked, is kept and counted `unchecked`. `raw` keeps every row, and the provider is
+  `{removed, kept, by, unchecked}`. A row that names no place, company or date, only a larger
+  place than you asked, or a city when you sent a city with no state or country, is kept and
+  counted `unchecked`. Outside the US only the country is compared. `raw` keeps every row, and the provider is
   billed as usual. When no row is left it asks at most 2 more providers, each billed as usual;
   `X-Treg-Route-Max-Cost` caps the total.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says

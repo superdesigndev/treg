@@ -33,7 +33,7 @@ PLACES = [
     ("Germany", "Berlin", None),
     ("Germany", "Berlin, Germany", True),
     ("California", "Greater Los Angeles Area", None),
-    ("California", "San Francisco, CA", True),          # CA is also Canada: read as either
+    ("California", "San Francisco, CA", None),          # CA is also Canada: never a match, never removed
     ("California", "San Francisco, CA, US", True),
     ("California", "San Francisco, California, United States", True),
     ("New York City", "New York, New York, United States", True),
@@ -44,9 +44,9 @@ PLACES = [
     ("Texas", "Texas", True),
     ("Austin, Texas", "Texas, United States", None),        # only a larger place: not judged
     ("Austin, Texas", "United States", None),
-    ("Indiana", "Columbus, IN", True),                       # IN is also India: read as either
+    ("Indiana", "Columbus, IN", None),                       # IN is also India
     ("Indiana", "Columbus, IN, US", True),
-    ("Germany", "Berlin, DE", True),
+    ("Germany", "Berlin, DE", None),                         # DE is also Delaware
     ("United States", "Columbus, IN", None),
     ("United Kingdom", "Austin, MN", False),
     # the city cases
@@ -65,8 +65,8 @@ PLACES = [
     ("California", "Austin, TX", False),
     ("Austin, Texas", "Dallas, Texas, United States", False),
     ("Austin, Texas", "Austin, MN", False),
-    ("London, United Kingdom", "Manchester, England", False),
-    ("Paris, France", "Lyon, France", False),
+    ("London, United Kingdom", "Manchester, England", None),  # outside the US only the country is judged
+    ("Paris, France", "Lyon, France", None),
     # a city with nothing around it says nothing about a row elsewhere
     ("London", "Berlin, Germany", None),
     ("Greater Phoenix", "Berlin, Germany", None),
@@ -76,6 +76,100 @@ PLACES = [
 @pytest.mark.parametrize("asked,row,verdict", PLACES)
 def test_place_removes_only_a_row_that_names_another_place_at_the_level_asked(asked, row, verdict):
     assert R.place(asked, row) is verdict
+
+
+# A second table: "keep" may be a match or unchecked, "remove" must be removed.
+KEEP_OR_REMOVE = [
+    ("Austin, TX", "Paris, France", "remove"),
+    ("Berlin", "Toronto, Canada", "remove"),
+    ("Berlin, Germany", "Toronto, Ontario, Canada", "remove"),
+    ("Austin, Texas", "Austin, TX, United States", "keep"),
+    ("Austin, TX", "Dallas, TX", "remove"),
+    ("Austin, TX", "Texas, United States", "keep"),
+    ("Austin, TX", "Greater Austin Area", "keep"),
+    ("Austin, TX", "Austin, Texas Metropolitan Area", "keep"),
+    ("Texas", "Houston, TX", "keep"),
+    ("Texas", "Sacramento, CA", "remove"),
+    ("California", "San Francisco Bay Area", "keep"),
+    ("California", "Los Angeles, California, United States", "keep"),
+    ("CA", "San Jose, CA", "keep"),
+    ("California", "Toronto, ON, Canada", "remove"),
+    ("Canada", "Toronto, Ontario, Canada", "keep"),
+    ("Canada", "Vancouver, BC", "keep"),
+    ("Canada", "Seattle, WA", "remove"),
+    ("Indiana", "Indianapolis, IN", "keep"),
+    ("India", "Bengaluru, Karnataka, India", "keep"),
+    ("India", "Indianapolis, IN", "remove"),
+    ("IN", "Mumbai, India", "keep"),
+    ("Georgia", "Atlanta, GA", "keep"),
+    ("Georgia", "Tbilisi, Georgia", "keep"),
+    ("Atlanta, GA", "Tbilisi, Georgia", "remove"),
+    ("Atlanta, Georgia", "Atlanta, GA, United States", "keep"),
+    ("San Francisco, CA", "San Francisco Bay Area", "keep"),
+    ("San Francisco", "Bay Area", "keep"),
+    ("London", "Greater London", "keep"),
+    ("London, UK", "London, England, United Kingdom", "keep"),
+    ("London, United Kingdom", "London, Ontario, Canada", "remove"),
+    ("London", "Manchester, England", "keep"),
+    ("United Kingdom", "Greater London", "keep"),
+    ("United Kingdom", "Paris, Île-de-France, France", "remove"),
+    ("Dallas, TX", "DFW", "keep"),
+    ("Dallas, TX", "Dallas-Fort Worth Metroplex", "keep"),
+    ("Texas", "DFW", "keep"),
+    ("Munich", "München, Bayern, Deutschland", "keep"),
+    ("München", "Munich, Bavaria, Germany", "keep"),
+    ("Munich, Germany", "München, Germany", "keep"),
+    ("Cologne", "Köln, Germany", "keep"),
+    ("Köln, Germany", "Cologne, North Rhine-Westphalia, Germany", "keep"),
+    ("Germany", "Köln, Nordrhein-Westfalen, Deutschland", "keep"),
+    ("Germany", "Berlin, Germany", "keep"),
+    ("Germany", "Vienna, Austria", "remove"),
+    ("New York", "Brooklyn, NY", "keep"),
+    ("New York, NY", "New York City Metropolitan Area", "keep"),
+    ("New York, NY", "Jersey City, NJ", "remove"),
+    ("New York", "Remote", "keep"),
+    ("Austin, TX", "Remote - US", "keep"),
+    ("United States", "Remote", "keep"),
+    ("United States", "Toronto, Canada", "remove"),
+    ("US", "Austin, TX", "keep"),
+    ("USA", "London, UK", "remove"),
+    ("Paris", "Paris, TX", "keep"),
+    ("Paris, France", "Paris, TX", "remove"),
+    ("Portland, OR", "Portland, ME", "remove"),
+    ("Washington", "Seattle, WA", "keep"),
+    ("Washington, DC", "Washington, District of Columbia", "keep"),
+    ("Ontario, Canada", "Toronto, ON", "keep"),
+    ("São Paulo, Brazil", "Sao Paulo, SP, Brasil", "keep"),
+    ("Zurich, Switzerland", "Zürich, Schweiz", "keep"),
+    ("Remote", "Austin, TX", "keep"),
+    ("Minnesota", "Minneapolis, MN", "keep"),
+    ("Mongolia", "Minneapolis, MN", "remove"),
+    ("California", "Hamburg, Germany", "remove"),
+]
+# Clear to a reader, not to the test: a city asked with nothing around it, and a row whose
+# two-letter code is a US state and also the country asked.
+NOT_JUDGED = {("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN")}
+
+
+@pytest.mark.parametrize("asked,row,want", KEEP_OR_REMOVE)
+def test_place_never_removes_a_row_in_the_place_asked(asked, row, want):
+    got = R.place(asked, row)
+    if (asked, row) in NOT_JUDGED:
+        assert got is None
+    else:
+        assert (got is False) == (want == "remove"), got
+
+
+@pytest.mark.parametrize("name", ["Washington, DC", "Kansas City, MO", "Nevada City, CA", "Indiana, PA",
+                                  "Delaware, OH", "Michigan City, IN", "New York City", "Texas"])
+def test_a_place_always_matches_itself(name):
+    assert R.place(name, name) is True
+
+
+def test_a_code_after_a_city_in_the_ask_is_the_us_state():
+    assert R.place("San Francisco, CA", "Paris, France") is False
+    assert R.place("San Francisco, CA", "Los Angeles, CA") is False
+    assert R.place("San Francisco, CA", "San Francisco, CA, US") is True
 
 
 def test_place_counts_rows_removed_and_unchecked():
@@ -89,9 +183,11 @@ def test_place_counts_rows_removed_and_unchecked():
 
 def test_domain_keeps_the_company_and_its_subdomains():
     rows = [{"company_domain": "stripe.com"}, {"company_domain": "jobs.stripe.com"}, {"company_domain": "stripe.com."},
+            {"company_domain": "user@stripe.com"},
             {"company_domain": "stripe.com:443"}, {"company_domain": "notstripe.com"}, {"company_domain": "acme.io"}]
     r = _apply("company_domain", "domain", ["company_domain"], "https://www.stripe.com", rows)
-    assert [x["company_domain"] for x in r.rows] == ["stripe.com", "jobs.stripe.com", "stripe.com.", "stripe.com:443"]
+    assert [x["company_domain"] for x in r.rows] == ["stripe.com", "jobs.stripe.com", "stripe.com.", "user@stripe.com",
+                                                     "stripe.com:443"]
     assert r.removed == 2
 
 
@@ -291,3 +387,22 @@ async def test_weak_and_emptied_answers_share_one_bound(clients: AsyncClient, fi
     body = r.json()
     assert r.status_code == 200 and len(seen) == 3, body["_treg"]["tried"]
     assert body["_treg"]["outcome"] == "weak" and len(body["output"]["people"]) == 1
+
+
+async def test_a_strict_emptied_next_page_still_carries_the_cursor(clients: AsyncClient, five_company_searches, monkeypatch):
+    page1 = {**json.loads(json.dumps(OFF_COMPANY).replace("acme.io", "stripe.com")), "cursor": "p2"}
+    page2 = {**OFF_COMPANY, "cursor": "p3"}
+    seen: list = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, page1), (200, page2)]}, seen))
+    ask = {"company_domain": "stripe.com", "limit": 1}
+    headers = {"X-Treg-Route-Strict-Filters": "1", "X-Treg-Route-Prefer": "leadsforge"}
+    first = await clients.post("/call/treg.people.search", json=ask, headers=headers)
+    assert first.status_code == 200 and first.json()["_treg"]["served_by"] == "leadsforge.people.search", first.text
+    cursor = first.json()["output"]["next_cursor"]
+    assert cursor
+    r = await clients.post("/call/treg.people.search", json={**ask, "cursor": cursor}, headers=headers)
+    body = r.json()
+    # every row of page 2 is at another company: the page is a miss, and the list still goes on
+    assert r.status_code == 200 and body["_treg"]["outcome"] == "miss" and body["output"]["people"] == [], r.text
+    assert body["output"]["next_cursor"] and body["output"]["next_cursor"] != cursor
+    assert len(seen) == 2 and seen[1][2].get("cursor") == "p2"

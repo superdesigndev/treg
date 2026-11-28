@@ -1420,11 +1420,19 @@ an invalid extra never disables the primary.
   at most `MAX_WEAK_FALLBACKS` more providers); when nothing better turns up, the first such answer
   is returned as the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what
   `min_results`, fill and merge count. `place` reads a city, a US state (name or code) and a
-  country from both places and removes a row only when it names another country, another state,
-  or another city in the same state or country; a two-letter code that is both a state and a
-  country (`IN`, `CA`) counts as either. A row naming only a larger place than asked, or nothing
-  comparable, is unchecked. Noise words go first ("Greater … Area", "New York City" is "New York").
-  `domain` takes the domain or a subdomain, a port and a trailing dot aside; `site` reads `site:`
+  country from both places. The same folded text always matches. It removes a row only when the
+  row names another country, another US state, or another city in the same US state; outside the
+  US only the country is judged, since a city's other-language name (München, Köln) reads as
+  another city. The first part is a state only when no later part names one, and "city" stays in
+  a state reading ("Kansas City" is no state). In the ask, a two-letter code after a city is the
+  US state ("San Francisco, CA"). In a row, a code that is both a state and a country (`IN`, `CA`)
+  is the state when a country follows it; alone it is either: it never counts as a match, it
+  removes the row only when neither reading is the place asked, and a city other than the one
+  asked in the state asked is removed under both readings. A row naming only a larger place than
+  asked, a city asked with nothing around it ("Berlin" against "Toronto, Canada"), or nothing
+  comparable is unchecked. Noise words go first ("Greater … Area", "New York City" is "New York").
+  `domain` takes the domain or a subdomain, the part after `@` of an address, a port and a
+  trailing dot aside; `site` reads `site:`
   from `q` (`on_site`, as `no_result_on_site`) and judges nothing it cannot read (`site:.edu`,
   `site:*.a.com`, a `/url?` redirect link, a percent-encoded address); `within_days` compares the
   row's date as a UTC day. For a contract without a `row` the loader refuses a field no verified
