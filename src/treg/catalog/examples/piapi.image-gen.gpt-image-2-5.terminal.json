@@ -1,0 +1,55 @@
+{
+  "code": 200,
+  "data": {
+    "task_id": "bf7ad1a2-9e7e-445b-bf44-45ba95311155",
+    "model": "gpt-image",
+    "task_type": "gpt-image-generation",
+    "status": "completed",
+    "config": {
+      "service_mode": "",
+      "webhook_config": {
+        "endpoint": "",
+        "secret": ""
+      }
+    },
+    "input": {
+      "model": "gpt-image-2.5-flare",
+      "prompt": "A clean editorial illustration of a paper airplane.",
+      "size": "1024x1024",
+      "quality": "low",
+      "n": 1
+    },
+    "output": {
+      "created": 1789357615,
+      "data": [
+        {
+          "b64_json": "iVBORw0KGgo..."
+        }
+      ],
+      "usage": {
+        "total_tokens": 210,
+        "input_tokens": 14,
+        "output_tokens": 196
+      }
+    },
+    "meta": {
+      "created_at": "2026-09-14T03:46:54.986297031Z",
+      "started_at": "2026-09-14T03:46:55.301245108Z",
+      "ended_at": "2026-09-14T03:47:14.872051931Z",
+      "usage": {
+        "type": "point",
+        "frozen": 0,
+        "consume": 50000
+      },
+      "is_using_private_pool": false
+    },
+    "detail": null,
+    "logs": [],
+    "error": {
+      "code": 0,
+      "message": "",
+      "detail": null
+    }
+  },
+  "message": "success"
+}
