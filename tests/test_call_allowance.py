@@ -3601,7 +3601,18 @@ async def test_the_stalest_starved_team_is_folded_beside_the_pass_until_its_queu
     for index in range(20):
         await _queue_charge(org_id, f"behind-{index}", 900)
     await _queue_charge(other, "fresh", 5)
-    _slow_for(monkeypatch, other, 0.3)
+    real = allowance_sweep._fold_team
+
+    async def busy_until_the_lane_is_over(session_maker, team, *args, **kwargs):
+        """The pass stays on the other team for as long as the lane runs beside it."""
+        if team == other:
+            async with asyncio.timeout(10):
+                while not any(r.getMessage().startswith("allowance_fold_behind")
+                              for r in caplog.records):
+                    await asyncio.sleep(0.01)
+        return await real(session_maker, team, *args, **kwargs)
+
+    monkeypatch.setattr(allowance_sweep, "_fold_team", busy_until_the_lane_is_over)
     with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
         assert await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE) == 21
     assert await _queued(org_id) == 0 and await _queued(other) == 0
