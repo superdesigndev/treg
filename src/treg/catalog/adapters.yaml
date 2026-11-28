@@ -3664,16 +3664,18 @@ adapters:
     out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
     paging: {cursor: queryParams.paginationToken}
     miss: "posts == []"
+  # FetchIn's postUrlOrUrn is a post URL or an activity/share URN, not a bare numeric id.
+  # A numeric post_id is sent as an activity URN; a caller post_urn is forwarded unchanged.
   fetchinio.linkedin.post.comments:
     accepts: [[post_urn], [post_id]]
-    in: {post_urn: queryParams.postUrlOrUrn, post_id: queryParams.postUrlOrUrn}
-    in_expr: {queryParams.count: limit}
+    in: {post_urn: queryParams.postUrlOrUrn}
+    in_expr: {queryParams.postUrlOrUrn: "fmt('urn:li:activity:{}', post_id)", queryParams.count: limit}
     out: {comments: comments, count: "len(comments)", next_cursor: paginationToken}
     miss: "comments == []"
   fetchinio.linkedin.post.reactions:
     accepts: [[post_urn], [post_id]]
-    in: {post_urn: queryParams.postUrlOrUrn, post_id: queryParams.postUrlOrUrn}
-    in_expr: {queryParams.count: limit}
+    in: {post_urn: queryParams.postUrlOrUrn}
+    in_expr: {queryParams.postUrlOrUrn: "fmt('urn:li:activity:{}', post_id)", queryParams.count: limit}
     out: {reactions: reactions, count: "len(reactions)"}
     miss: "reactions == []"
 
