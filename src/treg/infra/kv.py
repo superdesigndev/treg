@@ -818,6 +818,18 @@ def _idle_closing_pool(url: str, *, max_connections: int, wait_s: float, idle_cl
             super().__init__(**kwargs)
             self._released_at: dict[object, float] = {}
 
+        async def get_connection(self, *args, **kwargs):
+            waited = not self.can_get_connection()
+            try:
+                connection = await super().get_connection(*args, **kwargs)
+            except redis.ConnectionError as exc:
+                if waited and isinstance(exc.__cause__, TimeoutError):
+                    _note_pool_wait(max_connections, timed_out=True)
+                raise
+            if waited:
+                _note_pool_wait(max_connections, timed_out=False)
+            return connection
+
         async def release(self, connection) -> None:
             self._released_at[connection] = _clock()
             await super().release(connection)
@@ -842,6 +854,26 @@ def _idle_closing_pool(url: str, *, max_connections: int, wait_s: float, idle_cl
         url, max_connections=max_connections, timeout=wait_s,
         socket_timeout=_TIMEOUT_S, socket_connect_timeout=_TIMEOUT_S, decode_responses=True,
     )
+
+
+_POOL_WAIT_LOG_S = 60.0
+_pool_waits = {"waited": 0, "timed_out": 0, "since": None}
+
+
+def _note_pool_wait(max_connections: int, *, timed_out: bool) -> None:
+    """Count operations that found the pool full; log the counts at most once a minute."""
+    try:
+        now = _clock()
+        _pool_waits["timed_out" if timed_out else "waited"] += 1
+        since = _pool_waits["since"]
+        if since is not None and now - since < _POOL_WAIT_LOG_S:
+            return
+        log.warning("kv pool full: %d operations waited for a connection, %d gave up, in %.0fs "
+                    "(at most %d per process)", _pool_waits["waited"] + _pool_waits["timed_out"],
+                    _pool_waits["timed_out"], 0 if since is None else now - since, max_connections)
+        _pool_waits.update(waited=0, timed_out=0, since=now)
+    except Exception:  # noqa: BLE001 - observation must not change store behavior
+        pass
 
 
 class RedisStore:

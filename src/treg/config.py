@@ -237,7 +237,7 @@ class Settings(BaseSettings):
     kv_url: str = ""
     # Per process: connections the store may hold, how long an operation waits for a free one
     # (inside its own deadline), and how long one may sit unused before it is closed.
-    kv_max_connections: int = Field(default=32, ge=1, le=1000)
+    kv_max_connections: int = Field(default=100, ge=1, le=1000)
     kv_pool_wait_s: float = Field(default=0.5, gt=0, le=5)
     kv_idle_close_s: float = Field(default=60.0, ge=1, le=3600)
 

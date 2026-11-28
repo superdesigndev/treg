@@ -77,6 +77,32 @@ async def test_a_full_pool_waits_no_longer_than_its_wait(monkeypatch):
     assert 0.04 <= time.monotonic() - started < 0.5
 
 
+def test_the_default_keeps_the_ceiling_the_store_had_before():
+    from treg.config import Settings
+
+    assert Settings(_env_file=None).kv_max_connections == 100
+
+
+async def test_full_pool_waits_are_counted_and_logged_at_most_once_a_minute(monkeypatch, caplog):
+    clock = [1000.0]
+    monkeypatch.setattr(kv, "_clock", lambda: clock[0])
+    monkeypatch.setattr(kv, "_pool_waits", {"waited": 0, "timed_out": 0, "since": None})
+    store = _full_store(monkeypatch)
+    try:
+        with caplog.at_level("WARNING", logger="treg.kv"):
+            for _ in range(3):
+                assert await store.acquire_slot("tregtest", "t", 1000, 1) == "unavailable"
+            clock[0] += 61
+            assert await store.acquire_slot("tregtest", "t", 1000, 1) == "unavailable"
+    finally:
+        await store.aclose()
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("kv pool full")]
+    assert lines == [
+        "kv pool full: 1 operations waited for a connection, 1 gave up, in 0s (at most 1 per process)",
+        "kv pool full: 3 operations waited for a connection, 3 gave up, in 61s (at most 1 per process)",
+    ]
+
+
 async def test_connections_idle_past_the_limit_are_closed_on_the_next_release(monkeypatch):
     clock = [1000.0]
     monkeypatch.setattr(kv, "_clock", lambda: clock[0])

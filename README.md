@@ -412,7 +412,7 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |
 | `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod.                                                |
 | `TREG_KV_URL`                             | *(empty)*                       | shared key-value store (Redis protocol) for counters every worker must agree on, today the per-team review-invitation budget. Empty = an in-process fallback, fine for one worker |
-| `TREG_KV_MAX_CONNECTIONS`                 | `32`                            | connections each process may hold to the key-value store; an operation that finds them all busy waits, then treats the store as unavailable |
+| `TREG_KV_MAX_CONNECTIONS`                 | `100`                           | connections each process may hold to the key-value store; an operation that finds them all busy waits, then treats the store as unavailable |
 | `TREG_KV_POOL_WAIT_S`                     | `0.5`                           | how long an operation waits for a free key-value connection, within its own deadline |
 | `TREG_KV_IDLE_CLOSE_S`                    | `60`                            | a key-value connection unused this long is closed, so connections opened for a peak do not stay open |
 
