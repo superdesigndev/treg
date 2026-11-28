@@ -339,10 +339,14 @@ _TABLES: dict[str, dict[str, str]] = {}
 
 def _table(name: str) -> dict[str, str]:
     """An ISO 3166 table keyed by lowercase alpha-2 code, generated from pycountry: `countries.json`
-    (common names), `country_numeric.json` (the numeric code)."""
+    (common names), `country_numeric.json` (the numeric code). The file is UTF-8 — six names carry a
+    letter outside ASCII — so it is read as UTF-8 rather than in whatever the host's default encoding
+    happens to be: under a cp1252 or latin-1 host locale the names came back mojibake ('CÃ´te
+    d'Ivoire'), under cp936 as another country's letters, and under cp932 the read raised."""
     if name not in _TABLES:
         from pathlib import Path
-        _TABLES[name] = json.loads((Path(__file__).resolve().parents[3] / "catalog" / name).read_text())
+        _TABLES[name] = json.loads(
+            (Path(__file__).resolve().parents[3] / "catalog" / name).read_text(encoding="utf-8"))
     return _TABLES[name]
 
 

@@ -8,6 +8,7 @@ from copy import deepcopy
 import json
 import logging
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -3568,9 +3569,38 @@ def test_every_iso_country_reaches_dataforseo_as_its_own_location():
         ident, _ = canonical_identity(contract, {"keywords": ["kahve"], "country": code.upper()})
         _, body = dfs.to_upstream(ident)
         assert body[0]["location_code"] == location, (code, body)
-    countries = json.loads((catalog_store.CATALOG_DIR / "countries.json").read_text())
+    countries = json.loads((catalog_store.CATALOG_DIR / "countries.json").read_text(encoding="utf-8"))
     assert all(P.dfs_location(c) for c in countries), "every country treg knows has a DataForSEO location"
     assert P.dfs_location("Thailand") == 2764, "a country name is the same country"
+
+
+def test_the_iso_country_table_reads_as_utf8_whatever_the_host_default(monkeypatch):
+    """`countries.json` is UTF-8 and six of its names carry a letter outside ASCII (`Côte d'Ivoire`,
+    `Türkiye`, `Curaçao`). Read in the host's default encoding the table came back wrong on every
+    non-UTF-8 host: mojibake under cp1252 or latin-1 ('CÃ´te d'Ivoire'), another country's letters
+    under cp936, and a `UnicodeDecodeError` under cp932 — a host-locale-dependent country a provider
+    was asked about. The read names UTF-8, so all three hosts agree."""
+    accented = {"ci": "Côte d'Ivoire", "tr": "Türkiye", "cw": "Curaçao"}
+    path = catalog_store.CATALOG_DIR / "countries.json"
+    # The file stays UTF-8, so the read the fix names is the one that reads it right.
+    assert set(accented.values()) <= set(json.loads(path.read_bytes().decode("utf-8")).values())
+
+    original = Path.read_text
+
+    def host_default(self, encoding=None, errors=None):
+        # A host whose default encoding is not UTF-8: anything that reads this file without naming
+        # an encoding gets that host's wrong text, exactly as the real hosts did.
+        if encoding is None and self.resolve() == path.resolve():
+            return self.read_bytes().decode("cp936", errors or "strict")
+        return original(self, encoding, errors)
+
+    monkeypatch.setattr(Path, "read_text", host_default)
+    monkeypatch.setattr(P, "_TABLES", {})
+
+    for code, name in accented.items():
+        assert P.country_name(code) == name
+        assert P.country_code(name) == code
+    assert "côte d'ivoire" in P.country_names()
 
 
 def test_a_country_dataforseo_cannot_be_asked_about_is_reported_not_answered_for_the_us():
