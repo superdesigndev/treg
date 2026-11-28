@@ -102,6 +102,9 @@ The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `cata
 `catalog_get`, `call`, `call_media` (audio), `call_result`, `resources_list`, `balance`,
 `my_tools`, `catalog_request`, `feedback`, `review`, `mark` and `compare` (two anonymous answers
 to an input you sent, when a call result invites a comparison; optional).
+`call_result` reads a call whose answer you never received (`GET {BASE}/calls/<call id>/result`
+over HTTP, whole). Over MCP a long answer comes in pages of `max_chars` characters; `page.next_offset`
+is the `offset` of the next page, and the pages' `body_text` join into the whole answer.
 <!--hub-->
 Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 <!--/hub-->

@@ -955,6 +955,30 @@ async def test_r2_only_missing_body_has_no_db_fallback(clients, r2, monkeypatch,
         assert await archive.load_terminal_responses([('terminal-test', EP)]) == {}
 
 
+@pytest.mark.parametrize('paged', [False, True])
+async def test_a_large_answer_in_object_storage_is_read_whole_with_no_db_connection(
+        clients, r2, monkeypatch, paged):
+    big = b'{"rows":[' + b','.join(b'{"n":%d,"t":"%s"}' % (i, b'y' * 90) for i in range(1000)) + b']}'
+    monkeypatch.setattr(get_settings(), 'archive_body_write', 'r2')
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
+    monkeypatch.setattr(service, 'relay', _fake_relay(200, big))
+    await clients.get(URL)
+    await archive.drain()
+    await audit.drain()
+    assert (await snapshots())[0].body is None and len(big) > 100_000
+    call = (await clients.get('/calls')).json()[0]
+    gets = r2.get_calls
+    params = {'offset': 0, 'limit': 50_000} if paged else {}
+    first = (await clients.get(f"/calls/{call['id']}/result", params=params)).json()['response']
+    assert r2.get_calls > gets          # every read went to object storage, under check_io
+    if not paged:
+        assert first['body_text'] == big.decode()
+        return
+    rest = (await clients.get(f"/calls/{call['id']}/result",
+                              params={'offset': first['next_offset'], 'limit': 10**6})).json()['response']
+    assert first['body_text'] + rest['body_text'] == big.decode() and rest['next_offset'] is None
+
+
 def test_normalized_mode_and_r2_read_guard(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, 'archive_mode', 'typo')

@@ -6750,7 +6750,7 @@
     },
     "/calls/{call_id}/result": {
       "get": {
-        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nA 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered\nplatform call, or an own-key call whose answer fit the size cap while recording was on. The\naudit row keeps the identities of the stored bytes; an answer is returned with treg's own\ncredentials for its provider masked, and a metered one as its caller received it: where treg\nremoves the provider's reported charge, without it unless this request sends\n`X-Treg-Keep-Reported-Charge: true`. Own-tool calls are\nrelayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.",
+        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nA 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered\nplatform call, or an own-key call whose answer fit the size cap while recording was on. The\naudit row keeps the identities of the stored bytes; an answer is returned with treg's own\ncredentials for its provider masked, and a metered one as its caller received it: where treg\nremoves the provider's reported charge, without it unless this request sends\n`X-Treg-Keep-Reported-Charge: true`. Own-tool calls are\nrelayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.\n\nThe answer is whole unless `offset` or `limit` asks for a page: `limit` characters of the\nanswer from `offset`, with `offset`, `total_chars` and `next_offset` (null on the last page) in\n`response`. Pages are cut after masking, so they join back into the whole answer; past the\nfirst page the request is left out.",
         "operationId": "get_call_result_calls__call_id__result_get",
         "parameters": [
           {
@@ -6760,6 +6760,41 @@
             "schema": {
               "title": "Call Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Offset"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2097152,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
             }
           },
           {

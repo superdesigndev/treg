@@ -90,7 +90,9 @@ Gmail dots) share it.
 - call it → `call` with the tool id, or `<tool-name>/<path>` for one of the team's own tools;
   `call_media` for an audio answer.
 - a call whose answer you never received (a timeout) → `call_result` lists the team's latest
-  calls and reads a finished one's answer; check it before calling again.
+  calls and reads a finished one's answer; check it before calling again. A long answer comes in
+  pages: `page.next_offset` is the `offset` of the next one, and joining the pages' `body_text`
+  gives the whole answer. If your client cuts the reply, ask again with a smaller `max_chars`.
 - the team's own tools → `my_tools`; durable provider objects such as cloned voices →
   `resources_list`; the balance → `balance`; feedback → `feedback`; a review → `review`; a result
   you later found wrong or confirmed → `mark`; a comparison a call result invites (optional) →
@@ -274,7 +276,7 @@ each call, not the loop.
 - **What you were charged** is the response header `X-Treg-Cost-Micro` (integer micro-USD; `cost_usd`
   over MCP), never anything in the provider's body. Keep `X-Treg-Call-Id` with it: it is the id to
   quote, and `GET https://treg.to/calls/<call id>/result` returns the stored answer of a successful catalog
-  call you lost. The CLI prints `treg: charged $<usd> · call id <id>` on stderr; stdout is always
+  call you lost, whole (`?offset=&limit=` reads it in pages of characters). The CLI prints `treg: charged $<usd> · call id <id>` on stderr; stdout is always
   the exact body. On an asynchronous submission (a generation task) the header is the **reserved**
   amount, not a charge: the task settles the real one when it succeeds and refunds it all when it
   fails, so report it as reserved until the task is done.

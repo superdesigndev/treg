@@ -717,11 +717,14 @@ async def list_calls(
 
 
 _ROUTED_CHILD_WINDOW = timedelta(hours=1)
+RESULT_PAGE_MAX_CHARS = 2_097_152
 
 
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
     call_id: str, request: Request, caller: Caller = Depends(require_member),
+    offset: int | None = Query(None, ge=0),
+    limit: int | None = Query(None, ge=1, le=RESULT_PAGE_MAX_CHARS),
     db: AsyncSession = Depends(get_session),
 ) -> dict:
     """What one of this team's calls asked and what came back — the archive's copy.
@@ -739,6 +742,11 @@ async def get_call_result(
     with a `note` saying which. A routed call's answer is its children's: its row lists them in
     `children`, each readable here by its call ref. The request shape is the vendor-facing one
     BEFORE credential injection, so no secret can appear in it.
+
+    The answer is whole unless `offset` or `limit` asks for a page: `limit` characters of the
+    answer from `offset`, with `offset`, `total_chars` and `next_offset` (null on the last page) in
+    `response`. Pages are cut after masking, so they join back into the whole answer; past the
+    first page the request is left out.
     """
     row = (await db.execute(
         select(CallRecord)
@@ -796,7 +804,20 @@ async def get_call_result(
             row.provider, row.endpoint_id, text.encode("utf-8"), request.headers,
             metered=row.cost_charged_micro is not None and 200 <= row.status_code < 300,
         ).decode("utf-8")
+    if offset is not None or limit is not None:
+        _page_result(out, offset or 0, limit or RESULT_PAGE_MAX_CHARS)
     return out
+
+
+def _page_result(out: dict, start: int, size: int) -> None:
+    response = out.get("response") or {}
+    if (text := response.get("body_text")) is None:
+        return
+    end = min(start + size, len(text))
+    response.update(body_text=text[start:end], offset=start, total_chars=len(text),
+                    next_offset=end if end < len(text) else None)
+    if start > 0:
+        out["request"] = None
 
 
 @app.get("/calls/{call_ref}")

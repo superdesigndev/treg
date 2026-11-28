@@ -645,6 +645,8 @@ class ResourcesOut(TypedDict, total=False):
 
 class CallResultOut(TypedDict, total=False):
     team: str | None
+    # Before `result`, so a client that cuts a long reply still shows where the rest is.
+    page: dict[str, Any] | None
     calls: list[dict[str, Any]] | None  # without call_id: the team's latest calls, newest first
     result: dict[str, Any] | None       # with call_id: what that call asked and what came back
     error: str | None
@@ -2300,10 +2302,30 @@ _RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_m
                        "created_at", "async_task")
 
 
-async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResultOut:
+MCP_RESULT_PAGE_CHARS = 40_000
+
+
+def _result_page(result: dict, call_id: str) -> dict | None:
+    response = result.get("response") if isinstance(result, dict) else None
+    if not isinstance(response, dict) or "total_chars" not in response:
+        return None
+    start, total, nxt = response["offset"], response["total_chars"], response["next_offset"]
+    end = nxt if nxt is not None else total
+    note = (f"characters {min(start, total)}-{end} of {total}; " + (
+        f"the rest: call_result(call_id={call_id!r}, offset={nxt}). Join the pages' body_text in "
+        "order for the whole answer" if nxt is not None else "this is the last page"))
+    return {"offset": start, "total_chars": total, "next_offset": nxt,
+            "note": note + ". If your client cut this reply, ask again with a smaller max_chars "
+                           "(6000 fits a client that keeps 8 KB)."}
+
+
+async def _call_result_impl(call_id: str, limit: int, ctx: Context, *, offset: int = 0,
+                            max_chars: int = MCP_RESULT_PAGE_CHARS) -> CallResultOut:
     token = _bearer(ctx)
     if not token:
         return _need_token()
+    from .api import RESULT_PAGE_MAX_CHARS  # deferred, as in `_api`
+
     url = _segment_url("/calls", call_id) if call_id else None
     if call_id and url is None:
         return {"error": "call_id must be the call_id a call returned, or a row id from this list"}
@@ -2313,7 +2335,8 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
             return problem
         headers = {"X-Treg-Org": slug or ""}
         if url is not None:
-            r = await client.get(f"{url}/result", headers=headers)
+            r = await client.get(f"{url}/result", headers=headers, params={
+                "offset": max(0, offset), "limit": max(1, min(max_chars, RESULT_PAGE_MAX_CHARS))})
         else:
             r = await client.get("/calls", params={"limit": max(1, min(limit, 50))}, headers=headers)
     body = _body(r)
@@ -2321,7 +2344,7 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
         return {"error": "could not read the call" if call_id else "could not list recent calls",
                 "detail": body}
     if url is not None:
-        return {"team": slug, "result": body}
+        return {"team": slug, "page": _result_page(body, call_id), "result": body}
     rows = body if isinstance(body, list) else []
     return {"team": slug, "calls": [
         {"call_id": c.get("call_ref"), **{k: c.get(k) for k in _RECENT_CALL_FIELDS if k != "call_ref"}}
@@ -2334,13 +2357,16 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context) -> CallResul
         "timed out or the connection dropped while treg finished it). Without `call_id`: this team's "
         "latest calls, newest first, each with its call_id, endpoint, status, charge and whether an "
         "answer is stored (`has_result`). With `call_id`: what that call asked and what came back. "
+        "A long answer comes in pages of `max_chars` characters: `page` says how long it is and "
+        "which `offset` reads the next page. "
         "Reading costs nothing; check here before calling again, so a finished call is not paid twice."
     ),
     annotations=_READS,
     structured_output=True
 )
-async def call_result(ctx: Context, call_id: str = "", limit: int = 10) -> CallResultOut:
-    return await _call_result_impl(call_id, limit, ctx)
+async def call_result(ctx: Context, call_id: str = "", limit: int = 10, offset: int = 0,
+                      max_chars: int = MCP_RESULT_PAGE_CHARS) -> CallResultOut:
+    return await _call_result_impl(call_id, limit, ctx, offset=offset, max_chars=max_chars)
 
 
 @mcp.tool(

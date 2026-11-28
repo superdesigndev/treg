@@ -339,6 +339,19 @@ async def test_a_trimmed_replay_reads_the_archive_with_no_db_connection_held(
     assert held == [0], held
 
 
+@pytest.mark.parametrize("trimmed", [False, True])
+async def test_a_large_answer_replays_whole(clients, platform_on, trimmed):
+    body = b'{"rows":[' + b",".join(b'{"n":%d,"t":"%s"}' % (i, b"z" * 90) for i in range(1000)) + b"]}"
+    assert len(body) > 100_000
+    row_id = await _seed_answer(clients, "large-" + str(trimmed), body=body)
+    if trimmed:
+        await _link(row_id, call_ref="call-large", archived=body)
+        assert (await idempotency.trim_archived_answers(pause_s=0)).trimmed == 1
+    replay = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Idempotency-Key": "large-" + str(trimmed)})
+    assert replay.status_code == 200 and replay.content == body
+    assert replay.headers["X-Treg-Idempotent-Replay"] == "true"
+
+
 async def test_the_trim_resumes_after_the_rows_it_decided_and_stops_at_young_ones(clients, platform_on):
     old_a = await _seed_answer(clients, "resume-a", body=b'{"a":1}')
     await _link(old_a, call_ref="call-resume-a", archived=b'{"a":1}')
