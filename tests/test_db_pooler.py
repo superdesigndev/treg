@@ -41,7 +41,7 @@ async def test_the_background_pool_takes_its_own_url_and_the_rest_stay_direct(lo
     with caplog.at_level(logging.INFO, logger="treg"):
         module.log_connection_budget()
     assert "db pools per process: api 5+10, admin 3+0 = 18;" in caplog.text
-    assert "background 10+0 connects through TREG_BACKGROUND_DATABASE_URL, outside these totals" \
+    assert "background 11+0 connects through TREG_BACKGROUND_DATABASE_URL, outside these totals" \
         in caplog.text
 
 
@@ -52,7 +52,7 @@ async def test_without_a_background_url_every_pool_is_direct_and_counted(load_db
 
     with caplog.at_level(logging.INFO, logger="treg"):
         module.log_connection_budget()
-    assert "db pools per process: api 5+10, admin 3+0, background 10+0 = 28;" in caplog.text
+    assert "db pools per process: api 5+10, admin 3+0, background 11+0 = 29;" in caplog.text
     assert "TREG_BACKGROUND_DATABASE_URL" not in caplog.text
 
 

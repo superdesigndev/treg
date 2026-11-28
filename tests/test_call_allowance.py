@@ -2963,9 +2963,9 @@ async def test_the_team_waiting_longest_is_folded_first(org_id, store, monkeypat
             allowance.Charge(call, team, "e.metered", 400, reserved_micro=400)
             for team, call in ((org_id, "newer"), (later, "older"))])
         await db.commit()
-    async with session_maker() as db:  # the higher team number has waited longer
+    async with session_maker() as db:  # the higher team number has waited longer, not starved
         await db.execute(update(CallCharge).where(CallCharge.call_id == "older").values(
-            created_at=ledger._now() - timedelta(minutes=5)))
+            created_at=ledger._now() - timedelta(seconds=allowance_sweep._STARVED_AFTER_S // 2)))
         await db.commit()
         assert await allowance.orgs_with_queued_charges(db, ledger._now()) == [later, org_id]
     folded: list[int] = []
@@ -3530,6 +3530,167 @@ async def test_a_starved_team_another_fold_has_claimed_is_tried_once_not_waited_
     assert await allowance_sweep.fold_queued_once(session_maker) == 0
     assert time.monotonic() - began < 0.1
     assert store.leases[runtime.fold_claim_key(org_id)] == "another fold"
+
+
+# The share a pass holds the lease of: a lane starts only in such a pass.
+_ONE_SHARE = (0, 1)
+
+
+async def _team_beside(org_id: int) -> int:
+    other = org_id + 1
+    async with session_maker() as db:
+        db.add(Org(id=other, name=f"team {other}", slug=uuid4().hex))
+        await db.flush()
+        await ledger.grant(db, other, amount_micro=GRANT)
+        await db.commit()
+    return other
+
+
+def _slow_for(monkeypatch, slow_team: int, seconds: float) -> None:
+    """The pass spends `seconds` on `slow_team`, as on a share of many teams on a busy
+    database."""
+    real = allowance_sweep._fold_team
+
+    async def slow(session_maker, team, *args, **kwargs):
+        if team == slow_team:
+            await asyncio.sleep(seconds)
+        return await real(session_maker, team, *args, **kwargs)
+
+    monkeypatch.setattr(allowance_sweep, "_fold_team", slow)
+
+
+async def test_the_stalest_starved_team_is_folded_beside_the_pass_until_its_queue_is_empty(
+        org_id, store, monkeypatch, caplog):
+    """One visit a pass, a few batches, then the rest of the pass on the share's other teams:
+    a team that queues faster than that falls further behind every pass. Folded beside the
+    pass, it is folded for as long as the pass runs."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 2)
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCHES_PER_PASS", 2)
+    other = await _team_beside(org_id)
+    for index in range(20):
+        await _queue_charge(org_id, f"behind-{index}", 900)
+    await _queue_charge(other, "fresh", 5)
+    _slow_for(monkeypatch, other, 0.3)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        assert await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE) == 21
+    assert await _queued(org_id) == 0 and await _queued(other) == 0
+    assert store.leases == {}
+    [line] = [r.getMessage() for r in caplog.records
+              if r.getMessage().startswith("allowance_fold_behind")]
+    assert line.startswith(f"allowance_fold_behind org_id={org_id} ")
+    assert "folded=20 " in line and line.endswith("drained=True")
+    assert not any(r.getMessage().startswith("allowance_fold_starved") for r in caplog.records)
+    balance, _hold = await _state(org_id)
+    assert balance == GRANT - 20 * 400, "each charge settled once"
+
+
+async def test_a_team_the_lane_cannot_have_gets_its_starved_turn_and_the_lane_ends_first(
+        org_id, store, monkeypatch, caplog):
+    """The team's own sessions hold its lease all pass: the lane commits nothing, counts no
+    skip, and is over before the starved turns, where the team gets its turn as before."""
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.1)
+    other = await _team_beside(org_id)
+    await _queue_charge(org_id, "held", 900)
+    await _queue_charge(other, "fresh", 5)
+    store.leases[runtime.money_key(org_id)] = "a session that never ends"
+    _slow_for(monkeypatch, other, 0.2)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        assert await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE) == 1
+    assert await _queued(org_id) == 1
+    assert not [t for t in asyncio.all_tasks()
+                if "_fold_behind" in repr(t.get_coro())], "the lane does not outlive its pass"
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith(f"allowance_fold_behind org_id={org_id} ") and "folded=0 " in m
+               for m in messages)
+    assert any(m.startswith(f"allowance_fold_starved org_id={org_id} ") for m in messages)
+    assert runtime.fold_claim_key(org_id) not in store.leases
+
+
+async def test_a_pass_cancelled_while_its_lane_folds_leaves_no_lease_and_no_lane(
+        org_id, store, monkeypatch):
+    """A worker stopped at shutdown cancels the lane with the pass; nothing it held is left
+    behind, and what it committed stays committed exactly once."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 1)
+    monkeypatch.setattr(allowance_sweep, "_BEHIND_RETRY_S", 0.001)
+    other = await _team_beside(org_id)
+    for index in range(5):
+        await _queue_charge(org_id, f"behind-{index}", 900)
+    await _queue_charge(other, "fresh", 5)
+    _slow_for(monkeypatch, other, 5.0)
+    fold = allowance.fold_charges_in_transaction
+
+    async def slow_fold(db, team, **kwargs):
+        await asyncio.sleep(0.02)
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
+    task = asyncio.create_task(allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not [t for t in asyncio.all_tasks() if "_fold_behind" in repr(t.get_coro())]
+    assert runtime.money_key(org_id) not in store.leases
+    queued = await _queued(org_id)
+    balance, _hold = await _state(org_id)
+    assert balance == GRANT - (5 - queued) * 400, "every folded charge settled once"
+
+
+async def test_a_short_pass_still_gives_its_one_hot_team_the_whole_try_it_had_in_place(
+        org_id, store, monkeypatch, caplog):
+    """The hot team is alone in its share, so the pass is over before its lane begins. The
+    lane's first visit is still the whole try the team had in its place, and the starved turn
+    after the pass comes on top: never less than before the lane."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 2)
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCHES_PER_PASS", 5)
+    monkeypatch.setattr(allowance_sweep, "_STARVED_TURN_S", 0.05)
+    for index in range(30):
+        await _queue_charge(org_id, f"alone-{index}", 900)
+    fold = allowance.fold_charges_in_transaction
+
+    async def slow_fold(db, team, **kwargs):  # a busy database: the turn fits a batch or two
+        await asyncio.sleep(0.04)
+        return await fold(db, team, **kwargs)
+
+    monkeypatch.setattr(allowance, "fold_charges_in_transaction", slow_fold)
+    with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+        folded = await allowance_sweep.fold_queued_once(session_maker, shard=_ONE_SHARE)
+    assert folded >= 10, "at least the five batches of two the try in place folded"
+    assert await _queued(org_id) == 30 - folded
+    [line] = [r.getMessage() for r in caplog.records
+              if r.getMessage().startswith("allowance_fold_behind")]
+    assert "folded=10 visits=1 " in line
+
+
+async def test_a_pass_over_every_team_while_the_store_cannot_answer_starts_no_lane(
+        org_id, store, monkeypatch, caplog):
+    """The store cannot answer, so every process runs a pass over every team, and each would
+    see the same stalest team first: a lane in each would hold a background connection apiece
+    on that one team's row locks, the bound of one more fold per share gone at the moment the
+    store is failing. Such a pass folds the team in its place, as before the lane."""
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCH", 2)
+    monkeypatch.setattr(allowance_sweep, "_FOLD_BATCHES_PER_PASS", 2)
+    monkeypatch.setattr(allowance_sweep, "_row_locks", lambda: True)
+    other = await _team_beside(org_id)
+    for index in range(20):
+        await _queue_charge(org_id, f"behind-{index}", 900)
+    await _queue_charge(other, "fresh", 5)
+    _slow_for(monkeypatch, other, 0.1)
+    lanes: list = []
+
+    async def no_lane(*args, **kwargs):
+        lanes.append(args)
+        raise AssertionError("a lane in a pass over every team")
+
+    monkeypatch.setattr(allowance_sweep, "_fold_behind", no_lane)
+    store.lease_answer = "unavailable"
+    async with allowance_sweep._pass_lease() as turn:
+        assert turn.mine and turn.shard is None
+        with caplog.at_level(logging.INFO, logger="treg.money_allowance"):
+            assert await allowance_sweep.fold_queued_once(
+                session_maker, keep_going=turn.holding, shard=turn.shard) == 5
+    assert lanes == [] and await _queued(org_id) == 16 and await _queued(other) == 0
+    assert not any(r.getMessage().startswith("allowance_fold_behind") for r in caplog.records)
 
 
 async def test_a_reading_cancelled_while_the_store_grants_its_lease_gives_the_lease_back(

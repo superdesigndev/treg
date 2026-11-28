@@ -489,8 +489,11 @@ run side by side. With the switch off, removing an id
 returns that org's new calls to the hold path at once; no migration is needed. With the switch
 on, removing an id only stops its own skip lines: the org stays on, and counted, until it is excluded. The allowance's
 background loop (`application/allowance_sweep.py`) applies queued charges to the ledger and
-closes idle allowances. It runs in the `all` and `control` roles and is one more consumer of
-the `background` pool, which is one connection larger per process for it. At most
+closes idle allowances. It runs in the `all` and `control` roles and is two more consumers of
+the `background` pool, which is two connections larger per process for it: the pass, and the
+lane that folds the stalest starved team beside it. A `TREG_DB_POOL_OVERRIDES` that sets
+`background.pool_size` must leave room for both, or the lane waits for a slot the pool's other
+consumers hold. At most
 `TREG_MONEY_ALLOWANCE_FOLD_SHARDS` processes (default 4) fold at once, each over its own share of
 the teams; raise it when the queue's oldest charge keeps growing and the database has room, or
 set `1` to go back to one process folding every team. The listing it folds by needs revision

@@ -68,7 +68,7 @@ BACKGROUND_CONSUMERS: dict[str, int] = {
     "archive.refresh_worker": 1,
     "catalog observation refresh": 1,   # singleflight, one task per process
     "api_keys last used": 1,      # throttled best-effort managed-key display metadata
-    "allowance_sweep.worker": 1,  # one fold or one idle close at a time
+    "allowance_sweep.worker": 2,  # one fold or idle close, and the lane beside it (_fold_behind)
     "affiliates.worker": 1,       # one short read or write; never held while Dub is called
 }
 
