@@ -415,7 +415,7 @@ the plain `callrecord`; this section is the preparation only.
      each kept only `NOT EXISTS` in `org`, deleted in committed batches with the same pause and
      replica brake between them), which closes the race with a team deleted while a batch copied
      its rows.
-   - Each run last resyncs late `hit`/`verdict` values (`_resync_late_verdicts`): a row copied
+   - Each run last resyncs late `hit`/`verdict`/`cost_charged_micro` values (an async call's settled charge lands late too) (`_resync_late_verdicts`): a row copied
      before its verdict landed is stale, and a verdict lands at most a day after its row (an async
      task's answer is kept 24 h). A pass covers the rows created from `RESYNC_LOOK_BACK` (25 hours)
      before the previous pass began (before the first run began, while no pass has completed) up

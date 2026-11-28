@@ -43,9 +43,9 @@ DETACH_TIMEOUT = "60s"
 # starts this many ids below it.
 COMMIT_MARGIN = 20_000
 # The staged table's comment (JSON) carries when the first backfill run started: rows copied then
-# can still receive a late `hit`/`verdict`, so the swap resyncs from that moment, not from "now".
+# can still receive a late `hit`/`verdict`/`cost_charged_micro`, so the swap resyncs from that moment, not from "now".
 NOTE_BACKFILL_STARTED = "backfill_started_at"
-# Late `hit`/`verdict` values: how far the backfill's resync got, when that pass began, and the
+# Late `hit`/`verdict`/`cost_charged_micro` values: how far the backfill's resync got, when that pass began, and the
 # cursor of a pass that has not finished. The swap reads them.
 NOTE_RESYNCED_UPTO = "resynced_upto"
 NOTE_RESYNCED_AT = "resynced_at"
@@ -289,7 +289,7 @@ async def backfill(days: int, *, batch_rows: int = BACKFILL_BATCH_ROWS, max_seco
     again; `done` is true when the cutoff or the first row was reached.
 
     Each run first deletes the copied rows of teams deleted since (`delete_rows_of_deleted_teams`),
-    and last resyncs late `hit`/`verdict` values (`_resync_late_verdicts`). With
+    and last resyncs late `hit`/`verdict`/`cost_charged_micro` values (`_resync_late_verdicts`). With
     `max_replica_lag` (seconds), it waits between batches while the read replica is further behind
     than that.
     """
@@ -393,16 +393,18 @@ async def _first_id_at(db, since: datetime, top: int) -> int:
 
 
 _RESYNC = text(
-    f"UPDATE {STAGED} n SET hit = o.hit, verdict = o.verdict FROM {TABLE} o "
+    f"UPDATE {STAGED} n SET hit = o.hit, verdict = o.verdict, "
+    f"cost_charged_micro = o.cost_charged_micro FROM {TABLE} o "
     # Bounded on both sides, so a batch reads its id range of the staged table, not all of it.
     "WHERE o.id > :after AND o.id <= :upto AND n.id > :after AND n.id <= :upto "
     "AND n.id = o.id AND n.created_at = o.created_at "
-    "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict)")
+    "AND (n.hit IS DISTINCT FROM o.hit OR n.verdict IS DISTINCT FROM o.verdict "
+    "OR n.cost_charged_micro IS DISTINCT FROM o.cost_charged_micro)")
 
 
 async def _resync_late_verdicts(db, out: dict, *, run_started: datetime, batch_rows: int, spent,
                                 between_batches) -> bool:
-    """Give the copied rows the late `hit`/`verdict` values the live table got since they were
+    """Give the copied rows the late `hit`/`verdict`/`cost_charged_micro` values the live table got since they were
     copied -> False when the time budget stopped it (it resumes on the next run).
 
     A verdict lands at most `RESYNC_LOOK_BACK` after its row (an async task's answer is kept 24 h).

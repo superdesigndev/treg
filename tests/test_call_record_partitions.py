@@ -248,6 +248,17 @@ async def test_each_run_resyncs_verdicts_that_landed_after_the_copy(before_swap)
     assert await _scalar("SELECT verdict FROM callrecord_partitioned WHERE id = 20") == "valid"
 
 
+async def test_a_late_charge_is_resynced_like_a_late_verdict(before_swap):
+    """An async call's settled charge lands on its record after the copy, as its verdict does."""
+    await partitions.backfill(31, batch_rows=10, pause=0)
+    async with db.session_maker() as session:     # 20 hours old: inside the 25-hour look-back
+        await session.execute(text("UPDATE callrecord SET cost_charged_micro = 1234 WHERE id = 20"))
+        await session.commit()
+    again = await partitions.backfill(31, batch_rows=10, pause=0)
+    assert again["resynced"] == 1
+    assert await _scalar("SELECT cost_charged_micro FROM callrecord_partitioned WHERE id = 20") == 1234
+
+
 async def test_a_resync_pass_ends_with_a_short_pass_to_the_current_top(before_swap, monkeypatch):
     """Rows copied while a pass runs (another copy, a catch-up) get their late values too."""
     await partitions.backfill(31, batch_rows=10, pause=0)
