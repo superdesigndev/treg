@@ -16,6 +16,7 @@ from .. import outcome
 from ..params import takes_list
 from ..schema.v2 import is_v2
 from . import paths as P
+from . import row_filters
 from .segments import SEGMENTERS
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
@@ -169,6 +170,10 @@ class Contract:
     # The segment set (`segments.SEGMENTERS`) whose categories of the request a call event records
     # in `input_meta` and a route rule may match on. Empty = none.
     segments: str = ""
+    # Caller key -> the row test and field(s) `X-Treg-Route-Strict-Filters` judges a list answer's
+    # rows by (`row_filters.RowFilter`): a row whose field breaks the sent value leaves `output`,
+    # `raw` keeps it. Empty = strict filters only drop the providers that cannot express a filter.
+    row_filters: tuple = ()
 
     def fill_target(self, given) -> int | None:
         """The row count a routed answer should reach for the request body `given`: its `limit`,
@@ -393,7 +398,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm", "ad_hashes",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
-    "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
+    "stand_in_carries", "fill_limit_when", "identity_notes", "segments", "row_filters"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
 # providers by the keys a caller sent; an order for one kind of request is now a published route
 # rule, reviewed by a person and observed after it goes live (docs/context/architecture/route-rules.md).
@@ -534,6 +539,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                                                      {*types, *(c.get("filters") or {})}),
             identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
             segments=_parse_segments(cap, c.get("segments")),
+            row_filters=row_filters.parse(cap, c.get("row_filters"), {*types, *(c.get("filters") or {})},
+                                          (c.get("row") or {}).get("fields") if isinstance(c.get("row"), dict) else None),
             **_parse_row(cap, c.get("row"), c.get("output") or {}, types),
             **_parse_verdict(cap, c.get("verdict")))
     return out
@@ -1118,4 +1125,32 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
                                    "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep, contract)})
+    if unread := row_filter_fields_unread(contracts, verified, endpoints_by_id, read_example):
+        # A field no provider's row carries would filter nothing, silently.
+        raise ValueError("row_filters name fields no verified adapter's example row carries: " + "; ".join(unread))
     return contracts, verified
+
+
+def row_filter_fields_unread(contracts: dict[str, Contract], adapters: dict[str, Adapter],
+                             endpoints_by_id: dict[str, dict], read_example) -> list[str]:
+    """`row_filters` fields of a contract without a `row` (its rows are the providers' own) that
+    no verified routed adapter's example answer carries in any row of the list output."""
+    out = []
+    for cap, contract in contracts.items():
+        if not contract.row_filters or contract.row_of:
+            continue
+        lists = [k for k, spec in contract.output.items() if (spec or {}).get("type") == "array"]
+        seen: set[str] = set()
+        wanted = {f for rf in contract.row_filters for f in rf.fields}
+        for eid, ad in adapters.items():
+            ep = endpoints_by_id.get(eid)
+            if not ad.verified or (ep or {}).get("capability") != cap:
+                continue
+            try:
+                core = ad.from_upstream(read_example(ep))
+            except Exception:  # noqa: BLE001 - an adapter that cannot read its example shows no fields
+                continue
+            for row in (r for k in lists for r in (core.get(k) or []) if isinstance(r, dict)):
+                seen |= {f for f in wanted if P.get_path(row, f) not in (None, "", [], {})}
+        out += [f"{cap}.{rf.key}: {f}" for rf in contract.row_filters for f in rf.fields if f not in seen]
+    return out

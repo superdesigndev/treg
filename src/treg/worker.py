@@ -10,6 +10,7 @@
     treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
+    treg-worker billing autotopup-blocked [--min-refusals 20]   # paying teams their own auto top-up refuses (hourly)
     treg-worker spend rollup [--max-rows 50000]      # fold new ledger settles into per-key daily spend
     treg-worker usage rollup [--max-rows 500000]     # fold new audit rows into per-member daily call counts
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
@@ -550,6 +551,26 @@ async def _billing_reconcile(args) -> int:
     return 1
 
 
+async def _billing_autotopup_blocked(args) -> int:
+    """Post the paying teams whose auto top-up settings are refusing their calls: those that started
+    this hour every run, and every one still refused once a day at `--digest-hour`."""
+    from datetime import datetime, timezone
+    from .application import autotopup_watch
+    from .config import get_settings
+    from .infra import slack
+    from .infra.db import verify_db
+
+    await verify_db()
+    blocked = await autotopup_watch.find_blocked(min_refusals=args.min_refusals)
+    print(json.dumps(autotopup_watch.to_json(blocked), sort_keys=True, default=str))
+    digest = datetime.now(timezone.utc).hour == args.digest_hour
+    to_post = [b for b in blocked if digest or b.new]
+    webhook = get_settings().ops_slack_webhook_url
+    if to_post and webhook:
+        await slack.post(webhook, autotopup_watch.alert(to_post))
+    return 0
+
+
 async def _usage_rollup(args) -> int:
     from .infra.db import verify_db
     from .application.call_usage_rollup import refresh
@@ -1070,6 +1091,13 @@ def main(argv: list[str] | None = None) -> int:
     breconcile.add_argument("--grace-minutes", type=_positive_int, default=30,
                             help="leave the newest payments to their in-flight webhook")
     breconcile.set_defaults(fn=_billing_reconcile)
+    bblocked = billsub.add_parser("autotopup-blocked",
+                                  help="alert on paying teams their own auto top-up settings are refusing")
+    bblocked.add_argument("--min-refusals", type=_positive_int, default=20,
+                          help="refusals for balance in the last hour before a team is reported")
+    bblocked.add_argument("--digest-hour", type=int, choices=range(24), default=9,
+                          help="UTC hour whose run also lists teams already reported, once a day")
+    bblocked.set_defaults(fn=_billing_autotopup_blocked)
     usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
     usagesub = usage.add_subparsers(dest="cmd", required=True)
     urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")

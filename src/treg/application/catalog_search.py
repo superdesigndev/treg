@@ -3,7 +3,7 @@
 The lexical page is the shipped ranker: `store.rank_band` over a band wider than the page (so a
 routed group can collapse without starving it), the evidence rerank, the listed hub tools merged by
 score with no boost, routed parents grouped with their children, cut
-to the page. Nothing here touches `store.search` or its scoring; the MCP layer only shapes the rows
+to the page. Nothing here changes `store.search` or its scoring; the MCP layer only shapes the rows
 this returns.
 
 What the caller sees is the discovery experiment's say (`search_experiment`, one setting):
@@ -25,8 +25,10 @@ session before any judge request, so no connection is held while the judge think
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -125,6 +127,106 @@ async def lexical(query: str, cat: catalog_store.Catalog, limit: int, *, observe
         total += len(hub_ranked)
     rows, hidden = _group(ranked, limit)
     return Page(rows, total, tie_truncated, stats, hidden, steer)
+
+
+REQUEST_MATCHES = 5        # existing tools a catalog request's reply names
+REQUEST_TERMS = 6          # words of the request searched: each is one pass over the catalog
+REQUEST_JUDGE_WORDS = 7    # a request this long is a sentence, which the word search misses: the judge picks
+REQUEST_MATCHES_NOTE = ("these existing tools may already do this - look one up by its id to see its "
+                        "parameters and price; your request is recorded either way")
+# The matcher is CPU work; its own small pool keeps a burst of requests off the shared default pool.
+_REQUEST_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="treg-request-match")
+
+
+def request_matches(text: str, cat: catalog_store.Catalog, limit: int = REQUEST_MATCHES) -> Rows:
+    """The existing tools a catalog request's text finds: the shipped ranker's first rows, routed
+    groups collapsed as on the search page. A text longer than REQUEST_TERMS words is searched by
+    its first REQUEST_TERMS distinct words, which bounds the cost. No hub rows, no judge, no
+    observed stats: nothing here reads a database or calls out.
+
+    The floor: search admits a row that misses one word in three, and on a request that is how a
+    wrong job gets in ("text to speech in Persian" admitting a speech-to-text row). So only rows
+    holding every searched word are kept; when none does, only the rows tied with the top score."""
+    words = catalog_store.content_words(text)
+    if not words:
+        return []
+    query = text if len(words) <= REQUEST_TERMS else " ".join(words[:REQUEST_TERMS])
+    rows, _ = catalog_store.search(query, cat, limit * 4)
+    if not rows:
+        return []
+    kept = ([r for r in rows if catalog_store.matches_every_word(query, r[0], cat)]
+            or [r for r in rows if r[1] >= rows[0][1]])
+    return _group(kept, limit)[0]
+
+
+async def _judge_request(text: str, cat: catalog_store.Catalog, provider_display, limit: int) -> Rows:
+    r = await find.recall_with_meaning(text, cat, provider_display)
+    found = await find.judge_and_decide(text, r.cands, cat, provider_display,
+                                        timeout_s=float(get_settings().typesafe_timeout_s), not_task=find.KEYWORD,
+                                        focus=r.focus)
+    await find.lay_out(found, text, cat, keyword_rows=False)
+    served = serve(found, cat, limit, hub=[], steer=catalog_store.routed_discovery_on())
+    return [(row["ep"], 0.0) for row in served[0]] if served else []
+
+
+def request_cap_key(org_id: int | None, email: str | None, client_ip: str) -> str:
+    """The per-caller judge cap's key for a catalog request: who filed it, else its address, as
+    the HTTP search keys an unresolved caller."""
+    return search_experiment.identity_key(org_id, email) or f"ip:{client_ip}"
+
+
+async def judged_request_matches(text: str, cat: catalog_store.Catalog, provider_display=lambda s: s,
+                                 limit: int = REQUEST_MATCHES, *, cap_key: str = UNRESOLVED) -> Rows:
+    """A long request's matches as an agent's v2 search picks them: recall by job and meaning, one
+    judge request on the search's budget, the page `serve` lays out, with no hub rows and no
+    observed stats. Only for a text of REQUEST_JUDGE_WORDS words or more, only while the search
+    judge runs (`search_experiment` at `v2`), and only within the caller's judged-search cap
+    (`_judge_cap` on `cap_key`, shared with search; its session is closed before the judge). The
+    judging is bounded by the embedding's and the judge's timeouts together. Empty when it did not
+    run or gave no rows (capped, abstained, timed out, failed, kept nothing); the caller then runs
+    the word search. Never raises."""
+    if len(catalog_store.content_words(text)) < REQUEST_JUDGE_WORDS or search_experiment.mode() != "v2":
+        return []
+    s = get_settings()
+    try:
+        if not await _judge_cap(cap_key, atomic=True):
+            return []
+        return await asyncio.wait_for(_judge_request(text, cat, provider_display, limit),
+                                      float(s.typesafe_timeout_s) + float(s.find_embed_timeout_s))
+    except TimeoutError:
+        return []
+    except Exception:
+        log.warning("catalog request judging failed; matching by words", exc_info=True)
+        return []
+
+
+def request_reply(text: str, cat: catalog_store.Catalog, query: str = "", judged: Rows | None = None) -> dict:
+    """The fields a catalog request's reply adds: `matches` (possibly empty), and a note when any.
+    The judge's rows when it gave some; else the request's text is searched first, then the search
+    the caller says came up empty."""
+    try:
+        rows = judged or request_matches(text, cat)
+        if not rows and query.strip() and query.strip().lower() != text.strip().lower():
+            rows = request_matches(query, cat)
+    except Exception:
+        log.warning("catalog request matching failed; replying without matches", exc_info=True)
+        rows = []
+    matches = [{"endpoint_id": ep["id"],
+                "name": ep.get("name") or (ep.get("summary") or "")[:70],
+                "provider": ep.get("provider"),
+                "summary": " ".join((ep.get("summary") or "").split())[:160]}
+               for ep, _ in rows]
+    return {"matches": matches, **({"matches_note": REQUEST_MATCHES_NOTE} if matches else {})}
+
+
+async def request_reply_off_loop(text: str, query: str = "", provider_display=lambda s: s, *,
+                                 cap_key: str = UNRESOLVED) -> dict:
+    """`request_reply` over the shipped catalog, on the matcher's own pool, with a long text's
+    judged rows (`judged_request_matches`, awaited here) when there are any."""
+    cat = catalog_store.load()
+    judged = await judged_request_matches(text, cat, provider_display, cap_key=cap_key)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_REQUEST_POOL, request_reply, text, cat, query, judged)
 
 
 async def added_page(query: str, cat: catalog_store.Catalog, limit: int, opts: catalog_store.AddedOptions, *,
@@ -236,12 +338,12 @@ def serve(found: find.Found, cat: catalog_store.Catalog, limit: int, *, hub: Row
     return None
 
 
-async def _judge_cap(key: str) -> bool:
+async def _judge_cap(key: str, *, atomic: bool = False) -> bool:
     """One caller's judged searches this hour, within `search_judge_max_per_caller_hour`. Its own
-    session, closed here."""
+    session, closed here. `atomic` counts every concurrent check of the key (`rate_check`)."""
     async with session_maker() as db:
         ok = await ratestore.rate_check(db, RATE_NS, [(key, int(get_settings().search_judge_max_per_caller_hour))],
-                                        RATE_WINDOW_S)
+                                        RATE_WINDOW_S, atomic=atomic)
         await db.commit()
     return ok
 

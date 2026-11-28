@@ -619,7 +619,10 @@ reports `stopped: "error"`. A hash recorded again restarts its grace period and 
 `trim_archived_answers` (the idempotency pruner dropping a retry row's own copy) reads and hashes a
 page's bodies first, then locks the keys it trims `FOR SHARE SKIP LOCKED` for its updates only (`archive.lock_keys_for_share`) and re-checks in its UPDATE
 that the answer is still on file (`archive.answer_on_file`): retention deletes a key only under
-`FOR UPDATE SKIP LOCKED`, so a trimmed retry row never points at an answer retention removed.
+`FOR UPDATE SKIP LOCKED`, so a trimmed retry row never points at an answer retention removed. Its
+`archive.bytes_on_file` check reads the keys by `key_hash`, then their snapshots by `key_id`, and
+compares the content hash in Python: a common answer is shared by snapshots of a great many keys,
+so a `content_hash IN` filter lets the planner walk all of them past the page's statement timeout.
 
 The marks go last, just before the commit. A settle locks its team's `org` row and then upserts
 the mark, so a mark lock held across the slow deletes would queue that team's payments behind the

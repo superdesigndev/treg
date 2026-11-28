@@ -1041,7 +1041,7 @@ def compact_pair(pair: dict) -> dict:
 
 
 async def next_for(org_id: int, *, pinned: bool) -> dict | None:
-    """The team's oldest comparison waiting for a verdict, blinded; None (and the invitation flag
+    """The team's newest comparison waiting for a verdict, blinded; None (and the invitation flag
     cleared) when there is none. A pinned caller never reads one: comparisons carry no pin."""
     if pinned:
         return None

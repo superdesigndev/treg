@@ -2110,7 +2110,9 @@ adapters:
     const: {queryParams.cursor: "0"}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
     paging: {cursor: queryParams.cursor}
+  # Out of routing: TikHub answers its generic 400 "Request failed" to every keyword on this row.
   tikhub.x.tiktok-web-fetch-search-user:
+    route: false
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
@@ -2191,9 +2193,11 @@ adapters:
     out: {video_id: data.videoDetails.videoId, title: data.videoDetails.title, channel: data.videoDetails.author,
           channel_id: data.videoDetails.channelId, description: data.videoDetails.shortDescription,
           views: data.videoDetails.viewCount, duration_seconds: data.videoDetails.lengthSeconds}
+  # The row takes only a URL; a video id is sent as its watch URL, so id requests reach it too.
   scrapecreators.youtube.video.detail:
-    accepts: [[url]]
+    accepts: [[url], [video_id]]
     in:  {url: queryParams.url}
+    in_expr: {queryParams.url: "coalesce(url, fmt('https://www.youtube.com/watch?v={}', video_id))"}
     out: {video_id: id, title: title, description: description, views: viewCountInt, published: publishDateText}
   # tiktok.search.hashtags, google.domain.overview: one verifiable provider each — no waterfall yet.
   # reddit.post.comments: tikhub's commentForest.trees and justoneapi's postInfoById are truncated/null in
@@ -2964,7 +2968,7 @@ adapters:
     accepts: [[email]]
     in:  {email: body.email}
     out: {linkedin_url: linkedin_url}
-    miss: "linkedin_url == null"
+    miss: "coalesce(linkedin_url, username, fullName) == null"
   # Still out: apollo.people.search / coresignal.people.search (no fixture; apollo's `person_titles[]` keys need a
   # bracket-safe target), crustdata/diffbot people.enrich and diffbot.people.search (truncated examples), icypeas
   # email find/verify and the *.bulk jobs (async: the answer arrives by polling), companyenrich by numeric id.
@@ -3423,12 +3427,14 @@ adapters:
     in_expr: {body.count: limit}
     out: {results: results.web, count: "len(results.web)"}
     miss: "coalesce(results.web, []) == []"
+  # Out of routing: priced per result, a call at the contract's default limit costs more than most rows here.
   valyu.web.search:
+    route: false
     accepts: [[q]]
     max: {limit: 10}
     in: {q: body.query}
     in_expr: {body.max_num_results: limit}
-    const: {body.search_type: web, body.max_price: 1.5, body.response_length: short}
+    const: {body.search_type: web, body.max_price: 6.25, body.response_length: short}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   tinyfish.web.search:

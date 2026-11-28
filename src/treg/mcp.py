@@ -497,6 +497,22 @@ class RequestOut(TypedDict, total=False):
     detail: str | None
 
 
+class RequestMatch(TypedDict, total=False):
+    endpoint_id: str | None
+    name: str | None
+    provider: str | None
+    summary: str | None
+
+
+class TeamRequestOut(RequestOut, total=False):
+    matches: list[RequestMatch] | None   # existing tools the request's text finds
+    matches_note: str | None
+
+
+# Fields the registry's reply adds that the Claude directory surface's schema does not name.
+_TEAM_ONLY_REQUEST_FIELDS = ("matches", "matches_note")
+
+
 class ReviewOut(TypedDict, total=False):
     review_id: int | None
     status: str | None
@@ -1315,14 +1331,16 @@ def _verdict_hint(page, cat: catalog_store.Catalog) -> str | None:
     description=(
         "The catalog doesn't have what you need? File a tool request — one sentence saying what "
         "capability or provider is missing. Requests are the demand signal that decides which "
-        "provider gets added next. Use AFTER catalog_search comes up empty, not instead of it."
+        "provider gets added next. Use AFTER catalog_search comes up empty, not instead of it. "
+        "The reply lists existing tools the request's text matches (`matches`), which may already "
+        "do the job; the request is recorded either way."
     ),
     # A harmless write (nothing upstream, nothing spent), but the text goes to the treg team: open world.
     annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
                                 idempotent_hint=False),
     structured_output=True
 )
-async def catalog_request(capability: str, ctx: Context, note: str = "") -> RequestOut:
+async def catalog_request(capability: str, ctx: Context, note: str = "") -> TeamRequestOut:
     return await _catalog_request_impl(
         capability, ctx, note, surface=_TEAM_SURFACE,
     )
@@ -1600,7 +1618,11 @@ async def _catalog_request_impl(
     async with api_context as client:
         r = await client.post("/tool-requests", json={
             "capability": capability, "note": note, "source": surface.event_source})
-    return _body(r)
+    body = _body(r)
+    if surface is not _TEAM_SURFACE and isinstance(body, dict):
+        for key in _TEAM_ONLY_REQUEST_FIELDS:
+            body.pop(key, None)
+    return body
 
 
 @mcp.tool(

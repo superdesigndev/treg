@@ -638,7 +638,8 @@ class CallRecord(SQLModel, table=True):
     # Set when TREG refused the call before a byte went upstream; NULL when the provider answered
     # (whatever its status). Values: auth (bad/expired token) | policy (ACL/deny rule/suspension) |
     # balance (402 insufficient prepaid balance) | cap (429 daily caps) | resolution (no such tool
-    # or endpoint) | request (malformed pre-relay: wrong method, missing param, bad body). What
+    # or endpoint) | request (malformed pre-relay: wrong method, missing param, bad body) |
+    # own_credit (402 an own key held after a streak of out-of-credit answers). What
     # separates "the provider failed" from "we said no" — without it a paywall 402 is
     # indistinguishable from a provider error, and provider stats absorb our own refusals.
     refused_by: str | None = Field(default=None)

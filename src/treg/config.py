@@ -317,6 +317,11 @@ class Settings(BaseSettings):
     # Seconds a team refused for its balance is refused again from a mark in the key-value
     # store, before any money queue or database work (money.md "The balance-empty mark"); 0 = off.
     money_empty_mark_ttl_s: int = Field(default=0, ge=0, le=10)
+    # Seconds treg answers a team's calls to one catalog endpoint on its own key itself, without
+    # sending them, after that key drew `own_key_credit_streak` out-of-credit answers in a row
+    # (proxy-model.md "An own key out of credit"); 0 = off.
+    own_key_credit_hold_s: int = Field(default=0, ge=0, le=300)
+    own_key_credit_streak: int = Field(default=10, ge=2, le=1000)
 
     # Orgs whose eligible metered calls spend from a standing allowance instead of one hold per
     # call (money.md "Allowance"); [] = none. Needs the shared key-value store. Every listed

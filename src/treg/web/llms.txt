@@ -116,7 +116,8 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   folder, and later sessions load it on their own.
 - Search by the job you want done. When the catalog has no tool for it (`verdict: none`), file the
   need with `treg catalog request "<what you need>"` (MCP `catalog_request`) instead of rephrasing
-  the search: requests steer what gets added next.
+  the search: requests steer what gets added next. The reply's `matches` lists existing tools the
+  request's text finds; check them with `catalog_get`, since one may already do the job.
 <!--routed-->
 - For a common job (scraping a page, web search, Google results, finding or verifying an email, a
   social profile), call the routed `treg.<capability>` tool rather than a provider you remember:
@@ -124,9 +125,13 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   returns. Name a provider only when you need fields only it has. To page a list, send
   `output.next_cursor` back as `cursor` with the same body; `_treg.paging` says when to ask another provider.
 - Provider search filters and operators (a place, a domain list, `site:`, quoted phrases) are
-  best-effort: check the rows against your filters, and on routed people search send
-  `X-Treg-Route-Strict-Filters: 1` to skip providers known to take a sent place or company only as a
-  hint.
+  best-effort: check the rows against your filters, or send `X-Treg-Route-Strict-Filters: 1`. It
+  skips providers known to take a sent filter only as a hint, and on people search (place, company
+  domain), job search (place, posted within days) and web or Google search (`site:`) it removes from
+  `output` the rows whose own field clearly breaks the filter (another state or country, never another city; a row
+  naming only a larger place than asked is kept, unchecked. Abroad, a row is removed only when it names another country, or a US state, in full; a two-letter code never removes a row outside a US ask.): `_treg.strict_filtered` counts them,
+  `raw` keeps them, and the provider is billed as usual. When no row is left it asks at most 2 more
+  providers, each billed as usual; `X-Treg-Route-Max-Cost` caps the total.
 <!--/routed-->
 - Choosing a provider yourself: first the one whose inputs match what you hold, then measured
   reliability, then price. `treg catalog get <id>` compares the job's ten most reliable and cheapest

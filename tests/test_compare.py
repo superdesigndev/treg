@@ -6,7 +6,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 import json
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 from urllib.parse import urlencode
 
@@ -873,7 +873,7 @@ async def test_a_slow_comparison_read_never_holds_the_call(clients, monkeypatch)
 
 # The API and the MCP tool
 
-async def _seed(org_id: int, *, first: str, call_ref: str, age_days: float = 0, status: str = "ready",
+async def _seed(org_id: int, *, first: str, call_ref: str, created_at: datetime | None = None, status: str = "ready",
                 truncated: str = ""):
     async with session_maker() as db:
         row = CallComparison(org_id=org_id, user_email="tim@superdesign.dev", call_ref=call_ref,
@@ -881,7 +881,7 @@ async def _seed(org_id: int, *, first: str, call_ref: str, age_days: float = 0, 
                              a_provider="provider-a", b_endpoint="provider-b.web.search",
                              b_provider="provider-b", input='{"q":"x"}', a_body='"answer A"',
                              b_body='"answer B"', first=first, status=status, truncated=truncated,
-                             created_at=utcnow_naive() - timedelta(days=age_days))
+                             created_at=created_at or utcnow_naive())
         db.add(row)
         await db.commit()
         return row.id
@@ -890,10 +890,9 @@ async def _seed(org_id: int, *, first: str, call_ref: str, age_days: float = 0, 
 async def test_next_is_blinded_and_a_verdict_maps_back(clients, monkeypatch):
     _compare_on(monkeypatch)
     org_id = await _org_id(clients)
-    await _seed(org_id, first="a", call_ref="too-old", age_days=4)
-    await _seed(org_id, first="b", call_ref="failed", status="failed")
-    one = await _seed(org_id, first="b", call_ref="first-b")
     two = await _seed(org_id, first="a", call_ref="first-a")
+    one = await _seed(org_id, first="b", call_ref="first-b")
+    await _seed(org_id, first="b", call_ref="failed", status="failed")
     await kv.store().set_flag(compare.ready_key(org_id), 60)
 
     got = await clients.get("/comparisons/next")
@@ -918,7 +917,32 @@ async def test_next_is_blinded_and_a_verdict_maps_back(clients, monkeypatch):
     rows = {r.call_ref: r for r in await _rows()}
     assert (rows["first-b"].choice, rows["first-b"].reason, rows["first-b"].client) == ("b", "B is right", "compare-test")
     assert rows["first-a"].choice == "a" and rows["first-a"].status == "decided"
-    assert rows["first-b"].decided_at is not None and rows["too-old"].status == "ready"
+    assert rows["first-b"].decided_at is not None
+
+
+async def test_next_offers_the_newest_waiting_pair(clients, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    now = utcnow_naive()
+    tied_lower_id = await _seed(org_id, first="a", call_ref="tied-lower-id", created_at=now)
+    older = await _seed(org_id, first="a", call_ref="older", created_at=now - timedelta(hours=1))
+    tied_higher_id = await _seed(org_id, first="a", call_ref="tied-higher-id", created_at=now)
+    await _seed(org_id, first="a", call_ref="expired",
+                created_at=now - timedelta(days=compare.READY_DAYS, hours=1))
+    store = kv.store()
+    ready_key = compare.ready_key(org_id)
+    await store.set_flag(ready_key, compare.READY_TTL_S)
+
+    for comparison_id in (tied_higher_id, tied_lower_id, older):
+        assert await store.has_flag(ready_key)
+        got = await clients.get("/comparisons/next")
+        assert got.status_code == 200 and got.json()["comparison_id"] == comparison_id
+        sent = await clients.post("/comparisons", json={"comparison_id": comparison_id, "choice": "tie"})
+        assert sent.status_code == 201, sent.text
+
+    assert (await clients.get("/comparisons/next")).status_code == 204
+    assert not await store.has_flag(ready_key)
+    assert {r.call_ref: r.status for r in await _rows()}["expired"] == "ready"
 
 
 async def test_tie_and_both_bad_are_kept_as_said(clients, monkeypatch):

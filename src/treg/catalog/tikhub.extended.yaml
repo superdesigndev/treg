@@ -15152,14 +15152,14 @@ endpoints:
         required: true
         note: Company URL or slug
         example: https://www.linkedin.com/company/microsoft/
-      start_date:
+      start:
+        type: integer
+        required: false
+        note: Page offset, 0 for the first page and 10 for the second
+      sort_by:
         type: string
         required: false
-        note: Start date
-      end_date:
-        type: string
-        required: false
-        note: End date
+        enum: [top, recent]
   test_request:
     queryParams:
       url: https://www.linkedin.com/company/microsoft/
@@ -15286,14 +15286,11 @@ endpoints:
         required: true
         note: Profile URL or slug
         example: https://www.linkedin.com/in/williamhgates/
-      start_date:
+      type:
         type: string
         required: false
-        note: Start date
-      end_date:
-        type: string
-        required: false
-        note: End date
+        enum: [posts, comments, reactions]
+        note: The posts the person wrote or shared (default), commented on, or reacted to; one page, no paging
   test_request:
     queryParams:
       url: https://www.linkedin.com/in/williamhgates/

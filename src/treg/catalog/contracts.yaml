@@ -405,6 +405,8 @@ contracts:
       count: {type: integer}
     miss: "results == []"
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
+    row_filters:   # strict filters: a row off the question's site: leaves output
+      q: {test: site, field: [url, link]}
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
 
@@ -471,6 +473,10 @@ contracts:
     # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
     # {q, company_domain} too: scoping leaves only the providers that send both.
     fill_limit_when: [[q], [q, company_domain]]
+    # Strict filters: a row whose own place or employer breaks the one sent leaves output.
+    row_filters:
+      location: {test: place, field: location}
+      company_domain: {test: domain, field: company_domain}
     # Categories of the request (title class, function, seniority, country spelling, limit) that
     # call events record and route rules may match on; never the title or query itself.
     segments: people_search
@@ -835,6 +841,10 @@ contracts:
     # JobsPipe match a company name in part, so they take title searches only (adapters.yaml); a
     # name goes to Hirebase first, then the other whole-name indexes.
     prefer: [mobiusengine-jobs, hirebase, jobspipe]
+    # Strict filters: a job row whose own place or posting date breaks the one sent leaves output.
+    row_filters:
+      location: {test: place, field: [location, location_raw, locations_derived]}
+      posted_within_days: {test: within_days, field: [date_posted, date_first_seen]}
 
   companies.jobs:
     summary: "One company's current open job postings: from its own job board when you name it (ats + board), else from job indexes by name or domain — provider-native job rows in `jobs`"
@@ -1591,6 +1601,8 @@ contracts:
       count: {type: integer}
     miss: "results == []"
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
+    row_filters:   # strict filters: a row off the question's site: leaves output
+      q: {test: site, field: [url, link]}
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     # Asked for passages (`contents: true`), a published route rule asks exa first.

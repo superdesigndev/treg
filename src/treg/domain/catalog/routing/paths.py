@@ -607,7 +607,8 @@ def count_with(items: Any, path: Any) -> int | None:
 _SITE = re.compile(r"(?:^|[\s(])site:([^\s()]+)", re.I)
 
 
-def _host_path(url: str) -> tuple[str, str]:
+def host_path(url: str) -> tuple[str, str]:
+    """`https://www.a.com/Blog/` -> (`a.com`, `/blog`): a link's host and path, compared lower-cased."""
     from urllib.parse import urlsplit
     u = url.strip()
     parts = urlsplit(u if "//" in u else "//" + u)
@@ -615,15 +616,28 @@ def _host_path(url: str) -> tuple[str, str]:
     return host, parts.path.rstrip("/").lower()
 
 
+def site_restrictions(q: Any) -> list[tuple[str, str]]:
+    """The sites a question restricts results to (`site:stripe.com`, `site:a.com/blog`, several
+    joined by OR); a negated `-site:` is not a restriction."""
+    if not isinstance(q, str):
+        return []
+    return [(h, p) for h, p in (host_path(s) for s in _SITE.findall(q)) if h]
+
+
+def on_site(site: tuple[str, str], link: tuple[str, str]) -> bool:
+    """A link is on a site when its host is the site's or a subdomain of it, and a path in the
+    restriction prefixes the link's path."""
+    (sh, sp), (lh, lp) = site, link
+    return (lh == sh or lh.endswith("." + sh)) and (not sp or lp == sp or lp.startswith(sp + "/"))
+
+
 def no_result_on_site(q: Any, rows: Any) -> bool:
-    """True when the question restricts results to sites (`site:stripe.com`, `site:a.com/blog`, several
-    joined by OR) and not one row's link is on any of them: a subdomain counts, and a path in the
-    restriction must prefix the row's path. A question with no `site:` (a negated `-site:` is not a
-    restriction), no rows, or no row with a readable link is never judged."""
-    if not isinstance(q, str) or not isinstance(rows, list) or not rows:
+    """True when the question restricts results to sites (`site_restrictions`) and not one row's
+    link is on any of them (`on_site`). A question with no `site:`, no rows, or no row with a
+    readable link is never judged."""
+    if not isinstance(rows, list) or not rows:
         return False
-    sites = [_host_path(s) for s in _SITE.findall(q)]
-    sites = [(h, p) for h, p in sites if h]
+    sites = site_restrictions(q)
     if not sites:
         return False
     links = []
@@ -631,13 +645,10 @@ def no_result_on_site(q: Any, rows: Any) -> bool:
         if isinstance(row, dict):
             link = next((row[k] for k in ("url", "link", "href") if isinstance(row.get(k), str) and row[k]), None)
             if link:
-                links.append(_host_path(link))
+                links.append(host_path(link))
     if not links:
         return False
-    def on(site, link):
-        (sh, sp), (lh, lp) = site, link
-        return (lh == sh or lh.endswith("." + sh)) and (not sp or lp == sp or lp.startswith(sp + "/"))
-    return not any(on(s, ln) for s in sites for ln in links)
+    return not any(on_site(s, ln) for s in sites for ln in links)
 
 
 _QUOTED = re.compile(r'"([^"]{2,})"|\u201c([^\u201d]{2,})\u201d')

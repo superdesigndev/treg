@@ -488,9 +488,9 @@ answered, also when the other order failed. A new
 `compare_rubric.VERSION` judges every pair again; a build with an older one never overwrites it.
 `compare_judge` off skips the pass (its rollback switch; verdicts written stay).
 
-**API**: `GET /comparisons/next` (team member) returns the team's oldest `ready` row younger than
+**API**: `GET /comparisons/next` (team member) returns the team's newest `ready` row younger than
 three days as `{comparison_id, capability, input, answer_1, answer_2, truncated,
-truncated_parts?}`, no vendor; 204 when there is none, after clearing the flag and looking once
+truncated_parts?}`, no vendor, so a pair an agent passes over does not hold back newer ones. It returns 204 when there is none, after clearing the flag and looking once
 more (a row stored meanwhile sets it again). `POST /comparisons {comparison_id, choice:
 1|2|tie|both_bad, reason?}` maps 1/2 back to a/b through `first`, sets `decided` with one
 conditional update (a second verdict returns 200 with the first), and settles the flag the same

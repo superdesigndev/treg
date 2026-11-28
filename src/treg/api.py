@@ -29,6 +29,7 @@ from sqlmodel import select
 
 from . import archive, crypto, localrun, oauth_providers, ratestore
 from .application import asynctasks as async_task_app
+from .application import catalog_search as search_app
 from .application.call import service as call_service
 from .caller_metadata import _client_of
 from .config import get_settings
@@ -314,19 +315,28 @@ async def create_tool_request(
         user = await _user_from_session(treg_session, db)
         if user is not None:
             user_email = user.email
+    query = body.query.strip()[:300]
+    source = body.source if body.source in TOOLREQ_SOURCES else "api"
     row = ToolRequest(
         org_id=org_id,
         user_email=user_email,
         capability=capability,
-        query=body.query.strip()[:300],
+        query=query,
         note=body.note.strip()[:2000],
         contact=body.contact.strip()[:200],
-        source=body.source if body.source in TOOLREQ_SOURCES else "api",
+        source=source,
     )
     db.add(row)
     await db.commit()
-    return {"id": row.id, "status": "received",
-            "note": "logged — requests steer which provider gets keyed next"}
+    filed = row.id
+    await db.close()
+    # The Claude directory surface drops the matches (its schema is the submitted one).
+    matches = ({} if source == "claude-connector"
+               else await search_app.request_reply_off_loop(
+                   capability, query, catalog_routes._provider_display,
+                   cap_key=search_app.request_cap_key(org_id, user_email, _client_ip(request))))
+    return {"id": filed, "status": "received",
+            "note": "logged — requests steer which provider gets keyed next", **matches}
 
 
 view_routes.renders(create_tool_request)(catalog_routes.tool_request_view)

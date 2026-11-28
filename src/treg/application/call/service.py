@@ -26,7 +26,7 @@ from ...domain.catalog import results as catalog_results
 from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
-from ...infra import credential_cipher, money_admission, org_endpoint_quota
+from ...infra import credential_cipher, money_admission, org_endpoint_quota, own_key_credit
 from ...infra.db import answers_db_busy, session_maker
 from ...models import Secret
 from ...domain.capacity import marks as capacity_marks
@@ -552,6 +552,18 @@ def _without_reported_charge(
         return response, body
     served = answer_for_caller(mk.endpoint_id, body, request.headers)
     return (response, body) if served is body else (_with_body(response, served), served)
+
+
+def _own_key_credit_answer(mk, response: UpstreamResponse, body: bytes) -> tuple[bool, str]:
+    """(out of credit, the answer as the caller received it): a provider's error on the team's
+    own key, read by the capacity signature table. A 401 is the key itself, never credit."""
+    if response.status < 400 or response.status == 401:
+        return False, ""
+    identity = _decompress_for_scan(body, _response_header(response, "content-encoding") or "")
+    text = identity[:_ERROR_BODY_SLICE].decode("utf-8", "replace") if identity else ""
+    signal = capacity_signatures.classify(
+        mk.provider, response.status, httpx.Headers(response.raw_headers), text[:4096])
+    return signal is not None and signal.kind == "balance", text
 
 
 def _redact_error_body(
@@ -1560,6 +1572,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     task_answer_read = False
     response: UpstreamResponse | None = None
     sent = False   # the request left for the provider: a cancel from here on may follow its effect
+    own_credit_key = None
     started = _now_ms()
     try:
         # treg keeps oauth tokens fresh: refresh in place if stale, before injecting. Inside the
@@ -1693,6 +1706,17 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
+                if (mk is not None and mk.tier in ("tool", "credential") and not mk.metered
+                        and not mk.free_owned_poll and not request.context.input.routed_child):
+                    own_credit_key = own_key_credit.key_for(
+                        caller.org_id, mk.endpoint_id,
+                        [getattr(s, "id", None) for s in secrets.values()])
+                if (held := await own_key_credit.read(own_credit_key)) is not None:
+                    raise GatewayFailed(
+                        "own_key_out_of_credit", status_code=402,
+                        detail=own_key_credit.refusal(
+                            held, provider=mk.provider, endpoint_id=mk.endpoint_id),
+                        retry_after_s=held.retry_after_s())
                 share_pool, cap = (capacity_view.concurrency_pool(mk.provider, mk.endpoint_id)
                                    if platform_tier else ("", 0))
                 if cap and (wait_s := get_settings().fair_share_wait_s) > 0:
@@ -1958,7 +1982,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         _renderings = _safe_secret_renderings(tool, secrets)
         _audit(exc.status_code, charged_micro=0 if metered or free_poll else None,
                refused_by="policy" if exc.kind in routed._QUOTA_REFUSALS
-               else "capacity" if exc.kind == "share_busy" else None,
+               else "capacity" if exc.kind == "share_busy"
+               else "own_credit" if exc.kind == "own_key_out_of_credit" else None,
                duration_ms=_now_ms() - started, answered=False, failure=exc,
                error_request=(
                    _ERROR_MASKING_FAILED if _renderings is None else
@@ -2254,6 +2279,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 request.headers.get("content-type", ""),
                 tool, caller_body, _renderings)
             err_response = _error_response_evidence(response.raw_headers, body, _renderings)
+    if own_credit_key is not None:
+        out_of_credit, answer_text = _own_key_credit_answer(mk, response, body)
+        await own_key_credit.observe(own_credit_key, out_of_credit=out_of_credit,
+                                     status=response.status, answer_text=answer_text)
     free_poll = mk is not None and mk.free_owned_poll
     _audit(response.status, duration_ms=duration_ms,
            charged_micro=0 if free_poll else None,

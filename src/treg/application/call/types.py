@@ -91,6 +91,9 @@ FAILURE_KINDS: dict[str, tuple[Blame, str]] = {
     "stream_interrupted": ("upstream", "upstream_error"),
     "response_buffer_limit": ("treg", "treg_error"),
     "refresh_failed": ("org_connection", "caller_provider_account"),
+    # The team's own key drew out-of-credit answers in a row on this endpoint: treg answered the
+    # call itself for a short hold, nothing was sent (infra/own_key_credit.py).
+    "own_key_out_of_credit": ("org_connection", "caller_provider_account"),
     "credential_missing": ("org_connection", "caller_provider_account"),
     # The `log_kind` of a `credential_missing` treg's own key should have served: this deployment
     # has no key or allow-list entry for the provider.

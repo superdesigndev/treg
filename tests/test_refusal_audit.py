@@ -83,6 +83,27 @@ async def test_bad_token_is_recorded_anonymously_as_an_auth_refusal(clients: Asy
     (rec,) = await _rows()
     assert rec.refused_by == "auth"
     assert rec.org_id is None and rec.user_email == ""
+    assert rec.api_key_prefix == "unrecognized"
+
+
+async def test_a_refused_token_leaves_only_the_label_that_names_its_owner(clients: AsyncClient):
+    """A dead treg key keeps the `safe_prefix` its key row shows, and a signed one the user and
+    team it names; the secret part of either never reaches the row, and no token leaves none."""
+    from treg.domain.identity import session as identity_session
+
+    managed = "treg_" + "x" * 40
+    signed = identity_session.make_identity(987654, 3, org="gone-team")
+    for token in (managed, signed):
+        r = await clients.get("/call/echo-tool/echo", headers={"X-Treg-Token": token})
+        assert r.status_code == 401
+    clients.headers.pop("X-Treg-Token", None)
+    clients.cookies.clear()
+    r = await clients.get("/call/echo-tool/echo")
+    assert r.status_code == 401
+    rows = await _rows()
+    assert [row.api_key_prefix for row in rows] == ["treg_xxxxxxx", "uid:987654 org:gone-team", None]
+    assert all(row.org_id is None and row.refused_by == "auth" for row in rows)
+    assert not any(signed.split(".", 1)[1] in (row.api_key_prefix or "") for row in rows)
 
 
 async def test_retired_catalog_call_is_actionable_audited_and_does_not_shadow_an_own_tool(

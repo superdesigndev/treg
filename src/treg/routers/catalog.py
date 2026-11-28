@@ -749,7 +749,7 @@ async def catalog_endpoint(
                         "X-Treg-Route-Max-Cost": f"USD ceiling for the whole call (default {_route_max_cost(contract):.2f})",
                         "X-Treg-Route-Prefer": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
                         "X-Treg-Route-Exclude": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
-                        "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters",
+                        "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged), and leave out of output the rows whose own field clearly breaks one (_treg.strict_filtered counts them, raw keeps them; a row naming only a larger place than asked is kept, unchecked). An answer left with no row asks at most 2 more providers, each billed as usual; Max-Cost caps the total; off by default — the answer names what was ignored in X-Treg-Ignored-Filters",
                         **({"X-Treg-Route-Complete": "1 = keep going until an answer fills every field in "
                                                      "routing.contract.complete, asking pricier providers if needed; "
                                                      "the fullest answer wins if none does"}

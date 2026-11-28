@@ -32,6 +32,7 @@ sources:
   - tests/test_search_experiment.py
   - tests/test_catalog_search.py
   - tests/test_search_agent_bench.py
+  - tests/test_tool_requests.py
 related:
   - architecture/catalog.md
   - interface/dashboard.md
@@ -258,6 +259,39 @@ identical pages contribute nothing.
 
 A recently-added search (`added_within_days`, `sort=newest`) bypasses the experiment entirely: no
 judge, no record.
+
+### A catalog request's matches
+
+`POST /tool-requests` files the request first, then answers with `matches`: the existing tools the
+request's text finds, which may already do the job (`request_reply`, a note says the request is
+recorded either way); when the text finds nothing, the request's `query` (the search that came up
+empty) is tried. `request_matches` is the shipped ranker alone (`store.search`, routed groups
+collapsed by `_group`, at most `REQUEST_MATCHES` rows): no judge, no hub rows, no observed stats, no
+database read. Its floor: search admits a row missing one word in three, which on a request is how
+a wrong job gets in, so only rows holding every searched word are kept
+(`store.matches_every_word`), and when none does, only the rows tied with the top score. Each
+searched word is one pass over the catalog, so a text with more than `REQUEST_TERMS` distinct words
+(`store.content_words`) is searched by its first `REQUEST_TERMS`. It runs on its own two-thread pool
+(`request_reply_off_loop`) after the request session is closed, and a failure answers
+`matches: []`, never a refused request.
+
+A long request (`REQUEST_JUDGE_WORDS` content words or more) is a sentence, which the word search
+mostly misses, so while the search judge runs (`search_experiment` at `v2`, a judge key set) its
+matches are the judge's first (`judged_request_matches`): the agent search's v2 road
+(`recall_with_meaning`, one `judge_and_decide` on `typesafe_timeout_s` with `not_task` as keyword,
+`serve` with no hub rows and no observed stats), awaited on the event loop after the request is
+committed. `asyncio.wait_for` bounds the whole of it by `typesafe_timeout_s` plus
+`find_embed_timeout_s`, since the HTTP clients' timeouts are per network phase. One judge request
+at most per request, only past the per-address filing limit, and only within the caller's
+`search_judge_max_per_caller_hour` (`_judge_cap`, shared with search, keyed by `request_cap_key`:
+team and email, else `ip:<address>`), checked atomically so concurrent filings count every hit,
+in its own session closed before the judge. That cap is what bounds an address exempt from the
+filing limit. Any answer without rows (an
+capped, abstaining, failing, slow or unconfigured judge, or one that kept nothing) falls back to the word
+search above, then the `query`. A short request never reaches the judge. The team `/mcp/` `catalog_request` passes the fields on; a
+`claude-connector` filing skips the matcher and the judge, and `/mcp/v2/` strips the fields
+(`_TEAM_ONLY_REQUEST_FIELDS`), since its schema is the submitted one. The CLI's text view is
+unchanged; `--json` shows them.
 
 ## What is recorded
 

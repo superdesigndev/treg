@@ -350,6 +350,15 @@ async def test_catalog_request_files_the_gap_with_attribution(clients):
     assert row.user_email == "wisher@superdesign.dev"
 
 
+async def test_catalog_request_names_existing_tools_that_may_do_it(clients):
+    token = (await verified_signup(clients, json={"email": "asker@superdesign.dev"})).json()["token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "catalog_request", {"capability": "backlinks"}, token=token)
+    assert out.get("status") == "received", out
+    assert out["matches"] and all(m["endpoint_id"] and m["name"] for m in out["matches"])
+    assert "recorded either way" in out["matches_note"]
+
+
 # ---- the half that matters: no token means no data, no spending ----------------------------
 
 async def test_a_team_default_token_resolves_its_team(clients):
