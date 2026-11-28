@@ -52,6 +52,18 @@ def test_settings_bound_the_pool_per_process(monkeypatch):
     assert pool.connection_kwargs["socket_timeout"] == kv._TIMEOUT_S
 
 
+def test_the_settings_win_over_the_urls_query(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "kv_max_connections", 7)
+    monkeypatch.setattr(settings, "kv_pool_wait_s", 0.3)
+    pool = kv.RedisStore(
+        "redis://127.0.0.1:1/2?max_connections=500&timeout=20&socket_timeout=9"
+    )._client.connection_pool
+    assert pool.max_connections == 7 and pool.timeout == 0.3
+    assert pool.connection_kwargs["socket_timeout"] == kv._TIMEOUT_S
+    assert pool.connection_kwargs["db"] == 2, "the rest of the URL still applies"
+
+
 @pytest.mark.parametrize("name,args,kwargs", list(_public_operations()),
                          ids=[name for name, _, _ in _public_operations()])
 async def test_a_full_pool_reads_as_an_unavailable_store_on_every_operation(

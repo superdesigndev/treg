@@ -299,7 +299,8 @@ count the server sees falls back after a peak; a process with no store traffic a
 it has until it exits. Operations that found the pool full are counted per process and logged
 as `kv pool full: N operations waited for a connection, M gave up` at most once a minute; an
 operation whose own deadline is shorter than the wait is counted as waiting only if it got one.
-Size the pool as processes per instance times instances times
+These settings and the store's socket timeouts win over the same names in `TREG_KV_URL`'s query
+string. Size the pool as processes per instance times instances times
 `TREG_KV_MAX_CONNECTIONS`, doubled for a deploy's overlap, against the server's client limit.
 redis-py's default pool, used before, raised at 100 per process instead of waiting and never
 closed an idle one.

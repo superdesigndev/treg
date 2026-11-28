@@ -850,10 +850,15 @@ def _idle_closing_pool(url: str, *, max_connections: int, wait_s: float, idle_cl
                     pass
             return len(stale)
 
-    return IdleClosingPool.from_url(
-        url, max_connections=max_connections, timeout=wait_s,
-        socket_timeout=_TIMEOUT_S, socket_connect_timeout=_TIMEOUT_S, decode_responses=True,
-    )
+    from redis.asyncio.connection import parse_url
+
+    # ConnectionPool.from_url lets the URL's query (`?max_connections=`, `?timeout=`) override
+    # keyword arguments; these settings win instead.
+    return IdleClosingPool(**{
+        **parse_url(url), "max_connections": max_connections, "timeout": wait_s,
+        "socket_timeout": _TIMEOUT_S, "socket_connect_timeout": _TIMEOUT_S,
+        "decode_responses": True,
+    })
 
 
 _POOL_WAIT_LOG_S = 60.0
