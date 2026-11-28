@@ -805,14 +805,91 @@ class LocalStore:
         return None
 
 
+def _idle_closing_pool(url: str, *, max_connections: int, wait_s: float, idle_close_s: float):
+    """A bounded pool that waits for a free connection and closes the ones left idle.
+
+    redis-py's default asyncio pool raises at 100 connections per process and never closes an idle
+    one, so a peak's connections stay open until the process exits.
+    """
+    import redis.asyncio as redis  # server extra; imported here so the light CLI never loads it
+
+    class IdleClosingPool(redis.BlockingConnectionPool):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self._released_at: dict[object, float] = {}
+
+        async def get_connection(self, *args, **kwargs):
+            waited = not self.can_get_connection()
+            try:
+                connection = await super().get_connection(*args, **kwargs)
+            except redis.ConnectionError as exc:
+                if waited and isinstance(exc.__cause__, TimeoutError):
+                    _note_pool_wait(max_connections, timed_out=True)
+                raise
+            if waited:
+                _note_pool_wait(max_connections, timed_out=False)
+            return connection
+
+        async def release(self, connection) -> None:
+            self._released_at[connection] = _clock()
+            await super().release(connection)
+            await self.close_idle()
+
+        async def close_idle(self) -> int:
+            # get_available_connection pops from the end, so the front was released longest ago.
+            cutoff = _clock() - idle_close_s
+            available, stale = self._available_connections, []
+            while available and self._released_at.get(available[0], cutoff) <= cutoff:
+                connection = available.pop(0)
+                self._released_at.pop(connection, None)
+                stale.append(connection)
+            for connection in stale:
+                try:
+                    await connection.disconnect(nowait=True)
+                except Exception:  # noqa: BLE001 - a socket already gone is the goal
+                    pass
+            return len(stale)
+
+    from redis.asyncio.connection import parse_url
+
+    # ConnectionPool.from_url lets the URL's query (`?max_connections=`, `?timeout=`) override
+    # keyword arguments; these settings win instead.
+    return IdleClosingPool(**{
+        **parse_url(url), "max_connections": max_connections, "timeout": wait_s,
+        "socket_timeout": _TIMEOUT_S, "socket_connect_timeout": _TIMEOUT_S,
+        "decode_responses": True,
+    })
+
+
+_POOL_WAIT_LOG_S = 60.0
+_pool_waits = {"waited": 0, "timed_out": 0, "since": None}
+
+
+def _note_pool_wait(max_connections: int, *, timed_out: bool) -> None:
+    """Count operations that found the pool full; log the counts at most once a minute."""
+    try:
+        now = _clock()
+        _pool_waits["timed_out" if timed_out else "waited"] += 1
+        since = _pool_waits["since"]
+        if since is not None and now - since < _POOL_WAIT_LOG_S:
+            return
+        log.warning("kv pool full: %d operations waited for a connection, %d gave up, in %.0fs "
+                    "(at most %d per process)", _pool_waits["waited"] + _pool_waits["timed_out"],
+                    _pool_waits["timed_out"], 0 if since is None else now - since, max_connections)
+        _pool_waits.update(waited=0, timed_out=0, since=now)
+    except Exception:  # noqa: BLE001 - observation must not change store behavior
+        pass
+
+
 class RedisStore:
     def __init__(self, url: str) -> None:
         import redis.asyncio as redis  # server extra; imported here so the light CLI never loads it
 
-        self._client = redis.Redis.from_url(
-            url, socket_timeout=_TIMEOUT_S, socket_connect_timeout=_TIMEOUT_S,
-            decode_responses=True,
-        )
+        settings = get_settings()
+        self._client = redis.Redis.from_pool(_idle_closing_pool(
+            url, max_connections=settings.kv_max_connections,
+            wait_s=settings.kv_pool_wait_s, idle_close_s=settings.kv_idle_close_s,
+        ))
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         try:
