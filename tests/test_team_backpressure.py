@@ -228,12 +228,56 @@ async def test_a_team_marked_by_admission_alone_gets_its_own_places(admission_tr
         lease.release()
 
 
+async def test_a_refresh_another_team_ran_keeps_a_marked_team_throttled(
+        admission_trigger, monkeypatch):
+    """A marked team whose calls are all still running asks nothing between two reads; a read
+    another team's call starts must still look its mark up, or its next call runs unthrottled."""
+    now = _clock(monkeypatch)
+    for _ in range(3):
+        await gate.note_admission_timeout(5)
+    held = [await gate.admit(5), await gate.admit(5)]
+    for _ in range(2):                              # reads 6 starts, 5 asking nothing
+        now[0] += get_settings().money_backpressure_refresh_s
+        assert not await gate.throttled(6)
+    with pytest.raises(gate.Throttled):
+        await gate.admit(5)
+    for lease in held:
+        lease.release()
+
+
+async def test_a_full_batch_reads_the_asking_team_and_rotates_the_rest(
+        admission_trigger, monkeypatch):
+    now = _clock(monkeypatch)
+    monkeypatch.setattr(gate, "_MAX_TEAMS", 3)
+    for _ in range(3):
+        await gate.note_admission_timeout(9)
+    asked: list[list[str]] = []
+    real = admission_trigger.get_texts
+
+    async def get_texts(keys):
+        asked.append([key for key in keys if key.startswith(gate._MARK)])
+        return await real(keys)
+
+    monkeypatch.setattr(admission_trigger, "get_texts", get_texts)
+    for team in (1, 2, 3, 4):
+        gate._reader.asked.setdefault(team)
+    assert await gate.throttled(9)                  # the asking team is always in the batch
+    now[0] += get_settings().money_backpressure_refresh_s
+    await gate.throttled(8)
+    now[0] += get_settings().money_backpressure_refresh_s
+    await gate.throttled(8)
+    teams = [[int(key.rsplit(":", 1)[1]) for key in keys] for keys in asked]
+    assert teams[0] == [9, 1, 2]
+    assert teams[1] == [8, 9, 3]                    # 9 stays marked; 3 and 4 wait their turn
+    assert teams[2] == [8, 9, 4]
+
+
 async def test_the_admission_trigger_off_counts_and_reads_nothing(store, monkeypatch):
     monkeypatch.setattr(store, "take", pytest.fail)
     monkeypatch.setattr(store, "set_text", pytest.fail)
     await gate.note_admission_timeout(5)
     assert await gate.throttled(5) is False
-    assert gate._reader.asked == set()
+    assert not gate._reader.asked
 
 
 async def test_a_reserve_the_admission_queue_turns_away_counts_for_its_team(

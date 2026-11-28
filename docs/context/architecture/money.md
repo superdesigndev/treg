@@ -1181,8 +1181,11 @@ it is on only while a trigger is set and the shared store is configured.
 - **The call reads it once per process per refresh.** A request process reads every share's key in
   one round trip at most every `money_backpressure_refresh_s`, joined by all its calls; a team not
   on the list costs nothing more per call. With the admission trigger set, the same read also
-  fetches the marks of the teams whose calls asked since the last one (at most `_MAX_TEAMS`), the
-  asking team's included, so a mark reaches every process serving the team within one refresh.
+  fetches up to `_MAX_TEAMS` marks: the asking team's, every team's the last read found marked
+  (looked up again until its mark is gone, so a marked team whose calls are all still running
+  stays throttled), and the teams whose calls asked since they were last looked up, oldest
+  first; a full read leaves the rest at the front for the next. A mark thus reaches every
+  process serving the team within one refresh.
 - **The gate.** A metered call of a listed team, after its dependency session ended and before
   `_platform_reserve` (`reserve.backpressure_admit`, from `_execute_call`), takes one of
   `money_backpressure_max_in_flight` places shared by every process (the provider concurrency

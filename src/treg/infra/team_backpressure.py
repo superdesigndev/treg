@@ -13,6 +13,7 @@ wrong reads as no throttled team and no place to take, so every call is allowed.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import random
 import time
@@ -29,6 +30,8 @@ _MARK = "treg:team-backpressure-admission:v1"
 # Below the store's own limit for optional work, so the call knows the store did not answer.
 _READ_WAIT_S = 0.15
 _MAX_TEAMS = 1000
+# Teams kept waiting for a look-up at most, so a burst of new teams cannot grow the map unbounded.
+_ASKED_KEPT = 4 * _MAX_TEAMS
 _LOG_EVERY_S = 5.0
 
 
@@ -120,31 +123,48 @@ class _Reader:
         self.listed: frozenset[int] = frozenset()
         self.next_refresh = 0.0
         self.lock = asyncio.Lock()
-        # Teams whose calls asked since the last read: the marks the next read looks up.
-        self.asked: set[int] = set()
+        # The teams whose mark the last read found: every read looks them up again, whether or
+        # not they asked since, until their mark is gone.
+        self.marked: frozenset[int] = frozenset()
+        # Teams whose calls asked since they were last looked up, oldest first: a read that
+        # cannot take them all keeps the rest at the front for the next one.
+        self.asked: dict[int, None] = {}
+
+    def _batch(self, org_id: int) -> list[int]:
+        """The marks one read looks up: the asking team, then every team marked at the last
+        read, then the teams that asked, oldest first, up to `_MAX_TEAMS`."""
+        batch, seen = [org_id], {org_id}
+        for team in itertools.chain(sorted(self.marked), self.asked):
+            if len(batch) >= _MAX_TEAMS:
+                break
+            if team not in seen:
+                batch.append(team)
+                seen.add(team)
+        self.asked = {team: None for team in self.asked if team not in seen}
+        return batch
 
     async def throttled(self, settings, org_id: int) -> frozenset[int]:
-        if (settings.money_backpressure_admission_timeouts is not None
-                and len(self.asked) < _MAX_TEAMS):
-            self.asked.add(org_id)
+        watching = settings.money_backpressure_admission_timeouts is not None
+        if watching and len(self.asked) < _ASKED_KEPT:
+            self.asked.setdefault(org_id)
         if time.monotonic() < self.next_refresh:
             return self.teams
         async with self.lock:
             if time.monotonic() < self.next_refresh:
                 return self.teams
-            asked = sorted(self.asked)
-            self.asked = set()
+            batch = self._batch(org_id) if watching else []
             try:
                 share_keys = _share_keys(settings.money_allowance_fold_shards)
                 async with asyncio.timeout(_READ_WAIT_S):
                     texts = await kv.store().get_texts(
-                        share_keys + [mark_key(team) for team in asked])
+                        share_keys + [mark_key(team) for team in batch])
                 teams: set[int] = set()
                 for text in texts[:len(share_keys)]:
                     teams |= _parse(text)
                 self.listed = frozenset(teams)
-                teams |= {team for team, text in zip(asked, texts[len(share_keys):]) if text}
-                self.teams = frozenset(teams)
+                self.marked = frozenset(
+                    team for team, text in zip(batch, texts[len(share_keys):]) if text)
+                self.teams = frozenset(teams | self.marked)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - an unread list throttles nobody
