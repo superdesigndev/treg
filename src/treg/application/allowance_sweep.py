@@ -26,6 +26,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from typing import NamedTuple
 
 from ..config import get_settings
 from ..domain import money as ledger
@@ -447,9 +448,27 @@ def _starved(oldest) -> bool:
     return waited_s is not None and waited_s >= _STARVED_AFTER_S
 
 
+class _Visit(NamedTuple):
+    """One visit of the fold to a team: `calls` settled, whether a batch was `committed`, and
+    whether the last batch came back short, so the team had nothing more queued (`drained`)."""
+
+    calls: int = 0
+    committed: bool = False
+    drained: bool = False
+
+
 async def _fold_team(session_maker, org_id: int, oldest=None,
                      until: float | None = None, *, note: bool = True) -> int | None:
-    """A few batches of one team's queue; None when not one batch was committed. Stops when
+    """`_visit_team`'s charges folded; None when not one batch was committed."""
+    visit = await _visit_team(session_maker, org_id, oldest, until, note=note)
+    return visit.calls if visit.committed else None
+
+
+async def _visit_team(session_maker, org_id: int, oldest=None,
+                      until: float | None = None, *, note: bool = True,
+                      keep_going: Callable[[], bool] = _always) -> _Visit:
+    """A few batches of one team's queue, no batch after the first once `keep_going` says
+    so. Stops when
     another process has the team, the team's money sessions are busy (a request in this process
     holding its lock among them), or its rows stay locked past `LOCK_WAIT_MS`, and the next
     pass comes back: the teams behind it are not kept waiting. Every such stop is counted
@@ -465,11 +484,12 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
     batches; no batch or transaction starts once the turn is over, and no wait outlasts it. A busy team's
     own requests can keep it from the fold for one pass, not for every pass."""
     loop = asyncio.get_running_loop()
-    total, committed, skipped = 0, False, None
+    total, committed, drained, skipped = 0, False, False, None
     try:
         async with _fold_claim(org_id, until) as (owner, until):
             for _ in range(_FOLD_BATCHES_PER_PASS):
-                if until is not None and committed and loop.time() >= until:
+                if committed and (not keep_going() or (
+                        until is not None and loop.time() >= until)):
                     break
                 async with _team_lease(org_id, owner, until) as free:
                     lock = money_lock(org_id)
@@ -500,6 +520,7 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
                         lock.release()
                 total += folded.calls
                 if folded.claimed < _FOLD_BATCH:
+                    drained = True
                     break
     except money_admission.AdmissionTimeout:
         skipped = "admission_timeout"
@@ -514,7 +535,7 @@ async def _fold_team(session_maker, org_id: int, oldest=None,
     if until is not None:
         log.info("allowance_fold_starved org_id=%s waited_s=%s folded=%s skipped=%s",
                  org_id, _waited_s(oldest), total, skipped)
-    return total if committed else None
+    return _Visit(total, committed, drained)
 
 
 async def run_once(session_maker, *, sweep: bool,
