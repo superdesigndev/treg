@@ -1,0 +1,102 @@
+provider: rivalads
+source:
+  docs: https://www.rivalads.io/api/docs
+  openapi: https://www.rivalads.io/api/openapi.json
+  curated: '2026-11-27'
+limits: "600 requests per minute per key on Starter and Growth. Higher plans allow up to 3,000."
+pricing_url: https://www.rivalads.io/pricing
+defaults:
+  provenance: {source: docs, source_url: 'https://www.rivalads.io/pricing', checked: '2026-11-27', confidence: documented}
+  price: {value: '0', currency: USD, unit: call, note: "Included with an active Rival Ads plan."}
+
+proposed_capabilities:
+  account.ad_alerts.list: List the competitor ad events detected in a workspace.
+  account.competitor_ads.search: Search the competitor ads stored in a workspace.
+  account.competitor_monitors.list: List the competitor ad sources a workspace monitors.
+  account.landing_pages.search: Search the ad landing pages observed by a workspace.
+
+endpoints:
+  - id: rivalads.account.competitor_ads.search
+    added: '2026-11-27'
+    capability: account.competitor_ads.search
+    platform: account
+    scope: own_account
+    method: GET
+    path: /ads/search
+    name: Search your monitored competitor ads
+    summary: Search stored ad copy, hooks, transcripts and on-screen text across the competitors you monitor.
+    input:
+      queryParams:
+        q: {type: string, required: false, maxLength: 160, example: "shop now", note: 'Use quotes for phrases and prefix a term with - to exclude it.'}
+        channel: {type: string, required: false, enum: [META, GOOGLE, TIKTOK, LINKEDIN, MICROSOFT, PINTEREST], example: META}
+        format: {type: string, required: false, enum: [IMAGE, VIDEO, CAROUSEL, TEXT], example: VIDEO}
+        angle: {type: string, required: false, enum: [PROBLEM_SOLUTION, SOCIAL_PROOF, TESTIMONIAL, OFFER_PROMOTION, PRODUCT_DEMO, COMPARISON, URGENCY_SCARCITY, EDUCATIONAL, LIFESTYLE_ASPIRATION, OTHER], example: PRODUCT_DEMO}
+        style: {type: string, required: false, enum: [UGC, POLISHED_STUDIO, MOTION_GRAPHICS, SCREEN_RECORDING, STATIC_TEXT, PRODUCT_SHOT, MEME, ANIMATION, OTHER], example: UGC}
+        language: {type: string, required: false, minLength: 2, maxLength: 2, example: en, note: "Two lowercase language-code letters."}
+        active: {type: boolean, required: false, example: true}
+        minDays: {type: integer, required: false, enum: [7, 15, 30, 90, 180, 365], example: 7}
+        projectId: &projectId {type: string, required: false, minLength: 1, maxLength: 256, example: "<project-id>", note: "Use an ID from your Rival Ads workspace."}
+        monitorId: &monitorId {type: string, required: false, minLength: 1, maxLength: 256, example: "<monitor-id>", note: "Use an ID from your Rival Ads monitor list."}
+        cursor: &cursor {type: string, required: false, minLength: 1, maxLength: 2048, example: "<next-cursor>", note: "Pass the next cursor returned by the previous page."}
+        limit: &limit {type: integer, required: false, default: 25, min: 1, max: 100, example: 1}
+    test_request: {queryParams: {q: "shop now", limit: 1}}
+    miss: {when: {path: response.data.ads, op: empty}}
+    docs_url: https://www.rivalads.io/api/docs
+
+  - id: rivalads.account.competitor_monitors.list
+    added: '2026-11-27'
+    capability: account.competitor_monitors.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /monitors
+    name: List your competitor monitors
+    summary: List tracked competitor ad sources with channel, regions, active-ad counts and sync status.
+    input:
+      queryParams:
+        projectId: *projectId
+        cursor: *cursor
+        limit: *limit
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.rivalads.io/api/docs
+
+  - id: rivalads.account.landing_pages.search
+    added: '2026-11-27'
+    capability: account.landing_pages.search
+    platform: account
+    scope: own_account
+    method: GET
+    path: /landing-pages
+    name: Search tracked ad landing pages
+    summary: Find competitor ad destinations with captured prices and observation dates.
+    input:
+      queryParams:
+        q: {type: string, required: false, maxLength: 160, example: "shop", note: "Search URL, title and description."}
+        projectId: *projectId
+        monitorId: *monitorId
+        captured: {type: boolean, required: false, example: true, note: "Filter by capture availability."}
+        cursor: *cursor
+        limit: *limit
+    test_request: {queryParams: {limit: 1}}
+    miss: {when: {path: response.data.landingPages, op: empty}}
+    docs_url: https://www.rivalads.io/api/docs
+
+  - id: rivalads.account.ad_alerts.list
+    added: '2026-11-27'
+    capability: account.ad_alerts.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /alerts/events
+    name: List competitor ad alert events
+    summary: List competitor ad milestones, stopped winners, launch bursts and seasonal launches.
+    note: "Events are ordered oldest first. When polling, overlap requests by occurrence time and deduplicate by event ID."
+    input:
+      queryParams:
+        projectId: *projectId
+        monitorId: *monitorId
+        since: {type: string, required: false, example: '2026-11-01T00:00:00Z', note: "Filter by occurrence time using an ISO 8601 timestamp."}
+        cursor: *cursor
+        limit: *limit
+    test_request: {queryParams: {limit: 1}}
+    docs_url: https://www.rivalads.io/api/docs
