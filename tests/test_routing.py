@@ -1738,10 +1738,12 @@ async def test_the_routed_quote_prices_and_orders_children_as_the_router_does(cl
     held = call_route.const_table_price(cat, cat.by_id[kid], ad, dict(ad.test_identity), ad.accepts[0])
     row = next(c for c in plan if c["endpoint_id"] == kid)
     assert held is not None and row["usd"] == held / 1_000_000, row
+    last = set(cat.contracts["people.phone.find"].ask_last)
+    assert "leadocean" in last
     for group in ([c for c in plan if "skipped" not in c], [c for c in plan if "skipped" in c]):
         ids = [c["endpoint_id"].split(".")[0] for c in group]
-        if "leadocean" in ids:
-            assert ids[-1] == "leadocean", ids
+        tail = [i for i, p in enumerate(ids) if p in last]
+        assert not tail or all(p in last for p in ids[tail[0]:]), ids
 
 
 async def test_idempotent_replay_of_a_routed_call_never_calls_a_provider_twice(clients: AsyncClient, enrichment_on, monkeypatch):
