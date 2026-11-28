@@ -452,22 +452,31 @@ async def test_a_write_that_committed_but_reported_failure_is_charged_and_not_gi
 
 async def test_a_charge_the_database_refused_is_written_once_the_database_is_back(
         org_id, store, monkeypatch):
-    write, attempts = runtime._ChargeWriter._write, []
+    """The database refuses every write until it is back: meanwhile the call is answered and its
+    charge is not there; once it is back, the background retry writes it."""
+    write, down = runtime._ChargeWriter._write, [True]
 
-    async def down_then_up(rows, **kwargs):
-        attempts.append(len(rows))
-        if len(attempts) <= 3:
+    async def maybe(rows, **kwargs):
+        if down[0]:
             raise ConnectionError("database down")
         return await write(rows, **kwargs)
 
-    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(down_then_up))
+    monkeypatch.setattr(runtime._ChargeWriter, "_write", staticmethod(maybe))
     epoch = await runtime.take(org_id, 600)
-    await _instantly(monkeypatch)
+    real_sleep = asyncio.sleep
+
+    async def retry_waits(delay):
+        await real_sleep(0 if delay < 1 else 0.02)
+
+    monkeypatch.setattr(runtime.asyncio, "sleep", retry_waits)
     assert await _finish(org_id, "call-1", epoch, 600, billable=True, actual_micro=450) == 450
     assert store.counters[org_id]["avail"] == CHUNK - 450
     async with session_maker() as db:
         assert (await db.execute(select(CallCharge))).first() is None
+    assert runtime._charges.behind(), "still unconfirmed while the database is down"
+    down[0] = False
     await runtime._charges._retry_task
+    assert not runtime._charges.behind()
     assert (await _fold(org_id)).consumed_micro == 450
 
 
