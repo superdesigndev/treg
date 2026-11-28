@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "domain": "stripe.com",
+      "name": "Stripe",
+      "description": "Stripe is a financial infrastructure platform that helps businesses of all sizes grow revenue and manage commerce. It provides tools to accept and optimize online and in-person payments worldwide, manage billing and subscriptions, reduce fraud, issue cards, move money, and embed payments in other platforms. Stripe also supports custom revenue models and offers financial tools for businesses from startups to global enterprises. Its platform processes payments across currencies and payment methods… [591 chars total]",
+      "country": "US",
+      "language": "english",
+      "logo": "https://logos.context.dev/?publicClientId=brandLL_example&domain=stripe.com"
+    },
+    {
+      "domain": "getbouncer.com",
+      "name": "Bouncer acquired by Stripe",
+      "description": "Bouncer is now a part of Stripe! Bouncer is a fraud solution that puts people first. Bouncer provides powerful verification with a simple scan for any payment card, while cleanly flagging stolen cards and high risk transactions.",
+      "country": "US",
+      "logo": "https://logos.context.dev/?publicClientId=brandLL_example&domain=getbouncer.com"
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "key_metadata": {
+    "credits_consumed": 0,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

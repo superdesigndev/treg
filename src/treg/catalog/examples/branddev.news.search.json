@@ -1,0 +1,55 @@
+{
+  "data": [
+    {
+      "id": "efadfdb9012f697dd045c916a9d87adbd467c894e8caa524050b4dee3a3c5029",
+      "story_id": "da6f585d7f4077df831595b651961536fd7d5fd862bd8b84ec053f0de4125c11",
+      "url": "https://bleepingcomputer.com/news/microsoft/microsoft-removes-wsus-server-role-in-windows-server-2028",
+      "title": "Microsoft removes WSUS server role in Windows Server 2028",
+      "description": "Microsoft will remove the WSUS server role from Windows Server 2028, the next major release of its server operating system.\nUncover email threats your existing defenses may miss. Adaptive Security's AI agents analyze email intent, context, and behavior to uncover phishing, business email compromise, and invoice fraud. See what's getting through with a 14-day read-only scan of Microsoft 365 or Google Workspace, with no MX changes. Start your free email security scan. Related Articles: Microsoft a… [819 chars total]",
+      "language": "en",
+      "authors": [
+        "@BleepinComputer"
+      ],
+      "image_url": "https://www.bleepstatic.com/content/hl-images/2026/11/27/Windows-Server.jpg",
+      "published_at": "2026-11-27T11:18:36.000Z",
+      "type": "editorial",
+      "source": {
+        "name": "BleepingComputer",
+        "domain": "bleepingcomputer.com",
+        "direct": true
+      },
+      "match": null
+    },
+    {
+      "id": "d1159dad6f4a83a63cf97592e126f553ff42c270c72d950c49d24b30daa2c0c3",
+      "story_id": "e7fbaacf521d59dd4c600d60f71d43d3b2e354267d5e0694f9d0a717878adf32",
+      "url": "https://bleepingcomputer.com/news/microsoft/new-out-of-band-oob-emergency-hotpatch-fixes-windows-server-2025-crashes",
+      "title": "Microsoft pushes emergency hotpatch to fix Windows Server crashes",
+      "description": "Microsoft has released an emergency hotpatch update to address Windows Server 2025 crashes triggered after installing this month's security hotpatch update (KB5131077).\nRelated Articles: Microsoft confirms Windows printing issues affecting Forcepoint users Microsoft confirms app installation, launch issues after hotpatch Microsoft pushes Windows emergency updates to fix activation failures Microsoft confirms Windows activation failures after November updates Microsoft says November security upda… [754 chars total]",
+      "language": "en",
+      "authors": [
+        "@BleepinComputer"
+      ],
+      "image_url": "https://www.bleepstatic.com/content/hl-images/2026/11/18/Windows--Server.jpg",
+      "published_at": "2026-11-27T09:08:16.000Z",
+      "type": "editorial",
+      "source": {
+        "name": "BleepingComputer",
+        "domain": "bleepingcomputer.com",
+        "direct": true
+      },
+      "match": null
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "has_more": true,
+  "next_cursor": "eyJvIjoxMCwiYSI6MTc5NTc4MTA1OTU0OX0",
+  "meta": {
+    "count": 10
+  },
+  "key_metadata": {
+    "credits_consumed": 1,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

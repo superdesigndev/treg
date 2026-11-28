@@ -1,0 +1,220 @@
+{
+  "status": "ok",
+  "finalDOMState": "loaded",
+  "domain": "stripe.com",
+  "styleguide": {
+    "mode": "light",
+    "colors": {
+      "accent": "#533afd",
+      "background": "#ffffff",
+      "text": "#000000"
+    },
+    "typography": {
+      "headings": {
+        "h1": {
+          "fontFamily": "sohne-var",
+          "fontSize": "48px",
+          "fontWeight": 300,
+          "lineHeight": "55.2px",
+          "letterSpacing": "-0.96px",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ]
+        },
+        "h2": {
+          "fontFamily": "sohne-var",
+          "fontSize": "32px",
+          "fontWeight": 300,
+          "lineHeight": "35.2px",
+          "letterSpacing": "-0.64px",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ]
+        },
+        "h3": {
+          "fontFamily": "sohne-var",
+          "fontSize": "26px",
+          "fontWeight": 300,
+          "lineHeight": "29.12px",
+          "letterSpacing": "-0.26px",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ]
+        },
+        "h4": {
+          "fontFamily": "sohne-var",
+          "fontSize": "16px",
+          "fontWeight": 300,
+          "lineHeight": "22.4px",
+          "letterSpacing": "0px",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ]
+        }
+      },
+      "p": {
+        "fontFamily": "sohne-var",
+        "fontSize": "14px",
+        "fontWeight": 300,
+        "lineHeight": "35.2px",
+        "letterSpacing": "-0.64px",
+        "fontFallbacks": [
+          "sohne-var",
+          "SF Pro Display",
+          "… 1 more item(s) truncated"
+        ]
+      }
+    },
+    "elementSpacing": {
+      "xs": "8px",
+      "sm": "16px",
+      "md": "32px",
+      "lg": "48px",
+      "xl": "80px"
+    },
+    "shadows": {
+      "sm": "none",
+      "md": "none",
+      "lg": "none",
+      "xl": "none",
+      "inner": "none"
+    },
+    "components": {
+      "button": {
+        "primary": {
+          "backgroundColor": "#533afd",
+          "color": "#ffffff",
+          "borderColor": "transparent",
+          "borderRadius": "4px",
+          "borderWidth": "1px",
+          "borderStyle": "solid",
+          "padding": "15.5px 24px 16.5px",
+          "fontSize": "16px",
+          "fontWeight": 400,
+          "minWidth": "141px",
+          "minHeight": "48px",
+          "textDecoration": "none",
+          "boxShadow": "none",
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "css": "box-sizing: border-box; display: inline-block; min-width: 141px; min-height: 48px; background-color: #533afd; color: #ffffff; border: 1px solid transparent; border-radius: 4px; padding: 15.5px 24px 16.5px; font-size: 16px; font-weight: 400; font-family: sohne-var, \"SF Pro Display\", sans-serif; text-decoration: none;"
+        },
+        "secondary": {
+          "backgroundColor": "#ffffff",
+          "color": "#533afd",
+          "borderColor": "#b9b9f9",
+          "borderRadius": "4px",
+          "borderWidth": "1px",
+          "borderStyle": "solid",
+          "padding": "15.5px 24px 16.5px",
+          "fontSize": "16px",
+          "fontWeight": 400,
+          "minWidth": "141px",
+          "minHeight": "48px",
+          "textDecoration": "none",
+          "boxShadow": "none",
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "css": "box-sizing: border-box; display: inline-block; min-width: 141px; min-height: 48px; background-color: #ffffff; color: #533afd; border: 1px solid #b9b9f9; border-radius: 4px; padding: 15.5px 24px 16.5px; font-size: 16px; font-weight: 400; font-family: sohne-var, \"SF Pro Display\", sans-serif; text-decoration: none;"
+        },
+        "link": {
+          "backgroundColor": "transparent",
+          "color": "#533afd",
+          "borderColor": "transparent",
+          "borderRadius": "0px",
+          "borderWidth": "0px",
+          "borderStyle": "none",
+          "padding": "0px",
+          "fontSize": "16px",
+          "fontWeight": 400,
+          "minWidth": "0px",
+          "minHeight": "0px",
+          "textDecoration": "none",
+          "boxShadow": "none",
+          "fontFamily": "sohne-var",
+          "fontFallbacks": [
+            "sohne-var",
+            "SF Pro Display",
+            "… 1 more item(s) truncated"
+          ],
+          "css": "color: #533afd; font-size: 16px; font-weight: 400; font-family: sohne-var, \"SF Pro Display\", sans-serif; text-decoration: none;"
+        }
+      },
+      "card": {
+        "backgroundColor": "#ffffff",
+        "borderColor": "#e5edf5",
+        "borderRadius": "6px",
+        "borderWidth": "1px",
+        "borderStyle": "solid",
+        "padding": "20px",
+        "boxShadow": "none",
+        "textColor": "#061b31",
+        "css": "background-color: #ffffff; color: #061b31; border: 1px solid #e5edf5; border-radius: 6px; padding: 20px;"
+      }
+    },
+    "fontLinks": {
+      "sohne-var": {
+        "type": "custom",
+        "files": {
+          "100": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "200": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "300": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "400": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "500": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "600": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "700": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "800": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+          "900": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2"
+        },
+        "faces": [
+          {
+            "url": "https://media.brand.dev/fonts/2228fee8f2931671a4690c35ec3a6746216f8d7fba4f51adc91f9b58a6b28f89.woff2",
+            "style": "normal",
+            "weight": "1 1000"
+          }
+        ],
+        "displayName": "Sohne Var"
+      },
+      "SourceCodePro": {
+        "type": "custom",
+        "files": {
+          "500": "https://media.brand.dev/fonts/df3dde8b3f5a6e70697c24c32e0c03885fc69952e2371b45a80d5c2ae8a30ffc.woff2"
+        },
+        "faces": [
+          {
+            "url": "https://media.brand.dev/fonts/df3dde8b3f5a6e70697c24c32e0c03885fc69952e2371b45a80d5c2ae8a30ffc.woff2",
+            "style": "normal",
+            "weight": "500"
+          }
+        ],
+        "displayName": "Source Code Pro"
+      }
+    }
+  },
+  "code": 200,
+  "cache_metadata": {
+    "status": "hit",
+    "age_ms": 129575717
+  },
+  "key_metadata": {
+    "credits_consumed": 10,
+    "credits_remaining": 1000
+  },
+  "request_id": "00000000-0000-0000-0000-000000000000"
+}

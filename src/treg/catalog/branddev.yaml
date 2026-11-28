@@ -495,6 +495,280 @@ endpoints:
     example_response: examples/branddev.web.crawl.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/crawl
 
+  - id: branddev.news.search
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news/search
+    body_allowlist: true
+    name: Search news by topic or company
+    summary: Find news articles on a plain-language topic, or about one company by name, domain, ticker or ISIN, with publisher, date and a cursor for the next page.
+    input:
+      bodyType: json
+      body:
+        searchBy: {type: object, required: true, example: {type: natural_language, query: Microsoft}, note: "{type: natural_language, query} for a topic, or {type: entity, entity: {type: domain, domain: microsoft.com}} for one company; an entity is a name, domain, ticker or isin"}
+        filterBy: {type: object, required: false, note: "At most one of sourceDomain, sourceCountry, articleLanguage or articleType, each a list of up to 3, plus an optional date {from, to} in epoch milliseconds."}
+        sortBy: {type: object, required: false, note: "{type: newest} or {type: relevance}. A topic search is always by relevance."}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100}
+        cursor: {type: string, required: false, maxLength: 300, note: "next_cursor from the previous page, sent with the same searchBy and filterBy."}
+    test_request: {body: {searchBy: {type: natural_language, query: Microsoft}, limit: 10}}
+    price: {value: '1', currency: credit, per: 10, round: up, unit: result, note: "1 credit per 10 articles returned, rounded up; an empty page is free and an unknown ticker or ISIN answers 404 for 1 credit."}
+    provenance: &context_observed {source: observed, source_url: https://docs.context.dev/account/credits, checked: '2026-11-27', confidence: verified}
+    reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
+    settle: &context_reported {reported: {path: response.key_metadata.credits_consumed, unit: credit}}
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.news.search.json
+    docs_url: https://docs.context.dev/api-reference/news/search
+
+  - id: branddev.web.answers
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /web/answers
+    body_allowlist: true
+    name: Answer a research question with cited sources
+    summary: Research a question on the live web and return the answer in the JSON shape you give, with the source URLs it used.
+    input:
+      bodyType: json
+      body:
+        task: {type: string, required: true, minLength: 1, maxLength: 2000, example: "What does IANA do?", note: "Name domains or URLs in the task to focus the research."}
+        mode: {type: string, required: false, enum: [fast, ultra], default: ultra, note: "fast answers in seconds for 10 credits; ultra researches deeper for 100 credits and is the default."}
+        json_format: {type: object, required: false, example: {description: ""}, note: "An example answer object, not a JSON Schema; a field it cannot fill comes back null."}
+        controls: {type: object, required: false, note: "sources: up to 20 URL prefixes to search, read and cite only; excludeSources: up to 100 to never use."}
+    test_request: {body: {task: "What does IANA do?", mode: fast, json_format: {description: ""}}}
+    price:
+      table:
+        - {when: [{path: body.mode, op: equals, value: fast}], value: '10'}
+        - {when: [{path: body.mode, op: equals, value: ultra}], value: '100'}
+      fallback: {value: '100', note: "the ultra price"}
+      currency: credit
+      unit: call
+      note: "10 credits in fast mode, 100 in ultra; a failed answer is free."
+    provenance: *context_observed
+    settle: *context_reported
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.web.answers.json
+    docs_url: https://docs.context.dev/api-reference/web-extraction/answers
+
+  - id: branddev.documents.parse
+    capability: web.document.parse
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /parse
+    name: Convert a PDF, Office file or image to Markdown
+    summary: Turn an uploaded file - PDF, Word, Excel, PowerPoint, HTML, CSV, code or an image - into Markdown.
+    input:
+      queryParams:
+        extension: {type: string, required: false, example: pdf, note: "The file type when the bytes do not show it: pdf, docx, xlsx, pptx, html, csv, json, md, txt, png, jpg and more."}
+        includeLinks: {type: boolean, required: false, default: true}
+        includeImages: {type: boolean, required: false, default: false}
+        useMainContentOnly: {type: boolean, required: false, default: false, note: "Keep only the main content of an HTML-like file."}
+        includeNumberedPages: {type: boolean, required: false, default: false, note: "Open each PDF page with a <!-- page N --> line."}
+        ocr: {type: boolean, required: false, default: false, note: "Read text from images and scanned PDF pages, 1 more credit per page read; refused on treg's key."}
+        pdf: {type: object, required: false, example: {start: 1, end: 5}, note: "A PDF page range, {start, end}, 1-based and inclusive."}
+      note: "Send the file's raw bytes as the request body (treg call --data @file.pdf), with Content-Type application/octet-stream, up to 50 MiB; not JSON or base64."
+    untestable: "Needs a file's bytes as the request body, which a test request cannot carry; verified live by hand."
+    platform_request: {queryParams.ocr: null}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit per file."}
+    provenance: *context_observed
+    settle: *context_reported
+    added: '2026-11-27'
+    docs_url: https://docs.context.dev/api-reference/utility/parse
+
+  - id: branddev.people.enrich
+    capability: people.enrich
+    platform: people
+    domain: people
+    scope: any_account
+    method: POST
+    path: /people/enrich
+    body_allowlist: true
+    name: Person profile by LinkedIn URL, email or name and company
+    summary: Find one person from a profile URL, an email, or a name with company, school or location, and return their role, career, education and skills with a match score.
+    input:
+      bodyType: json
+      body:
+        social_urls: {type: array, items: {type: string, format: url}, required: false, minItems: 1, maxItems: 20, example: ["https://www.linkedin.com/in/satyanadella/"], note: "A person-profile URL identifies the person without a name."}
+        email: {type: string, required: false, format: email, maxLength: 320, note: "A free or disposable mailbox answers 422."}
+        name: {type: object, required: false, note: "{first, last}; without an email or profile URL, send both with a company, education or location."}
+        company: {type: object, required: false, note: "{name} or {domain}"}
+        education: {type: array, items: {type: object}, required: false, minItems: 1, maxItems: 10, note: "[{institution: {name}, degree, field_of_study, graduation_year}]"}
+        location: {type: object, required: false, note: "{city, region, country}"}
+      note: "Send an email, a profile URL, or a first and last name with company, education or location; every clue is weighed together."
+    test_request: {body: {social_urls: ["https://www.linkedin.com/in/satyanadella/"]}}
+    price: {value: '20', currency: credit, unit: call, note: "20 credits per match; no match is free."}
+    provenance: *context_observed
+    settle: *context_reported
+    miss: {when: {path: response.match.status, op: equals, value: not_found}, means: "no person matched the clues; free"}
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.people.enrich.json
+    docs_url: https://docs.context.dev/api-reference/people/enrich
+
+  - id: branddev.brand.retrieve.unified
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /brand/retrieve
+    body_allowlist: true
+    name: Brand profile by domain, name, email, ticker or URL
+    summary: Retrieve a company's logos, colors, description, socials, address, headcount and industry from any one identifier, including a page URL or a card transaction descriptor.
+    input:
+      bodyType: json
+      body:
+        type: {type: string, required: true, enum: [by_domain, by_name, by_email, by_ticker, by_direct_url, by_transaction], example: by_domain, note: "Which one identifier field below the request carries."}
+        domain: {type: string, required: false, minLength: 3, example: stripe.com}
+        name: {type: string, required: false, minLength: 3, maxLength: 30}
+        email: {type: string, required: false, format: email, note: "A free or disposable mailbox answers 422."}
+        ticker: {type: string, required: false, maxLength: 15}
+        ticker_exchange: {type: string, required: false, note: "Exchange code such as NYSE or LSE; NASDAQ when absent."}
+        direct_url: {type: string, required: false, format: url, note: "Reads only this page."}
+        transaction_info: {type: string, required: false, minLength: 3, maxLength: 500, note: "The descriptor as printed on the statement."}
+        country_gl: {type: string, required: false, note: "Two-letter country code to localize a name or transaction lookup."}
+        city: {type: string, required: false, note: "Transaction lookups only."}
+        mcc: {type: [string, number], required: false, note: "Merchant category code; transaction lookups only."}
+        phone: {type: [string, number], required: false, note: "Transaction lookups only."}
+        high_confidence_only: {type: boolean, required: false, note: "Transaction lookups only: verify the match further."}
+        force_language: {type: string, required: false, example: english, note: "Description language as a full name, such as english or french."}
+        maxSpeed: {type: boolean, required: false, note: "Skip slow steps for a faster, less complete answer."}
+        maxAgeMs: {type: integer, required: false, min: 0, note: "Oldest cached record to accept, in milliseconds; 0 refreshes."}
+    test_request: {body: {type: by_domain, domain: stripe.com, maxSpeed: true}}
+    price: {value: '10', currency: credit, unit: call, note: "10 credits per brand; a domain with no website answers a free 400."}
+    provenance: *context_observed
+    settle: *context_reported
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.brand.retrieve.unified.json
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
+
+  - id: branddev.brand.search
+    capability: companies.autocomplete
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /brand/search
+    strict_query: true
+    name: Autocomplete a brand by name or domain - logo and country
+    summary: Find up to 10 brands matching a partial name or domain, most popular first, each with domain, description, country, language and logo.
+    input:
+      queryArrayEncoding: comma
+      queryParams:
+        query: {type: string, required: true, minLength: 1, maxLength: 100, example: Stripe}
+        country: {type: string, required: false, example: US, note: "Uppercase two-letter country code."}
+        language: {type: string, required: false, example: english, note: "Primary language as a full name."}
+        autocomplete: {type: boolean, required: false, default: true, note: "false matches whole words only."}
+        queryBy: {type: array, items: {type: string, enum: [name, domain]}, required: false, minItems: 1, note: "Match the name, the domain or both (the default)."}
+        typoTolerance: {type: integer, required: false, default: 0, min: 0, max: 2}
+    test_request: {queryParams: {query: Stripe}}
+    price: {value: '1', currency: credit, unit: call, note: "1 credit on the Free and Developer plans, free on Pro, Growth and Scale."}
+    provenance: *context_observed
+    settle: *context_reported
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.brand.search.json
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/search
+
+  - id: branddev.web.styleguide
+    capability: companies.brand.styleguide
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /web/styleguide
+    strict_query: true
+    name: Extract a website's design system by domain or URL - CSS
+    summary: Read colors, type scale, spacing, shadows and component styles (button, card, input) from a live site or one page, light or dark.
+    input:
+      queryParams:
+        domain: {type: string, required: false, minLength: 3, example: stripe.com}
+        directUrl: {type: string, required: false, format: url, note: "One exact page to read instead of the domain."}
+        colorScheme: {type: string, required: false, enum: [light, dark]}
+        maxAgeMs: {type: integer, required: false, min: 0, note: "Oldest cached styleguide to accept, in milliseconds; 0 renders afresh."}
+      note: "Send either domain or directUrl, not both."
+    test_request: {queryParams: {domain: stripe.com}}
+    price: {value: '10', currency: credit, unit: call, note: "10 credits per styleguide."}
+    provenance: *context_observed
+    settle: *context_reported
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.web.styleguide.json
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/styleguide
+
+  - id: branddev.companies.search
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /company/search
+    body_allowlist: true
+    name: Search companies by plain-language description
+    summary: Find companies from a plain-English description, with headcount and country filters, 10 per page with domain, description, location and headcount.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, minLength: 1, maxLength: 5000, example: "Solar startups in California that raised a Series B", note: "Up to 500 characters in fast mode, 5000 in ultra."}
+        mode: {type: string, required: false, enum: [fast, ultra], default: fast, note: "fast answers in about 2 seconds; ultra checks every result against each criterion and takes up to 20."}
+        filters: {type: object, required: false, note: "{countries: [US, GB], employees_min, employees_max}"}
+        cursor: {type: string, required: false, maxLength: 64, note: "next_cursor from the previous page, sent with the same query, mode and filters."}
+    test_request: {body: {query: Stripe}}
+    price:
+      table:
+        - {when: [{path: body.mode, op: equals, value: fast}], value: '2'}
+        - {when: [{path: body.mode, op: equals, value: ultra}], value: '10'}
+      fallback: {value: '10', note: "the ultra price"}
+      currency: credit
+      unit: page
+      note: "2 credits per page in fast mode, 10 in ultra; a page with no companies is free."
+    provenance: *context_observed
+    settle: *context_reported
+    verified: '2026-11-27'
+    added: '2026-11-27'
+    example_response: examples/branddev.companies.search.json
+    docs_url: https://docs.context.dev/api-reference/company/search
+
+  - id: branddev.people.search
+    capability: people.search
+    platform: people
+    domain: people
+    scope: any_account
+    method: POST
+    path: /people/search
+    body_allowlist: true
+    name: Find people by role and employer in plain language
+    summary: Find people from a plain-English description of role, employer, background or location, 10 per page with role, location, experience, skills and profiles.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, minLength: 1, maxLength: 5000, note: "Up to 500 characters in fast mode, 5000 in ultra."}
+        mode: {type: string, required: false, enum: [fast, ultra], default: fast, note: "fast matches on basic criteria; ultra judges each candidate against every criterion and takes up to 30 seconds."}
+        filters: {type: object, required: false, note: "{countries: [US, GB], years_of_experience_min, years_of_experience_max}"}
+        cursor: {type: string, required: false, maxLength: 65536, note: "next_cursor from the previous page, sent with the same query, mode and filters."}
+    untestable: "A real answer lists private individuals; verified live by hand and no answer is stored."
+    price:
+      table:
+        - {when: [{path: body.mode, op: equals, value: fast}], value: '10'}
+        - {when: [{path: body.mode, op: equals, value: ultra}], value: '50'}
+      fallback: {value: '50', note: "the ultra price"}
+      currency: credit
+      unit: page
+      note: "10 credits per page in fast mode, 50 in ultra; a page with no people is free."
+    provenance: *context_observed
+    settle: *context_reported
+    added: '2026-11-27'
+    docs_url: https://docs.context.dev/api-reference/people/search
+
 proposed_capabilities:
   # Brand assets are a genuine gap: the enrichment platform has companies.enrich for firmographics,
   # but nothing for the visual identity an agent can actually render.
@@ -504,3 +778,4 @@ proposed_capabilities:
   companies.website.screenshot: "Capture a screenshot of a company's website"
   companies.website.extract: "Extract named, caller-defined datapoints from a company's website"
   companies.transaction.identify: "Identify the company behind a card or bank transaction descriptor"
+  web.document.parse: "Convert an uploaded document or image into Markdown"
