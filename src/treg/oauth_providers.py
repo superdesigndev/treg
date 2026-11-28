@@ -2284,6 +2284,36 @@ JUSTONEAPI = OAuthProvider(
     probe_path="/api/tiktok/get-user-detail/v1?uniqueId=tiktok",
 )
 
+SOCIALFETCH = OAuthProvider(
+    service="socialfetch",
+    display_name="Social Fetch",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sfk_...",
+    setup_url="https://app.socialfetch.dev/api-keys",
+    setup_action_label="Get your Social Fetch API key",
+    setup_steps=(
+        "Sign up at app.socialfetch.dev/signup. New accounts get 100 free credits and no card is required.",
+        "Open API Keys, create a key, and copy it. The full key is shown once and starts with sfk_.",
+        "Store the key in SOCIALFETCH_API_KEY and send it in the x-api-key header. Do not put it in the URL or in an Authorization Bearer header.",
+    ),
+    setup_note=(
+        "Data lookups are billed in credits. Each response reports the charge in meta.creditsCharged. "
+        "GET /v1/whoami and GET /v1/balance are free. A 200 lookup with lookupStatus not_found or private is charged. "
+        "Failed requests are not charged. There is a hosted MCP server at https://api.socialfetch.dev/mcp; MCP clients can sign in with OAuth, or send the same x-api-key header."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Look up public social media profiles, posts, comments, transcripts and search results as JSON, via API or a hosted MCP server.",
+    base_url="https://api.socialfetch.dev",
+    docs_url="https://www.socialfetch.dev/docs",
+    token_header="x-api-key",
+    token_format="{secret}",
+    probe_path="/v1/whoami",  # free; an invalid or missing key gets a 401 here
+)
+
 SCRAPECREATORS = OAuthProvider(
     service="scrapecreators",
     display_name="ScrapeCreators",
@@ -4640,7 +4670,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SOCIALFETCH, SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,

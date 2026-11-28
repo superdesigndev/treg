@@ -1,0 +1,246 @@
+provider: socialfetch
+source:
+  docs: https://www.socialfetch.dev/docs
+  openapi: https://www.socialfetch.dev/openapi.json
+  curated: '2026-11-27'
+limits: "Paid lookups have no per-minute cap and allow 200 in-flight requests per workspace. GET /v1/whoami is limited to 30 requests a minute per user. GET /v1/balance is limited to 30 requests a minute per workspace."
+pricing_url: https://www.socialfetch.dev/pricing
+defaults:
+  provenance: {source: docs, source_url: 'https://www.socialfetch.dev/pricing.json', checked: '2026-11-27', confidence: documented}
+  bill: {miss: charged}
+  settle: {reported: {path: response.meta.creditsCharged, unit: credit}}
+endpoints:
+  - id: socialfetch.account.identity
+    added: '2026-11-27'
+    capability: account.identity
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /v1/whoami
+    name: "Get the account for this API key"
+    summary: "Return the user and workspace this API key belongs to, at no credit charge"
+    test_request:
+      queryParams: {}
+    price: {value: '0', currency: USD, unit: call, note: "GET /v1/whoami is free. Invalid or missing keys return 401."}
+    bill: null
+    settle: null
+    docs_url: https://www.socialfetch.dev/docs/api/v1/whoami
+
+  - id: socialfetch.tiktok.user.profile
+    added: '2026-11-27'
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/profiles/{handle}
+    name: "Get a TikTok profile"
+    summary: "Get a public TikTok profile by handle, including display name, bio, avatar and public metrics"
+    input:
+      pathParams:
+        handle: {type: string, required: true, minLength: 1, maxLength: 128, note: "TikTok handle, with or without a leading @", example: "tiktok"}
+    test_request:
+      pathParams: {handle: "tiktok"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit on a 200 response, including lookupStatus not_found or private. Failed requests are not charged."}
+    miss: {when: {path: response.data.lookupStatus, op: equals, value: "not_found"}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/profiles/handle/get
+
+  - id: socialfetch.tiktok.search.videos
+    added: '2026-11-27'
+    capability: tiktok.search.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/search
+    name: "Search TikTok videos"
+    summary: "Search public TikTok videos by keyword, with optional date, sort and region filters"
+    input:
+      queryParams:
+        query: {type: string, required: true, minLength: 1, maxLength: 512, note: "Search query text for TikTok videos", example: "web scraping"}
+        datePosted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Optional upload date filter"}
+        sortBy: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Optional sort order"}
+        region: {type: string, required: false, note: "Optional two-letter ISO 3166-1 country code for localized results"}
+        cursor: {type: string, required: false, minLength: 1, note: "Opaque pagination cursor from a previous response"}
+        trim: {type: boolean, required: false, note: "When true, returns a smaller response with fewer fields"}
+        labels: {type: boolean, required: false, default: false, note: "When true, adds free AI labels on each row. Labels are not charged."}
+    test_request:
+      queryParams: {query: "web scraping"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit per successful request, including an empty result page. Failed requests are not charged."}
+    miss: {when: {path: response.data.videos, op: empty}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/search/get
+
+  - id: socialfetch.instagram.user.profile
+    added: '2026-11-27'
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v2/instagram/profiles/{profile}
+    name: "Get an Instagram profile"
+    summary: "Get a public Instagram profile by handle, profile URL or numeric user id"
+    note: "Live docs serve this as GET /v2/instagram/profiles/{profile}. Optional include=recentMedia or include=about adds 1 credit each. The test request omits include."
+    input:
+      pathParams:
+        profile: {type: string, required: true, note: "Handle, profile URL or numeric user id", example: "nike"}
+      queryParams:
+        include: {type: array, items: {type: string}, required: false, note: "Optional extras, comma-separated: recentMedia, about. Each adds 1 credit."}
+    test_request:
+      pathParams: {profile: "nike"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit on a 200 response without include, including lookupStatus not_found or private. Failed requests are not charged."}
+    miss: {when: {path: response.data.lookupStatus, op: equals, value: "not_found"}}
+    docs_url: https://www.socialfetch.dev/docs/api/v2/instagram/profiles/profile/get
+
+  - id: socialfetch.instagram.search.users
+    added: '2026-11-27'
+    capability: instagram.search.users
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v2/instagram/profiles/search
+    name: "Search Instagram profiles"
+    summary: "Search Instagram accounts by name or keyword and return profile summaries"
+    note: "include=metrics adds 1 credit per account whose counts were filled, up to 25. The test request omits include."
+    input:
+      queryParams:
+        query: {type: string, required: true, minLength: 1, maxLength: 512, note: "Name or keyword to search accounts for", example: "nike"}
+        cursor: {type: string, required: false, minLength: 1, maxLength: 16384, note: "nextCursor from the previous page"}
+        include: {type: array, items: {type: string}, required: false, note: "Optional extras, comma-separated. metrics fills follower, following and post counts."}
+    test_request:
+      queryParams: {query: "nike"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit per page without include=metrics, including an empty accounts list."}
+    miss: {when: {path: response.data.accounts, op: empty}}
+    docs_url: https://www.socialfetch.dev/docs/api/v2/instagram/profiles/search/get
+
+  - id: socialfetch.youtube.video.detail
+    added: '2026-11-27'
+    capability: youtube.video.detail
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/videos
+    name: "Get a YouTube video"
+    summary: "Get metadata and stats for a public YouTube video or Short from its URL"
+    input:
+      queryParams:
+        url: {type: string, required: true, minLength: 1, maxLength: 4096, note: "Link to the YouTube video. Shorts URLs are also supported.", example: "https://www.youtube.com/watch?v=TQUqnOtUC_M"}
+        language: {type: string, required: false, minLength: 2, maxLength: 16, note: "Optional preferred language for returned text when the source supports localization"}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=TQUqnOtUC_M"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit on a 200 response, including lookupStatus not_found. Failed requests are not charged."}
+    miss: {when: {path: response.data.lookupStatus, op: equals, value: "not_found"}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/youtube/videos/get
+
+  - id: socialfetch.youtube.video.captions
+    added: '2026-11-27'
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/videos/transcript
+    name: "Get a YouTube video transcript"
+    summary: "Get the transcript or captions for a public YouTube video from its URL"
+    note: "5 credits when a transcript is found. No charge when a transcript is unavailable or the video is not found."
+    input:
+      queryParams:
+        url: {type: string, required: true, minLength: 1, maxLength: 4096, note: "Link to the YouTube video whose transcript should be returned", example: "https://www.youtube.com/watch?v=TQUqnOtUC_M"}
+        language: {type: string, required: false, note: "Optional language code to prefer when several transcripts exist, such as en or en-US"}
+        originalAudio: {type: boolean, required: false, default: false, note: "When true, only return captions in the video's original spoken language and ignore language."}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=TQUqnOtUC_M"}
+    price: {value: '5', currency: credit, per: 1, unit: call, note: "5 credits when a transcript is found. No charge when a transcript is unavailable."}
+    bill: null
+    miss:
+      when:
+        any:
+          - {path: response.data.lookupStatus, op: equals, value: "not_found"}
+          - {path: response.data.transcript, op: empty}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/youtube/videos/transcript/get
+
+  - id: socialfetch.youtube.search.videos
+    added: '2026-11-27'
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/search
+    name: "Search YouTube videos"
+    summary: "Search public YouTube videos by keyword, with optional type, date, duration and region filters"
+    note: "The miss rule is for type=videos. Other types (shorts, channels, playlists) return their own result arrays and leave data.videos empty."
+    input:
+      queryParams:
+        query: {type: string, required: true, minLength: 1, maxLength: 512, note: "Search query text for YouTube content", example: "running"}
+        uploadDate: {type: string, required: false, enum: [today, this_week, this_month, this_year], note: "Optional upload date filter"}
+        sortBy: {type: string, required: false, enum: [relevance, popular], note: "Optional sort order"}
+        type: {type: string, required: false, enum: [videos, shorts, channels, playlists], note: "Optional content type filter"}
+        duration: {type: string, required: false, enum: [under_3_min, between_3_and_20_min, over_20_min], note: "Optional duration filter. Applies to videos, not shorts."}
+        region: {type: string, required: false, note: "Optional ISO 3166-1 country code for localized results"}
+        cursor: {type: string, required: false, minLength: 1, note: "Opaque pagination cursor from a previous response"}
+        includeExtras: {type: boolean, required: false, note: "When true, returns richer per-video metadata when available"}
+    test_request:
+      queryParams: {query: "running", type: "videos"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit per successful request, including an empty result page. Failed requests are not charged."}
+    miss: {when: {path: response.data.videos, op: empty}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/youtube/search/get
+
+  - id: socialfetch.x.user.profile
+    added: '2026-11-27'
+    capability: x.user.profile
+    platform: x
+    scope: any_account
+    method: GET
+    path: /v1/twitter/profiles/{handle}
+    name: "Get an X profile"
+    summary: "Get a public X profile by handle or numeric user id, including display name, bio and public metrics"
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "Profile handle without the leading @, or a numeric user id", example: "nasa"}
+      queryParams:
+        by: {type: string, required: false, enum: [id, handle], note: "Treat the path value as a handle or a numeric user id. Defaults to id when the value is all digits."}
+    test_request:
+      pathParams: {handle: "nasa"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit on a 200 response, including lookupStatus not_found or private. Failed requests are not charged."}
+    miss: {when: {path: response.data.lookupStatus, op: equals, value: "not_found"}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/twitter/profiles/handle/get
+
+  - id: socialfetch.reddit.post.detail
+    added: '2026-11-27'
+    capability: reddit.post.detail
+    platform: reddit
+    scope: any_account
+    method: GET
+    path: /v1/reddit/posts
+    name: "Get a Reddit post"
+    summary: "Get a public Reddit post by URL, including title, body, score and comment count"
+    input:
+      queryParams:
+        url: {type: string, required: true, minLength: 1, maxLength: 4096, note: "Link to the Reddit post", example: "https://www.reddit.com/r/coingecko/comments/1sgke73/coingecko_2026_spot_cex_report/"}
+    test_request:
+      queryParams: {url: "https://www.reddit.com/r/coingecko/comments/1sgke73/coingecko_2026_spot_cex_report/"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit on a 200 response, including lookupStatus not_found. Failed requests are not charged."}
+    miss: {when: {path: response.data.lookupStatus, op: equals, value: "not_found"}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/reddit/posts/get
+
+  - id: socialfetch.reddit.search.posts
+    added: '2026-11-27'
+    capability: reddit.search.posts
+    platform: reddit
+    scope: any_account
+    method: GET
+    path: /v1/reddit/search
+    name: "Search Reddit posts"
+    summary: "Search public Reddit posts by keyword, with optional sort and timeframe filters"
+    note: "The miss rule is for the default type=posts. A type=comments search leaves data.posts empty and returns data.comments instead."
+    input:
+      queryParams:
+        query: {type: string, required: true, minLength: 1, maxLength: 512, note: "Search query text for public Reddit posts or comments", example: "web scraping"}
+        type: {type: string, required: false, enum: [posts, comments], note: "What to search. posts is the default."}
+        sortBy: {type: string, required: false, enum: [relevance, new, top, comment-count], note: "Optional sort order. comment-count is for posts."}
+        timeframe: {type: string, required: false, enum: [all, day, week, month, year], note: "Optional time range filter for post search. Not used with type=comments."}
+        cursor: {type: string, required: false, minLength: 1, note: "Opaque pagination cursor from a previous response"}
+        trim: {type: boolean, required: false, note: "When true, requests a smaller response shape when available"}
+        labels: {type: boolean, required: false, default: false, note: "When true, adds free AI labels on each row. Labels are not charged."}
+    test_request:
+      queryParams: {query: "web scraping", type: "posts"}
+    price: {value: '1', currency: credit, per: 1, unit: call, note: "1 credit per successful request, including an empty result page. Failed requests are not charged."}
+    miss: {when: {path: response.data.posts, op: empty}}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/reddit/search/get
