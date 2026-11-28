@@ -62,6 +62,16 @@ async def test_mark_receipt_retry_append_and_cleanup(clients):
     assert await rows() == []
 
 
+async def test_mark_normalizes_client_attribution(clients):
+    org = await seed(clients)
+    response = await clients.post('/marks', headers={'X-Treg-Token': org['token'],
+                                                     'X-Treg-Client': 'Claude-Code/2.1.0'},
+                                  json={'call_id': 'mark-call', 'basis': 'bounced', 'items': WRONG})
+    assert response.status_code == 201, response.text
+    row, = await rows()
+    assert row.client == 'claude-code'
+
+
 async def test_replace_and_withdraw_stay_on_one_call_and_team(clients):
     org = await seed(clients, 'mark-call', 'other-call')
     first = (await submit(clients, org)).json()['mark_id']

@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from sqlalchemy import delete, exists
@@ -40,6 +40,10 @@ from ..infra.upstream.relay import relay
 from ..models import (CallComparison, CallRecord, CallReview, CapabilityPin, DenyRule, Membership,
                       Org)
 from ..timeutil import utcnow_naive
+
+if TYPE_CHECKING:
+    from ..domain.identity.access import Caller
+    from .call.types import CallerSnapshot
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +82,12 @@ _vendors_cache: tuple[tuple, int, dict[str, frozenset[str]]] | None = None
 
 def ready_key(org_id: int) -> str:
     return f"compare-ready:{org_id}"
+
+
+def caller_allowed(caller: Caller | CallerSnapshot) -> bool:
+    member = caller.membership
+    return (caller.org.archive_opt_out_at is None and member.pinned_tags is None
+            and member.tool_access is None and member.project_access is None)
 
 
 def hint_budget_key(org_id: int) -> str:
@@ -239,7 +249,7 @@ def _vendor_pattern(providers: list[str], endpoints: list[str]) -> re.Pattern:
         if base and (host := httpx.URL(base).host):
             hosts.append(host)
     words = sorted({*hosts, *endpoints, *providers}, key=len, reverse=True)
-    return re.compile(r"(?<![\w.-])(?:" + "|".join(re.escape(w) for w in words) + r")(?![\w-])",
+    return re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(w) for w in words) + r")(?![\w-])",
                       re.IGNORECASE)
 
 
@@ -558,12 +568,11 @@ async def _still_eligible(session_factory, org_id: int) -> bool:
 async def _claim(session_factory, values: dict, limit: int, *, spend_limit_micro: int, team_cap: int,
                  since, ready_since) -> str:
     """In one short transaction, one attempt and B's price on the current UTC day's counts (taken
-    first, in one conditional update: on Postgres its row lock orders concurrent claims), the team
-    and pair cap read again under it, and the comparison row as `pending` (its unique call id stops a second run).
-    `claimed`, `taken`, `gone`, `capped`, `over_spend` or `at_limit`."""
+    first, in one conditional update: on Postgres its row lock orders concurrent claims), check
+    archive opt-out and the pair cap, then insert the `pending` row. The team read locks out an
+    opt-out update until the claim commits so erasure can find the row.
+    `claimed`, `taken`, `gone`, `opted_out`, `capped`, `over_spend` or `at_limit`."""
     async with session_factory() as db:
-        if await db.get(Org, values["org_id"]) is None:
-            return "gone"
         if await comparisons.by_call_ref(db, values["call_ref"]) is not None:
             return "taken"
         taken = await comparisons.take_attempt(db, _day(), limit, price_micro=values.get("b_cost_micro", 0),
@@ -571,6 +580,12 @@ async def _claim(session_factory, values: dict, limit: int, *, spend_limit_micro
         if taken != "taken":
             await db.rollback()
             return taken
+        org = (await db.execute(select(Org.archive_opt_out_at).where(
+            Org.id == values["org_id"],
+        ).with_for_update(read=True))).first()
+        if org is None or org.archive_opt_out_at is not None:
+            await db.rollback()
+            return "gone" if org is None else "opted_out"
         if await comparisons.counted(db, values["org_id"], values["capability"],
                                      (values["a_provider"], values["b_provider"]),
                                      since=since, ready_since=ready_since) >= team_cap:
@@ -585,16 +600,47 @@ async def _claim(session_factory, values: dict, limit: int, *, spend_limit_micro
     return "claimed"
 
 
-async def _finish(session_factory, org_id: int, call_ref: str, values: dict) -> bool:
-    """Settle the claimed row; take it back if its team was deleted meanwhile (team deletion itself
-    removes a row it finds, and the next run removes any it missed)."""
+async def _ready_to_dispatch(session_factory, org_id: int, call_ref: str) -> bool:
+    """Final check immediately before asking B: the team is still active and opted into the
+    archive, and the claimed pending row has not been erased. Removes a still-pending row when
+    the team opted out or was suspended/deleted after claim."""
     async with session_factory() as db:
+        org = await db.get(Org, org_id)
+        row = await comparisons.by_call_ref(db, call_ref)
+        if row is None or row.status != comparisons.PENDING:
+            return False
+        if org is None or org.suspended or org.archive_opt_out_at is not None:
+            await db.execute(delete(CallComparison).where(
+                CallComparison.call_ref == call_ref,
+                CallComparison.status == comparisons.PENDING,
+            ))
+            await db.commit()
+            return False
+    return True
+
+
+async def _finish(session_factory, org_id: int, call_ref: str, values: dict) -> bool:
+    """Settle the claimed row; drop it if the team was deleted or opted out of the archive
+    meanwhile (team deletion and archive erasure remove rows they find, and the next run
+    removes any orphan)."""
+    async with session_factory() as db:
+        org = (await db.execute(select(Org.archive_opt_out_at).where(
+            Org.id == org_id,
+        ).with_for_update(read=True))).first()
+        if org is None or org.archive_opt_out_at is not None:
+            await db.execute(delete(CallComparison).where(
+                CallComparison.call_ref == call_ref,
+                CallComparison.status == comparisons.PENDING,
+            ))
+            await db.commit()
+            return False
         settled = await comparisons.finish(db, call_ref, **values)
         await db.commit()
     if not settled:
         return False
     async with session_factory() as db:
-        if await db.get(Org, org_id) is None:
+        org = await db.get(Org, org_id)
+        if org is None or org.archive_opt_out_at is not None:
             await db.execute(delete(CallComparison).where(CallComparison.call_ref == call_ref))
             await db.commit()
             return False
@@ -904,6 +950,9 @@ async def _one(served: Served, cat, now, session_factory, client, store, totals,
     a_output = _output(a_ep, contract, a_adapter, 200, json.dumps(answer).encode(), identity)
     if a_output is None:
         return "skipped:a_output_unreadable"
+    # Wait before the final eligibility check and claim so opt-out during pacing never claims or dispatches.
+    if totals["called"]:
+        await asyncio.sleep(CALL_GAP_S)
     if not await _still_eligible(session_factory, parent.org_id):
         return "skipped:team_no_longer_eligible"
     claimed = await _claim(session_factory, dict(
@@ -920,12 +969,14 @@ async def _one(served: Served, cat, now, session_factory, client, store, totals,
         return "skipped:day_spend_cap"
     if claimed != "claimed":
         return f"skipped:claim_{claimed}"
+    # No DB lock spans outbound HTTP (non-negotiable 3); recheck right before dispatch, and let
+    # `_finish` discard any in-flight answer whose team opted out or left before settlement.
+    if not await _ready_to_dispatch(session_factory, parent.org_id, parent.call_ref):
+        return "skipped:opted_out_before_dispatch"
     key = (cand.capability, a_ep["provider"], b_provider)
     tally[key] = tally.get(key, 0) + 1
     by = totals["called_by"]
     by["/".join(key)] = by.get("/".join(key), 0) + 1
-    if totals["called"]:
-        await asyncio.sleep(CALL_GAP_S)
     totals["called"] += 1
     totals["estimate_micro"] += target.price_micro
     try:
@@ -1037,11 +1088,11 @@ def compact_pair(pair: dict) -> dict:
     return out
 
 
-async def next_for(org_id: int, *, pinned: bool) -> dict | None:
-    """The team's oldest comparison waiting for a verdict, blinded; None (and the invitation flag
-    cleared) when there is none. A pinned caller never reads one: comparisons carry no pin."""
-    if pinned:
+async def next_for(caller: Caller) -> dict | None:
+    """The team's oldest comparison waiting for a verdict, blinded, if the caller may see it."""
+    if not caller_allowed(caller):
         return None
+    org_id = caller.org_id
     async with session_maker() as db:
         row = await comparisons.next_ready(db, org_id, _since())
     if row is None:
@@ -1054,11 +1105,12 @@ async def next_for(org_id: int, *, pinned: bool) -> dict | None:
             **({"truncated_parts": cut} if cut else {})}
 
 
-async def submit(org_id: int, *, pinned: bool, comparison_id: int, choice: str,
+async def submit(caller: Caller, *, comparison_id: int, choice: str,
                  reason: str | None, client: str) -> tuple[str, bool]:
     """Record a verdict; returns (the verdict as shown, inserted). A second verdict keeps the first."""
-    if pinned:
+    if not caller_allowed(caller):
         raise ComparisonNotFound
+    org_id = caller.org_id
     async with session_maker() as db:
         row = await comparisons.get(db, comparison_id, org_id)
         if row is None or row.status not in (comparisons.READY, comparisons.DECIDED):

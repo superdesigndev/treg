@@ -10,6 +10,7 @@ from .. import hints
 from ..application import compare as compare_app
 from ..application import feedback as feedback_app
 from ..application.call.invite import accepted_kinds
+from ..caller_metadata import _client_of
 from ..domain import feedback
 from ..domain.feedback import marks, reviews
 from ..domain.governance.access import pinned_tag_predicates
@@ -116,7 +117,7 @@ async def submit_review(
         values["rows"] = [{k: v for k, v in row.items() if v is not None} for row in values["rows"]]
         review_id, inserted, mark_id = await feedback_app.submit_review(
             org_id=caller.org_id, user_email=caller.email,
-            client=request.headers.get("X-Treg-Client", ""),
+            client=_client_of(request),
             shows_compare="compare" in accepted_kinds(request.headers.get("X-Treg-Hints")),
             pinned_tags=caller.membership.pinned_tags, **values,
         )
@@ -173,7 +174,7 @@ async def submit_mark(
     try:
         mark_id, inserted = await feedback_app.submit_mark(
             org_id=caller.org_id, user_email=caller.email,
-            client=request.headers.get("X-Treg-Client", ""),
+            client=_client_of(request),
             pinned_tags=caller.membership.pinned_tags, **values,
         )
     except feedback_app.FeedbackRateLimited:
@@ -204,7 +205,7 @@ async def next_comparison(caller: Caller = Depends(require_member), compact: boo
     """The team's oldest comparison waiting for a verdict, blinded: answer 1 and 2, no vendor.
     `compact`: the pair as a CLI prints it beside a call (`compare_app.compact_pair`), with the
     words that ask for the verdict (`how_to_vote`), so they change without a CLI release."""
-    pair = await compare_app.next_for(caller.org_id, pinned=caller.membership.pinned_tags is not None)
+    pair = await compare_app.next_for(caller)
     if pair is None:
         return Response(status_code=204)
     if not compact:
@@ -230,9 +231,9 @@ async def submit_comparison(
 ) -> dict:
     try:
         choice, inserted = await compare_app.submit(
-            caller.org_id, pinned=caller.membership.pinned_tags is not None,
+            caller,
             comparison_id=body.comparison_id, choice=body.choice, reason=body.reason,
-            client=request.headers.get("X-Treg-Client", ""))
+            client=_client_of(request))
     except compare_app.ComparisonNotFound:
         raise HTTPException(404, "Comparison not found in this team.") from None
     response.status_code = 201 if inserted else 200

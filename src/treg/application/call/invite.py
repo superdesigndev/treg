@@ -132,11 +132,10 @@ async def invitation(context: CallContext, status: int, *, replayed: bool,
 
 
 async def _compare_waiting(context: CallContext) -> bool:
-    """The team has a comparison waiting and its hourly ration of compare invitations is not spent.
-    A pinned caller never reads one (application/compare.py), so it is never asked."""
+    """The caller can compare, the team has a pair waiting, and its invitation budget has room."""
     settings = get_settings()
     caller = context.input.caller
-    if not compare.configured() or caller.membership.pinned_tags is not None:
+    if not compare.caller_allowed(caller) or not compare.configured():
         return False
     store = kv.store()
     if not await store.has_flag(compare.ready_key(caller.org_id)):

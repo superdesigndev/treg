@@ -15,7 +15,7 @@ from sqlalchemy import delete
 from sqlmodel import select
 
 from treg import archive, hints
-from treg.application import compare
+from treg.application import archive_erasure, compare
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
 from treg.config import Settings, get_settings
@@ -526,6 +526,92 @@ async def test_a_team_deleted_during_the_run_gets_no_row(clients, search_on, mon
     assert len(sent) == 1 and await _rows() == []
 
 
+async def test_a_worker_cannot_claim_a_pair_after_archive_erasure(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(org_id, "erase before claim")
+    claim = compare._claim
+
+    async def erase_then_claim(*args, **kwargs):
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+        await archive_erasure.erase_org(org_id)
+        return await claim(*args, **kwargs)
+
+    monkeypatch.setattr(compare, "_claim", erase_then_claim)
+    result = await _collect()
+    assert "claim_opted_out" in result["skip_reasons"], result
+    assert sent == [] and await _rows() == []
+    async with session_maker() as db:
+        assert not await comparisons.attempts(db, compare._day())
+
+
+@pytest.mark.parametrize("erase", [True, False])
+async def test_opt_out_after_claim_and_before_dispatch_skips_b(clients, search_on, monkeypatch, erase):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(org_id, "opt out after claim")
+    claim = compare._claim
+
+    async def claim_then_opt_out(*args, **kwargs):
+        outcome = await claim(*args, **kwargs)
+        assert outcome == "claimed"
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+        if erase:
+            await archive_erasure.erase_org(org_id)
+        return outcome
+
+    monkeypatch.setattr(compare, "_claim", claim_then_opt_out)
+    result = await _collect()
+    assert result["called"] == 0 and result["skip_reasons"] == {"opted_out_before_dispatch": 1}, result
+    assert sent == [] and await _rows() == []
+    assert not await kv.store().has_flag(compare.ready_key(org_id))
+
+
+async def test_pacing_wait_runs_before_final_eligibility_check_and_claim(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    sent = _relay_b(monkeypatch)
+    await _routed_call(org_id, "first call")
+    await _routed_call(org_id, "second call")
+    monkeypatch.setattr(compare, "CALL_GAP_S", 0.5)
+    slept: list[float] = []
+
+    async def sleep_and_opt_out(delay: float):
+        slept.append(delay)
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+        await archive_erasure.erase_org(org_id)
+
+    monkeypatch.setattr(compare.asyncio, "sleep", sleep_and_opt_out)
+    result = await _collect()
+    assert slept == [0.5]
+    assert result["called"] == 1 and len(sent) == 1, result
+    assert result["skip_reasons"] == {"team_no_longer_eligible": 1}, result
+    assert await _rows() == []
+    async with session_maker() as db:
+        assert await comparisons.attempts(db, compare._day()) == 1
+
+
+async def test_opt_out_while_b_is_in_flight_drops_the_result(clients, search_on, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+
+    async def opt_out_in_flight():
+        opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+        assert opted_out.status_code == 200, opted_out.text
+
+    sent = _relay_b(monkeypatch, before=opt_out_in_flight)
+    await _routed_call(org_id, "opt out in flight")
+    result = await _collect()
+    assert len(sent) == 1 and result["ready"] == 0, result
+    assert await _rows() == []
+    assert not await kv.store().has_flag(compare.ready_key(org_id))
+
+
 async def test_a_row_settled_as_the_team_goes_is_taken_back(clients, monkeypatch):
     from contextlib import asynccontextmanager
     from treg.domain.governance import teams
@@ -615,6 +701,15 @@ def test_blinding_keeps_the_text_and_hides_the_vendor():
         "note": "an example from [vendor], not tavilyx"}]}
     text, cut = compare._truncate("word " * 400, 1024)
     assert cut and len(text.encode()) == 1024
+
+
+def test_blinding_redacts_vendor_labels_in_sibling_subdomains():
+    providers = ["exa", "anyapi", "dataforseo"]
+    pattern = compare._vendor_pattern(providers, [])
+    text = "An example: https://cdn.exa.ai/x https://docs.anyapi.io/ref https://storage.dataforseo.com/"
+    assert compare._blind(text, pattern, set(providers)) == (
+        "An example: https://cdn.[vendor].ai/x https://docs.[vendor].io/ref https://storage.[vendor].com/"
+    )
 
 
 # The invitation
@@ -811,7 +906,7 @@ async def test_next_is_blinded_and_a_verdict_maps_back(clients, monkeypatch):
     assert "provider" not in got.text and "_treg" not in got.text
 
     sent = await clients.post("/comparisons", json={"comparison_id": one, "choice": "1", "reason": "B is right"},
-                              headers={"X-Treg-Client": "compare-test"})
+                              headers={"X-Treg-Client": "Claude-Code/2.1.0"})
     assert sent.status_code == 201 and sent.json() == {"comparison_id": one, "choice": "1", "status": "received"}
     again = await clients.post("/comparisons", json={"comparison_id": one, "choice": "2"})
     assert again.status_code == 200 and again.json() == {"comparison_id": one, "choice": "1",
@@ -824,7 +919,7 @@ async def test_next_is_blinded_and_a_verdict_maps_back(clients, monkeypatch):
     assert not await kv.store().has_flag(compare.ready_key(org_id))
 
     rows = {r.call_ref: r for r in await _rows()}
-    assert (rows["first-b"].choice, rows["first-b"].reason, rows["first-b"].client) == ("b", "B is right", "compare-test")
+    assert (rows["first-b"].choice, rows["first-b"].reason, rows["first-b"].client) == ("b", "B is right", "claude-code")
     assert rows["first-a"].choice == "a" and rows["first-a"].status == "decided"
     assert rows["first-b"].decided_at is not None and rows["too-old"].status == "ready"
 
@@ -852,6 +947,60 @@ async def test_another_team_can_neither_read_nor_answer(clients, monkeypatch):
                                headers=headers)).status_code == 404
     assert (await clients.post("/comparisons", json={"comparison_id": failed, "choice": "1"})).status_code == 404
     assert (await _rows())[0].status == "ready"
+
+
+@pytest.mark.parametrize(("scope", "value"), [
+    ("tool_access", ["example.search"]),
+    ("tool_access", []),
+    ("project_access", [1]),
+    ("project_access", []),
+    ("pinned_tags", {"scope": "example"}),
+])
+async def test_a_scoped_member_cannot_receive_or_answer_a_waiting_pair(clients, monkeypatch, scope, value):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    pair = await _seed(org_id, first="a", call_ref="before-member-scope")
+    key = compare.ready_key(org_id)
+    await kv.store().set_flag(key, compare.READY_TTL_S)
+    created = await clients.post(f"/orgs/{org_id}/agents", json={"name": "Scoped reviewer"})
+    assert created.status_code == 200, created.text
+    agent = created.json()
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership).where(
+            Membership.org_id == org_id, Membership.user_id == agent["user_id"],
+        ))).scalar_one()
+        assert member.role == "member" and member.pinned_tags is None
+        setattr(member, scope, value)
+        await db.commit()
+    _flagged_call(monkeypatch)
+
+    headers = {"X-Treg-Token": agent["token"], "X-Treg-Hints": "compare"}
+    called = await clients.get("/call/example.search", headers=headers)
+    assert called.status_code == 200 and "X-Treg-Hint" not in called.headers
+    assert (await clients.get("/comparisons/next", headers=headers)).status_code == 204
+    vote = await clients.post("/comparisons", headers=headers, json={"comparison_id": pair, "choice": "1"})
+    assert vote.status_code == 404
+    assert await kv.store().has_flag(key)
+    assert (await clients.get("/comparisons/next")).json()["comparison_id"] == pair
+
+
+async def test_archive_opt_out_blocks_an_existing_pair(clients, monkeypatch):
+    _compare_on(monkeypatch)
+    org_id = await _org_id(clients)
+    pair = await _seed(org_id, first="a", call_ref="before-archive-opt-out")
+    key = compare.ready_key(org_id)
+    await kv.store().set_flag(key, compare.READY_TTL_S)
+    assert (await clients.get("/comparisons/next")).json()["comparison_id"] == pair
+    opted_out = await clients.patch(f"/orgs/{org_id}/settings", json={"archive": False})
+    assert opted_out.status_code == 200 and opted_out.json()["archive"] is False
+    _flagged_call(monkeypatch)
+
+    called = await clients.get("/call/example.search", headers={"X-Treg-Hints": "compare"})
+    assert called.status_code == 200 and "X-Treg-Hint" not in called.headers
+    assert (await clients.get("/comparisons/next")).status_code == 204
+    assert (await clients.post("/comparisons", json={"comparison_id": pair, "choice": "1"})).status_code == 404
+    assert await kv.store().has_flag(key)
+    assert (await _rows())[0].status == comparisons.READY
 
 
 async def test_mcp_compare_tool_round_trip(clients, monkeypatch):

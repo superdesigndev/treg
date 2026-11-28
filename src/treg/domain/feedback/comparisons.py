@@ -4,7 +4,7 @@ A comparison is shown blinded: answer 1 and answer 2 in the stored `first` order
 name. A verdict names 1, 2, tie or both_bad and is mapped back to a and b here."""
 from datetime import datetime
 
-from sqlalchemy import func, or_, update
+from sqlalchemy import delete, func, or_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,11 @@ def add(db: AsyncSession, **values) -> CallComparison:
     row = CallComparison(**values)
     db.add(row)
     return row
+
+
+async def delete_for_org(db: AsyncSession, org_id: int) -> int:
+    result = await db.execute(delete(CallComparison).where(CallComparison.org_id == org_id))
+    return result.rowcount or 0
 
 
 async def take_attempt(db: AsyncSession, day: str, limit: int, *, price_micro: int = 0,

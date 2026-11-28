@@ -65,6 +65,16 @@ async def test_missing_and_ledger_only_are_retryable(clients):
     assert await rows() == []
 
 
+@pytest.mark.parametrize(('header', 'client'), [('Claude-Code/2.1.0', 'claude-code'), ('mcp-prior', 'mcp-prior')])
+async def test_review_normalizes_client_attribution(clients, header, client):
+    org = await seed(clients)
+    response = await clients.post('/reviews', headers={'X-Treg-Token': org['token'], 'X-Treg-Client': header},
+                                  json={'call_id': 'review-call', 'usefulness': 'useful'})
+    assert response.status_code == 201, response.text
+    row, = await rows()
+    assert row.client == client
+
+
 async def test_own_tool_cannot_be_reviewed(clients):
     org = await seed(clients, endpoint_id=None)
     assert (await submit(clients, org)).status_code == 400
