@@ -473,7 +473,10 @@ past the bound do not make every new team scan them.
   lapsed counter at once each time the lifetime ran out, the ones that did not get the lease
   left for the exact path, and the refill then queued behind them on the money admission lease:
   the exact path serves one call at a time, so the team stayed there.
-- **refill.** Under the money admission lease, like a reserve: reap stale holds, then
+- **refill.** Under the money admission lease, like a reserve but with a `priority` turn (§ Money
+  admission): calls wait on a refill, so the team's own exact-path traffic must not shut it out
+  until its deadline lapses. A frozen counter's refill, which folds the whole queue under the
+  lease, waits in line. Then: reap stale holds, then
   `refill_allowance_in_transaction` brings the counter up to `money_allowance_chunk_micro`
   (or further, for a team that spends faster: the next bullet);
   after the commit, `store.allowance_add`. A refill does not fold: calls wait on it, and the
@@ -1005,16 +1008,18 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   and cleanup must run. One caller opts out: work that can simply come back later (the allowance
   fold loop) passes `refuse_on_timeout` and gets `AdmissionTimeout` at its own `max_wait_s`
   before the database, counted as `rejected`.
-- **Priority.** A waiter passing `priority` (only the allowance fold of a queue that has waited
-  too long, § Allowance) does not queue behind its process's local waiters, and once it finds the
-  lease busy it claims the next turn: a second key beside the lease (`…:claim`, token-owned,
-  expiring with the waiter's budget). Every acquisition asks for the lease `unless` another
-  token holds that claim (`kv.acquire_lease(unless=…)`, one script), so every other waiter of
-  the team, in any process, is turned away until the claimant has the lease; it gives the claim
-  back at once on entry, and on timeout, cancellation or a store fault (the TTL bounds one not
-  given back). Their own budgets keep running meanwhile, so a reserve behind it can shed load
-  as above. A process still running without `unless` ignores claims: priority is then lost, not
-  isolation.
+- **Priority.** A waiter passing `priority` (the allowance fold of a queue that has waited too
+  long, and an allowance refill other than a frozen counter's, § Allowance) does not queue behind
+  its process's local waiters, and once it finds the lease busy it claims the next turn: a second
+  key beside the lease (`…:claim`, token-owned, expiring with the waiter's budget). Every
+  acquisition asks for the lease `unless` another token holds that claim
+  (`kv.acquire_lease(unless=…)`, one script), so every other waiter of the team, in any process,
+  is turned away until the claimant has the lease; it gives the claim back at once on entry, and
+  on timeout, cancellation or a store fault (the TTL bounds one not given back). Their own budgets
+  keep running meanwhile, so a reserve behind it can shed load as above. A refill and a fold of
+  one team never claim at once: both hold the team's allowance lease first (§ Allowance), where a
+  starved fold's own claim orders them. A process still running without `unless` ignores claims:
+  priority is then lost, not isolation.
 - **Wait bounds.** Non-reserve operations wait `max(money_admission_wait_s, 2 * lease)` (a dead
   holder keeps its lease for one TTL), but never more than half of `hold_grace_s`, and never past
   the reaper age of the oldest affected hold: the call records a monotonic `reserved_at` before

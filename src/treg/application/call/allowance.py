@@ -388,7 +388,11 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
 
     Queued charges are the background loop's to fold (`allowance_sweep`), not a refill's: calls
     wait on a refill. The one exception is a frozen counter, where the whole queue is folded
-    here so the balance read after it is the true one."""
+    here so the balance read after it is the true one.
+
+    Calls wait on a refill, so it claims the next turn on the team's money admission ahead of
+    the team's own exact-path traffic. The frozen counter's refill holds the lease for the whole
+    queue and waits in line."""
     store, settings, sizing = kv.store(), get_settings(), _sizing()
     # Sized to the team's spend, the refill reads the pace in the same script as the state: it
     # asks the store nothing a refill to the chunk does not.
@@ -401,11 +405,13 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
     available, seen_frozen, thawed, counter_epoch, run = state[:5]
     target = max(settings.money_allowance_chunk_micro, need_micro)
     grow_to = _sized_target(state[5], state[6], target) if sizing else None
+    fold_all = seen_frozen != thawed
     try:
         async with (
             money_lock(org_id),
             money_admission.admit(
-                money_admission.require_balance_orgs([org_id]), operation="reserve"),
+                money_admission.require_balance_orgs([org_id]), operation="reserve",
+                priority=not fold_all),
             money_session(session_maker()) as db,
         ):
             await ledger.reap_stale_holds(db, org_id=org_id)
@@ -413,7 +419,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
             # queued charge is applied and the balance read after that, not after one batch.
             result = await allowance.refill_allowance_in_transaction(
                 db, org_id, max(0, target - available), daily_cap_micro=daily_cap_micro,
-                fold_limit=0, fold_all=seen_frozen != thawed,
+                fold_limit=0, fold_all=fold_all,
                 counter_epoch=counter_epoch, fresh_add_micro=target, counter_micro=available,
                 current_team=functools.partial(_current_team, org_id), grow_to_micro=grow_to,
                 balance_percent=settings.money_allowance_refill_balance_percent,

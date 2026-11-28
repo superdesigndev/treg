@@ -386,11 +386,12 @@ async def admit(org_ids: Iterable[int | None], *, operation: str,
     """`max_wait_s` caps a non-reserve wait for a caller with its own deadline.
     `refuse_on_timeout` is for work that can come back later: a non-reserve wait that runs out
     raises `AdmissionTimeout` before the database, as a reserve's does, instead of falling back.
-    `priority` is for work that has already waited too long behind the team's own traffic (the
-    allowance fold of a starved queue): once the lease is busy the waiter claims its next turn,
-    so every other waiter, here or in another process, is turned away until the claim's owner
-    has the lease or its wait runs out, and it does not queue behind this process's waiters.
-    Those waiters keep their own budgets; a reserve's can run out meanwhile."""
+    `priority` is for work the team's own traffic must not shut out (the allowance fold of a
+    starved queue, and an allowance refill that calls are waiting on): once the lease is busy
+    the waiter claims its next turn, so every other waiter, here or in another process, is
+    turned away until the claim's owner has the lease or its wait runs out, and it does not
+    queue behind this process's waiters. Those waiters keep their own budgets; a reserve's can
+    run out meanwhile."""
     raw = list(org_ids)
     if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
         # Do not yield. `async with admit(), session()` must not open the session.
