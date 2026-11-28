@@ -40,6 +40,18 @@ async def _rows():
     return logs, misses
 
 
+async def test_podcast_queries_surface_exa_as_a_strong_agent_search_result(clients, monkeypatch):
+    _v2(monkeypatch)
+    seen = []
+    monkeypatch.setattr(judge_infra, "judge", _fake_v2({"exa.web.search": 0.92}, seen, plat=("web", 0.9)))
+    for query in ("Exa podcast search", "search podcast transcripts"):
+        out = await _search(query)
+        assert out["verdict"] == "strong", query
+        assert out["results"][0]["endpoint_id"] == "exa.web.search", query
+        assert any(c["id"] == "exa.web.search" and "podcast" in c["summary"] and "transcripts" in c["summary"]
+                   for c in seen[-1][1]), query
+
+
 # ---------------------------------------------------------------- the page, as a pure function
 
 def _found(verdict, groups, reason=""):
