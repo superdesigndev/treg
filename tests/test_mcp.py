@@ -1598,6 +1598,67 @@ async def test_a_call_served_by_the_overflow_relay_says_so_and_prices_it(clients
     assert "real price" in hint and len(seen) == 1
 
 
+async def test_overflow_call_on_mcp_keeps_overflow_hint_and_preserves_invitation_budget(
+        clients, overflow_on, monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from test_marketplace_call import _fake_relay
+    from treg import analytics, hints
+    from treg.application import compare, review_targets
+    from treg.application.call import service as call_service
+    from treg.config import get_settings
+    from treg.domain.feedback import comparisons
+    from treg.infra import kv
+    from treg.infra.db import session_maker
+    from treg.models import CallComparison
+
+    token = clients.headers["X-Treg-Token"]
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    await _overflow_rescued(monkeypatch)
+    monkeypatch.setattr(get_settings(), "compare_capabilities", ["web.search"])
+    monkeypatch.setattr(get_settings(), "compare_max_per_day", 5)
+    monkeypatch.setattr(get_settings(), "compare_daily_usd", 1.0)
+    monkeypatch.setattr(get_settings(), "compare_budget_per_hour", 1)
+    monkeypatch.setattr(get_settings(), "mark_hint_per_hour", 1)
+    monkeypatch.setattr(get_settings(), "review_budget_per_hour", 1)
+    monkeypatch.setattr(review_targets, "sampled", lambda *_: True)
+    monkeypatch.setattr(hints, "sampled", lambda *_: True)
+    async with session_maker() as db:
+        db.add(CallComparison(
+            org_id=org_id, user_email="tim@superdesign.dev", call_ref="overflow-wait",
+            capability="web.search", a_endpoint="tavily.web.search", a_provider="tavily",
+            b_endpoint="exa.web.search", b_provider="exa", status=comparisons.READY,
+            first="a", input='{"q":"espresso"}', a_body='{"results":[{"title":"A"}]}',
+            b_body='{"results":[{"title":"B"}]}',
+        ))
+        await db.commit()
+    store = kv.store()
+    await store.set_flag(compare.ready_key(org_id), 60)
+    take = AsyncMock(wraps=store.take)
+    monkeypatch.setattr(store, "take", take)
+    capture = MagicMock()
+    monkeypatch.setattr(analytics, "capture", capture)
+
+    async with mcp_session(clients) as c:
+        overflow_out = await _call_tool(c, "call", {"endpoint_id": "tikhub.tiktok.video.comments",
+                                                    "params": {"aweme_id": "7"}}, token=token)
+        assert overflow_out.get("status") == 200, overflow_out
+        assert overflow_out["served_via"] == "overflow:orthogonal"
+        assert "overflow relay (orthogonal)" in (overflow_out.get("hint") or "")
+        assert "compare" not in overflow_out
+        take.assert_not_awaited()
+        assert "hint_attached" not in [entry.args[1] for entry in capture.call_args_list]
+
+        # The team's single hourly compare budget is intact for the next direct 200 call.
+        monkeypatch.setattr(call_service, "relay", _fake_relay(200, json.dumps(VENDOR_BODY).encode()))
+        direct_out = await _call_tool(c, "call", {"endpoint_id": "tikhub.tiktok.video.comments",
+                                                  "params": {"aweme_id": "8"}}, token=token)
+    assert direct_out.get("status") == 200, direct_out
+    assert "served_via" not in direct_out
+    assert direct_out["compare"]["capability"] == "web.search"
+    assert "hint_attached" in [entry.args[1] for entry in capture.call_args_list]
+
+
 async def test_a_direct_call_carries_no_served_via(clients, platform_on):
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as c:

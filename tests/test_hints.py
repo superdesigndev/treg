@@ -103,14 +103,18 @@ def _platform_call(monkeypatch, *, tier='platform', own=False, upstream_headers=
     monkeypatch.setattr(call.catalog_store, 'load', lambda: SimpleNamespace(by_id={'example.search': {}}))
 
 
+@pytest.mark.parametrize('header', [
+    (b'x-treg-upstream-failed', b'task failed'),
+    (b'x-treg-served-via', b'overflow:orthogonal'),
+])
 @pytest.mark.parametrize('kind', ['compare', 'review', 'mark', 'feedback'])
-async def test_upstream_failure_envelope_skips_invitation(clients, monkeypatch, kind):
+async def test_upstream_failure_or_overflow_skips_invitation(clients, monkeypatch, header, kind):
     from treg import analytics
     from treg.application import compare, review_targets
     from treg.infra import kv
 
     org_id = (await clients.get('/orgs')).json()[0]['org_id']
-    _platform_call(monkeypatch, upstream_headers=((b'x-treg-upstream-failed', b'task failed'),))
+    _platform_call(monkeypatch, upstream_headers=(header,))
     monkeypatch.setattr(compare, 'configured', lambda: True)
     monkeypatch.setattr(review_targets, 'sampled', lambda *_: True)
     monkeypatch.setattr(hints, 'sampled', lambda *_: True)
@@ -124,7 +128,7 @@ async def test_upstream_failure_envelope_skips_invitation(clients, monkeypatch, 
     response = await clients.get('/call/example.search', headers={'X-Treg-Hints': kind})
 
     assert response.status_code == 200 and response.content == b'{}'
-    assert response.headers['X-Treg-Upstream-Failed'] == 'task failed'
+    assert response.headers[header[0].decode()] == header[1].decode()
     assert all(name not in response.headers for name in ('X-Treg-Hint', 'X-Treg-Hint-Text', 'X-Treg-Review'))
     take.assert_not_awaited()
     assert 'hint_attached' not in [entry.args[1] for entry in capture.call_args_list]

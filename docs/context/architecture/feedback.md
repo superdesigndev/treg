@@ -172,7 +172,9 @@ the whole answer), optional `checked`, `evidence_call_id`, a private `note` and 
 
 `application.call.invite.invitation(context, status, replayed, accepts)` runs in
 `routers.call._relay_answer` before the response streams. The router skips invitation selection
-on an `X-Treg-Upstream-Failed` response, so a failed upstream envelope spends no invitation budget.
+on `X-Treg-Upstream-Failed` and `X-Treg-Served-Via: overflow:*` responses, so failed upstream
+envelopes and overflow-relayed calls spend no invitation budget and never collide with MCP's
+single hint slot.
 `hints.accepted_kinds` parses the invitation kinds a client displays from `X-Treg-Hints`.
 An omitted header selects `LEGACY_KINDS` (review and feedback) for a named runtime and
 `UNNAMED_KINDS` (feedback) for an unnamed caller. An empty header opts out of every kind.

@@ -481,7 +481,9 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
         # Optional invitation, decided before the body streams (application/call/invite.py).
         declared_hints = hints.hints_header(request.headers)
         kind = None
-        if not response.headers.get("X-Treg-Upstream-Failed"):
+        served_via = response.headers.get("X-Treg-Served-Via") or ""
+        if (not response.headers.get("X-Treg-Upstream-Failed")
+                and not served_via.startswith("overflow:")):
             kind = await invitation(
                 context, response.status_code,
                 replayed=bool(response.headers.get("X-Treg-Idempotent-Replay")),
