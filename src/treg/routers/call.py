@@ -46,6 +46,7 @@ from ..domain.catalog import store as catalog_store
 from ..domain.governance import access as access_policy
 from ..domain.governance import publicdemo as publicdemo_policy
 from ..domain.governance import usage as usage_policy
+from ..domain.identity import api_keys as managed_keys
 from ..domain.identity.access import Caller, require_member
 from ..infra.db import answers_db_busy, get_session
 from ..infra import org_concurrency, org_flow_control, org_traffic
@@ -260,6 +261,9 @@ async def _stamp_call_exit(
     if not getattr(request.state, "call_audited", False):
         org_id, email = getattr(request.state, "call_identity", (None, ""))
         key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
+        if status_code == 401 and key_prefix is None:
+            key_prefix = managed_keys.refused_credential_label(
+                request.headers.get("x-treg-token", ""))
         context = getattr(request.state, "call_context", None)
         rest = _call_rest(request, context)
         refused_by = refused_by or _refusal_kind(status_code)

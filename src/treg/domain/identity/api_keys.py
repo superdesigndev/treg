@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import crypto
+from . import session as identity_session
 from ...infra.db import background_session_maker
 from ...models import ApiKey, ApiKeyEvent, Membership, User
 from ...timeutil import utcnow_naive
@@ -54,10 +55,34 @@ def is_machine_email(email: str) -> bool:
         ("@public-demo.treg.local", "@payers.treg.local"))
 
 
+MANAGED_PREFIX = "treg_"
+SAFE_PREFIX_LEN = 12
+UNRECOGNIZED_LABEL = "unrecognized"
+
+
 def mint_secret() -> tuple[str, str, str]:
     """Return plaintext, safe prefix, and SHA-256 hash for a new managed credential."""
-    secret = f"treg_{crypto.new_token()}"
-    return secret, secret[:12], crypto.hash_token(secret)
+    secret = f"{MANAGED_PREFIX}{crypto.new_token()}"
+    return secret, secret[:SAFE_PREFIX_LEN], crypto.hash_token(secret)
+
+
+def refused_credential_label(token: str) -> str | None:
+    """What a refused bearer credential may leave on its call row: the `safe_prefix` a managed
+    key already shows, or `uid:<id>` (plus its pinned team) for an identity token whose signature
+    verifies. Nothing else of a string treg did not issue is kept, so a provider key sent by
+    mistake leaves only `unrecognized`; no token leaves None."""
+    token = (token or "").strip()
+    if not token:
+        return None
+    if token.startswith(MANAGED_PREFIX) and len(token) > SAFE_PREFIX_LEN:
+        return token[:SAFE_PREFIX_LEN]
+    claims = identity_session.signed_claims(token)
+    if claims is None:
+        return UNRECOGNIZED_LABEL
+    label = f"uid:{claims['uid']}"
+    if org := claims.get("org"):
+        label += f" org:{org[:64]}"
+    return label
 
 
 def audit_event(db: AsyncSession, key: ApiKey, actor_email: str, action: str) -> None:

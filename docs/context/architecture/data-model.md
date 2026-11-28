@@ -328,6 +328,10 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
 - `refused_by`: a treg refusal's mechanism; null for an upstream answer (`payment` is an
   agent-payments 402 asking a keyless caller to pay or prove its wallet). `endpoint_stats` excludes
   refused rows.
+- `api_key_prefix` on a call-surface 401 (no team, no key resolved) names the refused credential's
+  owner without keeping it (`managed_keys.refused_credential_label`): the 12-character
+  `safe_prefix` of a `treg_` key, `uid:<id>` plus its pinned team for an identity token whose
+  signature verifies, `unrecognized` for any other string, and null when no token was sent.
 - `call_ref` is the `X-Treg-Call-Id` and the ledger's `call_id` on a metered call: one value joins
   audit, money and the builder's records.
 - `upstream_ms`: from sending the request until the answer is read (or headers arrive, when it
