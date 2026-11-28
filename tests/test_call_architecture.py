@@ -132,7 +132,7 @@ _DATAPLANE_DERIVED_WRITES = {
     "provider_concurrency_lease": (
         (service._execute_call, "fair_share.acquire"),
         (fair_share._Pool._ask, "provider_concurrency.try_acquire"),
-        (provider_concurrency.try_acquire, "store.acquire_slot"),
+        (provider_concurrency.try_acquire_slot, "store.acquire_slot"),
         (provider_concurrency.Lease._renew, "self.store.renew_slot"),
         (provider_concurrency.Lease._release, "self.store.release_slot"),
     ),
@@ -429,7 +429,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_execute_call", "fair_share.acquire"),
     ("domain/capacity/fair_share.py", "_ask", "provider_concurrency.try_acquire"),
     ("domain/capacity/fair_share.py", "_team_place", "provider_concurrency.try_acquire"),
-    ("infra/provider_concurrency.py", "try_acquire", "store.acquire_slot"),
+    ("infra/provider_concurrency.py", "try_acquire_slot", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
     ("application/call/service.py", "_execute_call", "rate_observe.observe"),
