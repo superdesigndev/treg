@@ -11,6 +11,8 @@ pricing_url: https://www.hirebase.org/pricing
 # fails). An empty page bills nothing. Every metered answer carries running totals in Hirebase-Usage-*
 # headers (Included-Used, Total-Used); they are period totals, not this call's charge, so job and company
 # rows settle by counting the records returned, which is exactly how the meter moves.
+# The Tech Stack API bills the companies meter: one per company matched by /technologies/lookup (the
+# answer's `matched`), nothing for a company it cannot find; searching technology names is free.
 # Probe: GET /v2/billing/usage/summary is free; a bad key answers 401 {"detail": "Invalid API key"}.
 limits: "100 requests per 60 s per key (429 with Retry-After); task reads have their own 600 per 60 s. At most 100 jobs per page. A spent monthly allowance on a capped plan answers 429 with X-Billing-Code: limit_exceeded."
 proposed_capabilities:
@@ -33,12 +35,13 @@ endpoints:
     method: POST
     path: /jobs/search
     name: Search job postings
-    summary: "Search open jobs read from employers' own career pages by title, keyword, place, remote, salary, experience, company, funding or posted date. Each job has its description, posted pay, locations, skills, apply link and a company profile."
+    summary: "Search open jobs read from employers' own career pages by title, keyword, technology, place, remote, salary, experience, company, funding or posted date. Each job has its description, posted pay, locations, skills, detected technologies, apply link and a company profile."
     input:
       bodyType: json
       body:
         job_titles: {type: array, items: {type: string}, required: false, note: "OR'd. An unquoted entry needs every word in the title, in any order; wrap it in quotes for the exact phrase; prefix - to exclude", example: ["software engineer"]}
         keywords: {type: array, items: {type: string}, required: false, note: "ranked against description, skills and technologies; prefix - to exclude", example: ["kubernetes"]}
+        technology_slugs: {type: array, items: {type: string}, required: false, note: "jobs that mention any of these technologies, matched as the exact technology and not as a word (java never finds JavaScript); prefix - to exclude. Resolve a slug with hirebase.technologies.search: an unknown slug matches no jobs", example: ["apache-kafka"]}
         geo_locations: {type: array, items: {type: object}, required: false, note: "[{city, region, country}], any subset; each is geocoded, so a free-text place works in city alone ({city: 'New York, NY'}, {city: 'Texas'}). A city matches its metro area; a place that cannot be found, \"Remote\" included, is not filtered on: use location_types for remote", example: [{country: "United States"}]}
         location_types: {type: array, items: {type: string}, required: false, note: "Remote, Hybrid or In-Person", example: ["Remote"]}
         experience: {type: array, items: {type: string}, required: false, note: "years-of-experience bands, not seniority: Entry, Junior, Mid, Senior or Executive (Executive is 10+ years, mostly senior and staff roles). For the level a job is labelled with, use experience_levels"}
@@ -175,7 +178,7 @@ endpoints:
     method: POST
     path: /hirebase/companies/search
     name: Search companies and resolve a company slug
-    summary: "Find companies by name, text, industry, size, headquarters or funding, with each company's Hirebase slug, website, LinkedIn page, size, industries and description. The slug is what hirebase.companies.jobs takes."
+    summary: "Find companies by name, text, industry, size, headquarters, funding or the technologies they use, with each company's Hirebase slug, website, LinkedIn page, size, industries and description. The slug is what hirebase.companies.jobs takes."
     input:
       bodyType: json
       body:
@@ -183,14 +186,22 @@ endpoints:
         query: {type: string, required: false, note: "free text over name, description and services"}
         company_link: {type: string, required: false, note: "website domain, e.g. palantir.com"}
         linkedin_link: {type: string, required: false}
-        industries: {type: array, items: {type: string}, required: false}
-        company_types: {type: array, items: {type: string}, required: false, note: "headcount buckets: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10000+"}
-        hq_geolocations: {type: array, items: {type: object}, required: false, note: "[{city, region, country}]"}
-        funding_types: {type: array, items: {type: string}, required: false}
-        sort_by: {type: string, required: false, enum: [hottest, size, newest], default: hottest}
+        industries: {type: array, items: {type: string}, required: false, example: ["Tech, Software & IT Services"]}
+        subindustries: {type: array, items: {type: string}, required: false, example: ["Fintech"]}
+        company_types: {type: array, items: {type: string}, required: false, note: "headcount buckets, not company kinds: 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10000+; several are OR'd. Judge it by each row's size_range: total_count stops at 1001", example: ["51-200", "201-500"]}
+        types: {type: array, items: {type: string}, required: false, note: "the kind of company: Startup, Enterprise, Mid-Size, Small Business, Non-Profit, Government, Franchise, Academic or Other", example: ["Startup"]}
+        hq_geolocations: {type: array, items: {type: object}, required: false, note: "[{city, region, country}] with full names (California, not CA); entries are OR'd", example: [{country: "United States"}]}
+        funding_types: {type: array, items: {type: string}, required: false, example: ["Series A"]}
+        technology_slugs: {type: array, items: {type: string}, required: false, note: "companies using any of these technologies, from their job posts in the last 18 months; prefix - to exclude one. Resolve a slug with hirebase.technologies.search; an unknown slug answers 422", example: ["snowflake", "bigquery", "-amazon-redshift"]}
+        technology_categories: {type: array, items: {type: string}, required: false, note: "companies using any technology in these categories; prefix - to exclude", example: ["ent.crm"]}
+        technology_min_match: {type: integer, required: false, default: 1, min: 1, note: "how many of technology_slugs a company must use; the number of slugs means all of them"}
+        include: {type: array, items: {type: string}, required: false, note: "[\"technologies\"] adds each company's evidence for the technologies filtered on, or its top 10 without a filter, at no extra cost", example: ["technologies"]}
+        hide_recruiter_agencies: {type: boolean, required: false, default: true, note: "false also returns recruiting and staffing agencies"}
+        sort_by: {type: string, required: false, enum: [hottest, relevance, clout, rated, size, newest], default: hottest}
+        sort_order: {type: string, required: false, enum: [desc, asc], default: desc, note: "for size, newest, clout and rated; asc puts companies with no value first"}
         page: {type: integer, required: false, default: 1, min: 1}
         limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: "each company returned is charged", example: 3}
-      note: "Name search is fuzzy and returns the best matches, never an empty list: check company_link before using a slug."
+      note: "Name search is fuzzy and returns the best matches, never an empty list: check company_link before using a slug. Unknown fields answer 422."
     test_request: {body: {company_name: "Palantir", limit: 3}}
     price: {value: '0.005', currency: USD, unit: record, note: "Per company returned; an empty page is free. treg holds limit companies (10 when omitted)."}
     reserve: {rows: {param: body.limit, default: {value: 10, source: docs}, max: 100}}
@@ -224,6 +235,53 @@ endpoints:
     settle: {count: {path: response.jobs}}
     miss: {when: {path: response.jobs, op: empty}}
     docs_url: https://www.hirebase.org/docs/api-reference/companies/get-company-jobs
+
+  # --- Tech stack ---------------------------------------------------------------------------
+  - id: hirebase.companies.tech_stack
+    added: '2026-11-22'
+    capability: companies.tech_stack
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /technologies/lookup
+    name: "A company's tech stack by domain, with job-post evidence"
+    summary: "List the technologies up to 100 companies use, matched by website domain, LinkedIn page or Hirebase slug. Each technology has an evidence tier, first and last seen dates, the teams using it, a trend and example job posts."
+    input:
+      bodyType: json
+      body:
+        companies: {type: array, items: {type: object}, required: true, note: "1 to 100 of {domain}, {linkedin_url} or {company_slug}; a full URL works as domain. Each company matched is charged", example: [{domain: "ramp.com"}]}
+        technologies: {type: array, items: {type: string}, required: false, note: "only these technology slugs; resolve one with hirebase.technologies.search", example: ["snowflake", "bigquery"]}
+        categories: {type: array, items: {type: string}, required: false, note: "only these category slugs; a group slug such as db covers every category in it", example: ["db.warehouse"]}
+        min_tier: {type: string, required: false, enum: [high, medium, low], default: medium, note: "low adds one-off mentions"}
+      note: "Results keep the order sent; an unmatched company has company_slug null. Without technologies or categories a large employer returns over a thousand records: filter when a few tools are enough. A company that posts few jobs has a thin stack: read coverage.postings_analyzed before taking a missing technology as unused."
+    test_request: {body: {companies: [{domain: "ramp.com"}], categories: ["db.warehouse"]}}
+    price: {value: '0.005', currency: USD, unit: record, note: "Per company matched; a company that is not found is free. treg holds one company per entry sent."}
+    reserve: {entities: {from: body.companies.*, max: 100}}
+    settle: {reported: {path: response.matched, unit: usd, scale: 0.005}}
+    miss: {when: {path: response.matched, op: equals, value: 0}}
+    docs_url: https://www.hirebase.org/docs/api-reference/technologies/lookup
+
+  - id: hirebase.technologies.search
+    added: '2026-11-22'
+    kind: utility
+    capability: companies.tech_stack.taxonomy
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /technologies/search
+    name: Look up a technology's slug (free)
+    summary: "Turn a technology name or nickname (sfdc, k8s) into the slug Hirebase's technology filters take, with its vendor, category and how many companies use it. Free."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "a name, nickname or the start of one; at least 2 characters", example: "snowfl"}
+        category: {type: string, required: false, note: "only this category or group, e.g. db.warehouse or db; an unknown one answers 422"}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 50, example: 3}
+      note: "Exact matches come first, then by how many companies use each. The slug goes in technology_slugs on hirebase.companies.search and hirebase.jobs.search, and in technologies on hirebase.companies.tech_stack."
+    test_request: {queryParams: {q: "snowfl", limit: 3}}
+    price: {value: '0', currency: USD, unit: call, note: "Free, also once a monthly allowance is spent."}
+    docs_url: https://www.hirebase.org/docs/api-reference/technologies/search-technologies
 
   # --- Salary -------------------------------------------------------------------------------
   - id: hirebase.jobs.salary.insights
