@@ -1370,6 +1370,35 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+STORERADAR = OAuthProvider(
+    service="storeradar",
+    display_name="StoreRadar",
+    auth_kind="key",
+    token_label="API token",
+    token_placeholder="your StoreRadar API token",
+    # StoreRadar accepts `Authorization: Bearer <token>` and `Authorization: token <token>`.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.storeradar.io/api_tokens",
+    setup_action_label="Get your StoreRadar API token",
+    setup_steps=(
+        "Sign in to StoreRadar. A free account can call every read endpoint.",
+        "Open API tokens, create a token and copy it.",
+    ),
+    setup_note=(
+        "A free token returns anonymized domains and contacts. StoreRadar Annual, or the 60-day "
+        "pass that comes with the one-time CSV, returns real ones. The token check is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find Shopify stores by app, technology, theme, country and search traffic, and look up one store by domain.",
+    base_url="https://www.storeradar.io/api/v1",
+    docs_url="https://www.storeradar.io/api/docs",
+    probe_path="/health",  # not metered; an invalid token gets a 401 here
+)
+
 DANSUGC = OAuthProvider(
     service="dansugc",
     display_name="DansUGC",
@@ -4633,7 +4662,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, STORERADAR, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
