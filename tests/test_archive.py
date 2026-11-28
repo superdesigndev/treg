@@ -1111,7 +1111,118 @@ async def test_an_mcp_agent_recovers_a_paid_answer_it_never_received(clients: As
     assert latest["endpoint_id"] == EP and latest["has_result"] is True
     assert latest["cost_charged_micro"] == int(r1.headers["X-Treg-Cost-Micro"])
     assert got["result"]["response"]["body_text"] == _as_stored(r1.text)
+    assert got["page"]["next_offset"] is None and "last page" in got["page"]["note"]
     assert "error" in refused
+
+
+_LARGE = json.dumps({"rows": [{"n": i, "text": "é" + "x" * 90} for i in range(1000)]}).encode()
+
+
+async def _large_call(clients: AsyncClient, monkeypatch) -> dict:
+    from tests.test_marketplace_call import _fake_relay
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, _LARGE))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and r.content == _LARGE
+    await archive.drain()
+    await audit.drain()
+    return (await clients.get("/calls")).json()[0]
+
+
+async def test_a_large_stored_answer_comes_back_whole_or_in_pages_that_join(
+        clients: AsyncClient, shadow, monkeypatch):
+    assert len(_LARGE) > 100_000
+    row = await _large_call(clients, monkeypatch)
+    whole = (await clients.get(f"/calls/{row['id']}/result")).json()
+    assert whole["response"]["body_text"] == _LARGE.decode()
+    assert "total_chars" not in whole["response"] and whole["request"]["method"] == "GET"
+    pages, offset = [], 0
+    while offset is not None:
+        got = (await clients.get(f"/calls/{row['id']}/result",
+                                 params={"offset": offset, "limit": 30_000})).json()
+        assert got["response"]["offset"] == offset
+        assert got["response"]["total_chars"] == len(_LARGE.decode())
+        assert (got["request"] is None) == (offset > 0)
+        pages.append(got["response"]["body_text"])
+        offset = got["response"]["next_offset"]
+    assert len(pages) == 4 and "".join(pages) == _LARGE.decode()
+    past = (await clients.get(f"/calls/{row['id']}/result", params={"offset": 10**7})).json()
+    assert past["response"]["body_text"] == "" and past["response"]["next_offset"] is None
+    assert (await clients.get(f"/calls/{row['id']}/result", params={"limit": 0})).status_code == 422
+
+
+async def test_an_mcp_agent_reads_a_large_answer_page_by_page(clients: AsyncClient, shadow, monkeypatch):
+    """MCP clients cut long tool replies, so `call_result` returns pages, and says first how long
+    the answer is and which offset reads the rest."""
+    from test_mcp import _call_tool, mcp_session
+
+    row = await _large_call(clients, monkeypatch)
+    token = clients.headers["X-Treg-Token"]
+    pages, offset = [], 0
+    async with mcp_session(clients) as c:
+        while offset is not None:
+            got = await _call_tool(c, "call_result", {"call_id": row["call_ref"], "offset": offset},
+                                   token=token)
+            assert list(got)[:2] == ["team", "page"]
+            assert got["page"]["total_chars"] == len(_LARGE.decode())
+            pages.append(got["result"]["response"]["body_text"])
+            offset = got["page"]["next_offset"]
+        small = await _call_tool(c, "call_result", {"call_id": row["call_ref"], "max_chars": 6000},
+                                 token=token)
+    assert [len(p) for p in pages[:-1]] == [40_000, 40_000] and "".join(pages) == _LARGE.decode()
+    assert len(small["result"]["response"]["body_text"]) == 6000
+    assert "offset=6000" in small["page"]["note"]
+
+
+async def test_an_mcp_page_shows_the_answer_before_a_large_saved_request(
+        clients: AsyncClient, shadow, monkeypatch):
+    from test_mcp import _rpc, mcp_session
+
+    row = await _large_call(clients, monkeypatch)
+    async with session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalars().one()
+        key.req_body = json.dumps({"q": "r" * 20_000}).encode()
+        await s.commit()
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                     "clientInfo": {"name": "test", "version": "1"}}, token)
+        r = await _rpc(c, "tools/call", {"name": "call_result",
+                                         "arguments": {"call_id": row["call_ref"]}}, token)
+    text = r.json()["result"]["content"][0]["text"]
+    assert text.count("r" * 20_000) == 1
+    assert text.index('{\\"rows\\"') < 1024 < text.index("r" * 100)
+
+
+async def test_the_smaller_page_hint_fits_8_kb_for_non_latin_text(clients: AsyncClient, shadow, monkeypatch):
+    from test_mcp import _call_tool, mcp_session
+    from tests.test_marketplace_call import _fake_relay
+
+    wide = json.dumps({"t": "漢字😀" * 5000}, ensure_ascii=False).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, wide))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200
+    await archive.drain()
+    await audit.drain()
+    ref = (await clients.get("/calls")).json()[0]["call_ref"]
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        first = await _call_tool(c, "call_result", {"call_id": ref, "max_chars": 4000}, token=token)
+        fits = int(first["page"]["note"].split("max_chars=")[1].split(" ")[0])
+        small = await _call_tool(c, "call_result", {"call_id": ref, "max_chars": fits}, token=token)
+    assert fits < 4000
+    assert len(json.dumps(small["result"]["response"]["body_text"], ensure_ascii=False).encode()) <= 6_000
+
+
+async def test_a_call_with_no_stored_answer_reads_as_before_when_paged(
+        clients: AsyncClient, shadow, monkeypatch):
+    from tests.test_marketplace_call import _fake_relay
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b"boom"))
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 500
+    await audit.drain()
+    row = (await clients.get("/calls")).json()[0]
+    plain = (await clients.get(f"/calls/{row['id']}/result")).json()
+    paged = (await clients.get(f"/calls/{row['id']}/result", params={"offset": 5, "limit": 10})).json()
+    assert plain == paged and plain["stored"] is False and plain["response"] is None
 
 
 async def test_a_served_hit_links_to_the_same_answer(clients: AsyncClient, serve):

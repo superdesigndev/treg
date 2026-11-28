@@ -125,7 +125,9 @@ shadowed by a same-named team tool. A change is incomplete if only one MCP test 
   tool id. `/mcp/v2/` never registers them. See [hub](hub.md).
 - `call_media`, `resources_list` and `call_result` exist only on `/mcp/`. `call_result` (scope
   `treg:read`) is the recovery road for a call whose answer never reached the agent: the team's
-  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`.
+  latest calls from `GET /calls`, or one call's stored answer from `GET /calls/{id}/result`, in
+  pages of `max_chars` characters (`MCP_RESULT_PAGE_CHARS`) with `page` (total, next offset)
+  ahead of the body, because clients cut long tool replies.
 - `feedback`, `review`, `mark` and `compare` exist only on `/mcp/`, so V2 never renders the invitation
   `/call/` decided on (`_SurfacePolicy.invites`); `/call/` still decides and records it
   ([feedback](feedback.md)). Only the team surface lists `compare` in `X-Treg-Hints`, so `/call/`
