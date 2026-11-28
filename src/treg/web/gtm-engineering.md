@@ -104,7 +104,7 @@ paid lookup, 20 verified deliverable. $2.33 metered, $0.12 per deliverable lead;
 estimated $4.12. Details: {BASE}/workflows/find-and-verify-a-lead-list
 
 Rule: no expensive lookup (people, emails, news) runs on a row that has not passed the check; if a row lacks the
-fields to judge, one cheap enrichment comes first.
+fields to judge, one cheap enrichment comes first. The check is jev, callable through treg as openrouter.ai-judge.decide.
 
 ## Which people search APIs work inside an AI agent? Search by role, not "decision makers"
 

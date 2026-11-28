@@ -309,7 +309,8 @@ case-folded 301 like the use-case pages. Data: `agent_pages.WORKFLOWS`.
   prints the live catalog rate.
 - The CSV (`src/treg/workflow_runs/<slug>.csv`) carries row-level outcomes only, never a name,
   title, handle or address. `once` names steps called once per run rather than per row.
-- A `decision` step is a judgement on fetched rows (jev, through the team's own key), priced from
+- A `decision` step is a judgement on fetched rows (jev). Its id is the catalog tool an agent calls,
+  `openrouter.ai-judge.decide`; the receipt says whose key the recorded run used. It is priced from
   `agent_pages.DECISION_STEPS`, the one place that rate lives.
 - Optional keys `description`, `agent` and `sections` override the generated meta description, the
   example agent and add hand-written sections.

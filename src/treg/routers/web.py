@@ -1912,7 +1912,8 @@ async def workflow_page(request: Request, slug: str,
             price = f"{money(s['usd'])} per {s['unit']}" if s["usd"] else "no dollar rate published"
             rel = (f"{pct(s['ok_rate'])} over {s['samples']} calls, {ms(s['p50'])} median" if s["samples"]
                    else "a verdict on rows already fetched" if s["decision"] else "not yet measured")
-            md.append(f"| {i} | {s['name']} | {s['asks']} | {s['provider_name']} (`{s['ep_id']}`, {s['providers']} providers, "
+            tool = f"call it as `{s['ep_id']}`" if s["decision"] else f"`{s['ep_id']}`"
+            md.append(f"| {i} | {s['name']} | {s['asks']} | {s['provider_name']} ({tool}, {s['providers']} providers, "
                       f"{base}{s['link']}) | {price} | {rel} |")
         md += [""] + [f"- {s['name']}: {s['why']}" for s in steps]
         md += ["", f"At the rates above, {rows_in} rows where every call hits comes to ${worst:,.2f}. The receipt below is what it actually cost, and why it differs.", ""]
@@ -4475,7 +4476,7 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
         db, _JEV_JUDGE_NS, [*ratestore.ip_limit(ip, 5, key=f"ip:{ip}"), ("all", 60)], window_s=3600)
     await db.commit()
     if not ok:
-        raise HTTPException(status_code=429, detail="that is enough for this hour; the daily run continues")
+        raise HTTPException(status_code=429, detail="that is enough for this hour; try again later")
     try:
         judged = await jev_xboost.judge_url(request.app.state.http, url)
     except jev_xboost.XboostError as exc:

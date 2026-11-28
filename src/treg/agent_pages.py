@@ -299,13 +299,13 @@ PROVIDER_DOMAINS: dict[str, str] = {
 }
 
 # Decision steps. A workflow step whose capability is `decision` is a judgement on data the
-# earlier steps already fetched, not a fetch: jev reads the row and returns a probability. jev is
-# not a catalog capability (the run goes through the team's own TypeSafe key), so the step table
-# cannot price it from the catalog the way it prices every other step. This table is the one
-# place its rate lives; the receipt records what one dated run actually spent on it. A rate here
-# is the provider's published list price restated per row, never a number from a run.
+# earlier steps already fetched, not a fetch: jev reads the row and returns a probability. treg
+# serves jev as `openrouter.ai-judge.decide`, the step's id; the recorded run used the team's own TypeSafe
+# key and that catalog row's price is a reserve ceiling, so the step table does not price it from there.
+# This table is the one place its rate lives; the receipt records what one dated run actually spent
+# on it. A rate here is the provider's published list price restated per row, never a number from a run.
 DECISION_STEPS: dict[str, dict] = {
-    "typesafe.jev": {
+    "openrouter.ai-judge.decide": {
         "provider": "typesafe", "provider_name": "Jev by TypeSafe", "domain": "typesafe.ai",
         # $0.042 per million input tokens, output free; a company row with its criteria is about
         # 500 input tokens, so one verdict is about two thousandths of a cent.
@@ -4660,7 +4660,7 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
         "the prompt adapts to Codex, Cursor, Hermes or OpenClaw."),
     "prompt": (
         "Using treg, build me a lead list: 50 US software companies with 51 to 200 staff that raised "
-        "a Series A. Before you find anyone, have jev judge each company against my ICP (B2B "
+        "a Series A. Before you find anyone, have jev (openrouter.ai-judge.decide) judge each company against my ICP (B2B "
         "software that sells to sales or marketing teams) from the list fields alone, and drop "
         "anything under 50%. For the rest find the VP or Head of Marketing, find their work email "
         "with the cheapest provider that only bills on a hit, verify it, and pull the latest news. "
@@ -4684,9 +4684,10 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
          "Apollo bills per page, not per company, so one page of 50 is one charge."),
         ("Judge the fit with jev", "decision",
          "does this company fit the ICP closely enough to pay for a person and an email; keep it at 50% or more",
-         "typesafe.jev",
+         "openrouter.ai-judge.decide",
          "Apollo's list page carries the domain, NAICS and SIC codes, printed revenue and headcount growth for nothing extra. "
-         "jev reads those and returns a probability, so a company that fails never reaches the paid lookups."),
+         "jev reads those and returns a probability, so a company that fails never reaches the paid lookups. "
+         "On treg.to it is openrouter.ai-judge.decide; the recorded run called jev on the team's own TypeSafe key."),
         ("Find the person", "people.search",
          "the VP or Head of Marketing, or Head of Growth, at each company",
          "findymail.search.employees",
@@ -4705,7 +4706,7 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
          "PredictLeads bills per call for classified events. Akta is cheaper per call but was out of credit on the first run, so both runs used PredictLeads."),
         ("Score the opener with jev", "decision",
          "which of the events to lead with, and how usable it is as the first line of a cold email, on a four-level scale",
-         "typesafe.jev",
+         "openrouter.ai-judge.decide",
          "The agent drafts nothing here. jev ranks the events PredictLeads returned and scores the best one, so the CSV sorts by opener strength and a weak one is flagged before anyone writes."),
     ],
     "run": {
@@ -4807,9 +4808,9 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
         ("How much does lead generation with Claude cost?",
          "The data is the bill, not the model: your Claude plan is separate. The 23 Sep run came to $2.33 metered for 50 companies, $0.12 per verified contact; news cost $0.84 and finding the people $0.88 including the fallback. The receipt on this page prints the real total for a 50-company run, next to the first run of the same filter without the gate. Per-call rates are the provider's own with $0.000 added by treg.to. A miss on a per-success step is free at the provider's rate card; the receipt shows where that held and where it did not."),
         ("Do I need a jev key?",
-         "No. jev ran on the team's own TypeSafe key in this run and was not metered by treg.to. Without one, leave out the two judging steps: the first run of this workflow had no gate and cost $3.62 for 27 leads, $0.13 each, against $0.12 with it."),
+         "No. treg.to serves jev as openrouter.ai-judge.decide with no TypeSafe account: your team's balance pays for it, or, if the team has connected its own OpenRouter key, OpenRouter bills that account and treg.to meters nothing. The run on this page used the team's own TypeSafe key instead, which is why its receipt shows jev as not metered."),
         ("What does jev decide, and what does it cost?",
-         "Two things. Before the paid lookups it reads each company's list fields and returns the probability that it fits your ICP; the agent keeps the rows at or above the threshold you name. After the news step it picks which event to lead with and scores how usable it is as a first line. jev is priced on input tokens only, and the two steps together cost a fraction of a cent for the whole run. You need a jev key of your own, or the agent can make the same judgements itself behind the same interface, slower and dearer, until you have one."),
+         "Two things. Before the paid lookups it reads each company's list fields and returns the probability that it fits your ICP; the agent keeps the rows at or above the threshold you name. After the news step it picks which event to lead with and scores how usable it is as a first line. jev is priced on input tokens only, and the two steps together cost a fraction of a cent for the whole run."),
         ("Does treg.to pick the providers?",
          "No. treg.to shows the agent every provider for each step with its price and measured success rate; the agent picks, or you tell it which one. There is no automatic failover. jev is the same kind of choice: it is the agent's judge, not treg.to's router."),
         ("What comes back at the end?",
