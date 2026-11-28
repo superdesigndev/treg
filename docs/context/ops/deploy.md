@@ -724,7 +724,8 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   history, and again when the last run left more than a million ids to catch up or to resync,
   so run it once more just before the deploy; that command needs only the database, not
   `verify_db()`, and `--max-replica-lag S` makes it wait while the replica is more than `S`
-  seconds behind (it refuses with exit 2 when the read pool reaches no replica). Until the swap, a migration that adds a column or an index to `callrecord` must add
+  seconds behind (it refuses with exit 2 when the read pool reaches no replica). Until the swap, a
+  migration that adds a column or an index to `callrecord` must add
   it to `callrecord_partitioned` too. Pause the crons that read `callrecord` during that deploy: the
   swap waits for long statements on the table to end before it takes its lock. Afterwards
   `admin callrecord-drop-legacy` deletes the rows of teams deleted during the copy, in batches,

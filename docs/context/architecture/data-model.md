@@ -483,7 +483,10 @@ so no reader ever sees a table with part of its history, and only the rename blo
    never queues inserts for longer than that. It refuses if the window ends first. Holding both
    locks, it copies the last rows, trades the table and index names, moves the sequence and
    repeats the old table's grants. Audit inserts wait for that transaction and land in the new
-   table. The old table stays as `callrecord_legacy`; an empty one is dropped. A late verdict on a
+   table. A statement prepared before the swap whose result includes `id` is refused from then on
+   (its result changed type), and behind a transaction pooler that keeps one server statement per
+   query text it stays refused until that server connection closes; so the background pool reads
+   and writes no `id` (see "Audit writer"). The old table stays as `callrecord_legacy`; an empty one is dropped. A late verdict on a
    row the last backfill run already resynced, landing between that run and the swap, stays in
    the legacy table only.
 5. `treg-worker admin callrecord-drop-legacy` deletes the rows of teams deleted while the copy ran

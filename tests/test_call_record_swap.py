@@ -130,8 +130,8 @@ async def test_swap_keeps_every_id_and_lets_ids_pass_32_bits(before_swap):
 
 
 async def test_audit_rows_written_during_the_swap_all_land_in_the_new_table(before_swap):
-    """The writer's connection prepared its INSERT against the old table. The swap changes the
-    type of the returned id under it, and the batch retry absorbs the one refused statement."""
+    """The writer's connection prepared its INSERT against the old table. The INSERT returns
+    nothing, so the id's change of type under it cannot refuse it, and every row lands."""
     written = 0
     upgrade = asyncio.create_task(_upgrade_to("head"))
     while not upgrade.done():
@@ -148,6 +148,45 @@ async def test_audit_rows_written_during_the_swap_all_land_in_the_new_table(befo
 
     assert await _scalar("SELECT count(*) FROM callrecord WHERE tool_name = 'during-swap'") == written
     assert await _scalar("SELECT count(*) FROM callrecord") == 40 + written
+
+
+async def test_every_pooled_writer_connection_lands_its_first_row_after_the_swap(before_swap, caplog):
+    """Each pooled background connection prepared the audit INSERT against the old table. Behind a
+    transaction pooler that statement lives on, one per query text, after the swap; it returns
+    nothing, so the id's change of type cannot refuse it. Writers on several such connections at
+    once land every row, and none is logged as dropped."""
+    writers = 6
+    fields = dict(org_id=before_swap, user_email="w@example.test", tool_name="stale-plan",
+                  method="GET", path="/", status_code=200)
+
+    async def open_connections() -> None:
+        # Each session holds its connection until all are open, so the pool holds `writers`.
+        opened = asyncio.Barrier(writers)
+
+        async def hold() -> None:
+            async with db.background_session_maker() as session:
+                await session.execute(text("SELECT 1"))
+                await opened.wait()
+
+        await asyncio.gather(*(hold() for _ in range(writers)))
+
+    async def write_on_held_connections() -> list[bool]:
+        await open_connections()
+        # All at once: each writer takes one of the idle connections, none waits for another.
+        return await asyncio.gather(*(audit._write_batch([(CallRecord, dict(fields))])
+                                      for _ in range(writers)))
+
+    # Before the swap: each of the pool's connections prepares the INSERT.
+    assert await write_on_held_connections() == [True] * writers
+    assert db._background_engine.pool.checkedin() >= writers
+
+    await _swap_in_process()
+    assert await _scalar("SELECT relkind::text FROM pg_class WHERE oid = 'callrecord'::regclass") == "p"
+
+    caplog.clear()
+    assert await write_on_held_connections() == [True] * writers
+    assert "audit write dropped" not in caplog.text
+    assert await _scalar("SELECT count(*) FROM callrecord WHERE tool_name = 'stale-plan'") == 2 * writers
 
 
 async def test_a_large_table_is_not_swapped_until_its_history_was_copied(before_swap, monkeypatch):
