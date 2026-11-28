@@ -386,9 +386,13 @@ endpoints:
     error: charged
     free_when: &hunter-no-person [{path: response, op: present}, {path: response.data.person.name.fullName, op: absent}]
   error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}, *hunter-no-person]}}
+  # Hunter does not enrich webmail addresses (400 invalid_email naming a webmail); another provider may.
   miss:
-    status: [404]
-    means: "no record for that email — an expected outcome (and free, per the cost note), not an API failure; do not retry"
+    status: [404, 400]
+    when: {any: [{path: response.errors.0.id, op: equals, value: not_found},
+                 [{path: response.errors.0.id, op: equals, value: invalid_email},
+                  {path: response.errors.0.details, op: contains, value: webmail}]]}
+    means: "no record for that email, or a webmail address Hunter does not enrich — an expected outcome (and free, per the cost note), not an API failure; do not retry"
   docs_url: https://hunter.io/api-documentation/v2#email-enrichment
   verified: '2026-07-28'
   added: '2026-07-28'

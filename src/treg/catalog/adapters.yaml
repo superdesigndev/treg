@@ -2110,7 +2110,9 @@ adapters:
     const: {queryParams.cursor: "0"}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
     paging: {cursor: queryParams.cursor}
+  # Out of routing: TikHub answers its generic 400 "Request failed" to every keyword on this row.
   tikhub.x.tiktok-web-fetch-search-user:
+    route: false
     accepts: [[q]]
     in:  {q: queryParams.keyword}
     out: {users: data.user_list, next_cursor: data.cursor, has_more: data.has_more}
