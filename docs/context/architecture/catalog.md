@@ -13,6 +13,7 @@ sources:
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
   - src/treg/domain/catalog/routing/quality.py
+  - src/treg/domain/catalog/routing/row_filters.py
   - src/treg/domain/catalog/routing/health.py
   - src/treg/domain/catalog/routing/synthetic.py
   - src/treg/application/rankings.py
@@ -1411,6 +1412,52 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **Strict filters judge rows too** (`row_filters`, `routing/row_filters.py`): a contract maps a
+  caller key to a test (`place`, `domain`, `site`, `within_days`) and the row path(s) it reads, the
+  first one present (a field of the contract's `row` when it has one; the loader refuses any other
+  key, test or field). Under the strict header `_strict_rows` judges each list row of a hit against
+  the filters the caller sent: a row whose field breaks one leaves `output`, a row that carries no
+  comparable field stays and counts as unchecked, and `_treg.strict_filtered` /
+  `X-Treg-Strict-Filtered` say `{removed, kept, by, unchecked, in_raw}` (summed over a merge).
+  `raw` is the child's body, whole, and `count` follows the kept rows only where it counted the
+  rows. The child settles at its own price: it answered. A hit left with no row is an attempt
+  `miss` and counts in `weak_hits` (one bound with the weak answers, later plain misses included:
+  at most `MAX_WEAK_FALLBACKS` more providers); when nothing better turns up, the first such answer
+  is returned as the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what
+  `min_results`, fill and merge count. `place` reads a city, a US state (name or code) and a
+  country from both places. The same folded text always matches. Within the US a row is removed
+  only when it names another state or country, abroad only when it names another country; another
+  city is never judged, since plain text cannot tell it from a borough, a county, a metro area, an
+  address or another-language name (München, Köln). The asked city matches the row's city part
+  only. Abroad, a row is removed only when it names another country, or a US state, in full; a two-letter code never removes a row outside a US ask. In a row (`_read_row`) only a full name, or the names
+  `UK` and `US`, settles a state or a country; any other two-letter code ("Regina, SK", "Perth,
+  WA", "Munich, BY") stays a code, a US state only before "United States". A code removes a row
+  only for an ask in a US state, and only as a US state code other than the one asked ("Perth, WA"
+  for Texas); otherwise it can only confirm the place asked, and a code that is both a state and
+  a country confirms only a US ask. A country in another language ("Kanada") is not read. A lone
+  "Washington" in a row, or one followed by no state ("Washington, United States"), is the state
+  or the district ("Columbia District" names DC). A one-part row that names the asked
+  place's first part is a match ("Lebanon" for "Lebanon, PA"). A US territory (`pr`, `vi`, `gu`,
+  `as`, `mp`) is no other country than the US but is in no US state, and the two Congos are not
+  told apart (`_other_country`). A value naming several places (a list, or parts joined by `;` or `|`) is removed only
+  when every place is; the ask is read once per answer (`_asked`). The first part is a state only when
+  no later part names one, and "city" stays in a state reading ("Kansas City" is no state), so a
+  bare "Washington" is the state and "Washington, D.C." the district. A code that is both a state
+  and a country (`IN`, `CA`) in the ask is the state when a country follows it, else either, and
+  the name "Georgia" is always either. An ask that reads two ways ("Toronto, CA", "Mumbai, IN") is judged
+  under each reading and removes a row only when both do. In a row an either name never counts as
+  a match and removes the row only when neither reading is the place asked. A row naming only a
+  larger place than asked, a city asked with nothing around it ("Berlin" against "Toronto,
+  Canada"), or nothing comparable is unchecked. Noise words go first ("Greater … Area", "New York
+  City" is "New York").
+  `domain` takes the domain or a subdomain, the part after `@` of an address, a port and a
+  trailing dot aside; `site` reads `site:`
+  from `q` (`on_site`, as `no_result_on_site`) and judges nothing it cannot read (`site:.edu`,
+  `site:*.a.com`, a `/url?` redirect link, a percent-encoded address); `within_days` compares the
+  row's date as a UTC day. For a contract without a `row` the loader refuses a field no verified
+  adapter's example row carries (`row_filter_fields_unread`). Declared on
+  `people.search` (place, company domain), `companies.jobs.search` (place, posting date) and the
+  `site:` searches (`web.search`, `google.serp.organic`). A call without the header is unchanged.
 - **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its
   provider receives but does not enforce (exa and parallel people.search read the place and the
   company as words), and an endpoint parameter marked `applied: soft` makes every contract filter

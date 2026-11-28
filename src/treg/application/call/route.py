@@ -36,6 +36,13 @@ answer comes back unaltered only when no on-domain hit turns up.
 When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
 and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
 
+`X-Treg-Route-Strict-Filters` also judges a list answer's rows by the contract's `row_filters`: a row
+whose own field breaks a filter the caller sent leaves `output`, counted in `_treg.strict_filtered`
+(`X-Treg-Strict-Filtered`), while `raw` keeps the child's body whole. The child settles at its own
+price either way. An answer left with no row is a miss and the walk goes on: at most two more
+providers, counted with the weak answers (one bound), each billed as usual. When nothing better
+turns up, the first such answer comes back as the miss, its rows still in `raw`.
+
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
 contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each attempt at its own
 price. The first provider's answer is returned either way, reported in `_treg.confirmation`; when
@@ -82,8 +89,9 @@ import json
 import re
 import logging
 import unicodedata
+from datetime import UTC, datetime
 from decimal import Decimal
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlencode
 
 import httpx
@@ -107,6 +115,7 @@ from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import ad_hashes
 from ...domain.catalog.routing import paths as P
+from ...domain.catalog.routing import row_filters
 from ...domain.catalog.routing import health as health_rules
 from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
@@ -705,6 +714,40 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
                 seen.add(k)
             out.append(r)
     return out
+
+
+def _strict_rows(contract, identity: dict, given: dict, core: dict) -> tuple[dict, dict | None]:
+    """`core` without the list rows that break a filter the caller sent (`contract.row_filters`),
+    and what was removed; `(core, None)` when no declared filter was sent."""
+    field_name = _list_field(contract)
+    rows = core.get(field_name) if field_name else None
+    if not isinstance(rows, list):
+        return core, None
+    sent = {k for k, v in given.items() if v not in (None, "") and v is not False}
+    result = row_filters.apply(contract.row_filters, identity, sent, rows, datetime.now(UTC).date())
+    if result is None:
+        return core, None
+    out = {**core, field_name: result.rows}
+    if "count" in contract.output and core.get("count") == len(rows):
+        out["count"] = len(result.rows)   # a row count, not the provider's total of matches
+    return out, result.note()
+
+
+def _strict_detail(note: dict) -> str:
+    return ("strict filters removed every row: "
+            + ", ".join(f"{k} {n}" for k, n in note["by"].items()) + "; raw keeps them")
+
+
+def _sum_strict_notes(notes: list[dict]) -> dict | None:
+    if not notes:
+        return None
+    by: dict[str, int] = {}
+    for n in notes:
+        for k, v in n["by"].items():
+            by[k] = by.get(k, 0) + v
+    unchecked = sum(n.get("unchecked", 0) for n in notes)
+    return {"removed": sum(n["removed"] for n in notes), "kept": sum(n["kept"] for n in notes), "by": by,
+            **({"unchecked": unchecked} if unchecked else {}), "in_raw": True}
 
 
 def _declaration_refusal(e: dict, adapter, identity: dict, variant) -> tuple[str, str, str] | None:
@@ -1467,7 +1510,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
     weak_hits = 0
-    wall_seen = False   # a question_miss answer was kept: every later answer counts toward the bound
+    wall_seen = False   # a question_miss or strict-emptied answer was kept: every later answer counts toward the bound
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
@@ -1477,6 +1520,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     team_busy: list[CallFailure] = []  # treg's own transient team-level refusals (_TEAM_BUSY)
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     off_domain: list[tuple] = []   # X-Treg-Route-Domain-Match: strict: hits at another mail domain, the first kept as the fallback
+    strict_emptied: list[tuple] = []   # X-Treg-Route-Strict-Filters: answers whose every row broke a sent filter
+    strict_notes: dict[int, dict] = {}  # id(candidate) -> what the row filters removed from its answer
     errored: list[tuple[Attempt, str]] = []     # answered-but-failed attempts and their child call ids
     answered_by: dict[int, str] = {}   # id(candidate) -> the child call ref whose answer it holds
     confirmed_by: str | None = None
@@ -1827,6 +1872,27 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 break
             continue
         doc, core = outcome.doc, outcome.core
+        if outcome.kind == "hit" and options.strict_filters and plan.contract.row_filters:
+            core, note = _strict_rows(plan.contract, plan.identity, given, core)
+            if note is not None:
+                strict_notes[id(cand)] = note
+                outcome = replace(outcome, rows=note["kept"])
+                if not note["kept"]:
+                    # The provider answered and its call settles at its own price; none of its rows
+                    # meets the filters, so the walk goes on as after a miss. `raw` keeps the body.
+                    tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged,
+                                         _strict_detail(note), ignored=ignored))
+                    strict_emptied.append((cand, doc, core, raw))
+                    if not options.waterfall:
+                        winner = strict_emptied[0]
+                        break
+                    # One bound with the weak answers: at most MAX_WEAK_FALLBACKS more providers,
+                    # later plain misses included.
+                    weak_hits += 1
+                    wall_seen = True
+                    if weak_hits > MAX_WEAK_FALLBACKS:
+                        break
+                    continue
         if (outcome.kind == "miss" and options.waterfall and plan.contract.question_miss_bound
                 and "question_miss" in outcome.why and set(outcome.why) <= {"question_miss", "adapter_miss"}):
             # An answer only the question rules out (a wall page) is kept like a weak hit and
@@ -1945,6 +2011,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None and off_domain:
         winner = off_domain[0]    # nothing on-domain: the first off-domain answer, already paid for, still flagged
+    if winner is None and strict_emptied:
+        winner = strict_emptied[0]  # no row met the filters: the first such answer, paid for, its rows in `raw`
     if winner is None:
         if tried and len(rate_waits) == len(tried):
             wait = min(rate_waits)
@@ -2067,6 +2135,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # answers the looser question too.
     ignored = list(dict.fromkeys(k for c, _, core_i, _ in answers
                                  if c.endpoint["id"] in merged_from for k in c.ignored)) if merged_from else list(cand.ignored)
+    strict_filtered = _sum_strict_notes([strict_notes[id(c)] for c, *_ in answers
+                                         if c.endpoint["id"] in merged_from and id(c) in strict_notes]
+                                        if merged_from else [strict_notes[id(cand)]] if id(cand) in strict_notes else [])
     # The rows answer a LOOSER question than the caller asked when the winner could not express a
     # filter. It is on the attempt, but no caller reads `tried[]` — say it where the answer is, and
     # on a header, or the agent post-filters nothing and never knows why the geography is wrong.
@@ -2163,6 +2234,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"ordered_by": "quality" if ordered_on and quality else "price"} if options.quality else {}),
                           **({"capped": True} if cost_capped else {}),
                           **({"ignored_filters": ignored} if ignored else {}),
+                          **({"strict_filtered": strict_filtered} if strict_filtered else {}),
                           **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=body_out["output"],
@@ -2175,6 +2247,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
                                  **({"X-Treg-Ignored-Filters": ",".join(ignored)} if ignored else {}),
+                                 **({"X-Treg-Strict-Filtered": f"removed={strict_filtered['removed']},kept={strict_filtered['kept']}"}
+                                    if strict_filtered else {}),
                                  **({"X-Treg-Limit-Exceeded":
                                      f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
                                     if limit_exceeded else {}),

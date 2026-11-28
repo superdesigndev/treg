@@ -147,6 +147,18 @@ How a routed call works:
   hint, not a filter" steers the ranking only. On routed people search, a provider known to take a
   sent place or company only as a hint is named in `_treg.ignored_filters`, so
   `X-Treg-Route-Strict-Filters: 1` skips it.
+- `X-Treg-Route-Strict-Filters: 1` also judges the rows on people search (`location`,
+  `company_domain`), job search (`location`, `posted_within_days`) and web or Google search
+  (`site:` in `q`): a row whose own field clearly breaks what you sent (another company or site, an
+  older date; for a place, within the US another state or country, abroad another country) leaves
+  `output`, and `_treg.strict_filtered` says `{removed, kept, by, unchecked}`. Another city is never
+  judged. A row that names no place, company or date, only a larger place than you asked, or
+  another city, is kept and counted `unchecked`; a row naming several places is removed only when
+  every one is elsewhere. Abroad, a row is removed only when it names another country, or a US state, in full; a two-letter code never removes a row outside a US ask. A code
+  you send that may be a US state or a country (`Toronto, CA`) counts both ways, and a bare
+  `Washington` is the state. `raw` keeps
+  every row, and the provider is billed as usual. When no row is left it asks at most 2 more providers, each billed as usual;
+  `X-Treg-Route-Max-Cost` caps the total.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current. When
