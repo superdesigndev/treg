@@ -33,7 +33,7 @@ from treg.domain.money import allowance
 from treg.domain.governance.teams import cascade_delete_org, lock_allowance_holds
 from treg.infra import db as infra_db
 from treg.infra import empty_balance
-from treg.infra import kv, money_session
+from treg.infra import kv, money_session, team_backpressure
 from treg.infra.db import reset_db, session_maker
 from treg.routers import billing as billing_routes
 from treg.domain.identity.access import Caller
@@ -1298,10 +1298,18 @@ async def test_a_take_whose_refill_money_admission_turns_away_is_counted_as_such
     monkeypatch.setattr(get_settings(), "money_admission_wait_s", 0.05)
     store.leases[f"money-admission:org:{org_id}"] = "an exact settle"
     caller, mk = await _caller(org_id), _call(org_id)
+    noted: list[int] = []
+
+    async def note(team):
+        noted.append(team)
+
+    monkeypatch.setattr(team_backpressure, "note_admission_timeout", note)
     with pytest.raises(ReservationFailed) as refused:
         await call_reserve._platform_reserve(mk, caller, call_ref="busy-1", allow_allowance=True)
     assert refused.value.status_code == 429 and mk.allowance_epoch is None
     assert skip_lines() == [_skip(org_id, "refill_admission_busy", 1)]
+    # the refill's and the exact path's turn-away both count toward the team's backpressure
+    assert noted == [org_id, org_id]
 
 
 async def test_a_take_refused_after_a_refill_it_did_not_run_was_turned_away_is_not_blamed_on_it(

@@ -1,8 +1,11 @@
-"""The teams whose queued charges the allowance fold is behind on, and their in-flight places.
+"""The teams whose money work treg is behind on, and their in-flight places.
 
 The fold publishes, per share of the teams it works on, the list of teams to throttle under one
-self-expiring key (`publish`); request processes read every share's key in one round trip, at
-most once per `money_backpressure_refresh_s` per process (`throttled`). A listed team's metered
+self-expiring key (`publish`). A team whose own calls keep timing out in the money admission
+queue is marked under a key of its own by the process that saw the timeouts
+(`note_admission_timeout`). Request processes read every share's key, and the marks of the teams
+they served since the last read, in one round trip, at most once per
+`money_backpressure_refresh_s` per process (`throttled`). A throttled team's metered
 call takes one of `money_backpressure_max_in_flight` places shared by every process (`admit`), on
 the provider concurrency lease. Optional work throughout: a store that is unset, slow, down or
 wrong reads as no throttled team and no place to take, so every call is allowed.
@@ -21,6 +24,8 @@ from . import kv, provider_concurrency
 log = logging.getLogger("treg.team_backpressure")
 _KEY = "treg:team-backpressure:v1"
 _SLOTS = "treg:team-backpressure-slots:v1"
+_TIMEOUTS = "treg:team-backpressure-admission-timeouts:v1"
+_MARK = "treg:team-backpressure-admission:v1"
 # Below the store's own limit for optional work, so the call knows the store did not answer.
 _READ_WAIT_S = 0.15
 _MAX_TEAMS = 1000
@@ -39,7 +44,8 @@ class Throttled(Exception):
 def enabled(settings=None) -> bool:
     settings = settings or get_settings()
     return kv.configured() and (settings.money_backpressure_oldest_s is not None
-                                or settings.money_backpressure_lease_held_skips is not None)
+                                or settings.money_backpressure_lease_held_skips is not None
+                                or settings.money_backpressure_admission_timeouts is not None)
 
 
 def share_key(shard: tuple[int, int] | None) -> str:
@@ -69,6 +75,33 @@ async def publish(shard: tuple[int, int] | None, org_ids: Iterable[int], ttl_s: 
         return False
 
 
+def mark_key(org_id: int) -> str:
+    return f"{_MARK}:{org_id}"
+
+
+async def note_admission_timeout(org_id: int) -> None:
+    """Count one of the team's reserves the money admission queue turned away; at
+    `money_backpressure_admission_timeouts` inside `money_backpressure_admission_window_s`, mark
+    the team for `money_backpressure_mark_ttl_s`, renewed by every timeout past the count. Never
+    raises; a store that cannot count may mark the team, as `take` spends a budget it cannot
+    check."""
+    settings = get_settings()
+    count = settings.money_backpressure_admission_timeouts
+    if count is None or not kv.configured():
+        return
+    try:
+        async with asyncio.timeout(_READ_WAIT_S):
+            store = kv.store()
+            if await store.take(f"{_TIMEOUTS}:{org_id}", count - 1,
+                                settings.money_backpressure_admission_window_s):
+                return
+            await store.set_text(mark_key(org_id), "1", settings.money_backpressure_mark_ttl_s)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - an unmarked team is only not throttled
+        pass
+
+
 def _parse(text: str | None) -> set[int]:
     if not text:
         return set()
@@ -84,20 +117,29 @@ class _Reader:
         self.teams: frozenset[int] = frozenset()
         self.next_refresh = 0.0
         self.lock = asyncio.Lock()
+        # Teams whose calls asked since the last read: the marks the next read looks up.
+        self.asked: set[int] = set()
 
-    async def throttled(self, settings) -> frozenset[int]:
+    async def throttled(self, settings, org_id: int) -> frozenset[int]:
+        if (settings.money_backpressure_admission_timeouts is not None
+                and len(self.asked) < _MAX_TEAMS):
+            self.asked.add(org_id)
         if time.monotonic() < self.next_refresh:
             return self.teams
         async with self.lock:
             if time.monotonic() < self.next_refresh:
                 return self.teams
+            asked = sorted(self.asked)
+            self.asked = set()
             try:
+                share_keys = _share_keys(settings.money_allowance_fold_shards)
                 async with asyncio.timeout(_READ_WAIT_S):
                     texts = await kv.store().get_texts(
-                        _share_keys(settings.money_allowance_fold_shards))
+                        share_keys + [mark_key(team) for team in asked])
                 teams: set[int] = set()
-                for text in texts:
+                for text in texts[:len(share_keys)]:
                     teams |= _parse(text)
+                teams |= {team for team, text in zip(asked, texts[len(share_keys):]) if text}
                 self.teams = frozenset(teams)
             except asyncio.CancelledError:
                 raise
@@ -121,7 +163,7 @@ async def throttled(org_id: int) -> bool:
     settings = get_settings()
     if not enabled(settings):
         return False
-    return org_id in await _reader.throttled(settings)
+    return org_id in await _reader.throttled(settings, org_id)
 
 
 def _rejected(org_id: int, limit: int) -> None:

@@ -146,6 +146,15 @@ _DATAPLANE_DERIVED_WRITES = {
         (reserve.backpressure_admit, "team_backpressure.admit"),
         (team_backpressure.admit, "provider_concurrency.try_acquire_slot"),
     ),
+    # A reserve the money admission queue turned away (the call's own, or its allowance refill's)
+    # counts once in a self-expiring per-team window (Redis, no session open); past the count it
+    # writes the team's self-expiring throttle mark.
+    "team_backpressure_admission_mark": (
+        (reserve.reserve_admission, "team_backpressure.note_admission_timeout"),
+        (call_allowance._refill, "team_backpressure.note_admission_timeout"),
+        (team_backpressure.note_admission_timeout, "store.take"),
+        (team_backpressure.note_admission_timeout, "store.set_text"),
+    ),
     # A shared rate window: a platform call about to go upstream takes a self-expiring member of its
     # bucket's window (Redis, after the DB phase ended), given back when it is refused before sending.
     "provider_rate_window": (
@@ -245,6 +254,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "member_spend_attribution",
     "provider_concurrency_lease",
     "team_backpressure_slot",
+    "team_backpressure_admission_mark",
     "provider_rate_window",
     "allowance_counter",
     "allowance_hold_refill",
@@ -271,6 +281,7 @@ _DERIVED_WRITE_FILES = {
         "allowance_runtime.give_back_for_exact_path",
         "idempotency.mark_in_flight", "idempotency.clear_in_flight",
         "empty_balance.remember", "empty_balance.clear",
+        "team_backpressure.note_admission_timeout",
     },
     _SRC / "infra" / "empty_balance.py": {"set_text", "clear_flag"},
     _SRC / "infra" / "own_key_credit.py": {"set_text", "clear_flag"},
@@ -284,6 +295,7 @@ _DERIVED_WRITE_FILES = {
         "store.allowance_add",
         "store.allowance_drop", "store.acquire_lease", "store.release_lease",
         "store.clear_call_in_flight", "clear_calls_in_flight", "mark_calls_in_flight",
+        "team_backpressure.note_admission_timeout",
     },
     _SRC / "application" / "call" / "settle.py": {
         "allowance_runtime.finish",
@@ -301,7 +313,9 @@ _DERIVED_WRITE_FILES = {
     _SRC / "infra" / "provider_concurrency.py": {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
     },
-    _SRC / "infra" / "team_backpressure.py": {"provider_concurrency.try_acquire_slot"},
+    _SRC / "infra" / "team_backpressure.py": {
+        "provider_concurrency.try_acquire_slot", "store.take", "store.set_text",
+    },
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
     _SRC / "application" / "compare.py": {"store.set_flag", "store.set_text"},
@@ -454,6 +468,10 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("infra/provider_concurrency.py", "try_acquire_slot", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/team_backpressure.py", "admit", "provider_concurrency.try_acquire_slot"),
+    ("application/call/reserve.py", "reserve_admission", "team_backpressure.note_admission_timeout"),
+    ("application/call/allowance.py", "_refill", "team_backpressure.note_admission_timeout"),
+    ("infra/team_backpressure.py", "note_admission_timeout", "store.take"),
+    ("infra/team_backpressure.py", "note_admission_timeout", "store.set_text"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
     ("application/call/service.py", "_execute_call", "rate_observe.observe"),
     ("application/call/service.py", "admit_outbound", "rate_observe.observe"),

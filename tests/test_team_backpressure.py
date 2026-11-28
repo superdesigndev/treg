@@ -75,6 +75,7 @@ def test_off_by_default():
     settings = Settings(_env_file=None, kv_url="redis://x")
     assert settings.money_backpressure_oldest_s is None
     assert settings.money_backpressure_lease_held_skips is None
+    assert settings.money_backpressure_admission_timeouts is None
     assert not gate.enabled(settings)
 
 
@@ -143,6 +144,100 @@ async def test_switched_off_nothing_is_read_or_written(store, monkeypatch):
     await producer.publish((0, 1), [(5, 999)], starved_after_s=30)
     assert await gate.admit(5) is None
     assert store.reads == 0
+
+
+@pytest.fixture
+def admission_trigger(store, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_backpressure_oldest_s", None)
+    monkeypatch.setattr(settings, "money_backpressure_admission_timeouts", 3)
+    monkeypatch.setattr(settings, "money_backpressure_admission_window_s", 10)
+    return store
+
+
+async def test_a_team_whose_reserves_keep_timing_out_is_throttled(admission_trigger, monkeypatch):
+    """The money admission queue, not the charge queue, is where a team's own traffic can jam:
+    its refills cannot get in, its takes are refused, and every call waits for the queue alone.
+    Enough timeouts inside the window throttle that team, and only it."""
+    now = _clock(monkeypatch)
+    for _ in range(2):
+        await gate.note_admission_timeout(5)
+    await gate.note_admission_timeout(6)
+    assert not await gate.throttled(5)             # first read: 5 asks for the first time
+    now[0] += get_settings().money_backpressure_refresh_s
+    assert not await gate.throttled(5)             # two timeouts are below the count
+    await gate.note_admission_timeout(5)
+    now[0] += get_settings().money_backpressure_refresh_s
+    assert await gate.throttled(5)
+    assert not await gate.throttled(6)
+    first, second = await gate.admit(5), await gate.admit(5)
+    with pytest.raises(gate.Throttled):
+        await gate.admit(5)
+    first.release()
+    second.release()
+
+
+async def test_the_admission_mark_lifts_once_the_timeouts_stop(admission_trigger, monkeypatch):
+    """Refused calls never reach the money admission queue, so they never renew the mark; it
+    expires `money_backpressure_mark_ttl_s` after the last timeout."""
+    now = _clock(monkeypatch)
+    for _ in range(3):
+        await gate.note_admission_timeout(5)
+    assert await gate.throttled(5)                 # a team's first call reads its mark
+    held = [await gate.admit(5), await gate.admit(5)]
+    for _ in range(20):
+        with pytest.raises(gate.Throttled):
+            await gate.admit(5)
+    for lease in held:
+        lease.release()
+    monkeypatch.setattr(kv.time, "monotonic", lambda: 10**9)   # the local store's clock
+    now[0] += get_settings().money_backpressure_refresh_s
+    assert not await gate.throttled(5)
+
+
+async def test_marks_are_read_with_the_lists_in_one_round_trip(admission_trigger, monkeypatch):
+    now = _clock(monkeypatch)
+    for _ in range(3):
+        await gate.note_admission_timeout(5)
+    await gate.publish((0, 1), [7], 15)
+    await asyncio.gather(*(gate.throttled(team) for team in (5, 6, 7) for _ in range(5)))
+    assert admission_trigger.reads == 1
+    now[0] += get_settings().money_backpressure_refresh_s
+    assert await gate.throttled(5) and await gate.throttled(7) and not await gate.throttled(6)
+    assert admission_trigger.reads == 2
+
+
+async def test_the_admission_trigger_off_counts_and_reads_nothing(store, monkeypatch):
+    monkeypatch.setattr(store, "take", pytest.fail)
+    monkeypatch.setattr(store, "set_text", pytest.fail)
+    await gate.note_admission_timeout(5)
+    assert await gate.throttled(5) is False
+    assert gate._reader.asked == set()
+
+
+async def test_a_reserve_the_admission_queue_turns_away_counts_for_its_team(
+        admission_trigger, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from treg.application.call import reserve as call_reserve
+    from treg.application.call.types import ReservationFailed
+    from treg.infra import money_admission
+
+    @asynccontextmanager
+    async def refuse(*args, **kwargs):
+        raise money_admission.ReserveAdmissionTimeout("wait_timeout")
+        yield  # pragma: no cover - makes this an async context manager
+
+    monkeypatch.setattr(money_admission, "admit", refuse)
+    now = _clock(monkeypatch)
+    assert not await gate.throttled(9)
+    for _ in range(3):
+        with pytest.raises(ReservationFailed) as refused:
+            async with call_reserve.reserve_admission(9):
+                pytest.fail("refusal entered reserve")
+        assert refused.value.detail["error"] == "money_admission_timeout"
+    now[0] += get_settings().money_backpressure_refresh_s
+    assert await gate.throttled(9)
 
 
 async def test_a_listed_team_gets_its_places_then_a_fast_refusal(store):

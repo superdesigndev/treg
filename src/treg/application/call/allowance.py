@@ -30,7 +30,7 @@ from ...domain import money as ledger
 from ...domain.governance import budgets as budget_policy
 from ...domain.money import allowance
 from ...infra import db as infra_db
-from ...infra import kv, money_admission
+from ...infra import kv, money_admission, team_backpressure
 from ...infra.db import session_maker
 from ...infra.money_session import bound_lock_wait, lock_timed_out, money_session
 from ...models import Org
@@ -423,6 +423,7 @@ async def _refill(org_id: int, need_micro: int, daily_cap_micro: int) -> bool:
         _refill_turned_away.set(True)
         log.info("allowance_refill_admission_busy org_id=%s need=%s counter_before=%s",
                  org_id, need_micro, available)
+        await team_backpressure.note_admission_timeout(org_id)
         return False
     if result.epoch != counter_epoch:
         # The counter read was built for another hold. Publishing this one replaces it, and
