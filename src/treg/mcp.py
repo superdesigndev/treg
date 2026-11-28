@@ -2303,6 +2303,7 @@ _RECENT_CALL_FIELDS = ("call_ref", "endpoint_id", "status_code", "cost_charged_m
 
 
 MCP_RESULT_PAGE_CHARS = 40_000
+_SMALL_CLIENT_BODY_BYTES = 6_000
 
 
 def _result_page(result: dict, call_id: str) -> dict | None:
@@ -2314,9 +2315,21 @@ def _result_page(result: dict, call_id: str) -> dict | None:
     note = (f"characters {min(start, total)}-{end} of {total}; " + (
         f"the rest: call_result(call_id={call_id!r}, offset={nxt}). Join the pages' body_text in "
         "order for the whole answer" if nxt is not None else "this is the last page"))
+    text = response.get("body_text") or ""
+    sent = len(json.dumps(text, ensure_ascii=False).encode())
+    fits = max(1, len(text) * _SMALL_CLIENT_BODY_BYTES // sent) if text and sent > _SMALL_CLIENT_BODY_BYTES else None
     return {"offset": start, "total_chars": total, "next_offset": nxt,
-            "note": note + ". If your client cut this reply, ask again with a smaller max_chars "
-                           "(4000 fits a client that keeps 8 KB of JSON)."}
+            "note": note + ". If your client cut this reply, ask again with a smaller max_chars" + (
+                f" (this page is {sent} bytes as JSON; max_chars={fits} keeps a page of this text "
+                "near 6 KB, which fits a client that keeps 8 KB)." if fits else ".")}
+
+
+def _response_first(result: Any) -> Any:
+    """The answer ahead of the request it answered: a saved request body can be tens of KB, and a
+    client that keeps only the start of a reply must still see the answer."""
+    if not isinstance(result, dict) or "response" not in result:
+        return result
+    return {"response": result["response"], **{k: v for k, v in result.items() if k != "response"}}
 
 
 async def _call_result_impl(call_id: str, limit: int, ctx: Context, *, offset: int = 0,
@@ -2344,7 +2357,7 @@ async def _call_result_impl(call_id: str, limit: int, ctx: Context, *, offset: i
         return {"error": "could not read the call" if call_id else "could not list recent calls",
                 "detail": body}
     if url is not None:
-        return {"team": slug, "page": _result_page(body, call_id), "result": body}
+        return {"team": slug, "page": _result_page(body, call_id), "result": _response_first(body)}
     rows = body if isinstance(body, list) else []
     return {"team": slug, "calls": [
         {"call_id": c.get("call_ref"), **{k: c.get(k) for k in _RECENT_CALL_FIELDS if k != "call_ref"}}

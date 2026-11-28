@@ -1173,6 +1173,46 @@ async def test_an_mcp_agent_reads_a_large_answer_page_by_page(clients: AsyncClie
     assert "offset=6000" in small["page"]["note"]
 
 
+async def test_an_mcp_page_shows_the_answer_before_a_large_saved_request(
+        clients: AsyncClient, shadow, monkeypatch):
+    from test_mcp import _rpc, mcp_session
+
+    row = await _large_call(clients, monkeypatch)
+    async with session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalars().one()
+        key.req_body = json.dumps({"q": "r" * 20_000}).encode()
+        await s.commit()
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                     "clientInfo": {"name": "test", "version": "1"}}, token)
+        r = await _rpc(c, "tools/call", {"name": "call_result",
+                                         "arguments": {"call_id": row["call_ref"]}}, token)
+    text = r.json()["result"]["content"][0]["text"]
+    assert text.count("r" * 20_000) == 1
+    assert text.index('{\\"rows\\"') < 1024 < text.index("r" * 100)
+
+
+async def test_the_smaller_page_hint_fits_8_kb_for_non_latin_text(clients: AsyncClient, shadow, monkeypatch):
+    from test_mcp import _call_tool, mcp_session
+    from tests.test_marketplace_call import _fake_relay
+
+    wide = json.dumps({"t": "漢字😀" * 5000}, ensure_ascii=False).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, wide))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200
+    await archive.drain()
+    await audit.drain()
+    ref = (await clients.get("/calls")).json()[0]["call_ref"]
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        first = await _call_tool(c, "call_result", {"call_id": ref, "max_chars": 4000}, token=token)
+        fits = int(first["page"]["note"].split("max_chars=")[1].split(" ")[0])
+        small = await _call_tool(c, "call_result", {"call_id": ref, "max_chars": fits}, token=token)
+    assert fits < 4000
+    assert len(json.dumps(small["result"]["response"]["body_text"], ensure_ascii=False).encode()) <= 6_000
+
+
 async def test_a_call_with_no_stored_answer_reads_as_before_when_paged(
         clients: AsyncClient, shadow, monkeypatch):
     from tests.test_marketplace_call import _fake_relay
