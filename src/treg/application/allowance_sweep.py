@@ -421,6 +421,8 @@ async def fold_queued_once(session_maker, *, keep_going: Callable[[], bool] = _a
     starved: list = []
     # Every team's wait as the pages read it, for the teams to throttle (`allowance_backpressure`).
     waits: list[tuple[int, int]] | None = [] if team_backpressure.enabled() else None
+    if waits is not None:
+        allowance_backpressure.begin_pass()
     behind: tuple | None = None
     stop = asyncio.Event()
     lane: asyncio.Task | None = None
@@ -601,6 +603,7 @@ async def _visit_team(session_maker, org_id: int, oldest=None,
                 total += folded.calls
                 if folded.claimed < _FOLD_BATCH:
                     drained = True
+                    allowance_backpressure.note_drained(org_id)
                     break
     except money_admission.AdmissionTimeout:
         skipped = "admission_timeout"

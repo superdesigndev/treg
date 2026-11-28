@@ -2856,6 +2856,28 @@ async def test_request_processes_queue_charges_and_the_background_loop_applies_t
     assert balance == GRANT - 3 * CHUNK and store.counters[org_id]["avail"] <= hold
 
 
+async def test_a_pass_that_drains_a_stale_queue_publishes_no_throttle(org_id, store, monkeypatch):
+    """The wait a pass reads comes before its fold: a team whose old queue that same pass
+    emptied is no backlog, and must not be throttled for it (money.md "Team backpressure")."""
+    from treg.application import allowance_backpressure
+    from treg.infra import team_backpressure
+    settings = get_settings()
+    monkeypatch.setattr(settings, "money_backpressure_oldest_s", 60)
+    allowance_backpressure.reset()
+    for index in range(3):
+        epoch = await runtime.take(org_id, 10)
+        await _finish(org_id, f"stale-{index}", epoch, 10, billable=True)
+    async with session_maker() as db:
+        await db.execute(update(CallCharge).where(CallCharge.org_id == org_id).values(
+            created_at=utcnow_naive() - timedelta(seconds=600)))
+        await db.commit()
+    await store.set_text(team_backpressure.share_key((0, 1)), str(org_id), 15)
+    assert await allowance_sweep.fold_queued_once(session_maker, shard=(0, 1)) == 3
+    assert await _queued(org_id) == 0
+    assert team_backpressure.share_key((0, 1)) not in store.texts
+    allowance_backpressure.reset()
+
+
 async def test_a_pass_folds_a_few_batches_of_a_team_and_comes_back_for_the_rest(
         org_id, store, monkeypatch):
     """One long queue must not keep the other teams waiting."""

@@ -23,6 +23,8 @@ from ..config import get_settings
 from ..infra import team_backpressure
 
 _lease_held: dict[int, int] = {}
+# Teams this pass emptied the queue of: their wait, read before the fold, is no backlog now.
+_drained: set[int] = set()
 _LEASE_HELD_KEPT = 10_000
 # What each share last published, and when: an unchanged list is published again only once a
 # third of its lifetime has passed.
@@ -41,6 +43,14 @@ def note_folded(org_id: int) -> None:
     _lease_held.pop(org_id, None)
 
 
+def begin_pass() -> None:
+    _drained.clear()
+
+
+def note_drained(org_id: int) -> None:
+    _drained.add(org_id)
+
+
 def choose(waits: Iterable[tuple[int, int]], *, starved_after_s: int) -> frozenset[int]:
     """The teams to throttle among `waits`, (team, seconds its oldest queued charge waited)."""
     settings = get_settings()
@@ -48,6 +58,8 @@ def choose(waits: Iterable[tuple[int, int]], *, starved_after_s: int) -> frozens
     skips = settings.money_backpressure_lease_held_skips
     chosen, queued = set(), set()
     for org_id, waited_s in waits:
+        if org_id in _drained:
+            continue
         queued.add(org_id)
         if oldest_s is not None and waited_s >= oldest_s:
             chosen.add(org_id)
@@ -80,4 +92,5 @@ async def publish(shard, waits: Iterable[tuple[int, int]], *, starved_after_s: i
 
 def reset() -> None:
     _lease_held.clear()
+    _drained.clear()
     _published.clear()

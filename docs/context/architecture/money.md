@@ -1155,7 +1155,8 @@ it is on only while a trigger is set and the shared store is configured.
   `application/allowance_backpressure.py` names, from those alone, the teams to throttle: a team
   whose oldest charge has waited `money_backpressure_oldest_s` or more, or a starved team (oldest
   at least `_STARVED_AFTER_S`) found `lease_held` `money_backpressure_lease_held_skips` times in a
-  row with no fold of it committed between. A pass that read its share's whole queue publishes the
+  row with no fold of it committed between. A team whose queue the same pass emptied is left off:
+  its wait was read before the fold. A pass that read its share's whole queue publishes the
   list for its share as one self-expiring text (`infra/team_backpressure.py`,
   `treg:team-backpressure:v1:<index>/<count>`, `:all` for a pass over every team), replacing the
   last; an unchanged list is written again only after a third of `money_backpressure_mark_ttl_s`.
