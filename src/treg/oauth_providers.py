@@ -3156,6 +3156,38 @@ SPIDERCLOUD = OAuthProvider(
     probe_path="/data/credits",
 )
 
+BLINDORACLE = OAuthProvider(
+    service="blindoracle",
+    display_name="BlindOracle",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your BlindOracle agent api_key",
+    # BlindOracle accepts the key as `Authorization: Bearer <key>` or `X-API-Key`. Use X-API-Key so
+    # the Authorization header stays free and the key never lands in a URL.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://craigmbrown.com/blindoracle/fund-your-agent.html",
+    setup_action_label="Register an agent and get its BlindOracle api_key",
+    setup_steps=(
+        "POST https://api.craigmbrown.com/v1/agents/register with {\"name\": \"<your-agent>\", \"terms_accepted\": true}; the response carries agent_id and api_key (shown once).",
+        "Fund the agent's prepaid balance: register a wallet (POST /a2a/agents/<agent_id>/wallet), send USDC on Base to the treasury and POST /a2a/agents/<agent_id>/topup {\"tx_hash\": \"0x...\"}, or top up by card at /a2a/agents/<agent_id>/topup/card.",
+        "Paste the api_key here. Paid calls send \"pay_from\": \"balance\" in the body and are debited from that balance.",
+    ),
+    setup_note="The balance check is free. A call that returns no deliverable refunds the balance.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Cited research briefs, news and sentiment scans, SEC filings, business-registry checks, due diligence, and trust checks on other AI agents, each wrapped in a verifiable receipt.",
+    base_url="https://api.craigmbrown.com",
+    docs_url="https://api.craigmbrown.com/v1/skill.md",
+    probe_path="/v1/wallet/balance",  # free; answers 200 either way, so the body decides
+    # A valid key resolves to an agent: {"resolved_by": "api_key", "agent_id": "agent_..."}.
+    # A made-up key answers {"status": "unknown", "resolved_by": null, ...}.
+    token_verify_field="agent_id",
+)
+
+
 PERPLEXITY = OAuthProvider(
     service="perplexity",
     display_name="Perplexity",
@@ -4642,7 +4674,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY, BLINDORACLE,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
