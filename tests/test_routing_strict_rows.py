@@ -33,7 +33,7 @@ PLACES = [
     ("Germany", "Berlin", None),
     ("Germany", "Berlin, Germany", True),
     ("California", "Greater Los Angeles Area", None),
-    ("California", "San Francisco, CA", None),          # CA is also Canada: never a match, never removed
+    ("California", "San Francisco, CA", True),          # a US ask: the code is the state
     ("California", "San Francisco, CA, US", True),
     ("California", "San Francisco, California, United States", True),
     ("New York City", "New York, New York, United States", True),
@@ -44,11 +44,11 @@ PLACES = [
     ("Texas", "Texas", True),
     ("Austin, Texas", "Texas, United States", None),        # only a larger place: not judged
     ("Austin, Texas", "United States", None),
-    ("Indiana", "Columbus, IN", None),                       # IN is also India
+    ("Indiana", "Columbus, IN", True),                       # a US ask: the code is the state
     ("Indiana", "Columbus, IN, US", True),
     ("Germany", "Berlin, DE", None),                         # DE is also Delaware
-    ("United States", "Columbus, IN", None),
-    ("United Kingdom", "Austin, MN", False),
+    ("United States", "Columbus, IN", True),
+    ("United Kingdom", "Austin, MN", None),                  # abroad a code never removes
     # the city cases
     ("Paris, France", "Paris, FR", True),
     ("France", "Paris, FR", True),
@@ -330,9 +330,56 @@ KEEP_OR_REMOVE += [
     ("Richmond, VA", "Richmond, Virginia, US", "keep"),
     ("Richmond, VA", "Richmond, British Columbia, Canada", "remove"),
 ]
-# Clear to a reader, not judged by the test: another city in the same state (plain text cannot
-# tell it from a borough, a county or an address), a city asked with nothing around it, and a
-# place that may be a US state or a country ('IN', 'MN', 'Georgia').
+KEEP_OR_REMOVE += [
+    # a last-part two-letter (or three-letter) region code abroad
+    ("Toronto, Canada", "Toronto, ON", "keep"), ("Vancouver, Canada", "Vancouver, BC", "keep"),
+    ("Melbourne, Australia", "Melbourne, VIC", "keep"), ("Edinburgh, United Kingdom", "Edinburgh, SC", "keep"),
+    ("Edinburgh, Scotland", "Glasgow, SC", "keep"), ("Guadalajara, Mexico", "Guadalajara, JA", "keep"),
+    ("Perth, Australia", "Perth, WA", "keep"), ("Adelaide, Australia", "Adelaide, SA", "keep"),
+    ("Darwin, Australia", "Darwin, NT", "keep"), ("Regina, Canada", "Regina, SK", "keep"),
+    ("St. John's, Canada", "St. John's, NL", "keep"), ("Charlottetown, Canada", "Charlottetown, PE", "keep"),
+    ("Monterrey, Mexico", "Monterrey, NL", "keep"), ("Chennai, India", "Chennai, TN", "keep"),
+    ("Mumbai, India", "Mumbai, MH", "keep"), ("Belo Horizonte, Brazil", "Belo Horizonte, MG", "keep"),
+    ("Curitiba, Brazil", "Curitiba, PR", "keep"), ("Porto Alegre, Brazil", "Porto Alegre, RS", "keep"),
+    ("Munich, Germany", "Munich, BY", "keep"), ("Palermo, Italy", "Palermo, PA", "keep"),
+    ("Genova, Italy", "Genova, GE", "keep"), ("Ottawa, ON", "Gatineau, Quebec, Canada", "keep"),
+    ("London, United Kingdom", "Leeds, UK", "keep"), ("Austin, TX", "London, UK", "remove"),
+    # three parts ending in a region code
+    ("Toronto, Canada", "Toronto, Ontario, ON", "keep"), ("Perth, Australia", "Perth, Western Australia, WA", "keep"),
+    ("Hyderabad, India", "Hyderabad, Telangana, TG", "keep"), ("São Paulo, Brazil", "São Paulo, São Paulo, SP", "keep"),
+    ("Austin, TX", "Round Rock, Williamson, TX", "keep"), ("Austin, TX", "Portland, Multnomah, OR", "remove"),
+    ("Perth, Australia", "Fremantle, Perth, WA", "keep"), ("Perth, WA, Australia", "Fremantle, WA", "keep"),
+    # states and countries in other languages
+    ("Austin, Texas", "Austin, Texas, Estados Unidos", "keep"), ("Los Angeles, CA", "Los Ángeles, California, EE. UU.", "keep"),
+    ("San Francisco, CA", "San Francisco, Kalifornien, Vereinigte Staaten", "keep"), ("Miami, FL", "Miami, Floride, États-Unis", "keep"),
+    ("New York, NY", "Nueva York, Nueva York, Estados Unidos", "keep"), ("Hamburg, Germany", "Hamburg, Freie und Hansestadt Hamburg, Deutschland", "keep"),
+    ("Vienna, Austria", "Wien, Österreich", "keep"), ("Mexico City, Mexico", "Ciudad de México, CDMX, México", "keep"),
+    ("Austin, TX", "Toronto, Ontario, Kanada", "remove"), ("Seattle, WA", "Seattle, Washington, États-Unis", "keep"),
+    # DC next to WA
+    ("Washington, DC", "Seattle, WA", "remove"), ("Washington, DC", "Washington", "keep"), ("Washington, DC", "Washington, D.C., US", "keep"),
+    ("Seattle, WA", "Washington, DC", "remove"), ("Seattle, Washington", "Washington, DC Metro Area", "remove"),
+    ("Washington, DC", "Washington, DC Metro Area", "keep"), ("Washington, DC", "Spokane, Washington", "remove"),
+    ("Washington, District of Columbia", "Arlington, VA", "remove"), ("Washington, DC", "Washington DC-Baltimore Area", "keep"),
+    # only a state code, only a country
+    ("San Francisco, California", "CA", "keep"), ("Indianapolis, Indiana", "IN", "keep"), ("Atlanta, Georgia", "GA", "keep"),
+    ("Pittsburgh, Pennsylvania", "PA", "keep"), ("Austin, TX", "TX", "keep"), ("Austin, TX", "Canada", "remove"),
+    ("London, United Kingdom", "United Kingdom", "keep"), ("Austin, TX", "Germany", "remove"), ("Berlin, Germany", "Deutschland", "keep"),
+    ("Texas", "CO", "remove"), ("Texas", "Texas", "keep"),
+    ("Pittsburgh, Pennsylvania", {"state": "PA", "country": "US"}, "keep"), ("Pittsburgh, Pennsylvania", {"region": "PA"}, "keep"),
+    # empty, whitespace, numbers, null
+    ("Austin, TX", "", "keep"), ("Austin, TX", "   ", "keep"), ("Austin, TX", None, "keep"), ("Austin, TX", 78701, "keep"),
+    ("Austin, TX", ", ,", "keep"), ("Austin, TX", [], "keep"), ("Austin, TX", {"city": "Austin", "state": "TX"}, "keep"),
+    ("Austin, TX", " | ; ", "keep"), ("   ", "Denver, CO", "keep"), (None, "Denver, CO", "keep"),
+    # lists mixing states
+    ("Austin, TX", ["Denver, CO", "Austin, TX"], "keep"), ("Austin, TX", ["Denver, CO", "Boise, ID"], "remove"),
+    ("Austin, TX", "Denver, CO; Boise, ID | Reno, NV", "remove"), ("Austin, TX", "Denver, CO; Remote", "keep"),
+    ("Portland, OR", ["Portland, ME", "Portland, OR"], "keep"), ("Chicago, IL", "Chicago, IL; Toronto, ON", "keep"),
+    ("Toronto, Canada", "Buffalo, NY; Detroit, MI", "remove"), ("Austin, TX", ["Remote", "Dallas, TX"], "keep"),
+]
+# Clear to a reader, kept by the test: another city in the same state (plain text cannot tell
+# it from a borough, a county or an address), a city asked with nothing around it, a place that
+# may be a US state or a country ('IN', 'MN', 'Georgia'), a country in another language
+# ('Kanada'), and a two-letter code in a row for an ask abroad, which never removes.
 NOT_JUDGED = {
     ("Berlin", "Toronto, Canada"), ("India", "Indianapolis, IN"), ("Mongolia", "Minneapolis, MN"),
     ("Atlanta, Georgia", "Savannah, Georgia"), ("Atlanta, GA", "Tbilisi, Georgia"), ("Austin, TX", "Dallas, TX"),
@@ -342,6 +389,9 @@ NOT_JUDGED = {
     ("Austin, TX", "Houston, TX 77002"), ("austin, tx", "DALLAS, TEXAS"), ("Denver, Colorado", "Boulder, CO"),
     ("Dover, DE", "Wilmington, Delaware"), ("Atlanta, GA", "Kutaisi, Georgia"), ("Boston, Massachusetts", "Worcester, MA"),
     ("Podgorica, ME", "Portland, Maine"), ("Ulaanbaatar, MN", "Minneapolis, Minnesota"),
+    ("Canada", "Seattle, WA"), ("Paris, France", "Paris, TX"), ("Lima, Peru", "Lima, OH"),
+    ("Manchester, UK", "Manchester, NH"), ("Austin, TX", "Toronto, Ontario, Kanada"),
+    ("Toronto, Canada", "Buffalo, NY; Detroit, MI"),
 }
 
 
@@ -349,7 +399,7 @@ NOT_JUDGED = {
 def test_place_never_removes_a_row_in_the_place_asked(asked, row, want):
     got = R.place(asked, row)
     if isinstance(row, str) and (asked, row) in NOT_JUDGED:
-        assert got is None
+        assert got is not False
     else:
         assert (got is False) == (want == "remove"), got
 
@@ -374,6 +424,15 @@ def test_a_row_naming_several_places_is_removed_only_when_every_one_is_elsewhere
     assert R.place("San Francisco, CA", "New York, NY (HQ); San Francisco, CA") is True
     assert R.place("Austin, TX", ["Berlin, Germany", "Remote"]) is None
     assert R.place("Austin, TX", "Berlin, Germany | Paris, France") is False
+
+
+def test_a_two_letter_code_removes_a_row_only_for_an_ask_in_the_us():
+    assert R.place("Texas", "Perth, WA") is False and R.place("Perth, Australia", "Perth, WA") is True
+    assert R.place("Australia", "Adelaide, SA") is None and R.place("Germany", "Munich, BY") is None
+    assert R.place("Austin, TX", "London, UK") is False                  # UK is a name, not a code
+    assert R.place("Seattle, Washington", "Washington, DC Metro Area") is False
+    assert R.place("Washington, DC", "Washington") is None               # the state or the district
+    assert R.place("Canada", "CA") is None and R.place("California", "CA") is True
 
 
 def test_a_two_letter_region_before_the_country_is_no_country():

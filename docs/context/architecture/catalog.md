@@ -1424,15 +1424,20 @@ an invalid extra never disables the primary.
   only when it names another state or country, abroad only when it names another country; another
   city is never judged, since plain text cannot tell it from a borough, a county, a metro area, an
   address or another-language name (München, Köln). The asked city matches the row's city part
-  only. A two-letter part before a row's last part is a region, never a country ("Saskatoon, SK,
-  Canada"). A value naming several places (a list, or parts joined by `;` or `|`) is removed only
+  only. Abroad, a row is removed only when it names another country in full; a two-letter code never removes a row outside a US ask. In a row (`_read_row`) only a full name, or the names
+  `UK` and `US`, settles a state or a country; any other two-letter code ("Regina, SK", "Perth,
+  WA", "Munich, BY") stays a code, a US state only before "United States". A code removes a row
+  only for an ask in a US state, and only as a US state code other than the one asked ("Perth, WA"
+  for Texas); otherwise it can only confirm the place asked, and a code that is both a state and
+  a country confirms only a US ask. A country in another language ("Kanada") is not read. A lone
+  "Washington" in a row is the state or the district. A value naming several places (a list, or parts joined by `;` or `|`) is removed only
   when every place is; the ask is read once per answer (`_asked`). The first part is a state only when
   no later part names one, and "city" stays in a state reading ("Kansas City" is no state), so a
   bare "Washington" is the state and "Washington, D.C." the district. A code that is both a state
-  and a country (`IN`, `CA`) is the state when a country follows it, else either, and the name
-  "Georgia" is always either. An ask that reads two ways ("Toronto, CA", "Mumbai, IN") is judged
-  under each reading and removes a row only when both do. In a row an either part never counts as a
-  match and removes the row only when neither reading is the place asked. A row naming only a
+  and a country (`IN`, `CA`) in the ask is the state when a country follows it, else either, and
+  the name "Georgia" is always either. An ask that reads two ways ("Toronto, CA", "Mumbai, IN") is judged
+  under each reading and removes a row only when both do. In a row an either name never counts as
+  a match and removes the row only when neither reading is the place asked. A row naming only a
   larger place than asked, a city asked with nothing around it ("Berlin" against "Toronto,
   Canada"), or nothing comparable is unchecked. Noise words go first ("Greater … Area", "New York
   City" is "New York").

@@ -79,6 +79,8 @@ def _country(text: str) -> str | None:
 
 # A name that is a US state and a country: never read as one of them alone.
 _STATE_OR_COUNTRY = {"georgia": ("ga", "ge")}
+# Two-letter country names, not codes: a row that says 'UK' or 'US' names the country in full.
+_TWO_LETTER_NAMES = {"uk": "gb", "us": "us"}
 
 
 @dataclass
@@ -86,10 +88,13 @@ class _Place:
     city: str = ""
     state: str = ""
     country: str = ""
-    # What one part could be either way: a two-letter code that is a state and a country ('IN',
-    # 'CA'), or 'Georgia' (state GA, country GE).
+    # What one part could be either way: 'Georgia' (state GA, country GE), a lone 'Washington'
+    # in a row (the state or the district), or in the ask a code that is a state and a country.
     either_states: frozenset[str] = frozenset()
     either_countries: frozenset[str] = frozenset()
+    # A row's two-letter codes no full country settles ('TX', 'SK', 'WA'): a region abroad as
+    # often as a US state, so they remove a row only for an ask in the US.
+    codes: frozenset[str] = frozenset()
 
 
 def _code(segment: str) -> str:
@@ -97,12 +102,17 @@ def _code(segment: str) -> str:
     return tokens[0] if len(tokens) <= 2 and len(tokens[0]) == 2 else ""
 
 
+def _full_country(segment: str) -> str | None:
+    bare = _bare(segment)
+    return _TWO_LETTER_NAMES.get(bare) or (_country(bare) if len(bare) > 2 else None)
+
+
 def _read_place(segments: list[str]) -> _Place:
-    """The city, US state and country a place names. The first part is a state only when no later
-    part names one, a country when it is the only part, else the city. A later part is a state by
-    name or code ('TX', 'NY 14607'), else a country. A code that is both a state and a country is
-    the state when a country follows it, else either; 'Georgia' is always either. A state names
-    its country."""
+    """The city, US state and country the caller asked. The first part is a state only when no
+    later part names one, a country when it is the only part, else the city. A later part is a
+    state by name or code ('TX', 'NY 14607'), else a country; a code before a country other than
+    the US is a region. A code that is both a state and a country is the state when a country
+    follows it, else either; 'Georgia' is always either. A state names its country."""
     out = _Place()
     states: set[str] = set()
     countries: set[str] = set()
@@ -111,7 +121,7 @@ def _read_place(segments: list[str]) -> _Place:
         states.add(state)
         countries.add(country)
 
-    later_state = any(_state_name(seg) or (_code(seg) in _STATE_CODES) for seg in segments[1:])
+    later_state = any(_state_name(seg) or (_code(_bare(seg)) in _STATE_CODES) for seg in segments[1:])
     for i, seg in enumerate(segments):
         if i == 0:
             if (pair := _STATE_OR_COUNTRY.get(_bare(seg))) and not later_state and len(segments) == 1:
@@ -123,26 +133,81 @@ def _read_place(segments: list[str]) -> _Place:
             else:
                 out.city = _bare(seg)
             continue
-        code = _code(seg)
+        code = _code(_bare(seg))
+        after = [c for later in segments[i + 1:] if (c := _full_country(later))]
         if pair := _STATE_OR_COUNTRY.get(_bare(seg)):
             both(*pair)
         elif state := _state_name(seg):
             out.state = out.state or state
+        elif code in _STATE_CODES and any(c != "us" for c in after):
+            continue   # a region of the country that follows ('Perth, WA, Australia')
         elif code in _STATE_CODES and _country(code):
-            if any(_country(_bare(later)) for later in segments[i + 1:]):
+            if after:
                 out.state = out.state or code
             else:
                 both(code, code)
         elif code in _STATE_CODES:
             out.state = out.state or code
         elif (len(_bare(seg)) > 2 or i == len(segments) - 1) and (country := _country(_bare(seg))):
-            # A two-letter part before the last is a region ('Saskatoon, SK, Canada'), not a country.
             out.country = out.country or country
     if out.state and not out.country:
         out.country = "us"
     if out.state or out.country:
         states, countries = set(), set()   # a confident reading settles the other part
     out.either_states, out.either_countries = frozenset(states), frozenset(countries)
+    return out
+
+
+def _read_row(segments: list[str]) -> _Place:
+    """The city, US state and country a row names. Only a full name settles a state or a country
+    ('Texas', 'Canada', 'UK'); a two-letter code is a state only before 'United States', else it
+    stays a code. 'Georgia' and a lone 'Washington' are either. A state names its country."""
+    out = _Place()
+    states: set[str] = set()
+    countries: set[str] = set()
+    codes: set[str] = set()
+    if len(segments) == 1:
+        seg = segments[0]
+        bare = _bare(seg)
+        if country := _TWO_LETTER_NAMES.get(bare):
+            out.country = country
+        elif len(bare) == 2:
+            codes.add(bare)
+        elif pair := _STATE_OR_COUNTRY.get(bare):
+            states.add(pair[0])
+            countries.add(pair[1])
+        elif bare == "washington":
+            states.update(("wa", "dc"))
+        elif state := _state_name(seg):
+            out.state = state
+        elif country := _country(bare):
+            out.country = country
+        else:
+            out.city = bare
+    else:
+        later_state = any(_state_name(seg) or _code(_bare(seg)) in _STATE_CODES for seg in segments[1:])
+        out.city = "" if (_state_name(segments[0]) and not later_state) else _bare(segments[0])
+        if not out.city:
+            out.state = _state_name(segments[0]) or ""
+        for i, seg in enumerate(segments[1:], start=1):
+            code = _code(_bare(seg))
+            if pair := _STATE_OR_COUNTRY.get(_bare(seg)):
+                states.add(pair[0])
+                countries.add(pair[1])
+            elif state := _state_name(seg):
+                out.state = out.state or state
+            elif country := _full_country(seg):
+                out.country = out.country or country
+            elif code:
+                if code in _STATE_CODES and any(_full_country(later) == "us" for later in segments[i + 1:]):
+                    out.state = out.state or code
+                else:
+                    codes.add(code)
+    if out.state and not out.country:
+        out.country = "us"
+    if out.state or out.country:
+        states, countries = set(), set()
+    out.either_states, out.either_countries, out.codes = frozenset(states), frozenset(countries), frozenset(codes)
     return out
 
 
@@ -159,19 +224,30 @@ def _judge(asked: _Place, row: _Place) -> bool | None:
         return False
     if asked.state and row.state and asked.state != row.state:
         return False
-    # A row's either part ('MN', 'Georgia') breaks the ask only when it is neither the state asked
-    # nor, read as a country, the country asked.
+    # A row's either part ('Georgia', a lone 'Washington') breaks the ask only when it is neither
+    # the state asked nor, read as a country, the country asked.
     if (row.either_states or row.either_countries) and not row.state and not row.country and (
             (asked.state and asked.state not in row.either_states)
             or (asked.country and asked.country != "us" and asked.country not in row.either_countries)):
         return False
+    state_codes = row.codes & _STATE_CODES
+    in_us = asked.country == "us"
+    # A two-letter code removes a row only for an ask in a US state, and only as a US state code.
+    if in_us and asked.state and not row.state and state_codes and asked.state not in state_codes:
+        return False
     if asked.city:
-        # Another city part in the same state is not judged: a borough, a county, a metro area or
-        # an address reads as another city.
+        # Another city part is not judged: a borough, a county, a metro area or an address reads
+        # as another city.
         return True if row.city and f" {asked.city} " in f" {row.city} " else None
     if asked.state:
-        return True if row.state == asked.state else None
-    return True if row.country and row.country == asked.country else None
+        return True if row.state == asked.state or (in_us and asked.state in state_codes) else None
+    if row.country:
+        return True if row.country == asked.country else None
+    if in_us and state_codes:
+        return True
+    # A code that is no US state may confirm the country asked ('Paris, FR'); one that is also a
+    # state ('IN') confirms nothing.
+    return True if asked.country in row.codes - _STATE_CODES else None
 
 
 @lru_cache(maxsize=256)
@@ -186,7 +262,7 @@ def _one_place(asked_segs: tuple[str, ...], readings: tuple[_Place, ...], text: 
         return None
     if tuple(segs) == asked_segs:
         return True
-    row = _read_place(segs)
+    row = _read_row(segs)
     verdicts = [_judge(a, row) for a in readings]
     if all(v is False for v in verdicts):
         return False
