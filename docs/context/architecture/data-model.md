@@ -67,6 +67,10 @@ sources:
   - src/treg/alembic/versions/0070_api_key_spend_rollup.py
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
+  - src/treg/alembic/versions/0140_call_record_id_references_bigint.py
+  - src/treg/alembic/versions/0141_call_record_partitioned_table.py
+  - src/treg/application/call_record_partitions.py
+  - tests/test_call_record_partitions.py
   - tests/test_org_flow_control_schema.py
   - src/treg/alembic/versions/0096_route_rule_version.py
   - src/treg/alembic/versions/0097_referral_affiliate.py
@@ -274,8 +278,9 @@ Each drop takes ACCESS EXCLUSIVE on the child table and on `org`, bounded by the
 
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
-`CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables and both
-only grow. Every time-window question needs an index whose leading columns match the filter and
+`CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables.
+`LedgerEntry` and `CallRecord` only grow (a partitioned replacement for `CallRecord` is being
+prepared, next section). Every time-window question needs an index whose leading columns match the filter and
 end in `created_at`; otherwise the planner picks an index on the other column and filters the date
 in memory, reading a team's or an endpoint's whole history. All pools share one Postgres, so one
 such scan queues every other query and the API pool empties into `503 treg_saturated`
@@ -375,6 +380,76 @@ Redaction in `application.call.evidence` is security-sensitive and order matters
 3. Apply pattern masking, then re-scan a percent-decoded, JSON-unescaped, lowercased copy.
    A rendering failure or surviving secret replaces the whole snippet.
 4. Truncate only after masking, so a partial credential cannot escape exact matching.
+
+## `CallRecord`: preparing monthly partitions and a 64-bit id
+
+`callrecord` is a plain table with a 32-bit id. Two limits of that shape show on a large table: a
+32-bit id ends at 2,147,483,647, and changing its type in place rewrites the table under an ACCESS
+EXCLUSIVE lock; and a plain table gives space back only through `DELETE`, which leaves the files
+as large as they were. The replacement is a table partitioned by month on `created_at` with a
+`bigint` id, built beside the live one and filled before anything reads it. Readers still read
+the plain `callrecord`; this section is the preparation only.
+
+1. `0140` widens the columns that store a call record id to `bigint`: the rollup cursors
+   (`callusagecursor`, `endpointstatcursor`, `shadowcursor`, `webarenacallcursor`,
+   `arenainsightstate` both cursors, `webarenaseedprogress`) and `shadowpair.call_id`. `arenaobservation.id`
+   is still `integer`; it must be widened before call record ids pass the 32-bit range.
+2. `0141` creates the empty partitioned table `callrecord_partitioned` with the same columns,
+   `id bigint` on the same id sequence (changed to `bigint`, so ids continue and every cursor
+   stays valid), primary key `(id, created_at)` (a unique constraint on a partitioned table must
+   include the partition column), the same indexes, and no foreign key to `org` (it would lock
+   the `org` row on every audit insert). It has no partition yet. PostgreSQL 14 or newer.
+3. `treg-worker admin callrecord-backfill --days N` copies the last `N` days into it, newest
+   first, in bounded transactions beside live traffic, for as long as that takes; run again, it
+   resumes, and first copies what was written since. Each batch creates the month partitions its
+   rows need and reads the column list again, so a column added meanwhile is copied from the next
+   batch on. By default a batch is 5,000 rows followed by a 0.5 s pause (`--batch-rows`,
+   `--pause-seconds`; `--max-replica-lag S` also waits while the read replica is more than `S`
+   seconds behind, `pg_last_xact_replay_timestamp()`; without a replica behind the read pool it
+   refuses and exits 2, since the primary's lag always reads 0), so the copy leaves the primary and its
+   replicas room. The new table grows by about the size of the rows copied and the WAL by as much,
+   so check disk headroom and watch replica lag while it runs. The first run notes when it started
+   (`NOTE_BACKFILL_STARTED`, in a JSON comment on the table). One run works at a time: it holds a
+   session advisory lock (`BACKFILL_LOCK_KEY`), and a second run returns `busy` and does nothing.
+   - Each run first deletes the copied rows of teams that no longer exist
+     (`delete_rows_of_deleted_teams`: the distinct teams walked through the `(org_id, id)` index,
+     each kept only `NOT EXISTS` in `org`, deleted in committed batches with the same pause and
+     replica brake between them), which closes the race with a team deleted while a batch copied
+     its rows.
+   - Each run last resyncs late `hit`/`verdict`/`cost_charged_micro` values (an async call's settled charge lands late too) (`_resync_late_verdicts`): a row copied
+     before its verdict landed is stale, and a verdict lands at most a day after its row (an async
+     task's answer is kept 24 h). A pass covers the rows created from `RESYNC_LOOK_BACK` (25 hours)
+     before the previous pass began (before the first run began, while no pass has completed) up
+     to the top copied id, then
+     one short pass up to the top id copied meanwhile. It writes its cursor (`resync_pass`) to the
+     note after each batch, so a stopped run resumes, and on completion `resynced_upto` and
+     `resynced_at` (when the pass began), which the swap reads.
+
+**Columns and indexes move together.** The copy names the live table's columns and the swap
+gives the staged table the live table's index names, so until the swap any migration that adds a
+column or an index to `callrecord` must add it to `callrecord_partitioned` too, in the same
+revision (on the partitioned table an index is created `ON ONLY` the parent, then built
+concurrently per partition and attached). `test_the_staged_table_has_the_live_tables_columns` and
+`test_the_staged_table_has_the_live_tables_indexes` fail until it does They build their database with every revision (`upgrade head`), so a later revision
+that changes `callrecord` alone fails them; they skip once `callrecord` is partitioned.
+
+While `callrecord_partitioned` exists, team deletion also deletes the team's rows from it
+(`cascade_delete_org`); with no foreign key, nothing else would.
+
+**Partition upkeep** (`application/call_record_partitions.py`, the only writer of partitions):
+`maintain()` creates the current month and the next `MONTHS_AHEAD` of a partitioned
+`callrecord`, and with `TREG_CALLRECORD_RETENTION_MONTHS` (0 by default, keeping every month)
+detaches and drops older months. It runs at every release (`maintenance.RELEASE_TASKS`), in the
+`treg-worker usage rollup` cron and as `treg-worker admin callrecord-partitions`, and is a no-op
+while `callrecord` is the plain table, as it is on SQLite. A partition is created as a plain table
+and attached, which takes SHARE UPDATE EXCLUSIVE on its parent, so inserts and reads do not wait;
+`CREATE TABLE ... PARTITION OF` would take ACCESS EXCLUSIVE. There is no default partition: every
+attach would lock and scan it, and `DETACH ... CONCURRENTLY` refuses to run beside one.
+
+Why a copy and not a view or two reads: a view over both tables must cast the plain table's
+`integer` id to `bigint`, and a cast column cannot use its indexes, so every read by id would scan
+it; reading both tables in code would change every reader and writer. The copy keeps one table and
+one read path.
 
 ## `IdempotentCall`
 
@@ -502,7 +577,11 @@ timed out ([deploy](../ops/deploy.md), PostgreSQL lock queueing).
 `record_call` and `record_run` schedule best-effort writes on `background_session_maker`; they
 never delay or fail a proxied response. A loop-bound semaphore limits active writes and
 `_MAX_PENDING` sheds excess rows. Write failures and shed rows log at ERROR. `drain` loops until the
-queue is empty, including tasks added during shutdown. `_known_fields` filters telemetry against
+queue is empty, including tasks added during shutdown. Call records go in through `_insert`, one Core INSERT with
+`inline()` that returns nothing: an ORM insert would return the new `id`, and a prepared statement
+whose result changes type (the swap to a 64-bit id) is refused on every later run behind a
+transaction pooler, which keeps one server statement per query text. The other models go through
+the session. `_known_fields` filters telemetry against
 model fields so one new field cannot discard a row; schema and telemetry changes still land
 together. Audit is lossy analytics and diagnostics: money must use the synchronous ledger.
 

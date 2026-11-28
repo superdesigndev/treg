@@ -99,7 +99,12 @@ class PostgresEndpointObservationReader:
                 await db.connection(execution_options={
                     "isolation_level": "REPEATABLE READ", "postgresql_readonly": True,
                 })
-            cursor = await db.get(EndpointStatCursor, "callrecord")
+            # Only the two times it judges: behind a transaction pooler the server keeps one
+            # prepared statement per query text, and a column whose type changes under it
+            # (`cursor_id`, widened by alembic 0140) would fail every later read.
+            cursor = (await db.execute(
+                select(EndpointStatCursor.caught_up_at, EndpointStatCursor.updated_at)
+                .where(EndpointStatCursor.id == "callrecord"))).one_or_none()
             if (cursor is None or cursor.caught_up_at is None
                     or cursor.updated_at < cutoff or cursor.caught_up_at < cutoff):
                 raise EndpointObservationUnavailable()

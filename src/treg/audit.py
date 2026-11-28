@@ -21,7 +21,7 @@ import asyncio
 import logging
 from collections import deque
 
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 
 from .infra.catalog_stat_dirty import mark_dirty
 from .infra.db import background_session_maker
@@ -200,6 +200,23 @@ async def _flush() -> None:
                     await _write_batch([row])
 
 
+async def _insert(session, records: list) -> None:
+    """Call records go in as one INSERT that returns nothing: an ORM insert returns the new `id`,
+    and a prepared statement whose result changes type (the swap to a 64-bit id) is refused by
+    PostgreSQL on every later run, which a transaction pooler keeping one server statement per
+    query text never clears. The other rows go through the session as before."""
+    calls = [record for record in records if isinstance(record, CallRecord)]
+    if calls:
+        columns = [column.key for column in CallRecord.__table__.columns if column.key != "id"]
+        # `inline()`: no RETURNING of the new primary key, which SQLAlchemy adds otherwise.
+        await session.execute(insert(CallRecord.__table__).inline(),
+                              [{key: getattr(call, key) for key in columns} for call in calls])
+    others = [record for record in records if not isinstance(record, CallRecord)]
+    if others:
+        session.add_all(others)
+        await session.flush()
+
+
 async def _write_batch(rows: list[tuple[type, dict]]) -> bool:
     try:
         async with background_session_maker() as session:
@@ -219,9 +236,8 @@ async def _write_batch(rows: list[tuple[type, dict]]) -> bool:
                 if model is _AsyncHitUpdate:
                     # Earlier inserts in this batch must be visible to the UPDATE.
                     if records:
-                        session.add_all(records)
+                        await _insert(session, records)
                         records = []
-                        await session.flush()
                     judged = fields.get("hit") is not None
                     changes = {"hit": fields["hit"], "verdict": fields.get("verdict")} if judged else {}
                     if fields.get("charged_micro") is not None:
@@ -246,7 +262,7 @@ async def _write_batch(rows: list[tuple[type, dict]]) -> bool:
                     if task.settled_micro is not None:
                         values["cost_charged_micro"] = task.settled_micro
                 records.append(model(**values))
-            session.add_all(records)
+            await _insert(session, records)
             await mark_dirty(session, dirty)
             await session.commit()
         return True

@@ -232,6 +232,8 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   with no foreign key, [data-model](data-model.md)) once more: that delete waits for every
   transaction that updated the team row, so the rows those calls committed while the walk ran
   are taken too.
+  While `callrecord_partitioned` exists (the table the backfill fills), the team's rows there go too
+  ([data-model](data-model.md), "preparing monthly partitions and a 64-bit id").
 - **Invites** are one-time and expire after `INVITE_TTL_DAYS` (410). Inviting an existing member is
   409; a new invite supersedes the prior pending one for that email. Suspended users and orgs can
   neither view nor accept.

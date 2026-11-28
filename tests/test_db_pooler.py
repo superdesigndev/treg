@@ -9,6 +9,7 @@ import re
 import asyncpg
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
 from tests.conftest import ensure_postgres_database
@@ -171,6 +172,85 @@ async def test_a_transaction_pooling_pgbouncer_passes_startup():
     if not infra_db._background_url:
         pytest.skip("requires a PgBouncer via TREG_TEST_POOLER_URL")
     await infra_db.verify_background_database()
+
+
+async def test_the_observation_read_survives_a_cursor_type_change_behind_the_pooler():
+    """Behind a pooler with prepared statement support the server keeps one statement per query
+    text, and PostgreSQL refuses every later run of a statement whose result changed type. Alembic
+    0140 widens `endpointstatcursor.cursor_id`, so the background pool's observation read must not
+    return that column."""
+    if not infra_db._background_url:
+        pytest.skip("requires a PgBouncer via TREG_TEST_POOLER_URL")
+    from treg.infra.catalog_observations import PostgresEndpointObservationReader
+    from treg.models import EndpointStatCursor
+    from treg.timeutil import utcnow_naive
+
+    await infra_db.reset_db()
+    reader = PostgresEndpointObservationReader(infra_db.background_session_maker)
+    async with infra_db.session_maker() as session:
+        await session.execute(text("ALTER TABLE endpointstatcursor ALTER COLUMN cursor_id TYPE integer"))
+        session.add(EndpointStatCursor(id="callrecord", caught_up_at=utcnow_naive()))
+        await session.commit()
+    try:
+        before = await reader.get_many(["any.endpoint"])
+        async with infra_db.session_maker() as session:
+            await session.execute(text("ALTER TABLE endpointstatcursor ALTER COLUMN cursor_id TYPE bigint"))
+            await session.commit()
+        for _ in range(5):   # each read may land on another server connection
+            assert await reader.get_many(["any.endpoint"]) == before
+    finally:
+        async with infra_db.session_maker() as session:
+            await session.execute(text("ALTER TABLE endpointstatcursor ALTER COLUMN cursor_id TYPE bigint"))
+            await session.commit()
+
+
+async def test_audit_writes_survive_a_call_record_id_type_change_behind_the_pooler(caplog):
+    """The swap (alembic 0142) changes `callrecord.id` to bigint while the build before it still
+    serves. Its pooled audit writers prepared the INSERT before that; behind a pooler the server
+    keeps that statement, so it must not return the id, or every later run is refused."""
+    if not infra_db._background_url:
+        pytest.skip("requires a PgBouncer via TREG_TEST_POOLER_URL")
+    import asyncio
+
+    from treg import audit
+    from treg.models import CallRecord
+
+    writers = 6
+    fields = dict(user_email="w@example.test", tool_name="id-type-change", method="GET", path="/",
+                  status_code=200)
+
+    async def write_at_once() -> list[bool]:
+        # Several sessions open together, so the writes below land on several server connections.
+        opened = asyncio.Barrier(writers)
+
+        async def hold() -> None:
+            async with infra_db.background_session_maker() as session:
+                await session.execute(text("SELECT 1"))
+                await opened.wait()
+
+        await asyncio.gather(*(hold() for _ in range(writers)))
+        return await asyncio.gather(*(audit._write_batch([(CallRecord, dict(fields))])
+                                      for _ in range(writers)))
+
+    await infra_db.reset_db()
+    try:
+        assert await write_at_once() == [True] * writers
+        async with infra_db.session_maker() as session:
+            await session.execute(text("ALTER TABLE callrecord ALTER COLUMN id TYPE bigint"))
+            await session.commit()
+        caplog.clear()
+        for _ in range(3):
+            assert await write_at_once() == [True] * writers
+        assert "audit write dropped" not in caplog.text
+        async with infra_db.session_maker() as session:
+            assert (await session.execute(text(
+                "SELECT count(*) FROM callrecord WHERE tool_name = 'id-type-change'"))).scalar() \
+                == 4 * writers
+    finally:
+        async with infra_db.session_maker() as session:
+            await session.execute(text("DELETE FROM callrecord"))
+            await session.execute(text("ALTER TABLE callrecord ALTER COLUMN id TYPE integer"))
+            await session.commit()
 
 
 # Session-level state does not survive a transaction behind a transaction-pooling PgBouncer. Only

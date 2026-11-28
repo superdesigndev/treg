@@ -341,6 +341,21 @@ async def only_one_run(key: int) -> AsyncIterator[bool]:
         await engine.dispose()
 
 
+@asynccontextmanager
+async def own_connection(url, **server_settings: str) -> AsyncIterator:
+    """An AUTOCOMMIT connection to `url` of its own, opened outside every pool with these session
+    settings and closed after: for a statement that cannot run in a transaction block (`DETACH
+    PARTITION ... CONCURRENTLY`), so `SET LOCAL` cannot bound it, and no pooled connection (or a
+    transaction pooler in front of one) may carry its settings to another statement."""
+    engine = create_async_engine(url, poolclass=NullPool, isolation_level="AUTOCOMMIT",
+                                 connect_args={"server_settings": server_settings})
+    try:
+        async with engine.connect() as connection:
+            yield connection
+    finally:
+        await engine.dispose()
+
+
 @cache
 def _schema_info() -> tuple[str, frozenset[str]]:
     from alembic.script import ScriptDirectory

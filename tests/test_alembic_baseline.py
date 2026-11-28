@@ -44,7 +44,14 @@ async def _upgrade_to(revision: str) -> None:
 
 
 def _autogenerate_diff(connection) -> list[Any]:
-    context = MigrationContext.configure(connection)
+    # `callrecord_partitioned` (alembic 0141) is staging for a later swap, and a month partition is
+    # storage created by `application.call_record_partitions`; neither is a model table.
+    partitions = set()
+    if connection.dialect.name == "postgresql":
+        partitions = set(connection.execute(text(
+            "SELECT inhrelid::regclass::text FROM pg_inherits")).scalars()) | {"callrecord_partitioned"}
+    context = MigrationContext.configure(connection, opts={
+        "include_name": lambda name, kind, parents: kind != "table" or name not in partitions})
     return compare_metadata(context, SQLModel.metadata)
 
 
