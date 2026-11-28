@@ -326,7 +326,8 @@ so (`ready: false`) instead of guessing. Team deletion clears a team's rollup ro
 - `kind`: `call`, `local_run`, or `async_poll` (an authorized free status read, excluded from
   `/calls` before pagination).
 - `refused_by`: a treg refusal's mechanism; null for an upstream answer (`payment` is an
-  agent-payments 402 asking a keyless caller to pay or prove its wallet). `endpoint_stats` excludes
+  agent-payments 402 asking a keyless caller to pay or prove its wallet; `own_credit` a call on a
+  team's own key held after a streak of out-of-credit answers). `endpoint_stats` excludes
   refused rows.
 - `api_key_prefix` on a call-surface 401 (no team, no key resolved) names the refused credential's
   owner without keeping it (`managed_keys.refused_credential_label`): the 12-character

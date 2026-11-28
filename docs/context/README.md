@@ -35,7 +35,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Org admission - published pause, rate and concurrency limits, with optional defaults](architecture/org-flow-control.md) | shipped | org_flow_control.py, org_concurrency.py, structured_logging.py, kv.py, … |
 | [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |
 | [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, admission.py, … |
-| [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, pathsegment.py, jsontext.py, ssrf.py, … |
+| [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, own_key_credit.py, test_own_key_credit.py, pathsegment.py, … |
 | [Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code](architecture/replay.md) | shipped | __init__.py, __main__.py, records.py, engine.py, … |
 | [Route rules - a published provider order per segment of a routed capability](architecture/route-rules.md) | building | rules.py, route_rules.py, route.py, call_events.py, … |
 | [Shadow provider - a candidate asked the same question as served calls, after the fact, and compared](architecture/shadow.md) | building | shadow.py, shadow.py, 0086_shadow_pairs.py, test_shadow.py |

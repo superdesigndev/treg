@@ -17,7 +17,9 @@ from treg.application.call import authorize, idempotency, overflow, reserve, rou
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
-from treg.infra import empty_balance, provider_concurrency, provider_rate, team_backpressure
+from treg.infra import (
+    empty_balance, own_key_credit, provider_concurrency, provider_rate, team_backpressure,
+)
 
 
 _SRC = Path(__file__).parents[1] / "src" / "treg"
@@ -215,6 +217,13 @@ _DATAPLANE_DERIVED_WRITES = {
         # a mark written just after a credit committed is taken back by the refusal itself
         (reserve._platform_reserve, "empty_balance.clear"),
     ),
+    # A team's own key drawing a streak of out-of-credit answers writes one self-expiring mark in
+    # the shared store (after the answer, no database); a success clears it.
+    "own_key_credit_mark": (
+        (service._execute_call, "own_key_credit.observe"),
+        (own_key_credit._write, "set_text"),
+        (own_key_credit._clear, "clear_flag"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
     "org_endpoint_quota",
@@ -243,6 +252,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "comparison_marker",
     "allowance_in_flight_mark",
     "empty_balance_mark",
+    "own_key_credit_mark",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -263,6 +273,7 @@ _DERIVED_WRITE_FILES = {
         "empty_balance.remember", "empty_balance.clear",
     },
     _SRC / "infra" / "empty_balance.py": {"set_text", "clear_flag"},
+    _SRC / "infra" / "own_key_credit.py": {"set_text", "clear_flag"},
     _SRC / "application" / "call" / "allowance.py": {
         "money_admission.admit", "ledger.reap_stale_holds",
         "allowance.refill_allowance_in_transaction", "allowance.close_allowance_in_transaction",
@@ -312,6 +323,7 @@ _DERIVED_WRITE_FILES = {
         "provider_resources.rename",
         "provider_resources.tombstone",
         "return_daily_slot",
+        "own_key_credit.observe",
     },
     _SRC / "application" / "call" / "route.py": {"async_task_app.remember_routed_task"},
     _SRC / "domain" / "capacity" / "marks.py": {"ratestore.kv_put", "ratestore.kv_pop"},
@@ -466,6 +478,11 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("infra/empty_balance.py", "remember", "set_text"),
     ("infra/empty_balance.py", "clear", "clear_flag"),
     ("domain/money/__init__.py", "_add_balance", "empty_balance.credited"),
+    # the own-key out-of-credit mark: written after a streak of out-of-credit answers, cleared by
+    # a success on the same key
+    ("application/call/service.py", "_execute_call", "own_key_credit.observe"),
+    ("infra/own_key_credit.py", "_write", "set_text"),
+    ("infra/own_key_credit.py", "_clear", "clear_flag"),
 }
 
 
