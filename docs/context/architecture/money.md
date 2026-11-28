@@ -689,8 +689,9 @@ past the bound do not make every new team scan them.
   transaction (`fold_queued_once`), on the background pool; a pass that folded something is followed by the next at once. An idle share pauses for
   every process (its holder keeps the lease through the pause), and the process goes on to the
   other shares; it pauses only once every share is taken or pausing. Request processes only queue charges: neither a refill nor the charge writer folds.
-  So the connections folding uses are one per process running a pass, at most one per share,
-  whatever the traffic and however many teams are busy, and none of them comes from the pool requests use. A team
+  So the connections folding uses are two per process running a pass over a share (the pass
+  and its lane, below), at most two per share, one per process when the store cannot answer, whatever the traffic and however many teams are busy, and none
+  of them comes from the pool requests use. A team
   another process is working on (its lease is taken) is skipped, not waited for; so is a team
   whose other money sessions hold the admission lease (the fold asks `admit` to refuse after a
   short wait instead of falling back), and the next pass comes back to it. Every team a fold
@@ -731,7 +732,27 @@ past the bound do not make every new team scan them.
   the stalest team, whose wait stays longest while it is busy, cannot use up the turn on every
   pass and leave the teams behind it with none; time a team does not use goes to the next. The
   next pass, which follows at once, gives them all a new turn. The other teams of the share
-  wait at most that one turn longer for their next pass. A pause of new allowance takes was not chosen: the
+  wait at most that one turn longer for their next pass.
+  A team that queues faster than one visit a pass applies is folded beside the pass. The pass
+  visits each team once, a few batches, and spends the rest of its time on the share's other
+  teams, one transaction at a time; on a busy database a share's pass takes long enough that a
+  single high-rate team, folded only during its visit, falls further behind every pass. So in a
+  pass that holds its share's lease, the stalest team of the pass's first page, when it is
+  starved, is not folded in its place: a lane
+  (`_fold_behind`) folds it visit after visit, as a plain try (no claim, a short admission wait,
+  skips not counted), for as long as the pass runs, pausing `_BEHIND_RETRY_S` after a visit
+  that committed nothing. Its first visit is the whole try the team had in its place, so a pass
+  over before the lane begins (the team alone in its share) still folds that much of it; later
+  visits stop between batches once the pass is over (or its lease is lost), and the lane is
+  over before the starved turns begin; a cancelled pass cancels it. A team whose
+  queue the lane did not empty takes the first starved turn, as it would have without the lane.
+  It logs one `allowance_fold_behind` line per lane that made a visit (charges folded, visits,
+  whether the queue emptied). The lane is one team at a time, each batch under the team's lease
+  and lock like any other fold, so it adds one background connection to the pass's one and no
+  second writer of the team. A pass over every team, which every process runs when the store
+  cannot answer, starts no lane: each would see the same stalest team first and hold a
+  connection on its row locks, so the bound of one lane per share holds only with the lease.
+  A pause of new allowance takes was not chosen: the
   exact path those calls would take writes the same team rows twice per call, and a fold
   inside each refill cannot keep up, as a refill moves a chunk worth many calls. The idle sweep
   waits no longer than that either: it runs first in the same loop, due on each share's own

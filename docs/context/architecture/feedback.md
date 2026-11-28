@@ -48,6 +48,7 @@ sources:
   - tests/test_endpoint_verdicts.py
   - tests/test_hints.py
   - tests/test_kv.py
+  - tests/test_kv_pool.py
   - tests/test_compare.py
   - tests/test_compare_judge.py
   - tests/test_compare_spend_migration.py
@@ -286,6 +287,23 @@ writes; a fault can only lose the header. Sampling rates default to 0.
 
 New tenants add narrow methods, never a generic get/set surface. `/admin/kv` reports `configured` and
 `reachable`.
+
+Connections. Each process holds one bounded pool (`TREG_KV_MAX_CONNECTIONS`, default 100, the
+ceiling redis-py's default pool already had: a full pool sends money allowance takes back to a
+per-call database reserve, so lowering it waits for the counts below). An
+operation that finds every connection busy waits up to `TREG_KV_POOL_WAIT_S` (default 0.5 s) inside
+its own deadline, then reads as an unavailable store like any other fault, so each tenant's
+unavailable policy above applies and a full pool never fails a request. A connection unused for
+`TREG_KV_IDLE_CLOSE_S` (default 60 s) is closed the next time any connection is returned, so the
+count the server sees falls back after a peak; a process with no store traffic at all keeps what
+it has until it exits. Operations that found the pool full are counted per process and logged
+as `kv pool full: N operations waited for a connection, M gave up` at most once a minute; an
+operation whose own deadline is shorter than the wait is counted as waiting only if it got one.
+These settings and the store's socket timeouts win over the same names in `TREG_KV_URL`'s query
+string. Size the pool as processes per instance times instances times
+`TREG_KV_MAX_CONNECTIONS`, doubled for a deploy's overlap, against the server's client limit.
+redis-py's default pool, used before, raised at 100 per process instead of waiting and never
+closed an idle one.
 
 ## Pairwise comparisons
 

@@ -235,6 +235,11 @@ class Settings(BaseSettings):
     compare_max_answer_bytes: int = Field(default=65536, ge=1024)
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
+    # Per process: connections the store may hold, how long an operation waits for a free one
+    # (inside its own deadline), and how long one may sit unused before it is closed.
+    kv_max_connections: int = Field(default=100, ge=1, le=1000)
+    kv_pool_wait_s: float = Field(default=0.5, gt=0, le=5)
+    kv_idle_close_s: float = Field(default=60.0, ge=1, le=3600)
 
     org_endpoint_quota_enabled: bool = False
     org_endpoint_quota_redis_url: str = ""
