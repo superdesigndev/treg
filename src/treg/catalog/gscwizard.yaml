@@ -1,0 +1,333 @@
+# GSC Wizard serves analyses computed over the caller's own Search Console data (with GA4 and Bing
+# Webmaster Tools where the caller linked them), from its own warehouse with multi-year history
+# where the property is in full storage, else from the live Search Console API. Every row reads
+# the caller's own account, so every row is own_account: the key defines whose properties may be
+# read. Raw Search Analytics rows stay with google-search-console.yaml; this file lists the
+# summaries and analyses on top of them.
+#
+# The key rides as `Authorization: Bearer gscw_live_...`. Errors are non-2xx with
+# {error: {code, message, nextStep}}: 401 bad key, 402 no active plan or trial, 403 property not
+# granted or key scope too narrow, 404 unknown property, 429 rate limit (Retry-After).
+# Calls are included in the subscription: no per-call charge, so every row is priced 0.
+provider: gscwizard
+source:
+  docs: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+  openapi: https://mcp.gscwizard.com/v1/openapi.json
+  curated: '2026-11-28'
+limits: "180 requests a minute and 4,000 an hour per account (429 with Retry-After past either)."
+pricing_url: https://www.gscwizard.com/pricing.html
+proposed_capabilities:
+  search-console.ranking_changes: "Find the queries or pages of your site that moved up or down in Google between two periods"
+  search-console.content_decay: "Find the pages or queries of your site that are losing Google clicks"
+  search-console.cannibalization: "Find queries where several of your own pages compete in Google"
+  search-console.anomalies: "Flag the days your site's Google clicks, impressions or rankings spiked or dropped"
+  search-console.opportunities: "Rank your site's queries by the extra Google clicks a better ranking could bring"
+  bing.webmaster.traffic: "Your site's daily Bing clicks and impressions from Bing Webmaster Tools"
+defaults:
+  price: {value: '0', currency: USD, unit: call, note: "Included in the caller's GSC Wizard plan (from $19 a month, 7-day free trial); no per-call charge."}
+  provenance: {source: docs, source_url: 'https://www.gscwizard.com/pricing.html', checked: '2026-11-28', confidence: documented}
+
+endpoints:
+  - id: gscwizard.account.identity
+    added: '2026-11-28'
+    kind: account
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /account
+    name: Check the connected GSC Wizard account and plan
+    summary: Get the GSC Wizard user, the connected Google accounts with their scopes, and the subscription status.
+    input:
+      note: "No parameters. Also the key check: a missing or invalid key answers 401, a key whose plan or trial has ended 402."
+    test_request: {queryParams: {}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.sites
+    added: '2026-11-28'
+    capability: search-console.sites
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites
+    name: List your Search Console properties in GSC Wizard
+    summary: List the Search Console properties the account can analyze, with readable, activated and sharedBy for each.
+    note: "Read only properties with readable and activated both true: every other row is refused by the property endpoints. Pass siteUrl exactly as listed."
+    input:
+      note: "No parameters."
+    test_request: {queryParams: {}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.performance
+    added: '2026-11-28'
+    capability: search-console.performance
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites/{site}/summary
+    name: Search Console summary with prior-period comparison
+    summary: Get a property's total clicks, impressions, CTR and average position for a window, against the same-length period before it, with daily rows for both.
+    note: "ctr is a 0-100 percentage. Omit the dates for the last 28 settled days."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it: sc-domain:example.com for a domain property, https://example.com/ for a URL prefix."}
+      queryParams:
+        days: {type: integer, required: false, default: 28, min: 1, max: 180, example: 28, note: "Trailing window length; ignored for an edge pinned by startDate or endDate."}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD; omit for the latest settled day (Search Console lags 2 to 3 days)."}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}, queryParams: {days: 7}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.performance.top_queries
+    added: '2026-11-28'
+    capability: search-console.performance
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites/{site}/top-queries
+    name: Top search queries by clicks
+    summary: List a property's top search queries by clicks, with impressions, CTR and position, plus the share of clicks Google lists no query for.
+    note: "Quote totals from coverage.siteTotals, not from summed rows: Google withholds rare queries. Page with pagination.nextOffset."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+      queryParams:
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 10}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+        brand: {type: string, required: false, enum: [branded, non_branded], example: non_branded, note: "Needs branded keywords set on the property."}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}, queryParams: {limit: 1}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.performance.top_pages
+    added: '2026-11-28'
+    capability: search-console.performance
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites/{site}/top-pages
+    name: Top landing pages by clicks
+    summary: List a property's top landing pages by clicks, with impressions, CTR and position.
+    note: "Quote totals from coverage.siteTotals, not from summed rows. Page with pagination.nextOffset."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+      queryParams:
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 10}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}, queryParams: {limit: 1}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.performance.by_query
+    added: '2026-11-28'
+    capability: search-console.performance
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites/{site}/query-performance
+    name: Daily performance of one search query
+    summary: Get one search query's clicks, impressions, CTR and position day by day, optionally on one landing page.
+    note: "query and pageUrl match exactly. Days without impressions are absent, not zero."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+      queryParams:
+        query: {type: string, required: true, example: "gsc wizard"}
+        pageUrl: {type: string, required: false, example: "https://www.example.com/", note: "Full URL of one landing page."}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}, queryParams: {query: "gsc wizard"}}
+    # A query the property never showed for answers 200 with no daily rows.
+    miss: {when: {any: [{path: response.daily, op: absent}, {path: response.daily, op: empty}]}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.performance.by_page
+    added: '2026-11-28'
+    capability: search-console.performance
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites/{site}/page-performance
+    name: Daily performance of one page
+    summary: Get one page's Google clicks, impressions, CTR and position day by day.
+    note: "pageUrl matches exactly. Days without impressions are absent, not zero."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+      queryParams:
+        pageUrl: {type: string, required: true, example: "https://www.example.com/"}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}, queryParams: {pageUrl: "https://www.gscwizard.com/"}}
+    # A page with no impressions in the window answers 200 with no daily rows.
+    miss: {when: {any: [{path: response.daily, op: absent}, {path: response.daily, op: empty}]}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.ranking_changes
+    added: '2026-11-28'
+    capability: search-console.ranking_changes
+    platform: search-console
+    scope: own_account
+    method: GET
+    path: /sites/{site}/ranking-changes
+    name: Ranking winners and losers between two periods
+    summary: Sort a property's queries or pages into new, lost, improved and declined between two periods, with position and click changes and the full size of each bucket.
+    note: "limit applies per bucket; counts gives each bucket's size before the cut. Omit the comparison dates for the same-length period just before the window."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+      queryParams:
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        comparisonStartDate: {type: string, required: false, example: "2026-09-03", note: "YYYY-MM-DD, start of the baseline period."}
+        comparisonEndDate: {type: string, required: false, example: "2026-09-30", note: "YYYY-MM-DD, end of the baseline period."}
+        dimension: {type: string, required: false, default: query, enum: [query, page], example: query}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+        limit: {type: integer, required: false, default: 50, min: 1, max: 10000, example: 10, note: "Rows per bucket."}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}, queryParams: {limit: 1}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.content_decay
+    added: '2026-11-28'
+    capability: search-console.content_decay
+    platform: search-console
+    scope: own_account
+    method: POST
+    path: /tools/find_decaying_content
+    name: Find decaying pages or queries
+    summary: Find the pages or queries losing clicks between a baseline period and a recent one, with clicks lost, change percent and position change.
+    note: "startDate and endDate are the recent period, the comparison dates the baseline. An empty decaying list is an answer: nothing lost clicks past the floors."
+    input:
+      bodyType: json
+      body:
+        siteUrl: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        comparisonStartDate: {type: string, required: false, example: "2026-07-01", note: "YYYY-MM-DD, start of the baseline period."}
+        comparisonEndDate: {type: string, required: false, example: "2026-07-28", note: "YYYY-MM-DD, end of the baseline period."}
+        dimension: {type: string, required: false, default: page, enum: [query, page], example: page}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+        minImpressions: {type: integer, required: false, min: 0, example: 100, note: "Minimum baseline impressions per key, default 100."}
+        minBaselineClicks: {type: integer, required: false, default: 5, min: 0, example: 5}
+        sortBy: {type: string, required: false, default: clicksLost, enum: [clicksLost, clickChangePct], example: clicksLost}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 10}
+    test_request: {body: {siteUrl: "sc-domain:gscwizard.com", limit: 1}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.cannibalization
+    added: '2026-11-28'
+    capability: search-console.cannibalization
+    platform: search-console
+    scope: own_account
+    method: POST
+    path: /tools/analyze_cannibalization
+    name: Find keyword cannibalization
+    summary: Find queries where several of the property's pages split the impressions, ranked by a cannibalization score, with each competing page's clicks, impressions and position.
+    note: "A higher score means impressions split more evenly across pages. Only queries Google lists are analyzed."
+    input:
+      bodyType: json
+      body:
+        siteUrl: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+        minImpressions: {type: integer, required: false, min: 0, example: 10, note: "Minimum impressions per query, default 10."}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 10}
+    test_request: {body: {siteUrl: "sc-domain:gscwizard.com", limit: 1}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.anomalies
+    added: '2026-11-28'
+    capability: search-console.anomalies
+    platform: search-console
+    scope: own_account
+    method: POST
+    path: /tools/detect_anomalies
+    name: Detect traffic anomalies
+    summary: Flag the days a property's clicks, impressions, CTR or position spiked or dropped against a day-of-week baseline, each with expected and actual values and a severity.
+    note: "Anomalies are listed oldest first. For ctr, actual and expected are 0-100 percentages. An empty list is an answer: no day passed the threshold."
+    input:
+      bodyType: json
+      body:
+        siteUrl: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+        metric: {type: string, required: false, default: clicks, enum: [clicks, impressions, ctr, position], example: clicks}
+        days: {type: integer, required: false, default: 90, min: 21, max: 480, example: 90, note: "Trailing days of daily data to scan."}
+        sensitivity: {type: number, required: false, default: 3.5, min: 2, max: 6, example: 3.5, note: "Modified Z-score threshold; lower flags more days."}
+        minImpressions: {type: integer, required: false, min: 0, max: 1000000, example: 10, note: "ctr and position only: days under it are kept but marked lowVolume."}
+    test_request: {body: {siteUrl: "sc-domain:gscwizard.com", days: 28}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.search-console.opportunities
+    added: '2026-11-28'
+    capability: search-console.opportunities
+    platform: search-console
+    scope: own_account
+    method: POST
+    path: /tools/score_opportunities
+    name: Score ranking opportunities
+    summary: Rank a property's queries by an opportunity score that favors positions 3 to 30 with low CTR, with the extra clicks a better CTR would bring.
+    note: "CTR values are 0-100 percentages. potentialClicks is 0 for a query already at or above the CTR benchmark."
+    input:
+      bodyType: json
+      body:
+        siteUrl: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        searchType: {type: string, required: false, default: web, enum: [web, image, video, news, discover, googleNews, webMultimodal, all], example: web}
+        minImpressions: {type: integer, required: false, min: 0, example: 10, note: "Minimum impressions per query, default 10."}
+        limit: {type: integer, required: false, default: 100, min: 1, max: 1000, example: 10}
+    test_request: {body: {siteUrl: "sc-domain:gscwizard.com", limit: 1}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.google-analytics.report
+    added: '2026-11-28'
+    capability: google-analytics.report
+    platform: google-analytics
+    scope: own_account
+    method: GET
+    path: /sites/{site}/ga4/overview
+    name: GA4 traffic overview for a Search Console property
+    summary: Get sessions, users, page views, engagement rate, bounce rate and key events from the GA4 property linked to a Search Console property, against the previous period.
+    note: "prevSummary is null when the comparison period has no GA4 data."
+    input:
+      pathParams:
+        site: {type: string, required: true, example: "sc-domain:example.com", note: "The Search Console property as GET /sites lists it; GSC Wizard reads the GA4 property linked to it."}
+      queryParams:
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD; omit both dates for the last 28 settled days."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+        comparisonStartDate: {type: string, required: false, example: "2026-09-03", note: "YYYY-MM-DD."}
+        comparisonEndDate: {type: string, required: false, example: "2026-09-30", note: "YYYY-MM-DD."}
+        includeTimeseries: {type: boolean, required: false, default: false, example: false, note: "true adds daily points."}
+    test_request: {pathParams: {site: "sc-domain:gscwizard.com"}}
+    # No GA4 property linked to the site: 200 with notConfigured true and a hint.
+    miss: {when: {path: response.notConfigured, op: equals, value: true}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
+
+  - id: gscwizard.bing.webmaster.traffic
+    added: '2026-11-28'
+    capability: bing.webmaster.traffic
+    platform: bing
+    scope: own_account
+    method: POST
+    path: /tools/get_bing_traffic_stats
+    name: Bing Webmaster daily traffic
+    summary: Get a property's daily Bing clicks and impressions from Bing Webmaster Tools, with window totals.
+    note: "Rows run oldest first. Omit both dates for all Bing holds, about 16 months."
+    input:
+      bodyType: json
+      body:
+        siteUrl: {type: string, required: true, example: "sc-domain:example.com", note: "The property as GET /sites lists it."}
+        startDate: {type: string, required: false, example: "2026-10-01", note: "YYYY-MM-DD."}
+        endDate: {type: string, required: false, example: "2026-10-28", note: "YYYY-MM-DD."}
+    test_request: {body: {siteUrl: "sc-domain:gscwizard.com", startDate: "2026-11-01", endDate: "2026-11-07"}}
+    # No Bing Webmaster API key stored for the property: 200 with notConfigured true and a hint.
+    miss: {when: {path: response.notConfigured, op: equals, value: true}}
+    docs_url: https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html
