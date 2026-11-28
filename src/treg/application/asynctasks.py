@@ -102,12 +102,16 @@ async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = 
 
 
 async def remember_relayed_task(call_id: str, org_id: int, endpoint_id: str, descriptor: dict,
-                                submission: bytes, tags: dict | None) -> None:
+                                submission: bytes, tags: dict | None,
+                                *, accepted: bool = True) -> None:
     """Write the `CallTask` for an async answer treg relayed: the task it names, read with the
-    descriptor (none when it names none), and the answer's digest."""
+    descriptor (none when it names none, or when the answer is not an `accepted` submission: an
+    id beside a failed `expect` names no job treg recorded ownership of), and the answer's digest."""
+    task_id = poll_url = None
     try:
-        found = asynctasks.extract_submission(descriptor or {}, json.loads(submission))
-        task_id, poll_url = found.task_id, found.poll_url
+        if accepted:
+            found = asynctasks.extract_submission(descriptor or {}, json.loads(submission))
+            task_id, poll_url = found.task_id, found.poll_url
     except (ValueError, asynctasks.ExtractionError):
         task_id = poll_url = None
     await _write_call_task(call_id, org_id, endpoint_id, descriptor, task_id, poll_url,
@@ -567,7 +571,7 @@ def terminal_judgement(endpoint_id: str, outcome: str, status_code: int,
     checkout's catalog."""
     # A confirmed terminal failure produced no contact for this attempt. Count it in
     # routing's P(hit); pending and timed-out jobs still have no known verdict.
-    hit = (classify(endpoint_id, status_code, body).hit if outcome == "success" else
+    hit = (classify(endpoint_id, status_code, body, terminal=True).hit if outcome == "success" else
            False if has_result_rules(endpoint_id) else None)
     # Only a finished answer carries a verdict word; a failure has nothing to judge.
     word = verdict(endpoint_id, status_code, body) if outcome == "success" else None
