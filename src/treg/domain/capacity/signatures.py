@@ -146,6 +146,9 @@ _TABLE: list[Signature] = [
     # reAPI: an empty prepaid balance is a 402 {"error": {"code": 30001, "message": "Insufficient
     # credits. Required: 13856", ...}} (seen with a request larger than the balance).
     Signature("reapi", 402, r"insufficient credits", "balance"),
+    # RealtyAPI: a key with no credits left (and no overage) is a 402 {"error": "Credit limit
+    # exceeded"}, relayed from its key service's documented answer; not yet observed on treg's key.
+    Signature("realtyapi", 402, r"credit limit exceeded", "balance", tripwire=True),
     # AnyAPI: a spent wallet or per-key spend cap is a 402. A trial key
     # driven past its cap answers {"error": "trial_cap_reached"}. The funded-wallet body is documented as
     # "insufficient wallet balance" (openapi.json, 402) and not yet observed.
