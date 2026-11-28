@@ -280,9 +280,9 @@ _CONCURRENCY: dict[str, int] = {
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
-    # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
+    # Filtrat allows 30 verifications in progress on treg's partner key (one more waits up to 10 s,
     # then 503 SERVER_BUSY), and 40 finder searches on treg's finder key.
-    "filtrat": 10,
+    "filtrat": 30,
     "filtrat-finder": 40,
     # GetLeads.io publishes no concurrency cap for the account. Add "getleadsio": N here once one
     # is agreed; its request rate is the GetLeads.io line in `_RATE_LIMITS`.
