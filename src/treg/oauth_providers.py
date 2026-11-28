@@ -2989,6 +2989,40 @@ LOCALFALCON = OAuthProvider(
     probe_path="/v1/grid/?lat=40.7484&lng=-73.9857&grid_size=3&radius=1&measurement=mi",
 )
 
+GSCWIZARD = OAuthProvider(
+    service="gscwizard",
+    display_name="GSC Wizard",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="gscw_live_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://tool.gscwizard.com/account/api-keys",
+    setup_action_label="Get your GSC Wizard API key",
+    setup_steps=(
+        "Sign in to GSC Wizard with Google and connect your Search Console properties.",
+        "Open Account, then API keys, and create a key. A read-only key is enough for every "
+        "endpoint listed here.",
+        "Copy the key (gscw_live_...) and paste it here.",
+    ),
+    setup_note=(
+        "Every call reads your own GSC Wizard account and is included in your plan (7-day free "
+        "trial, then from $19 a month); there is no per-call charge. A key whose plan or trial "
+        "has ended answers 402."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary=(
+        "Analyses of your own Search Console data: ranking changes, content decay, keyword "
+        "cannibalization, anomalies and opportunity scores, with GA4 and Bing beside it."
+    ),
+    base_url="https://mcp.gscwizard.com/v1",
+    docs_url="https://www.gscwizard.com/docs/ai-assistants/n8n-and-rest-api.html",
+    probe_path="/account",  # free; a missing or invalid key gets HTTP 401
+)
+
 LITESCRAPE = OAuthProvider(
     service="litescrape",
     display_name="Litescrape",
@@ -4643,7 +4677,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, LOCALFALCON, GSCWIZARD,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, JOBSPIPE, AVIATO,
         COMPANYENRICH, FUNDABLE, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, FORAGER, PREDICTLEADS, FINDYMAIL, MILLIONPHONES, DESCOVO, UPCELL, ANYMAILFINDER, ENROW, FILTRAT, FILTRAT_FINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE, MAPSDATA,
