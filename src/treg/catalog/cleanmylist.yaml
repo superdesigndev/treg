@@ -1,0 +1,56 @@
+provider: cleanmylist
+source:
+  docs: https://www.cleanmylist.io/developers
+  openapi: https://www.cleanmylist.io/v1/openapi.json
+  curated: '2026-11-27'
+limits: "1,000 requests per minute per API key"
+pricing_url: https://www.cleanmylist.io/pricing
+defaults:
+  provenance: {source: observed, checked: '2026-11-27', confidence: verified}
+  platform_blocked: "CleanMyList requires each organization to use its own API key."
+endpoints:
+  - id: cleanmylist.people.email.verify
+    added: '2026-11-27'
+    capability: people.email.verify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v1/verify
+    name: "Verify an email address"
+    summary: "Check an email address for deliverability and return a verdict, confidence score and reason code"
+    input:
+      body:
+        email: {type: string, format: email, required: true, example: "support@cleanmylist.io"}
+        smtp_probe: {type: boolean, required: false, default: true, example: false, note: "Set to false to skip the mailbox check."}
+    test_request:
+      body: {email: "support@cleanmylist.io", smtp_probe: false}
+    price: {value: '1', currency: credit, per: 1, unit: call}
+    docs_url: https://www.cleanmylist.io/developers
+
+  - id: cleanmylist.people.email.verify.bulk
+    added: '2026-11-27'
+    capability: people.email.verify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v1/verify/bulk
+    name: "Verify a batch of email addresses"
+    summary: "Check up to 100 email addresses for deliverability and return a verdict and reason code for each address"
+    input:
+      body:
+        emails:
+          type: array
+          items: {type: string, format: email}
+          minItems: 1
+          maxItems: 100
+          required: true
+          example: ["privacy@cleanmylist.io"]
+        smtp_probe: {type: boolean, required: false, default: true, example: false, note: "Set to false to skip the mailbox check."}
+    test_request:
+      body: {emails: ["privacy@cleanmylist.io"], smtp_probe: false}
+    price: {value: '1', currency: credit, per: 1, unit: result}
+    reserve: {entities: {from: body.emails, max: 100}}
+    settle: {count: {path: response.results}}
+    docs_url: https://www.cleanmylist.io/developers

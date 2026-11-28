@@ -1877,6 +1877,31 @@ ORBISEARCH = OAuthProvider(
     probe_path="/v1/credits",
 )
 
+CLEANMYLIST = OAuthProvider(
+    service="cleanmylist",
+    display_name="CleanMyList",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your CleanMyList API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.cleanmylist.io/app/api-keys",
+    setup_action_label="Get your CleanMyList API key",
+    setup_steps=(
+        "Sign in to CleanMyList and verify your email address.",
+        "Open API Keys in your workspace, then create and copy an API key.",
+    ),
+    setup_note="Verification uses your plan allowance first, then one credit per address.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Check email deliverability for a single address or a batch, with verdicts and reason codes.",
+    base_url="https://www.cleanmylist.io",
+    docs_url="https://www.cleanmylist.io/developers",
+    probe_path="/v1/jobs",
+)
+
 MILLIONVERIFIER = OAuthProvider(
     service="millionverifier",
     display_name="MillionVerifier",
@@ -4635,7 +4660,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, GREENHOUSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS, ASHBY, WORKABLE, SMARTRECRUITERS, HIREBASE, LEVER,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
-        TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        TRYKITT, CONTACTOUT, CLEANMYLIST, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
