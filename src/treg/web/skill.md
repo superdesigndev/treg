@@ -19,6 +19,7 @@ hold it:
 
 ## First: check where you stand
 
+<!--store:setup-->
 How treg reached you decides the first step. Take the first case that holds; either the MCP tools
 or the CLI is enough, and having both is fine.
 
@@ -54,6 +55,7 @@ or the CLI is enough, and having both is fine.
    about them before sign-in: sign in, make the first call, and only once it returns real data
    tell the human in one sentence each what they do (`{BASE}/.well-known/skills/index.json`), then
    run `treg skill bootstrap --skills <name>,<name>` (or `--skills all`) for the ones they pick.
+<!--/store:setup-->
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
 `treg accept` takes one (or `treg org join <code>`, signed in as the invited email); `treg org use <slug>` switches teams. A new
@@ -265,11 +267,13 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
 
 ## Money
 
+<!--store:money-->
 **Call at the listed price without asking, then report what it cost.** Prices are visible before a
 call (`treg catalog get`, MCP `catalog_get`) and most are fractions of a cent. Before a generation
 task or a loop over many inputs, tell the human the expected total, then keep a running sum of
 `X-Treg-Cost-Micro` and stop before it passes what they agreed to. `X-Treg-Route-Max-Cost` caps
 each call, not the loop.
+<!--/store:money-->
 
 - **Read the `cost` block, not only the headline.** `per_call` is flat. `type: per_result` with
   `unit: row` is priced per returned row, and its `~$/call` figure assumes a 20-row page (your
@@ -590,6 +594,7 @@ owner's: your calls then appear under your own name.
 
 ## Feedback and reviews
 
+<!--store:feedback-->
 Report problems and suggestions about treg as you meet them, small ones included (unclear
 instructions, confusing results or charges, unhelpful errors, workarounds), even when the task
 succeeded: `treg feedback submit <quality|pricing|friction|other> "message" --call-id <id>`, or MCP
@@ -609,6 +614,7 @@ how you know (`bounced`, `cross_checked`, `user_said`, `impression`). If your CL
 token ([feedback instructions]({BASE}/feedback.md)), or skip it. Mark only what you checked, once
 you know; marking several calls at the end of the task is fine. Marks are private and never change
 charges.
+<!--/store:feedback-->
 
 ## Rules
 

@@ -72,7 +72,8 @@ other two: a static file cannot follow a team list or a switch.
 |---|---|---|
 | served | `GET /skill.md` (`{BASE}` filled per request), `GET /.well-known/skills/index.json` + `/.well-known/skills/<name>/SKILL.md` | agentskills.io readers (Hermes) |
 | installer | `install.sh` -> `treg skill bootstrap` writes the treg skill into every detected agent's skills dir | `curl {BASE}/install.sh \| sh` |
-| bare skill | generated `skills/treg/SKILL.md` at the repo root, the served page unchanged plus `version:` | `npx skills add superdesigndev/treg -s treg`, ClawHub |
+| bare skill | generated `skills/treg/SKILL.md` at the repo root, the served page unchanged plus `version:` | `npx skills add superdesigndev/treg -s treg` |
+| ClawHub skill | generated `plugins/clawhub/skills/treg/SKILL.md`, a marketplace build | `clawhub skill publish` ([CLAUDE-PLUGIN.md](../../CLAUDE-PLUGIN.md)); OpenClaw, and Hermes' Skills Hub behind it |
 | Claude Code / Cursor plugin | `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json` -> `plugins/treg/`; workflow skills as optional plugins in `plugins/workflows/<name>/` | `/plugin marketplace add superdesigndev/treg`, the Cursor marketplace |
 | Claude plugin directory | `plugins/treg-claude/` (`CLAUDE_DIRECTORY_SKILL`, the `/mcp/v2` connector), in no marketplace | Anthropic's Claude plugin directory, which reads that one folder |
 | Codex/ChatGPT plugin | `plugin/.codex-plugin/` + `CODEX_SKILL`, via `.agents/plugins/marketplace.json` | the ChatGPT/Codex directory, `codex plugin marketplace add superdesigndev/treg` |
@@ -86,8 +87,8 @@ The Codex submission runbook, test cases and per-tool justifications live in the
 
 Constraints the hosts impose, which the code cannot explain:
 
-- The bare skill sits at the repo root because that one path is what `npx skills add` resolves and
-  what `clawhub skill publish` takes; ClawHub requires a semver `version:` in frontmatter. The
+- The bare skill sits at the repo root because that one path is what `npx skills add` resolves.
+  ClawHub requires a semver `version:` in frontmatter. The
   Claude Code plugin is not the repo root, because a root plugin would ship the whole repository.
 - skills.sh skips symlinks, so the build writes real copies of `src/treg/web/skills/*` to
   `skills/<name>/SKILL.md`; `.agents/skills/<name>` symlinks keep the repo's own agents on the
@@ -98,6 +99,18 @@ Constraints the hosts impose, which the code cannot explain:
 - The Copilot plugin has its own root because Agent Plugins 1.0.0 fixes the MCP config at the
   plugin root's `mcp.json` in a closed schema (`$schema`, `type: "streamable-http"`) that no manifest
   field can point elsewhere, while Cursor reads `plugins/treg/mcp.json` in its own documented shape.
+- Hermes reads that same Copilot plugin. Its namespaced manifest extension declares the `treg`
+  MCP server untrusted so write-capable tools require approval. A same-name OAuth profile entry
+  replaces the plugin server, so the setup guide preserves trust on that entry.
+- Marketplace reviews (ClawHub's scan, Hermes) refuse or flag a skill that pipes an installer into a
+  shell, puts a token in a command, pays without an agreed budget or reports to its vendor unasked.
+  So the ClawHub and Copilot/Hermes copies are marketplace builds (`STORE_VARIANTS` in
+  `scripts/build_plugin.py`): the served page marks three parts `<!--store:setup-->`,
+  `<!--store:money-->` and `<!--store:feedback-->`, and a marketplace build replaces each whole part
+  with its own text: connect without an installer, one agreed budget per task before the first
+  paid call, reports only when the user asks. It also adds one sentence to the description. The
+  served page (`routers.web._strip_store_markers`), the installer and every other copy keep the parts
+  as written and never show the markers. A part missing or marked twice stops the build.
 - Copilot CLI looks for a repo marketplace in `.github/plugin/` before `.claude-plugin/`, so the
   same `treg@treg` installs `plugins/copilot/` there and `plugins/treg/` in Claude Code. The two
   files list the same workflow plugins. Copilot CLI marks direct installs (`owner/repo:path`, a local

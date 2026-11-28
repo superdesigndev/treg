@@ -3777,11 +3777,18 @@ def _strip_routed(text: str, hub_on: bool | None = None) -> str:
     `<!--agentpay-->…<!--/agentpay-->` blocks the same way behind agent payments, and the
     `<!--hub-->…<!--/hub-->` blocks behind `hub_enabled`: an agent-facing file must never describe
     what this deployment has not switched on (AGENTS.md: do not document what is not built)."""
+    text = _strip_store_markers(text)
     text = _keep_block(text, "routed", routed_discovery_on())
     text = _keep_block(text, "agentpay", agent_payments.enabled())
     # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
     # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
     return _keep_block(text, "hub", hub_on if hub_on is not None else _hub_app_visible(None))
+
+
+def _strip_store_markers(text: str) -> str:
+    """`<!--store:NAME-->…<!--/store:NAME-->` marks a part that a marketplace build of the skill
+    replaces (scripts/build_plugin.py). The served page always keeps the content, never the markers."""
+    return re.sub(r"\n<!--/store:[a-z]+-->", "", re.sub(r"<!--store:[a-z]+-->\n", "", text))
 
 
 def _keep_block(text: str, name: str, keep: bool) -> str:

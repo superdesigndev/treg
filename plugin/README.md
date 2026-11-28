@@ -6,9 +6,9 @@ searching the plugin directory that ChatGPT and Codex share.
 
 > **One of five shop windows.** Claude Code and Cursor install one folder, `plugins/treg/`, which
 > declares the same remote MCP server, so it installs with no token and the host runs OAuth. The bare
-> skill at the repo root (`skills/treg/`) serves `npx skills add` and ClawHub, and DeepSeek Harness is
+> skill at the repo root (`skills/treg/`) serves `npx skills add`, ClawHub publishes `plugins/clawhub/`, and DeepSeek Harness is
 > an npm bundle (`package.json` + `dsh/`) whose MCP row is disabled until there is a token.
-> All of them are rendered by the same `scripts/build_plugin.py` from the same source; they differ only in the prepended bootstrap. See
+> All of them are rendered by the same `scripts/build_plugin.py` from the same source; they differ only in the prepended bootstrap, and the marketplace builds in three marked parts. See
 > [`docs/CLAUDE-PLUGIN.md`](../docs/CLAUDE-PLUGIN.md), [`docs/DSH-PLUGIN.md`](../docs/DSH-PLUGIN.md)
 > and [`docs/MINIMAX-PLUGIN.md`](../docs/MINIMAX-PLUGIN.md) (skills-only, from `plugins/minimax/`).
 

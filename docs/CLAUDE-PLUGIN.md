@@ -36,11 +36,11 @@ Self-serve listings first, review queues last.
 `https://clawhub.ai/submit` 404s; publish through the npm CLI (`npm i -g clawhub`, `clawhub login`):
 
 ```bash
-clawhub skill publish "$PWD/skills/treg" \
+clawhub skill publish "$PWD/plugins/clawhub/skills/treg" --owner superdesigndev \
   --slug treg --name "treg" --version <version> --changelog "..." \
   --topics "api,seo,enrichment,scraping,image-generation" \
   --source-repo superdesigndev/treg --source-commit "$(git rev-parse HEAD)" \
-  --source-ref main --source-path skills/treg \
+  --source-ref main --source-path plugins/clawhub/skills/treg \
   --dry-run                       # drop --dry-run to publish for real
 clawhub scan --slug treg --version <version> --update    # completes publication; can take a while
 ```
@@ -50,8 +50,13 @@ clawhub scan --slug treg --version <version> --update    # completes publication
   `skill publish` has no `--wait` and no progress endpoint. Check
   `GET https://clawhub.ai/api/v1/skills/treg/moderation` (bearer `clawhub token`):
   `legacyReason` moves from `pending.publication` to `scanner.llm.review`.
+- **Publish the marketplace build**, `plugins/clawhub/skills/treg/`, not the bare `skills/treg/`.
+  ClawHub scans the skill and rates an installer piped to a shell, a token in a command and paid
+  calls without a budget as high risk; the marketplace build carries none of them
+  ([skill.md fragment](context/interface/skill.md)).
 - **Pass an absolute path.** Paths resolve against `--workdir` + `--dir` (default `skills`), so a
-  relative `./skills/treg` looks for `skills/skills/treg`.
+  relative path is looked up under `skills/`.
+- `--owner superdesigndev` publishes as the organization; a publisher or admin member of it can.
 - Fill the `--source-*` flags: they are the only provenance signal on the listing.
 - `--categories` takes slugs the public API does not enumerate; use free-form `--topics`. ClawHub
   accepts at most five topics and refuses the whole publish (HTTP 400) past that.
@@ -60,7 +65,7 @@ clawhub scan --slug treg --version <version> --update    # completes publication
 - ClawHub forces MIT-0 on every skill. Licensing the `SKILL.md` prose permissively is deliberate;
   it says nothing about the server code's licence.
 - After publishing, install it back into a scratch dir and confirm the delivered `SKILL.md` is
-  byte-identical to `skills/treg/SKILL.md`. ClawHub feeds Hermes' Skills Hub at `community` trust.
+  byte-identical to `plugins/clawhub/skills/treg/SKILL.md`. ClawHub feeds Hermes' Skills Hub at `community` trust.
 
 ### Skill Store and skills.sh
 
