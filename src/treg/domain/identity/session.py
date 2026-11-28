@@ -142,6 +142,12 @@ def _read_claims(token: str) -> dict | None:
         return None
 
 
+def signed_claims(token: str) -> dict | None:
+    """The claims of a token treg signed, whatever its audience, expiry or version: for naming a
+    refused credential's owner, never for admitting it."""
+    return _read_claims(token)
+
+
 def read_session_claims(cookie: str) -> dict | None:
     """Read a browser session. New identity tokens are rejected by signed audience; an untyped
     legacy token is accepted only while its required ``exp`` is live."""
