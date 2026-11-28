@@ -1125,4 +1125,32 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
                     additional.append(capability)
         verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
                                    "verified_capabilities": tuple(additional), "soft": _soft_keys(ad, ep, contract)})
+    if unread := row_filter_fields_unread(contracts, verified, endpoints_by_id, read_example):
+        # A field no provider's row carries would filter nothing, silently.
+        raise ValueError("row_filters name fields no verified adapter's example row carries: " + "; ".join(unread))
     return contracts, verified
+
+
+def row_filter_fields_unread(contracts: dict[str, Contract], adapters: dict[str, Adapter],
+                             endpoints_by_id: dict[str, dict], read_example) -> list[str]:
+    """`row_filters` fields of a contract without a `row` (its rows are the providers' own) that
+    no verified routed adapter's example answer carries in any row of the list output."""
+    out = []
+    for cap, contract in contracts.items():
+        if not contract.row_filters or contract.row_of:
+            continue
+        lists = [k for k, spec in contract.output.items() if (spec or {}).get("type") == "array"]
+        seen: set[str] = set()
+        wanted = {f for rf in contract.row_filters for f in rf.fields}
+        for eid, ad in adapters.items():
+            ep = endpoints_by_id.get(eid)
+            if not ad.verified or (ep or {}).get("capability") != cap:
+                continue
+            try:
+                core = ad.from_upstream(read_example(ep))
+            except Exception:  # noqa: BLE001 - an adapter that cannot read its example shows no fields
+                continue
+            for row in (r for k in lists for r in (core.get(k) or []) if isinstance(r, dict)):
+                seen |= {f for f in wanted if P.get_path(row, f) not in (None, "", [], {})}
+        out += [f"{cap}.{rf.key}: {f}" for rf in contract.row_filters for f in rf.fields if f not in seen]
+    return out

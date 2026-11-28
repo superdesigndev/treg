@@ -1416,12 +1416,19 @@ an invalid extra never disables the primary.
   `X-Treg-Strict-Filtered` say `{removed, kept, by, unchecked, in_raw}` (summed over a merge).
   `raw` is the child's body, whole, and `count` follows the kept rows only where it counted the
   rows. The child settles at its own price: it answered. A hit left with no row is an attempt
-  `miss` and the walk goes on, at most `MAX_WEAK_FALLBACKS` more such answers; when nothing better turns up, the first such answer is returned as
-  the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what `min_results`,
-  fill and merge count. `place` matches the most specific part of the sent place, folded, or its
-  country or US-state code as a part of the row's place; a row that names only a larger place is
-  removed. `domain` takes the domain or a subdomain; `site` reads `site:` from `q` (`on_site`, as
-  `no_result_on_site`); `within_days` reads the row date's leading `YYYY-MM-DD`. Declared on
+  `miss` and counts in `weak_hits` (one bound with the weak answers, later plain misses included:
+  at most `MAX_WEAK_FALLBACKS` more providers); when nothing better turns up, the first such answer
+  is returned as the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what
+  `min_results`, fill and merge count. `place` reads a city, a US state (name or code) and a
+  country from both places and removes a row only when it names another country, another state,
+  or another city in the same state or country; a two-letter code that is both a state and a
+  country (`IN`, `CA`) counts as either. A row naming only a larger place than asked, or nothing
+  comparable, is unchecked. Noise words go first ("Greater … Area", "New York City" is "New York").
+  `domain` takes the domain or a subdomain, a port and a trailing dot aside; `site` reads `site:`
+  from `q` (`on_site`, as `no_result_on_site`) and judges nothing it cannot read (`site:.edu`,
+  `site:*.a.com`, a `/url?` redirect link, a percent-encoded address); `within_days` compares the
+  row's date as a UTC day. For a contract without a `row` the loader refuses a field no verified
+  adapter's example row carries (`row_filter_fields_unread`). Declared on
   `people.search` (place, company domain), `companies.jobs.search` (place, posting date) and the
   `site:` searches (`web.search`, `google.serp.organic`). A call without the header is unchanged.
 - **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its

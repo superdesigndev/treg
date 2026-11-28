@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -24,23 +25,74 @@ def _apply(key, test, fields, sent, rows):
     return R.apply((R.RowFilter(key, test, tuple(fields)),), {key: sent}, {key}, rows, TODAY)
 
 
-def test_place_keeps_rows_in_the_place_and_removes_the_rest():
+# (asked, row, verdict): True keeps it as a match, None keeps it unchecked, False removes it.
+PLACES = [
+    # a country, a state or a metro asked: a row inside it is never removed
+    ("United States", "Austin, TX", True),
+    ("United States", "Austin, Texas, United States", True),
+    ("Germany", "Berlin", None),
+    ("Germany", "Berlin, Germany", True),
+    ("California", "Greater Los Angeles Area", None),
+    ("California", "San Francisco, CA", True),          # CA is also Canada: read as either
+    ("California", "San Francisco, CA, US", True),
+    ("California", "San Francisco, California, United States", True),
+    ("New York City", "New York, New York, United States", True),
+    ("New York City", "New York City Metropolitan Area", True),
+    ("New York", "Brooklyn, NY", True),
+    ("Greater Phoenix", "Scottsdale, Arizona", None),
+    ("Greater Phoenix", "Phoenix, Arizona, United States", True),
+    ("Texas", "Texas", True),
+    ("Austin, Texas", "Texas, United States", None),        # only a larger place: not judged
+    ("Austin, Texas", "United States", None),
+    ("Indiana", "Columbus, IN", True),                       # IN is also India: read as either
+    ("Indiana", "Columbus, IN, US", True),
+    ("Germany", "Berlin, DE", True),
+    ("United States", "Columbus, IN", None),
+    ("United Kingdom", "Austin, MN", False),
+    # the city cases
+    ("Paris, France", "Paris, FR", True),
+    ("France", "Paris, FR", True),
+    ("Oregon, United States", "Portland, OR", True),
+    ("Austin, Texas", "Austin, TX, US", True),
+    ("Austin, Texas", "Greater Austin Area", True),
+    ("Zürich, Switzerland", "Zurich, Switzerland", True),
+    ("São Paulo", "Sao Paulo, SP, Brazil", True),
+    ("London, United Kingdom", "Greater London, England, United Kingdom", True),
+    # a different place at the same level: removed
+    ("United States", "Berlin, Germany", False),
+    ("Germany", "Austin, TX, US", False),
+    ("California", "Austin, Texas, United States", False),
+    ("California", "Austin, TX", False),
+    ("Austin, Texas", "Dallas, Texas, United States", False),
+    ("Austin, Texas", "Austin, MN", False),
+    ("London, United Kingdom", "Manchester, England", False),
+    ("Paris, France", "Lyon, France", False),
+    # a city with nothing around it says nothing about a row elsewhere
+    ("London", "Berlin, Germany", None),
+    ("Greater Phoenix", "Berlin, Germany", None),
+]
+
+
+@pytest.mark.parametrize("asked,row,verdict", PLACES)
+def test_place_removes_only_a_row_that_names_another_place_at_the_level_asked(asked, row, verdict):
+    assert R.place(asked, row) is verdict
+
+
+def test_place_counts_rows_removed_and_unchecked():
     rows = [{"location": "Austin, TX, US"}, {"location": "Dallas, Texas, United States"},
-            {"location": "Greater Austin Area"}, {"location": "Berlin, Germany"}, {"name": "no place"}]
+            {"location": "Greater Austin Area"}, {"location": "Berlin, Germany"}, {"location": "Texas"},
+            {"name": "no place"}]
     r = _apply("location", "place", ["location"], "Austin, Texas", rows)
-    assert [x.get("location") for x in r.rows] == ["Austin, TX, US", "Greater Austin Area", None]
-    assert r.removed == 2 and r.unchecked == 1 and r.by == {"location": 2}
-    # a country or US state matches its code in a row ('Paris, FR', 'Portland, OR')
-    assert R.place("France", "Paris, FR") and R.place("Oregon, United States", "Portland, OR")
-    assert R.place("United Kingdom", "Manchester, England") and R.place("Greater Phoenix", "Phoenix, Arizona")
-    assert R.place("London, United Kingdom", "Manchester, England") is False
+    assert [x.get("location") for x in r.rows] == ["Austin, TX, US", "Greater Austin Area", "Texas", None]
+    assert r.removed == 2 and r.unchecked == 2 and r.by == {"location": 2}
 
 
 def test_domain_keeps_the_company_and_its_subdomains():
-    rows = [{"company_domain": "stripe.com"}, {"company_domain": "jobs.stripe.com"},
-            {"company_domain": "notstripe.com"}, {"company_domain": "acme.io"}]
+    rows = [{"company_domain": "stripe.com"}, {"company_domain": "jobs.stripe.com"}, {"company_domain": "stripe.com."},
+            {"company_domain": "stripe.com:443"}, {"company_domain": "notstripe.com"}, {"company_domain": "acme.io"}]
     r = _apply("company_domain", "domain", ["company_domain"], "https://www.stripe.com", rows)
-    assert [x["company_domain"] for x in r.rows] == ["stripe.com", "jobs.stripe.com"] and r.removed == 2
+    assert [x["company_domain"] for x in r.rows] == ["stripe.com", "jobs.stripe.com", "stripe.com.", "stripe.com:443"]
+    assert r.removed == 2
 
 
 def test_site_keeps_rows_on_the_questions_site():
@@ -51,11 +103,27 @@ def test_site_keeps_rows_on_the_questions_site():
     assert _apply("q", "site", ["url", "link"], "pricing", rows) is None
 
 
+@pytest.mark.parametrize("q,link", [
+    ("x site:.edu", "https://mit.edu/a"), ("x site:*.a.com", "https://b.com/a"), ("x site:edu", "https://b.com"),
+    ("x site:a.com", "https://www.google.com/url?q=https://a.com/p"), ("x site:a.com/caf%C3%A9", "https://a.com/x"),
+    ("x site:a.com", "https://b.com/%2Fa.com"), ("x site:a.com", "not a link"),
+])
+def test_site_does_not_judge_what_it_cannot_read(q, link):
+    assert R.site(q, link) is None
+
+
 def test_within_days_keeps_rows_posted_in_the_window():
     rows = [{"date_posted": "2026-11-25T10:00:00+00:00"}, {"date_first_seen": "2026-11-21"},
             {"date_posted": "2026-10-01"}, {"date_posted": "last week"}]
     r = _apply("posted_within_days", "within_days", ["date_posted", "date_first_seen"], 7, rows)
     assert r.rows == [rows[0], rows[1], rows[3]] and r.removed == 1 and r.unchecked == 1
+
+
+def test_within_days_reads_the_row_date_in_utc():
+    # 20 November 22:00 at UTC-5 is 21 November in UTC: inside a 7-day window from 28 November
+    assert R.within_days(7, "2026-11-20T22:00:00-05:00", TODAY) is True
+    assert R.within_days(7, "2026-11-21T02:00:00+05:00", TODAY) is False
+    assert R.within_days(7, "2026-11-21T00:00:00Z", TODAY) is True
 
 
 def test_a_filter_the_caller_did_not_send_judges_nothing():
@@ -80,6 +148,24 @@ def test_shipped_contracts_declare_their_row_filters():
     assert {f.key for f in contracts["people.search"].row_filters} == {"location", "company_domain"}
     assert {f.key for f in contracts["companies.jobs.search"].row_filters} == {"location", "posted_within_days"}
     assert {f.key for f in contracts["web.search"].row_filters} == {"q"}
+
+
+def test_the_loader_refuses_a_field_no_providers_row_carries():
+    from dataclasses import replace
+
+    from treg.domain.catalog.routing.contracts import row_filter_fields_unread
+    cat = catalog_store.load()
+
+    def example(ep):
+        path = catalog_store.example_path(ep["id"])
+        return json.loads(path.read_text()) if path else ep.get("example_response")
+
+    assert row_filter_fields_unread(cat.contracts, cat.adapters, cat.by_id, example) == []
+    jobs = cat.contracts["companies.jobs.search"]
+    wrong = {**cat.contracts, "companies.jobs.search": replace(
+        jobs, row_filters=(R.RowFilter("posted_within_days", "within_days", ("posted_on",)),))}
+    assert row_filter_fields_unread(wrong, cat.adapters, cat.by_id, example) == [
+        "companies.jobs.search.posted_within_days: posted_on"]
 
 
 # ---- through the routed call ------------------------------------------------------------------
@@ -144,3 +230,64 @@ async def test_strict_filters_that_remove_every_row_answer_a_billed_miss_with_ra
     assert "strict filters removed every row" in body["_treg"]["tried"][0]["detail"]
     # the provider answered: its call settles at its own price, as without the header
     assert strict_cost == plain_cost > 0 and body["_treg"]["charged_micro"] == plain.json()["_treg"]["charged_micro"]
+
+
+OFF_COMPANY = {
+    "leads": [{"firstname": "Eve", "lastname": "E", "firstName": "Eve", "lastName": "E", "lastCompanyWebsite": "https://acme.io",
+               "company": {"domain": "acme.io"}, "profileUrl": "https://www.linkedin.com/in/eve"}],
+    "people": [{"contact_full_name": "Eve E", "company_domain": "acme.io"}],
+    "data": [{"first_name": "Eve", "last_name": "E", "company_url": "https://acme.io"}],
+    "contacts": [{"name": "Eve E", "domain": "acme.io", "email": "eve@acme.io"}],
+    "total": 1, "count": 1,
+}
+COMPANY_SEARCHES = ("icypeas.people.search", "leadsforge.people.search", "leadmagic.people.search",
+                    "quickenrich.people.search.domain", "findymail.search.domain")
+
+
+@pytest.fixture
+def five_company_searches(monkeypatch, platform_on):
+    for p in ("ICYPEAS", "LEADSFORGE", "LEADMAGIC", "QUICKENRICH", "FINDYMAIL"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas,leadsforge,leadmagic,quickenrich,findymail")
+    get_settings.cache_clear()
+    cat = catalog_store.load()
+    for eid in cat.by_id["treg.people.search"]["routed_children"]:
+        if eid not in COMPANY_SEARCHES:
+            monkeypatch.delitem(cat.adapters, eid)
+    yield
+    get_settings.cache_clear()
+
+
+async def test_strict_filters_ask_at_most_two_more_providers_after_an_emptied_answer(
+        clients: AsyncClient, five_company_searches, monkeypatch):
+    seen: list = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, OFF_COMPANY)] * 5}, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": 1},
+                           headers={"X-Treg-Route-Strict-Filters": "1"})
+    body = r.json()
+    assert r.status_code == 200 and body["_treg"]["outcome"] == "miss", r.text
+    asked = [t for t in body["_treg"]["tried"] if t["outcome"] != "skipped"]
+    # the first answer and at most two more, each billed at its own price
+    assert len(seen) == 3 and len(asked) == 3, body["_treg"]["tried"]
+    assert all("strict filters removed every row" in t["detail"] for t in asked)
+    assert body["_treg"]["charged_micro"] == sum(t["charged_micro"] for t in asked) == before - await _balance(clients)
+    assert body["output"]["people"] == [] and body["raw"] == OFF_COMPANY
+    # without the header the first provider's rows are the answer
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, OFF_COMPANY)]}, seen))
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": 1})
+    assert r.status_code == 200 and len(seen) == 1 and r.json()["_treg"]["outcome"] == "hit", r.text
+
+
+async def test_weak_and_emptied_answers_share_one_bound(clients: AsyncClient, five_company_searches, monkeypatch):
+    on = json.loads(json.dumps(OFF_COMPANY).replace("acme.io", "stripe.com"))
+    seen: list = []
+    # one row each where two make an answer (weak), alternating with answers strict filtering empties
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"*": [(200, on), (200, OFF_COMPANY), (200, on), (200, OFF_COMPANY), (200, on)]}, seen))
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "stripe.com", "limit": 2},
+                           headers={"X-Treg-Route-Strict-Filters": "1", "X-Treg-Route-Min-Results": "2"})
+    body = r.json()
+    assert r.status_code == 200 and len(seen) == 3, body["_treg"]["tried"]
+    assert body["_treg"]["outcome"] == "weak" and len(body["output"]["people"]) == 1

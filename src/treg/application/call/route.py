@@ -39,7 +39,8 @@ and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are ne
 `X-Treg-Route-Strict-Filters` also judges a list answer's rows by the contract's `row_filters`: a row
 whose own field breaks a filter the caller sent leaves `output`, counted in `_treg.strict_filtered`
 (`X-Treg-Strict-Filtered`), while `raw` keeps the child's body whole. The child settles at its own
-price either way. An answer left with no row is a miss and the walk goes on, at most two more such answers; when nothing better
+price either way. An answer left with no row is a miss and the walk goes on: at most two more
+providers, counted with the weak answers (one bound), each billed as usual. When nothing better
 turns up, the first such answer comes back as the miss, its rows still in `raw`.
 
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
@@ -1503,7 +1504,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     winner: tuple[Candidate, dict, dict, bytes] | None = None
     answers: list[tuple] = []      # every attempt that returned rows, for X-Treg-Route-Merge
     weak_hits = 0
-    wall_seen = False   # a question_miss answer was kept: every later answer counts toward the bound
+    wall_seen = False   # a question_miss or strict-emptied answer was kept: every later answer counts toward the bound
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
@@ -1878,10 +1879,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged,
                                          _strict_detail(note), ignored=ignored))
                     strict_emptied.append((cand, doc, core, raw))
-                    if options.waterfall and len(strict_emptied) <= MAX_WEAK_FALLBACKS:
-                        continue
-                    winner = strict_emptied[0]
-                    break
+                    if not options.waterfall:
+                        winner = strict_emptied[0]
+                        break
+                    # One bound with the weak answers: at most MAX_WEAK_FALLBACKS more providers,
+                    # later plain misses included.
+                    weak_hits += 1
+                    wall_seen = True
+                    if weak_hits > MAX_WEAK_FALLBACKS:
+                        break
+                    continue
         if (outcome.kind == "miss" and options.waterfall and plan.contract.question_miss_bound
                 and "question_miss" in outcome.why and set(outcome.why) <= {"question_miss", "adapter_miss"}):
             # An answer only the question rules out (a wall page) is kept like a weak hit and

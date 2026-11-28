@@ -401,7 +401,7 @@ contracts:
     miss: "results == []"
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     row_filters:   # strict filters: a row off the question's site: leaves output
-      q: {test: site, field: [url, link, href]}
+      q: {test: site, field: [url, link]}
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
 
@@ -833,7 +833,7 @@ contracts:
     # Strict filters: a job row whose own place or posting date breaks the one sent leaves output.
     row_filters:
       location: {test: place, field: [location, location_raw, locations_derived]}
-      posted_within_days: {test: within_days, field: [date_posted, posted_at, date_first_seen]}
+      posted_within_days: {test: within_days, field: [date_posted, date_first_seen]}
 
   companies.jobs:
     summary: "One company's current open job postings: from its own job board when you name it (ats + board), else from job indexes by name or domain — provider-native job rows in `jobs`"
@@ -1574,7 +1574,7 @@ contracts:
     miss: "results == []"
     question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     row_filters:   # strict filters: a row off the question's site: leaves output
-      q: {test: site, field: [url, link, href]}
+      q: {test: site, field: [url, link]}
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     # Asked for passages (`contents: true`), a published route rule asks exa first.

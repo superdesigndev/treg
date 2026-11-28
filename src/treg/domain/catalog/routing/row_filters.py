@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from . import paths as P
 
 TESTS = frozenset({"place", "domain", "site", "within_days"})
 
-# Words a place name carries around its name ("Greater Phoenix Area"): the place is the rest.
-_PLACE_NOISE = frozenset({"greater", "area", "metropolitan", "metro", "region"})
+# Words a place name carries around its name ("Greater Phoenix Area", "New York City"): the place is the rest.
+_PLACE_NOISE = frozenset({"greater", "area", "metropolitan", "metro", "region", "city", "bay"})
 _COUNTRY_ALIASES = {"usa": "us", "u s": "us", "u s a": "us", "england": "gb", "scotland": "gb",
                     "wales": "gb", "northern ireland": "gb", "great britain": "gb"}
 _US_STATES = {
@@ -33,6 +33,7 @@ _US_STATES = {
     "tennessee": "tn", "texas": "tx", "utah": "ut", "vermont": "vt", "virginia": "va",
     "washington": "wa", "west virginia": "wv", "wisconsin": "wi", "wyoming": "wy",
 }
+_STATE_CODES = frozenset(_US_STATES.values())
 _DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 
 
@@ -59,61 +60,152 @@ def _segments(value: Any) -> list[str]:
     return [f for s in P._strings(value) for part in s.split(",") if (f := P._fold(part))]
 
 
+def _bare(segment: str) -> str:
+    words = [w for w in segment.split() if w not in _PLACE_NOISE]
+    return " ".join(words) or segment
+
+
 def _country(text: str) -> str | None:
     return _COUNTRY_ALIASES.get(text) or P.iso_country(text)
 
 
+@dataclass
+class _Place:
+    city: str = ""
+    state: str = ""
+    country: str = ""
+    either: frozenset[str] = frozenset()   # a two-letter code that is a US state and a country ('IN', 'CA')
+
+    def has_state(self, code: str) -> bool:
+        return self.state == code or code in self.either
+
+    def has_country(self, code: str) -> bool:
+        return self.country == code or code in self.either
+
+
+def _read_place(segments: list[str], *, asked: bool) -> _Place:
+    """The city, US state and country a place names. The first part is the city unless it is a
+    state or a country; a later part is a state by name or code ('TX', 'NY 14607'), else a country.
+    A code that is both ('IN') is a state only when a country follows it. A state names its country."""
+    out = _Place()
+    either: set[str] = set()
+    for i, seg in enumerate(segments):
+        bare = _bare(seg)
+        if i == 0:
+            if bare in _US_STATES and (asked or len(segments) == 1):
+                out.state = _US_STATES[bare]
+            elif (asked or len(segments) == 1) and (code := _country(bare)) and len(segments) == 1:
+                out.country = code
+            else:
+                out.city = bare
+            continue
+        tokens = seg.split()
+        code = tokens[0] if len(tokens) <= 2 and len(tokens[0]) == 2 else ""
+        if bare in _US_STATES:
+            out.state = out.state or _US_STATES[bare]
+        elif code in _STATE_CODES and _country(code):
+            if any(_country(_bare(later)) for later in segments[i + 1:]):
+                out.state = out.state or code
+            else:
+                either.add(code)
+        elif code in _STATE_CODES:
+            out.state = out.state or code
+        elif country := _country(bare):
+            out.country = out.country or country
+    if out.state and not out.country:
+        out.country = "us"
+    out.either = frozenset(either)
+    return out
+
+
 def place(sent: Any, value: Any) -> bool | None:
-    """True when the row's place names the most specific part of the sent one ('Austin' of
-    'Austin, Texas'), folded, or its country or US-state code as a part of its own ('Paris, FR',
-    'Portland, OR'). A row that names only a larger place ('Texas' for Austin) is not in it."""
+    """False only when the row clearly names another place at the level asked: another country,
+    another US state, or another city in the same state or country. True when it names the asked
+    place at its most specific level ('Austin, TX, US' for 'Austin, Texas'). Anything else, a row
+    naming only a larger place included ('Texas' for Austin), is not judged."""
     if not isinstance(sent, str):
         return None
-    asked = [f for part in sent.split(",") if (f := P._fold(part))]
+    asked_segs = [f for part in sent.split(",") if (f := P._fold(part))]
     segs = _segments(value)
-    if not asked or not segs:
+    if not asked_segs or not segs:
         return None
-    words = [w for w in asked[0].split() if w not in _PLACE_NOISE] or asked[0].split()
-    want = " ".join(words)
-    if f" {want} " in " " + " ".join(segs) + " ":
-        return True
-    code = _country(want)
-    if code and any(_country(s) == code for s in segs):
-        return True
-    state = _US_STATES.get(want)
-    return bool(state) and any(s.split()[0] == state and len(s.split()) <= 2 for s in segs[1:])
+    asked, row = _read_place(asked_segs, asked=True), _read_place(segs, asked=False)
+    if asked.country and row.country and asked.country != row.country and not row.has_country(asked.country):
+        return False
+    if asked.state and row.state and asked.state != row.state:
+        return False
+    # A code that is a state and a country ('MN') breaks the ask when it is neither the state asked
+    # nor, read as a country, the country asked.
+    if row.either and not row.state and not row.country and (
+            (asked.state and asked.state not in row.either)
+            or (asked.country and asked.country != "us" and asked.country not in row.either)):
+        return False
+    if asked.city:
+        if f" {asked.city} " in " " + " ".join(_bare(s) for s in segs) + " ":
+            return True
+        same_area = (row.has_state(asked.state) if asked.state
+                     else row.has_country(asked.country) if asked.country else False)
+        return False if row.city and same_area and row.city != asked.city else None
+    if asked.state:
+        return True if row.has_state(asked.state) else None
+    return True if row.has_country(asked.country) else None
+
+
+def _host(value: Any) -> str | None:
+    h = P.host(value) if isinstance(value, str) else None
+    h = (h or "").split(":")[0].rstrip(".")
+    return h if "." in h and "*" not in h and not h.startswith(".") else None
 
 
 def domain(sent: Any, value: Any) -> bool | None:
-    """True when the row's domain is the sent one or a subdomain of it."""
-    want, got = P.host(sent), P.host(value) if isinstance(value, str) else None
+    """True when the row's domain is the sent one or a subdomain of it (a port and a trailing
+    dot aside)."""
+    want, got = _host(sent), _host(value)
     if not want or not got:
         return None
     return got == want or got.endswith("." + want)
 
 
 def site(sent: Any, value: Any) -> bool | None:
-    """True when the row's link is on a site the question's `site:` restricts to; None when the
-    question has no such restriction."""
+    """True when the row's link is on a site the question's `site:` restricts to. None when the
+    question has no such restriction, a restriction is not one readable host (`site:.edu`,
+    `site:*.a.com`), or the link cannot be read as the page (a redirect `/url?q=` link, a
+    percent-encoded address)."""
     sites = P.site_restrictions(sent)
-    if not sites or not isinstance(value, str) or not value:
+    if not sites or any(not _host(h) or "%" in h + p for h, p in sites):
+        return None
+    if not isinstance(value, str) or not value or "%" in value or "/url?" in value:
         return None
     link = P.host_path(value)
+    if not _host(link[0]):
+        return None
+    link = (_host(link[0]), link[1])
     return any(P.on_site(s, link) for s in sites)
 
 
-def within_days(sent: Any, value: Any, today: date) -> bool | None:
-    """True when the row's date (its leading YYYY-MM-DD) is at most `sent` days before today."""
-    if isinstance(sent, bool) or not isinstance(sent, int) or not isinstance(value, str):
-        return None
-    m = _DATE.match(value.strip())
+def _day(value: str) -> date | None:
+    text = value.strip()
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        moment = None
+    if moment is not None:
+        return moment.astimezone(UTC).date() if moment.tzinfo else moment.date()
+    m = _DATE.match(text)
     if not m:
         return None
     try:
-        day = date(int(m[1]), int(m[2]), int(m[3]))
+        return date(int(m[1]), int(m[2]), int(m[3]))
     except ValueError:
         return None
-    return day >= today - timedelta(days=sent)
+
+
+def within_days(sent: Any, value: Any, today: date) -> bool | None:
+    """True when the row's date, as a UTC day, is at most `sent` days before `today` (a UTC day)."""
+    if isinstance(sent, bool) or not isinstance(sent, int) or not isinstance(value, str):
+        return None
+    day = _day(value)
+    return None if day is None else day >= today - timedelta(days=sent)
 
 
 def _read(row: dict, fields: tuple[str, ...]) -> Any:
