@@ -1576,24 +1576,45 @@ async def resolve_result(key_hash: str, content_hash: str, *, prefer_bytes: bool
     }
 
 
+_ON_FILE_CHUNK = 200
+
+
 async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
     """Which `(key_hash, content_hash)` answers still carry their bytes: in object storage, in the
     row, or through a `body_of` carrier. A hash-only version (licence or size refused the bytes) is
-    not on file. Metadata only: no body is read. For retry rows dropping their own copy."""
+    not on file. Metadata only: no body is read. For retry rows dropping their own copy.
+
+    Keys first, then their snapshots by `key_id`; the content hash is compared here, never in SQL.
+    A common answer (an empty result) is shared by a large part of `archivesnapshot`, and a
+    `content_hash IN` filter lets the planner walk every snapshot of it. Each statement names at
+    most `_ON_FILE_CHUNK` keys, so one page's lookup is several short statements under the trim's
+    per-statement timeout, not one long one, and keeps only the asked pairs it returned, so a
+    key's long history is not carried from one chunk to the next."""
     from sqlalchemy import or_, select
 
     from .models import ArchiveKey, ArchiveSnapshot
 
     if not pairs:
         return set()
-    rows = (await session.execute(
-        select(ArchiveKey.key_hash, ArchiveSnapshot.content_hash)
-        .join(ArchiveSnapshot, ArchiveSnapshot.key_id == ArchiveKey.id)
-        .where(ArchiveKey.key_hash.in_({k for k, _ in pairs}),
-               ArchiveSnapshot.content_hash.in_({c for _, c in pairs}),
-               or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
-                   ArchiveSnapshot.body_of.is_not(None))))).all()
-    return {(k, c) for k, c in rows} & pairs
+    key_hashes = sorted({k for k, _ in pairs})
+    keys: dict[int, str] = {}
+    for start in range(0, len(key_hashes), _ON_FILE_CHUNK):
+        keys.update((await session.execute(
+            select(ArchiveKey.id, ArchiveKey.key_hash)
+            .where(ArchiveKey.key_hash.in_(key_hashes[start:start + _ON_FILE_CHUNK])))).tuples().all())
+    key_ids = sorted(keys)
+    found: set[tuple[str, str]] = set()
+    for start in range(0, len(key_ids), _ON_FILE_CHUNK):
+        rows = await session.stream(
+            select(ArchiveSnapshot.key_id, ArchiveSnapshot.content_hash)
+            .where(ArchiveSnapshot.key_id.in_(key_ids[start:start + _ON_FILE_CHUNK]),
+                   or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
+                       ArchiveSnapshot.body_of.is_not(None)))
+            .execution_options(yield_per=1000))
+        async for key_id, content in rows:
+            if (pair := (keys[key_id], content)) in pairs:
+                found.add(pair)
+    return found
 
 
 def answer_on_file(key_hash: str, body_hash: str):
