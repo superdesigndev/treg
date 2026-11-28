@@ -149,6 +149,12 @@ How a routed call works:
   hint, not a filter" steers the ranking only. On routed people search, a provider known to take a
   sent place or company only as a hint is named in `_treg.ignored_filters`, so
   `X-Treg-Route-Strict-Filters: 1` skips it.
+- `X-Treg-Route-Strict-Filters: 1` also judges the rows on people search (`location`,
+  `company_domain`), job search (`location`, `posted_within_days`) and web or Google search
+  (`site:` in `q`): a row whose own field breaks what you sent leaves `output`, and
+  `_treg.strict_filtered` says `{removed, kept, by, unchecked}`. A row that names no place, company
+  or date is kept and counted `unchecked`. `raw` keeps every row, and the provider is billed as
+  usual; when no row is left the answer is a miss and the next provider is asked.
 - When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
   whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
   employer; the hit is still billed — read the flag before treating the address as current. When

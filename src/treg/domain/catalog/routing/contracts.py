@@ -16,6 +16,7 @@ from .. import outcome
 from ..params import takes_list
 from ..schema.v2 import is_v2
 from . import paths as P
+from . import row_filters
 from .segments import SEGMENTERS
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
@@ -169,6 +170,10 @@ class Contract:
     # The segment set (`segments.SEGMENTERS`) whose categories of the request a call event records
     # in `input_meta` and a route rule may match on. Empty = none.
     segments: str = ""
+    # Caller key -> the row test and field(s) `X-Treg-Route-Strict-Filters` judges a list answer's
+    # rows by (`row_filters.RowFilter`): a row whose field breaks the sent value leaves `output`,
+    # `raw` keeps it. Empty = strict filters only drop the providers that cannot express a filter.
+    row_filters: tuple = ()
 
     def fill_target(self, given) -> int | None:
         """The row count a routed answer should reach for the request body `given`: its `limit`,
@@ -393,7 +398,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "carried_by", "fill_rows", "prefer", "prefer_by_domain_suffix", "ask_last", "check", "confirm", "ad_hashes",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "question_miss_bound", "row", "stand_in",
-    "stand_in_carries", "fill_limit_when", "identity_notes", "segments"})
+    "stand_in_carries", "fill_limit_when", "identity_notes", "segments", "row_filters"})
 # Contract keys that no longer do anything, with what replaced them. `prefer_when` ordered
 # providers by the keys a caller sent; an order for one kind of request is now a published route
 # rule, reviewed by a person and observed after it goes live (docs/context/architecture/route-rules.md).
@@ -534,6 +539,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                                                      {*types, *(c.get("filters") or {})}),
             identity_notes=_parse_identity_notes(cap, c.get("identity_notes"), types),
             segments=_parse_segments(cap, c.get("segments")),
+            row_filters=row_filters.parse(cap, c.get("row_filters"), {*types, *(c.get("filters") or {})},
+                                          (c.get("row") or {}).get("fields") if isinstance(c.get("row"), dict) else None),
             **_parse_row(cap, c.get("row"), c.get("output") or {}, types),
             **_parse_verdict(cap, c.get("verdict")))
     return out

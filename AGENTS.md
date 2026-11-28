@@ -100,7 +100,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    A team's own key is relayed unchanged.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
-   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. A routed
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. With
+   `X-Treg-Route-Strict-Filters`, the wrap's `output` leaves out list rows whose own field breaks a
+   filter the caller sent (the contract's `row_filters`) and `_treg.strict_filtered` counts them;
+   `raw` keeps the child's body whole and the child is billed as usual. A routed
    call reads each child's answer up to the same 8 MiB; a larger one is that child's unbilled error. With
    `X-Treg-Route-Verify`, an email or phone find makes one more linked child call (the check), with its own
    reservation and charge, and reports it in `_treg.verification`; the find's answer is not altered. With

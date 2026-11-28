@@ -13,6 +13,7 @@ sources:
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
   - src/treg/domain/catalog/routing/quality.py
+  - src/treg/domain/catalog/routing/row_filters.py
   - src/treg/domain/catalog/routing/health.py
   - src/treg/domain/catalog/routing/synthetic.py
   - src/treg/application/rankings.py
@@ -1406,6 +1407,23 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **Strict filters judge rows too** (`row_filters`, `routing/row_filters.py`): a contract maps a
+  caller key to a test (`place`, `domain`, `site`, `within_days`) and the row path(s) it reads, the
+  first one present (a field of the contract's `row` when it has one; the loader refuses any other
+  key, test or field). Under the strict header `_strict_rows` judges each list row of a hit against
+  the filters the caller sent: a row whose field breaks one leaves `output`, a row that carries no
+  comparable field stays and counts as unchecked, and `_treg.strict_filtered` /
+  `X-Treg-Strict-Filtered` say `{removed, kept, by, unchecked, in_raw}` (summed over a merge).
+  `raw` is the child's body, whole, and `count` follows the kept rows only where it counted the
+  rows. The child settles at its own price: it answered. A hit left with no row is an attempt
+  `miss` and the walk goes on, at most `MAX_WEAK_FALLBACKS` more such answers; when nothing better turns up, the first such answer is returned as
+  the miss with its rows in `raw` (`strict_emptied`). The filtered rows are what `min_results`,
+  fill and merge count. `place` matches the most specific part of the sent place, folded, or its
+  country or US-state code as a part of the row's place; a row that names only a larger place is
+  removed. `domain` takes the domain or a subdomain; `site` reads `site:` from `q` (`on_site`, as
+  `no_result_on_site`); `within_days` reads the row date's leading `YYYY-MM-DD`. Declared on
+  `people.search` (place, company domain), `companies.jobs.search` (place, posting date) and the
+  `site:` searches (`web.search`, `google.serp.organic`). A call without the header is unchanged.
 - **A filter applied only as a hint is named too**: an adapter's `soft:` list names caller keys its
   provider receives but does not enforce (exa and parallel people.search read the place and the
   company as words), and an endpoint parameter marked `applied: soft` makes every contract filter
