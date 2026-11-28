@@ -2316,7 +2316,7 @@ def _result_page(result: dict, call_id: str) -> dict | None:
         "order for the whole answer" if nxt is not None else "this is the last page"))
     return {"offset": start, "total_chars": total, "next_offset": nxt,
             "note": note + ". If your client cut this reply, ask again with a smaller max_chars "
-                           "(6000 fits a client that keeps 8 KB)."}
+                           "(4000 fits a client that keeps 8 KB of JSON)."}
 
 
 async def _call_result_impl(call_id: str, limit: int, ctx: Context, *, offset: int = 0,
