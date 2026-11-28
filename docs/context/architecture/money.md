@@ -1535,12 +1535,16 @@ read is logged without failing the call.
 (`autotopup_watch.find_blocked`, run hourly) reads the teams with a card or a mandate whose balance
 is below their threshold and that have bought credit, counts each one's `refused_by: balance` 402s
 in the last hour and the hour before, and names the guard `attempt_auto_topup` would stop at now
-(`blocking_limit`: off, no card, failure limit, the wait after a failed charge, charges per hour,
-monthly cap, or none). Each line carries the team, its owner's email, that setting with the team's
+(`blocking_limit`: off, no consent, no card, failure limit, the wait after a failed charge, charges
+per hour, monthly cap, or none). A team counts as new while the hour before stayed under the
+reporting floor. Each line carries the team, its owner's email, that setting with the team's
 own numbers, the hour's settled spend, and refusals times the hour's mean settled price, an upper
 bound because agents retry. A team is posted to `TREG_OPS_SLACK_WEBHOOK_URL` on the hour it starts
 being refused (none the hour before) and, while it stays refused, once a day at `--digest-hour`.
-It reads only and changes no setting; the counts inherit the audit table's loss.
+It reads the replica when one is configured, one short transaction per team under a statement
+timeout, and changes no setting; the counts inherit the audit table's loss. A team above its
+threshold but below one call's price (`above_threshold`) is refused without a refill and is not
+reported.
 
 The 402 carries `autotopup_enabled` and an `auto top-up:` line: off gives the command that turns it
 on; on gives amount, threshold, charges per hour, monthly cap and the flags that raise the refill

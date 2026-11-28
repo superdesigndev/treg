@@ -151,7 +151,7 @@ async def test_nothing_is_posted_when_no_team_is_refused(c, monkeypatch, capsys)
 
 def test_the_limits_follow_the_order_attempt_auto_topup_checks_them():
     now = _now()
-    org = Org(id=1, name="t", slug="t", autotopup_enabled=True, stripe_customer_id="cus", stripe_default_pm="pm",
+    org = Org(id=1, name="t", slug="t", autotopup_enabled=True, autotopup_consented_at=now, stripe_customer_id="cus", stripe_default_pm="pm",
               autotopup_amount_micro=50_000_000, autotopup_monthly_cap_micro=100_000_000, autotopup_max_per_hour=1,
               autotopup_last_attempt_at=now - timedelta(minutes=5))
     assert watch.blocking_limit(org, now=now, month_spend_micro=100_000_000)[0] == watch.LIMIT_PER_HOUR
@@ -162,3 +162,22 @@ def test_the_limits_follow_the_order_attempt_auto_topup_checks_them():
     org.autotopup_last_attempt_at = now - timedelta(minutes=30)
     assert watch.blocking_limit(org, now=now, month_spend_micro=0)[0] == watch.LIMIT_RETRY_WAIT
     assert billing.autotopup_wait_s(org) == get_settings().autotopup_cooldown_s
+
+
+async def test_dormant_low_balance_teams_do_not_crowd_out_a_refused_one(c):
+    for i in range(3):
+        await _team(c, f"dormant{i}@x.dev", refused=0)
+    refused = await _team(c, "refused@x.dev", refused=50, autotopup_failures=3)
+    assert [b.org_id for b in await watch.find_blocked(min_refusals=20)] == [refused]
+
+
+async def test_a_team_below_the_floor_the_hour_before_is_still_new(c):
+    org_id = await _team(c, "late@x.dev", refused=300, refused_before=5, autotopup_failures=3)
+    [b] = await watch.find_blocked(min_refusals=20)
+    assert b.org_id == org_id and b.new
+
+
+async def test_a_card_without_consent_is_named_as_such(c):
+    await _team(c, "noconsent@x.dev", refused=30, autotopup_consented_at=None)
+    [b] = await watch.find_blocked(min_refusals=20)
+    assert b.limit == watch.LIMIT_NO_CONSENT

@@ -5,7 +5,11 @@ monthly cap, the charges-per-hour wait, the wait after a failed charge, the fail
 card, or auto top-up switched off. The 402 the agent sees names the setting, but nobody at treg
 does. `find_blocked` reads, for each team with a card or a mandate whose balance is below its
 threshold and that has bought credit, the refusals of its last two hours and the limit
-`attempt_auto_topup` would stop at now. It writes nothing and moves no money.
+`attempt_auto_topup` would stop at now. It reads the replica when one is configured, one short
+transaction per team, writes nothing and moves no money.
+
+Out of scope: a team above its threshold whose balance is still below one call's price is refused
+with no refill (`above_threshold`) and is not reported.
 """
 
 from __future__ import annotations
@@ -13,18 +17,24 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, exists, func, literal_column, or_
+import logging
+
+from sqlalchemy import case, exists, func, literal_column, or_, text
 from sqlmodel import select
 
 from ..config import get_settings
-from ..infra.db import session_maker
+from ..infra.db import read_session_maker
 from ..models import CallRecord, LedgerEntry, Org
 from . import billing
 
+log = logging.getLogger(__name__)
+
 _TOPUP = literal_column("'topup'")
+_STATEMENT_TIMEOUT_MS = 20_000
 _SETTLE = literal_column("'settle'")
 
 LIMIT_OFF = "off"
+LIMIT_NO_CONSENT = "no_consent"
 LIMIT_NO_CARD = "no_card"
 LIMIT_FAILURES = "card_failures"
 LIMIT_RETRY_WAIT = "retry_wait"
@@ -45,10 +55,12 @@ class Blocked:
     spent_last_hour_micro: int
     settled_last_hour: int
     balance_micro: int
+    min_refusals: int = 1
 
     @property
     def new(self) -> bool:
-        return self.refused_hour_before == 0
+        """It was not reported the hour before: that hour stayed below the reporting floor."""
+        return self.refused_hour_before < self.min_refusals
 
     def turned_away_micro(self) -> int:
         """Refusals times the team's mean settled price in the last hour: an upper bound on the spend
@@ -68,6 +80,8 @@ def blocking_limit(org: Org, *, now: datetime, month_spend_micro: int) -> tuple[
     prefs = billing.autotopup_prefs(org)
     if not org.autotopup_enabled:
         return LIMIT_OFF, f"auto top-up is off ({org.autotopup_disabled_reason or 'turned off by the team'})"
+    if not org.autotopup_consented_at:
+        return LIMIT_NO_CONSENT, "no recorded consent for automatic charges"
     if not (org.stripe_customer_id and org.stripe_default_pm):
         return LIMIT_NO_CARD, "no saved card"
     failures = int(org.autotopup_failures or 0)
@@ -89,8 +103,13 @@ def blocking_limit(org: Org, *, now: datetime, month_spend_micro: int) -> tuple[
     return LIMIT_REFILL_DUE, "a refill is due; no limit holds it"
 
 
+async def _bounded(db) -> None:
+    if db.get_bind().dialect.name == "postgresql":
+        await db.execute(text(f"SET LOCAL statement_timeout = {_STATEMENT_TIMEOUT_MS}"))
+
+
 async def find_blocked(*, now: datetime | None = None, min_refusals: int = 20,
-                       max_teams: int = 200) -> list[Blocked]:
+                       max_teams: int = 5_000) -> list[Blocked]:
     """Every team with auto top-up configured, below its threshold and refused for balance at least
     `min_refusals` times in the last hour, worst first."""
     now = now or billing._now()
@@ -100,14 +119,19 @@ async def find_blocked(*, now: datetime | None = None, min_refusals: int = 20,
                      else_=billing.usd_to_micro(s.autotopup_default_threshold_usd))
     bought = exists().where(LedgerEntry.org_id == Org.id, LedgerEntry.kind == _TOPUP)
     found: list[Blocked] = []
-    async with session_maker() as db:
+    async with read_session_maker() as db:
+        await _bounded(db)
         orgs = (await db.execute(
             select(Org).where(
                 or_(Org.autotopup_consented_at.is_not(None), Org.stripe_default_pm.is_not(None)),
                 Org.balance_micro < threshold, bought,
             ).order_by(Org.id).limit(max_teams)
         )).scalars().all()
+        await db.commit()
+        if len(orgs) >= max_teams:
+            log.warning("autotopup watch: candidate list cut at %d teams; later teams were not read", max_teams)
         for org in orgs:
+            await _bounded(db)
             last_hour, hour_before = (await db.execute(
                 select(func.count().filter(CallRecord.created_at >= hour),
                        func.count().filter(CallRecord.created_at < hour))
@@ -115,6 +139,7 @@ async def find_blocked(*, now: datetime | None = None, min_refusals: int = 20,
                        CallRecord.status_code == 402, CallRecord.refused_by == "balance")
             )).one()
             if int(last_hour or 0) < min_refusals:
+                await db.commit()
                 continue
             spent, settled = (await db.execute(
                 select(func.coalesce(func.sum(LedgerEntry.amount_micro), 0), func.count())
@@ -127,7 +152,8 @@ async def find_blocked(*, now: datetime | None = None, min_refusals: int = 20,
                 org_id=org.id, name=org.name or org.slug or "", owner_email=await billing.owner_email(db, org.id),
                 limit=limit, detail=detail, refused_last_hour=int(last_hour), refused_hour_before=int(hour_before or 0),
                 spent_last_hour_micro=-int(spent or 0), settled_last_hour=int(settled or 0),
-                balance_micro=int(org.balance_micro or 0)))
+                balance_micro=int(org.balance_micro or 0), min_refusals=min_refusals))
+            await db.commit()
     return sorted(found, key=lambda b: -b.refused_last_hour)
 
 

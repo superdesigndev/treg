@@ -692,8 +692,10 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
 - **`billing autotopup-blocked`** posts the paying teams their own auto top-up settings are refusing
   ([money](../architecture/money.md), "An operator hears when a team's own settings refuse it"); run
   it hourly with `TREG_OPS_SLACK_WEBHOOK_URL` set. It reads `callrecord` outside the rollup cursors,
-  but only per team through `(org_id, created_at)`, two hours of at most `max_teams` teams already
-  below their threshold, so a run reads no more rows than those teams sent.
+  but only per team through `(org_id, created_at)`, two hours of each team already below its
+  threshold, so a run reads no more rows than those teams sent. It reads the replica when the
+  read database URL is set, one short transaction per team, and logs a warning when the candidate
+  list reaches `max_teams`.
 - **`arena insights`** needs the archive object-store settings when R2 reads are on.
 - **`showcase activity`** is needed only where the showcase leaderboard is served.
 - **`media sweep`** deletes unreferenced public pictures (only `img/`, older than a day). Pictures are
