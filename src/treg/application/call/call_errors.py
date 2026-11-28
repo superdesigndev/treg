@@ -37,7 +37,7 @@ _CLASS_OF_REFUSAL = {
     "balance": "caller_balance_or_cap", "cap": "caller_balance_or_cap", "request": "caller_input",
     "capacity": "treg_capacity", "resolution": "not_found", "retired": "treg_policy",
     "policy": "caller_policy", "paused": "treg_policy", "auth": "caller_auth",
-    "payment": "payment_required",
+    "payment": "payment_required", "own_credit": "caller_provider_account",
 }
 
 _CLASS_OF_SIGNAL = {

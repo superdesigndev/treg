@@ -24,6 +24,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    An operator's exact org/endpoint protective call allowance applies to every credential tier;
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
+   One more own-key refusal, off by default (`TREG_OWN_KEY_CREDIT_HOLD_S`): after a streak of
+   out-of-credit answers from the provider on one team's own key for one endpoint, treg answers
+   that key's next direct calls to that endpoint itself, before sending, with a typed 402 that
+   quotes the provider's last answer, for a fixed short hold that held calls cannot renew.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included. A call of a team the operator put on
    the allowance (`allowance.listed`: named in `money_allowance_org_ids`, or every team under
@@ -218,7 +222,9 @@ agents then built against a constitution that was wrong.
   Redis org/endpoint quota admission counters, the shared provider rate window's members, a
   throttled team's shared in-flight places (money.md "Team backpressure"), a
   sampled routed call's short-lived pairwise-comparison marker, and the short-lived per-team
-  balance-empty mark a confirmed balance refusal leaves in the shared store). Extend the
+  balance-empty mark a confirmed balance refusal leaves in the shared store, and the
+  short-lived own-key out-of-credit mark a streak of out-of-credit answers on a team's own key
+  leaves there). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and

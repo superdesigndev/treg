@@ -3,6 +3,8 @@ title: The proxy - faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
   - src/treg/infra/upstream/relay.py
+  - src/treg/infra/own_key_credit.py
+  - tests/test_own_key_credit.py
   - src/treg/infra/upstream/pathsegment.py
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
@@ -670,7 +672,8 @@ answered: `cf-mitigated`, an HTML block page, 1xxx problem-JSON) strikes nothing
 caller's request shape must not take the provider away from every team. An `unrecorded` signal (a
 4xx matching no row whose body still names credits/quota/balance) emits a `capacity` `unrecorded`
 event ([capacity](../ops/capacity.md)): the tripwire for a vendor dialect missing from the table.
-Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged.
+Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged (the one
+exception, off by default, is the next section).
 
 The call that meets the signature (a strike, a probe, a free route's own quota) is not relayed
 either. `service._execute_call` replaces a tier-4 (treg's shared key) answer whose signal is
@@ -681,6 +684,41 @@ own error code or a 401 that reads as the caller's key never reaches the caller.
 `Retry-After` (the seconds until `resets_at` when known, else `CAPACITY_RETRY_AFTER_S`), since many
 clients retry a 503 at once. The audit row, its error evidence and `tool_called` keep the vendor's status and body. A routed child's
 `provider_capacity` refusal is `skipped` ("treg's account is used up"), never an error.
+
+## An own key out of credit (off by default)
+
+A team whose own key is out of credit, and whose agent keeps calling, sends treg a steady stream of
+calls the provider answers the same way every time. With `own_key_credit_hold_s`
+(`TREG_OWN_KEY_CREDIT_HOLD_S`, seconds, 0 = off, 300 at most) set, treg answers such a stream
+itself for a short hold instead of sending it (`infra/own_key_credit.py`).
+
+- **What starts a hold.** After an own-key answer on tier `credential` or `tool` (not metered, not
+  an owned free poll, not a routed child), `service._own_key_credit_answer` reads the answer the
+  caller received (credential masked) with the capacity signature table; a `balance` signature
+  (every provider 402, plus the table's own rows) on any status but 401 is out of credit. A process
+  counts these per team, endpoint and injected secret ids; any other answer ends the count, and a
+  gap longer than `max(60 s, 2 x hold)` starts it again. At `own_key_credit_streak`
+  (`TREG_OWN_KEY_CREDIT_STREAK`, default 10) in a row, `own_key_credit.observe` writes one mark in
+  the shared store for the hold's length: the streak, the provider's status and the first 300
+  characters of the answer as the caller received it.
+- **What it answers.** At the start of the relay step (after the database phase ended and after
+  the archive lookup, so a free stored answer is still served; before fair share and before
+  anything is sent), `own_key_credit.read` looks for the mark, but only in a process that itself saw
+  that key answered out of credit lately: a team whose key works costs no store round trip. A
+  mark answers `402` with `X-Treg-Error: 1`, `Retry-After` (seconds left in the hold) and
+  `detail.error = own_key_out_of_credit`, naming the provider, the endpoint and
+  `provider_last_answer` (status, time and the quoted text). The row has `refused_by=own_credit`,
+  no `upstream_ms`, and the failure kind is the caller's provider account.
+- **How it ends.** The mark has a fixed lifetime and nothing renews it: a held call reaches no
+  provider, so it is never counted. After the hold the next call is sent; if the account is still
+  empty, the process's count is already at the streak and that one answer writes the mark again
+  (one probe per process per hold); a success ends the count and clears the mark. Connecting
+  another key gives other secret ids, so its calls are never held. A store that is slow or down
+  reads as no mark.
+- **Why it keeps the relay faithful.** A held call is treg's own refusal, marked as treg's, before
+  any provider request, like the other refusals on this road; no answer the provider gave is
+  altered, and the answer quoted is the one the caller already received. The key is never routed,
+  overflowed or metered, and a routed child is never held, so routing walks as it always did.
 
 ## Burst smoothing on treg's own keys
 
